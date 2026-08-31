@@ -17,9 +17,10 @@ git pull
 ## Step 2: Read Repository Memory
 
 Read `.github/memories.md`. Pay special attention to:
+
 - Module responsibility map (planner, ML, utils layers)
 - Canonical patterns (clamp_efficiency, DISCHARGE_RECS, calculate_recommended_threshold, HSEM_LOGGER)
-- MILP variable vector layout (8*n base, growing with EV co-optimisation)
+- MILP variable vector layout (8\*n base, growing with EV co-optimisation)
 - File size limits (30 KB hard limit in planner/ and utils/)
 - Cycle cost formula with mandatory 2x denominator
 - File organization patterns (by responsibility, not by theme)
@@ -34,16 +35,16 @@ If this is issue-driven work, read the full GitHub issue before touching any cod
 
 Format: `<type>/<issue-number>-<slug>`
 
-| Type | Use for |
-|------|---------|
-| `feat` | New features |
-| `fix` | Bug fixes |
-| `chore` | Repository/code chores |
-| `docs` | Documentation updates |
-| `refactor` | Code refactoring |
-| `perf` | Performance improvements |
-| `test` | Test additions/updates |
-| `ci` | CI/CD changes |
+| Type       | Use for                  |
+| ---------- | ------------------------ |
+| `feat`     | New features             |
+| `fix`      | Bug fixes                |
+| `chore`    | Repository/code chores   |
+| `docs`     | Documentation updates    |
+| `refactor` | Code refactoring         |
+| `perf`     | Performance improvements |
+| `test`     | Test additions/updates   |
+| `ci`       | CI/CD changes            |
 
 Examples: `fix/444-milp-cycle-cost`, `feat/123-add-solar-forecast`
 
@@ -53,13 +54,13 @@ All branches MUST be based on main unless the user explicitly instructs otherwis
 
 Based on the change type, read these docs before touching code:
 
-| Change touches | Must read |
-|---------------|-----------|
-| Planner engine, cost function, SoC simulation, candidate generation, slot population, safety gates | `docs/planner-spec.md` |
-| Huawei Solar sensors | `docs/huawei_entities.md` |
-| Config/options flow | `docs/config-flow-reference.md` |
-| EV charging | `docs/ev-charge-plan-setup.md` |
-| Planner inputs/outputs | `docs/planner-guide.md` |
+| Change touches                                                                                     | Must read                       |
+| -------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Planner engine, cost function, SoC simulation, candidate generation, slot population, safety gates | `docs/planner-spec.md`          |
+| Huawei Solar sensors                                                                               | `docs/huawei_entities.md`       |
+| Config/options flow                                                                                | `docs/config-flow-reference.md` |
+| EV charging                                                                                        | `docs/ev-charge-plan-setup.md`  |
+| Planner inputs/outputs                                                                             | `docs/planner-guide.md`         |
 
 ## Step 6: Understand the Affected Code
 

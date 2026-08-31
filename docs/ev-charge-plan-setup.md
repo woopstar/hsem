@@ -49,20 +49,20 @@ With EV Planned Load enabled, HSEM:
 
 You need the following entities available in Home Assistant:
 
-| What you need | Example entity |
-|---|---|
-| Binary sensor: EV plugged in | `binary_sensor.ev_charger_connected` |
-| Sensor: EV battery SoC (%) | `sensor.ev_battery_soc` |
-| (Optional) Input for target SoC | `input_number.ev_target_soc` |
-| (Optional) Input for charge deadline | `input_datetime.ev_charge_deadline` |
-| (Optional) Switch: smart charging on/off | `input_boolean.ev_smart_charging` |
-| (Optional) Sensor: actual EV charge power | `sensor.ev_charger_power` |
+| What you need                             | Example entity                       |
+| ----------------------------------------- | ------------------------------------ |
+| Binary sensor: EV plugged in              | `binary_sensor.ev_charger_connected` |
+| Sensor: EV battery SoC (%)                | `sensor.ev_battery_soc`              |
+| (Optional) Input for target SoC           | `input_number.ev_target_soc`         |
+| (Optional) Input for charge deadline      | `input_datetime.ev_charge_deadline`  |
+| (Optional) Switch: smart charging on/off  | `input_boolean.ev_smart_charging`    |
+| (Optional) Sensor: actual EV charge power | `sensor.ev_charger_power`            |
 
 > **Unit note (Watts expected):** HSEM expects EV charge power in **Watts**.
 > If your sensor reports kW (e.g. a template sensor showing `3.6` for a
 > 3.6 kW session), either change the template to Watts or set
 > `unit_of_measurement: kW` on the sensor — HSEM then converts it
-> automatically.  A kW value without the unit attribute is treated as Watts
+> automatically. A kW value without the unit attribute is treated as Watts
 > and triggers a "suspiciously low EV power" warning in the log (issue #592).
 
 If your EV integration does not expose all of these, you can use `input_number`,
@@ -91,6 +91,7 @@ init → prices → months → solcast
 Fill in the fields described in the [Field reference](#field-reference) section below.
 
 At minimum you must:
+
 - Set **Enable EV Planned Load Integration** to `on`
 - Set **EV Battery Capacity** to your car's usable battery size (e.g. `86` kWh)
 - Set **EV Charger Power** to your charger's AC output (e.g. `11` kW)
@@ -104,23 +105,23 @@ All other fields have sensible defaults (target SoC 80 %, deadline 07:00, effici
 
 ## Field reference
 
-| Field | Required | Default | Description |
-|---|---|---|---|
-| **Enable EV Planned Load Integration** | Yes | `off` | Master switch. Must be `on` for any planning to occur. |
-| **EV Connected Binary Sensor** | Optional* | — | Binary sensor that is `on` when the EV is physically plugged into the charger. |
-| **EV Battery SoC Sensor** | Optional* | — | Sensor reporting the current EV battery state of charge (0–100 %). |
-| **EV Target SoC Entity** | Optional | — | Entity whose state is the target SoC. Overrides the fixed target when set. Accepts `sensor`, `input_number`, `number`. |
-| **EV Target SoC (fixed fallback)** | Yes | `80` | Target SoC to use when no entity is configured. Range 0–100 %. |
-| **EV Charge Deadline Entity** | Optional | — | Entity whose state is a time string (`HH:MM`) representing when the EV must be charged. Accepts `input_datetime`, `sensor`, `input_text`. |
-| **EV Charge Deadline (fixed HH:MM fallback)** | Yes | `07:00` | Deadline to use when no entity is configured. The planner will not schedule EV load after this time. |
-| **EV Smart Charging Enabled Entity** | Optional | — | Boolean entity (`binary_sensor`, `input_boolean`, `switch`) that enables/disables smart charging at runtime. When this entity is `off`, the sensor shows `smart_charging_disabled` and no EV load is allocated. |
-| **EV Battery Capacity (kWh)** | Yes | `0` | EV battery nameplate capacity. Range 1–200 kWh, step 0.5 kWh. |
-| **EV Charger Power (kW)** | Yes | `0` | Approximate AC nameplate. Snapped to the nearest executable whole amp by the configured phase topology when publishing a command — `11.0 kW` single-phase becomes `13 A / 2.99 kW`; `11.0 kW` balanced three-phase becomes `16 A / 11.04 kW`. Range 0.1–50 kW, step 0.1 kW. |
-| **EV Charger Phase Topology** | Yes | `single_phase` | Safe default for single-phase or unknown wiring — every hard per-phase check assumes the whole command lands on one phase. Select `three_phase_balanced` only after confirming the charger draws balanced current across all three phases. |
-| **EV Charger Efficiency** | Yes | `100` % | Fraction of AC energy delivered to the EV battery. Most AC chargers are 95–100 %. Range 50–100 %, step 1 %. |
-| **Charger Min Power (W)** | Yes | `1380` | Physical start threshold, rounded up to the first executable whole amp for the configured topology (`1380 W` single-phase → `6 A`). Below this, the slot is zeroed out (or re-portioned into another slot) by engine post-processing. Range 0–22000 W, step 10 W. |
-| **Base House Load Already Includes EV** | Yes | `off` | See [Double-counting](#double-counting). |
-| **EV Actual Charging Power Sensor (optional)** | Optional | — | Sensor for real-time EV charge power. Used for diagnostics only — not fed into the planner. |
+| Field                                          | Required   | Default        | Description                                                                                                                                                                                                                                                                 |
+| ---------------------------------------------- | ---------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Enable EV Planned Load Integration**         | Yes        | `off`          | Master switch. Must be `on` for any planning to occur.                                                                                                                                                                                                                      |
+| **EV Connected Binary Sensor**                 | Optional\* | —              | Binary sensor that is `on` when the EV is physically plugged into the charger.                                                                                                                                                                                              |
+| **EV Battery SoC Sensor**                      | Optional\* | —              | Sensor reporting the current EV battery state of charge (0–100 %).                                                                                                                                                                                                          |
+| **EV Target SoC Entity**                       | Optional   | —              | Entity whose state is the target SoC. Overrides the fixed target when set. Accepts `sensor`, `input_number`, `number`.                                                                                                                                                      |
+| **EV Target SoC (fixed fallback)**             | Yes        | `80`           | Target SoC to use when no entity is configured. Range 0–100 %.                                                                                                                                                                                                              |
+| **EV Charge Deadline Entity**                  | Optional   | —              | Entity whose state is a time string (`HH:MM`) representing when the EV must be charged. Accepts `input_datetime`, `sensor`, `input_text`.                                                                                                                                   |
+| **EV Charge Deadline (fixed HH:MM fallback)**  | Yes        | `07:00`        | Deadline to use when no entity is configured. The planner will not schedule EV load after this time.                                                                                                                                                                        |
+| **EV Smart Charging Enabled Entity**           | Optional   | —              | Boolean entity (`binary_sensor`, `input_boolean`, `switch`) that enables/disables smart charging at runtime. When this entity is `off`, the sensor shows `smart_charging_disabled` and no EV load is allocated.                                                             |
+| **EV Battery Capacity (kWh)**                  | Yes        | `0`            | EV battery nameplate capacity. Range 1–200 kWh, step 0.5 kWh.                                                                                                                                                                                                               |
+| **EV Charger Power (kW)**                      | Yes        | `0`            | Approximate AC nameplate. Snapped to the nearest executable whole amp by the configured phase topology when publishing a command — `11.0 kW` single-phase becomes `13 A / 2.99 kW`; `11.0 kW` balanced three-phase becomes `16 A / 11.04 kW`. Range 0.1–50 kW, step 0.1 kW. |
+| **EV Charger Phase Topology**                  | Yes        | `single_phase` | Safe default for single-phase or unknown wiring — every hard per-phase check assumes the whole command lands on one phase. Select `three_phase_balanced` only after confirming the charger draws balanced current across all three phases.                                  |
+| **EV Charger Efficiency**                      | Yes        | `100` %        | Fraction of AC energy delivered to the EV battery. Most AC chargers are 95–100 %. Range 50–100 %, step 1 %.                                                                                                                                                                 |
+| **Charger Min Power (W)**                      | Yes        | `1380`         | Physical start threshold, rounded up to the first executable whole amp for the configured topology (`1380 W` single-phase → `6 A`). Below this, the slot is zeroed out (or re-portioned into another slot) by engine post-processing. Range 0–22000 W, step 10 W.           |
+| **Base House Load Already Includes EV**        | Yes        | `off`          | See [Double-counting](#double-counting).                                                                                                                                                                                                                                    |
+| **EV Actual Charging Power Sensor (optional)** | Optional   | —              | Sensor for real-time EV charge power. Used for diagnostics only — not fed into the planner.                                                                                                                                                                                 |
 
 > \* Strongly recommended. Without a connected sensor the EV is always assumed connected.
 > Without a SoC sensor the current SoC defaults to `0 %`, which will over-plan charging.
@@ -202,24 +203,24 @@ flowchart TD
 
 ### Inputs
 
-| Input | Source | Description |
-|---|---|---|
-| Current EV SoC | `hsem_ev_soc` sensor | Percentage (0–100 %) |
-| Target SoC | `hsem_ev_soc_target` entity or 80 % default | Target percentage |
-| Deadline | `time.hsem_ev_deadline` entity or `"07:00"` | Time-of-day by which EV must be charged |
-| Battery capacity | `hsem_ev_planned_load_battery_capacity_kwh` | Nameplate kWh |
-| Charger AC power | `hsem_ev_planned_load_charger_power_kw` | AC kW output |
-| Charger efficiency | `hsem_ev_planned_load_charger_efficiency` | Percent (50–100) |
-| Charger min power | `hsem_ev_planned_load_charger_min_power_w` | Watts (default 1380) |
-| Ceiling deadband | `hsem_ev_planned_load_command_deadband_a` | Amps (0–5, default 3). Smallest reduction in the published ceiling that is applied; increases always pass through |
-| Slot-tail stop suppression | `hsem_ev_planned_load_stub_floor_minutes` | Minutes (0–10, default 2). Suppresses a 0 W command in the slot tail while need remains |
-| Connected sensor | `hsem_ev_connected` binary sensor | Plug status |
-| Smart charging switch | `switch.hsem_ev_smart_charging` | Enable/disable |
-| Force charge now | `switch.hsem_ev_force_charge_now` | Immediate charge |
-| Allow past target | `hsem_ev_allow_charge_past_target_soc` | Surplus charging past target, valued against export by avoided future import cost. The house battery always takes its share of surplus PV first; the EV only absorbs what the battery cannot (issue #775) |
-| Past-target confidence factor | `hsem_ev_past_target_confidence_factor` | Discount (0.0–1.0, default 0.9) applied to the avoided-future-import valuation |
-| Base load includes EV | `hsem_house_power_includes_ev_charger_power` | CT clamp position |
-| Auto-Full on negative price | `hsem_ev_auto_full_negative_price` | Max-charge EV when price ≤ 0 |
+| Input                         | Source                                       | Description                                                                                                                                                                                               |
+| ----------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Current EV SoC                | `hsem_ev_soc` sensor                         | Percentage (0–100 %)                                                                                                                                                                                      |
+| Target SoC                    | `hsem_ev_soc_target` entity or 80 % default  | Target percentage                                                                                                                                                                                         |
+| Deadline                      | `time.hsem_ev_deadline` entity or `"07:00"`  | Time-of-day by which EV must be charged                                                                                                                                                                   |
+| Battery capacity              | `hsem_ev_planned_load_battery_capacity_kwh`  | Nameplate kWh                                                                                                                                                                                             |
+| Charger AC power              | `hsem_ev_planned_load_charger_power_kw`      | AC kW output                                                                                                                                                                                              |
+| Charger efficiency            | `hsem_ev_planned_load_charger_efficiency`    | Percent (50–100)                                                                                                                                                                                          |
+| Charger min power             | `hsem_ev_planned_load_charger_min_power_w`   | Watts (default 1380)                                                                                                                                                                                      |
+| Ceiling deadband              | `hsem_ev_planned_load_command_deadband_a`    | Amps (0–5, default 3). Smallest reduction in the published ceiling that is applied; increases always pass through                                                                                         |
+| Slot-tail stop suppression    | `hsem_ev_planned_load_stub_floor_minutes`    | Minutes (0–10, default 2). Suppresses a 0 W command in the slot tail while need remains                                                                                                                   |
+| Connected sensor              | `hsem_ev_connected` binary sensor            | Plug status                                                                                                                                                                                               |
+| Smart charging switch         | `switch.hsem_ev_smart_charging`              | Enable/disable                                                                                                                                                                                            |
+| Force charge now              | `switch.hsem_ev_force_charge_now`            | Immediate charge                                                                                                                                                                                          |
+| Allow past target             | `hsem_ev_allow_charge_past_target_soc`       | Surplus charging past target, valued against export by avoided future import cost. The house battery always takes its share of surplus PV first; the EV only absorbs what the battery cannot (issue #775) |
+| Past-target confidence factor | `hsem_ev_past_target_confidence_factor`      | Discount (0.0–1.0, default 0.9) applied to the avoided-future-import valuation                                                                                                                            |
+| Base load includes EV         | `hsem_house_power_includes_ev_charger_power` | CT clamp position                                                                                                                                                                                         |
+| Auto-Full on negative price   | `hsem_ev_auto_full_negative_price`           | Max-charge EV when price ≤ 0                                                                                                                                                                              |
 
 ### Auto-Full EV on negative electricity prices
 
@@ -233,9 +234,10 @@ periods (e.g. Nordpool, Amber Electric) where charging the EV at full power
 can be profitable or free.
 
 **Configuration:**
-- Toggle ``hsem_ev_auto_full_negative_price`` in the EV charger config step
+
+- Toggle `hsem_ev_auto_full_negative_price` in the EV charger config step
   of the config/options flow, or at runtime via
-  ``switch.hsem_ev_auto_full_negative_price``.
+  `switch.hsem_ev_auto_full_negative_price`.
 - No additional entities are required — it uses the import price sensor
   already configured for the planner.
 
@@ -249,7 +251,7 @@ power (`hsem_ev_planned_load_charger_power_kw`).
 **Force charge works even when smart charging is disabled.** When
 `switch.hsem_ev_smart_charging` is off the EV planner normally returns
 `smart_charging_disabled` with no slot allocation — but the force-charge
-switch bypasses this and issues the charge command anyway.  The plan sensor
+switch bypasses this and issues the charge command anyway. The plan sensor
 (`sensor.hsem_ev_optimal_charging_plan`) flips to `charging` so dashboards
 reflect the forced session.
 
@@ -264,6 +266,7 @@ running charger from reserving hours it does not need, or from authorising
 itself after Smart Charging has been turned off.
 
 **How it works:**
+
 1. The coordinator reads `live.ev.is_charging` and `live.ev.power_w`.
 2. For a **managed** session (smart charging enabled and connected), only the
    remaining minutes of the current slot are fixed to the observed power,
@@ -282,6 +285,7 @@ itself after Smart Charging has been turned off.
    the union of every EV's fixed slots.
 
 **Conditions:**
+
 - Activates only when `live.ev.is_charging == True` AND `live.ev.power_w > 0`.
 - Applies independently to the second EV if configured.
 - With a configured EV Actual Charging Power Sensor, measured session energy
@@ -289,7 +293,7 @@ itself after Smart Charging has been turned off.
   telemetry catches up; disconnecting or restarting the integration clears
   that in-memory credit (`utils/ev_delivered_energy.py`).
 
-See [planner-spec.md](planner-spec.md) *Session EV invariant* for the exact
+See [planner-spec.md](planner-spec.md) _Session EV invariant_ for the exact
 per-slot energy bounds.
 
 ---
@@ -298,23 +302,23 @@ per-slot energy bounds.
 
 After setup, plan and executable-current sensor entities are created:
 
-| Entity | States | Meaning |
-|---|---|---|
-| `sensor.hsem_ev_optimal_charging_plan` | see below | Primary EV plan state |
-| `sensor.hsem_ev_second_optimal_charging_plan` | see below | Second EV plan state |
-| `sensor.hsem_ev_charger_current_limit` | whole amps | Primary current ceiling for the active slot; unavailable and `0` until a successful live plan owns it (issue #789) |
-| `sensor.hsem_ev_second_charger_current_limit` | whole amps | Second-EV current ceiling with the same fail-closed semantics |
+| Entity                                        | States     | Meaning                                                                                                            |
+| --------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| `sensor.hsem_ev_optimal_charging_plan`        | see below  | Primary EV plan state                                                                                              |
+| `sensor.hsem_ev_second_optimal_charging_plan` | see below  | Second EV plan state                                                                                               |
+| `sensor.hsem_ev_charger_current_limit`        | whole amps | Primary current ceiling for the active slot; unavailable and `0` until a successful live plan owns it (issue #789) |
+| `sensor.hsem_ev_second_charger_current_limit` | whole amps | Second-EV current ceiling with the same fail-closed semantics                                                      |
 
 ### Sensor states
 
-| State | Meaning |
-|---|---|
-| `not_connected` | EV is not plugged in (connected sensor is `off`) |
-| `smart_charging_disabled` | Feature is disabled, or the smart charging entity is `off` |
-| `fully_charged` | EV is already at or above target SoC — nothing to plan |
-| `charging` | EV is scheduled to charge in the current slot |
-| `waiting` | EV is connected, energy is needed, but current slot has no planned load (e.g. slot is after the deadline or all load is in future slots) |
-| `unavailable` | Feature is not configured or `battery_capacity_kwh`/`charger_power_kw` is zero |
+| State                     | Meaning                                                                                                                                  |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `not_connected`           | EV is not plugged in (connected sensor is `off`)                                                                                         |
+| `smart_charging_disabled` | Feature is disabled, or the smart charging entity is `off`                                                                               |
+| `fully_charged`           | EV is already at or above target SoC — nothing to plan                                                                                   |
+| `charging`                | EV is scheduled to charge in the current slot                                                                                            |
+| `waiting`                 | EV is connected, energy is needed, but current slot has no planned load (e.g. slot is after the deadline or all load is in future slots) |
+| `unavailable`             | Feature is not configured or `battery_capacity_kwh`/`charger_power_kw` is zero                                                           |
 
 ### Sensor attributes
 
@@ -336,7 +340,7 @@ planned_load_by_slot:
   "2026-05-15T02:00:00+02:00": 10.1
 charging_slots:
   - start: "2026-05-15T10:00:00+02:00"
-    end:   "2026-05-15T11:00:00+02:00"
+    end: "2026-05-15T11:00:00+02:00"
     estimated_charged_kwh: 9.2
     solar_surplus_kwh: 10.5
     import_needed_kwh: 0.0
@@ -361,6 +365,7 @@ set to non-zero values.
 ### Sensor shows `not_connected` but the car is plugged in
 
 The connected binary sensor is reporting `off`. Check:
+
 - The entity ID is correct in HSEM config.
 - The binary sensor is actually `on` in HA Developer Tools → States.
 - If you have no connected sensor configured, HSEM assumes the EV is always connected.
@@ -368,6 +373,7 @@ The connected binary sensor is reporting `off`. Check:
 ### Sensor shows `smart_charging_disabled`
 
 Either:
+
 - `hsem_ev_planned_load_enabled` is `False` — toggle it to `on` in the config.
 - The smart charging entity (if configured) is currently `off`. This is intentional
   — it lets you temporarily disable smart EV scheduling without changing HSEM config.
@@ -391,14 +397,14 @@ If you are on a version before this fix, update HSEM.
 
 HSEM publishes a **ceiling**, not a setpoint. `sensor.hsem_ev_charger_calculated_power`
 and `sensor.hsem_ev_charger_current_limit` are diagnostic entities: HSEM owns the
-*economics* (how many amps are worth drawing this slot) while the charger or an
-external controller keeps *final authority* and may only ramp within that ceiling.
+_economics_ (how many amps are worth drawing this slot) while the charger or an
+external controller keeps _final authority_ and may only ramp within that ceiling.
 The one exception is the built-in OCPP server — when `hsem_ocpp_enabled` is on,
 HSEM dispatches `SetChargingProfile` and the value is a real setpoint (with its own
 anti-flap start/stop windows and a 50 W material-change filter).
 
-This distinction drives the asymmetric ceiling deadband: a *reduction* can force a
-charger to throttle, an *increase* only offers headroom it may or may not take.
+This distinction drives the asymmetric ceiling deadband: a _reduction_ can force a
+charger to throttle, an _increase_ only offers headroom it may or may not take.
 
 **go-e Charger.** The V2 API exposes `ama` (max ampere) for dynamic load balancing.
 go-e have confirmed setting it frequently is safe, but the community convention is
@@ -425,7 +431,7 @@ configured if your charger switches autonomously.
 > Sources: [go-eCharger API v2 discussion #137](https://github.com/goecharger/go-eCharger-API-v2/discussions/137),
 > [Huawei SCharger product page](https://solar.huawei.com/en/products/scharger-7ks-s0-22kt-s0/),
 > [Huawei PV+ESS+Charger three-phase system manual](https://support.huawei.com/enterprise/en/doc/EDOC1100280349/c8c88135/three-phase-system).
-> No manufacturer-published *minimum interval* between ampere changes was found for
+> No manufacturer-published _minimum interval_ between ampere changes was found for
 > either charger; the deadband default is derived from HSEM's own measured churn,
 > not from a vendor limit.
 
@@ -455,6 +461,7 @@ valid candidate slots and the sensor will show `waiting` with a `data_quality` w
 
 The deadline is interpreted as a **time-of-day** and automatically advanced to the
 next occurrence if needed:
+
 - If it is currently 15:00 and the deadline is `07:00`, it is treated as 07:00
   **tomorrow**.
 - If it is currently 06:00 and the deadline is `07:00`, it is treated as today.

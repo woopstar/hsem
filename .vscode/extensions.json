@@ -1,12 +1,12 @@
 {
-    "recommendations": [
-        "ms-python.black-formatter",
-        "usernamehw.errorlens",
-        "ms-python.isort",
-        "esbenp.prettier-vscode",
-        "ms-python.vscode-pylance",
-        "ms-python.python",
-        "ms-python.debugpy",
-        "richie5um2.vscode-sort-json"
-    ]
+  "recommendations": [
+    "ms-python.black-formatter",
+    "usernamehw.errorlens",
+    "ms-python.isort",
+    "esbenp.prettier-vscode",
+    "ms-python.vscode-pylance",
+    "ms-python.python",
+    "ms-python.debugpy",
+    "richie5um2.vscode-sort-json"
+  ]
 }

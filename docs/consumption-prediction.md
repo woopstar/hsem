@@ -11,12 +11,12 @@ suppression, and reliability weighting.
 HSEM predicts house load using a **multi-window weighted average** of historical
 consumption data. The prediction feeds the planner's net consumption calculation:
 
-$$ net\\_consumption[t] = load\\_forecast[t] + ev\\_load[t] - pv\\_forecast[t] $$
+$$ net\\\_consumption[t] = load\\\_forecast[t] + ev\\\_load[t] - pv\\\_forecast[t] $$
 
 Accurate load prediction is critical: over-prediction leads to unnecessary grid
 imports; under-prediction leads to insufficient battery charging for peak hours.
 
-HSEM supports two prediction modes, toggled via ``hsem_ml_consumption_enabled``:
+HSEM supports two prediction modes, toggled via `hsem_ml_consumption_enabled`:
 
 - **Legacy** (default): Four-window weighted average using HSEM custom sensors
 - **ML** (new): Ridge regression on recorder history with DOW + seasonality + temperature
@@ -26,7 +26,7 @@ HSEM supports two prediction modes, toggled via ``hsem_ml_consumption_enabled``:
 ## ML mode (ridge regression)
 
 When enabled, the ML predictor queries the HA recorder directly for historical
-energy data from the configured energy sensor.  No custom sensor entities are required.
+energy data from the configured energy sensor. No custom sensor entities are required.
 
 ### Model formulation
 
@@ -56,12 +56,12 @@ half-life (default: half the configured history window).
 
 For 15-minute slots ($S = 96$):
 
-| Index range | Count | Feature | Description |
-|---|---|---|---|
-| $0 \ldots 6S-1$ | 672 | one-hot $(\text{DOW}, \text{slot})$ | Day-of-week × 15-min slot |
-| $6S$, $6S+1$ | 2 | $\sin(\text{DOY}), \cos(\text{DOY})$ | Day-of-year seasonality |
-| $6S+2$ | 1 | $T$ | Outdoor temperature (°C), optional |
-| $6S+3$ | 1 | $E_{t-1}$ | Previous slot energy (sequential mode only) |
+| Index range     | Count | Feature                              | Description                                 |
+| --------------- | ----- | ------------------------------------ | ------------------------------------------- |
+| $0 \ldots 6S-1$ | 672   | one-hot $(\text{DOW}, \text{slot})$  | Day-of-week × 15-min slot                   |
+| $6S$, $6S+1$    | 2     | $\sin(\text{DOY}), \cos(\text{DOY})$ | Day-of-year seasonality                     |
+| $6S+2$          | 1     | $T$                                  | Outdoor temperature (°C), optional          |
+| $6S+3$          | 1     | $E_{t-1}$                            | Previous slot energy (sequential mode only) |
 
 Total: 674 (without temperature + sequential), 675 (with temperature),
 676 (with both).
@@ -100,9 +100,9 @@ elevates 08:15's prediction.
 ### Fitting
 
 The normal equation is solved via Cholesky decomposition
-(``numpy.linalg.solve``).  For $k \leq 676$, this takes ~40 ms.
+(`numpy.linalg.solve`). For $k \leq 676$, this takes ~40 ms.
 A retrain gate skips the solve when fewer than 4 new samples have arrived
-since the last fit.  The predictor instance is cached on the coordinator
+since the last fit. The predictor instance is cached on the coordinator
 across cycles.
 
 ### Adaptive safety buffer
@@ -116,23 +116,23 @@ $$
 }
 $$
 
-where $\bar{E}_w$ is the time-decay weighted mean.  The buffer multiplies
+where $\bar{E}_w$ is the time-decay weighted mean. The buffer multiplies
 $\sigma$ by an adaptive factor based on relative uncertainty:
 
-| $\sigma / \mu$ | Safety factor | Meaning |
-|---|---|---|
-| $< 0.1$ | $0.0$ | Prediction is reliable — trust it |
-| $< 0.3$ | $0.5$ | Moderate uncertainty — small buffer |
-| $\geq 0.3$ | $1.0$ | Sparse or variable data — full buffer |
+| $\sigma / \mu$ | Safety factor | Meaning                               |
+| -------------- | ------------- | ------------------------------------- |
+| $< 0.1$        | $0.0$         | Prediction is reliable — trust it     |
+| $< 0.3$        | $0.5$         | Moderate uncertainty — small buffer   |
+| $\geq 0.3$     | $1.0$         | Sparse or variable data — full buffer |
 
 The MILP receives $\mu + f \cdot \sigma$ as the consumption estimate,
-naturally building headroom in uncertain slots.  As history accumulates
+naturally building headroom in uncertain slots. As history accumulates
 and $\sigma$ shrinks, the buffer converges to zero automatically.
 
 ### Today's actuals
 
 For slots that have already passed today, the predictor uses actual meter
-readings from the energy sensor instead of predictions.  This anchors
+readings from the energy sensor instead of predictions. This anchors
 the battery SoC simulation to reality.
 
 ### Advantages over legacy mode
@@ -149,12 +149,12 @@ the battery SoC simulation to reality.
 
 Four overlapping historical windows are maintained per clock-hour (0–23):
 
-| Window | Span | Default weight | Purpose |
-|---|---|---|---|
-| **1-day** | Last 24 hours | 25 % | Captures yesterday's pattern (weather, routine) |
-| **3-day** | Last 72 hours | 30 % | Short-term trend (weekday pattern) |
-| **7-day** | Last 168 hours | 30 % | Weekly rhythm (same weekday last week) |
-| **14-day** | Last 336 hours | 15 % | Long-term baseline (weather-independent) |
+| Window     | Span           | Default weight | Purpose                                         |
+| ---------- | -------------- | -------------- | ----------------------------------------------- |
+| **1-day**  | Last 24 hours  | 25 %           | Captures yesterday's pattern (weather, routine) |
+| **3-day**  | Last 72 hours  | 30 %           | Short-term trend (weekday pattern)              |
+| **7-day**  | Last 168 hours | 30 %           | Weekly rhythm (same weekday last week)          |
+| **14-day** | Last 336 hours | 15 %           | Long-term baseline (weather-independent)        |
 
 Default weights sum to 100 %. Configurable via the options flow.
 
@@ -177,7 +177,7 @@ class HourlyConsumptionAverage:
 
 The raw forecast for hour `h` is:
 
-$$ \mathrm{forecast}[h] = \frac{w_1 \cdot avg_1 + w_3 \cdot avg_3 + w_7 \cdot avg_7 + w_{14} \cdot avg_{14}}{w_1 + w_3 + w_7 + w_{14}} $$
+$$ \mathrm{forecast}[h] = \frac{w*1 \cdot avg_1 + w_3 \cdot avg_3 + w_7 \cdot avg_7 + w*{14} \cdot avg*{14}}{w_1 + w_3 + w_7 + w*{14}} $$
 
 Before this weighted average, the weights undergo three transformations:
 
@@ -188,11 +188,11 @@ Before this weighted average, the weights undergo three transformations:
 And the raw window values first pass through one clamp:
 
 0. **Peer-median clamp** (issue #592) — no window may exceed
-   `max(3 × median of the other three windows, 0.15 kWh/h)`.  This catches
+   `max(3 × median of the other three windows, 0.15 kWh/h)`. This catches
    the pattern the IQR mask structurally misses: with only four points,
    three windows agreeing low and one stale window 10–100× higher puts the
-   median *between* the clusters, flagging both ends and zeroing the clean
-   recent windows too.  Only the upward side is clamped — a genuine
+   median _between_ the clusters, flagging both ends and zeroing the clean
+   recent windows too. Only the upward side is clamped — a genuine
    consumption drop flows through immediately.
 
 ---
@@ -225,37 +225,37 @@ short-term spikes from dominating the forecast.
 
 ### Caps between 7-day and 14-day
 
-| Cap | Value | Meaning |
-|---|---|---|
-| `CAP7_DOWN` | 0.85 | 7-day avg cannot be < 85 % of 14-day avg |
-| `CAP7_UP` | 1.15 | 7-day avg cannot be > 115 % of 14-day avg |
-| `CAP14_DOWN` | 0.90 | 14-day avg cannot be < 90 % of 7-day effective avg |
-| `CAP14_UP` | 1.10 | 14-day avg cannot be > 110 % of 7-day effective avg |
+| Cap          | Value | Meaning                                             |
+| ------------ | ----- | --------------------------------------------------- |
+| `CAP7_DOWN`  | 0.85  | 7-day avg cannot be < 85 % of 14-day avg            |
+| `CAP7_UP`    | 1.15  | 7-day avg cannot be > 115 % of 14-day avg           |
+| `CAP14_DOWN` | 0.90  | 14-day avg cannot be < 90 % of 7-day effective avg  |
+| `CAP14_UP`   | 1.10  | 14-day avg cannot be > 110 % of 7-day effective avg |
 
 ### Spike detection (ratio-based)
 
 When a short window is significantly higher than a longer window, it is
 flagged as a spike:
 
-| Comparison | Ratio range | Max weight reduction | Redistribution |
-|---|---|---|---|
-| 1d vs 7d | 1.30 – 2.00 | 50 % of 1d weight | 20 % → 3d, 55 % → 7d, 25 % → 14d |
-| 3d vs 7d | 1.20 – 1.80 | 30 % of 3d weight | 60 % → 7d, 40 % → 14d |
-| 7d vs 14d | 1.20 – 1.60 | 20 % of 7d weight | 100 % → 14d |
-| 14d vs 7d | 1.15 – 1.50 | 15 % of 14d weight | 100 % → 7d |
+| Comparison | Ratio range | Max weight reduction | Redistribution                   |
+| ---------- | ----------- | -------------------- | -------------------------------- |
+| 1d vs 7d   | 1.30 – 2.00 | 50 % of 1d weight    | 20 % → 3d, 55 % → 7d, 25 % → 14d |
+| 3d vs 7d   | 1.20 – 1.80 | 30 % of 3d weight    | 60 % → 7d, 40 % → 14d            |
+| 7d vs 14d  | 1.20 – 1.60 | 20 % of 7d weight    | 100 % → 14d                      |
+| 14d vs 7d  | 1.15 – 1.50 | 15 % of 14d weight   | 100 % → 7d                       |
 
 **Severity scaling:** The fraction of weight actually removed interpolates
 between 0 at the `_MIN` ratio and the maximum at the `_MAX` ratio:
 
-$$ reduced\\_fraction = \frac{\mathrm{ratio} - ratio\\_min}{ratio\\_max - ratio\\_min} \cdot max\\_reduction $$
+$$ reduced\\\_fraction = \frac{\mathrm{ratio} - ratio\\\_min}{ratio\\\_max - ratio\\\_min} \cdot max\\\_reduction $$
 
 ### Baseline capping
 
 Short windows (1-day, 3-day) are also capped against a blended baseline:
 
-$$ \mathrm{baseline} = 0.70 \cdot avg_7 + 0.30 \cdot avg_{14} $$
+$$ \mathrm{baseline} = 0.70 \cdot avg*7 + 0.30 \cdot avg*{14} $$
 
-$$ capped\\_value = \mathrm{clamp}(value, 0.80 \cdot \mathrm{baseline}, 1.20 \cdot \mathrm{baseline}) $$
+$$ capped\\\_value = \mathrm{clamp}(value, 0.80 \cdot \mathrm{baseline}, 1.20 \cdot \mathrm{baseline}) $$
 
 The 3-day uses slightly looser bounds (0.85 – 1.15) to avoid removing legitimate
 multi-day trends.
@@ -283,11 +283,11 @@ Weights are normalised after scaling so they still sum to the original total.
 ### ML mode limitations
 
 1. **Linear relationship**: The model assumes linear relationships between
-   features and consumption.  Non-linear effects (e.g. U-shaped heating/cooling
+   features and consumption. Non-linear effects (e.g. U-shaped heating/cooling
    curve vs temperature) are approximated but not fully captured.
 
 2. **Minimum history**: Requires at least 14 days of recorder history for the
-   energy sensor.  Falls back to legacy mode below this threshold.
+   energy sensor. Falls back to legacy mode below this threshold.
 
 3. **Single energy source**: The model predicts from one energy accumulator.
    It cannot combine signals from multiple meters (e.g. import + solar).
@@ -298,22 +298,22 @@ Weights are normalised after scaling so they still sum to the original total.
 ### Legacy mode limitations
 
 1. **Stationarity**: The model assumes consumption patterns are relatively stable
-   over the 14-day window.  Major lifestyle changes (new EV, heat pump, home
+   over the 14-day window. Major lifestyle changes (new EV, heat pump, home
    renovation) require 14 days to be fully reflected.
 
-2. **Weather dependence**: The model has no weather inputs.  Weather-driven
+2. **Weather dependence**: The model has no weather inputs. Weather-driven
    consumption (AC, heating) appears as unexplained variance unless correlated
    with the same-day-previous-week pattern (7-day window).
 
 3. **No day-of-week distinction**: All windows are rolling and do not distinguish
-   weekdays from weekends.  A Monday forecast uses the same weights as a Saturday
+   weekdays from weekends. A Monday forecast uses the same weights as a Saturday
    forecast, relying on the 7-day window to capture the weekly rhythm.
 
 4. **Zero-consumption hours**: Hours with consistently zero consumption (e.g.
    night-time) produce zero forecasts, which is correct for most installations.
 
 5. **Outlier detection limitations**: With only four data points (1d, 3d, 7d, 14d)
-   per hour, the IQR method has limited statistical power.  The spike caps act as
+   per hour, the IQR method has limited statistical power. The spike caps act as
    a second line of defence.
 
 ---
@@ -321,7 +321,7 @@ Weights are normalised after scaling so they still sum to the original total.
 ## Future improvements
 
 The ML mode (ridge regression) addresses several legacy limitations and is the
-forward path.  Remaining improvements include:
+forward path. Remaining improvements include:
 
 - **Prediction-vs-actual diagnostics**: Rolling MAE to measure model accuracy
 - **Multi-modal decomposition**: Separate models for weather-driven, EV-driven,

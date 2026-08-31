@@ -57,7 +57,7 @@ The agent MUST:
 
 1. **Before using any battery/inverter value**, check `docs/huawei_entities.md` in this
    repository first — it is the canonical, verified list of every entity exposed by the
-   `wlcrs/huawei_solar` integration on this installation.  Only fall back to searching
+   `wlcrs/huawei_solar` integration on this installation. Only fall back to searching
    `number.py`, `sensor.py`, and `select.py` in that repository when you need a register name
    or an entity that is not yet listed in `docs/huawei_entities.md`.
 2. **If the entity already exists in HSEM** (in `flows/huawei_solar.py`, `sensor_config.py`,
@@ -75,23 +75,23 @@ The agent MUST:
    - `models/live_state.py` — add the field to `LiveState`
    - `coordinator.py` — pass to `PlannerInput` (if planner-relevant)
 4. **Never use a fixed numeric constant** for a value that the inverter reports (e.g. max SoC,
-   charge cutoff, rated capacity).  Always source it from the live entity.
+   charge cutoff, rated capacity). Always source it from the live entity.
 
 **Key entity mappings** (register name → HA entity id pattern):
 
-| Register / source | Entity | Meaning |
-|---|---|---|
-| `STORAGE_CHARGING_CUTOFF_CAPACITY` | `number.batteries_end_of_charge_soc` | Max SoC during charging (90-100 %) |
-| `STORAGE_GRID_CHARGE_CUTOFF_STATE_OF_CHARGE` | `number.batteries_grid_charge_cutoff_soc` | Max SoC when charging **from grid** |
-| `STORAGE_DISCHARGING_CUTOFF_CAPACITY` | `number.batteries_end_of_discharge_soc` | Min SoC floor |
-| `STORAGE_MAXIMUM_CHARGING_POWER` | `number.batteries_maximum_charging_power` | Max charge power (W) |
-| `STORAGE_MAXIMUM_DISCHARGING_POWER` | `number.batteries_maximum_discharging_power` | Max discharge power (W) |
-| `STORAGE_STATE_OF_CAPACITY` | `sensor.batteries_state_of_capacity` | Current SoC (%) |
-| `STORAGE_RATED_CAPACITY` | `sensor.batteries_rated_capacity` | Nameplate capacity (Wh) |
-| `STORAGE_WORKING_MODE_SETTINGS` | `select.batteries_working_mode` | Working mode select |
-| `STORAGE_EXCESS_PV_ENERGY_USE_IN_TOU` | `select.batteries_excess_pv_energy_use_in_tou` | Excess PV use mode in TOU |
-| `STORAGE_HUAWEI_LUNA2000_TOU_…_PERIODS` | `sensor.batteries_tou_charging_and_discharging_periods` | TOU period schedule |
-| `HuaweiSolarActivePowerControlModeEntity` | `sensor.inverter_active_power_control` | Active power / export control mode |
+| Register / source                            | Entity                                                  | Meaning                             |
+| -------------------------------------------- | ------------------------------------------------------- | ----------------------------------- |
+| `STORAGE_CHARGING_CUTOFF_CAPACITY`           | `number.batteries_end_of_charge_soc`                    | Max SoC during charging (90-100 %)  |
+| `STORAGE_GRID_CHARGE_CUTOFF_STATE_OF_CHARGE` | `number.batteries_grid_charge_cutoff_soc`               | Max SoC when charging **from grid** |
+| `STORAGE_DISCHARGING_CUTOFF_CAPACITY`        | `number.batteries_end_of_discharge_soc`                 | Min SoC floor                       |
+| `STORAGE_MAXIMUM_CHARGING_POWER`             | `number.batteries_maximum_charging_power`               | Max charge power (W)                |
+| `STORAGE_MAXIMUM_DISCHARGING_POWER`          | `number.batteries_maximum_discharging_power`            | Max discharge power (W)             |
+| `STORAGE_STATE_OF_CAPACITY`                  | `sensor.batteries_state_of_capacity`                    | Current SoC (%)                     |
+| `STORAGE_RATED_CAPACITY`                     | `sensor.batteries_rated_capacity`                       | Nameplate capacity (Wh)             |
+| `STORAGE_WORKING_MODE_SETTINGS`              | `select.batteries_working_mode`                         | Working mode select                 |
+| `STORAGE_EXCESS_PV_ENERGY_USE_IN_TOU`        | `select.batteries_excess_pv_energy_use_in_tou`          | Excess PV use mode in TOU           |
+| `STORAGE_HUAWEI_LUNA2000_TOU_…_PERIODS`      | `sensor.batteries_tou_charging_and_discharging_periods` | TOU period schedule                 |
+| `HuaweiSolarActivePowerControlModeEntity`    | `sensor.inverter_active_power_control`                  | Active power / export control mode  |
 
 **Always check `docs/huawei_entities.md` first** before searching the upstream repo or guessing
 an entity ID. If a new entity is confirmed to exist in HA, add it to `docs/huawei_entities.md`
@@ -110,9 +110,9 @@ The agent MUST:
    SoC bounds, cost function formula, terminal-SoC accounting, candidate invariants, and safety
    gate behaviour must all match the spec exactly.
 3. **Update `docs/planner-spec.md`** whenever a change intentionally alters planner
-   semantics (goals, formulas, invariants, or safety gates).  The spec and the implementation
+   semantics (goals, formulas, invariants, or safety gates). The spec and the implementation
    must never be allowed to diverge silently.
-4. **Add or update tests** that cover the invariants listed under *Invariants for tests* in the
+4. **Add or update tests** that cover the invariants listed under _Invariants for tests_ in the
    spec for every planner change.
 5. **Include the spec check in the Definition of Done** — a planner change is not complete until
    both the spec and the tests are updated and passing.
@@ -260,16 +260,16 @@ Before creating a commit, the agent MUST report the result of:
 - **GitHub MCP tools are not present in every session.** Never assume they exist. When
   both are available either path is fine; when they are not, `gh` is the only path.
 
-| Operation | `gh` command | MCP tool (when available) |
-|---|---|---|
-| Create a PR | `gh pr create --base main --title ... --body-file -` | `create_pull_request` |
-| Update a PR (title/body) | `gh pr edit <n> --title ... --body-file -` | `update_pull_request` |
-| Read a PR / diff / comments | `gh pr view <n> --json ...` / `gh pr diff <n>` | `pull_request_read` |
-| Review a PR | `gh pr review <n>` | `pull_request_review_write` |
-| Create / update / close issues | `gh issue create` / `gh issue edit` / `gh issue close` | `issue_write` / `issue_read` |
-| List / search issues & PRs | `gh issue list` / `gh search issues` | `list_issues` / `search_issues` |
-| Merge a PR | `gh pr merge <n>` | `merge_pull_request` |
-| Create / list branches | `git push -u origin <branch>` | `create_branch` / `list_branches` |
+| Operation                      | `gh` command                                           | MCP tool (when available)         |
+| ------------------------------ | ------------------------------------------------------ | --------------------------------- |
+| Create a PR                    | `gh pr create --base main --title ... --body-file -`   | `create_pull_request`             |
+| Update a PR (title/body)       | `gh pr edit <n> --title ... --body-file -`             | `update_pull_request`             |
+| Read a PR / diff / comments    | `gh pr view <n> --json ...` / `gh pr diff <n>`         | `pull_request_read`               |
+| Review a PR                    | `gh pr review <n>`                                     | `pull_request_review_write`       |
+| Create / update / close issues | `gh issue create` / `gh issue edit` / `gh issue close` | `issue_write` / `issue_read`      |
+| List / search issues & PRs     | `gh issue list` / `gh search issues`                   | `list_issues` / `search_issues`   |
+| Merge a PR                     | `gh pr merge <n>`                                      | `merge_pull_request`              |
+| Create / list branches         | `git push -u origin <branch>`                          | `create_branch` / `list_branches` |
 
 - **Multiline bodies:** pass `--body-file <path>`, or `--body-file -` and pipe a
   heredoc. Do not inline a long markdown body as a single shell argument.
@@ -280,7 +280,7 @@ Before creating a commit, the agent MUST report the result of:
 
 Before submitting a PR, the agent MUST:
 
-- Run `./scripts/quality.sh lint` to format and lint all code
+- Run `./scripts/quality.sh lint` to format and lint all code, markdown, YAML and JSON
 - Run `./scripts/quality.sh quality` after lint (runs pyright and vulture static checks)
 - Run all tests locally: `./scripts/quality.sh test`
 - Verify `git status` shows only intended changes

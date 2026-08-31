@@ -8,8 +8,8 @@ In the container you will have a dedicated Home Assistant core instance running 
 
 - [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
 - Docker
-  -  For Linux, macOS, or Windows 10 Pro/Enterprise/Education use the [current release version of Docker](https://docs.docker.com/install/)
-  -   Windows 10 Home requires [WSL 2](https://docs.microsoft.com/windows/wsl/wsl2-install) and the current Edge version of Docker Desktop (see instructions [here](https://docs.docker.com/docker-for-windows/wsl-tech-preview/)). This can also be used for Windows Pro/Enterprise/Education.
+  - For Linux, macOS, or Windows 10 Pro/Enterprise/Education use the [current release version of Docker](https://docs.docker.com/install/)
+  - Windows 10 Home requires [WSL 2](https://docs.microsoft.com/windows/wsl/wsl2-install) and the current Edge version of Docker Desktop (see instructions [here](https://docs.docker.com/docker-for-windows/wsl-tech-preview/)). This can also be used for Windows Pro/Enterprise/Education.
 - [Visual Studio code](https://code.visualstudio.com/)
 - [Remote - Containers (VSC Extension)][extension-link]
 
@@ -34,12 +34,15 @@ sockets (like `gpg-agent.ssh`) across the VM boundary. This devcontainer uses a 
 relay to bridge the SSH and GPG agents from host to container.
 
 1. **Install the relay as a macOS LaunchAgent** (runs at login, restarts automatically):
+
    ```sh
    sh .devcontainer/scripts/install-agent-relay.sh install
    ```
+
    This starts TCP relays on ports 9999 (SSH agent), 9998 (GPG agent), 9997 (scdaemon).
 
 2. **Check status**:
+
    ```sh
    sh .devcontainer/scripts/install-agent-relay.sh status
    ```
@@ -51,9 +54,10 @@ relay to bridge the SSH and GPG agents from host to container.
 4. **Verify**: run `ssh -T git@github.com` and `gpg --card-status` in the container terminal.
 
 To uninstall the relay:
-   ```sh
-   sh .devcontainer/scripts/install-agent-relay.sh uninstall
-   ```
+
+```sh
+sh .devcontainer/scripts/install-agent-relay.sh uninstall
+```
 
 **macOS filesystem performance**
 
@@ -111,9 +115,9 @@ When a task is currently running (like `Run Home Assistant on port 8123` for the
 
 The available tasks are:
 
-Task | Description
--- | --
-Run Home Assistant on port 8123 | Launch Home Assistant with your custom component code and the configuration defined in `.devcontainer/configuration.yaml`.
+| Task                            | Description                                                                                                                |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Run Home Assistant on port 8123 | Launch Home Assistant with your custom component code and the configuration defined in `.devcontainer/configuration.yaml`. |
 
 ### Step by Step debugging
 

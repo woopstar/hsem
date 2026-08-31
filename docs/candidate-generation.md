@@ -35,11 +35,11 @@ The MILP finds the globally optimal solution; heuristic candidates are disabled
 because the MILP consistently dominates them. Only diagnostic baselines remain
 alongside the MILP:
 
-| # | Name | Strategy |
-|---|---|---|
-| 1 | `no_action` | Battery completely idle — no forced charge or discharge |
-| 2 | `passive` | Solar charging only where PV surplus exists; no grid charge or forced discharge |
-| 3 | `milp` | Globally-optimal LP solution (when scipy is available) |
+| #   | Name        | Strategy                                                                        |
+| --- | ----------- | ------------------------------------------------------------------------------- |
+| 1   | `no_action` | Battery completely idle — no forced charge or discharge                         |
+| 2   | `passive`   | Solar charging only where PV surplus exists; no grid charge or forced discharge |
+| 3   | `milp`      | Globally-optimal LP solution (when scipy is available)                          |
 
 ### Historical candidates (disabled)
 
@@ -47,14 +47,14 @@ The following candidates were previously generated but are now commented out
 in MILP-only mode. They remain documented for reference and may be re-enabled
 as diagnostic tools:
 
-| Name | Strategy |
-|---|---|
-| `baseline` | Current HSEM scheduling output (discharge → charge → excess export → optimisation) |
-| `grid_charge` | Grid-charge slots kept; solar charging removed |
-| `solar_only` | Only solar-charge slots kept; grid charging cleared |
-| `discharge_only` | Discharge slots kept; all charge slots cleared |
-| `aggressive` | Cheapest N slots forced to grid-charge; most expensive M slots forced to discharge |
-| `soc_plan_25/50/75/100/125/full` | Partial-SoC candidates charging different fractions of discharge-window need |
+| Name                             | Strategy                                                                           |
+| -------------------------------- | ---------------------------------------------------------------------------------- |
+| `baseline`                       | Current HSEM scheduling output (discharge → charge → excess export → optimisation) |
+| `grid_charge`                    | Grid-charge slots kept; solar charging removed                                     |
+| `solar_only`                     | Only solar-charge slots kept; grid charging cleared                                |
+| `discharge_only`                 | Discharge slots kept; all charge slots cleared                                     |
+| `aggressive`                     | Cheapest N slots forced to grid-charge; most expensive M slots forced to discharge |
+| `soc_plan_25/50/75/100/125/full` | Partial-SoC candidates charging different fractions of discharge-window need       |
 
 ---
 
@@ -70,6 +70,7 @@ to its native operating logic.
 If no candidate beats `no_action`, the planner falls back to doing nothing.
 
 **Mathematical model:**
+
 - All recommendations cleared to `None`
 - No grid charge, no forced discharge, no force export
 - SoC simulation still runs: PV charges battery if native logic would do so
@@ -84,6 +85,7 @@ from PV surplus when available and stays idle otherwise. No grid price arbitrage
 without any grid-based scheduling.
 
 **Mathematical model:**
+
 - Solar surplus slots (where `estimated_net_consumption < 0`) get `batteries_charge_solar`
 - All other charge/discharge/export recommendations cleared
 - Battery fills from PV, never from grid
@@ -125,10 +127,10 @@ When active:
 2. If its score improvement over the best new candidate is below both thresholds,
    the previous plan is kept
 
-| Threshold | Default | Behaviour |
-|---|---|---|
-| Absolute | 0.0 currency | New plan must be cheaper by at least this amount |
-| Percentage | 5.0 % | New plan must be cheaper by at least this % of previous score |
+| Threshold  | Default      | Behaviour                                                     |
+| ---------- | ------------ | ------------------------------------------------------------- |
+| Absolute   | 0.0 currency | New plan must be cheaper by at least this amount              |
+| Percentage | 5.0 %        | New plan must be cheaper by at least this % of previous score |
 
 ### Window-level hysteresis (issue #315)
 
@@ -140,6 +142,6 @@ Prevents rapid recommendation toggling by enforcing a minimum hold time.
 
 All actionable recommendation changes are held within the hold window,
 including within-category flips (e.g. `ev_smart_charging` ↔
-`batteries_charge_solar`).  Only transitions to/from neutral pass through.
+`batteries_charge_solar`). Only transitions to/from neutral pass through.
 The hold time is configured by `planner_window_hysteresis_minutes`
 (default: 10).

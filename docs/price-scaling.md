@@ -9,10 +9,10 @@ update intervals and planning slot widths.
 
 HSEM supports two independent interval settings:
 
-| Setting | Values | What it controls |
-|---|---|---|
+| Setting                             | Values                | What it controls                             |
+| ----------------------------------- | --------------------- | -------------------------------------------- |
 | `electricity_price_update_interval` | 15, 30, or 60 minutes | How often the price source publishes records |
-| `recommendation_interval_minutes` | 15 or 60 minutes | The width of each planning slot |
+| `recommendation_interval_minutes`   | 15 or 60 minutes      | The width of each planning slot              |
 
 HSEM auto-detects the cadence of each price attribute array independently from
 its timestamps. When these differ (most commonly: a 60 min forecast sensor and
@@ -23,12 +23,12 @@ planner always sees the full currency/kWh value.
 
 ## The current contract
 
-| Source cadence | Slot width | Effect |
-|---|---|---|---|
-| 60 min | 15 min | Hourly price fans out to all four slots, unchanged |
-| 15 min | 15 min | Each slot keeps its own raw price, unchanged |
-| 30 min | 15 min | Each half-hour price fans out to two slots, unchanged |
-| 60 min | 60 min | One hourly price per slot, unchanged |
+| Source cadence | Slot width | Effect                                                |
+| -------------- | ---------- | ----------------------------------------------------- |
+| 60 min         | 15 min     | Hourly price fans out to all four slots, unchanged    |
+| 15 min         | 15 min     | Each slot keeps its own raw price, unchanged          |
+| 30 min         | 15 min     | Each half-hour price fans out to two slots, unchanged |
+| 60 min         | 60 min     | One hourly price per slot, unchanged                  |
 
 ---
 
@@ -59,12 +59,12 @@ flowchart TD
 
 HSEM is provider-agnostic. Prices are read from generic electricity price sensors:
 
-| Config key | Purpose |
-|---|---|
-| `hsem_import_electricity_price_sensor` | Live import price (required) |
-| `hsem_export_electricity_price_sensor` | Live export price (required) |
+| Config key                                      | Purpose                                                  |
+| ----------------------------------------------- | -------------------------------------------------------- |
+| `hsem_import_electricity_price_sensor`          | Live import price (required)                             |
+| `hsem_export_electricity_price_sensor`          | Live export price (required)                             |
 | `hsem_import_electricity_price_forecast_sensor` | Optional dedicated import forecast (e.g. Amber Electric) |
-| `hsem_export_electricity_price_forecast_sensor` | Optional dedicated export forecast |
+| `hsem_export_electricity_price_forecast_sensor` | Optional dedicated export forecast                       |
 
 Supported providers include Energi Data Service, Nordpool, Amber Electric, and any
 sensor that publishes hourly (or sub-hourly) price records with a `raw_today` /
@@ -94,13 +94,14 @@ For any configuration:
 For horizons beyond 24 hours, prices and PV data are projected onto the shared
 time-series index per calendar day:
 
-| Field | Source | Day offset |
-|---|---|---|
-| Today's prices | Live price sensor attributes | `day_offset = 0` |
+| Field             | Source                                      | Day offset       |
+| ----------------- | ------------------------------------------- | ---------------- |
+| Today's prices    | Live price sensor attributes                | `day_offset = 0` |
 | Tomorrow's prices | Tomorrow sensor attributes (or same sensor) | `day_offset = 1` |
-| Day+2 prices | Day+2 sensor attributes (if available) | `day_offset = 2` |
+| Day+2 prices      | Day+2 sensor attributes (if available)      | `day_offset = 2` |
 
 Missing future-day data is surfaced in `DataQuality` as:
+
 - `tomorrow_price_missing_hours`
 - `day2_price_missing_hours`
 - `tomorrow_pv_missing_hours`

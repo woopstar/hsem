@@ -54,12 +54,12 @@ flowchart TD
 
 ### External dependencies
 
-| Integration | Purpose | Data provided |
-|---|---|---|
-| **Huawei Solar** (`wlcrs/huawei_solar`) | Inverter/battery hardware interface | SoC, power limits, working mode, TOU periods, rated capacity |
-| **Solcast Solar** (`solcast_solar`) | PV production forecast | Per-hour PV estimates for today and tomorrow |
-| **Energi Data Service** (`energidataservice`) | Electricity spot prices | Hourly import and export prices |
-| **EV charger** (generic) | EV state monitoring | Connected status, SoC, charging power |
+| Integration                                   | Purpose                             | Data provided                                                |
+| --------------------------------------------- | ----------------------------------- | ------------------------------------------------------------ |
+| **Huawei Solar** (`wlcrs/huawei_solar`)       | Inverter/battery hardware interface | SoC, power limits, working mode, TOU periods, rated capacity |
+| **Solcast Solar** (`solcast_solar`)           | PV production forecast              | Per-hour PV estimates for today and tomorrow                 |
+| **Energi Data Service** (`energidataservice`) | Electricity spot prices             | Hourly import and export prices                              |
+| **EV charger** (generic)                      | EV state monitoring                 | Connected status, SoC, charging power                        |
 
 ---
 
@@ -71,86 +71,86 @@ HSEM follows a strict three-layer architecture:
 
 Files that depend on Home Assistant runtime (`hass`, `ConfigEntry`, entity models).
 
-| Module | Responsibility |
-|---|---|
-| `__init__.py` | Entry point, platform setup, version check, service registration |
-| `config_flow.py` | Initial configuration wizard |
-| `options_flow.py` | Configuration editing wizard |
-| `coordinator.py` | `DataUpdateCoordinator` — orchestrates the update cycle |
-| `coordinator_builder.py` | Pure data-mapping functions (bridge between HA and planner) |
-| `sensor.py` | Platform setup for all sensor entities |
-| `select.py` | Working-mode selector entity |
-| `switch.py` | Toggle entities (read-only, schedules, EV force discharge) |
-| `entity.py` | Base entity classes (`HSEMEntity`, `HSEMCoordinatorEntity`) |
-| `diagnostics.py` | HA diagnostics hook |
-| `services.py` | Service call handlers |
-| `time.py` | Time platform entities |
+| Module                   | Responsibility                                                   |
+| ------------------------ | ---------------------------------------------------------------- |
+| `__init__.py`            | Entry point, platform setup, version check, service registration |
+| `config_flow.py`         | Initial configuration wizard                                     |
+| `options_flow.py`        | Configuration editing wizard                                     |
+| `coordinator.py`         | `DataUpdateCoordinator` — orchestrates the update cycle          |
+| `coordinator_builder.py` | Pure data-mapping functions (bridge between HA and planner)      |
+| `sensor.py`              | Platform setup for all sensor entities                           |
+| `select.py`              | Working-mode selector entity                                     |
+| `switch.py`              | Toggle entities (read-only, schedules, EV force discharge)       |
+| `entity.py`              | Base entity classes (`HSEMEntity`, `HSEMCoordinatorEntity`)      |
+| `diagnostics.py`         | HA diagnostics hook                                              |
+| `services.py`            | Service call handlers                                            |
+| `time.py`                | Time platform entities                                           |
 
 ### Layer 2: Custom sensor layer
 
 HA-dependent sensor entities that consume coordinator data.
 
-| Module | Responsibility |
-|---|---|
-| `custom_sensors/working_mode_sensor.py` | Main recommendation sensor + hardware writes |
-| `custom_sensors/config_reader.py` | Reads config entry → `SensorConfig` |
-| `custom_sensors/state_collector.py` | Reads HA entities → `LiveState` |
-| `custom_sensors/hourly_data_populator.py` | Populates prices & PV into slots |
-| `custom_sensors/recommendation_resolver.py` | Real-time post-planner adjustments |
-| `custom_sensors/applier.py` | Executes hardware writes |
-| `custom_sensors/forecast_accuracy_sensor.py` | Forecast vs actual diagnostic sensor |
-| `custom_sensors/ev_optimal_charging_plan_sensor.py` | Primary EV plan sensor |
-| `custom_sensors/ev_second_optimal_charging_plan_sensor.py` | Second EV plan sensor |
-| `custom_sensors/*.py` | Various diagnostic sensors (20+ total) |
+| Module                                                     | Responsibility                               |
+| ---------------------------------------------------------- | -------------------------------------------- |
+| `custom_sensors/working_mode_sensor.py`                    | Main recommendation sensor + hardware writes |
+| `custom_sensors/config_reader.py`                          | Reads config entry → `SensorConfig`          |
+| `custom_sensors/state_collector.py`                        | Reads HA entities → `LiveState`              |
+| `custom_sensors/hourly_data_populator.py`                  | Populates prices & PV into slots             |
+| `custom_sensors/recommendation_resolver.py`                | Real-time post-planner adjustments           |
+| `custom_sensors/applier.py`                                | Executes hardware writes                     |
+| `custom_sensors/forecast_accuracy_sensor.py`               | Forecast vs actual diagnostic sensor         |
+| `custom_sensors/ev_optimal_charging_plan_sensor.py`        | Primary EV plan sensor                       |
+| `custom_sensors/ev_second_optimal_charging_plan_sensor.py` | Second EV plan sensor                        |
+| `custom_sensors/*.py`                                      | Various diagnostic sensors (20+ total)       |
 
 ### Layer 3: Pure-Python planner layer
 
 **No Home Assistant imports.** Fully testable with plain `pytest`.
 
-| Module | Responsibility |
-|---|---|
-| `planner/engine_core.py` | Orchestrates the full planning pipeline |
-| `planner/slot_population.py` | Builds time horizon, populates prices/PV/consumption |
-| `planner/charge_scheduler.py` | Assigns charge recommendations (planner/charging/ sub-package) |
-| `planner/discharge_scheduler.py` | Assigns discharge recommendations |
-| `planner/candidate_generator.py` | Generates 8+ candidate strategies |
-| `planner/candidate_selector.py` | Scores, validates, picks best candidate |
-| `planner/cost_function.py` | 8-term cost function (money + selector) |
-| `planner/soc_simulation.py` | Forward battery SoC simulation |
-| `planner/milp_optimizer.py` | LP solver for global optimum (scipy) |
-| `planner/ev_planner.py` | EV charging plan builder |
-| `planner/engine_explanation.py` | Human-readable plan explanations |
+| Module                           | Responsibility                                                 |
+| -------------------------------- | -------------------------------------------------------------- |
+| `planner/engine_core.py`         | Orchestrates the full planning pipeline                        |
+| `planner/slot_population.py`     | Builds time horizon, populates prices/PV/consumption           |
+| `planner/charge_scheduler.py`    | Assigns charge recommendations (planner/charging/ sub-package) |
+| `planner/discharge_scheduler.py` | Assigns discharge recommendations                              |
+| `planner/candidate_generator.py` | Generates 8+ candidate strategies                              |
+| `planner/candidate_selector.py`  | Scores, validates, picks best candidate                        |
+| `planner/cost_function.py`       | 8-term cost function (money + selector)                        |
+| `planner/soc_simulation.py`      | Forward battery SoC simulation                                 |
+| `planner/milp_optimizer.py`      | LP solver for global optimum (scipy)                           |
+| `planner/ev_planner.py`          | EV charging plan builder                                       |
+| `planner/engine_explanation.py`  | Human-readable plan explanations                               |
 
 ### Utils layer (shared, minimal HA imports)
 
-| Module | Responsibility |
-|---|---|
-| `utils/recommendations.py` | `Recommendations` enum + canonical frozensets |
-| `utils/misc.py` | Shared math helpers, config reading, entity lookups |
-| `utils/sensornames/` | All HA entity name constants (sub-package) |
-| `utils/prices.py` | Price lookup, grid fee calculation |
-| `utils/huawei.py` | Huawei Solar inverter API helpers |
-| `utils/logger.py` | `HSEM_LOGGER` — rotating file handler |
-| `utils/datetime_utils.py` | Canonical datetime/slot-key normalisation |
-| `utils/degraded_mode.py` | Health-state classification |
-| `utils/diagnostics.py` | Safe redacted dumps |
-| `utils/forecast_tracker.py` | Forecast vs actual accuracy metrics |
-| `utils/inverter_verify.py` | Write-and-verify wrapper |
-| `utils/config_validator.py` | Config validation |
-| `utils/units.py` | Unit conversions |
+| Module                      | Responsibility                                      |
+| --------------------------- | --------------------------------------------------- |
+| `utils/recommendations.py`  | `Recommendations` enum + canonical frozensets       |
+| `utils/misc.py`             | Shared math helpers, config reading, entity lookups |
+| `utils/sensornames/`        | All HA entity name constants (sub-package)          |
+| `utils/prices.py`           | Price lookup, grid fee calculation                  |
+| `utils/huawei.py`           | Huawei Solar inverter API helpers                   |
+| `utils/logger.py`           | `HSEM_LOGGER` — rotating file handler               |
+| `utils/datetime_utils.py`   | Canonical datetime/slot-key normalisation           |
+| `utils/degraded_mode.py`    | Health-state classification                         |
+| `utils/diagnostics.py`      | Safe redacted dumps                                 |
+| `utils/forecast_tracker.py` | Forecast vs actual accuracy metrics                 |
+| `utils/inverter_verify.py`  | Write-and-verify wrapper                            |
+| `utils/config_validator.py` | Config validation                                   |
+| `utils/units.py`            | Unit conversions                                    |
 
 ### Models layer (pure-Python dataclasses)
 
-| Module | Responsibility |
-|---|---|
-| `models/planner_inputs.py` | `PlannerInput`, `PricePoint`, `SolcastSlot`, etc. |
-| `models/planner_outputs.py` | `PlannerOutput`, `PlannedSlot`, `DataQuality`, etc. |
-| `models/live_state.py` | `LiveState`, `EVLiveState` — HA entity snapshots |
-| `models/sensor_config.py` | `SensorConfig`, `EVChargerConfig`, `BatteryScheduleConfig` |
-| `models/state_snapshot.py` | `StateSnapshot` — frozen immutable HA state collection |
-| `models/time_series.py` | `TimeSeriesIndex`, `SlotKey` — shared slot alignment |
-| `models/hourly_recommendation.py` | `HourlyRecommendation` — per-slot planner output |
-| `models/battery_schedule.py` | `BatterySchedule` dataclass |
+| Module                            | Responsibility                                             |
+| --------------------------------- | ---------------------------------------------------------- |
+| `models/planner_inputs.py`        | `PlannerInput`, `PricePoint`, `SolcastSlot`, etc.          |
+| `models/planner_outputs.py`       | `PlannerOutput`, `PlannedSlot`, `DataQuality`, etc.        |
+| `models/live_state.py`            | `LiveState`, `EVLiveState` — HA entity snapshots           |
+| `models/sensor_config.py`         | `SensorConfig`, `EVChargerConfig`, `BatteryScheduleConfig` |
+| `models/state_snapshot.py`        | `StateSnapshot` — frozen immutable HA state collection     |
+| `models/time_series.py`           | `TimeSeriesIndex`, `SlotKey` — shared slot alignment       |
+| `models/hourly_recommendation.py` | `HourlyRecommendation` — per-slot planner output           |
+| `models/battery_schedule.py`      | `BatterySchedule` dataclass                                |
 
 ---
 
@@ -243,11 +243,11 @@ Recommendations are assigned in three consecutive layers, each with strict prior
 
 HSEM classifies each update cycle into one of three health states:
 
-| Mode | Writes allowed | Trigger |
-|---|---|---|
-| `OK` | Yes | All inputs present |
-| `Degraded` | Yes (with warnings) | Non-critical data missing |
-| `Error` | **No** | Critical data missing (SoC, load, working mode) |
+| Mode       | Writes allowed      | Trigger                                         |
+| ---------- | ------------------- | ----------------------------------------------- |
+| `OK`       | Yes                 | All inputs present                              |
+| `Degraded` | Yes (with warnings) | Non-critical data missing                       |
+| `Error`    | **No**              | Critical data missing (SoC, load, working mode) |
 
 Plus explicit read-only and dry-run modes that also block hardware writes.
 

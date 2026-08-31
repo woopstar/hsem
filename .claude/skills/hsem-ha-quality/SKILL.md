@@ -85,6 +85,7 @@ async def async_step_user(self, user_input=None):
   "codeowners": ["@owner"]
 }
 ```
+
 - Pin to exact versions: `"pkg==1.2.3"`
 - `REQUIREMENTS` constant is deprecated — use `manifest.json` only
 - No new third-party deps without justification
@@ -133,6 +134,7 @@ class HSEMSensor(CoordinatorEntity, SensorEntity):
 ### Translations — Every User-Facing String
 
 Every string the user sees must be in `translations/en.json`:
+
 - Config flow step titles, descriptions, field labels
 - Error messages (`error`, `abort`)
 - Options flow fields
@@ -215,6 +217,7 @@ def get_price(unit: Optional[str] = None) -> float:
 ## Bronze/Silver Quick Checklist
 
 **Bronze (every integration):**
+
 - [ ] No hardcoded strings — use HA constants
 - [ ] Correct entity MRO (CoordinatorEntity, RestoreEntity, SensorEntity)
 - [ ] Unique ID and device_info on every entity
@@ -222,6 +225,7 @@ def get_price(unit: Optional[str] = None) -> float:
 - [ ] manifest.json dependencies pinned
 
 **Silver (expected quality):**
+
 - [ ] Async patterns correct, no blocking on event loop
 - [ ] DataUpdateCoordinator for periodic polling
 - [ ] Full translations for all user-facing strings

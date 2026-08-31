@@ -8,7 +8,7 @@
     "build",
     "dist",
     "**/node_modules",
-    "**/.*",
+    "**/.*"
   ],
   "pythonVersion": "3.14",
   "typeCheckingMode": "basic",
@@ -26,5 +26,5 @@
   "reportUnknownArgumentType": "none",
   "reportOperatorIssue": "warning",
   "reportTypedDictNotRequiredAccess": "none",
-  "reportCallIssue": "warning",
+  "reportCallIssue": "warning"
 }

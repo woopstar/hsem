@@ -22,6 +22,7 @@ code quality. All tools are invoked via `./scripts/quality.sh`. This ensures:
 ```
 
 This runs in order:
+
 1. `ruff format` — formats code to 88-char line length (Black-compatible)
 2. `ruff check` — lints for bugs, style issues, and code quality (includes isort-compatible import sorting via rule `I`)
 
@@ -53,14 +54,14 @@ def predict_consumption(
 ) -> float:
     """
     Predict energy consumption for the next period.
-    
+
     Args:
         history: Historical consumption values in kWh.
         forecast: Weather forecast data for prediction.
-    
+
     Returns:
         Predicted consumption in kWh.
-    
+
     Raises:
         ValueError: If inputs are empty or invalid.
     """
@@ -73,12 +74,12 @@ def predict_consumption(
 
 Always use modern Python syntax:
 
-| Old | New | Reason |
-|-----|-----|--------|
-| `typing.Union[int, str]` | `int \| str` | More readable, native to Python 3.10+ |
-| `if x is not None` | `if x` (with type guard) | Cleaner, less boilerplate |
-| `.format()` | f-strings | Better performance and readability |
-| `os.path.join()` | `pathlib.Path()` | Object-oriented, chainable |
+| Old                      | New                      | Reason                                |
+| ------------------------ | ------------------------ | ------------------------------------- |
+| `typing.Union[int, str]` | `int \| str`             | More readable, native to Python 3.10+ |
+| `if x is not None`       | `if x` (with type guard) | Cleaner, less boilerplate             |
+| `.format()`              | f-strings                | Better performance and readability    |
+| `os.path.join()`         | `pathlib.Path()`         | Object-oriented, chainable            |
 
 > **Note on Python version**: `pyproject.toml` sets `target-version = "py312"` for ruff/mypy to
 > ensure compatibility with Home Assistant’s supported Python version. The runtime itself uses
@@ -87,6 +88,7 @@ Always use modern Python syntax:
 ### 5. **No Technical Debt**
 
 Code must not:
+
 - Introduce unused imports or variables
 - Create dead code branches
 - Add commented-out code blocks
@@ -186,13 +188,14 @@ If any step fails, fix the issues before committing.
 
 The following checks run on every PR:
 
-| Check | Tool | Command | Purpose |
-|-------|------|---------|--------|
-| Formatting | `ruff format` | `./scripts/quality.sh lint` | Consistent code style |
-| Linting | `ruff check` | `./scripts/quality.sh lint` | Bugs, style issues, complexity |
-| Type Checking | `mypy` | `./scripts/quality.sh typing` | Type errors and unsafe code |
-| Tests | `pytest` | `./scripts/quality.sh test` | Verifies functionality |
-| Coverage | `coverage` | `--cov` flag | Ensures new code is tested |
+| Check         | Tool          | Command                       | Purpose                        |
+| ------------- | ------------- | ----------------------------- | ------------------------------ |
+| Formatting    | `ruff format` | `./scripts/quality.sh lint`   | Consistent Python code style   |
+| Doc format    | `prettier`    | `./scripts/quality.sh lint`   | Markdown / YAML / JSON style   |
+| Linting       | `ruff check`  | `./scripts/quality.sh lint`   | Bugs, style issues, complexity |
+| Type Checking | `mypy`        | `./scripts/quality.sh typing` | Type errors and unsafe code    |
+| Tests         | `pytest`      | `./scripts/quality.sh test`   | Verifies functionality         |
+| Coverage      | `coverage`    | `--cov` flag                  | Ensures new code is tested     |
 
 **All checks must pass before merge.**
 
@@ -209,10 +212,10 @@ All tool configuration lives in `pyproject.toml`.
 
 ### Tool settings
 
-| Tool | Line length | Style |
-|------|-------------|-------|
-| `ruff format` | 88 chars | Black-compatible formatter |
-| `ruff check` | 88 chars | See `[tool.ruff.lint]` in `pyproject.toml` (includes import sorting via `I` rules) |
+| Tool          | Line length | Style                                                                              |
+| ------------- | ----------- | ---------------------------------------------------------------------------------- |
+| `ruff format` | 88 chars    | Black-compatible formatter                                                         |
+| `ruff check`  | 88 chars    | See `[tool.ruff.lint]` in `pyproject.toml` (includes import sorting via `I` rules) |
 
 ### Ruff rules enabled
 

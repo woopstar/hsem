@@ -12,12 +12,12 @@ symptoms below in order — the first sections cover foundational issues
 Before diving into individual symptoms, check these four sensors in the
 Home Assistant **Developer Tools → States** tab. They answer 90 % of questions.
 
-| Sensor | Look for |
-|---|---|
-| `sensor.hsem_degraded_mode` | Must be `ok`. `error` means no hardware writes. `degraded` means some data is missing but writes still work. |
-| `sensor.hsem_hardware_writes` | Must be `allowed`. `blocked` means the system cannot send commands to the inverter. |
-| `sensor.hsem_read_only` | Must be `off`. `on` means you intentionally disabled writes. |
-| `sensor.hsem_applier_status` | Must be `ok` or `skipped`. `failed` means the last hardware write did not take effect. |
+| Sensor                        | Look for                                                                                                     |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `sensor.hsem_degraded_mode`   | Must be `ok`. `error` means no hardware writes. `degraded` means some data is missing but writes still work. |
+| `sensor.hsem_hardware_writes` | Must be `allowed`. `blocked` means the system cannot send commands to the inverter.                          |
+| `sensor.hsem_read_only`       | Must be `off`. `on` means you intentionally disabled writes.                                                 |
+| `sensor.hsem_applier_status`  | Must be `ok` or `skipped`. `failed` means the last hardware write did not take effect.                       |
 
 If any of these show a non-ideal value, start with the matching section below.
 
@@ -73,13 +73,13 @@ missing, not configured, or its entities are unavailable, prices default to
 If any of these five entities are missing, HSEM enters `error` mode and
 **blocks all hardware writes**:
 
-| Sensor label keyword | Entity description |
-|---|---|
-| `batteries_state_of_capacity` | Battery state of charge |
-| `batteries_maximum_charging_power` | Max charging power |
-| `batteries_maximum_discharging_power` | Max discharging power |
-| `batteries_rated_capacity` | Battery rated capacity |
-| `house_consumption_power` | House consumption power |
+| Sensor label keyword                  | Entity description      |
+| ------------------------------------- | ----------------------- |
+| `batteries_state_of_capacity`         | Battery state of charge |
+| `batteries_maximum_charging_power`    | Max charging power      |
+| `batteries_maximum_discharging_power` | Max discharging power   |
+| `batteries_rated_capacity`            | Battery rated capacity  |
+| `house_consumption_power`             | House consumption power |
 
 - **Check:** `sensor.hsem_degraded_mode` → `missing_entities` attribute.
 - **Fix:** Correct device IDs or reinstall the Huawei Solar integration.
@@ -202,7 +202,7 @@ exposes, PV forecast will be all zeros.
 HSEM classifies each month as winter or summer based on the _Winter Months_
 setting. In winter mode the planner uses `batteries_wait_mode` — it does not
 actively charge from solar. In summer mode it uses solar charging strategies.
-You can change **Wait mode behaviour** to *Self-consumption with reserve* if
+You can change **Wait mode behaviour** to _Self-consumption with reserve_ if
 you want the battery to cover normal household load during wait periods while
 still protecting the planner's required reserve.
 
@@ -339,7 +339,7 @@ strategies.
 **5b. Window hysteresis preventing slot-level changes**
 
 `planner_window_hysteresis_minutes` prevents rapid recommendation toggling
-(e.g. ``ev_smart_charging`` ↔ ``batteries_charge_solar``) by enforcing a
+(e.g. `ev_smart_charging` ↔ `batteries_charge_solar`) by enforcing a
 minimum hold time. When enabled, a slot's recommendation is locked once
 established.
 
@@ -564,16 +564,16 @@ turning on `switch.hsem_verbose_logging` before collecting logs.
 
 Search for these patterns in `hsem.log`:
 
-| Pattern | Meaning |
-|---|---|
-| `[core] run_planner ABORTED — no slots generated` | `interval_minutes` or `interval_length_hours` config error |
-| `Consumption weights sum to` | Weight misconfiguration |
-| `MILP: SoC penalty violations` | Battery was overcharged at planning start |
-| `Hardware writes BLOCKED` | Error mode or read-only active |
-| `[selector] No eligible candidates` | All plans rejected during validation |
-| `[selector] HYSTERESIS kept previous plan` | Plan switch suppressed by hysteresis |
-| `Sensor read failed for entity_id` | Specific entity reading error — check entity |
-| `EV is physically charging but no slot has load > 0` | EV charging without planned load |
+| Pattern                                              | Meaning                                                    |
+| ---------------------------------------------------- | ---------------------------------------------------------- |
+| `[core] run_planner ABORTED — no slots generated`    | `interval_minutes` or `interval_length_hours` config error |
+| `Consumption weights sum to`                         | Weight misconfiguration                                    |
+| `MILP: SoC penalty violations`                       | Battery was overcharged at planning start                  |
+| `Hardware writes BLOCKED`                            | Error mode or read-only active                             |
+| `[selector] No eligible candidates`                  | All plans rejected during validation                       |
+| `[selector] HYSTERESIS kept previous plan`           | Plan switch suppressed by hysteresis                       |
+| `Sensor read failed for entity_id`                   | Specific entity reading error — check entity               |
+| `EV is physically charging but no slot has load > 0` | EV charging without planned load                           |
 
 ### Home Assistant log (`home-assistant.log`)
 
@@ -621,17 +621,17 @@ If you've checked everything and HSEM still doesn't work:
 
 ## Key diagnostic entities reference
 
-| Entity | Type | Purpose |
-|---|---|---|
-| `sensor.hsem_degraded_mode` | Sensor | `ok` / `degraded` / `error` |
-| `sensor.hsem_missing_entities` | Sensor | Count of missing input entities |
-| `sensor.hsem_hardware_writes` | Sensor | `allowed` / `blocked` |
-| `sensor.hsem_read_only` | Sensor | `on` / `off` |
-| `sensor.hsem_applier_status` | Sensor | `ok` / `unverified` / `failed` / `skipped` / `pending` |
-| `sensor.hsem_plan_explanation` | Sensor | Active strategy + detailed attributes |
-| `sensor.hsem_working_mode` | Sensor | Current slot recommendation |
-| `sensor.forecast_accuracy` | Sensor | PV/load forecast accuracy metrics |
-| `switch.hsem_read_only` | Switch | Toggle read-only mode |
-| `switch.hsem_verbose_logging` | Switch | Toggle verbose HSEM logging |
-| `switch.hsem_extended_attributes` | Switch | Expose additional sensor attributes |
-| `select.hsem_force_working_mode` | Select | Manual working mode override |
+| Entity                            | Type   | Purpose                                                |
+| --------------------------------- | ------ | ------------------------------------------------------ |
+| `sensor.hsem_degraded_mode`       | Sensor | `ok` / `degraded` / `error`                            |
+| `sensor.hsem_missing_entities`    | Sensor | Count of missing input entities                        |
+| `sensor.hsem_hardware_writes`     | Sensor | `allowed` / `blocked`                                  |
+| `sensor.hsem_read_only`           | Sensor | `on` / `off`                                           |
+| `sensor.hsem_applier_status`      | Sensor | `ok` / `unverified` / `failed` / `skipped` / `pending` |
+| `sensor.hsem_plan_explanation`    | Sensor | Active strategy + detailed attributes                  |
+| `sensor.hsem_working_mode`        | Sensor | Current slot recommendation                            |
+| `sensor.forecast_accuracy`        | Sensor | PV/load forecast accuracy metrics                      |
+| `switch.hsem_read_only`           | Switch | Toggle read-only mode                                  |
+| `switch.hsem_verbose_logging`     | Switch | Toggle verbose HSEM logging                            |
+| `switch.hsem_extended_attributes` | Switch | Expose additional sensor attributes                    |
+| `select.hsem_force_working_mode`  | Select | Manual working mode override                           |

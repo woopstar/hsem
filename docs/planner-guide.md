@@ -55,30 +55,30 @@ All inputs are collected in the `PlannerInput` dataclass
 
 ### Temporal context
 
-| Field | Type | Description |
-|---|---|---|
-| `now_iso` | `str` | ISO-8601 timezone-aware timestamp of the planning moment (e.g. `"2024-06-15T14:00:00+02:00"`) |
-| `interval_minutes` | `int` | Slot width in minutes — `15` or `60` |
-| `interval_length_hours` | `int` | Planning horizon length — `24`, `48`, or `72` hours |
+| Field                   | Type  | Description                                                                                   |
+| ----------------------- | ----- | --------------------------------------------------------------------------------------------- |
+| `now_iso`               | `str` | ISO-8601 timezone-aware timestamp of the planning moment (e.g. `"2024-06-15T14:00:00+02:00"`) |
+| `interval_minutes`      | `int` | Slot width in minutes — `15` or `60`                                                          |
+| `interval_length_hours` | `int` | Planning horizon length — `24`, `48`, or `72` hours                                           |
 
 The total number of slots generated is `(interval_length_hours * 60) // interval_minutes`.
 
 | Horizon | 15-min slots | 60-min slots |
-|---|---|---|
-| 24 h | 96 | 24 |
-| 48 h | 192 | 48 |
-| 72 h | 288 | 72 |
+| ------- | ------------ | ------------ |
+| 24 h    | 96           | 24           |
+| 48 h    | 192          | 48           |
+| 72 h    | 288          | 72           |
 
 ### Battery hardware
 
-| Field | Type | Description |
-|---|---|---|
-| `battery_soc_pct` | `float` | Current SoC percentage (0–100) |
-| `battery_rated_capacity_kwh` | `float` | Nameplate capacity in kWh |
-| `battery_end_of_discharge_soc_pct` | `float` | Minimum allowed SoC floor (%) |
-| `battery_max_soc_pct` | `float` | Maximum allowed SoC ceiling (%, default 100) |
-| `battery_max_charge_power_w` | `float` | Maximum charge power in Watts |
-| `battery_max_discharge_power_w` | `float \| None` | Maximum discharge power in Watts (`None` = unlimited). Derived from the rated capacity via `get_max_discharge_power()`, which covers S0/S1 single- and two-stack capacities (5–30 kWh); unknown capacities log a warning and fall back to 2500 W |
+| Field                              | Type            | Description                                                                                                                                                                                                                                      |
+| ---------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `battery_soc_pct`                  | `float`         | Current SoC percentage (0–100)                                                                                                                                                                                                                   |
+| `battery_rated_capacity_kwh`       | `float`         | Nameplate capacity in kWh                                                                                                                                                                                                                        |
+| `battery_end_of_discharge_soc_pct` | `float`         | Minimum allowed SoC floor (%)                                                                                                                                                                                                                    |
+| `battery_max_soc_pct`              | `float`         | Maximum allowed SoC ceiling (%, default 100)                                                                                                                                                                                                     |
+| `battery_max_charge_power_w`       | `float`         | Maximum charge power in Watts                                                                                                                                                                                                                    |
+| `battery_max_discharge_power_w`    | `float \| None` | Maximum discharge power in Watts (`None` = unlimited). Derived from the rated capacity via `get_max_discharge_power()`, which covers S0/S1 single- and two-stack capacities (5–30 kWh); unknown capacities log a warning and fall back to 2500 W |
 
 The planner converts power limits to per-slot energy limits internally:
 
@@ -88,14 +88,14 @@ max_charge_per_slot_kwh = battery_max_charge_power_w / 1000 * (interval_minutes 
 
 ### Battery economics
 
-| Field | Type | Description |
-|---|---|---|
-| `battery_purchase_price` | `float` | Purchase price of the battery (local currency) |
-| `battery_expected_cycles` | `int` | Expected total lifetime cycles |
-| `battery_cycle_cost_per_kwh` | `float` | Explicit depreciation cost per kWh cycled |
-| `battery_capacity_loss_pct` | `float` | Expected capacity loss at end-of-life (%), default 30 |
-| `battery_charge_efficiency_pct` | `float` | Charge-side efficiency (%), e.g. 98 |
-| `battery_discharge_efficiency_pct` | `float` | Discharge-side efficiency (%), e.g. 98 |
+| Field                              | Type    | Description                                           |
+| ---------------------------------- | ------- | ----------------------------------------------------- |
+| `battery_purchase_price`           | `float` | Purchase price of the battery (local currency)        |
+| `battery_expected_cycles`          | `int`   | Expected total lifetime cycles                        |
+| `battery_cycle_cost_per_kwh`       | `float` | Explicit depreciation cost per kWh cycled             |
+| `battery_capacity_loss_pct`        | `float` | Expected capacity loss at end-of-life (%), default 30 |
+| `battery_charge_efficiency_pct`    | `float` | Charge-side efficiency (%), e.g. 98                   |
+| `battery_discharge_efficiency_pct` | `float` | Discharge-side efficiency (%), e.g. 98                |
 
 When `battery_cycle_cost_per_kwh` is `0.0`, the planner auto-derives cycle cost from
 purchase price, rated capacity, expected cycles, and capacity loss at EOL:
@@ -110,13 +110,13 @@ Conversion efficiency is physical in the site balance: storing `x` kWh draws
 `x / charge_efficiency` AC and removing `x` kWh delivers
 `x * discharge_efficiency` AC. Grid import cost and export revenue price the
 loss exactly once; the compatibility `conversion_loss_cost` field is zero. The 2× factor
-in the depreciation term accounts for one full cycle (charge + discharge).  The
-``capacity_loss_pct`` (default 30 %) accounts for the fraction of the battery's
+in the depreciation term accounts for one full cycle (charge + discharge). The
+`capacity_loss_pct` (default 30 %) accounts for the fraction of the battery's
 value that is consumed over its lifetime — typically 20 % physical capacity
 loss at 6000 LiFePO4 cycles plus ~10 % margin for calendar ageing.
 
 The `excess_export_price_threshold` and the schedule profitability guard both use this
-depreciation threshold.  Users who want extra margin can set `battery_cycle_cost_per_kwh`
+depreciation threshold. Users who want extra margin can set `battery_cycle_cost_per_kwh`
 to a positive value, which is added on top.
 
 #### Dynamic discharge floor
@@ -134,34 +134,34 @@ effective_floor   = max(configured_min_soc_pct,
 
 where `safety_margin` is a **self-correcting multiplier** that starts at
 1.50 and gradually decays toward 1.05 as the tracker observes successful
-refills.  The floor is clamped to the hardware minimum SoC.
+refills. The floor is clamped to the hardware minimum SoC.
 
 This prevents the planner from discharging the battery late in the
 evening when the next day's solar forecast is insufficient to refill it —
-the battery retains enough energy to cover the gap.  Without this guard,
+the battery retains enough energy to cover the gap. Without this guard,
 the planner would discharge to the configured floor every night, forcing
 morning grid imports when solar is scarce.
 
 ### Consumption prediction
 
-HSEM predicts house load for each slot.  Two modes are available (toggled via
-``hsem_ml_consumption_enabled``):
+HSEM predicts house load for each slot. Two modes are available (toggled via
+`hsem_ml_consumption_enabled`):
 
 - **Legacy (default):** Weighted average across four rolling windows (1d, 3d,
-  7d, 14d) with IQR outlier detection.  Requires HSEM custom sensor entities.
+  7d, 14d) with IQR outlier detection. Requires HSEM custom sensor entities.
 - **ML (optional):** Ridge regression on recorder history with day-of-week,
-  day-of-year seasonality, and optional outdoor temperature.  No custom
+  day-of-year seasonality, and optional outdoor temperature. No custom
   sensors needed.
 
-Regardless of mode, the planner receives a per-hour ``HourlyConsumptionAverage``:
+Regardless of mode, the planner receives a per-hour `HourlyConsumptionAverage`:
 
-| Field | Type | Description |
-|---|---|---|
-| `consumption_averages` | `list[HourlyConsumptionAverage]` | Per-hour (0–23) historical averages |
-| `weight_1d` | `int` | Weight for the 1-day average (integer %) |
-| `weight_3d` | `int` | Weight for the 3-day average (integer %) |
-| `weight_7d` | `int` | Weight for the 7-day average (integer %) |
-| `weight_14d` | `int` | Weight for the 14-day average (integer %) |
+| Field                  | Type                             | Description                               |
+| ---------------------- | -------------------------------- | ----------------------------------------- |
+| `consumption_averages` | `list[HourlyConsumptionAverage]` | Per-hour (0–23) historical averages       |
+| `weight_1d`            | `int`                            | Weight for the 1-day average (integer %)  |
+| `weight_3d`            | `int`                            | Weight for the 3-day average (integer %)  |
+| `weight_7d`            | `int`                            | Weight for the 7-day average (integer %)  |
+| `weight_14d`           | `int`                            | Weight for the 14-day average (integer %) |
 
 Weights must sum to 100. Default split: 1d=25 %, 3d=30 %, 7d=30 %, 14d=15 %.
 
@@ -174,14 +174,14 @@ The planner applies a median-ratio outlier detection algorithm that flags anomal
 windows and redistributes their weight to stable windows before combining the averages.
 
 In addition, the optional **weekday/weekend profiling** feature (`WeekdayProfile`,
-#612) maintains separate 24-slot EWMA profiles for Mon–Fri and Sat–Sun.  When
+#612) maintains separate 24-slot EWMA profiles for Mon–Fri and Sat–Sun. When
 active, the appropriate profile is merged into the consumption prediction to
 better capture the distinct usage patterns between workdays and weekends.
 
 ### Price data
 
-| Field | Type | Description |
-|---|---|---|
+| Field          | Type               | Description                 |
+| -------------- | ------------------ | --------------------------- |
 | `price_points` | `list[PricePoint]` | Hourly import/export prices |
 
 Each `PricePoint` carries:
@@ -198,8 +198,8 @@ See [Price interval semantics](planner-spec.md#price-interval-semantics) in the 
 
 ### PV forecast
 
-| Field | Type | Description |
-|---|---|---|
+| Field           | Type                | Description                     |
+| --------------- | ------------------- | ------------------------------- |
 | `solcast_slots` | `list[SolcastSlot]` | Forecast PV production per hour |
 
 Each `SolcastSlot` carries:
@@ -210,11 +210,11 @@ Each `SolcastSlot` carries:
 For multi-day horizons, a **confidence decay** factor is applied to PV estimates
 for future days to account for forecast uncertainty:
 
-| Day offset | Decay | Meaning |
-|---|---|---|
-| 0 (today) | 1.00 | No decay |
-| 1 (tomorrow) | 0.90 | 10 % conservative discount |
-| 2 (day after) | 0.80 | 20 % conservative discount |
+| Day offset    | Decay | Meaning                    |
+| ------------- | ----- | -------------------------- |
+| 0 (today)     | 1.00  | No decay                   |
+| 1 (tomorrow)  | 0.90  | 10 % conservative discount |
+| 2 (day after) | 0.80  | 20 % conservative discount |
 
 Prices are **not** decayed because spot-market prices are typically firm by mid-day.
 
@@ -225,8 +225,8 @@ planner (issue #602):
 
 **Per-hour accuracy factors:** The `SolarForecastCorrector` maintains a
 4-day rolling history of `(forecast, actual)` ratios for each hour of the
-day.  The ratio for a given hour is clamped to **[0.3, 1.5]** so that a
-single anomalous day cannot permanently distort the correction.  The
+day. The ratio for a given hour is clamped to **[0.3, 1.5]** so that a
+single anomalous day cannot permanently distort the correction. The
 factor is updated once per day when a full 24 h of actual production is
 available.
 
@@ -241,7 +241,7 @@ residual_factor = 1.0 + (live_pv − forecast_pv) / max(forecast_pv, 0.01)
 ```
 
 where `decay_per_slot` is `[0.66, 0.44, 0.22, 0.05]` across the 4 slots
-(linear decay over 2 h).  The correction is conservative in both
+(linear decay over 2 h). The correction is conservative in both
 directions: it raises PV estimates when live production exceeds forecast
 (cloud clearing) and lowers them when live production falls short (cloud
 arrival).
@@ -269,8 +269,8 @@ cycle — today's live values are still the latest single reading per cycle.
 
 ### Schedule windows
 
-| Field | Type | Description |
-|---|---|---|
+| Field               | Type                         | Description                          |
+| ------------------- | ---------------------------- | ------------------------------------ |
 | `battery_schedules` | `list[BatteryScheduleInput]` | Up to three charge/discharge windows |
 
 Each `BatteryScheduleInput` defines:
@@ -284,13 +284,13 @@ The pre-charge window ends at `schedule.start` and is sized to fill the battery 
 
 ### Excess export and grid controls
 
-| Field | Default | Description |
-|---|---|---|
-| `excess_export_enabled` | `False` | Enable forced battery → grid export during high-price slots |
-| `excess_export_discharge_buffer_pct` | `10.0` | Conditional safety reserve retained through the demand window after battery export; one contiguous PV-surplus run shares one checkpoint |
-| `excess_export_price_threshold` | Auto-calculated | Computed at runtime from battery depreciation settings (purchase price, expected cycles, usable capacity) via `calculate_recommended_threshold()`. |
-| `export_min_price` | `0.0` | Minimum export price for intentional battery-to-grid discharge. The inverter no longer throttles the grid feed-in limit for positive prices; surplus PV export is always allowed (issue #767). Negative export prices still trigger a physical block because exporting then costs money. |
-| `battery_export_min_price` | `0.0` | Per-slot hard floor for intentional battery-to-grid export (issue #752). When > 0 and a slot's raw `export_price` is strictly below this value, the MILP caps `ed[t]` so the battery can only serve house load (no grid export) for that slot — `force_batteries_discharge` is never labelled there. Reaching the threshold does NOT auto-trigger export; the optimizer still decides. Applies only to intentional battery-to-grid export, not to normal battery self-consumption, PV export, or PV charging. Set to 0 to disable. |
+| Field                                | Default         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `excess_export_enabled`              | `False`         | Enable forced battery → grid export during high-price slots                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `excess_export_discharge_buffer_pct` | `10.0`          | Conditional safety reserve retained through the demand window after battery export; one contiguous PV-surplus run shares one checkpoint                                                                                                                                                                                                                                                                                                                                                                                            |
+| `excess_export_price_threshold`      | Auto-calculated | Computed at runtime from battery depreciation settings (purchase price, expected cycles, usable capacity) via `calculate_recommended_threshold()`.                                                                                                                                                                                                                                                                                                                                                                                 |
+| `export_min_price`                   | `0.0`           | Minimum export price for intentional battery-to-grid discharge. The inverter no longer throttles the grid feed-in limit for positive prices; surplus PV export is always allowed (issue #767). Negative export prices still trigger a physical block because exporting then costs money.                                                                                                                                                                                                                                           |
+| `battery_export_min_price`           | `0.0`           | Per-slot hard floor for intentional battery-to-grid export (issue #752). When > 0 and a slot's raw `export_price` is strictly below this value, the MILP caps `ed[t]` so the battery can only serve house load (no grid export) for that slot — `force_batteries_discharge` is never labelled there. Reaching the threshold does NOT auto-trigger export; the optimizer still decides. Applies only to intentional battery-to-grid export, not to normal battery self-consumption, PV export, or PV charging. Set to 0 to disable. |
 
 The reserve uses one checkpoint for every slot in a contiguous forecast
 PV-surplus run. That checkpoint follows the run's demand window—immediately
@@ -300,77 +300,77 @@ export may be suppressed while direct PV export remains available.
 
 ### Seasonal configuration
 
-| Field | Default | Description |
-|---|---|---|
-| `months_winter` | `[1,2,3,4,10,11,12]` | Months classified as winter. All 12 months may be winter (TOU year-round, issue #725); the summer set is then empty. |
-| `house_power_includes_ev` | `True` | Whether the house consumption sensor already includes EV charger power |
+| Field                     | Default              | Description                                                                                                          |
+| ------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `months_winter`           | `[1,2,3,4,10,11,12]` | Months classified as winter. All 12 months may be winter (TOU year-round, issue #725); the summer set is then empty. |
+| `house_power_includes_ev` | `True`               | Whether the house consumption sensor already includes EV charger power                                               |
 
 ### Main fuse / tariff protection
 
-| Field | Default | Description |
-|---|---|---|
+| Field            | Default        | Description                                                                                                                                                                      |
+| ---------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `main_fuse_amps` | `0` (disabled) | Main fuse/breaker rating in amps (e.g., 25, 35). When set, the MILP optimizer respects this limit as a soft constraint on total grid import power per slot. Set to 0 to disable. |
 
 The MILP uses a **soft** (penalty-based) constraint so the solver never becomes
 infeasible — if house base load alone exceeds the fuse rating, the plan is still
-returned with the violation flagged.  The formula for converting amps to kWh/slot is:
+returned with the violation flagged. The formula for converting amps to kWh/slot is:
 
 ```text
 max_grid_import_per_slot_kwh = main_fuse_amps × 230 V × 3 phases / 1000 × (interval_minutes / 60)
 ```
 
-This assumes balanced three-phase load at 230 V phase-to-neutral.  When the
+This assumes balanced three-phase load at 230 V phase-to-neutral. When the
 constraint is active, the MILP will throttle battery and EV charging to stay
 within the fuse limit whenever possible.
 
 ### Grid export power cap (issue #726)
 
-| Field | Default | Description |
-|---|---|---|
+| Field                      | Default        | Description                                                                                                                                                                                                        |
+| -------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `max_grid_export_power_kw` | `0` (disabled) | Maximum grid export power in kW — the DNO/inverter export cap for export-limited connections. When set, the MILP hard-bounds per-slot grid export to `max_grid_export_power_kw × slot_hours`. Set to 0 to disable. |
 
 Unlike the fuse, the export cap is a **hard** bound (`ge[t] ≤ cap × slot_hours`)
 because it is physically enforced by the inverter/DNO — exceeding it is never
-required for feasibility.  Battery export and PV export compete for the same cap
+required for feasibility. Battery export and PV export compete for the same cap
 through the energy-balance equation, so the optimal plan front-loads battery
 export into low-PV slots and tapers it as PV ramps; PV that cannot be exported
-at the cap is curtailed.  Without the cap the planner overstates export revenue
+at the cap is curtailed. Without the cap the planner overstates export revenue
 and can schedule forced battery discharge that displaces PV export.
 
 ### EV planned load — primary EV
 
 All fields are prefixed `ev_planned_load_`.
 
-| Field | Default | Description |
-|---|---|---|
-| `ev_planned_load_enabled` | `False` | Enable EV planned load integration for the primary EV |
-| `ev_planned_load_connected` | `False` | Whether a vehicle is currently plugged in |
-| `ev_planned_load_smart_charging_enabled` | `True` | Whether smart EV charging scheduling is permitted |
-| `ev_planned_load_current_soc_pct` | `0.0` | Current EV battery SoC (%) |
-| `ev_planned_load_target_soc_pct` | `80.0` | Target SoC the EV must reach by the deadline (%) |
-| `ev_planned_load_battery_capacity_kwh` | `0.0` | EV battery nameplate capacity (kWh) |
-| `ev_planned_load_charger_power_kw` | `0.0` | Charger AC output power (kW) |
-| `ev_planned_load_charger_efficiency_pct` | `100.0` | Charger efficiency (%) — energy delivered to EV / AC draw |
-| `ev_planned_load_deadline` | `None` | Timezone-aware datetime by which charging must be complete |
-| `ev_planned_load_base_load_includes_ev` | Auto (derived) | Automatically derived from the `hsem_house_power_includes_ev_charger_power` setting in the EV charger config step. When that is `True`, this is `True` (EV load already in the house consumption data). |
+| Field                                    | Default        | Description                                                                                                                                                                                             |
+| ---------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ev_planned_load_enabled`                | `False`        | Enable EV planned load integration for the primary EV                                                                                                                                                   |
+| `ev_planned_load_connected`              | `False`        | Whether a vehicle is currently plugged in                                                                                                                                                               |
+| `ev_planned_load_smart_charging_enabled` | `True`         | Whether smart EV charging scheduling is permitted                                                                                                                                                       |
+| `ev_planned_load_current_soc_pct`        | `0.0`          | Current EV battery SoC (%)                                                                                                                                                                              |
+| `ev_planned_load_target_soc_pct`         | `80.0`         | Target SoC the EV must reach by the deadline (%)                                                                                                                                                        |
+| `ev_planned_load_battery_capacity_kwh`   | `0.0`          | EV battery nameplate capacity (kWh)                                                                                                                                                                     |
+| `ev_planned_load_charger_power_kw`       | `0.0`          | Charger AC output power (kW)                                                                                                                                                                            |
+| `ev_planned_load_charger_efficiency_pct` | `100.0`        | Charger efficiency (%) — energy delivered to EV / AC draw                                                                                                                                               |
+| `ev_planned_load_deadline`               | `None`         | Timezone-aware datetime by which charging must be complete                                                                                                                                              |
+| `ev_planned_load_base_load_includes_ev`  | Auto (derived) | Automatically derived from the `hsem_house_power_includes_ev_charger_power` setting in the EV charger config step. When that is `True`, this is `True` (EV load already in the house consumption data). |
 
 ### EV planned load — second EV
 
 All fields are prefixed `ev_second_planned_load_`. The schema is identical to the
 primary EV fields above:
 
-| Field | Default | Description |
-|---|---|---|
-| `ev_second_planned_load_enabled` | `False` | Enable EV planned load integration for the second EV |
-| `ev_second_planned_load_connected` | `False` | Whether a second vehicle is currently plugged in |
-| `ev_second_planned_load_smart_charging_enabled` | `True` | Smart charging permission |
-| `ev_second_planned_load_current_soc_pct` | `0.0` | Current second EV battery SoC (%) |
-| `ev_second_planned_load_target_soc_pct` | `80.0` | Target SoC (%) |
-| `ev_second_planned_load_battery_capacity_kwh` | `0.0` | Second EV battery nameplate capacity (kWh) |
-| `ev_second_planned_load_charger_power_kw` | `0.0` | Charger AC output power (kW) |
-| `ev_second_planned_load_charger_efficiency_pct` | `100.0` | Charger efficiency (%) |
-| `ev_second_planned_load_deadline` | `None` | Timezone-aware charging deadline |
-| `ev_second_planned_load_base_load_includes_ev` | Auto (derived) | Automatically derived from the global `hsem_house_power_includes_ev_charger_power` setting — same value as the primary EV. |
+| Field                                           | Default        | Description                                                                                                                |
+| ----------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `ev_second_planned_load_enabled`                | `False`        | Enable EV planned load integration for the second EV                                                                       |
+| `ev_second_planned_load_connected`              | `False`        | Whether a second vehicle is currently plugged in                                                                           |
+| `ev_second_planned_load_smart_charging_enabled` | `True`         | Smart charging permission                                                                                                  |
+| `ev_second_planned_load_current_soc_pct`        | `0.0`          | Current second EV battery SoC (%)                                                                                          |
+| `ev_second_planned_load_target_soc_pct`         | `80.0`         | Target SoC (%)                                                                                                             |
+| `ev_second_planned_load_battery_capacity_kwh`   | `0.0`          | Second EV battery nameplate capacity (kWh)                                                                                 |
+| `ev_second_planned_load_charger_power_kw`       | `0.0`          | Charger AC output power (kW)                                                                                               |
+| `ev_second_planned_load_charger_efficiency_pct` | `100.0`        | Charger efficiency (%)                                                                                                     |
+| `ev_second_planned_load_deadline`               | `None`         | Timezone-aware charging deadline                                                                                           |
+| `ev_second_planned_load_base_load_includes_ev`  | Auto (derived) | Automatically derived from the global `hsem_house_power_includes_ev_charger_power` setting — same value as the primary EV. |
 
 ---
 
@@ -383,41 +383,41 @@ All outputs are collected in the `PlannerOutput` dataclass
 
 Each `PlannedSlot` in the output list covers one time interval and carries:
 
-| Field | Unit | Description |
-|---|---|---|
-| `start` / `end` | datetime | Slot boundaries (timezone-aware) |
-| `price.import_price` | currency/kWh | Import price for this slot |
-| `price.export_price` | currency/kWh | Export price for this slot |
-| `solcast_pv_estimate` | kWh | Forecast PV production |
-| `avg_house_consumption` | kWh | Predicted house load (weighted average) |
-| `estimated_net_consumption` | kWh | `avg_house_consumption + ev_planned_load_kwh − solcast_pv_estimate` (negative = PV surplus) |
-| `batteries_charged` | kWh | Energy scheduled to be stored (after losses) |
-| `batteries_discharged` | kWh | Energy drawn from battery |
-| `grid_import_kwh` | kWh | Grid import this slot |
-| `grid_export_kwh` | kWh | Grid export this slot |
-| `estimated_battery_soc` | % | Estimated SoC at end of slot |
-| `estimated_battery_capacity` | kWh | Usable remaining capacity at end of slot |
-| `ev_planned_load_kwh` | kWh | **Extra** EV AC load added to net consumption (zero when `base_load_includes_ev = True`) |
-| `ev_accounted_load_kwh` | kWh | EV AC load already included in the house consumption sensor (non-zero when `base_load_includes_ev = True`) |
-| `ev_total_planned_load_kwh` | kWh | Total planned EV AC load: `ev_planned_load_kwh + ev_accounted_load_kwh`. Non-zero whenever EV charging is planned, regardless of `base_load_includes_ev` |
-| `ev_charger_calculated_power` | W | Primary EV's executable whole-amp AC command; zero means no HSEM authority |
-| `ev_second_charger_calculated_power` | W | Second EV's executable whole-amp AC command |
-| `estimated_cost` | currency | Net grid cost this slot (positive = import, negative = export) |
-| `recommendation` | string | The action chosen for this slot (see below) |
+| Field                                | Unit         | Description                                                                                                                                              |
+| ------------------------------------ | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start` / `end`                      | datetime     | Slot boundaries (timezone-aware)                                                                                                                         |
+| `price.import_price`                 | currency/kWh | Import price for this slot                                                                                                                               |
+| `price.export_price`                 | currency/kWh | Export price for this slot                                                                                                                               |
+| `solcast_pv_estimate`                | kWh          | Forecast PV production                                                                                                                                   |
+| `avg_house_consumption`              | kWh          | Predicted house load (weighted average)                                                                                                                  |
+| `estimated_net_consumption`          | kWh          | `avg_house_consumption + ev_planned_load_kwh − solcast_pv_estimate` (negative = PV surplus)                                                              |
+| `batteries_charged`                  | kWh          | Energy scheduled to be stored (after losses)                                                                                                             |
+| `batteries_discharged`               | kWh          | Energy drawn from battery                                                                                                                                |
+| `grid_import_kwh`                    | kWh          | Grid import this slot                                                                                                                                    |
+| `grid_export_kwh`                    | kWh          | Grid export this slot                                                                                                                                    |
+| `estimated_battery_soc`              | %            | Estimated SoC at end of slot                                                                                                                             |
+| `estimated_battery_capacity`         | kWh          | Usable remaining capacity at end of slot                                                                                                                 |
+| `ev_planned_load_kwh`                | kWh          | **Extra** EV AC load added to net consumption (zero when `base_load_includes_ev = True`)                                                                 |
+| `ev_accounted_load_kwh`              | kWh          | EV AC load already included in the house consumption sensor (non-zero when `base_load_includes_ev = True`)                                               |
+| `ev_total_planned_load_kwh`          | kWh          | Total planned EV AC load: `ev_planned_load_kwh + ev_accounted_load_kwh`. Non-zero whenever EV charging is planned, regardless of `base_load_includes_ev` |
+| `ev_charger_calculated_power`        | W            | Primary EV's executable whole-amp AC command; zero means no HSEM authority                                                                               |
+| `ev_second_charger_calculated_power` | W            | Second EV's executable whole-amp AC command                                                                                                              |
+| `estimated_cost`                     | currency     | Net grid cost this slot (positive = import, negative = export)                                                                                           |
+| `recommendation`                     | string       | The action chosen for this slot (see below)                                                                                                              |
 
 #### Recommendation values
 
-| Value | Meaning |
-|---|---|
-| `batteries_charge_grid` | Charge battery from grid (forced by schedule or price signal) |
-| `batteries_charge_solar` | Battery is charging from PV surplus |
-| `batteries_discharge_mode` | Battery discharges to cover house load during high-price window |
-| `force_batteries_discharge` | Forced discharge (excess export to grid) |
-| `force_export` | Negative import price — all available energy exported to earn money |
-| `ev_smart_charging` | EV charging load is allocated to this slot (planner or runtime resolver) |
-| `batteries_wait_mode` | Battery idle by default; when **Wait mode behaviour** is set to *Self-consumption with reserve*, normal household self-consumption is allowed using energy above the planner's required reserve |
-| `time_passed` | Slot is in the past — no recommendation applied |
-| `missing_input_entities` | Required HA entities were unavailable when this slot was scheduled |
+| Value                       | Meaning                                                                                                                                                                                         |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `batteries_charge_grid`     | Charge battery from grid (forced by schedule or price signal)                                                                                                                                   |
+| `batteries_charge_solar`    | Battery is charging from PV surplus                                                                                                                                                             |
+| `batteries_discharge_mode`  | Battery discharges to cover house load during high-price window                                                                                                                                 |
+| `force_batteries_discharge` | Forced discharge (excess export to grid)                                                                                                                                                        |
+| `force_export`              | Negative import price — all available energy exported to earn money                                                                                                                             |
+| `ev_smart_charging`         | EV charging load is allocated to this slot (planner or runtime resolver)                                                                                                                        |
+| `batteries_wait_mode`       | Battery idle by default; when **Wait mode behaviour** is set to _Self-consumption with reserve_, normal household self-consumption is allowed using energy above the planner's required reserve |
+| `time_passed`               | Slot is in the past — no recommendation applied                                                                                                                                                 |
+| `missing_input_entities`    | Required HA entities were unavailable when this slot was scheduled                                                                                                                              |
 
 ---
 
@@ -436,60 +436,60 @@ recommendation it is not changed by later rules in the same layer.
 
 **Discharge schedule windows** (`apply_discharge_schedules`)
 
-| Priority | Condition | Recommendation |
-|---|---|---|
-| 1 | Slot falls inside a configured discharge window and price spread is met | `batteries_discharge_mode` |
+| Priority | Condition                                                               | Recommendation             |
+| -------- | ----------------------------------------------------------------------- | -------------------------- |
+| 1        | Slot falls inside a configured discharge window and price spread is met | `batteries_discharge_mode` |
 
 **Charge schedule windows** (`apply_charge_schedules`) — for each discharge window, eligible pre-charge slots are filled in order:
 
-| Priority | Condition | Recommendation |
-|---|---|---|
-| 1 | Import price < 0 (paid to import) | `batteries_charge_grid` |
-| 2 | Solar surplus (`estimated_net_consumption < threshold`) | `batteries_charge_solar` |
-| 3 | Cheapest grid hour where spread ≥ `min_price_difference + cycle_cost` | `batteries_charge_grid` |
+| Priority | Condition                                                             | Recommendation           |
+| -------- | --------------------------------------------------------------------- | ------------------------ |
+| 1        | Import price < 0 (paid to import)                                     | `batteries_charge_grid`  |
+| 2        | Solar surplus (`estimated_net_consumption < threshold`)               | `batteries_charge_solar` |
+| 3        | Cheapest grid hour where spread ≥ `min_price_difference + cycle_cost` | `batteries_charge_grid`  |
 
 **Opportunistic grid charge** (`apply_opportunistic_charge`) — outside any schedule:
 
-| Priority | Condition | Recommendation |
-|---|---|---|
-| 1 | Import price < 0 | `batteries_charge_grid` |
-| 2 | Import price ≤ depreciation threshold − cycle cost | `batteries_charge_grid` |
+| Priority | Condition                                          | Recommendation          |
+| -------- | -------------------------------------------------- | ----------------------- |
+| 1        | Import price < 0                                   | `batteries_charge_grid` |
+| 2        | Import price ≤ depreciation threshold − cycle cost | `batteries_charge_grid` |
 
 **Excess export** (`apply_excess_export`) — only when `excess_export_enabled = True`:
 
-| Priority | Condition | Recommendation |
-|---|---|---|
-| 1 | Export price > threshold AND battery has surplus above `required_capacity` | `force_batteries_discharge` |
+| Priority | Condition                                                                  | Recommendation              |
+| -------- | -------------------------------------------------------------------------- | --------------------------- |
+| 1        | Export price > threshold AND battery has surplus above `required_capacity` | `force_batteries_discharge` |
 
 **Seasonal optimisation fill** (`apply_optimization_strategy`) — for all remaining `None` slots:
 
-| Priority | Condition | Recommendation |
-|---|---|---|
-| 1 | Export price > import price AND export price ≥ `export_min_price` | `force_export` |
-| 2 | Actual PV surplus (`estimated_net_consumption_kwh < 0`) and battery not full | `batteries_charge_solar` |
-| 3 | Future `force_batteries_discharge` slot exists AND battery > required | `batteries_wait_mode` |
-| 4 | Slot's month is a winter month | `batteries_wait_mode` |
-| 5 | Slot's month is a summer month, actual PV surplus | `batteries_charge_solar` |
-| 5 | Slot's month is a summer month, no PV surplus (zero or positive net consumption) | `batteries_discharge_mode` |
+| Priority | Condition                                                                        | Recommendation             |
+| -------- | -------------------------------------------------------------------------------- | -------------------------- |
+| 1        | Export price > import price AND export price ≥ `export_min_price`                | `force_export`             |
+| 2        | Actual PV surplus (`estimated_net_consumption_kwh < 0`) and battery not full     | `batteries_charge_solar`   |
+| 3        | Future `force_batteries_discharge` slot exists AND battery > required            | `batteries_wait_mode`      |
+| 4        | Slot's month is a winter month                                                   | `batteries_wait_mode`      |
+| 5        | Slot's month is a summer month, actual PV surplus                                | `batteries_charge_solar`   |
+| 5        | Slot's month is a summer month, no PV surplus (zero or positive net consumption) | `batteries_discharge_mode` |
 
 > **Note:** `BatteriesChargeSolar` is only assigned when there is a genuine PV
-> surplus (negative net consumption).  A small positive house load with zero PV
+> surplus (negative net consumption). A small positive house load with zero PV
 > must not be mislabeled as solar charging — that would cause the applier to
 > write `MaximizeSelfConsumption` instead of `TimeOfUse` + charge TOU
 > (issue #720).
 
 > **Per-slot season:** the seasonal check (priorities 4–5) uses each slot's own
 > calendar month (derived from the slot's `start` timestamp in the local
-> timezone), **not** the month of `now`.  A planning horizon that crosses a
+> timezone), **not** the month of `now`. A planning horizon that crosses a
 > season boundary (e.g. Aug 31 → Sep 1) therefore applies the correct seasonal
 > strategy to every slot independently — summer slots get discharge/solar and
 > winter slots get wait-mode, even within the same 48-hour plan.
 
 > **Wait mode behaviour:** the `batteries_wait_mode` recommendation normally keeps the
-> battery idle.  When `hsem_batteries_wait_mode_behavior` is set to
+> battery idle. When `hsem_batteries_wait_mode_behavior` is set to
 > `self_consumption_with_reserve`, the applier switches the inverter to
 > `MaximizeSelfConsumption` and caps discharge power so only surplus energy above
-> the planner's required reserve is used.  This reduces unnecessary grid import
+> the planner's required reserve is used. This reduces unnecessary grid import
 > while still preserving capacity for future scheduled discharge windows.
 
 **Discharge concentration** (`concentrate_discharge_on_expensive_slots`) runs after the
@@ -517,15 +517,15 @@ Charging is turned off (or a session with no HSEM control, e.g.
 `fixed_session_only`) from recreating its own `ev_smart_charging`
 permission.
 
-| Current recommendation | Positive EV command? | Result |
-|---|---|---|
-| `batteries_charge_solar` | Yes | → `ev_smart_charging` |
-| `batteries_wait_mode` | Yes | → `ev_smart_charging` |
-| `batteries_discharge_mode` | Yes | → `ev_smart_charging` (EV label wins) |
-| `batteries_charge_grid` | Yes | Kept — grid charge takes priority |
-| `force_batteries_discharge` | Yes | Kept — forced export takes priority |
-| `force_export` | Yes | Kept |
-| `time_passed` | Yes | Kept |
+| Current recommendation      | Positive EV command? | Result                                |
+| --------------------------- | -------------------- | ------------------------------------- |
+| `batteries_charge_solar`    | Yes                  | → `ev_smart_charging`                 |
+| `batteries_wait_mode`       | Yes                  | → `ev_smart_charging`                 |
+| `batteries_discharge_mode`  | Yes                  | → `ev_smart_charging` (EV label wins) |
+| `batteries_charge_grid`     | Yes                  | Kept — grid charge takes priority     |
+| `force_batteries_discharge` | Yes                  | Kept — forced export takes priority   |
+| `force_export`              | Yes                  | Kept                                  |
+| `time_passed`               | Yes                  | Kept                                  |
 
 ---
 
@@ -534,13 +534,13 @@ permission.
 Applied to the **current slot only** at hardware-write time. Overrides the planner
 output with live sensor readings that were unknown at planning time.
 
-| Priority | Condition | Result |
-|---|---|---|
-| 1 (highest) | Live import price < 0 | → `force_export` |
-| 2 | Current recommendation = `batteries_charge_grid` | Kept — grid charge never overridden |
-| 3 | Any EV (primary or second) is actively charging right now | → `ev_smart_charging` |
-| 4 | Battery energy > remaining discharge-schedule need | → `batteries_discharge_mode` |
-| — | None of the above | Planner recommendation kept unchanged |
+| Priority    | Condition                                                 | Result                                |
+| ----------- | --------------------------------------------------------- | ------------------------------------- |
+| 1 (highest) | Live import price < 0                                     | → `force_export`                      |
+| 2           | Current recommendation = `batteries_charge_grid`          | Kept — grid charge never overridden   |
+| 3           | Any EV (primary or second) is actively charging right now | → `ev_smart_charging`                 |
+| 4           | Battery energy > remaining discharge-schedule need        | → `batteries_discharge_mode`          |
+| —           | None of the above                                         | Planner recommendation kept unchanged |
 
 > **Note:** Priorities 1 and 3 interact. A negative import price always wins — even
 > when an EV is charging. However, a grid-charge slot (priority 2) is never overridden
@@ -575,34 +575,34 @@ Higher-level groupings of consecutive slots with the same charge or discharge re
 
 ### Plan metadata
 
-| Field | Description |
-|---|---|
-| `plan_cost` | Total estimated grid cost for the selected plan (local currency) |
-| `missing_inputs` | List of diagnostic labels for absent input data |
-| `warnings` | Human-readable warning messages about data quality or configuration |
-| `data_quality` | Structured `DataQuality` report (see below) |
-| `explanation` | `PlanExplanation` with strategy summary, score, and rejected alternatives |
-| `time_series_index` | `TimeSeriesIndex` — shared slot grid used internally |
-| `ev_charging_plan` | `EVChargingPlan` for the primary EV (`None` when disabled) |
-| `ev_second_charging_plan` | `EVChargingPlan` for the second EV (`None` when disabled) |
+| Field                     | Description                                                               |
+| ------------------------- | ------------------------------------------------------------------------- |
+| `plan_cost`               | Total estimated grid cost for the selected plan (local currency)          |
+| `missing_inputs`          | List of diagnostic labels for absent input data                           |
+| `warnings`                | Human-readable warning messages about data quality or configuration       |
+| `data_quality`            | Structured `DataQuality` report (see below)                               |
+| `explanation`             | `PlanExplanation` with strategy summary, score, and rejected alternatives |
+| `time_series_index`       | `TimeSeriesIndex` — shared slot grid used internally                      |
+| `ev_charging_plan`        | `EVChargingPlan` for the primary EV (`None` when disabled)                |
+| `ev_second_charging_plan` | `EVChargingPlan` for the second EV (`None` when disabled)                 |
 
 ### Plan explanation (`explanation`)
 
 The `PlanExplanation` object is designed to be surfaced directly as a HA sensor attribute:
 
-| Field | Description |
-|---|---|
-| `selected_strategy` | Short identifier (e.g. `"charge_grid_discharge_peak"`) |
-| `summary` | One-sentence reason for the selected plan |
-| `score` | Savings vs. doing nothing (positive = saves money) |
-| `estimated_total_cost` | Net grid cost for the horizon |
-| `price_spread` | Max − min import price (larger = more arbitrage potential) |
-| `peak_import_price` / `off_peak_import_price` | Price extremes |
-| `forecast_pv_kwh` | Total PV production for the horizon |
-| `forecast_net_consumption_kwh` | Total load − PV (negative = net solar surplus) |
-| `battery_soc_pct` / `battery_soc_at_end_pct` | Starting and ending SoC |
-| `constraints` | Active flags (e.g. `"winter_month"`, `"excess_export_enabled"`) |
-| `rejected_plans` | Alternatives with name, reason, and estimated cost |
+| Field                                         | Description                                                     |
+| --------------------------------------------- | --------------------------------------------------------------- |
+| `selected_strategy`                           | Short identifier (e.g. `"charge_grid_discharge_peak"`)          |
+| `summary`                                     | One-sentence reason for the selected plan                       |
+| `score`                                       | Savings vs. doing nothing (positive = saves money)              |
+| `estimated_total_cost`                        | Net grid cost for the horizon                                   |
+| `price_spread`                                | Max − min import price (larger = more arbitrage potential)      |
+| `peak_import_price` / `off_peak_import_price` | Price extremes                                                  |
+| `forecast_pv_kwh`                             | Total PV production for the horizon                             |
+| `forecast_net_consumption_kwh`                | Total load − PV (negative = net solar surplus)                  |
+| `battery_soc_pct` / `battery_soc_at_end_pct`  | Starting and ending SoC                                         |
+| `constraints`                                 | Active flags (e.g. `"winter_month"`, `"excess_export_enabled"`) |
+| `rejected_plans`                              | Alternatives with name, reason, and estimated cost              |
 
 ---
 
@@ -629,11 +629,11 @@ of the home battery planner output. The one-pass design prevents circular depend
 
 Three fields capture EV load intent precisely:
 
-| Field | Meaning |
-|---|---|
-| `ev_planned_load_kwh` | Extra EV AC load **added to net consumption** — only the portion not already in `avg_house_consumption`. Zero when `base_load_includes_ev = True`. |
-| `ev_accounted_load_kwh` | EV AC load **already included** in the house consumption sensor. Non-zero when `base_load_includes_ev = True`. |
-| `ev_total_planned_load_kwh` | Total planned EV AC load: `ev_planned_load_kwh + ev_accounted_load_kwh`. Always non-zero when EV charging is planned. |
+| Field                       | Meaning                                                                                                                                            |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ev_planned_load_kwh`       | Extra EV AC load **added to net consumption** — only the portion not already in `avg_house_consumption`. Zero when `base_load_includes_ev = True`. |
+| `ev_accounted_load_kwh`     | EV AC load **already included** in the house consumption sensor. Non-zero when `base_load_includes_ev = True`.                                     |
+| `ev_total_planned_load_kwh` | Total planned EV AC load: `ev_planned_load_kwh + ev_accounted_load_kwh`. Always non-zero when EV charging is planned.                              |
 
 ### Net load formula with EV
 
@@ -644,7 +644,7 @@ effective_net_load_kwh
     − solcast_pv_estimate
 ```
 
-Only `ev_planned_load_kwh` is added.  When `base_load_includes_ev = True`,
+Only `ev_planned_load_kwh` is added. When `base_load_includes_ev = True`,
 `ev_planned_load_kwh` is `0.0`; the EV load is already captured in
 `avg_house_consumption` and must not be added a second time.
 
@@ -654,7 +654,7 @@ The EV planner selects slots in two passes, using **net surplus after house
 consumption** as the priority signal:
 
 1. **Net-surplus slots first** — slots where `−estimated_net_consumption > 0`
-   (i.e. solar production exceeds house demand) are prioritised.  The energy
+   (i.e. solar production exceeds house demand) are prioritised. The energy
    is free for the EV because the house has already consumed its share of
    solar and the remainder would otherwise be exported.
 2. **Cheapest grid-import slots next** — among remaining slots, the lowest
@@ -663,9 +663,9 @@ consumption** as the priority signal:
 Allocation stops when the total energy needed to reach `target_soc_pct` is
 satisfied, or the deadline is reached.
 
-**Why net surplus, not raw PV?**  The house sits between the PV inverter and the
-EV charger at the AC bus.  It always consumes solar first.  The EV charger only
-sees what is left over after house demand is satisfied.  Using raw PV would
+**Why net surplus, not raw PV?** The house sits between the PV inverter and the
+EV charger at the AC bus. It always consumes solar first. The EV charger only
+sees what is left over after house demand is satisfied. Using raw PV would
 over-estimate the free energy available and schedule more EV load on
 "solar" slots than is physically available.
 
@@ -674,16 +674,18 @@ over-estimate the free energy available and schedule more EV load on
 The engine processes EV load in three steps:
 
 1. **Base net consumption** — `populate_net_consumption(slots)` is called first,
-   populating `estimated_net_consumption = house − pv` (without EV).  PV
+   populating `estimated_net_consumption = house − pv` (without EV). PV
    confidence decay (day+1 at 90 %, day+2 at 80 %) is applied before this
    step so the surplus signal is already conservatively adjusted.
 
 2. **EV planning** — net surplus is derived from step 1:
+
    ```text
    slot_net_surplus = max(−estimated_net_consumption, 0.0)
    ```
+
    The EV planner selects slots using this signal and builds charging plans
-   for both EVs.  Per-slot loads are accumulated additively (primary + second).
+   for both EVs. Per-slot loads are accumulated additively (primary + second).
 
 3. **Final net consumption** — `populate_net_consumption(slots)` runs a second
    time to incorporate `ev_planned_load_kwh` into the final
@@ -714,25 +716,25 @@ This prevents double-counting while keeping full observability.
 
 ### EV plan states
 
-| State | Meaning |
-|---|---|
-| `not_connected` | No vehicle plugged in |
-| `smart_charging_disabled` | Feature disabled or smart charging turned off |
-| `fully_charged` | EV has already reached target SoC — no load allocated |
-| `charging` | Slots have been allocated; charging is active or planned |
-| `waiting` | EV is connected but no candidate slots exist before the deadline |
-| `unavailable` | Required config values (capacity or charger power) are zero/missing |
+| State                     | Meaning                                                             |
+| ------------------------- | ------------------------------------------------------------------- |
+| `not_connected`           | No vehicle plugged in                                               |
+| `smart_charging_disabled` | Feature disabled or smart charging turned off                       |
+| `fully_charged`           | EV has already reached target SoC — no load allocated               |
+| `charging`                | Slots have been allocated; charging is active or planned            |
+| `waiting`                 | EV is connected but no candidate slots exist before the deadline    |
+| `unavailable`             | Required config values (capacity or charger power) are zero/missing |
 
 ### HA sensor entities
 
 Plan sensors expose the schedule, while current-limit sensors expose commands:
 
-| Entity | Purpose |
-|---|---|
-| `sensor.hsem_ev_optimal_charging_plan` | Primary EV plan state and slot details |
-| `sensor.hsem_ev_second_optimal_charging_plan` | Second EV plan state and slot details |
-| `sensor.hsem_ev_charger_current_limit` | Primary whole-amp ceiling for the active slot |
-| `sensor.hsem_ev_second_charger_current_limit` | Second-EV whole-amp ceiling |
+| Entity                                        | Purpose                                       |
+| --------------------------------------------- | --------------------------------------------- |
+| `sensor.hsem_ev_optimal_charging_plan`        | Primary EV plan state and slot details        |
+| `sensor.hsem_ev_second_optimal_charging_plan` | Second EV plan state and slot details         |
+| `sensor.hsem_ev_charger_current_limit`        | Primary whole-amp ceiling for the active slot |
+| `sensor.hsem_ev_second_charger_current_limit` | Second-EV whole-amp ceiling                   |
 
 Current-limit sensors are unavailable and read fail-closed as `0` until a
 successful live coordinator cycle owns a recommendation. A stale restored
@@ -752,7 +754,7 @@ Both plan sensors share the same attribute schema:
   "charging_slots": [
     {
       "start": "2026-05-14T10:00:00+02:00",
-      "end":   "2026-05-14T11:00:00+02:00",
+      "end": "2026-05-14T11:00:00+02:00",
       "estimated_charged_kwh": 8.5,
       "solar_surplus_kwh": 9.2,
       "import_needed_kwh": 0.0,
@@ -793,10 +795,12 @@ consumption had not been populated yet). Every slot appeared to have zero surplu
 so the EV was always scheduled as grid-import.
 
 The PR #397 workaround derived surplus directly from raw base fields:
+
 ```text
 surplus = max(slot.solcast_pv_estimate − slot.avg_house_consumption, 0.0)
 ```
-This was correct but did not yet apply PV confidence decay.  PR #406 replaced it
+
+This was correct but did not yet apply PV confidence decay. PR #406 replaced it
 with the pre-populated `estimated_net_consumption` approach, which is both
 conceptually cleaner and more accurate.
 
@@ -882,15 +886,15 @@ export_revenue = Σ (grid_export_kwh[slot] × export_price[slot])
 
 Revenue is subtracted from total cost (it reduces the net expense).
 
-**Export price floor:** ``export_min_price`` is a battery-export floor,
-not a physical grid limit.  The applier no longer throttles the grid
+**Export price floor:** `export_min_price` is a battery-export floor,
+not a physical grid limit. The applier no longer throttles the grid
 feed-in limit below this price when the export price is non-negative
-(issue #767), so surplus PV export is always allowed.  The MILP and
+(issue #767), so surplus PV export is always allowed. The MILP and
 discharge scheduler prevent intentional battery-to-grid discharge on
-slots where ``export_price < export_min_price``.  The cost function
+slots where `export_price < export_min_price`. The cost function
 counts PV export revenue at the live export price and only zeroes
 battery-destined export revenue on slots blocked by
-``battery_export_min_price``.
+`battery_export_min_price`.
 
 **Negative export prices** are the exception: when exporting costs
 money, the applier still writes a physical watt limit to block all
@@ -957,7 +961,6 @@ if slot_power_kw > grid_limit_kw:
     grid_limit_penalty += excess_kwh × grid_limit_penalty_per_kwh
 ```
 
-
 ### Terminal SoC accounting
 
 Plans that empty the battery before the horizon ends look artificially cheap
@@ -976,15 +979,15 @@ Emptying the battery is **not free** — the cost function charges for the energ
 that would need to be replaced to restore the battery to a useful state.
 
 **Charge-credit caps (issues #694, #592).** The terminal-SoC credit for
-*charging* is capped so it never beats exporting the same PV surplus:
+_charging_ is capped so it never beats exporting the same PV surplus:
 
 - **Same-slot cap (#694):** the credit is reduced by this slot's export
   opportunity cost (`p_exp / η_chg`).
-- **Deferred-export correction (#592):** when a *future* slot has PV surplus
+- **Deferred-export correction (#592):** when a _future_ slot has PV surplus
   beyond what the battery can absorb (`min(usable_kwh, max_charge_per_slot)`),
   that surplus is exported regardless — so the credit is partially restored by
   the spread between this slot's (high) export price and the future slot's
-  (low) export price.  The planner therefore exports solar at peak prices and
+  (low) export price. The planner therefore exports solar at peak prices and
   lets the inevitable cheap-afternoon surplus refill the battery, instead of
   charging immediately during expensive hours.
 
@@ -996,14 +999,14 @@ The planner evaluates multiple independent strategies before committing to a pla
 
 ### Candidate strategies
 
-| Name | Description |
-|---|---|
-| `baseline` | Current HSEM scheduling output — the result of running all schedulers normally |
-| `no_action` | Battery completely idle — no forced charge, no forced discharge |
-| `grid_charge` | Grid-charge slots kept, solar-charge slots cleared |
-| `solar_only` | Only solar charging active, grid charging cleared |
-| `discharge_only` | Discharge slots kept, all charging cleared |
-| `aggressive` | Cheapest 3 slots forced to grid-charge, most expensive 3 forced to discharge |
+| Name             | Description                                                                    |
+| ---------------- | ------------------------------------------------------------------------------ |
+| `baseline`       | Current HSEM scheduling output — the result of running all schedulers normally |
+| `no_action`      | Battery completely idle — no forced charge, no forced discharge                |
+| `grid_charge`    | Grid-charge slots kept, solar-charge slots cleared                             |
+| `solar_only`     | Only solar charging active, grid charging cleared                              |
+| `discharge_only` | Discharge slots kept, all charging cleared                                     |
+| `aggressive`     | Cheapest 3 slots forced to grid-charge, most expensive 3 forced to discharge   |
 
 Each candidate is built from a **deep copy** of the baseline slots so strategies
 cannot interfere with each other. After generation, `simulate_soc` is called for
@@ -1033,13 +1036,13 @@ unsafe or the system is in a degraded state.
 
 ### Degraded mode levels
 
-| Mode | Hardware writes | Trigger |
-|---|---|---|
-| `Normal` | Allowed | All inputs present and valid |
-| `Degraded` | Allowed (with warnings) | Non-critical data missing (e.g. tomorrow's prices) |
-| `Error` | **Blocked** | Critical data missing (battery SoC, house load, working mode) |
-| `ReadOnly` | **Blocked** | `is_read_only = True` in config or `PlannerInput` |
-| `DryRun` | **Blocked** | Dry-run mode active |
+| Mode       | Hardware writes         | Trigger                                                       |
+| ---------- | ----------------------- | ------------------------------------------------------------- |
+| `Normal`   | Allowed                 | All inputs present and valid                                  |
+| `Degraded` | Allowed (with warnings) | Non-critical data missing (e.g. tomorrow's prices)            |
+| `Error`    | **Blocked**             | Critical data missing (battery SoC, house load, working mode) |
+| `ReadOnly` | **Blocked**             | `is_read_only = True` in config or `PlannerInput`             |
+| `DryRun`   | **Blocked**             | Dry-run mode active                                           |
 
 ### Critical vs. non-critical missing data
 
@@ -1122,7 +1125,7 @@ settle, during which the live battery-power reading may still show the old
 (higher) draw. `custom_sensors/phase_charge_transition.py` (mixed into the
 working-mode sensor) tracks this as a slot-scoped transition:
 
-- **While unsettled**, the limiter is handed the *previous* verified cap
+- **While unsettled**, the limiter is handed the _previous_ verified cap
   instead of trusting the live battery-power reading, so a temporarily
   stale-low reading cannot make the limiter believe more headroom exists
   than is physically true yet.
@@ -1141,7 +1144,7 @@ working-mode sensor) tracks this as a slot-scoped transition:
 
 #### Error-mode emergency stop for an HSEM-owned grid charge (issue #840)
 
-`Error` mode normally blocks *every* hardware write, because critical
+`Error` mode normally blocks _every_ hardware write, because critical
 telemetry is missing and the planner can't safely decide anything new. The
 one exception: if HSEM itself armed a Huawei grid charge and then critical
 telemetry disappeared mid-charge, HSEM can still safely stop that specific
@@ -1172,19 +1175,19 @@ The `DataQuality` object on `PlannerOutput` reports completeness of the planning
 
 ### Fields
 
-| Field | Type | Description |
-|---|---|---|
-| `today_price_missing_hours` | `list[int]` | Hours (0–23) with no price data today |
-| `today_pv_missing_hours` | `list[int]` | Hours (0–23) with no PV forecast today |
-| `tomorrow_price_missing_hours` | `list[int]` | Hours with no price data for tomorrow |
-| `tomorrow_pv_missing_hours` | `list[int]` | Hours with no PV forecast for tomorrow |
-| `day2_price_missing_hours` | `list[int]` | Hours with no price data for day +2 (72-h horizon only) |
-| `day2_pv_missing_hours` | `list[int]` | Hours with no PV forecast for day +2 |
-| `horizon_has_tomorrow` | `bool` | `True` when horizon extends beyond 24 h |
-| `horizon_days` | `int` | Number of calendar days covered (1, 2, or 3) |
-| `load_forecast_ready` | `bool` | `True` when future load provenance and values are safe to optimize |
-| `load_forecast_reason` | `str/None` | Machine-readable rejection reason, or `None` when ready |
-| `is_complete` | `bool` | `True` when price/PV inputs are complete and `load_forecast_ready` is true |
+| Field                          | Type        | Description                                                                |
+| ------------------------------ | ----------- | -------------------------------------------------------------------------- |
+| `today_price_missing_hours`    | `list[int]` | Hours (0–23) with no price data today                                      |
+| `today_pv_missing_hours`       | `list[int]` | Hours (0–23) with no PV forecast today                                     |
+| `tomorrow_price_missing_hours` | `list[int]` | Hours with no price data for tomorrow                                      |
+| `tomorrow_pv_missing_hours`    | `list[int]` | Hours with no PV forecast for tomorrow                                     |
+| `day2_price_missing_hours`     | `list[int]` | Hours with no price data for day +2 (72-h horizon only)                    |
+| `day2_pv_missing_hours`        | `list[int]` | Hours with no PV forecast for day +2                                       |
+| `horizon_has_tomorrow`         | `bool`      | `True` when horizon extends beyond 24 h                                    |
+| `horizon_days`                 | `int`       | Number of calendar days covered (1, 2, or 3)                               |
+| `load_forecast_ready`          | `bool`      | `True` when future load provenance and values are safe to optimize         |
+| `load_forecast_reason`         | `str/None`  | Machine-readable rejection reason, or `None` when ready                    |
+| `is_complete`                  | `bool`      | `True` when price/PV inputs are complete and `load_forecast_ready` is true |
 
 ### Home Assistant attribute serialisation
 
@@ -1224,6 +1227,7 @@ All examples use the following base configuration:
 ### Scenario 1: Winter day
 
 **Conditions:**
+
 - Month: January (winter month)
 - PV forecast: 0 kWh across all hours (no solar production)
 - House load: ~2 kWh/h constant
@@ -1269,6 +1273,7 @@ may select `no_action` when the schedule does not force grid charge.
 ### Scenario 2: Summer day — high PV surplus
 
 **Conditions:**
+
 - Month: July (summer month)
 - PV forecast: 0→2→6→8→6→4→1→0 kWh (ramps from 06:00 to 14:00, falls off by 19:00)
 - House load: 0.5 kWh/h (typical summer light load)
@@ -1317,6 +1322,7 @@ low export price instead of storing it for later use.
 ### Scenario 3: Cheap night price — grid charge opportunity
 
 **Conditions:**
+
 - Month: March (winter month)
 - PV forecast: small midday peak (2–3 kWh/h, 10:00–14:00)
 - House load: ~1.5 kWh/h
@@ -1357,11 +1363,11 @@ here. The `no_action` candidate pays full peak prices.
 
 **Key cost comparison:**
 
-| Candidate | Estimated cost (DKK) |
-|---|---|
-| `baseline` (grid charge) | 6.75 |
-| `solar_only` | 22.50 (no night charge) |
-| `no_action` | 30.00 (full peak import) |
+| Candidate                | Estimated cost (DKK)     |
+| ------------------------ | ------------------------ |
+| `baseline` (grid charge) | 6.75                     |
+| `solar_only`             | 22.50 (no night charge)  |
+| `no_action`              | 30.00 (full peak import) |
 
 **Explanation excerpt:**
 
@@ -1381,6 +1387,7 @@ here. The `no_action` candidate pays full peak prices.
 ### Scenario 4: High PV day — excess export opportunity
 
 **Conditions:**
+
 - Month: June (summer month)
 - PV forecast: 1→3→7→10→10→8→5→2→0 kWh/h (strong sun, 07:00–18:00)
 - House load: 0.3 kWh/h (light load)
@@ -1414,11 +1421,11 @@ the export window and earns significantly less revenue.
 
 **Key cost comparison:**
 
-| Candidate | Net cost (DKK) |
-|---|---|
+| Candidate                  | Net cost (DKK)       |
+| -------------------------- | -------------------- |
 | `baseline` (excess export) | −18.40 (net revenue) |
-| `solar_only` | −8.00 |
-| `no_action` | −5.60 |
+| `solar_only`               | −8.00                |
+| `no_action`                | −5.60                |
 
 **Explanation excerpt:**
 
@@ -1426,7 +1433,7 @@ the export window and earns significantly less revenue.
 {
   "selected_strategy": "baseline",
   "summary": "High PV surplus and peak export price trigger forced battery export.",
-  "score": 12.80,
+  "score": 12.8,
   "constraints": ["summer_month", "excess_export_enabled", "export_price_above_threshold"],
   "forecast_pv_kwh": 46.0,
   "forecast_net_consumption_kwh": -39.4
@@ -1438,6 +1445,7 @@ the export window and earns significantly less revenue.
 ### Scenario 5: Flat price day — no arbitrage value
 
 **Conditions:**
+
 - Month: April (winter/spring boundary, configured as winter)
 - PV forecast: modest (1–2 kWh/h, 09:00–15:00)
 - House load: 1.0 kWh/h
@@ -1482,15 +1490,15 @@ than pure `no_action` because the PV surplus would otherwise export at only
 {
   "selected_strategy": "solar_only",
   "summary": "Flat price day: no grid charge arbitrage; solar surplus stored to reduce afternoon imports.",
-  "score": 0.60,
-  "price_spread": 0.00,
+  "score": 0.6,
+  "price_spread": 0.0,
   "constraints": ["winter_month", "no_price_spread"],
   "battery_soc_at_end_pct": 38.0,
   "rejected_plans": [
     {
       "name": "grid_charge",
       "reason": "Grid charge cost exceeds cycle depreciation benefit on flat-price day.",
-      "estimated_cost": 15.30
+      "estimated_cost": 15.3
     }
   ]
 }
@@ -1501,6 +1509,7 @@ than pure `no_action` because the PV surplus would otherwise export at only
 ### Scenario 6: EV charging — MILP co-optimisation
 
 **Conditions:**
+
 - EV plugged in at 08:00, target SoC 80 %, deadline 07:00 next morning
 - EV battery: 60 kWh, current SoC 32 % → 28.8 kWh needed
 - Charger: 11 kW AC (efficiency 100 %)
@@ -1534,10 +1543,10 @@ Post-deadline slots (after 07:00):
 
 **Cost comparison (EV charging cost only):**
 
-| Strategy | EV cost (DKK) |
-|---|---|
-| MILP (solar-first + cheapest import) | 0.80 × 10.3 + 0 × 18.5 = 8.24 DKK |
-| Dumb (charge immediately from grid at 2.00 DKK/kWh) | 2.00 × 28.8 = 57.60 DKK |
+| Strategy                                            | EV cost (DKK)                     |
+| --------------------------------------------------- | --------------------------------- |
+| MILP (solar-first + cheapest import)                | 0.80 × 10.3 + 0 × 18.5 = 8.24 DKK |
+| Dumb (charge immediately from grid at 2.00 DKK/kWh) | 2.00 × 28.8 = 57.60 DKK           |
 
 ---
 
@@ -1584,15 +1593,15 @@ Attributes:
 
 Common constraint tags and their meaning:
 
-| Tag | Meaning |
-|---|---|
-| `winter_month` | Current month is in `months_winter`; winter scheduling strategy active |
-| `summer_month` | Not in winter months; summer scheduling strategy active |
-| `no_price_spread` | Max − min import price is near zero; no grid-charge arbitrage |
-| `grid_charge_price_spread_met` | Price spread exceeds min_price_difference threshold |
-| `excess_export_enabled` | Excess export feature is active in config |
-| `export_price_above_threshold` | Export price exceeds `excess_export_price_threshold` |
-| `schedule_window_active` | At least one `battery_schedules` entry is enabled and active |
+| Tag                            | Meaning                                                                |
+| ------------------------------ | ---------------------------------------------------------------------- |
+| `winter_month`                 | Current month is in `months_winter`; winter scheduling strategy active |
+| `summer_month`                 | Not in winter months; summer scheduling strategy active                |
+| `no_price_spread`              | Max − min import price is near zero; no grid-charge arbitrage          |
+| `grid_charge_price_spread_met` | Price spread exceeds min_price_difference threshold                    |
+| `excess_export_enabled`        | Excess export feature is active in config                              |
+| `export_price_above_threshold` | Export price exceeds `excess_export_price_threshold`                   |
+| `schedule_window_active`       | At least one `battery_schedules` entry is enabled and active           |
 
 ---
 
@@ -1601,7 +1610,7 @@ Common constraint tags and their meaning:
 ### Consumption prediction: legacy mode is averaged, not model-based
 
 In legacy mode, the planner predicts house load from a weighted average of
-1, 3, 7, and 14-day historical consumption per clock-hour.  This works well
+1, 3, 7, and 14-day historical consumption per clock-hour. This works well
 for regular households but may under- or over-predict when:
 
 - An EV charges on an irregular schedule.
@@ -1615,8 +1624,8 @@ a **peer-median clamp** (issue #592) bounds each window to at most
 stale window (e.g. a 14d average still holding pre-change EV-charging
 nights) cannot dominate the blend when the other three windows agree.
 Only the upward side is clamped: a genuine consumption drop flows through
-immediately.  The ML mode (ridge regression with day-of-week, seasonality,
-and outdoor temperature) addresses several of these limitations.  See
+immediately. The ML mode (ridge regression with day-of-week, seasonality,
+and outdoor temperature) addresses several of these limitations. See
 `docs/consumption-prediction.md`.
 
 ### Prices are assumed known for the full horizon
@@ -1640,8 +1649,8 @@ current SoC but does not retroactively account for the morning shortfall.
 ### Battery export floor, not a grid throttle
 
 `export_min_price` now gates intentional battery-to-grid discharge, not
-the entire grid connection point.  Surplus PV export is always allowed
-when the export price is non-negative.  The exception is negative export
+the entire grid connection point. Surplus PV export is always allowed
+when the export price is non-negative. The exception is negative export
 prices, where the applier still writes a physical block because
 exporting then costs money.
 

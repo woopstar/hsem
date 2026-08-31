@@ -36,12 +36,25 @@ run() {
     fi
 }
 
+# Format markdown/YAML/JSON with prettier, pinned to the same version as the
+# pre-commit hook and the CI check so all three agree. Skipped with a warning
+# when node isn't present rather than failing the whole gate — CI still
+# enforces it, so a missing local toolchain can't let drift through.
+PRETTIER_VERSION="3.1.0"
+prettier_format() {
+    if ! command -v npx >/dev/null 2>&1; then
+        echo "[warn] npx not found — skipping prettier (CI will still check it)" >&2
+        return 0
+    fi
+    run npx --yes "prettier@${PRETTIER_VERSION}" --write .
+}
+
 usage() {
     cat <<EOF
 Usage: quality <command>
 
 Commands:
-  lint      Format and lint code (ruff format + ruff check)
+  lint      Format and lint code (ruff format + ruff check + prettier)
   typing    Type check with mypy
   quality   Static quality checks (pyright + vulture)
   skylos    Run Skylos static analysis (experimental, not in 'all')
@@ -55,6 +68,7 @@ case "${1:-}" in
     lint)
         run ruff format .
         run ruff check . --fix
+        prettier_format
         ;;
     typing)
         run mypy custom_components tests
@@ -78,6 +92,7 @@ case "${1:-}" in
     all)
         echo "=== Lint ==="
         run ruff format .
+        prettier_format
         echo ""
         echo "=== Type Check ==="
         run mypy custom_components tests

@@ -4,28 +4,28 @@ This directory contains Architecture Decision Records (ADRs) for the HSEM projec
 
 ## What is an ADR?
 
-An Architecture Decision Record is a short document that captures an important architectural or design decision, including the context, the decision itself, the consequences, and the alternatives that were considered (and rejected). ADRs help new contributors (and future maintainers) understand *why* the system works the way it does — not just *how*.
+An Architecture Decision Record is a short document that captures an important architectural or design decision, including the context, the decision itself, the consequences, and the alternatives that were considered (and rejected). ADRs help new contributors (and future maintainers) understand _why_ the system works the way it does — not just _how_.
 
 ## ADR conventions
 
-| Convention | Rule |
-|---|---|
-| **Naming** | `adr-NNN-title-with-hyphens.md` |
-| **Status** | `Accepted` (retrospective decisions are marked as such) |
-| **Scope** | One decision per ADR — no multi-decision records |
-| **Layout** | Context → Decision → Consequences → Alternatives Considered → Related |
+| Convention  | Rule                                                                    |
+| ----------- | ----------------------------------------------------------------------- |
+| **Naming**  | `adr-NNN-title-with-hyphens.md`                                         |
+| **Status**  | `Accepted` (retrospective decisions are marked as such)                 |
+| **Scope**   | One decision per ADR — no multi-decision records                        |
+| **Layout**  | Context → Decision → Consequences → Alternatives Considered → Related   |
 | **Updates** | When a decision changes, supersede with a new ADR (don't edit old ADRs) |
 
 ## Index
 
-| ADR | Title | Area | Status |
-|---|---|---|---|
-| [ADR-001](adr-001-planner-extraction.md) | Pure-Python Planner Extraction | Architecture, planner layer | Accepted |
-| [ADR-002](adr-002-slot-model.md) | Slot Model | Planner engine, data model | Accepted |
-| [ADR-003](adr-003-cost-scoring.md) | Cost Scoring Architecture | Cost function, candidate selection | Accepted |
-| [ADR-004](adr-004-inverter-safety.md) | Inverter Safety — Layered Hardware Write Protection | Safety, hardware interface | Accepted |
-| [ADR-005](adr-005-forecast-confidence.md) | Forecast Confidence | Forecast handling, diagnostics | Partially superseded by ADR-006 |
-| [ADR-006](adr-006-solar-correction.md) | Solar Forecast Auto-Correction | Forecast handling, planner engine | Accepted |
+| ADR                                       | Title                                               | Area                               | Status                          |
+| ----------------------------------------- | --------------------------------------------------- | ---------------------------------- | ------------------------------- |
+| [ADR-001](adr-001-planner-extraction.md)  | Pure-Python Planner Extraction                      | Architecture, planner layer        | Accepted                        |
+| [ADR-002](adr-002-slot-model.md)          | Slot Model                                          | Planner engine, data model         | Accepted                        |
+| [ADR-003](adr-003-cost-scoring.md)        | Cost Scoring Architecture                           | Cost function, candidate selection | Accepted                        |
+| [ADR-004](adr-004-inverter-safety.md)     | Inverter Safety — Layered Hardware Write Protection | Safety, hardware interface         | Accepted                        |
+| [ADR-005](adr-005-forecast-confidence.md) | Forecast Confidence                                 | Forecast handling, diagnostics     | Partially superseded by ADR-006 |
+| [ADR-006](adr-006-solar-correction.md)    | Solar Forecast Auto-Correction                      | Forecast handling, planner engine  | Accepted                        |
 
 ## How to add a new ADR
 
@@ -77,13 +77,13 @@ How are the negative consequences addressed?
 
 ### Option A: [short name]
 
-*Description of the alternative.*
+_Description of the alternative._
 
 **Rejected because:** [reason]
 
 ### Option B: [short name]
 
-*Description of the alternative.*
+_Description of the alternative._
 
 **Rejected because:** [reason]
 
@@ -96,10 +96,8 @@ How are the negative consequences addressed?
 - Links to GitHub issues
 ```
 
-
-
 ## Relationship to other documentation
 
-- **`docs/planner-spec.md`** — the canonical planner specification. ADRs explain *why* design decisions were made; the spec documents *what* the planner must do.
+- **`docs/planner-spec.md`** — the canonical planner specification. ADRs explain _why_ design decisions were made; the spec documents _what_ the planner must do.
 - **`docs/architecture-overview.md`** — high-level architecture overview. ADRs provide the reasoning behind the architecture.
 - **`.github/memories.md`** — repository memory for AI agents. Key ADR conclusions are reflected there.

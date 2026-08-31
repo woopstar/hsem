@@ -73,26 +73,31 @@ We adopt an **explicit per-slot record** model. Every slot in the horizon is a
 ### Key design rules
 
 #### 1. No nullable energy fields at planner output
+
 Every energy field is `0.0` for slots that do not participate (past slots, idle
 recommendations). This eliminates the need for null guards in cost calculators
 and SoC simulation.
 
 #### 2. Recommendation is the sole control signal
+
 The SoC simulator reads only the slot's `recommendation` to decide energy flows.
 No other field drives behaviour — this keeps the simulation deterministic and
 testable.
 
 #### 3. Past-slot sentinel
+
 After time passes, `recommendation` is set to `time_passed`, all energy fields
 are zeroed, and `estimated_battery_soc_after_kwh` is set to `0.0`. The cost
 function skips these slots entirely.
 
 #### 4. Dedicated fields, not derived
+
 `estimated_net_consumption_kwh` is populated explicitly (with PV confidence decay
 applied) rather than computed on-the-fly. This ensures consistency between the
 planner that schedules around it and the sensors that display it.
 
 #### 5. Energy units only
+
 All power limits are converted to per-slot energy caps at the planner boundary.
 The slot model never stores kW values — only kWh.
 
@@ -140,10 +145,12 @@ The slot model never stores kW values — only kWh.
 ## Alternatives Considered
 
 ### A. Lazy / index-based model
+
 Store all time-series data in parallel arrays (price[0..n-1], load[0..n-1], etc.)
 and compute slot views on demand.
 
 **Rejected because:**
+
 - Each pipeline step (schedule, simulate, score) would need to carry the full index
   around, making function signatures fragile.
 - Derived fields (net consumption) would be recomputed in every step, risking
@@ -151,10 +158,12 @@ and compute slot views on demand.
 - Test readability suffers — slot-level assertions require array indexing.
 
 ### B. Event-sourced state machine
+
 Model the battery as a state machine and slots as transitions. Reconstruct the
 slot array from the transition log.
 
 **Rejected because:**
+
 - Over-engineered for the current requirements. The slot count (≤ 192) makes
   reconstruction overhead irrelevant.
 - Auditability suffers — there is no single "slot n" object to inspect in
@@ -163,10 +172,12 @@ slot array from the transition log.
   are first-class objects.
 
 ### C. Single energy model per slot
+
 Store only `net_kwh = PV - load` per slot and derive all battery/grid flows
 from that single number.
 
 **Rejected because:**
+
 - Loss of information — you cannot distinguish "grid import for battery" from
   "grid import for house" after simplification.
 - Terminal SoC accounting requires knowing battery energy removed, not just net.

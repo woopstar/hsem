@@ -58,19 +58,19 @@ flowchart TD
 
 ### Planner modules
 
-| Module | Responsibility | HA imports |
-|---|---|---|
-| `planner/engine_core.py` | Pipeline orchestration | None |
-| `planner/slot_population.py` | Build time horizon | None |
-| `planner/charge_scheduler.py` | Charge schedule logic (planner/charging/ sub-package) | None |
-| `planner/discharge_scheduler.py` | Discharge schedule logic | None |
-| `planner/candidate_generator.py` | Candidate plan generation | None |
-| `planner/candidate_selector.py` | Candidate scoring + selection | None |
-| `planner/cost_function.py` | Cost/score calculation | None |
-| `planner/soc_simulation.py` | Battery SoC forward sim | None |
-| `planner/milp_optimizer.py` | LP solver (scipy HiGHS) | None |
-| `planner/ev_planner.py` | EV charging plan builder | None |
-| `planner/engine_explanation.py` | Human-readable explanations | None |
+| Module                           | Responsibility                                        | HA imports |
+| -------------------------------- | ----------------------------------------------------- | ---------- |
+| `planner/engine_core.py`         | Pipeline orchestration                                | None       |
+| `planner/slot_population.py`     | Build time horizon                                    | None       |
+| `planner/charge_scheduler.py`    | Charge schedule logic (planner/charging/ sub-package) | None       |
+| `planner/discharge_scheduler.py` | Discharge schedule logic                              | None       |
+| `planner/candidate_generator.py` | Candidate plan generation                             | None       |
+| `planner/candidate_selector.py`  | Candidate scoring + selection                         | None       |
+| `planner/cost_function.py`       | Cost/score calculation                                | None       |
+| `planner/soc_simulation.py`      | Battery SoC forward sim                               | None       |
+| `planner/milp_optimizer.py`      | LP solver (scipy HiGHS)                               | None       |
+| `planner/ev_planner.py`          | EV charging plan builder                              | None       |
+| `planner/engine_explanation.py`  | Human-readable explanations                           | None       |
 
 ### Data boundary enforcement
 
@@ -120,18 +120,18 @@ flowchart TD
 
 ### Option A: Keep tight coupling (status quo ante)
 
-*Rejected because:* Testing friction and non-determinism made the planner
+_Rejected because:_ Testing friction and non-determinism made the planner
 difficult to maintain. Every change required full HA test harness setup.
 
 ### Option B: Abstract base class with HA and planner implementations
 
-*Rejected because:* Would have created leaky abstractions — planner methods
+_Rejected because:_ Would have created leaky abstractions — planner methods
 would need to accept or return HA types at some boundary. Pure data boundary
 is simpler and more testable.
 
 ### Option C: Separate standalone library (pip package)
 
-*Rejected because:* HSEM is a Home Assistant integration; extracting the
+_Rejected because:_ HSEM is a Home Assistant integration; extracting the
 planner as a separate pip package would require managing versioning,
 releases, and dependency sync. The current in-repo separation achieves the
 same decoupling without the overhead of a library release process.

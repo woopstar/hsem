@@ -1,0 +1,12 @@
+# Mirrors the exclude patterns in .pre-commit-config.yaml's prettier hook so
+# the CLI, the hook and CI all agree on scope.  Home Assistant owns the shape
+# of these files (manifest, translations, generated JSON) — reformatting them
+# risks diffs against upstream tooling for no benefit.
+custom_components/**/*.json
+translations/
+
+# Generated / vendored
+.venv/
+htmlcov/
+coverage.xml
+uv.lock

@@ -9,10 +9,10 @@ This document provides the complete mathematical formulation of the HSEM cost fu
 
 The cost function returns two distinct aggregates for every plan:
 
-| Aggregate | Symbol | Contents | Used for |
-|---|---|---|---|
-| **total_cost** | $C_{total}$ | Real money terms only | Auditing, bill comparison |
-| **score** | $S$ | $C_{total}$ + synthetic penalties + terminal SoC value | Candidate selection |
+| Aggregate      | Symbol      | Contents                                               | Used for                  |
+| -------------- | ----------- | ------------------------------------------------------ | ------------------------- |
+| **total_cost** | $C_{total}$ | Real money terms only                                  | Auditing, bill comparison |
+| **score**      | $S$         | $C_{total}$ + synthetic penalties + terminal SoC value | Candidate selection       |
 
 The selector picks the plan with the **lowest score**, not the lowest money cost.
 
@@ -20,11 +20,11 @@ The selector picks the plan with the **lowest score**, not the lowest money cost
 
 ## Total cost (money terms)
 
-$$ C_{total} = C_{import} - R_{export} + C_{cycle} + C_{loss} + C_{tariff} $$
+$$ C*{total} = C*{import} - R*{export} + C*{cycle} + C*{loss} + C*{tariff} $$
 
 ### Grid import cost
 
-$$ C_{import} = \sum_{t \in slots} gi[t] \cdot p_{imp}[t] $$
+$$ C*{import} = \sum*{t \in slots} gi[t] \cdot p\_{imp}[t] $$
 
 Where $gi[t]$ is the actual grid import in kWh and $p_{imp}[t]$ is the import
 price in currency/kWh.
@@ -35,7 +35,7 @@ price in currency/kWh.
 
 ### Export revenue
 
-$$ R_{export} = \sum_{t \in slots} ge[t] \cdot p_{exp}[t] $$
+$$ R*{export} = \sum*{t \in slots} ge[t] \cdot p\_{exp}[t] $$
 
 Where $ge[t]$ is the grid export in kWh and $p_{exp}[t]$ is the export price.
 
@@ -44,7 +44,7 @@ Where $ge[t]$ is the grid export in kWh and $p_{exp}[t]$ is the export price.
 
 ### Battery cycle cost (depreciation)
 
-$$ C_{cycle} = \sum_{t \in slots} \max(charge[t], discharge[t]) \cdot c_{cycle} $$
+$$ C*{cycle} = \sum*{t \in slots} \max(charge[t], discharge[t]) \cdot c\_{cycle} $$
 
 Where $c_{cycle}$ is the cycle cost per kWh throughput.
 
@@ -52,24 +52,24 @@ The cycle cost counts the **maximum** of charge and discharge per slot, not
 their sum. This matches the MILP formulation where $m[t] = \max(ec[t], ed[t])$
 and the 2× denominator in the cycle cost formula:
 
-$$ c_{cycle} = \frac{purchase\_price}{2 \cdot usable\_kwh \cdot expected\_cycles} $$
+$$ c\_{cycle} = \frac{purchase_price}{2 \cdot usable_kwh \cdot expected_cycles} $$
 
 The 2× denominator accounts for one full round-trip (charge + discharge = 2 ×
-usable_kwh throughput per cycle). With this factor, charging $x$ kWh and
-discharging $x$ kWh costs $c_{cycle} \cdot \max(x, x) = c_{cycle} \cdot x$,
+usable*kwh throughput per cycle). With this factor, charging $x$ kWh and
+discharging $x$ kWh costs $c*{cycle} \cdot \max(x, x) = c\_{cycle} \cdot x$,
 which equals $\frac{purchase\_price \cdot x}{2 \cdot usable \cdot cycles}$ —
 matching the expected wear for moving $x$ kWh through the battery in one
 direction.
 
 ### Conversion-loss compatibility field
 
-$$ C_{loss} = 0 $$
+$$ C\_{loss} = 0 $$
 
 For battery-side charge and discharge energy, the physical AC flows are:
 
-$$ charge_{AC}[t] = \frac{charge[t]}{\eta_{chg}} $$
+$$ charge*{AC}[t] = \frac{charge[t]}{\eta*{chg}} $$
 
-$$ discharge_{AC}[t] = discharge[t] \cdot \eta_{dis} $$
+$$ discharge*{AC}[t] = discharge[t] \cdot \eta*{dis} $$
 
 The first quantity increases import or consumes otherwise-exportable PV. The
 second reduces import or creates AC export. Import cost and export revenue thus
@@ -77,7 +77,7 @@ price efficiency exactly once; another loss-price term would double-count it.
 
 ### Tariff cost
 
-$$ C_{tariff} = \sum_{t \in slots} tariff[t] $$
+$$ C*{tariff} = \sum*{t \in slots} tariff[t] $$
 
 An optional per-slot fixed tariff cost, typically zero unless the user
 configures grid tariff fees.
@@ -86,15 +86,17 @@ configures grid tariff fees.
 
 ## Score (selector objective)
 
-$$ S = C_{total} + P_{soc} + P_{grid} + V_{terminal} $$
+$$ S = C*{total} + P*{soc} + P*{grid} + V*{terminal} $$
 
 ### SoC penalties (quadratic guard)
 
-$$ P_{soc} = \sum_{t \in slots} \begin{cases}
+$$
+P_{soc} = \sum_{t \in slots} \begin{cases}
 w_{low} \cdot (soc_{min} - soc[t])^2 & \mathrm{if } soc[t] < soc_{min} \\
 w_{high} \cdot (soc[t] - soc_{max})^2 & \mathrm{if } soc[t] > soc_{max} \\
 0 & \mathrm{otherwise}
-\end{cases} $$
+\end{cases}
+$$
 
 These are **soft guards** — the SoC simulation already hard-clamps at hardware
 limits, so violations are rare. The quadratic form heavily penalises large
@@ -108,15 +110,14 @@ but log-misleading.
 
 ### Grid limit penalty
 
-$$ P_{grid} = \sum_{t \in slots} \max(0, \frac{|gi[t] - ge[t]|}{\Delta t} - L_{grid}) \cdot \Delta t \cdot w_{grid} $$
+$$ P*{grid} = \sum*{t \in slots} \max(0, \frac{|gi[t] - ge[t]|}{\Delta t} - L*{grid}) \cdot \Delta t \cdot w*{grid} $$
 
 Where $\Delta t$ is slot duration in hours, $L_{grid}$ is the configured grid
 power limit in kW, and $w_{grid}$ is the penalty weight per excess kWh.
 
-
 ### Terminal SoC value (opportunity cost)
 
-$$ V_{terminal} = (E_{initial} - E_{final}) \cdot p_{replacement} $$
+$$ V*{terminal} = (E*{initial} - E*{final}) \cdot p*{replacement} $$
 
 Where:
 
@@ -126,13 +127,16 @@ Where:
 
 **Sign convention:**
 
-$$\begin{aligned}
+$$
+\begin{aligned}
 \Delta E &< 0 \mathrm{ (more energy at end)} \rightarrow V_{terminal} < 0 \mathrm{ (credit)} \\
 \Delta E &> 0 \mathrm{ (less energy at end)} \rightarrow V_{terminal} > 0 \mathrm{ (penalty)}
-\end{aligned}$$
+\end{aligned}
+$$
 
 The replacement price uses the **minimum** future import price across the horizon
 because:
+
 - It represents the marginal cost of re-purchasing one stored kWh at the cheapest
   opportunity
 - Using the average (including expensive peak prices) over-values stored energy

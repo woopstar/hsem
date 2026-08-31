@@ -11,16 +11,16 @@ Activate this skill **after making code changes** and **before opening a PR**. S
 
 When behaviour changes, check **every** file below. If it describes something you changed, update it:
 
-| File | When to check |
-|------|---------------|
-| `docs/planner-guide.md` | Planner inputs, outputs, cost function, or scenarios changed |
-| `docs/planner-spec.md` | Planner semantics, invariants, formulas, or safety gates changed |
-| `docs/config-flow-reference.md` | Config/options flow steps changed |
-| `docs/ev-charge-plan-setup.md` | EV planned load setup changed |
-| `docs/huawei_entities.md` | New Huawei entities wired or existing ones changed |
-| `.github/memories.md` | Canonical patterns, module map, open issues, or architectural decisions changed |
-| `README.md` | User-facing features, descriptions, or links changed |
-| `translations/en.json` | Any user-facing string added, changed, or removed |
+| File                            | When to check                                                                   |
+| ------------------------------- | ------------------------------------------------------------------------------- |
+| `docs/planner-guide.md`         | Planner inputs, outputs, cost function, or scenarios changed                    |
+| `docs/planner-spec.md`          | Planner semantics, invariants, formulas, or safety gates changed                |
+| `docs/config-flow-reference.md` | Config/options flow steps changed                                               |
+| `docs/ev-charge-plan-setup.md`  | EV planned load setup changed                                                   |
+| `docs/huawei_entities.md`       | New Huawei entities wired or existing ones changed                              |
+| `.github/memories.md`           | Canonical patterns, module map, open issues, or architectural decisions changed |
+| `README.md`                     | User-facing features, descriptions, or links changed                            |
+| `translations/en.json`          | Any user-facing string added, changed, or removed                               |
 
 ## Documentation Rules
 
