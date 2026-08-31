@@ -1136,27 +1136,35 @@ Files involved: `flows/batteries_wait_mode.py`, `config_flow.py`,
 `models/sensor_config.py`, `custom_sensors/config_reader.py`,
 `custom_sensors/applier.py`.
 
-## GitHub Operations — MCP Tools Only, Never the `gh` CLI
+## GitHub Operations — `gh` CLI Is Available (Corrected 2026-08-30)
 
-The `gh` CLI is **not available in the devcontainer**. All GitHub API operations
-must go through the GitHub MCP tools — never shell out to `gh`.
+**The `gh` CLI IS installed and authenticated in the devcontainer** (`/usr/bin/gh`,
+added via devcontainer features). The earlier "never use `gh`, MCP tools only" rule
+was written when `gh` genuinely was absent; that premise no longer holds and the rule
+has been inverted repo-wide (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`,
+both `hsem-pr-workflow` skill copies).
 
-| Operation | MCP tool |
-|---|---|
-| Create a PR | `create_pull_request` |
-| Update a PR (title/body/draft/reviewers) | `update_pull_request` |
-| Read a PR / diff / files / reviews / comments | `pull_request_read` |
-| Review a PR | `pull_request_review_write` / `add_comment_to_pending_review` |
-| Create / update / close issues | `issue_write` / `issue_read` |
-| List / search issues & PRs | `list_issues` / `search_issues` / `search_pull_requests` |
-| Merge a PR | `merge_pull_request` |
-| Create / list branches | `create_branch` / `list_branches` |
-| Push files to a branch | `push_files` |
+**GitHub MCP tools are not present in every session.** Never assume they exist — check
+first and fall back to `gh`, which is the reliable baseline. When both are available
+either path is fine.
 
-**Local `git` is still fine** for `git add` / `git commit` / `git checkout` / `git push`
-(pushing the branch over SSH). Only the *GitHub API* operations (PRs, issues, reviews)
-must use the MCP tools. The `update_pull_request` tool accepts the full markdown body
-as the `body` argument — no temp file or shell escaping needed.
+| Operation | `gh` command | MCP tool (when available) |
+|---|---|---|
+| Create a PR | `gh pr create --base main --title ... --body-file -` | `create_pull_request` |
+| Update a PR (title/body) | `gh pr edit <n> --title ... --body-file -` | `update_pull_request` |
+| Read a PR / diff / comments | `gh pr view <n> --json ...` / `gh pr diff <n>` | `pull_request_read` |
+| Review a PR | `gh pr review <n>` | `pull_request_review_write` |
+| Create / update / close issues | `gh issue create` / `gh issue edit` / `gh issue close` | `issue_write` / `issue_read` |
+| List / search issues & PRs | `gh issue list` / `gh search issues` | `list_issues` / `search_issues` |
+| Merge a PR | `gh pr merge <n>` | `merge_pull_request` |
+
+**Multiline bodies must go through `--body-file`** (a path, or `-` with a piped
+heredoc). Inlining a long markdown body as a shell argument invites quoting bugs.
+
+**Prefer `rtk gh ...`** — RTK filters `gh` output and cuts 26-87 % of the tokens.
+
+**Local `git` is unchanged** for `git add` / `git commit` / `git checkout` / `git push`
+(the branch pushes over SSH to `origin` = `woopstar/hsem`).
 
 ## Fork Divergence — `Ambilights/hsem-ambilights` Is Not Back-Portable
 

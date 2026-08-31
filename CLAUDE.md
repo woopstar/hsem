@@ -145,15 +145,15 @@ git commit -m "feat(scope): description - Fixes #<ISSUE_NUMBER>"
 # 10. Push the branch (local git over SSH)
 git push origin feat/<issue-number>-<description>
 
-# 11. Create the PR with the GitHub MCP tool (NOT the `gh` CLI — it is not
-#     available in the devcontainer). Pass the full markdown body as the `body`
-#     argument to `create_pull_request`.
+# 11. Create the PR with the `gh` CLI, passing the body via --body-file:
+#     gh pr create --base main --title "feat(scope): ..." --body-file pr.md
 ```
 
-> **GitHub operations use MCP tools, never the `gh` CLI.** The `gh` CLI is not
-> available in the devcontainer. Use `create_pull_request`, `update_pull_request`,
-> `pull_request_read`, `issue_write`/`issue_read`, `search_issues`,
-> `merge_pull_request`, etc. Local `git` (add/commit/checkout/push) is still fine.
+> **GitHub operations: use the `gh` CLI.** It is installed and authenticated in the
+> devcontainer (`/usr/bin/gh`). GitHub MCP tools are not present in every session, so
+> never assume they exist — check, and fall back to `gh`. Prefer `rtk gh ...` to cut
+> output tokens. Pass PR/issue bodies via `--body-file`, never as an inline shell
+> argument. Local `git` (add/commit/checkout/push) is unchanged.
 
 ### Keeping an Open PR Up to Date
 
@@ -164,10 +164,9 @@ Whenever you push additional commits to a branch that already has an open PR:
    additional tests, and any newly satisfied acceptance criteria.
 3. Tick off completed items in any checklist inside the PR description.
 4. Never leave the PR description stale after follow-up commits.
-5. **Use the `update_pull_request` MCP tool** — pass the full markdown body as the `body`
-   argument. The MCP tool handles multiline content safely (no temp file, no shell
-   escaping). **Never** shell out to `gh pr edit` — the `gh` CLI is not available in the
-   devcontainer.
+5. **Use `gh pr edit <n> --title ... --body-file <path>`** (or the `update_pull_request`
+   MCP tool when the session has it). Always pass the body via `--body-file` so multiline
+   markdown survives intact — never inline it as a single shell argument.
 
 ## Home Assistant Compliance
 

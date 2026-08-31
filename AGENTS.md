@@ -252,23 +252,29 @@ Before creating a commit, the agent MUST report the result of:
 
 ## Pull Request Guidelines
 
-### GitHub Operations — Use MCP Tools, Never the `gh` CLI (Mandatory)
+### GitHub Operations — `gh` CLI (Primary), MCP Tools (When Available)
 
-- **The `gh` CLI is NOT available in the devcontainer.** Do not shell out to `gh` for any
-  GitHub operation (PRs, issues, reviews, branches, releases, etc.).
-- **Always use the GitHub MCP tools** instead:
-  - Create a PR → `create_pull_request`
-  - Update a PR (title/body/draft/reviewers) → `update_pull_request`
-  - Read a PR / diff / files / reviews / comments → `pull_request_read`
-  - Review a PR → `pull_request_review_write` / `add_comment_to_pending_review`
-  - Create / update / close issues → `issue_write` / `issue_read`
-  - List / search issues & PRs → `list_issues` / `search_issues` / `search_pull_requests`
-  - Merge a PR → `merge_pull_request`
-  - Create / list branches → `create_branch` / `list_branches`
-  - Push files to a branch → `push_files`
-- **Local git is still fine** for `git add` / `git commit` / `git checkout` / `git push`
-  (pushing the branch over SSH). Only the *GitHub API* operations (PRs, issues, reviews)
-  must go through the MCP tools.
+- **The `gh` CLI IS available and authenticated in the devcontainer** (`/usr/bin/gh`,
+  installed via devcontainer features). Use it for GitHub API operations: PRs, issues,
+  reviews, branches, releases.
+- **GitHub MCP tools are not present in every session.** Never assume they exist. When
+  both are available either path is fine; when they are not, `gh` is the only path.
+
+| Operation | `gh` command | MCP tool (when available) |
+|---|---|---|
+| Create a PR | `gh pr create --base main --title ... --body-file -` | `create_pull_request` |
+| Update a PR (title/body) | `gh pr edit <n> --title ... --body-file -` | `update_pull_request` |
+| Read a PR / diff / comments | `gh pr view <n> --json ...` / `gh pr diff <n>` | `pull_request_read` |
+| Review a PR | `gh pr review <n>` | `pull_request_review_write` |
+| Create / update / close issues | `gh issue create` / `gh issue edit` / `gh issue close` | `issue_write` / `issue_read` |
+| List / search issues & PRs | `gh issue list` / `gh search issues` | `list_issues` / `search_issues` |
+| Merge a PR | `gh pr merge <n>` | `merge_pull_request` |
+| Create / list branches | `git push -u origin <branch>` | `create_branch` / `list_branches` |
+
+- **Multiline bodies:** pass `--body-file <path>`, or `--body-file -` and pipe a
+  heredoc. Do not inline a long markdown body as a single shell argument.
+- **Prefer `rtk gh ...`** — RTK filters `gh` output and cuts 26-87 % of the tokens.
+- **Local git is still fine** for `git add` / `git commit` / `git checkout` / `git push`.
 
 **REQUIRED: Code Quality Before Submission**
 
@@ -300,10 +306,9 @@ PR after every meaningful commit:
 - **Description** — reflect every change made since the PR was opened: new files, updated logic,
   additional tests, and any acceptance criteria that were added or completed.
 - **Checklist** — tick off acceptance criteria that are now satisfied.
-- Use the **`update_pull_request` MCP tool** to apply updates — pass the full markdown
-  body as the `body` argument. The MCP tool handles multiline content safely (no temp
-  file, no shell escaping). **Never** shell out to `gh pr edit` — the `gh` CLI is not
-  available in the devcontainer.
+- Apply updates with `gh pr edit <n> --title ... --body-file <path>` (or the
+  `update_pull_request` MCP tool when the session has it). Always pass the body via
+  `--body-file`, never as an inline shell argument.
 - Do NOT leave the PR description stale after follow-up commits.
 
 Before merging any PR, the agent MUST ensure:
