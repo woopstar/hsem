@@ -124,7 +124,13 @@ session.
 
 Applied to the current slot immediately before hardware writes, using live sensor data:
 
-1. `import_price < 0` → `force_export` (overrides everything)
+1. `import_price < 0` AND `batteries_enable_excess_export` is enabled AND the
+   live export price is authoritative, non-negative, and at/above
+   `max(export_electricity_min_price, batteries_export_min_price)` →
+   `force_export` (overrides everything else). Otherwise this rule does not
+   fire and evaluation continues at rule 2 (issue #732 — a negative import
+   price does not by itself make exporting profitable, and must not silently
+   override a disabled excess-export setting).
 2. `batteries_charge_grid` → kept (must never be overridden by EV or discharge rule)
 3. Any EV actively charging → `ev_smart_charging`
 4. Battery energy > remaining discharge-schedule need → `batteries_discharge_mode`
@@ -139,13 +145,21 @@ Applied to the current slot immediately before hardware writes, using live senso
   must be relabelled `ev_smart_charging` after layer 2.
 - A slot with `ev_planned_load_kwh > 0` and recommendation `batteries_wait_mode`
   must be relabelled `ev_smart_charging` after layer 2.
-- The runtime resolver must set `force_export` when `import_price < 0`, regardless
-  of the planner recommendation.
+- The runtime resolver must set `force_export` when `import_price < 0` AND
+  excess battery export is enabled AND the live export price is available,
+  non-negative, and at/above the configured export floor — regardless of the
+  planner recommendation.
+- The runtime resolver must NOT set `force_export` when `import_price < 0` but
+  `batteries_enable_excess_export` is disabled.
+- The runtime resolver must NOT set `force_export` when `import_price < 0` but
+  the live export price is negative, below the configured floor, or
+  unavailable.
 - The runtime resolver must NOT override `batteries_charge_grid` even when an EV
   is actively charging.
 - The runtime resolver must NOT override `batteries_charge_grid` even when
   `import_price < 0` is False and EV is charging.
-- Priority 1 (negative price → `force_export`) always beats priority 3 (EV charging).
+- Priority 1 (negative price + profitable export → `force_export`) always
+  beats priority 3 (EV charging) when it fires.
 
 ## Energy balance per slot
 

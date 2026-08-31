@@ -206,29 +206,37 @@ class TestRecommendationResolverNullSafety:
             resolve_current_recommendation,
         )
         from custom_components.hsem.models.live_state import LiveState
+        from custom_components.hsem.models.sensor_config import SensorConfig
         from custom_components.hsem.utils.recommendations import Recommendations
 
         rec = self._make_rec()
         live = LiveState()
         live.import_electricity_price = 0.0  # explicitly zero — not negative
+        cfg = SensorConfig()
+        cfg.batteries_enable_excess_export = True
 
-        resolve_current_recommendation(rec, live, 0.0)
+        resolve_current_recommendation(rec, live, 0.0, cfg)
         # Should NOT override to ForceExport with a zero (non-negative) price
         assert rec.recommendation != Recommendations.ForceExport.value
 
     def test_negative_import_price_triggers_force_export(self) -> None:
-        """A confirmed negative price still triggers ForceExport."""
+        """A confirmed negative price with profitable export still triggers ForceExport."""
         from custom_components.hsem.custom_sensors.recommendation_resolver import (
             resolve_current_recommendation,
         )
         from custom_components.hsem.models.live_state import LiveState
+        from custom_components.hsem.models.sensor_config import SensorConfig
         from custom_components.hsem.utils.recommendations import Recommendations
 
         rec = self._make_rec()
         live = LiveState()
         live.import_electricity_price = -0.05
+        live.export_electricity_price = 0.10
+        live.export_electricity_price_available = True
+        cfg = SensorConfig()
+        cfg.batteries_enable_excess_export = True
 
-        resolve_current_recommendation(rec, live, 0.0)
+        resolve_current_recommendation(rec, live, 0.0, cfg)
         assert rec.recommendation == Recommendations.ForceExport.value
 
 

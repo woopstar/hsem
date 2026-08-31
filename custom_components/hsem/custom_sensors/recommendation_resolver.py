@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.logger import HSEM_LOGGER
 from custom_components.hsem.utils.recommendations import Recommendations
@@ -28,6 +29,7 @@ def resolve_current_recommendation(
     rec: HourlyRecommendation,
     live: LiveState,
     batteries_schedules_remaining_capacity_needed: float,
+    cfg: SensorConfig,
 ) -> None:
     """Adjust the current-interval recommendation based on live runtime state.
 
@@ -35,7 +37,8 @@ def resolve_current_recommendation(
     cannot know, for example, whether a car just plugged in.  This function
     applies the final layer of real-time overrides in priority order:
 
-    1. **Negative import price** → force export everything to earn money.
+    1. **Negative import price** → force export, but only when exporting is
+       itself economically viable and permitted by the user's configuration.
     2. **Grid charge active** → grid charging takes priority over EV smart charge.
     3. **EV actively charging** → switch to EV smart charging mode.
     4. **Battery above remaining schedule need** → switch to discharge mode.
@@ -47,22 +50,54 @@ def resolve_current_recommendation(
         live: Live state snapshot at call time.
         batteries_schedules_remaining_capacity_needed: Total kWh still needed
             by all upcoming discharge-window schedules.
+        cfg: Current sensor configuration (excess-export toggle and export
+            price floors).
     """
     if rec is None:
         return
 
     original_recommendation = rec.recommendation
 
-    # 1. Negative import price → force export
+    # 1. Negative import price → force export.
+    #
+    # A negative import price alone does not make exporting profitable — the
+    # export price can be negative too (issue #732).  Only override when the
+    # user has opted into excess battery export AND the live export price is
+    # authoritative AND non-negative AND at/above the configured floor
+    # (the higher of the general and battery-specific export minimums).
     import_price = convert_to_float(live.import_electricity_price)
+    export_price = convert_to_float(live.export_electricity_price)
+    export_floor = max(
+        cfg.export_electricity_min_price, cfg.batteries_export_min_price, 0.0
+    )
+    export_is_profitable = (
+        live.export_electricity_price_available
+        and export_price is not None
+        and export_price >= export_floor
+    )
+
     if import_price is not None and import_price < 0:
-        rec.recommendation = Recommendations.ForceExport.value
+        if cfg.batteries_enable_excess_export and export_is_profitable:
+            rec.recommendation = Recommendations.ForceExport.value
+            HSEM_LOGGER.debug(
+                "[resolver] negative import price (%.4f) with profitable export "
+                "(%.4f >= floor %.4f) → overriding %s to force_export",
+                import_price,
+                export_price,
+                export_floor,
+                original_recommendation,
+            )
+            return
         HSEM_LOGGER.debug(
-            "[resolver] negative import price (%.4f) → overriding %s to force_export",
+            "[resolver] negative import price (%.4f) but export not viable "
+            "(excess_export_enabled=%s export_price=%s export_available=%s "
+            "floor=%.4f) → not forcing export",
             import_price,
-            original_recommendation,
+            cfg.batteries_enable_excess_export,
+            export_price,
+            live.export_electricity_price_available,
+            export_floor,
         )
-        return
 
     # 2. Grid charging in progress → preserve, do not override
     if rec.recommendation == Recommendations.BatteriesChargeGrid.value:
