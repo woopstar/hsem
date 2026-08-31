@@ -544,18 +544,22 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         # Package OCPP charger state for sensor entities.
         ocpp_chargers: dict | None = None
         ocpp_sessions: list | None = None
+        ocpp_listening = False
         ocpp = getattr(self, "_ocpp_server", None)
         if ocpp is not None:
             ocpp_chargers = ocpp.charger_sessions
             ocpp_sessions = list(self._ocpp_sessions)
+            ocpp_listening = ocpp.is_listening
 
         # Second EV's OCPP server state.
         ocpp_second_chargers: dict | None = None
         ocpp_second_sessions: list | None = None
+        ocpp_second_listening = False
         ocpp_second = getattr(self, "_ocpp_second_server", None)
         if ocpp_second is not None:
             ocpp_second_chargers = ocpp_second.charger_sessions
             ocpp_second_sessions = []
+            ocpp_second_listening = ocpp_second.is_listening
 
         data = CoordinatorData(
             cfg=self._cfg,
@@ -583,6 +587,8 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             ocpp_sessions=ocpp_sessions,
             ocpp_second_chargers=ocpp_second_chargers,
             ocpp_second_sessions=ocpp_second_sessions,
+            ocpp_listening=ocpp_listening,
+            ocpp_second_listening=ocpp_second_listening,
             capacity_learner=getattr(self, "_capacity_learner", CapacityLearner()),
             solar_hour_factors=dict(
                 getattr(self, "_solar_corrector", SolarForecastCorrector()).hour_factors

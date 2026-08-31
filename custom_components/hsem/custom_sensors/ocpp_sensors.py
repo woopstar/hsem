@@ -19,6 +19,7 @@ They read charger state from :attr:`CoordinatorData.ocpp_chargers` and
 from __future__ import annotations
 
 from typing import Any, override
+from urllib.parse import urlparse
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.sensor.const import SensorStateClass
@@ -27,6 +28,7 @@ from homeassistant.const import (
     EntityCategory,
     UnitOfPower,
 )
+from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import (
@@ -34,6 +36,7 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
+from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.sensornames.ocpp import (
     get_ocpp_charger_info_sensor_entity_id,
     get_ocpp_charger_info_sensor_name,
@@ -64,6 +67,46 @@ def _chargers_for(data: CoordinatorData | None, charger_index: int) -> dict | No
     return data.ocpp_chargers
 
 
+def _ocpp_enabled_for(cfg: SensorConfig, charger_index: int) -> bool:
+    """Return whether OCPP is configured/enabled for the given EV's server."""
+    if charger_index == 2:
+        return cfg.ocpp_second_enabled
+    return cfg.ocpp_enabled
+
+
+def _is_listening(data: CoordinatorData | None, charger_index: int) -> bool:
+    """Return whether the given EV's OCPP server is currently listening."""
+    if data is None:
+        return False
+    if charger_index == 2:
+        return data.ocpp_second_listening
+    return data.ocpp_listening
+
+
+def _configured_port(cfg: SensorConfig, charger_index: int) -> int:
+    """Return the configured TCP port for the given EV's OCPP server."""
+    return cfg.ocpp_second_port if charger_index == 2 else cfg.ocpp_port
+
+
+def _connection_url(hass: Any, port: int) -> str | None:
+    """Build a best-effort ``ws://<host>:<port>/`` connection URL.
+
+    The embedded server binds ``0.0.0.0`` (all interfaces), which isn't a
+    usable address for an EVSE to dial. Resolve HA's own LAN-reachable host
+    via :func:`homeassistant.helpers.network.get_url` instead. Returns
+    ``None`` when no usable URL can be resolved — the caller falls back to
+    showing host/port separately.
+    """
+    try:
+        base = get_url(hass, allow_internal=True, allow_ip=True, prefer_external=False)
+    except NoURLAvailableError:
+        return None
+    host = urlparse(base).hostname
+    if not host:
+        return None
+    return f"ws://{host}:{port}/"
+
+
 # ---------------------------------------------------------------------------
 # OCPP Charger Status Sensor
 # ---------------------------------------------------------------------------
@@ -78,7 +121,8 @@ class HSEMOCPPChargerStatusSensor(
     """Diagnostic sensor exposing OCPP charger connection and charging status.
 
     State is one of:
-    - ``"disconnected"`` — No charger connected.
+    - ``"not_configured"`` — This EV's OCPP server isn't enabled in config.
+    - ``"disconnected"`` — Server enabled but no charger connected.
     - ``"Available"`` — Charger connected but idle.
     - ``"Preparing"`` — Preparing to charge.
     - ``"Charging"`` — Actively charging.
@@ -137,6 +181,11 @@ class HSEMOCPPChargerStatusSensor(
         if data is None:
             return self._restored_state or "disconnected"
 
+        if data.cfg is not None and not _ocpp_enabled_for(
+            data.cfg, self._charger_index
+        ):
+            return "not_configured"
+
         chargers = _chargers_for(data, self._charger_index) or {}
         if not chargers:
             return "disconnected"
@@ -148,22 +197,37 @@ class HSEMOCPPChargerStatusSensor(
     @property
     @override
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return per-charger status details."""
+        """Return server diagnostics and per-charger status details."""
         data: CoordinatorData | None = self.coordinator.data
-        chargers = _chargers_for(data, self._charger_index)
-        if not chargers:
+        if (
+            data is None
+            or data.cfg is None
+            or not _ocpp_enabled_for(data.cfg, self._charger_index)
+        ):
             return {}
 
-        attrs: dict[str, Any] = {}
-        for cpid, session in chargers.items():
-            attrs[cpid] = {
-                "status": session.status,
-                "power_w": round(session.current_power_w, 1),
-                "transaction_id": session.transaction_id,
-                "connected_at": (
-                    session.connected_at.isoformat() if session.connected_at else None
-                ),
-            }
+        port = _configured_port(data.cfg, self._charger_index)
+        attrs: dict[str, Any] = {
+            "listening": _is_listening(data, self._charger_index),
+            "port": port,
+        }
+        url = _connection_url(self.hass, port)
+        if url is not None:
+            attrs["url"] = url
+
+        chargers = _chargers_for(data, self._charger_index)
+        if chargers:
+            for cpid, session in chargers.items():
+                attrs[cpid] = {
+                    "status": session.status,
+                    "power_w": round(session.current_power_w, 1),
+                    "transaction_id": session.transaction_id,
+                    "connected_at": (
+                        session.connected_at.isoformat()
+                        if session.connected_at
+                        else None
+                    ),
+                }
         return attrs
 
     @property

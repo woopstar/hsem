@@ -94,3 +94,9 @@ class CoordinatorData:
     ocpp_second_chargers: dict | None = None
     #: Second EV OCPP completed session log.
     ocpp_second_sessions: list | None = None
+    #: True while the primary OCPP server's WebSocket site is bound and
+    #: active (issue #858). False when disabled or not yet started.
+    ocpp_listening: bool = False
+    #: True while the second EV's OCPP server WebSocket site is bound and
+    #: active (issue #858).
+    ocpp_second_listening: bool = False

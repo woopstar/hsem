@@ -511,10 +511,11 @@ Sensors providing live status and diagnostics for an OCPP-compliant EV charger c
 
 ### `sensor.hsem_ocpp_charger_status`
 
-| Property  | Value                                                                    |
-| --------- | ------------------------------------------------------------------------ |
-| **Type**  | `sensor`                                                                 |
-| **State** | Connection/charging state: `connected`, `charging`, `disconnected`, etc. |
+| Property       | Value                                                                                                                                                                                                                                                                                                                   |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**       | `sensor`                                                                                                                                                                                                                                                                                                                |
+| **State**      | `not_configured` (this EV's OCPP server isn't enabled), `disconnected` (enabled, no charger connected), or the live connection/charging state (`Available`, `Preparing`, `Charging`, `Finishing`)                                                                                                                       |
+| **Attributes** | `listening` (bool — server socket bound), `port`, `url` (best-effort `ws://<host>:<port>/` for the EVSE's OCPP config, when HA can resolve a reachable host) — present only when this EV's OCPP server is enabled; plus one entry per connected charger CPID with `status`, `power_w`, `transaction_id`, `connected_at` |
 
 ### `sensor.hsem_ocpp_charger_power`
 
