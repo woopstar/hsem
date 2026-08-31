@@ -13,6 +13,7 @@ from custom_components.hsem.custom_switches.description import (
     HSEMSwitchEntityDescription,
 )
 from custom_components.hsem.custom_switches.switch import HSEMSwitch
+from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.sensornames.controls import (
     get_batteries_schedule_1_switch_key,
     get_batteries_schedule_2_switch_key,
@@ -120,15 +121,38 @@ SWITCH_DESCRIPTIONS: tuple[HSEMSwitchEntityDescription, ...] = (
 )
 
 
+# Switch keys that only apply to a configured EV — created only when that
+# EV's planned load (managed charging) is enabled (issue #859).
+_EV_SWITCH_KEYS = {
+    get_ev_force_discharge_switch_key(),
+    get_ev_smart_charging_switch_key(),
+    get_ev_force_charge_now_switch_key(),
+    get_ev_auto_full_negative_price_switch_key(),
+}
+_EV_SECOND_SWITCH_KEYS = {
+    get_ev_second_smart_charging_switch_key(),
+    get_ev_second_force_charge_now_switch_key(),
+}
+
+
 async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up HSEM switch entities from a config entry."""
+    ev_enabled = bool(get_config_value(config_entry, "hsem_ev_planned_load_enabled"))
+    ev_second_enabled = bool(
+        get_config_value(config_entry, "hsem_ev_second_planned_load_enabled")
+    )
+
+    descriptions = [
+        description
+        for description in SWITCH_DESCRIPTIONS
+        if (description.key not in _EV_SWITCH_KEYS or ev_enabled)
+        and (description.key not in _EV_SECOND_SWITCH_KEYS or ev_second_enabled)
+    ]
+
     async_add_entities(
-        [
-            HSEMSwitch(hass, config_entry, description)
-            for description in SWITCH_DESCRIPTIONS
-        ]
+        [HSEMSwitch(hass, config_entry, description) for description in descriptions]
     )

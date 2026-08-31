@@ -128,25 +128,26 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
     net_consumption_sensor = HSEMNetConsumptionSensor(config_entry, coordinator)
     battery_soc_sensor = HSEMBatterySoCSensor(config_entry, coordinator)
     force_mode_sensor = HSEMForceModeSensor(config_entry, coordinator)
-    ev_charging_sensor = HSEMEVChargingSensor(config_entry, coordinator)
-    ev_optimal_charging_plan_sensor = HSEMEVOptimalChargingPlanSensor(
-        config_entry, coordinator
-    )
-    ev_second_optimal_charging_plan_sensor = HSEMEVSecondOptimalChargingPlanSensor(
-        config_entry, coordinator
-    )
-    ev_charger_calculated_power_sensor = HSEMEVChargerCalculatedPowerSensor(
-        config_entry, coordinator
-    )
-    ev_second_charger_calculated_power_sensor = (
-        HSEMEVSecondChargerCalculatedPowerSensor(config_entry, coordinator)
-    )
-    ev_charger_current_limit_sensor = HSEMEVChargerCurrentLimitSensor(
-        config_entry, coordinator
-    )
-    ev_second_charger_current_limit_sensor = HSEMEVSecondChargerCurrentLimitSensor(
-        config_entry, coordinator
-    )
+
+    # EV1 sensors — only meaningful when the primary EV's planned load
+    # (managed charging) is configured (issue #859).
+    ev_entities = []
+    if bool(get_config_value(config_entry, "hsem_ev_planned_load_enabled")):
+        ev_entities = [
+            HSEMEVChargingSensor(config_entry, coordinator),
+            HSEMEVOptimalChargingPlanSensor(config_entry, coordinator),
+            HSEMEVChargerCalculatedPowerSensor(config_entry, coordinator),
+            HSEMEVChargerCurrentLimitSensor(config_entry, coordinator),
+        ]
+
+    # EV2 sensors — only when the second EV's planned load is configured.
+    ev_second_entities = []
+    if bool(get_config_value(config_entry, "hsem_ev_second_planned_load_enabled")):
+        ev_second_entities = [
+            HSEMEVSecondOptimalChargingPlanSensor(config_entry, coordinator),
+            HSEMEVSecondChargerCalculatedPowerSensor(config_entry, coordinator),
+            HSEMEVSecondChargerCurrentLimitSensor(config_entry, coordinator),
+        ]
 
     # Forecast accuracy sensor — exposes predicted-vs-actual metrics.
     forecast_accuracy_sensor = HSEMForecastAccuracySensor(config_entry, coordinator)
@@ -186,13 +187,16 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
     savings_sensor = HSEMSavingsSensor(config_entry, coordinator)
 
     # OCPP charger sensors — expose charger state when OCPP server is enabled.
-    # One set per EV: the second set only when the second EV is configured.
-    ocpp_charger_status_sensor = HSEMOCPPChargerStatusSensor(config_entry, coordinator)
-    ocpp_charger_power_sensor = HSEMOCPPChargerPowerSensor(config_entry, coordinator)
-    ocpp_charger_info_sensor = HSEMOCPPChargerInfoSensor(config_entry, coordinator)
-    ocpp_charger_sessions_sensor = HSEMOCPPChargerSessionsSensor(
-        config_entry, coordinator
-    )
+    # One set per EV: each set only when that EV's OCPP server is configured
+    # (issue #859 — previously the primary set was always created).
+    ocpp_entities = []
+    if bool(get_config_value(config_entry, "hsem_ocpp_enabled")):
+        ocpp_entities = [
+            HSEMOCPPChargerStatusSensor(config_entry, coordinator),
+            HSEMOCPPChargerPowerSensor(config_entry, coordinator),
+            HSEMOCPPChargerInfoSensor(config_entry, coordinator),
+            HSEMOCPPChargerSessionsSensor(config_entry, coordinator),
+        ]
 
     ocpp_second_entities = []
     if bool(
@@ -218,13 +222,8 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             net_consumption_sensor,
             battery_soc_sensor,
             force_mode_sensor,
-            ev_charging_sensor,
-            ev_optimal_charging_plan_sensor,
-            ev_second_optimal_charging_plan_sensor,
-            ev_charger_calculated_power_sensor,
-            ev_second_charger_calculated_power_sensor,
-            ev_charger_current_limit_sensor,
-            ev_second_charger_current_limit_sensor,
+            *ev_entities,
+            *ev_second_entities,
             applier_status_sensor,
             plan_explanation_sensor,
             forecast_accuracy_sensor,
@@ -238,10 +237,7 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             import_cost_sensor,
             net_grid_balance_sensor,
             working_mode_sensor,
-            ocpp_charger_status_sensor,
-            ocpp_charger_power_sensor,
-            ocpp_charger_info_sensor,
-            ocpp_charger_sessions_sensor,
+            *ocpp_entities,
             *ocpp_second_entities,
         ]
     )

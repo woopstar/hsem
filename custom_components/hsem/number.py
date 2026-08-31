@@ -15,6 +15,7 @@ from custom_components.hsem.custom_numbers.battery_efficiency import (
     HSEMBatteryEfficiencyNumber,
 )
 from custom_components.hsem.custom_numbers.ev_target_soc import HSEMEVTargetSocNumber
+from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.sensornames.controls import (
     get_charge_efficiency_number_entity_id,
     get_charge_efficiency_number_key,
@@ -97,8 +98,20 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
         get_ev_second_target_soc_number_key(),
     }
 
+    # EV target-SoC numbers only apply when that EV's planned load (managed
+    # charging) is enabled (issue #859).
+    _gated_keys = {
+        get_ev_target_soc_number_key(): "hsem_ev_planned_load_enabled",
+        get_ev_second_target_soc_number_key(): "hsem_ev_second_planned_load_enabled",
+    }
+
     entities: list[NumberEntity] = []
     for description in NUMBER_DESCRIPTIONS:
+        config_flag = _gated_keys.get(description.key)
+        if config_flag is not None and not bool(
+            get_config_value(config_entry, config_flag)
+        ):
+            continue
         if description.key in _ev_target_soc_keys:
             entities.append(
                 HSEMEVTargetSocNumber(
