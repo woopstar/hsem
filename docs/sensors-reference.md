@@ -309,8 +309,8 @@ Diagnostic sensors displaying the EV charging plan details.
 
 **Entities:**
 
-- `sensor.hsem_ev_optimal_charging_plan` — Primary EV
-- `sensor.hsem_ev_second_optimal_charging_plan` — Second EV
+- `sensor.hsem_ev_optimal_charging_plan` — Primary EV, created only when `hsem_ev_planned_load_enabled` is set
+- `sensor.hsem_ev_second_optimal_charging_plan` — Second EV, created only when `hsem_ev_second_planned_load_enabled` is set (issue #859)
 
 | State                     | Meaning                                  |
 | ------------------------- | ---------------------------------------- |
@@ -345,8 +345,8 @@ without parsing the working-mode sensor attributes.
 
 **Entities:**
 
-- `sensor.hsem_ev_charger_calculated_power` — Primary EV
-- `sensor.hsem_ev_second_charger_calculated_power` — Second EV
+- `sensor.hsem_ev_charger_calculated_power` — Primary EV, created only when `hsem_ev_planned_load_enabled` is set
+- `sensor.hsem_ev_second_charger_calculated_power` — Second EV, created only when `hsem_ev_second_planned_load_enabled` is set (issue #859)
 
 | State | Unit | Description                                                                          |
 | ----- | ---- | ------------------------------------------------------------------------------------ |
@@ -377,8 +377,8 @@ stranded-residue re-portioning_).
 
 **Entities:**
 
-- `sensor.hsem_ev_charger_current_limit` — Primary EV
-- `sensor.hsem_ev_second_charger_current_limit` — Second EV
+- `sensor.hsem_ev_charger_current_limit` — Primary EV, created only when `hsem_ev_planned_load_enabled` is set
+- `sensor.hsem_ev_second_charger_current_limit` — Second EV, created only when `hsem_ev_second_planned_load_enabled` is set (issue #859)
 
 | State | Unit | Description                                                                          |
 | ----- | ---- | ------------------------------------------------------------------------------------ |
@@ -413,7 +413,7 @@ throughput on a per-calendar-day basis using cumulative energy meter readings.
 
 Boolean sensor indicating whether any EV is actively drawing power.
 
-**Entity:** `sensor.hsem_ev_charging_sensor`
+**Entity:** `sensor.hsem_ev_charging_sensor` — created only when `hsem_ev_planned_load_enabled` is set (issue #859)
 
 | State | Meaning                     |
 | ----- | --------------------------- |
@@ -494,7 +494,7 @@ Controls and reports the effective discharge floor SoC, which the planner uses a
 
 ## OCPP charger sensors
 
-Sensors providing live status and diagnostics for an OCPP-compliant EV charger connected via the integrated OCPP server. HSEM runs **one OCPP server per EV** (primary EV on port 9000 by default, second EV on port 9001) — the `_second` variants below exist only when the second EV is configured and the second OCPP server is enabled.
+Sensors providing live status and diagnostics for an OCPP-compliant EV charger connected via the integrated OCPP server. HSEM runs **one OCPP server per EV** (primary EV on port 9000 by default, second EV on port 9001). The primary sensors below are only created when `hsem_ocpp_enabled` is set; the `_second` variants exist only when the second EV is configured and the second OCPP server is enabled (issue #859).
 
 **Configuration keys** (set in config flow):
 
@@ -677,6 +677,11 @@ This setting is also configurable in the options flow.
 
 ## Switch entities
 
+EV switches are only created when the corresponding EV's planned load
+(managed charging) is enabled — `hsem_ev_planned_load_enabled` for the
+primary EV, `hsem_ev_second_planned_load_enabled` for the second EV
+(issue #859). All other switches are always created.
+
 | Entity                                              | Purpose                                        |
 | --------------------------------------------------- | ---------------------------------------------- |
 | `switch.hsem_read_only`                             | Block all hardware writes                      |
@@ -699,6 +704,11 @@ This setting is also configurable in the options flow.
 
 ## Number entities
 
+`number.hsem_ev_target_soc` is only created when `hsem_ev_planned_load_enabled`
+is set; `number.hsem_ev_second_target_soc` only when
+`hsem_ev_second_planned_load_enabled` is set (issue #859). The battery
+efficiency numbers are always created.
+
 | Entity                                     | Purpose                      | Range   |
 | ------------------------------------------ | ---------------------------- | ------- |
 | `number.hsem_battery_charge_efficiency`    | Battery charge efficiency    | 1–100 % |
@@ -709,6 +719,11 @@ This setting is also configurable in the options flow.
 ---
 
 ## Time entities
+
+`time.hsem_ev_deadline` is only created when `hsem_ev_planned_load_enabled`
+is set; `time.hsem_ev_second_deadline` only when
+`hsem_ev_second_planned_load_enabled` is set (issue #859). The battery
+schedule time entities are always created (tracked separately in #860).
 
 | Entity                                 | Purpose                    |
 | -------------------------------------- | -------------------------- |

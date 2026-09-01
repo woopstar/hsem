@@ -55,6 +55,11 @@ def _mock_config_entry(entry_id: str = "test_entry_id", **opts: Any) -> MagicMoc
         "hsem_batteries_enable_batteries_schedule_2": False,
         "hsem_batteries_enable_batteries_schedule_3": False,
         "hsem_ev_charger_force_max_discharge_power": False,
+        # Both EVs' planned load enabled by default so exhaustive
+        # "all descriptions created" setup tests keep covering every switch
+        # (issue #859 gates EV switches on these flags).
+        "hsem_ev_planned_load_enabled": True,
+        "hsem_ev_second_planned_load_enabled": True,
         "hsem_batteries_enable_batteries_schedule_1_start": "07:00:00",
         "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
         "hsem_batteries_enable_batteries_schedule_2_start": "17:00:00",

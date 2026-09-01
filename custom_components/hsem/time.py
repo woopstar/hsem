@@ -73,12 +73,27 @@ TIME_DESCRIPTIONS: tuple[HSEMTimeEntityDescription, ...] = (
 )
 
 
+# Time entity keys that only apply to a configured EV — created only when
+# that EV's planned load (managed charging) is enabled (issue #859).
+_EV_TIME_GATES: dict[str, str] = {
+    get_ev_deadline_time_key(): "hsem_ev_planned_load_enabled",
+    get_ev_second_deadline_time_key(): "hsem_ev_second_planned_load_enabled",
+}
+
+
 async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up HSEM time entities from a config entry."""
+    descriptions = [
+        description
+        for description in TIME_DESCRIPTIONS
+        if (config_flag := _EV_TIME_GATES.get(description.key)) is None
+        or bool(get_config_value(config_entry, config_flag))
+    ]
+
     async_add_entities(
         [
             HSEMTimeEntity(
@@ -93,6 +108,6 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
                     default_value=str(get_config_value(config_entry, description.key)),
                 ),
             )
-            for description in TIME_DESCRIPTIONS
+            for description in descriptions
         ]
     )
