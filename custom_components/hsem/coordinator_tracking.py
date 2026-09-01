@@ -494,6 +494,9 @@ async def accumulate_savings(
         switch_on=switch_on,
     )
 
+    if not await st.save_history():
+        async_log("warning", "Failed to persist savings tracker state")
+
 
 async def _init_savings_tracker(
     tracker: SavingsTracker,
