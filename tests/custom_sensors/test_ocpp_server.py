@@ -442,6 +442,75 @@ class TestRemoteStartTransaction:
 
 
 # ---------------------------------------------------------------------------
+# RemoteStartTransaction retry while unconfirmed (issue #892)
+# ---------------------------------------------------------------------------
+
+
+class TestRemoteStartRetry:
+    """Tests for retrying RemoteStartTransaction while unconfirmed."""
+
+    def test_due_initially(self, ocpp_server):
+        """With no prior attempt, a retry is immediately due."""
+        assert ocpp_server._remote_start_due(datetime.now(UTC)) is True
+
+    def test_not_due_within_cooldown(self, ocpp_server):
+        """A retry is withheld until the cooldown has elapsed."""
+        now = datetime.now(UTC)
+        ocpp_server._last_remote_start_attempt = now
+        assert ocpp_server._remote_start_due(now + timedelta(seconds=10)) is False
+
+    def test_due_after_cooldown(self, ocpp_server):
+        """A retry becomes due once the cooldown has elapsed."""
+        now = datetime.now(UTC)
+        ocpp_server._last_remote_start_attempt = now
+        assert ocpp_server._remote_start_due(now + timedelta(seconds=61)) is True
+
+    @pytest.mark.asyncio
+    async def test_retries_after_cooldown_when_unconfirmed(
+        self, ocpp_server, charger_session
+    ):
+        """An unconfirmed session retries RemoteStartTransaction on cooldown."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now
+        )
+        assert _sent_actions(charger_session).count("RemoteStartTransaction") == 1
+
+        # Still unconfirmed (charger_session.transaction_id stays None) —
+        # before the cooldown elapses, must not retry yet.
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now + timedelta(seconds=30)
+        )
+        assert _sent_actions(charger_session).count("RemoteStartTransaction") == 1
+
+        # After the cooldown, retry.
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now + timedelta(seconds=61)
+        )
+        assert _sent_actions(charger_session).count("RemoteStartTransaction") == 2
+
+    @pytest.mark.asyncio
+    async def test_no_retry_once_transaction_confirmed(
+        self, ocpp_server, charger_session
+    ):
+        """A confirmed transaction must never be re-authorized, even later."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now
+        )
+        assert _sent_actions(charger_session).count("RemoteStartTransaction") == 1
+
+        # Charger confirms via its own StartTransaction call.
+        charger_session.transaction_id = 7
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now + timedelta(seconds=120)
+        )
+        assert _sent_actions(charger_session).count("RemoteStartTransaction") == 1
+
+
+# ---------------------------------------------------------------------------
 # RemoteStopTransaction dispatch (issue #892)
 # ---------------------------------------------------------------------------
 
@@ -580,6 +649,63 @@ class TestUnknownAction:
         """Unknown actions should return None without raising."""
         result = await ocpp_server._handle_unknown(charger_session, {"some": "data"})
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# CALLRESULT / CALLERROR message-type handling (issue #892)
+# ---------------------------------------------------------------------------
+
+
+class TestCallResultHandling:
+    """Tests for correctly parsing replies to HSEM's own outbound calls.
+
+    A CALLRESULT (``[3, id, payload]``) or CALLERROR
+    (``[4, id, errorCode, errorDescription, errorDetails]``) used to be
+    parsed as if it were a CALL, reading the payload/errorCode as an
+    "action" and crashing with ``TypeError: unhashable type: 'dict'``
+    deep inside ``_dispatch`` when a dict landed there — silently
+    discarding every response to HSEM's own RemoteStartTransaction /
+    SetChargingProfile / RemoteStopTransaction calls.
+    """
+
+    @pytest.mark.asyncio
+    async def test_callresult_does_not_raise_or_respond(
+        self, ocpp_server, charger_session
+    ):
+        """A CALLRESULT reply must not crash and must not trigger a response."""
+        raw = json.dumps([3, "hsem-123", {"status": "Accepted"}])
+        await ocpp_server._handle_message(charger_session, raw)
+        charger_session.websocket.send_str.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_callerror_does_not_raise_or_respond(
+        self, ocpp_server, charger_session
+    ):
+        """A CALLERROR reply must not crash and must not trigger a response."""
+        raw = json.dumps([4, "hsem-123", "NotSupported", "unsupported action", {}])
+        await ocpp_server._handle_message(charger_session, raw)
+        charger_session.websocket.send_str.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unknown_message_type_does_not_raise(
+        self, ocpp_server, charger_session
+    ):
+        """An out-of-range message type must not crash the handler."""
+        raw = json.dumps([9, "hsem-123", {}])
+        await ocpp_server._handle_message(charger_session, raw)
+        charger_session.websocket.send_str.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_genuine_call_still_dispatches_and_responds(
+        self, ocpp_server, charger_session
+    ):
+        """A real CALL from the charger is unaffected by the type split."""
+        raw = json.dumps([2, "charger-1", "Heartbeat", {}])
+        await ocpp_server._handle_message(charger_session, raw)
+        charger_session.websocket.send_str.assert_called_once()
+        sent = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        assert sent[0] == 3  # CALLRESULT
+        assert sent[1] == "charger-1"
 
 
 # ---------------------------------------------------------------------------

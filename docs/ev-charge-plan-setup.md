@@ -416,6 +416,15 @@ remote start, configure it for free-vending / no-authorization-required, or
 `RemoteStartTransaction` will be rejected and the charger stays in
 `SuspendedEVSE` regardless (issue #892).
 
+HSEM does not correlate a charger's CALLRESULT/CALLERROR reply to a specific
+outbound call — the only confirmation it trusts is the charger's own,
+separately-initiated `StartTransaction` message. While a session stays
+unconfirmed (`transaction_id` still unset) after a start attempt, HSEM
+retries `RemoteStartTransaction` roughly once a minute rather than giving up
+after a single attempt, so a rejected, dropped, or unanswered start request
+is retried automatically. It stops retrying the moment `StartTransaction`
+arrives.
+
 The charge point ID (`hsem_ocpp_cpid`) must match the path segment your
 charger connects with — HSEM derives it from the WebSocket connection path
 (`ws://host:port/` → `"default"`, `ws://host:port/222819` → `"222819"`),
