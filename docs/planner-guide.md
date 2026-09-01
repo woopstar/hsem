@@ -300,10 +300,10 @@ export may be suppressed while direct PV export remains available.
 
 ### Seasonal configuration
 
-| Field                     | Default              | Description                                                                                                          |
-| ------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `months_winter`           | `[1,2,3,4,10,11,12]` | Months classified as winter. All 12 months may be winter (TOU year-round, issue #725); the summer set is then empty. |
-| `house_power_includes_ev` | `True`               | Whether the house consumption sensor already includes EV charger power                                               |
+| Field                     | Default            | Description                                                                                                          |
+| ------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `months_winter`           | `[1,2,3,10,11,12]` | Months classified as winter. All 12 months may be winter (TOU year-round, issue #725); the summer set is then empty. |
+| `house_power_includes_ev` | `True`             | Whether the house consumption sensor already includes EV charger power                                               |
 
 ### Main fuse / tariff protection
 
