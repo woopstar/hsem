@@ -195,8 +195,8 @@ class TestGetMonthsSchema:
         """With no config entry, the schema default must use the const default as strings."""
         schema = await get_months_schema(None)
         default = self._get_default(schema)
-        # const default is [1, 2, 3, 4, 10, 11, 12] — must come back as strings
-        assert set(default) == {"1", "2", "3", "4", "10", "11", "12"}
+        # const default is [1, 2, 3, 10, 11, 12] — must come back as strings
+        assert set(default) == {"1", "2", "3", "10", "11", "12"}
         assert all(isinstance(m, str) for m in default)
 
 

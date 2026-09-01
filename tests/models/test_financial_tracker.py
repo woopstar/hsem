@@ -383,8 +383,14 @@ class TestFinancialTrackerPeriodRollups:
 
     def test_sum_month(self) -> None:
         """_sum_month sums entries in the current month."""
-        tracker = FinancialTracker()
-        today = date.today()
+        # Pin the tracker's notion of "today" to a fixed mid-month date so
+        # the test is deterministic regardless of the real wall-clock date.
+        # _sum_month() excludes any daily_log entry dated "today" (it uses
+        # the live import_cost_today/export_income_today counters for that
+        # day instead), so "today" here must differ from the two in-month
+        # entries below to avoid one of them being silently dropped.
+        today = date(2026, 6, 15)
+        tracker = FinancialTracker(today=today.isoformat())
         month_key = today.strftime("%Y-%m")
         tracker.daily_log[f"{month_key}-01"] = FinancialDayEntry(
             date=f"{month_key}-01", import_cost=10.0, export_income=5.0
@@ -404,8 +410,11 @@ class TestFinancialTrackerPeriodRollups:
 
     def test_sum_year(self) -> None:
         """_sum_year sums entries in the current year."""
-        tracker = FinancialTracker()
-        today = date.today()
+        # Pin "today" to a fixed date that differs from both in-year entries
+        # below (see test_sum_month for why: _sum_year() excludes whichever
+        # daily_log entry is dated "today").
+        today = date(2026, 3, 20)
+        tracker = FinancialTracker(today=today.isoformat())
         year_key = today.strftime("%Y")
         tracker.daily_log[f"{year_key}-01-01"] = FinancialDayEntry(
             date=f"{year_key}-01-01", import_cost=10.0, export_income=5.0
