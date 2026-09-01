@@ -1,3 +1,5 @@
+# Label names used below must exist in .github/sync-labels.yml, the
+# canonical label manifest.
 name-template: "v$RESOLVED_VERSION"
 tag-template: "v$RESOLVED_VERSION"
 change-template: "- #$NUMBER $TITLE @$AUTHOR"
@@ -37,6 +39,18 @@ categories:
   - title: "📦 Dependencies"
     labels:
       - "dependencies"
+
+  - title: "⚡ Performance"
+    labels:
+      - "performance"
+
+  - title: "♻️ Refactoring"
+    labels:
+      - "area:refactor"
+
+  - title: "🧪 Tests"
+    labels:
+      - "area:tests"
 
 version-resolver:
   major:
@@ -78,3 +92,12 @@ autolabeler:
   - label: "dependencies"
     branch:
       - '/deps\/.+/'
+  - label: "performance"
+    branch:
+      - '/perf\/.+/'
+  - label: "area:refactor"
+    branch:
+      - '/refactor\/.+/'
+  - label: "area:tests"
+    branch:
+      - '/test\/.+/'

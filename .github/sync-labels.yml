@@ -1,3 +1,12 @@
+# Canonical manifest of every label used in this repository.
+#
+# This file is the single source of truth for label existence (name, color,
+# description). Synced to GitHub by workflows/sync-labels.yaml on every push
+# to main that touches this file.
+#
+# workflows/auto-label.yml (PR labeling from conventional-commit type) and
+# release-drafter.yml (changelog categorization / version resolution) must
+# only reference label names that are defined here.
 ---
 - name: "breaking-change"
   color: b60205
@@ -38,6 +47,9 @@
 - name: "LOCKED"
   color: ff0000
   description: "This thread is locked"
+- name: "performance"
+  color: fbca04
+  description: "Performance and efficiency improvements"
 
 - name: "major"
   color: 2fff00
@@ -80,3 +92,50 @@
 - name: "size/XXL"
   color: b8bab8
   description: "Denotes a PR that changes 1000+ lines"
+
+# Issue triage taxonomy: which subsystem an issue touches.
+- name: "area:config"
+  color: bfd4f2
+  description: "Configuration, migration, validation, and defaults"
+- name: "area:diagnostics"
+  color: d4c5f9
+  description: "Debug output, status, diagnostics, and explainability"
+- name: "area:docs"
+  color: 0075ca
+  description: "Documentation and troubleshooting"
+- name: "area:ev-charging"
+  color: 5319e7
+  description: "EV charging, OCPP server, and charger coordination"
+- name: "area:forecast"
+  color: 5319e7
+  description: "PV, load, price, and prediction logic"
+- name: "area:home-assistant"
+  color: 006b75
+  description: "Home Assistant entities, services, coordinators, and config flow"
+- name: "area:inverter"
+  color: 7057ff
+  description: "Inverter control, write verification, and hardware capabilities"
+- name: "area:planner"
+  color: 1d76db
+  description: "Planner logic, scoring, schedules, and energy decisions"
+- name: "area:refactor"
+  color: c2e0c6
+  description: "Structure changes without intended behavior change"
+- name: "area:safety"
+  color: b60205
+  description: "Safety, degraded mode, validation, and hardware risk"
+- name: "area:tests"
+  color: c5def5
+  description: "Unit tests, HA mocks, regression tests, and benchmarks"
+
+# Issue triage taxonomy: how urgent an issue is.
+- name: "priority:p0"
+  color: b60205
+  description: "Must fix before real hardware control"
+- name: "priority:p1"
+  color: d93f0b
+  description: "Core architecture and planner improvements"
+
+- name: "feedback"
+  color: ededed
+  description: "Community feedback and bug-report megathreads"
