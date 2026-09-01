@@ -60,10 +60,10 @@ Energi Data Service, Nordpool, Amber Electric, and any other price source.
 
 Seasonal month classification.
 
-| Field         | Key                  | Default                    | Description                                                                                                                                                           |
-| ------------- | -------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Summer months | `hsem_months_summer` | `[5, 6, 7, 8, 9]`          | Months classified as summer (derived as the complement of winter)                                                                                                     |
-| Winter months | `hsem_months_winter` | `[1, 2, 3, 4, 10, 11, 12]` | Months classified as winter. Selecting **all 12 months** is allowed (issue #725) — this keeps Winter/Spring (TOU) mode active year-round and the summer set is empty. |
+| Field         | Key                  | Default                 | Description                                                                                                                                                           |
+| ------------- | -------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Summer months | `hsem_months_summer` | `[4, 5, 6, 7, 8, 9]`    | Months classified as summer (derived as the complement of winter)                                                                                                     |
+| Winter months | `hsem_months_winter` | `[1, 2, 3, 10, 11, 12]` | Months classified as winter. Selecting **all 12 months** is allowed (issue #725) — this keeps Winter/Spring (TOU) mode active year-round and the summer set is empty. |
 
 ### Step: `solcast`
 
