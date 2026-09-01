@@ -442,6 +442,68 @@ class TestRemoteStartTransaction:
 
 
 # ---------------------------------------------------------------------------
+# RemoteStopTransaction dispatch (issue #892)
+# ---------------------------------------------------------------------------
+
+
+class TestRemoteStopTransaction:
+    """Tests for RemoteStopTransaction dispatch when stopping a session."""
+
+    @pytest.mark.asyncio
+    async def test_sent_with_transaction_id_when_active(
+        self, ocpp_server, charger_session
+    ):
+        """An active transaction is stopped with its transactionId."""
+        charger_session.transaction_id = 99
+        await ocpp_server._send_remote_stop(charger_session)
+        charger_session.websocket.send_str.assert_called_once()
+        msg = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        assert msg[2] == "RemoteStopTransaction"
+        assert msg[3] == {"transactionId": 99}
+
+    @pytest.mark.asyncio
+    async def test_skipped_without_mandatory_transaction_id(
+        self, ocpp_server, charger_session
+    ):
+        """No active transaction means nothing to stop — and OCPP 1.6
+        requires transactionId on RemoteStopTransaction, so sending an
+        empty payload would be a schema violation. Must not be sent."""
+        assert charger_session.transaction_id is None
+        await ocpp_server._send_remote_stop(charger_session)
+        charger_session.websocket.send_str.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_target_tracking_reset_even_when_skipped(
+        self, ocpp_server, charger_session
+    ):
+        """last_requested_current_a still clears when the stop is skipped."""
+        ocpp_server._last_sent_target = 3680.0
+        ocpp_server._last_sent_current_a = 16
+        await ocpp_server._send_remote_stop(charger_session)
+        assert ocpp_server.last_requested_current_a is None
+
+    @pytest.mark.asyncio
+    async def test_via_update_charge_target_stopping_from_starting(
+        self, mock_hass, charger_session
+    ):
+        """A target that flips to zero before the start window fires must
+        not send a malformed RemoteStopTransaction — no session was ever
+        started, so there is nothing to stop."""
+        server = OCPPServer(hass=mock_hass, start_window_s=60, stop_window_s=0)
+        server._chargers["test-cpid"] = charger_session
+        now = datetime.now(UTC)
+        # Enters "starting" — window hasn't elapsed, nothing sent yet.
+        await server.update_charge_target("test-cpid", target_power_kw=7.2, now=now)
+        assert server._flap_state == "starting"
+        charger_session.websocket.send_str.assert_not_called()
+
+        # Target drops back to zero before the start window elapses.
+        await server.update_charge_target("test-cpid", target_power_kw=0.0, now=now)
+        assert server._flap_state == "idle"
+        charger_session.websocket.send_str.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # Per-charger CPID path routing (issue #892)
 # ---------------------------------------------------------------------------
 

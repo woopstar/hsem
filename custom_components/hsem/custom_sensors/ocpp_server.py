@@ -552,16 +552,30 @@ class OCPPServer:
     async def _send_remote_stop(self, session: ChargerSession) -> None:
         """Send a ``RemoteStopTransaction`` request.
 
+        ``transactionId`` is a *mandatory* field on OCPP 1.6's
+        ``RemoteStopTransaction.req`` — it is not optional. When the
+        session has no active transaction (e.g. the anti-flap target
+        flipped back to zero while still in the ``"starting"`` state,
+        before the start window ever fired a ``RemoteStartTransaction``),
+        there is nothing to stop: sending a payload without
+        ``transactionId`` would violate the OCPP schema and most chargers
+        reject or ignore it, so skip the call entirely instead (issue
+        #892).
+
         Args:
             session: The charger session.
         """
-        if session.transaction_id is not None:
-            payload = {"transactionId": session.transaction_id}
-        else:
-            payload = {}
-        await self._send_call(session, "RemoteStopTransaction", payload)
         self._last_sent_target = -1.0
         self._last_sent_current_a = -1
+        if session.transaction_id is None:
+            _LOGGER.debug(
+                "OCPP %s has no active transaction — skipping "
+                "RemoteStopTransaction (nothing to stop)",
+                session.cpid,
+            )
+            return
+        payload = {"transactionId": session.transaction_id}
+        await self._send_call(session, "RemoteStopTransaction", payload)
         _LOGGER.debug(
             "Sent RemoteStopTransaction to %s (tx=%s)",
             session.cpid,

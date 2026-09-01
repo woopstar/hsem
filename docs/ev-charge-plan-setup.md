@@ -422,6 +422,12 @@ charger connects with — HSEM derives it from the WebSocket connection path
 not from anything in `BootNotification`. Leave `hsem_ocpp_cpid` empty only
 if your charger connects to the bare root path.
 
+To stop, HSEM sends `RemoteStopTransaction` with the transaction's
+`transactionId` — mandatory per OCPP 1.6. If the anti-flap target drops back
+to zero before a session ever started (no `RemoteStartTransaction` was sent
+yet), there is nothing to stop and HSEM skips the call rather than sending an
+invalid, schema-violating request (issue #892).
+
 This distinction drives the asymmetric ceiling deadband: a _reduction_ can force a
 charger to throttle, an _increase_ only offers headroom it may or may not take.
 
