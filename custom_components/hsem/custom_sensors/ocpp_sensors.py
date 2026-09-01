@@ -88,6 +88,19 @@ def _configured_port(cfg: SensorConfig, charger_index: int) -> int:
     return cfg.ocpp_second_port if charger_index == 2 else cfg.ocpp_port
 
 
+def _configured_cpid(cfg: SensorConfig, charger_index: int) -> str:
+    """Return the configured charge-point ID path segment for the given EV.
+
+    HSEM derives the CPID a connecting charger is registered under from the
+    WebSocket connection *path*, not from anything in ``BootNotification``
+    (issue #892) — an empty string here resolves to the ``"default"`` root
+    path. Callers building a connection URL for the user must append this
+    segment, or the shown URL won't match what the router actually expects.
+    """
+    cpid = cfg.ocpp_second_cpid if charger_index == 2 else cfg.ocpp_cpid
+    return cpid or ""
+
+
 def _last_requested_current_a(data: CoordinatorData, charger_index: int) -> int | None:
     """Return the amperage in the given EV server's last SetChargingProfile."""
     if charger_index == 2:
@@ -95,14 +108,27 @@ def _last_requested_current_a(data: CoordinatorData, charger_index: int) -> int 
     return data.ocpp_last_requested_current_a
 
 
-def _connection_url(hass: Any, port: int) -> str | None:
-    """Build a best-effort ``ws://<host>:<port>/`` connection URL.
+def _anti_flap_state(data: CoordinatorData, charger_index: int) -> str:
+    """Return the given EV server's anti-flap state machine state."""
+    if charger_index == 2:
+        return data.ocpp_second_anti_flap_state
+    return data.ocpp_anti_flap_state
+
+
+def _connection_url(hass: Any, port: int, cpid: str) -> str | None:
+    """Build a best-effort ``ws://<host>:<port>/<cpid>`` connection URL.
 
     The embedded server binds ``0.0.0.0`` (all interfaces), which isn't a
     usable address for an EVSE to dial. Resolve HA's own LAN-reachable host
     via :func:`homeassistant.helpers.network.get_url` instead. Returns
     ``None`` when no usable URL can be resolved — the caller falls back to
     showing host/port separately.
+
+    The configured CPID must be part of the path: HSEM's OCPP server
+    registers a connecting charger under whatever path it connects with
+    (issue #892), so a URL missing the CPID would tell the user to dial an
+    address that resolves to ``"default"`` instead of their configured
+    charge-point ID.
     """
     try:
         base = get_url(hass, allow_internal=True, allow_ip=True, prefer_external=False)
@@ -111,7 +137,7 @@ def _connection_url(hass: Any, port: int) -> str | None:
     host = urlparse(base).hostname
     if not host:
         return None
-    return f"ws://{host}:{port}/"
+    return f"ws://{host}:{port}/{cpid}"
 
 
 # ---------------------------------------------------------------------------
@@ -218,8 +244,10 @@ class HSEMOCPPChargerStatusSensor(
             "listening": _is_listening(data, self._charger_index),
             "port": port,
             "requested_current_a": _last_requested_current_a(data, self._charger_index),
+            "anti_flap_state": _anti_flap_state(data, self._charger_index),
         }
-        url = _connection_url(self.hass, port)
+        cpid = _configured_cpid(data.cfg, self._charger_index)
+        url = _connection_url(self.hass, port, cpid)
         if url is not None:
             attrs["url"] = url
 

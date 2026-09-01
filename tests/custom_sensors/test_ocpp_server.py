@@ -12,6 +12,8 @@ Covers:
 - Server start/stop
 - Anti-flap start/stop window logic
 - Unknown action handling
+- Failed-send rollback, anti-flap-state diagnostic, disconnect reset,
+  duplicate-CPID reconnect, and WebSocket heartbeat (issue #892 stability)
 """
 
 from __future__ import annotations
@@ -19,12 +21,16 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
+from aiohttp import web
 
-from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
+from custom_components.hsem.custom_sensors.ocpp_server import (
+    _WS_HEARTBEAT_INTERVAL_S,
+    OCPPServer,
+)
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
 # ---------------------------------------------------------------------------
@@ -816,3 +822,206 @@ class TestServerStartStop:
     async def test_send_remote_stop_to_unknown_charger(self, ocpp_server):
         """Sending RemoteStopTransaction to unknown CPID should be a no-op."""
         await ocpp_server.send_remote_stop("unknown")
+
+
+# ---------------------------------------------------------------------------
+# Failed-send rollback (issue #892)
+# ---------------------------------------------------------------------------
+
+
+class TestFailedSendRollback:
+    """A failed send must never be treated as if the command succeeded."""
+
+    @pytest.mark.asyncio
+    async def test_start_transition_not_committed_on_send_failure(
+        self, ocpp_server, charger_session
+    ):
+        """A failed send keeps flap_state at 'starting', not 'charging'."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.websocket.send_str.side_effect = ConnectionResetError()
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now
+        )
+        assert ocpp_server._flap_state == "starting"
+
+    @pytest.mark.asyncio
+    async def test_start_transition_committed_once_send_succeeds(
+        self, ocpp_server, charger_session
+    ):
+        """After a failure, the next successful cycle commits normally."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.websocket.send_str.side_effect = ConnectionResetError()
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now
+        )
+        assert ocpp_server._flap_state == "starting"
+
+        charger_session.websocket.send_str.side_effect = None
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now + timedelta(seconds=1)
+        )
+        assert ocpp_server._flap_state == "charging"
+
+    @pytest.mark.asyncio
+    async def test_failed_profile_send_not_remembered_as_sent(
+        self, ocpp_server, charger_session
+    ):
+        """A failed SetChargingProfile must not update last_requested_current_a."""
+        charger_session.websocket.send_str.side_effect = ConnectionResetError()
+        sent = await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=3680, max_current_a=16
+        )
+        assert sent is False
+        assert ocpp_server.last_requested_current_a is None
+
+    @pytest.mark.asyncio
+    async def test_stop_transition_not_committed_on_send_failure(
+        self, ocpp_server, charger_session
+    ):
+        """A failed RemoteStopTransaction keeps flap_state at 'stopping'."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server._flap_state = "charging"
+        charger_session.transaction_id = 5
+        charger_session.websocket.send_str.side_effect = ConnectionResetError()
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=now
+        )
+        assert ocpp_server._flap_state == "stopping"
+
+    @pytest.mark.asyncio
+    async def test_remote_start_send_failure_returns_false(
+        self, ocpp_server, charger_session
+    ):
+        """_send_remote_start() reports failure without raising."""
+        charger_session.websocket.send_str.side_effect = ConnectionResetError()
+        sent = await ocpp_server._send_remote_start(charger_session)
+        assert sent is False
+
+
+# ---------------------------------------------------------------------------
+# anti_flap_state diagnostic (issue #892)
+# ---------------------------------------------------------------------------
+
+
+class TestAntiFlapStateDiagnostic:
+    """Tests for the anti_flap_state diagnostic property."""
+
+    def test_initial_state_is_idle(self, ocpp_server):
+        """A fresh server reports 'idle'."""
+        assert ocpp_server.anti_flap_state == "idle"
+
+    @pytest.mark.asyncio
+    async def test_reflects_charging_state(self, ocpp_server, charger_session):
+        """The property reflects the live state machine, not a snapshot."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=datetime.now(UTC)
+        )
+        assert ocpp_server.anti_flap_state == "charging"
+
+
+# ---------------------------------------------------------------------------
+# Reset anti-flap state on disconnect (issue #892)
+# ---------------------------------------------------------------------------
+
+
+class TestResetAntiFlapStateOnDisconnect:
+    """Tests for resetting anti-flap bookkeeping when a charger disconnects."""
+
+    def test_reset_clears_all_bookkeeping(self, ocpp_server):
+        """_reset_anti_flap_state() returns every field to its idle default."""
+        ocpp_server._flap_state = "charging"
+        ocpp_server._target_entered_at = datetime.now(UTC)
+        ocpp_server._zero_entered_at = datetime.now(UTC)
+        ocpp_server._target_power_w = 7200.0
+        ocpp_server._last_sent_target = 7200.0
+        ocpp_server._last_sent_current_a = 32
+        ocpp_server._last_remote_start_attempt = datetime.now(UTC)
+
+        ocpp_server._reset_anti_flap_state()
+
+        assert ocpp_server._flap_state == "idle"
+        assert ocpp_server._target_entered_at is None
+        assert ocpp_server._zero_entered_at is None
+        assert ocpp_server._target_power_w == 0.0
+        assert ocpp_server.last_requested_current_a is None
+        assert ocpp_server._last_remote_start_attempt is None
+
+    @pytest.mark.asyncio
+    async def test_disconnect_resets_state_via_real_connection(self, mock_hass):
+        """A real WebSocket disconnect triggers the reset in production code."""
+        server = OCPPServer(hass=mock_hass, host="127.0.0.1", port=19015)
+        await server.start()
+        try:
+            async with (
+                aiohttp.ClientSession() as client,
+                client.ws_connect("ws://127.0.0.1:19015/reset-test"),
+            ):
+                await asyncio.sleep(0.05)
+                server._flap_state = "charging"
+            await asyncio.sleep(0.05)
+            assert server._flap_state == "idle"
+        finally:
+            await server.stop()
+
+
+# ---------------------------------------------------------------------------
+# Duplicate-CPID reconnect closes the stale WebSocket (issue #892)
+# ---------------------------------------------------------------------------
+
+
+class TestDuplicateCpidReconnect:
+    """Tests that a reconnect under the same CPID closes the old socket."""
+
+    @pytest.mark.asyncio
+    async def test_reconnect_closes_previous_websocket(self, mock_hass):
+        """The previous session's websocket.close() is awaited on reconnect."""
+        server = OCPPServer(hass=mock_hass, host="127.0.0.1", port=19016)
+        await server.start()
+        try:
+            stale_ws = AsyncMock()
+            server._chargers["dup"] = ChargerSession(
+                cpid="dup", websocket=stale_ws, connected_at=datetime.now(UTC)
+            )
+            async with (
+                aiohttp.ClientSession() as client,
+                client.ws_connect("ws://127.0.0.1:19016/dup"),
+            ):
+                await asyncio.sleep(0.05)
+                stale_ws.close.assert_awaited_once()
+        finally:
+            await server.stop()
+
+
+# ---------------------------------------------------------------------------
+# WebSocket-level heartbeat (issue #892)
+# ---------------------------------------------------------------------------
+
+
+class TestWebSocketHeartbeat:
+    """Tests that the WebSocket response is configured with a heartbeat."""
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_interval_configured(self, mock_hass):
+        """web.WebSocketResponse() is constructed with the heartbeat interval."""
+        server = OCPPServer(hass=mock_hass, host="127.0.0.1", port=19017)
+        await server.start()
+        try:
+            with patch(
+                "custom_components.hsem.custom_sensors.ocpp_server.web"
+                ".WebSocketResponse",
+                wraps=web.WebSocketResponse,
+            ) as mock_ws_cls:
+                async with (
+                    aiohttp.ClientSession() as client,
+                    client.ws_connect("ws://127.0.0.1:19017/hb-test"),
+                ):
+                    await asyncio.sleep(0.05)
+                mock_ws_cls.assert_called_once()
+                _, kwargs = mock_ws_cls.call_args
+                assert kwargs.get("heartbeat") == _WS_HEARTBEAT_INTERVAL_S
+        finally:
+            await server.stop()

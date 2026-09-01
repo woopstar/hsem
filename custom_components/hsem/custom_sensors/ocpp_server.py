@@ -40,6 +40,7 @@ from typing import Any
 
 from aiohttp import web
 
+from custom_components.hsem.custom_sensors.ocpp_commands import OCPPCommandsMixin
 from custom_components.hsem.custom_sensors.ocpp_message_handlers import (
     OCPPMessageHandlersMixin,
 )
@@ -63,27 +64,30 @@ _DEFAULT_STOP_WINDOW_S = 180  # Sustained shortage required before stopping
 # Per-slot epsilon for floating-point comparisons (kWh)
 _SLOT_EPSILON = 1e-6
 
-# OCPP 1.6 requires a non-empty idTag on RemoteStartTransaction. HSEM has no
-# per-user RFID/app identity concept, so every session it authorizes uses the
-# same fixed tag (issue #892).
-_REMOTE_START_ID_TAG = "HSEM"
-
 # Minimum seconds between RemoteStartTransaction retries while a session
 # still hasn't confirmed a transaction (issue #892). Rejected, dropped, or
 # unanswered start requests are retried on this cadence rather than only
 # once.
 _REMOTE_START_RETRY_INTERVAL_S = 60
 
+# aiohttp WebSocket-level ping interval (issue #892). Detects a charger that
+# silently stops responding (dead TCP, network drop) without a clean close —
+# aiohttp auto-pings at this interval and closes the connection if no pong
+# arrives within half of it, independent of OCPP's own application-level
+# Heartbeat message.
+_WS_HEARTBEAT_INTERVAL_S = 30.0
 
-class OCPPServer(OCPPMessageHandlersMixin):
+
+class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
     """Embedded OCPP 1.6 WebSocket server for LAN-only EV charger control.
 
     Listens on a configurable TCP port and handles OCPP 1.6 JSON messages
     from one or more chargers.  Charge targets are pushed from the HSEM
     planner via :meth:`update_charge_target`. Charger-initiated message
     handlers (BootNotification, Heartbeat, etc.) live in
-    :class:`OCPPMessageHandlersMixin`, split out to satisfy the 30 KB /
-    1000-line file limit.
+    :class:`OCPPMessageHandlersMixin`, and low-level outbound command
+    senders live in :class:`OCPPCommandsMixin` — both split out to satisfy
+    the 30 KB / 1000-line file limit.
 
     Attributes:
         hass: The Home Assistant instance (used only for helper access).
@@ -211,6 +215,17 @@ class OCPPServer(OCPPMessageHandlersMixin):
         return self._last_sent_current_a if self._last_sent_current_a >= 0 else None
 
     @property
+    def anti_flap_state(self) -> str:
+        """Return the anti-flap state machine's current state.
+
+        One of ``"idle"``, ``"starting"``, ``"charging"``, ``"stopping"``.
+        Exposed for diagnostics (issue #892) — without this, diagnosing why
+        a charger isn't starting/stopping requires reading source code to
+        understand HSEM's own internal state.
+        """
+        return self._flap_state
+
+    @property
     def charger_sessions(self) -> dict[str, ChargerSession]:
         """Return a copy of the current charger sessions dict."""
         return dict(self._chargers)
@@ -267,12 +282,26 @@ class OCPPServer(OCPPMessageHandlersMixin):
                     target_at = now
                 elapsed = (now - target_at).total_seconds()
                 if elapsed >= self._start_window_s:
-                    self._flap_state = "charging"
+                    remote_start_ok = True
                     if session.transaction_id is None:
-                        await self._send_remote_start(session, now=now)
-                    await self._send_set_charging_profile(
+                        remote_start_ok = await self._send_remote_start(
+                            session, now=now
+                        )
+                    profile_ok = await self._send_set_charging_profile(
                         session, int(target_w), max_current_a
                     )
+                    if remote_start_ok and profile_ok:
+                        self._flap_state = "charging"
+                    else:
+                        # Stay "starting" so the next cycle retries — the
+                        # start window has already elapsed, so elapsed
+                        # will still satisfy the threshold immediately
+                        # (issue #892).
+                        _LOGGER.warning(
+                            "OCPP %s: failed to send start commands — "
+                            "will retry next cycle",
+                            session.cpid,
+                        )
                 else:
                     _LOGGER.debug(
                         "OCPP anti-flap: waiting for start window "
@@ -304,8 +333,17 @@ class OCPPServer(OCPPMessageHandlersMixin):
                     zero_at = now
                 elapsed = (now - zero_at).total_seconds()
                 if elapsed >= self._stop_window_s:
-                    self._flap_state = "idle"
-                    await self._send_remote_stop(session)
+                    if await self._send_remote_stop(session):
+                        self._flap_state = "idle"
+                    else:
+                        # Stay "stopping" so the next cycle retries
+                        # immediately — the stop window has already
+                        # elapsed (issue #892).
+                        _LOGGER.warning(
+                            "OCPP %s: failed to send RemoteStopTransaction "
+                            "— will retry next cycle",
+                            session.cpid,
+                        )
                 else:
                     _LOGGER.debug(
                         "OCPP anti-flap: waiting for stop window "
@@ -327,9 +365,27 @@ class OCPPServer(OCPPMessageHandlersMixin):
         elapsed = (now - self._last_remote_start_attempt).total_seconds()
         return elapsed >= _REMOTE_START_RETRY_INTERVAL_S
 
+    def _reset_anti_flap_state(self) -> None:
+        """Reset the anti-flap state machine to a clean idle state.
+
+        Called when a charger disconnects (issue #892): the state machine
+        assumes it is talking to one continuously-connected charger, so
+        stale start/stop timers or a stale "charging" belief must not
+        survive into a fresh connection — a reconnect goes through the
+        normal start window again rather than resuming as if nothing
+        happened.
+        """
+        self._flap_state = "idle"
+        self._target_entered_at = None
+        self._zero_entered_at = None
+        self._target_power_w = 0.0
+        self._last_sent_target = -1.0
+        self._last_sent_current_a = -1
+        self._last_remote_start_attempt = None
+
     async def send_set_charging_profile(
         self, cpid: str, max_power_w: int, max_current_a: int = 16
-    ) -> None:
+    ) -> bool:
         """Directly send a ``SetChargingProfile`` to a charger.
 
         Bypasses the anti-flap state machine.  Use
@@ -344,17 +400,20 @@ class OCPPServer(OCPPMessageHandlersMixin):
             cpid: Charge-point identifier.
             max_power_w: Maximum charging power in watts.
             max_current_a: Maximum current in amperes.
+
+        Returns:
+            ``True`` if the message was written to the socket.
         """
         if cpid not in self._chargers:
             _LOGGER.warning(
                 "Cannot send SetChargingProfile — charger %s not connected", cpid
             )
-            return
-        await self._send_set_charging_profile(
+            return False
+        return await self._send_set_charging_profile(
             self._chargers[cpid], max_power_w, max_current_a
         )
 
-    async def send_remote_stop(self, cpid: str) -> None:
+    async def send_remote_stop(self, cpid: str) -> bool:
         """Directly send a ``RemoteStopTransaction`` to a charger.
 
         Bypasses the anti-flap state machine — see
@@ -363,13 +422,17 @@ class OCPPServer(OCPPMessageHandlersMixin):
 
         Args:
             cpid: Charge-point identifier.
+
+        Returns:
+            ``True`` if the message was written to the socket (or there was
+            no active transaction to stop).
         """
         if cpid not in self._chargers:
             _LOGGER.warning(
                 "Cannot send RemoteStopTransaction — charger %s not connected", cpid
             )
-            return
-        await self._send_remote_stop(self._chargers[cpid])
+            return False
+        return await self._send_remote_stop(self._chargers[cpid])
 
     # ------------------------------------------------------------------
     # WebSocket handler
@@ -392,7 +455,24 @@ class OCPPServer(OCPPMessageHandlersMixin):
         cpid = request.path.strip("/") or "default"
         _LOGGER.info("OCPP charger connected: CPID=%s from %s", cpid, request.remote)
 
-        ws = web.WebSocketResponse()
+        # A reconnect under the same CPID must not silently orphan a still-
+        # open previous WebSocket — close it before replacing (issue #892).
+        existing = self._chargers.get(cpid)
+        if existing is not None and existing.websocket is not None:
+            _LOGGER.warning(
+                "OCPP charger %s reconnecting — closing previous WebSocket", cpid
+            )
+            try:
+                await existing.websocket.close()
+            except Exception:
+                _LOGGER.debug(
+                    "Error closing previous WebSocket for %s — ignoring", cpid
+                )
+
+        # heartbeat= makes aiohttp auto-ping the peer and close the
+        # connection if no pong arrives — detects a silently dead
+        # connection without waiting on OCPP's own Heartbeat (issue #892).
+        ws = web.WebSocketResponse(heartbeat=_WS_HEARTBEAT_INTERVAL_S)
         await ws.prepare(request)
 
         session = ChargerSession(
@@ -414,6 +494,10 @@ class OCPPServer(OCPPMessageHandlersMixin):
             _LOGGER.debug("Charger %s disconnected", cpid)
         finally:
             self._chargers.pop(cpid, None)
+            # The anti-flap state machine assumes one continuously-connected
+            # charger — a stale "charging"/timer belief must not survive a
+            # disconnect into whatever reconnects next (issue #892).
+            self._reset_anti_flap_state()
             _LOGGER.info("OCPP charger %s session ended", cpid)
 
         return ws
@@ -515,148 +599,3 @@ class OCPPServer(OCPPMessageHandlersMixin):
         response = await handler(session, payload)
         if response is not None:
             await self._send_response(session, msg_id, response)
-
-    async def _send_response(
-        self, session: ChargerSession, msg_id: str, payload: dict
-    ) -> None:
-        """Send a CALLRESULT (type 3) message back to the charger.
-
-        Args:
-            session: The charger session.
-            msg_id: The original message ID being answered.
-            payload: The response payload.
-        """
-        try:
-            msg = json.dumps([_CALLRESULT, msg_id, payload])
-            await session.websocket.send_str(msg)
-        except Exception:
-            _LOGGER.exception(
-                "Failed to send OCPP response to charger %s", session.cpid
-            )
-
-    async def _send_call(
-        self, session: ChargerSession, action: str, payload: dict
-    ) -> None:
-        """Send a CALL (type 2) message to the charger.
-
-        Args:
-            session: The charger session.
-            action: OCPP action name (e.g. "SetChargingProfile").
-            payload: The message payload.
-        """
-        try:
-            msg_id = f"hsem-{datetime.now(UTC).timestamp()}"
-            msg = json.dumps([_CALL, msg_id, action, payload])
-            await session.websocket.send_str(msg)
-        except Exception:
-            _LOGGER.exception(
-                "Failed to send OCPP call '%s' to charger %s",
-                action,
-                session.cpid,
-            )
-
-    async def _send_remote_start(
-        self, session: ChargerSession, *, now: datetime | None = None
-    ) -> None:
-        """Send a ``RemoteStartTransaction`` request.
-
-        A ``SetChargingProfile`` alone only configures a ceiling for
-        whichever transaction is active — it does not authorize or start
-        one. Without an explicit start signal, a charger that requires
-        central-system authorization (rather than free-vending on
-        plug-in) sits in ``SuspendedEVSE`` indefinitely (issue #892).
-        Callers must only invoke this when
-        :attr:`ChargerSession.transaction_id` is ``None``, so an
-        already-active transaction is never re-authorized. Records the
-        attempt timestamp so :meth:`_remote_start_due` can pace retries.
-
-        Args:
-            session: The charger session.
-            now: Current timestamp (injected for testability).
-        """
-        self._last_remote_start_attempt = now if now is not None else datetime.now(UTC)
-        payload = {"idTag": _REMOTE_START_ID_TAG}
-        await self._send_call(session, "RemoteStartTransaction", payload)
-        _LOGGER.debug(
-            "Sent RemoteStartTransaction to %s (idTag=%s)",
-            session.cpid,
-            _REMOTE_START_ID_TAG,
-        )
-
-    async def _send_set_charging_profile(
-        self, session: ChargerSession, max_power_w: int, max_current_a: int = 16
-    ) -> None:
-        """Send a ``SetChargingProfile`` request.
-
-        Builds a TxDefaultProfile that limits charging to *max_current_a*
-        amps, which at 230 V nominally equals *max_power_w*.
-
-        Args:
-            session: The charger session.
-            max_power_w: Maximum charging power in watts.
-            max_current_a: Maximum current in amperes.
-        """
-        # OCPP 1.6 ChargingProfile structure
-        charging_profile = {
-            "chargingProfileId": 1,
-            "stackLevel": 0,
-            "chargingProfilePurpose": "TxDefaultProfile",
-            "chargingProfileKind": "Relative",
-            "chargingSchedule": {
-                "chargingRateUnit": "A",
-                "chargingSchedulePeriod": [
-                    {
-                        "startPeriod": 0,
-                        "limit": max_current_a,
-                    }
-                ],
-            },
-        }
-
-        payload = {
-            "connectorId": 1,
-            "csChargingProfiles": charging_profile,
-        }
-
-        await self._send_call(session, "SetChargingProfile", payload)
-        self._last_sent_target = float(max_power_w)
-        self._last_sent_current_a = max_current_a
-        _LOGGER.debug(
-            "Sent SetChargingProfile to %s: max %d A (~%d W)",
-            session.cpid,
-            max_current_a,
-            max_power_w,
-        )
-
-    async def _send_remote_stop(self, session: ChargerSession) -> None:
-        """Send a ``RemoteStopTransaction`` request.
-
-        ``transactionId`` is a *mandatory* field on OCPP 1.6's
-        ``RemoteStopTransaction.req`` — it is not optional. When the
-        session has no active transaction (e.g. the anti-flap target
-        flipped back to zero while still in the ``"starting"`` state,
-        before the start window ever fired a ``RemoteStartTransaction``),
-        there is nothing to stop: sending a payload without
-        ``transactionId`` would violate the OCPP schema and most chargers
-        reject or ignore it, so skip the call entirely instead (issue
-        #892).
-
-        Args:
-            session: The charger session.
-        """
-        self._last_sent_target = -1.0
-        self._last_sent_current_a = -1
-        if session.transaction_id is None:
-            _LOGGER.debug(
-                "OCPP %s has no active transaction — skipping "
-                "RemoteStopTransaction (nothing to stop)",
-                session.cpid,
-            )
-            return
-        payload = {"transactionId": session.transaction_id}
-        await self._send_call(session, "RemoteStopTransaction", payload)
-        _LOGGER.debug(
-            "Sent RemoteStopTransaction to %s (tx=%s)",
-            session.cpid,
-            session.transaction_id,
-        )

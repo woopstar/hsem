@@ -429,7 +429,29 @@ The charge point ID (`hsem_ocpp_cpid`) must match the path segment your
 charger connects with — HSEM derives it from the WebSocket connection path
 (`ws://host:port/` → `"default"`, `ws://host:port/222819` → `"222819"`),
 not from anything in `BootNotification`. Leave `hsem_ocpp_cpid` empty only
-if your charger connects to the bare root path.
+if your charger connects to the bare root path. The diagnostic `url`
+attribute on `sensor.hsem_ocpp_charger_status` already includes the
+configured CPID, so pointing your charger at exactly that URL is always
+correct.
+
+**Further stability hardening (issue #892):**
+
+- A failed send (e.g. the WebSocket write itself throws) is never mistaken
+  for success — the anti-flap state machine only commits a start/stop
+  transition once the command actually reaches the socket, and retries on
+  the next cycle otherwise.
+- The anti-flap state machine's current state (`"idle"`, `"starting"`,
+  `"charging"`, `"stopping"`) is exposed as `anti_flap_state` on
+  `sensor.hsem_ocpp_charger_status` for diagnostics.
+- A disconnect resets all anti-flap bookkeeping, so a reconnecting charger
+  goes through a clean start window rather than inheriting stale state
+  from before the drop.
+- A reconnect under the same CPID closes any still-open previous
+  WebSocket first, so a stale connection is never silently orphaned.
+- The embedded WebSocket server pings every 30 seconds
+  (aiohttp's `heartbeat`) and closes the connection if a charger stops
+  responding, detecting a dead connection faster than waiting on OCPP's
+  own application-level `Heartbeat` interval.
 
 To stop, HSEM sends `RemoteStopTransaction` with the transaction's
 `transactionId` — mandatory per OCPP 1.6. If the anti-flap target drops back

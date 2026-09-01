@@ -549,24 +549,28 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         ocpp_sessions: list | None = None
         ocpp_listening = False
         ocpp_last_requested_current_a: int | None = None
+        ocpp_anti_flap_state = "idle"
         ocpp = getattr(self, "_ocpp_server", None)
         if ocpp is not None:
             ocpp_chargers = ocpp.charger_sessions
             ocpp_sessions = list(self._ocpp_sessions)
             ocpp_listening = ocpp.is_listening
             ocpp_last_requested_current_a = ocpp.last_requested_current_a
+            ocpp_anti_flap_state = ocpp.anti_flap_state
 
         # Second EV's OCPP server state.
         ocpp_second_chargers: dict | None = None
         ocpp_second_sessions: list | None = None
         ocpp_second_listening = False
         ocpp_second_last_requested_current_a: int | None = None
+        ocpp_second_anti_flap_state = "idle"
         ocpp_second = getattr(self, "_ocpp_second_server", None)
         if ocpp_second is not None:
             ocpp_second_chargers = ocpp_second.charger_sessions
             ocpp_second_sessions = []
             ocpp_second_listening = ocpp_second.is_listening
             ocpp_second_last_requested_current_a = ocpp_second.last_requested_current_a
+            ocpp_second_anti_flap_state = ocpp_second.anti_flap_state
 
         data = CoordinatorData(
             cfg=self._cfg,
@@ -598,6 +602,8 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             ocpp_second_listening=ocpp_second_listening,
             ocpp_last_requested_current_a=ocpp_last_requested_current_a,
             ocpp_second_last_requested_current_a=(ocpp_second_last_requested_current_a),
+            ocpp_anti_flap_state=ocpp_anti_flap_state,
+            ocpp_second_anti_flap_state=ocpp_second_anti_flap_state,
             capacity_learner=getattr(self, "_capacity_learner", CapacityLearner()),
             solar_hour_factors=dict(
                 getattr(self, "_solar_corrector", SolarForecastCorrector()).hour_factors
