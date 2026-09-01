@@ -449,7 +449,7 @@ def solve_milp(
     # ------------------------------------------------------------------
     # Build objective vector and constraint matrices
     # ------------------------------------------------------------------
-    p_imp_max = float(np.max(p_imp)) if m > 0 else 0.1
+    p_imp_max = float(np.max(p_imp_obj)) if m > 0 else 0.1
     p_soc = max(p_imp_max, 0.1) * 100.0
 
     from custom_components.hsem.planner.milp._constraints import _build_constraints
@@ -473,7 +473,6 @@ def solve_milp(
         ev_var_offsets,
         ev_pen_offsets,
         active_evs,
-        p_imp,
         p_imp_obj,
         p_exp,
         p_soc,

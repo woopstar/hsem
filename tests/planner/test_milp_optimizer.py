@@ -294,6 +294,50 @@ def test_milp_fallback_on_empty_slot_list():
 
 
 @_scipy_skip()
+def test_milp_handles_nan_import_price_on_future_slot():
+    """A NaN import_price on a future slot must not poison the objective.
+
+    Regression for issue #863: ``p_soc``, ``p_fuse``, and ``ev_penalty_cost``
+    were derived from ``np.max()`` of the raw pre-sanitize import price array
+    instead of the NaN-cleaned ``p_imp_obj`` returned by ``sanitize_prices()``.
+    A single NaN future-slot price (a real scenario — see ``SlotPrice``'s
+    ``MISSING_SENTINEL`` docstring) would poison every SoC/fuse/EV-deadline
+    penalty coefficient with NaN, risking a solver error or a degenerate
+    solution.
+    """
+    cheap = [0, 1, 2, 3]
+    expensive = [20, 21, 22, 23]
+    slots = _make_arbitrage_slots(
+        cheap, expensive, cheap_price=0.05, expensive_price=3.0
+    )
+
+    # Poison a neutral (non-cheap/expensive) future slot's raw import price.
+    slots[10].price = SlotPrice(
+        import_price=float("nan"), export_price=slots[10].price.export_price
+    )
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=0.0,
+        usable_kwh=9.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+    )
+
+    assert milp_result is not None, (
+        "MILP must still return a valid solution when a future slot has a "
+        "NaN import price"
+    )
+    result, _diag = milp_result
+    for slot in result:
+        assert math.isfinite(slot.batteries_charged_kwh), (
+            f"Non-finite batteries_charged_kwh at {slot.start}: NaN leaked "
+            "into the LP solution"
+        )
+
+
+@_scipy_skip()
 def test_milp_candidate_present_in_planner_output():
     """A full planner run must include the 'milp' candidate in output.candidates."""
     inp = make_winter_day_input(battery_soc_pct=20.0)
