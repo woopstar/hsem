@@ -6,6 +6,8 @@ Covers:
 - StatusNotification state transitions
 - MeterValues parsing
 - SetChargingProfile message construction
+- RemoteStartTransaction dispatch (issue #892)
+- Per-charger CPID path routing (issue #892)
 - Session lifecycle (connect → charge → disconnect)
 - Server start/stop
 - Anti-flap start/stop window logic
@@ -14,10 +16,12 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
+import aiohttp
 import pytest
 
 from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
@@ -357,6 +361,123 @@ class TestLastRequestedCurrentA:
             "test-cpid", target_power_kw=0.0, now=now
         )
         assert ocpp_server.last_requested_current_a is None
+
+
+# ---------------------------------------------------------------------------
+# RemoteStartTransaction dispatch (issue #892)
+# ---------------------------------------------------------------------------
+
+
+def _sent_actions(charger_session: ChargerSession) -> list[str]:
+    """Return the OCPP action names sent over the mock WebSocket, in order."""
+    return [
+        json.loads(call.args[0])[2]
+        for call in charger_session.websocket.send_str.call_args_list
+    ]
+
+
+class TestRemoteStartTransaction:
+    """Tests for RemoteStartTransaction dispatch when starting a session."""
+
+    @pytest.mark.asyncio
+    async def test_sent_when_no_active_transaction(self, ocpp_server, charger_session):
+        """A fresh session with no transaction gets RemoteStartTransaction."""
+        assert charger_session.transaction_id is None
+        ocpp_server._chargers["test-cpid"] = charger_session
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now
+        )
+        actions = _sent_actions(charger_session)
+        assert "RemoteStartTransaction" in actions
+        assert "SetChargingProfile" in actions
+        # Authorize the session before configuring its charging ceiling.
+        assert actions.index("RemoteStartTransaction") < actions.index(
+            "SetChargingProfile"
+        )
+
+    @pytest.mark.asyncio
+    async def test_skipped_when_transaction_already_active(
+        self, ocpp_server, charger_session
+    ):
+        """An already-active transaction must never be re-authorized."""
+        charger_session.transaction_id = 42
+        ocpp_server._chargers["test-cpid"] = charger_session
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now
+        )
+        actions = _sent_actions(charger_session)
+        assert "RemoteStartTransaction" not in actions
+        assert "SetChargingProfile" in actions
+
+    @pytest.mark.asyncio
+    async def test_payload_includes_non_empty_id_tag(
+        self, ocpp_server, charger_session
+    ):
+        """OCPP 1.6 requires a non-empty idTag on RemoteStartTransaction."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now
+        )
+        for call in charger_session.websocket.send_str.call_args_list:
+            msg = json.loads(call.args[0])
+            if msg[2] == "RemoteStartTransaction":
+                assert msg[3]["idTag"]
+                break
+        else:
+            pytest.fail("RemoteStartTransaction was never sent")
+
+    @pytest.mark.asyncio
+    async def test_not_sent_when_stopping(self, ocpp_server, charger_session):
+        """Stopping a charge must never trigger a RemoteStartTransaction."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server._flap_state = "charging"
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=now
+        )
+        assert "RemoteStartTransaction" not in _sent_actions(charger_session)
+
+
+# ---------------------------------------------------------------------------
+# Per-charger CPID path routing (issue #892)
+# ---------------------------------------------------------------------------
+
+
+class TestCpidPathRouting:
+    """Tests that any WebSocket path reaches the handler, not just '/'."""
+
+    @pytest.mark.asyncio
+    async def test_custom_cpid_path_registers_charger(self, mock_hass):
+        """A charger connecting on a non-root path is registered under it."""
+        server = OCPPServer(hass=mock_hass, host="127.0.0.1", port=19010)
+        await server.start()
+        try:
+            async with (
+                aiohttp.ClientSession() as client,
+                client.ws_connect("ws://127.0.0.1:19010/222819"),
+            ):
+                await asyncio.sleep(0.05)
+                assert "222819" in server.active_chargers
+        finally:
+            await server.stop()
+
+    @pytest.mark.asyncio
+    async def test_root_path_still_resolves_to_default(self, mock_hass):
+        """A bare root-path connection still resolves to cpid 'default'."""
+        server = OCPPServer(hass=mock_hass, host="127.0.0.1", port=19011)
+        await server.start()
+        try:
+            async with (
+                aiohttp.ClientSession() as client,
+                client.ws_connect("ws://127.0.0.1:19011/"),
+            ):
+                await asyncio.sleep(0.05)
+                assert "default" in server.active_chargers
+        finally:
+            await server.stop()
 
 
 # ---------------------------------------------------------------------------

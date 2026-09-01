@@ -407,6 +407,21 @@ amperage is derived from the same command and phase topology backing
 `coordinator_helpers.ocpp_charge_target()` (issue #886), and is exposed for
 diagnostics as `requested_current_a` on `sensor.hsem_ocpp_charger_status`.
 
+When starting a session, HSEM also sends `RemoteStartTransaction` (fixed
+`idTag: "HSEM"`) alongside `SetChargingProfile` if the charger has no active
+transaction yet (`transaction_id` unset) — a charging profile alone only
+configures a ceiling, it does not authorize or start a session. If your
+charger requires local authorization (RFID/app) before it will accept a
+remote start, configure it for free-vending / no-authorization-required, or
+`RemoteStartTransaction` will be rejected and the charger stays in
+`SuspendedEVSE` regardless (issue #892).
+
+The charge point ID (`hsem_ocpp_cpid`) must match the path segment your
+charger connects with — HSEM derives it from the WebSocket connection path
+(`ws://host:port/` → `"default"`, `ws://host:port/222819` → `"222819"`),
+not from anything in `BootNotification`. Leave `hsem_ocpp_cpid` empty only
+if your charger connects to the bare root path.
+
 This distinction drives the asymmetric ceiling deadband: a _reduction_ can force a
 charger to throttle, an _increase_ only offers headroom it may or may not take.
 

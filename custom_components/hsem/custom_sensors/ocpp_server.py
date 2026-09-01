@@ -1,8 +1,9 @@
 """Embedded OCPP 1.6 WebSocket server for EV charger control.
 
 This module provides an optional, LAN-only OCPP 1.6 JSON WebSocket server
-that listens for charger connections and dispatches :class:`SetChargingProfile`
-commands based on HSEM's EV charging plan.
+that listens for charger connections and dispatches
+:class:`RemoteStartTransaction`/:class:`SetChargingProfile`/
+:class:`RemoteStopTransaction` commands based on HSEM's EV charging plan.
 
 Architecture::
 
@@ -10,7 +11,8 @@ Architecture::
                                   │
                                   ├── Reads EV plan from CoordinatorData
                                   ├── Writes charger state to CoordinatorData
-                                  └── Dispatches SetChargingProfile commands
+                                  └── Dispatches RemoteStart/SetChargingProfile/
+                                      RemoteStop commands
 
 .. important::
     This server binds to ``0.0.0.0`` by default.  The port MUST NOT be
@@ -57,6 +59,11 @@ _DEFAULT_STOP_WINDOW_S = 180  # Sustained shortage required before stopping
 
 # Per-slot epsilon for floating-point comparisons (kWh)
 _SLOT_EPSILON = 1e-6
+
+# OCPP 1.6 requires a non-empty idTag on RemoteStartTransaction. HSEM has no
+# per-user RFID/app identity concept, so every session it authorizes uses the
+# same fixed tag (issue #892).
+_REMOTE_START_ID_TAG = "HSEM"
 
 
 class OCPPServer:
@@ -119,12 +126,15 @@ class OCPPServer:
     async def start(self) -> None:
         """Start the aiohttp WebSocket server.
 
-        Creates an :class:`aiohttp.web.Application` with a single route,
-        ``/``, that upgrades to WebSocket and delegates to
-        :meth:`_handle_charger`.
+        Creates an :class:`aiohttp.web.Application` with a wildcard route
+        that upgrades any path to WebSocket and delegates to
+        :meth:`_handle_charger`, which derives the charge-point identifier
+        from the connection path (``/`` → ``"default"``, ``/222819`` →
+        ``"222819"``). A literal ``/`` route alone would 404 any charger
+        connecting with its own CPID in the path (issue #892).
         """
         app = web.Application()
-        app.router.add_get("/", self._handle_charger)
+        app.router.add_get("/{tail:.*}", self._handle_charger)
 
         self._runner = web.AppRunner(app)
         await self._runner.setup()
@@ -238,6 +248,8 @@ class OCPPServer:
                 elapsed = (now - target_at).total_seconds()
                 if elapsed >= self._start_window_s:
                     self._flap_state = "charging"
+                    if session.transaction_id is None:
+                        await self._send_remote_start(session)
                     await self._send_set_charging_profile(
                         session, int(target_w), max_current_a
                     )
@@ -468,6 +480,29 @@ class OCPPServer:
                 action,
                 session.cpid,
             )
+
+    async def _send_remote_start(self, session: ChargerSession) -> None:
+        """Send a ``RemoteStartTransaction`` request.
+
+        A ``SetChargingProfile`` alone only configures a ceiling for
+        whichever transaction is active — it does not authorize or start
+        one. Without an explicit start signal, a charger that requires
+        central-system authorization (rather than free-vending on
+        plug-in) sits in ``SuspendedEVSE`` indefinitely (issue #892).
+        Callers must only invoke this when
+        :attr:`ChargerSession.transaction_id` is ``None``, so an
+        already-active transaction is never re-authorized.
+
+        Args:
+            session: The charger session.
+        """
+        payload = {"idTag": _REMOTE_START_ID_TAG}
+        await self._send_call(session, "RemoteStartTransaction", payload)
+        _LOGGER.debug(
+            "Sent RemoteStartTransaction to %s (idTag=%s)",
+            session.cpid,
+            _REMOTE_START_ID_TAG,
+        )
 
     async def _send_set_charging_profile(
         self, session: ChargerSession, max_power_w: int, max_current_a: int = 16
