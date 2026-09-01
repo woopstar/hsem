@@ -312,6 +312,54 @@ class TestSetChargingProfile:
 
 
 # ---------------------------------------------------------------------------
+# last_requested_current_a tracking (issue #886)
+# ---------------------------------------------------------------------------
+
+
+class TestLastRequestedCurrentA:
+    """Tests for the diagnostic last-requested-amps accessor."""
+
+    def test_none_before_any_profile_sent(self, ocpp_server):
+        """No profile has been sent yet, so the accessor returns None."""
+        assert ocpp_server.last_requested_current_a is None
+
+    @pytest.mark.asyncio
+    async def test_reflects_last_sent_amps(self, ocpp_server, charger_session):
+        """The accessor mirrors the amps in the last SetChargingProfile sent."""
+        await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=3680, max_current_a=16
+        )
+        assert ocpp_server.last_requested_current_a == 16
+
+    @pytest.mark.asyncio
+    async def test_via_update_charge_target_with_explicit_current(
+        self, ocpp_server, charger_session
+    ):
+        """update_charge_target() publishes the caller-supplied amps, not 16A."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=1.38, max_current_a=6, now=now
+        )
+        assert ocpp_server.last_requested_current_a == 6
+
+    @pytest.mark.asyncio
+    async def test_reset_to_none_after_stop(self, ocpp_server, charger_session):
+        """RemoteStopTransaction clears the last-requested-amps accessor."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, max_current_a=32, now=now
+        )
+        assert ocpp_server.last_requested_current_a == 32
+        ocpp_server._flap_state = "charging"
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=now
+        )
+        assert ocpp_server.last_requested_current_a is None
+
+
+# ---------------------------------------------------------------------------
 # Session lifecycle tests
 # ---------------------------------------------------------------------------
 

@@ -25,6 +25,7 @@ from custom_components.hsem.coordinator_helpers import (
     _StaleUpdateCycle,
     apply_load_forecast_hold,
     assess_load_forecast,
+    ocpp_charge_target,
 )
 from custom_components.hsem.coordinator_state import (
     CoordinatorSharedState,
@@ -51,6 +52,7 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.datetime_utils import (
     now as hsem_now,
+    slot_contains,
     utc_now_iso,
 )
 from custom_components.hsem.utils.ev_delivered_energy import EVDeliveredEnergyTracker
@@ -59,7 +61,8 @@ from custom_components.hsem.utils.logger import (
     async_log,
     set_hsem_verbose,
 )
-from custom_components.hsem.utils.misc import ema_filter, get_config_value
+from custom_components.hsem.utils.misc import ema_filter
+from custom_components.hsem.utils.phase_power import normalize_ev_phase_topology
 from custom_components.hsem.utils.prediction_tracker import PredictionTracker
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
@@ -545,21 +548,25 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         ocpp_chargers: dict | None = None
         ocpp_sessions: list | None = None
         ocpp_listening = False
+        ocpp_last_requested_current_a: int | None = None
         ocpp = getattr(self, "_ocpp_server", None)
         if ocpp is not None:
             ocpp_chargers = ocpp.charger_sessions
             ocpp_sessions = list(self._ocpp_sessions)
             ocpp_listening = ocpp.is_listening
+            ocpp_last_requested_current_a = ocpp.last_requested_current_a
 
         # Second EV's OCPP server state.
         ocpp_second_chargers: dict | None = None
         ocpp_second_sessions: list | None = None
         ocpp_second_listening = False
+        ocpp_second_last_requested_current_a: int | None = None
         ocpp_second = getattr(self, "_ocpp_second_server", None)
         if ocpp_second is not None:
             ocpp_second_chargers = ocpp_second.charger_sessions
             ocpp_second_sessions = []
             ocpp_second_listening = ocpp_second.is_listening
+            ocpp_second_last_requested_current_a = ocpp_second.last_requested_current_a
 
         data = CoordinatorData(
             cfg=self._cfg,
@@ -589,6 +596,8 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             ocpp_second_sessions=ocpp_second_sessions,
             ocpp_listening=ocpp_listening,
             ocpp_second_listening=ocpp_second_listening,
+            ocpp_last_requested_current_a=ocpp_last_requested_current_a,
+            ocpp_second_last_requested_current_a=(ocpp_second_last_requested_current_a),
             capacity_learner=getattr(self, "_capacity_learner", CapacityLearner()),
             solar_hour_factors=dict(
                 getattr(self, "_solar_corrector", SolarForecastCorrector()).hour_factors
@@ -640,34 +649,37 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
 
         # Push the accepted EV targets only after the freshness gate passes.
         # Each EV gets its own OCPP server: the primary plan drives the
-        # primary server, the second plan drives the second server.
-        slot_minutes = self._cfg.recommendation_interval_minutes
-        force_primary = bool(
-            get_config_value(self._config_entry, "hsem_ev_force_charge_now")
-        )
-        force_second = bool(
-            get_config_value(self._config_entry, "hsem_ev_second_force_charge_now")
+        # primary server, the second plan drives the second server. The
+        # command read here (``ev_charger_calculated_power`` /
+        # ``ev_second_charger_calculated_power``) is the same post-stability,
+        # force-charge-aware ceiling already published on
+        # sensor.hsem_ev_charger_current_limit (and its second-EV
+        # counterpart) — OCPP must never compute a second, divergent target
+        # from the raw plan.
+        current_slot = next(
+            (
+                item
+                for item in self._hourly_recommendations
+                if slot_contains(item.start, item.end, now)
+            ),
+            None,
         )
 
         ocpp_server = getattr(self, "_ocpp_server", None)
         if ocpp_server is not None and self._cfg.ocpp_enabled:
             cpid = self._cfg.ocpp_cpid or "default"
-            target_kw = 0.0
-            if self._ev_charging_plan is not None:
-                target_kw = self._ev_charging_plan.current_slot_planned_load_kwh
-                if slot_minutes > 0 and target_kw > 0:
-                    target_kw = target_kw / slot_minutes * 60.0
-                if force_primary:
-                    forced_kw = float(
-                        get_config_value(
-                            self._config_entry,
-                            "hsem_ev_planned_load_charger_power_kw",
-                        )
-                        or 0.0
-                    )
-                    if forced_kw > 0:
-                        target_kw = forced_kw
-            await ocpp_server.update_charge_target(cpid, target_kw, now=now)
+            power_w = (
+                current_slot.ev_charger_calculated_power
+                if current_slot is not None
+                else 0.0
+            )
+            topology = normalize_ev_phase_topology(
+                self._cfg.ev_planned_load_charger_phase_topology
+            )
+            target_kw, max_current_a = ocpp_charge_target(power_w, topology)
+            await ocpp_server.update_charge_target(
+                cpid, target_kw, max_current_a=max_current_a, now=now
+            )
 
         ocpp_second_server = getattr(self, "_ocpp_second_server", None)
         if (
@@ -676,25 +688,22 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             and self._cfg.ocpp_second_enabled
         ):
             second_cpid = self._cfg.ocpp_second_cpid or "default"
-            second_target_kw = 0.0
-            if self._ev_second_charging_plan is not None:
-                second_target_kw = (
-                    self._ev_second_charging_plan.current_slot_planned_load_kwh
-                )
-                if slot_minutes > 0 and second_target_kw > 0:
-                    second_target_kw = second_target_kw / slot_minutes * 60.0
-                if force_second:
-                    forced_kw = float(
-                        get_config_value(
-                            self._config_entry,
-                            "hsem_ev_second_planned_load_charger_power_kw",
-                        )
-                        or 0.0
-                    )
-                    if forced_kw > 0:
-                        second_target_kw = forced_kw
+            second_power_w = (
+                current_slot.ev_second_charger_calculated_power
+                if current_slot is not None
+                else 0.0
+            )
+            second_topology = normalize_ev_phase_topology(
+                self._cfg.ev_second_planned_load_charger_phase_topology
+            )
+            second_target_kw, second_max_current_a = ocpp_charge_target(
+                second_power_w, second_topology
+            )
             await ocpp_second_server.update_charge_target(
-                second_cpid, second_target_kw, now=now
+                second_cpid,
+                second_target_kw,
+                max_current_a=second_max_current_a,
+                now=now,
             )
 
         async_log("debug", "------ HSEM Coordinator: update cycle complete")

@@ -100,3 +100,9 @@ class CoordinatorData:
     #: True while the second EV's OCPP server WebSocket site is bound and
     #: active (issue #858).
     ocpp_second_listening: bool = False
+    #: Amperage in the primary OCPP server's last ``SetChargingProfile``
+    #: (issue #886). ``None`` until the first profile has been sent.
+    ocpp_last_requested_current_a: int | None = None
+    #: Amperage in the second EV's OCPP server's last ``SetChargingProfile``
+    #: (issue #886). ``None`` until the first profile has been sent.
+    ocpp_second_last_requested_current_a: int | None = None

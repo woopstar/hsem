@@ -107,6 +107,7 @@ class OCPPServer:
         self._target_entered_at: datetime | None = None
         self._zero_entered_at: datetime | None = None
         self._last_sent_target: float = -1.0  # Track last sent to avoid duplicates
+        self._last_sent_current_a: int = -1  # Last requested amps, -1 = none sent
 
         # Anti-flap state machine: "idle", "starting", "charging", "stopping"
         self._flap_state: str = "idle"
@@ -169,6 +170,15 @@ class OCPPServer:
     def is_listening(self) -> bool:
         """Return True while the aiohttp WebSocket site is bound and active."""
         return self._site is not None
+
+    @property
+    def last_requested_current_a(self) -> int | None:
+        """Return the amperage in the last ``SetChargingProfile`` sent.
+
+        ``None`` until the first profile has been sent to a connected
+        charger this session.
+        """
+        return self._last_sent_current_a if self._last_sent_current_a >= 0 else None
 
     @property
     def charger_sessions(self) -> dict[str, ChargerSession]:
@@ -496,6 +506,7 @@ class OCPPServer:
 
         await self._send_call(session, "SetChargingProfile", payload)
         self._last_sent_target = float(max_power_w)
+        self._last_sent_current_a = max_current_a
         _LOGGER.debug(
             "Sent SetChargingProfile to %s: max %d A (~%d W)",
             session.cpid,
@@ -515,6 +526,7 @@ class OCPPServer:
             payload = {}
         await self._send_call(session, "RemoteStopTransaction", payload)
         self._last_sent_target = -1.0
+        self._last_sent_current_a = -1
         _LOGGER.debug(
             "Sent RemoteStopTransaction to %s (tx=%s)",
             session.cpid,
