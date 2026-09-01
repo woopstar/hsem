@@ -453,11 +453,12 @@ class HSEMWorkingModeSensor(
         """
         # Cancel any still-running task from the previous coordinator cycle.
         self._cancel_update_task()
-        self._update_task = self.hass.async_create_task(
+        task = self.hass.async_create_task(
             self._async_on_coordinator_update(),
             name="hsem_working_mode_update",
         )
-        self._update_task.add_done_callback(self._on_update_task_done)
+        self._update_task = task
+        task.add_done_callback(self._on_update_task_done)
 
     async def _async_on_coordinator_update(self) -> None:
         """Apply hardware writes then write state to HA.
