@@ -190,7 +190,7 @@ def add_ev_and_session_constraint_rows(
             ):
                 cap_target = (
                     ev.capacity_kwh
-                    if ev.deadline_escalated
+                    if ev.deadline_escalated(m)
                     else ev.effective_deadline_target_kwh
                 )
                 shortfall = cap_target - ev.initial_soc_kwh

@@ -230,7 +230,7 @@ def _build_objective(
             # cost-equivalent solutions above the target.
             energy_needed = ev.effective_deadline_target_kwh - ev.initial_soc_kwh
             ev_penalty_cost = max(p_imp_max, 0.1) * max(energy_needed, 1.0) * 10.0
-            if ev.deadline_escalated:
+            if ev.deadline_escalated(m):
                 ev_penalty_cost *= _EV_DEADLINE_ESCALATION_PENALTY_MULTIPLIER
             c_obj[ev_pen_offsets[ev_idx]] = ev_penalty_cost
 

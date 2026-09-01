@@ -714,9 +714,18 @@ persistent trajectory state):
   for; `target_kwh` itself is untouched everywhere else, so `deadline_met`
   in diagnostics (`ev_pen < 1e-6`) now certifies the strictly stronger
   "target + margin was met" outcome.
-- `deadline_escalated` — `True` when even max-power charging for every
+- `deadline_escalated(m)` — `True` when even max-power charging for every
   remaining pre-deadline slot can't reach `effective_deadline_target_kwh`
-  (`initial_soc_kwh + max_charge_per_slot × (deadline_slot + 1) < effective_deadline_target_kwh`).
+  (`initial_soc_kwh + max_charge_per_slot × (d + 1) < effective_deadline_target_kwh`,
+  where `d = max(0, min(deadline_slot, m - 1))`). It takes the current
+  solve's LP slot count `m` as an explicit argument — the same value every
+  constraint-building site in `planner/milp/_ev_constraints.py` already has
+  in scope — and clamps `deadline_slot` to `[0, m - 1]` before use, exactly
+  like every other consumer of `deadline_slot` (`_ev_constraints.py` lines
+  ~158-160, 197-198, 225-226). This makes it impossible for the escalation
+  check to diverge from what the constraints actually do with
+  `deadline_slot`, even if a future caller builds `EVConfig` against a
+  mismatched horizon (issue #864).
   When escalated, the target-cap's `cap_target` lifts all the way to
   `capacity_kwh` (the margin itself is no longer achievable, so the solver
   is freed to charge as much as physically possible instead of staying
@@ -734,7 +743,7 @@ boundary, EV state change, live-power drift) to force the next solve.
 
 ```text
 ev_penalty_cost = max(p_imp) * max(energy_needed, 1.0) * 10
-if ev.deadline_escalated:
+if ev.deadline_escalated(m):
     ev_penalty_cost *= 5.0
 ```
 

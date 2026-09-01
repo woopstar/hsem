@@ -1095,7 +1095,7 @@ def test_ev_deadline_escalated_charges_to_physical_max():
         deadline_slot=3,  # 4 slots => 40 kWh physically reachable
         deadline_margin_kwh=4.0,
     )
-    assert ev.deadline_escalated is True
+    assert ev.deadline_escalated(len(slots)) is True
 
     result = solve_milp(
         slots,
