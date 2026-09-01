@@ -166,7 +166,7 @@ def validate_published_phase_envelope(
     """
     if not phase_fuse_active:
         return {"valid": True, "reason": "ok"}
-    max_phase_kwh, _excess = phase_envelope_from_published_slots(
+    max_phase_kwh = phase_envelope_from_published_slots(
         out_slots=out_slots,
         future_idx=future_idx,
         active_evs=active_evs,
@@ -188,16 +188,20 @@ def phase_envelope_from_published_slots(
     active_evs: list[EVConfig],
     session_slots_by_ev: dict[int, set[int]],
     slot_hours: float,
-) -> tuple[float, float]:
-    """Return ``(max_phase_import_kwh, total_excess_kwh)`` for a solved plan.
+) -> float:
+    """Return ``max_phase_import_kwh`` for a solved plan.
 
     Reconstructs the worst-case per-phase envelope from the **published**
     slot fields (rounded grid flows and charger power commands) using exactly
     the same topology shares as the constraint rows.  This is the post-solve
     validation half of the shared-helper contract.
+
+    The balanced/executable/session terms are already phase-independent
+    (the balanced third is split evenly and the EV terms use a single
+    topology share for the whole slot), so one evaluation per slot gives
+    the same worst-case value a per-phase loop would.
     """
     max_phase_kwh = 0.0
-    total_excess = 0.0
     for lp_t, slot_i in enumerate(future_idx):
         slot = out_slots[slot_i]
         balanced_kwh = (
@@ -216,7 +220,6 @@ def phase_envelope_from_published_slots(
             lp_t=lp_t,
             hours=slot_hours,
         )
-        for _phase_index in range(PHASE_COUNT):
-            value = balanced_kwh + executable_kwh + session_kwh
-            max_phase_kwh = max(max_phase_kwh, value)
-    return (max_phase_kwh, total_excess)
+        value = balanced_kwh + executable_kwh + session_kwh
+        max_phase_kwh = max(max_phase_kwh, value)
+    return max_phase_kwh

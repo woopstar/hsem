@@ -16,6 +16,9 @@ import pytest
 
 from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.planner.milp._phase_fuse import (
+    phase_envelope_from_published_slots,
+)
 from custom_components.hsem.planner.milp_optimizer import (
     is_scipy_available,
     solve_milp,
@@ -173,3 +176,25 @@ def test_published_plan_survives_its_own_phase_validation() -> None:
     # No phase envelope exceeds the rated fuse for the solved plan.
     phase_limit_kwh = _FUSE_AMPS * 230.0 / 1000.0
     assert diagnostics["max_phase_import_kwh"] <= phase_limit_kwh + 1e-6
+
+
+def test_phase_envelope_from_published_slots_returns_a_plain_float() -> None:
+    """Regression: the function returns just the envelope, not a diagnostic pair.
+
+    ``total_excess_kwh`` was declared and returned but never updated, and its
+    sole caller discarded it — the dead second tuple element was removed.
+    """
+    slot = _slots(1)[0]
+    slot.grid_import_kwh = 3.0
+    slot.grid_export_kwh = 0.0
+
+    max_phase_kwh = phase_envelope_from_published_slots(
+        out_slots=[slot],
+        future_idx=[0],
+        active_evs=[],
+        session_slots_by_ev={},
+        slot_hours=1.0,
+    )
+
+    assert isinstance(max_phase_kwh, float)
+    assert max_phase_kwh == pytest.approx(3.0 / PHASE_COUNT)
