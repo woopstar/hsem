@@ -8,26 +8,6 @@ start, and determine if an interval ends before a window begins.
 from datetime import datetime, time, timedelta
 
 
-def is_time_in_window(current: time, start: time, end: time) -> bool:
-    """Check whether *current* falls within the [start, end) window.
-
-    Handles windows that cross midnight (e.g. 23:00–02:00) correctly.
-
-    Args:
-        current: The time to test.
-        start: Start of the window (inclusive).
-        end: End of the window (exclusive).
-
-    Returns:
-        True if *current* is within the window, False otherwise.
-    """
-    if start <= end:
-        # Same-day window (e.g. 07:00–09:00)
-        return start <= current < end
-    # Cross-midnight window (e.g. 23:00–02:00)
-    return current >= start or current < end
-
-
 def next_window_start_dt(now: datetime, window_start: time) -> datetime:
     """Return the next upcoming datetime when a discharge/charge window begins.
 

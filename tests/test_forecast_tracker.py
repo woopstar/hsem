@@ -564,14 +564,14 @@ class TestForecastTrackerSerialization:
         assert restored.mae_pv == pytest.approx(1.0)
         assert restored.bias_pv == pytest.approx(1.0)
 
-    def test_tracker_to_dict_empty(self) -> None:
-        """An empty tracker serializes to an empty record list."""
-        tracker = ForecastTracker()
-        d = tracker.to_dict()
-        assert d == {"records": []}
+    def test_tracker_to_persistence_dict_round_trip(self) -> None:
+        """Full round-trip via the real reboot-persistence path.
 
-    def test_tracker_to_dict_round_trip(self) -> None:
-        """Full round-trip: populate, serialize, deserialize, verify summary."""
+        Populate, persist with ``to_persistence_dict`` (the method HSEM
+        actually uses to save tracker state — see
+        ``forecast_accuracy_sensor.py``), restore into a fresh tracker, and
+        verify the summary matches.
+        """
         original = ForecastTracker()
 
         # Add two finalised records
@@ -588,9 +588,10 @@ class TestForecastTrackerSerialization:
             original.finalise_record(_slot_start(hour))
 
         original_summary = original.summary
+        assert original_summary.finalised_count == 2
 
-        # Serialize
-        data = original.to_dict()
+        # Persist via the real reboot-persistence path
+        data = original.to_persistence_dict(now=_slot_start(12))
         assert len(data["records"]) == 2
 
         # Deserialize into a fresh tracker
@@ -607,34 +608,6 @@ class TestForecastTrackerSerialization:
         assert restored_summary.mape_pv_pct == pytest.approx(
             original_summary.mape_pv_pct
         )
-
-    def test_tracker_to_dict_unfinalised_records(self) -> None:
-        """Unfinalised serialized records restore correctly (with zero bias)."""
-        tracker = ForecastTracker()
-        tracker.get_or_create_record(_slot_start(10), _slot_start(11))
-        tracker.set_forecasts(
-            _slot_start(10),
-            4.0,
-            2.0,
-            forecast_soc_pct=78.0,
-            forecast_action="charge",
-        )
-        # Accumulate but do NOT finalise
-
-        data = tracker.to_dict()
-        assert len(data["records"]) == 1
-        assert data["records"][0]["finalised"] is False
-        assert data["records"][0]["actual_pv_kwh"] == pytest.approx(0.0)
-
-        restored = ForecastTracker()
-        restored.load_from_dict(data)
-        rec = restored.find_record(_slot_start(10))
-        assert rec is not None
-        assert rec.finalised is False
-        assert rec.forecast_pv_kwh == pytest.approx(4.0)
-        assert rec.forecast_soc_pct == pytest.approx(78.0)
-        assert rec.forecast_action == "charge"
-        assert rec.prediction_eligible is True
 
     def test_legacy_payload_is_restored_but_excluded_from_accuracy(self) -> None:
         """Pre-baseline-schema records must not train or skew metrics."""

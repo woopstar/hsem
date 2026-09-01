@@ -10,7 +10,7 @@ All functions accept ``int`` or ``float`` and return ``float``.
 Usage
 -----
 >>> from custom_components.hsem.utils.units import (
-...     watt_to_kilowatt, kilowatt_to_watt,
+...     watt_to_kilowatt,
 ...     watthours_to_kilowatthours, kilowatthours_to_watthours,
 ...     energy_to_power_kw,
 ...     timedelta_to_hours, slot_duration_hours, hours_ahead,
@@ -46,18 +46,6 @@ def watt_to_kilowatt(power_w: float) -> float:
         Power in kiloWatts (kW).
     """
     return power_w / 1000.0
-
-
-def kilowatt_to_watt(power_kw: float) -> float:
-    """Convert kiloWatts to Watts.
-
-    Args:
-        power_kw: Power in kiloWatts (kW).
-
-    Returns:
-        Power in Watts (W).
-    """
-    return power_kw * 1000.0
 
 
 # ---------------------------------------------------------------------------
@@ -337,44 +325,6 @@ def ev_ac_to_dc_kwh(ac_kwh: float, charger_efficiency: float) -> float:
         Energy delivered to the EV battery (kWh, DC side).
     """
     return ac_kwh * charger_efficiency
-
-
-# ---------------------------------------------------------------------------
-# Price / cost helpers
-# ---------------------------------------------------------------------------
-
-
-def energy_cost(energy_kwh: float, price_per_kwh: float) -> float:
-    """Compute the monetary cost of a given amount of energy.
-
-    ``cost = energy_kwh × price_per_kwh``
-
-    Args:
-        energy_kwh: Energy in kiloWatt-hours (kWh).
-        price_per_kwh: Price per kiloWatt-hour (local currency/kWh).
-
-    Returns:
-        Monetary cost in local currency.
-    """
-    return energy_kwh * price_per_kwh
-
-
-def implied_price_per_kwh(total_cost: float, energy_kwh: float) -> float:
-    """Compute the implied average price from a total cost and energy.
-
-    ``price_per_kwh = total_cost ÷ energy_kwh``
-
-    Args:
-        total_cost: Total monetary cost (local currency).
-        energy_kwh: Energy in kiloWatt-hours (kWh).
-
-    Returns:
-        Implied average price per kWh.  Returns ``0.0`` if *energy_kwh* is
-        zero or negative (to avoid division-by-zero or nonsensical results).
-    """
-    if energy_kwh <= 0.0:
-        return 0.0
-    return total_cost / energy_kwh
 
 
 #: Planner flow fields are published to three decimal places, so exactly

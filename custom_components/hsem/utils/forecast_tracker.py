@@ -592,17 +592,6 @@ class ForecastTracker:
     # Serialization (reboot persistence)
     # ------------------------------------------------------------------
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize all tracker records to a JSON-safe dictionary.
-
-        Returns:
-            A dictionary with the full record list suitable for storage
-            in a Home Assistant sensor's ``extra_state_attributes``.
-        """
-        return {
-            "records": [r.to_dict() for r in self._records],
-        }
-
     def to_persistence_dict(
         self,
         *,

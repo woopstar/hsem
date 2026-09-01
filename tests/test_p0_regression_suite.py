@@ -147,44 +147,21 @@ class TestP001MonthMatching:
 
 
 class TestP002MidnightRollover:
-    """OLD BUG: ``is_time_in_window`` and ``interval_ends_before_window_start``
-    only handled same-day windows (start < end).  A cross-midnight window such
-    as 23:00–02:00 was silently treated as always-false, causing HSEM to skip
-    valid overnight charge/discharge windows entirely.
+    """OLD BUG: ``interval_ends_before_window_start`` only handled same-day
+    windows (start < end).  A cross-midnight window such as 23:00-02:00 was
+    silently treated as always-false, causing HSEM to skip valid overnight
+    charge/discharge windows entirely.
 
-    FIX: Both helpers now detect when ``start > end`` (cross-midnight) and
-    use the corresponding logic branch.
+    FIX: The helper now detects when ``start > end`` (cross-midnight) and
+    uses the corresponding logic branch.
+
+    Note: the sibling ``is_time_in_window`` helper covered by the original
+    fix was removed as dead code in issue #891 — it had no production
+    caller. Production cross-midnight window handling for discharge
+    schedules lives inline in ``planner/discharge_scheduler.py`` (the
+    ``sched.end > sched.start`` branch), exercised by
+    ``tests/test_cross_day_charge_windows.py`` and the planner test suite.
     """
-
-    def test_inside_cross_midnight_window(self) -> None:
-        """01:00 is inside the 23:00-02:00 window."""
-        from custom_components.hsem.utils.time_windows import is_time_in_window
-
-        assert is_time_in_window(time(1, 0), time(23, 0), time(2, 0)) is True
-
-    def test_at_start_of_cross_midnight_window(self) -> None:
-        """23:00 is the inclusive start of the 23:00-02:00 window."""
-        from custom_components.hsem.utils.time_windows import is_time_in_window
-
-        assert is_time_in_window(time(23, 0), time(23, 0), time(2, 0)) is True
-
-    def test_at_end_of_cross_midnight_window_is_exclusive(self) -> None:
-        """02:00 is the exclusive end — must be False."""
-        from custom_components.hsem.utils.time_windows import is_time_in_window
-
-        assert is_time_in_window(time(2, 0), time(23, 0), time(2, 0)) is False
-
-    def test_before_cross_midnight_window(self) -> None:
-        """21:00 is before the 23:00 start — must be False."""
-        from custom_components.hsem.utils.time_windows import is_time_in_window
-
-        assert is_time_in_window(time(21, 0), time(23, 0), time(2, 0)) is False
-
-    def test_after_cross_midnight_window(self) -> None:
-        """03:00 is after the 02:00 end of the cross-midnight window."""
-        from custom_components.hsem.utils.time_windows import is_time_in_window
-
-        assert is_time_in_window(time(3, 0), time(23, 0), time(2, 0)) is False
 
     def test_interval_ending_before_cross_midnight_window_start(self) -> None:
         """An interval ending at 22:00 is before a 23:00 cross-midnight window."""
@@ -207,13 +184,6 @@ class TestP002MidnightRollover:
         assert (
             interval_ends_before_window_start(interval_end, time(23, 0), now) is False
         )
-
-    def test_same_day_window_still_works(self) -> None:
-        """Ordinary same-day windows continue to work after the fix."""
-        from custom_components.hsem.utils.time_windows import is_time_in_window
-
-        assert is_time_in_window(time(8, 0), time(7, 0), time(9, 0)) is True
-        assert is_time_in_window(time(6, 59), time(7, 0), time(9, 0)) is False
 
 
 # ===========================================================================

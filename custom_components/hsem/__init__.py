@@ -21,7 +21,10 @@ from homeassistant.exceptions import (
 
 from custom_components.hsem.const import DOMAIN, MIN_HUAWEI_SOLAR_VERSION
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
-from custom_components.hsem.services import async_register_services
+from custom_components.hsem.services import (
+    async_register_services,
+    async_unregister_services,
+)
 from custom_components.hsem.utils.logger import (
     async_close_hsem_logger,
     async_init_hsem_logger,
@@ -213,6 +216,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> boo
 
     if unload_ok:
         entry.runtime_data = None  # type: ignore[assignment]  # HA convention: clear on unload
+
+    # HSEM only supports a single config entry, so unloading it means the
+    # services registered in async_setup are no longer backed by a coordinator.
+    await async_unregister_services(hass)
 
     # Close the HSEM dedicated log file handler.
     await async_close_hsem_logger()

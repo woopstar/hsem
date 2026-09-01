@@ -32,6 +32,11 @@ from homeassistant.const import (
 )
 from homeassistant.helpers.selector import selector
 
+from custom_components.hsem.utils.config_validator import (
+    merge_errors,
+    validate_energy_limits,
+    validate_power_limits,
+)
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.phase_power import EV_PHASE_TOPOLOGIES
 
@@ -228,4 +233,17 @@ async def validate_ev_planned_load_schema_input(
     if not user_input.get(f"{prefix}_enabled", False):
         return {}
 
-    return {}
+    capacity_errors = validate_energy_limits(
+        user_input,
+        f"{prefix}_battery_capacity_kwh",
+        min_kwh=0.0,
+        max_kwh=200.0,
+    )
+    min_power_errors = validate_power_limits(
+        user_input,
+        f"{prefix}_charger_min_power_w",
+        min_watts=0.0,
+        max_watts=22_000.0,
+    )
+
+    return merge_errors(capacity_errors, min_power_errors)

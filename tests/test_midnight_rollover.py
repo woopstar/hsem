@@ -16,10 +16,7 @@ Windows.
 import asyncio
 from datetime import UTC, datetime, time, timedelta
 
-from custom_components.hsem.utils.time_windows import (
-    interval_ends_before_window_start,
-    is_time_in_window,
-)
+from custom_components.hsem.utils.time_windows import interval_ends_before_window_start
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -35,65 +32,13 @@ def _dt(hour: int, minute: int = 0, date_offset: int = 0) -> datetime:
 
 
 # ---------------------------------------------------------------------------
-# Tests for is_time_in_window
-# ---------------------------------------------------------------------------
-
-
-class TestIsTimeInWindow:
-    """Unit tests for the is_time_in_window helper."""
-
-    # --- Same-day windows ---------------------------------------------------
-
-    def test_same_day_inside(self):
-        """Current time falls inside a same-day window."""
-        assert is_time_in_window(time(8, 0), time(7, 0), time(9, 0)) is True
-
-    def test_same_day_at_start(self):
-        """Current time equals the window start (inclusive boundary)."""
-        assert is_time_in_window(time(7, 0), time(7, 0), time(9, 0)) is True
-
-    def test_same_day_at_end(self):
-        """Current time equals the window end (exclusive boundary)."""
-        assert is_time_in_window(time(9, 0), time(7, 0), time(9, 0)) is False
-
-    def test_same_day_before_window(self):
-        """Current time is before a same-day window."""
-        assert is_time_in_window(time(6, 59), time(7, 0), time(9, 0)) is False
-
-    def test_same_day_after_window(self):
-        """Current time is after a same-day window."""
-        assert is_time_in_window(time(9, 1), time(7, 0), time(9, 0)) is False
-
-    # --- Cross-midnight windows (P0-02 acceptance criteria) ----------------
-
-    def test_cross_midnight_23_to_02_at_2300(self):
-        """At 23:00 the 23:00-02:00 window has just started → inside."""
-        assert is_time_in_window(time(23, 0), time(23, 0), time(2, 0)) is True
-
-    def test_cross_midnight_23_to_02_at_0100(self):
-        """At 01:00 we are inside the 23:00-02:00 window."""
-        assert is_time_in_window(time(1, 0), time(23, 0), time(2, 0)) is True
-
-    def test_cross_midnight_23_to_02_at_0200(self):
-        """At 02:00 the 23:00-02:00 window has ended (exclusive)."""
-        assert is_time_in_window(time(2, 0), time(23, 0), time(2, 0)) is False
-
-    def test_cross_midnight_23_to_02_at_2100(self):
-        """At 21:00 the 23:00-02:00 window has not started yet."""
-        assert is_time_in_window(time(21, 0), time(23, 0), time(2, 0)) is False
-
-    def test_cross_midnight_0000_to_0600_at_0300(self):
-        """At 03:00 we are inside the 00:00-06:00 window (P0-02 AC)."""
-        # 00:00-06:00 is a same-day window (start < end)
-        assert is_time_in_window(time(3, 0), time(0, 0), time(6, 0)) is True
-
-    def test_cross_midnight_0000_to_0600_at_2300(self):
-        """At 23:00 we are outside the 00:00-06:00 window."""
-        assert is_time_in_window(time(23, 0), time(0, 0), time(6, 0)) is False
-
-
-# ---------------------------------------------------------------------------
 # Tests for interval_ends_before_window_start
+#
+# Note: the sibling ``is_time_in_window`` helper (formerly tested here) was
+# removed as dead code in issue #891 — it had no production caller.
+# Production cross-midnight window handling lives inline in
+# ``planner/discharge_scheduler.py``, exercised by the planner test suite
+# and ``tests/test_cross_day_charge_windows.py``.
 # ---------------------------------------------------------------------------
 
 

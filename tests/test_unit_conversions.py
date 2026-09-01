@@ -10,13 +10,10 @@ from __future__ import annotations
 import pytest
 
 from custom_components.hsem.utils.units import (
-    energy_cost,
     energy_to_power_kw,
     ev_ac_to_dc_kwh,
     ev_dc_to_ac_kwh,
     fuse_max_energy_per_slot_kwh,
-    implied_price_per_kwh,
-    kilowatt_to_watt,
     kilowatthours_to_watthours,
     watt_to_kilowatt,
     watthours_to_kilowatthours,
@@ -49,31 +46,6 @@ class TestWattToKilowatt:
     def test_negative(self) -> None:
         """-500 W → -0.5 kW (negative power is valid for reverse flow)."""
         assert watt_to_kilowatt(-500.0) == pytest.approx(-0.5)
-
-
-class TestKilowattToWatt:
-    """Tests for :func:`kilowatt_to_watt`."""
-
-    def test_typical_value(self) -> None:
-        """5.0 kW → 5000 W."""
-        assert kilowatt_to_watt(5.0) == pytest.approx(5000.0)
-
-    def test_zero(self) -> None:
-        """0.0 kW → 0 W."""
-        assert kilowatt_to_watt(0.0) == pytest.approx(0.0)
-
-    def test_small_value(self) -> None:
-        """0.001 kW → 1 W."""
-        assert kilowatt_to_watt(0.001) == pytest.approx(1.0)
-
-    def test_negative(self) -> None:
-        """-2.5 kW → -2500 W."""
-        assert kilowatt_to_watt(-2.5) == pytest.approx(-2500.0)
-
-    def test_roundtrip(self) -> None:
-        """Round-trip: W → kW → W preserves value."""
-        original = 7642.0
-        assert kilowatt_to_watt(watt_to_kilowatt(original)) == pytest.approx(original)
 
 
 # ---------------------------------------------------------------------------
@@ -151,86 +123,6 @@ class TestEnergyToPowerKw:
         assert energy_to_power_kw(energy_kwh=-3.0, duration_h=1.0) == pytest.approx(
             -3.0
         )
-
-
-# ---------------------------------------------------------------------------
-# Price / cost helpers
-# ---------------------------------------------------------------------------
-
-
-class TestEnergyCost:
-    """Tests for :func:`energy_cost`."""
-
-    def test_typical_value(self) -> None:
-        """10 kWh × 0.50 DKK/kWh → 5.0 DKK."""
-        assert energy_cost(energy_kwh=10.0, price_per_kwh=0.50) == pytest.approx(5.0)
-
-    def test_zero_energy(self) -> None:
-        """0 kWh × 0.50 → 0.0."""
-        assert energy_cost(energy_kwh=0.0, price_per_kwh=0.50) == pytest.approx(0.0)
-
-    def test_zero_price(self) -> None:
-        """10 kWh × 0.0 → 0.0."""
-        assert energy_cost(energy_kwh=10.0, price_per_kwh=0.0) == pytest.approx(0.0)
-
-    def test_negative_price(self) -> None:
-        """10 kWh × -0.10 → -1.0 (negative price = revenue)."""
-        assert energy_cost(energy_kwh=10.0, price_per_kwh=-0.10) == pytest.approx(-1.0)
-
-    def test_negative_energy(self) -> None:
-        """-5 kWh × 0.50 → -2.5 (export)."""
-        assert energy_cost(energy_kwh=-5.0, price_per_kwh=0.50) == pytest.approx(-2.5)
-
-
-class TestImpliedPricePerKwh:
-    """Tests for :func:`implied_price_per_kwh`."""
-
-    def test_typical_value(self) -> None:
-        """5.0 DKK ÷ 10 kWh → 0.50 DKK/kWh."""
-        assert implied_price_per_kwh(total_cost=5.0, energy_kwh=10.0) == pytest.approx(
-            0.50
-        )
-
-    def test_zero_energy_returns_zero(self) -> None:
-        """Division by zero guard: 5.0 ÷ 0 → 0.0."""
-        assert implied_price_per_kwh(total_cost=5.0, energy_kwh=0.0) == pytest.approx(
-            0.0
-        )
-
-    def test_negative_energy_returns_zero(self) -> None:
-        """Guard against nonsensical negative energy: 5.0 ÷ -1 → 0.0."""
-        assert implied_price_per_kwh(total_cost=5.0, energy_kwh=-1.0) == pytest.approx(
-            0.0
-        )
-
-    def test_zero_cost(self) -> None:
-        """0.0 ÷ 10 kWh → 0.0."""
-        assert implied_price_per_kwh(total_cost=0.0, energy_kwh=10.0) == pytest.approx(
-            0.0
-        )
-
-    def test_negative_cost(self) -> None:
-        """-5.0 ÷ 10 kWh → -0.50 (net revenue)."""
-        assert implied_price_per_kwh(total_cost=-5.0, energy_kwh=10.0) == pytest.approx(
-            -0.50
-        )
-
-
-# ---------------------------------------------------------------------------
-# Cross-category consistency
-# ---------------------------------------------------------------------------
-
-
-class TestCrossCategoryConsistency:
-    """Verify that related conversions produce consistent results."""
-
-    def test_kwh_to_cost_to_implied_price(self) -> None:
-        """energy_cost then implied_price_per_kwh recovers the original price."""
-        energy = 12.5
-        price = 0.45
-        cost = energy_cost(energy, price)
-        recovered = implied_price_per_kwh(cost, energy)
-        assert recovered == pytest.approx(price)
 
 
 # ---------------------------------------------------------------------------
