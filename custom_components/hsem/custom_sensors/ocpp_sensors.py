@@ -88,6 +88,13 @@ def _configured_port(cfg: SensorConfig, charger_index: int) -> int:
     return cfg.ocpp_second_port if charger_index == 2 else cfg.ocpp_port
 
 
+def _last_requested_current_a(data: CoordinatorData, charger_index: int) -> int | None:
+    """Return the amperage in the given EV server's last SetChargingProfile."""
+    if charger_index == 2:
+        return data.ocpp_second_last_requested_current_a
+    return data.ocpp_last_requested_current_a
+
+
 def _connection_url(hass: Any, port: int) -> str | None:
     """Build a best-effort ``ws://<host>:<port>/`` connection URL.
 
@@ -210,6 +217,7 @@ class HSEMOCPPChargerStatusSensor(
         attrs: dict[str, Any] = {
             "listening": _is_listening(data, self._charger_index),
             "port": port,
+            "requested_current_a": _last_requested_current_a(data, self._charger_index),
         }
         url = _connection_url(self.hass, port)
         if url is not None:

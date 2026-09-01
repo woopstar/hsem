@@ -128,3 +128,43 @@ def test_attributes_include_per_charger_session_details() -> None:
     attrs = sensor.extra_state_attributes
     assert attrs["CP1"]["status"] == "Charging"
     assert attrs["CP1"]["power_w"] == 7400.0
+
+
+def test_attributes_expose_requested_current_a() -> None:
+    """requested_current_a mirrors the last SetChargingProfile amps (#886)."""
+    data = CoordinatorData(
+        cfg=SensorConfig(ocpp_enabled=True, ocpp_port=9000),
+        ocpp_listening=True,
+        ocpp_last_requested_current_a=10,
+    )
+    sensor = HSEMOCPPChargerStatusSensor(_make_config_entry(), _make_coordinator(data))
+    sensor.hass = _make_hass_without_url()
+    assert sensor.extra_state_attributes["requested_current_a"] == 10
+
+
+def test_second_charger_attributes_use_second_requested_current_a() -> None:
+    """charger_index=2 reads the second server's requested-amps field."""
+    data = CoordinatorData(
+        cfg=SensorConfig(
+            ocpp_enabled=True, ocpp_second_enabled=True, ocpp_second_port=9001
+        ),
+        ocpp_second_listening=True,
+        ocpp_second_last_requested_current_a=6,
+        ocpp_last_requested_current_a=32,
+    )
+    sensor = HSEMOCPPChargerStatusSensor(
+        _make_config_entry(), _make_coordinator(data), charger_index=2
+    )
+    sensor.hass = _make_hass_without_url()
+    assert sensor.extra_state_attributes["requested_current_a"] == 6
+
+
+def test_attributes_requested_current_a_none_when_never_sent() -> None:
+    """requested_current_a is None before any charging profile has been sent."""
+    data = CoordinatorData(
+        cfg=SensorConfig(ocpp_enabled=True, ocpp_port=9000),
+        ocpp_listening=True,
+    )
+    sensor = HSEMOCPPChargerStatusSensor(_make_config_entry(), _make_coordinator(data))
+    sensor.hass = _make_hass_without_url()
+    assert sensor.extra_state_attributes["requested_current_a"] is None

@@ -23,6 +23,7 @@ from custom_components.hsem.planner.ev_planner import (
 )
 from custom_components.hsem.utils.datetime_utils import slot_contains, utc_key
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.phase_power import charger_power_to_current_a
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import slot_duration_hours
 
@@ -159,6 +160,25 @@ def write_ev_slot_commands(
         slot.grid_import_kwh * slot.import_price
         - slot.grid_export_kwh * slot.export_price,
         4,
+    )
+
+
+def ocpp_charge_target(power_w: float, topology: str | None) -> tuple[float, int]:
+    """Return the ``(target_kw, max_current_a)`` pair to publish over OCPP.
+
+    OCPP dispatch must publish the exact same ceiling already shown on the EV
+    charger current-limit sensor (see
+    ``custom_sensors/ev_charger_current_limit_sensor.py``) — never a second,
+    independently-derived target. ``power_w`` is expected to be the current
+    slot's already-stabilised ``ev_charger_calculated_power`` /
+    ``ev_second_charger_calculated_power`` field, so no further clamping
+    against the charger's rated/minimum current is needed here — that
+    clamping already happened when the command was stabilised (issue #886).
+    """
+    safe_power_w = max(float(power_w), 0.0)
+    return (
+        safe_power_w / 1000.0,
+        charger_power_to_current_a(safe_power_w, topology),
     )
 
 
