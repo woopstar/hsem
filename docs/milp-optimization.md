@@ -1,6 +1,6 @@
 # HSEM MILP Optimization
 
-The MILP solver (`planner/milp_optimizer.py`) finds the globally optimal battery charge/discharge schedule using scipy's HiGHS linear programming solver. It is the **primary planner** — heuristic candidates are generated alongside it for benchmarking and fallback, but when scipy is available the MILP solution is preferred.
+The MILP solver (`planner/milp_optimizer.py`) finds the globally optimal battery charge/discharge schedule using scipy's HiGHS linear programming solver. It is the **primary planner** — heuristic candidates are generated alongside it for benchmarking and fallback, but the MILP solution is preferred whenever scipy is available. `scipy`/`numpy` are declared in `manifest.json`'s `requirements`, so Home Assistant installs them automatically on setup; the "unavailable" fallback below is a defensive path, not the expected steady state.
 
 ---
 
@@ -506,7 +506,7 @@ After the MILP (or baseline) winner is selected, the engine runs a final pass ov
 
 ## Fallback
 
-If `scipy` is unavailable, `usable_kwh ≤ 0`, or the solver fails (crash, timeout, or non-success status), `solve_milp()` returns `None`. The engine silently drops the MILP candidate and the heuristic candidates compete as normal. Pickup is be measured via the `hsem_plan_origin` metric: `milp` when the LP succeeds, `rule_based` otherwise.
+If `scipy` is unavailable, `usable_kwh ≤ 0`, or the solver fails (crash, timeout, or non-success status), `solve_milp()` returns `None`. The engine silently drops the MILP candidate and the heuristic candidates compete as normal. Since `scipy`/`numpy` are declared `manifest.json` requirements, Home Assistant installs them for every user on setup — `scipy unavailable` should now only occur if the environment's package installation itself failed, not as routine behavior. Pickup is be measured via the `hsem_plan_origin` metric: `milp` when the LP succeeds, `rule_based` otherwise.
 
 ---
 

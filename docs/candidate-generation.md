@@ -39,7 +39,7 @@ alongside the MILP:
 | --- | ----------- | ------------------------------------------------------------------------------- |
 | 1   | `no_action` | Battery completely idle — no forced charge or discharge                         |
 | 2   | `passive`   | Solar charging only where PV surplus exists; no grid charge or forced discharge |
-| 3   | `milp`      | Globally-optimal LP solution (when scipy is available)                          |
+| 3   | `milp`      | Globally-optimal LP solution (scipy is a declared manifest requirement)         |
 
 ### Historical candidates (disabled)
 
@@ -112,7 +112,10 @@ variable vector and the energy balance equation includes EV charger load.
 
 If `scipy` is unavailable or the solver fails (infeasible / numerical issue),
 the MILP candidate is silently dropped and the remaining candidates
-(`no_action`, `passive`) compete as normal.
+(`no_action`, `passive`) compete as normal. `scipy`/`numpy` are declared in
+`manifest.json`'s `requirements`, so Home Assistant installs them for every
+user on integration setup — this fallback is a defensive path for solver
+failures, not the expected steady state for a missing dependency.
 
 ---
 
