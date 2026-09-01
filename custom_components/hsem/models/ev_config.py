@@ -137,8 +137,7 @@ class EVConfig:
         """
         return min(self.target_kwh + self.deadline_margin_kwh, self.capacity_kwh)
 
-    @property
-    def deadline_escalated(self) -> bool:
+    def deadline_escalated(self, m: int) -> bool:
         """Return whether even max-power charging can't reach the margined target.
 
         A stateless reachability check, re-evaluated on every MILP solve
@@ -148,10 +147,20 @@ class EVConfig:
         is steepened (issue #845), so the solver is free to charge past the
         normal margined ceiling when that's the only way to still meet the
         deadline.
+
+        Args:
+            m: Number of LP slots in the current solve horizon. ``deadline_slot``
+                is clamped to ``[0, m - 1]`` before use, mirroring every
+                constraint-building site that consumes it (see
+                ``planner/milp/_ev_constraints.py``'s ``d = max(0, min(d, m - 1))``).
+                Requiring the caller's actual horizon here — rather than caching
+                a horizon length on the config at construction time — makes it
+                impossible for this check to diverge from the horizon the MILP
+                constraints were built against, even if a future caller builds
+                ``EVConfig`` against a mismatched slot list.
         """
         if self.deadline_slot is None:
             return False
-        max_reachable = self.initial_soc_kwh + self.max_charge_per_slot * (
-            self.deadline_slot + 1
-        )
+        d = max(0, min(self.deadline_slot, m - 1))
+        max_reachable = self.initial_soc_kwh + self.max_charge_per_slot * (d + 1)
         return max_reachable < self.effective_deadline_target_kwh - 1e-9
