@@ -52,11 +52,18 @@ class Recommendations(Enum):
     """
 
     EVSmartCharging = "ev_smart_charging"
-    """EV is charging — battery must NOT discharge to avoid DC→AC→DC losses.
+    """EV is charging — a display relabel applied after SoC simulation.
 
-    Battery:   hold (may charge from PV surplus)
-    House:     covered by grid
-    Grid:      import for house + EV; export PV surplus
+    The underlying energy flows (charge/discharge/import/export) are
+    computed by the SoC simulation *before* this label is applied and are
+    unaffected by it: the battery remains free to discharge for non-EV
+    house load (issue #862). Only the EV's own load is guaranteed to be
+    served from grid/PV, never the battery.
+
+    Battery:   whatever the simulation already solved (may discharge for
+               house load, charge from PV surplus, or hold)
+    House:     covered by battery first (if solved), grid for remainder
+    Grid:      import for EV + any uncovered house load; export PV surplus
     """
 
     # ------------------------------------------------------------------

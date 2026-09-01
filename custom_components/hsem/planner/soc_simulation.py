@@ -167,11 +167,15 @@ def simulate_soc(
         #                        (base_load_includes_ev=True case)
         #
         # The EV charger and the house loads share the same AC bus with the
-        # battery inverter.  When the battery discharges, the AC power feeds
-        # EVERYTHING on the bus — you cannot selectively skip the EV charger.
-        # Therefore, when ev_load > 0, battery discharge is suppressed and
-        # ALL demand is covered from the grid to avoid DC→AC→DC conversion
-        # losses through the EV charger.
+        # battery inverter, but that does not require suppressing all
+        # discharge — the battery's net demand is computed from
+        # ``house_load - pv`` only, independent of EV load (issue #862).
+        # EV demand is served from grid/PV via ``ev_load`` below, exactly as
+        # in the PV-surplus branch. The physical safeguard against the
+        # battery draining into the EV is enforced at the hardware layer
+        # (``applier.py`` writes ``maximum_discharge_power`` from this
+        # slot's own solved ``batteries_discharged_kwh``, see issue #592),
+        # not by zeroing the plan's discharge here.
         #
         # For base_load_includes_ev=False:
         #   house_load = avg_house_consumption (pure house, no EV)
@@ -233,33 +237,28 @@ def simulate_soc(
             grid_import = slot.grid_import_kwh
             grid_export = slot.grid_export_kwh
         elif net_demand > 0:
-            # House demand exceeds PV on the shared AC bus.
+            # House demand exceeds PV.
             #
-            # When the EV is charging, the battery MUST NOT discharge.
-            # The battery, house loads, and EV charger all share one AC bus —
-            # you cannot selectively route discharge power to the house while
-            # excluding the EV.  Any DC→AC discharge would feed both, creating
-            # needless DC→AC→DC conversion losses through the EV charger.
-            # Instead, cover everything (house + EV + scheduled charge) from
-            # the grid when EV is active.
+            # EV load is served from grid/PV independently of the battery
+            # (see ``ev_load`` above) — an EV charging in this slot does not
+            # by itself block the battery from covering `house_load - pv`
+            # (issue #862; the earlier full-suppression-on-any-EV-load
+            # behaviour was a conservative simplification that silently
+            # diverged from this spec and defeated the hardware-level
+            # discharge cap in ``applier.py``, see issue #592).
             #
-            # Additionally, only discharge when the slot's recommendation
-            # explicitly calls for it — BatteriesDischargeMode or
-            # ForceBatteriesDischarge.  Slots with other recommendations
-            # (e.g. BatteriesWaitMode, None) should NOT drain the battery
-            # even if capacity is available, preserving stored energy for
-            # more expensive future slots.
+            # Only discharge when the slot's recommendation explicitly calls
+            # for it — BatteriesDischargeMode or ForceBatteriesDischarge.
+            # Slots with other recommendations (e.g. BatteriesWaitMode, None)
+            # should NOT drain the battery even if capacity is available,
+            # preserving stored energy for more expensive future slots.
             #
             # Discharge efficiency: to deliver `net_demand` kWh to the house
             # the battery must release `net_demand / discharge_eff` kWh.
             # We cap to available capacity and per-slot limit then compute
             # what the house actually receives from that draw.
-            if (
-                ev_load > 1e-9
-                or slot.recommendation == Recommendations.BatteriesWaitMode.value
-            ):
-                # EV is charging or slot is in wait mode — no battery discharge.
-                # Everything from grid.
+            if slot.recommendation == Recommendations.BatteriesWaitMode.value:
+                # Wait mode — no battery discharge. Everything from grid.
                 discharge = 0.0
                 house_grid_import = net_demand
                 grid_import = (

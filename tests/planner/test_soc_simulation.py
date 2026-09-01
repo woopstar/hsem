@@ -335,6 +335,52 @@ class TestSimulateSocUnit:
         assert s.batteries_discharged_kwh == pytest.approx(0.0)
         assert s.grid_import_kwh == pytest.approx(1.0)
 
+    def test_discharge_covers_non_ev_load_even_when_ev_charging(self):
+        """Battery discharges for house load even while an EV is charging (#862).
+
+        EV load is served from grid/PV independently of the battery; it must
+        not suppress discharge for the non-EV portion of demand.
+        """
+        from datetime import datetime
+
+        tz = ZoneInfo("Europe/Copenhagen")
+        t0 = datetime.fromisoformat("2024-06-15T00:00:00+02:00").replace(tzinfo=tz)
+        s = PlannedSlot(start=t0, end=t0 + timedelta(hours=1))
+        s.avg_house_consumption_kwh = 0.5  # pure house load
+        s.solcast_pv_estimate_kwh = 0.0
+        s.batteries_charged_kwh = 0.0
+        s.ev_planned_load_kwh = 5.0  # EV charging this slot
+        s.recommendation = Recommendations.BatteriesDischargeMode.value
+
+        simulate_soc(
+            [s], t0, 9.0, 9.0, 9.0, max_charge_per_slot=5.0, max_discharge_per_slot=None
+        )
+
+        # House load is covered from the battery, not suppressed by EV load.
+        assert s.batteries_discharged_kwh == pytest.approx(0.5)
+        # EV load is served entirely from the grid, independent of the battery.
+        assert s.grid_import_kwh == pytest.approx(5.0)
+
+    def test_battery_wait_mode_still_suppresses_discharge_with_ev_load(self):
+        """BatteriesWaitMode still blocks discharge even with EV load present."""
+        from datetime import datetime
+
+        tz = ZoneInfo("Europe/Copenhagen")
+        t0 = datetime.fromisoformat("2024-06-15T00:00:00+02:00").replace(tzinfo=tz)
+        s = PlannedSlot(start=t0, end=t0 + timedelta(hours=1))
+        s.avg_house_consumption_kwh = 0.5
+        s.solcast_pv_estimate_kwh = 0.0
+        s.batteries_charged_kwh = 0.0
+        s.ev_planned_load_kwh = 5.0
+        s.recommendation = Recommendations.BatteriesWaitMode.value
+
+        simulate_soc(
+            [s], t0, 9.0, 9.0, 9.0, max_charge_per_slot=5.0, max_discharge_per_slot=None
+        )
+
+        assert s.batteries_discharged_kwh == pytest.approx(0.0)
+        assert s.grid_import_kwh == pytest.approx(5.5)
+
     def test_past_slots_get_zero_fields(self):
         """Slots entirely before ``now`` should have all SoC fields zeroed."""
         from datetime import datetime

@@ -1470,12 +1470,17 @@ class TestEvAcLoadAndSoCPath:
     # ------------------------------------------------------------------
 
     def test_soc_simulation_accounts_for_ev_load(self):
-        """EV load goes to grid_import only; the battery does NOT discharge.
+        """EV load is always reflected in the slot's energy balance.
 
-        The EV charger and house loads share the same AC bus.  When the EV is
-        charging, battery discharge is suppressed to avoid DC→AC→DC conversion
-        losses.  Therefore `batteries_discharged_kwh` is 0 during EV slots, and
-        `grid_import_kwh` absorbs BOTH house and EV demand.
+        `ev_planned_load_kwh` is added to demand alongside house load; the
+        battery is independently free to cover the non-EV portion (house
+        load) even while the EV is charging (issue #862) — the winning
+        candidate here happens to be MILP, which chooses not to discharge
+        for this flat-price, no-PV scenario since cycling would incur cost
+        with no arbitrage benefit. See
+        `TestSimulateSocUnit.test_discharge_covers_non_ev_load_even_when_ev_charging`
+        in `tests/planner/test_soc_simulation.py` for a direct unit test of
+        the greedy (non-MILP) SoC-simulation discharge behaviour.
 
         Setup (battery has charge, no schedule forcing discharge):
           battery_soc_pct  = 80 %  (7.5 kWh above floor: (80-5)/100 × 10)
@@ -1485,12 +1490,8 @@ class TestEvAcLoadAndSoCPath:
           import_price     = flat 0.5
 
         Expected energy balance per EV slot:
-          batteries_discharged_kwh ≈ 0.0 kWh  (suppressed — EV is charging)
-          grid_import ≈ house + ev = 5.5 kWh  (everything from grid)
-          total supply = batteries_discharged_kwh + grid_import ≈ 5.5 kWh
-
-        The energy balance must still hold: supply ≈ demand — but the battery
-        does not discharge when the EV is active on the shared AC bus.
+          total supply (batteries_discharged_kwh + grid_import_kwh) covers
+          total demand (house load + EV load).
         """
         inp = PlannerInput(
             now_iso="2024-06-15T08:00:00+00:00",
