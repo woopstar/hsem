@@ -97,10 +97,18 @@ in the same layer must not change it.
 
 ### Layer 2 — EV planned load labelling (post-simulation)
 
-After the final SoC simulation, slots with `ev_total_planned_load_kwh > 0` are relabelled.
-`ev_total_planned_load_kwh` is used (not `ev_planned_load_kwh`) so that EV-scheduled
-slots are correctly labelled even when `base_load_includes_ev = True`, where
-`ev_planned_load_kwh` is `0.0` but EV charging is still planned.
+After the final SoC simulation, slots are relabelled where HSEM has actual
+actuator intent: `ev_charger_calculated_power > 1e-9` OR
+`ev_second_charger_calculated_power > 1e-9` (see
+`_label_commanded_ev_slots` in `engine_core.py`).
+
+`ev_total_planned_load_kwh` is **deliberately excluded** from this trigger.
+It represents fixed/accounted session energy — physical demand, not a
+command to run a charger — so a slot with planned EV load but a zero
+per-charger command must not be labelled `ev_smart_charging`. Only a
+positive per-charger command is treated as permission to display the EV
+label; this keeps the label off-authoritative even while stale live power
+is still being measured.
 
 `base_load_includes_ev` is automatically derived from the
 `hsem_house_power_includes_ev_charger_power` setting in the EV charger config step.
@@ -132,7 +140,15 @@ Applied to the current slot immediately before hardware writes, using live senso
    price does not by itself make exporting profitable, and must not silently
    override a disabled excess-export setting).
 2. `batteries_charge_grid` → kept (must never be overridden by EV or discharge rule)
-3. Any EV actively charging → `ev_smart_charging`
+3. Any EV actively charging (live) AND the planner allocated EV load for this
+   slot (`ev_charger_calculated_power > 1e-9`, `ev_second_charger_calculated_power > 1e-9`,
+   or `ev_total_planned_load_kwh > 1e-9`) → `ev_smart_charging`.
+
+   A live charging session with the planner's per-charger command at `0` (e.g.
+   target SoC reached, no surplus PV, expensive grid power) does **not**
+   override — the planner's original recommendation stands. See
+   `custom_sensors/recommendation_resolver.py`, `planner_allocated_ev`.
+
 4. Battery energy > remaining discharge-schedule need → `batteries_discharge_mode`
 
 ### Invariants for tests
@@ -140,11 +156,18 @@ Applied to the current slot immediately before hardware writes, using live senso
 - A slot assigned `batteries_charge_grid` by the planner must never be relabelled by
   the EV load labelling pass (layer 2).
 - A slot assigned `batteries_discharge_mode` **may** be relabelled `ev_smart_charging`
-  by the EV load labelling pass when `ev_total_planned_load_kwh > 0`.
-- A slot with `ev_planned_load_kwh > 0` and recommendation `batteries_charge_solar`
-  must be relabelled `ev_smart_charging` after layer 2.
-- A slot with `ev_planned_load_kwh > 0` and recommendation `batteries_wait_mode`
-  must be relabelled `ev_smart_charging` after layer 2.
+  by the EV load labelling pass when `ev_charger_calculated_power > 1e-9` or
+  `ev_second_charger_calculated_power > 1e-9`.
+- A slot with `ev_charger_calculated_power > 1e-9` (or
+  `ev_second_charger_calculated_power > 1e-9`) and recommendation
+  `batteries_charge_solar` must be relabelled `ev_smart_charging` after layer 2.
+- A slot with `ev_charger_calculated_power > 1e-9` (or
+  `ev_second_charger_calculated_power > 1e-9`) and recommendation
+  `batteries_wait_mode` must be relabelled `ev_smart_charging` after layer 2.
+- A slot with `ev_total_planned_load_kwh > 0` but `ev_charger_calculated_power == 0`
+  and `ev_second_charger_calculated_power == 0` must **not** be relabelled
+  `ev_smart_charging` by layer 2 — planned session energy without an actuator
+  command is physical demand, not permission to display the EV label.
 - The runtime resolver must set `force_export` when `import_price < 0` AND
   excess battery export is enabled AND the live export price is available,
   non-negative, and at/above the configured export floor — regardless of the
@@ -160,6 +183,12 @@ Applied to the current slot immediately before hardware writes, using live senso
   `import_price < 0` is False and EV is charging.
 - Priority 1 (negative price + profitable export → `force_export`) always
   beats priority 3 (EV charging) when it fires.
+- The runtime resolver must NOT relabel to `ev_smart_charging` when the EV is
+  actively charging (live) but the planner allocated zero EV load for the slot
+  (`ev_charger_calculated_power == 0` and `ev_second_charger_calculated_power == 0`
+  and `ev_total_planned_load_kwh == 0`) — the planner's original recommendation
+  must stand. Covered by
+  `tests/sensors/test_recommendation_resolver.py::test_ev1_charging_but_planner_zero_power_no_override`.
 
 ## Energy balance per slot
 
