@@ -53,7 +53,6 @@ from custom_components.hsem.utils.datetime_utils import (
     as_tz,
     utc_key,
 )
-from custom_components.hsem.utils.live_power import LivePowerEstimate
 from custom_components.hsem.utils.logger import (
     async_log,
     set_hsem_verbose,
@@ -152,7 +151,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             live,
             now,
             load_forecast_signature=self._current_load_forecast_signature,
-            live_power_estimate=live_power_estimate,
+            live_power_replan_request_slot=live_power_replan_request_slot,
         )
 
         if should_replan:
@@ -507,7 +506,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
         now: datetime,
         *,
         load_forecast_signature: LoadForecastSignature | None = None,
-        live_power_estimate: LivePowerEstimate | None = None,
+        live_power_replan_request_slot: datetime | None = None,
     ) -> bool:
         """Determine whether the planner should be re-run.
 
@@ -538,12 +537,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             )
             return True
 
-        pending_live_power_slot = getattr(self, "_live_power_replan_pending_slot", None)
-        if pending_live_power_slot is not None and (
-            live_power_estimate is None
-            or self._actionable_live_power_replan_slot(now, live_power_estimate)
-            is not None
-        ):
+        if live_power_replan_request_slot is not None:
             async_log(
                 "debug",
                 "[replan] Sustained live power changed — re-planning.",

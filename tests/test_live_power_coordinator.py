@@ -21,6 +21,7 @@ from custom_components.hsem.coordinator_live_power import (
     LIVE_POWER_REPLAN_MAX_CORRECTIONS_PER_SLOT,
 )
 from custom_components.hsem.models.live_state import EVLiveState, LiveState
+from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.live_power import LivePowerEstimate, LivePowerWindow
 
@@ -333,3 +334,48 @@ class TestLivePowerMismatchToAcceptanceFlow:
 
         assert coord._live_power_replanned_slot_start is None
         assert coord._live_power_replan_count == 0
+
+
+# ---------------------------------------------------------------------------
+# _should_replan must never fire blind on a pending live-power request
+# (issue #866) — it only fires when this cycle's already-revalidated
+# ``live_power_replan_request_slot`` is a concrete slot, never merely
+# because a request is pending.
+# ---------------------------------------------------------------------------
+
+
+class TestShouldReplanLivePowerFailsClosed:
+    def _prime(self, coord: HSEMDataUpdateCoordinator, live: LiveState) -> None:
+        """Put the coordinator in a settled post-plan state at ``_NOW``."""
+        coord._last_planner_output = PlannerOutput()
+        coord._last_plan_slot_start = _NOW
+        coord._persist_plan_state(live)
+
+    def test_no_request_slot_this_cycle_does_not_force_replan(self) -> None:
+        """A pending request alone must not bypass revalidation.
+
+        Even though a live-power replan request is pending, if this cycle's
+        already-revalidated ``live_power_replan_request_slot`` is ``None``
+        (no fresh estimate proved it actionable), no blind replan may fire.
+        """
+        coord = _make_coordinator()
+        live = LiveState()
+        self._prime(coord, live)
+        coord._live_power_replan_pending_slot = _NOW
+
+        assert (
+            coord._should_replan(live, _NOW, live_power_replan_request_slot=None)
+            is False
+        )
+
+    def test_actionable_request_slot_forces_replan(self) -> None:
+        """A concrete, already-revalidated request slot does trigger a replan."""
+        coord = _make_coordinator()
+        live = LiveState()
+        self._prime(coord, live)
+        coord._live_power_replan_pending_slot = _NOW
+
+        assert (
+            coord._should_replan(live, _NOW, live_power_replan_request_slot=_NOW)
+            is True
+        )
