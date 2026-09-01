@@ -1,7 +1,7 @@
 """Time platform for the HSEM integration.
 
-Exposes :class:`TimeEntity` instances for each battery discharge schedule
-start and end time, allowing users to set them from the entity page.
+Exposes :class:`TimeEntity` instances for EV charge deadlines, allowing
+users to set them from the entity page.
 """
 
 from homeassistant.config_entries import ConfigEntry
@@ -11,14 +11,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from custom_components.hsem.custom_times.description import HSEMTimeEntityDescription
 from custom_components.hsem.custom_times.time import HSEMTimeEntity
 from custom_components.hsem.utils.misc import get_config_value
-from custom_components.hsem.utils.sensornames.controls import (
-    get_schedule_1_end_time_key,
-    get_schedule_1_start_time_key,
-    get_schedule_2_end_time_key,
-    get_schedule_2_start_time_key,
-    get_schedule_3_end_time_key,
-    get_schedule_3_start_time_key,
-)
 from custom_components.hsem.utils.sensornames.ev import (
     get_ev_deadline_time_key,
     get_ev_second_deadline_time_key,
@@ -30,36 +22,6 @@ _ICON_CLOCK = "mdi:clock"
 # that unique_ids and entity_ids are defined in one place.  Display names
 # come from translations via translation_key.
 TIME_DESCRIPTIONS: tuple[HSEMTimeEntityDescription, ...] = (
-    HSEMTimeEntityDescription(
-        key=get_schedule_1_start_time_key(),
-        icon=_ICON_CLOCK,
-        translation_key="schedule_1_start",
-    ),
-    HSEMTimeEntityDescription(
-        key=get_schedule_1_end_time_key(),
-        icon=_ICON_CLOCK,
-        translation_key="schedule_1_end",
-    ),
-    HSEMTimeEntityDescription(
-        key=get_schedule_2_start_time_key(),
-        icon=_ICON_CLOCK,
-        translation_key="schedule_2_start",
-    ),
-    HSEMTimeEntityDescription(
-        key=get_schedule_2_end_time_key(),
-        icon=_ICON_CLOCK,
-        translation_key="schedule_2_end",
-    ),
-    HSEMTimeEntityDescription(
-        key=get_schedule_3_start_time_key(),
-        icon=_ICON_CLOCK,
-        translation_key="schedule_3_start",
-    ),
-    HSEMTimeEntityDescription(
-        key=get_schedule_3_end_time_key(),
-        icon=_ICON_CLOCK,
-        translation_key="schedule_3_end",
-    ),
     HSEMTimeEntityDescription(
         key=get_ev_deadline_time_key(),
         icon=_ICON_CLOCK,

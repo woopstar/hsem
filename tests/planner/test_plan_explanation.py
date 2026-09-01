@@ -227,7 +227,7 @@ class TestStrategyDetection:
     """The correct selected_strategy is chosen for different scenarios."""
 
     def test_summer_day_uses_charge_or_solar_strategy(self):
-        """Summer fixture has schedules + solar, so a charge/discharge or solar strategy is chosen."""
+        """Summer fixture has solar surplus, so a charge/discharge or solar strategy is chosen."""
         output = run_planner(make_summer_day_input())
         valid_strategies = {
             "charge_grid_discharge_peak",
@@ -257,8 +257,8 @@ class TestStrategyDetection:
         assert "no_price_spread" in output.explanation.constraints
 
     def test_winter_day_strategy(self):
-        """Winter fixture without schedules should select a winter/wait strategy."""
-        inp = make_winter_day_input(schedules=[])
+        """Winter fixture should select a winter/wait strategy."""
+        inp = make_winter_day_input()
         output = run_planner(inp)
         valid_winter_strategies = {
             "winter_wait",

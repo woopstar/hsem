@@ -4,7 +4,6 @@ Covers:
 - Entity ID format validation
 - Async entity/device existence checks
 - Month season validation
-- Time window validation
 - Power limit validation
 - Energy limit validation
 - Price / cost validation
@@ -27,7 +26,6 @@ from custom_components.hsem.utils.config_validator import (
     validate_months,
     validate_power_limits,
     validate_price,
-    validate_time_window,
 )
 
 # ---------------------------------------------------------------------------
@@ -331,87 +329,6 @@ class TestValidateMonths:
 
     def test_custom_field_name(self):
         errors = validate_months({"custom_winter": ["3"]}, winter_field="custom_winter")
-        assert errors == {}
-
-
-# ---------------------------------------------------------------------------
-# validate_time_window
-# ---------------------------------------------------------------------------
-
-
-class TestValidateTimeWindow:
-    """Battery schedule time window validation."""
-
-    def test_disabled_schedule_skips_validation(self):
-        user_input = {
-            "enabled": False,
-            "start": "INVALID",
-            "end": "ALSO_BAD",
-        }
-        errors = validate_time_window(user_input, "enabled", "start", "end")
-        assert errors == {}
-
-    def test_valid_same_day_window(self):
-        user_input = {
-            "enabled": True,
-            "start": "07:00:00",
-            "end": "09:00:00",
-        }
-        errors = validate_time_window(user_input, "enabled", "start", "end")
-        assert errors == {}
-
-    def test_valid_cross_midnight_window(self):
-        user_input = {
-            "enabled": True,
-            "start": "23:00:00",
-            "end": "02:00:00",
-        }
-        errors = validate_time_window(user_input, "enabled", "start", "end")
-        assert errors == {}
-
-    def test_zero_length_window_rejected(self):
-        user_input = {
-            "enabled": True,
-            "start": "07:00:00",
-            "end": "07:00:00",
-        }
-        errors = validate_time_window(user_input, "enabled", "start", "end")
-        assert errors["base"] == "start_time_equals_end_time"
-
-    def test_invalid_start_format(self):
-        user_input = {
-            "enabled": True,
-            "start": "7:00",
-            "end": "09:00:00",
-        }
-        errors = validate_time_window(user_input, "enabled", "start", "end")
-        assert errors["start"] == "invalid_time_format"
-
-    def test_invalid_end_format(self):
-        user_input = {
-            "enabled": True,
-            "start": "07:00:00",
-            "end": "NOT_A_TIME",
-        }
-        errors = validate_time_window(user_input, "enabled", "start", "end")
-        assert errors["end"] == "invalid_time_format"
-
-    def test_missing_start_treated_as_invalid_format(self):
-        user_input = {
-            "enabled": True,
-            "end": "09:00:00",
-        }
-        errors = validate_time_window(user_input, "enabled", "start", "end")
-        assert errors["start"] == "invalid_time_format"
-
-    def test_midnight_00_not_equal_to_23_59_59(self):
-        """Midnight start with one second before midnight end is a valid cross-midnight window."""
-        user_input = {
-            "enabled": True,
-            "start": "00:00:00",
-            "end": "23:59:59",
-        }
-        errors = validate_time_window(user_input, "enabled", "start", "end")
         assert errors == {}
 
 
@@ -827,73 +744,6 @@ class TestFlowValidatorsUseConfigValidator:
         )
         # All months as winter is allowed (TOU year-round, issue #725).
         assert errors == {}
-
-    @pytest.mark.asyncio
-    async def test_validate_schedule_1_disabled_passes(self):
-        from custom_components.hsem.flows.schedule_helpers import (
-            validate_batteries_schedule_input,
-        )
-
-        errors = await validate_batteries_schedule_input(
-            1,
-            {
-                "hsem_batteries_enable_batteries_schedule_1": False,
-                "hsem_batteries_enable_batteries_schedule_1_start": "INVALID",
-                "hsem_batteries_enable_batteries_schedule_1_end": "INVALID",
-            },
-        )
-        assert errors == {}
-
-    @pytest.mark.asyncio
-    async def test_validate_schedule_1_zero_length_rejected(self):
-        from custom_components.hsem.flows.schedule_helpers import (
-            validate_batteries_schedule_input,
-        )
-
-        errors = await validate_batteries_schedule_input(
-            1,
-            {
-                "hsem_batteries_enable_batteries_schedule_1": True,
-                "hsem_batteries_enable_batteries_schedule_1_start": "07:00:00",
-                "hsem_batteries_enable_batteries_schedule_1_end": "07:00:00",
-            },
-        )
-        assert errors["base"] == "start_time_equals_end_time"
-
-    @pytest.mark.asyncio
-    async def test_validate_schedule_2_cross_midnight_valid(self):
-        from custom_components.hsem.flows.schedule_helpers import (
-            validate_batteries_schedule_input,
-        )
-
-        errors = await validate_batteries_schedule_input(
-            2,
-            {
-                "hsem_batteries_enable_batteries_schedule_2": True,
-                "hsem_batteries_enable_batteries_schedule_2_start": "23:00:00",
-                "hsem_batteries_enable_batteries_schedule_2_end": "02:00:00",
-            },
-        )
-        assert errors == {}
-
-    @pytest.mark.asyncio
-    async def test_validate_schedule_3_invalid_time_format(self):
-        from custom_components.hsem.flows.schedule_helpers import (
-            validate_batteries_schedule_input,
-        )
-
-        errors = await validate_batteries_schedule_input(
-            3,
-            {
-                "hsem_batteries_enable_batteries_schedule_3": True,
-                "hsem_batteries_enable_batteries_schedule_3_start": "9am",
-                "hsem_batteries_enable_batteries_schedule_3_end": "11:00:00",
-            },
-        )
-        assert (
-            errors.get("hsem_batteries_enable_batteries_schedule_3_start")
-            == "invalid_time_format"
-        )
 
     @pytest.mark.asyncio
     async def test_validate_weighted_values_invalid_sum(self):

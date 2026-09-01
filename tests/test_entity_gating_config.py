@@ -190,12 +190,6 @@ async def test_time_setup_excludes_ev_deadline_when_disabled() -> None:
     keys = {e.entity_description.key for e in added}
     assert get_ev_deadline_time_key() not in keys
     assert get_ev_second_deadline_time_key() not in keys
-    # Battery schedule time entities are never gated (tracked separately, #860).
-    from custom_components.hsem.utils.sensornames.controls import (
-        get_schedule_1_start_time_key,
-    )
-
-    assert get_schedule_1_start_time_key() in keys
 
 
 @pytest.mark.asyncio

@@ -20,7 +20,6 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
@@ -57,7 +56,6 @@ def _make_minimal_input(
     export_price: float = 0.05,
     interval_minutes: int = 60,
     interval_length_hours: int = 24,
-    schedules: list[BatteryScheduleInput] | None = None,
     now_iso: str = "2024-06-15T00:00:00+02:00",
 ) -> PlannerInput:
     """Build a minimal PlannerInput with uniform load/PV across all 24 hours."""
@@ -95,7 +93,6 @@ def _make_minimal_input(
         consumption_averages=consumption,
         price_points=prices,
         solcast_slots=solar,
-        battery_schedules=schedules if schedules is not None else [],
         excess_export_enabled=False,
         excess_export_discharge_buffer_pct=10.0,
         excess_export_price_threshold=0.10,
@@ -510,8 +507,6 @@ class TestSoCEdgeCases:
                 battery_soc_pct=50.0,
                 load_kwh_per_hour=0.5,
                 pv_kwh_per_hour=0.0,
-                # Disable all schedules so the simulation simply drains
-                schedules=[],
                 # Set a modest cycle cost so the MILP doesn't arbitrage
                 # terminal-SoC credit for free
                 battery_purchase_price=5000.0,
@@ -548,7 +543,6 @@ class TestPowerLimits:
             battery_max_charge_power_w=1000.0,  # 1 kW → 1 kWh/h per slot,
             pv_kwh_per_hour=5.0,  # large PV to force charging
             load_kwh_per_hour=0.2,
-            schedules=[],
         )
         result = run_planner(inp)
         # max_charge_per_slot = 1 kW * 1h * 1.0 (no loss) = 1.0 kWh
@@ -563,7 +557,6 @@ class TestPowerLimits:
             battery_max_discharge_power_w=1000.0,  # 1 kW → 1 kWh/h
             load_kwh_per_hour=3.0,  # heavy load to force discharging
             pv_kwh_per_hour=0.0,
-            schedules=[],
         )
         result = run_planner(inp)
         for slot in result.slots:
@@ -579,7 +572,6 @@ class TestPowerLimits:
             battery_max_discharge_power_w=None,
             load_kwh_per_hour=4.0,  # heavy load
             pv_kwh_per_hour=0.0,
-            schedules=[],
         )
         result = run_planner(inp)
         # At least one future slot should discharge more than 1 kWh
@@ -627,7 +619,6 @@ class TestEnergyFlowAccounting:
             battery_soc_pct=100.0,  # full battery
             pv_kwh_per_hour=5.0,
             load_kwh_per_hour=0.5,
-            schedules=[],
         )
         result = run_planner(inp)
         future_slots = [
@@ -647,7 +638,6 @@ class TestEnergyFlowAccounting:
             battery_soc_pct=10.0,  # empty
             pv_kwh_per_hour=0.0,
             load_kwh_per_hour=0.5,
-            schedules=[],
         )
         result = run_planner(inp)
         for slot in result.slots:
@@ -687,7 +677,6 @@ class TestMaxSoCPct:
             battery_max_soc_pct=75.0,
             pv_kwh_per_hour=5.0,  # lots of PV
             load_kwh_per_hour=0.1,
-            schedules=[],
         )
         result = run_planner(inp)
         for slot in result.slots:

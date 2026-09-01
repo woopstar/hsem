@@ -13,11 +13,8 @@ They exercise the public ``run_planner`` function from
 
 from __future__ import annotations
 
-from datetime import time
-
 import pytest
 
-from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.recommendations import Recommendations
@@ -34,10 +31,6 @@ from tests.planner.fixtures import (
 _CHARGE_VALUES = {
     Recommendations.BatteriesChargeGrid.value,
     Recommendations.BatteriesChargeSolar.value,
-}
-_DISCHARGE_VALUES = {
-    Recommendations.BatteriesDischargeMode.value,
-    Recommendations.ForceBatteriesDischarge.value,
 }
 
 
@@ -192,79 +185,7 @@ class TestSlotValues:
 
 
 # ===========================================================================
-# 3. Discharge schedules
-# ===========================================================================
-
-
-class TestDischargeSchedules:
-    """Enabled discharge schedules must mark appropriate slots."""
-
-    def test_discharge_window_marked_in_morning(self):
-        """Schedule 1 (07-09) must mark at least one morning slot as discharge."""
-        result = run_planner(make_summer_day_input())
-        discharge_slots = [
-            s
-            for s in result.slots
-            if s.recommendation in _DISCHARGE_VALUES and s.start.hour in range(7, 9)
-        ]
-        assert discharge_slots, "Expected discharge slots in the 07-09 window"
-
-    def test_discharge_window_marked_in_evening(self):
-        """Schedule 2 (17-21) must mark at least one evening slot as discharge."""
-        result = run_planner(make_summer_day_input())
-        discharge_slots = [
-            s
-            for s in result.slots
-            if s.recommendation in _DISCHARGE_VALUES and s.start.hour in range(17, 21)
-        ]
-        assert discharge_slots, "Expected discharge slots in the 17-21 window"
-
-    def test_disabled_schedule_produces_no_schedule_discharge_slots(self):
-        """Disabling all schedules means no discharge during the *schedule* windows.
-
-        The aggressive candidate may still assign BatteriesDischargeMode to
-        the most expensive winter slots — this is correct behavior (expensive
-        evening peaks are worth discharging for).  Verify that BatteriesWaitMode
-        (the winter seasonal fallback) is active for the non-peak slots.
-        """
-        disabled_schedules = [
-            BatteryScheduleInput(enabled=False, start=time(7, 0), end=time(9, 0)),
-            BatteryScheduleInput(enabled=False, start=time(17, 0), end=time(21, 0)),
-        ]
-        # Use winter fixture: seasonal fallback is BatteriesWaitMode, not Discharge
-        inp = make_winter_day_input(schedules=disabled_schedules)
-        result = run_planner(inp)
-        wait_slots = [
-            s
-            for s in result.slots
-            if s.recommendation == Recommendations.BatteriesWaitMode.value
-        ]
-        assert wait_slots, (
-            "With disabled schedules and winter seasonal mode, "
-            "BatteriesWaitMode slots are expected"
-        )
-
-    def test_discharge_windows_detected(self):
-        """PlannerOutput.discharge_windows must be non-empty with active schedules."""
-        result = run_planner(make_summer_day_input())
-        assert result.discharge_windows, "Expected at least one discharge window"
-
-    def test_discharge_slots_exist_in_schedule_windows(self):
-        """At least one slot must be marked discharge within the 07-09 or 17-21 windows."""
-        result = run_planner(make_summer_day_input())
-        schedule_discharge_slots = [
-            s
-            for s in result.slots
-            if s.recommendation in _DISCHARGE_VALUES
-            and (7 <= s.start.hour < 9 or 17 <= s.start.hour < 21)
-        ]
-        assert schedule_discharge_slots, (
-            "Expected discharge slots within the 07-09 or 17-21 schedule windows"
-        )
-
-
-# ===========================================================================
-# 4. Charge scheduling
+# 3. Charge scheduling
 # ===========================================================================
 
 
@@ -312,7 +233,7 @@ class TestChargeScheduling:
 
     def test_solar_surplus_can_trigger_solar_charge(self):
         """Summer mid-day hours with large PV surplus should produce solar charge slots."""
-        # Use a full battery so discharge schedules consume energy and solar can refill it
+        # Start empty so solar surplus has headroom to charge into
         inp = make_summer_day_input(battery_soc_pct=0.0)
         result = run_planner(inp)
         solar_charge_slots = result.slots_with_recommendation(
@@ -324,7 +245,7 @@ class TestChargeScheduling:
 
 
 # ===========================================================================
-# 5. Current recommendation
+# 4. Current recommendation
 # ===========================================================================
 
 
@@ -347,7 +268,7 @@ class TestCurrentRecommendation:
 
 
 # ===========================================================================
-# 6. Winter vs summer season logic
+# 5. Winter vs summer season logic
 # ===========================================================================
 
 
@@ -382,7 +303,7 @@ class TestSeasonalLogic:
 
 
 # ===========================================================================
-# 7. 24-hour fixture completeness
+# 6. 24-hour fixture completeness
 # ===========================================================================
 
 
@@ -419,7 +340,7 @@ class TestFixtureCompleteness:
 
 
 # ===========================================================================
-# 8. Output helper methods
+# 7. Output helper methods
 # ===========================================================================
 
 
@@ -446,47 +367,12 @@ class TestOutputHelpers:
 
 
 # ===========================================================================
-# 9. Edge cases
+# 8. Edge cases
 # ===========================================================================
 
 
 class TestEdgeCases:
     """Planner must handle degenerate inputs gracefully."""
-
-    def test_fully_charged_battery_charges_only_for_schedules(self):
-        """A fully charged battery: grid charging should only appear when profitable.
-
-        With all schedules disabled, the rule-based pipeline (arbitrage, opportunistic,
-        schedule pre-charge) is inactive, so the baseline candidate has no grid-charge
-        slots.  However, the MILP candidate may still charge if there is a profitable
-        price spread (import cheap, discharge expensive) that makes cycling economic,
-        since the MILP is a global optimiser.
-
-        The only invariant we assert: no *rule-based* charge slot (from the baseline
-        candidate) appears when all schedules are disabled.  MILP-chosen slots are
-        accepted because the MILP independently checks profitability.
-        """
-        disabled_schedules = [
-            BatteryScheduleInput(enabled=False, start=time(7, 0), end=time(9, 0)),
-            BatteryScheduleInput(enabled=False, start=time(17, 0), end=time(21, 0)),
-        ]
-        inp = make_summer_day_input(battery_soc_pct=100.0, schedules=disabled_schedules)
-        result = run_planner(inp)
-
-        # Check the baseline candidate's slots (first candidate) — the
-        # rule-based pipeline must not produce grid-charge slots when all
-        # schedules are disabled.  The winner (result.slots) may differ
-        # if MILP or soc_plan found a profitable cycle.
-        baseline_slots = result.candidates[0].slots if result.candidates else []
-        baseline_charge = [
-            s
-            for s in baseline_slots
-            if s.recommendation == Recommendations.BatteriesChargeGrid.value
-        ]
-        assert not baseline_charge, (
-            "Baseline candidate must have no grid charge slots when schedules "
-            f"are disabled. Found {len(baseline_charge)} charge slots."
-        )
 
     def test_zero_pv_no_solar_charge_slots(self):
         """With zero PV production there must be no BatteriesChargeSolar slots."""
@@ -498,23 +384,20 @@ class TestEdgeCases:
         )
         assert not solar_slots, "No solar charge slots expected when PV=0"
 
-    def test_empty_schedules_no_discharge_mode_in_winter(self) -> None:
-        """BatteriesWaitMode slots expected with no schedules in winter.
+    def test_default_winter_input_has_wait_mode_slots(self) -> None:
+        """BatteriesWaitMode slots expected on the default winter fixture.
 
         In winter the seasonal strategy sets unassigned slots to BatteriesWaitMode.
-        The aggressive candidate may still set BatteriesDischargeMode on the
-        most expensive winter slots — this is correct behavior (expensive
-        evening peaks are worth discharging for).
+        The MILP may still set BatteriesDischargeMode on the most expensive
+        winter slots — this is correct behavior (expensive evening peaks are
+        worth discharging for).
         """
-        disabled_schedules: list[BatteryScheduleInput] = []
-        inp = make_winter_day_input(schedules=disabled_schedules)
+        inp = make_winter_day_input()
         result = run_planner(inp)
         wait_mode = result.slots_with_recommendation(
             Recommendations.BatteriesWaitMode.value
         )
-        assert wait_mode, (
-            "BatteriesWaitMode expected in winter with empty schedule list"
-        )
+        assert wait_mode, "BatteriesWaitMode expected on the default winter fixture"
 
     def test_invalid_timezone_raises(self):
         """Passing a naive datetime string must raise ValueError."""

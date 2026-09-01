@@ -1223,8 +1223,21 @@ arrives.
 `models/ocpp_session.py`. This repository ships OCPP as a supported product
 feature, so removing it is a user-facing breaking change with no upstream
 benefit. Treat OCPP's continued presence as a deliberate divergence, never as an
-unfinished port. The same holds for fixed battery schedules. Only the dead
-seven-bucket charge-rate learner from #7 was taken.
+unfinished port. Only the dead seven-bucket charge-rate learner from #7 was taken.
+
+**Fixed battery schedules — reversed 2026-08-31 (issue #860).** The
+"keep fixed battery schedules" half of the line above no longer holds. Issue
+#860 found the feature (`batteries_schedule_1/2/3` config, switches, time
+entities, `BatterySchedule`/`BatteryScheduleInput`, and the
+`apply_discharge_schedules`/`apply_charge_schedules`/`apply_arbitrage_grid_charge`
+passes in `engine_core.py`) functionally inert whenever MILP is active — the
+schedule-consuming heuristic candidates are commented out in MILP-only mode,
+and both surviving candidates (`no_action`, `passive`) discard schedule-derived
+recommendations before scoring. The user explicitly chose full removal over
+re-wiring it as a MILP-unavailable fallback or leaving it documented as inert,
+consciously overriding the earlier "keep it" precedent. Do not resurrect
+battery-schedule config/entities/code from this history as if it were still
+the settled decision — check the removal PR for the current state instead.
 
 **One OCPP server per EV (2026-08-23).** Each EV gets its own embedded OCPP
 server on its own port (defaults 9000 / 9001): the primary plan drives the

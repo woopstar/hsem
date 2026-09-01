@@ -9,13 +9,13 @@ attributes, states, and dashboard examples.
 
 HSEM exposes these entity types:
 
-| Type       | Count | Description                                                          |
-| ---------- | ----- | -------------------------------------------------------------------- |
-| **Sensor** | ~40   | Read-only state, plan, diagnostic, financial, and EV entities        |
-| **Select** | 2     | Force working mode override and Solcast likelihood selector          |
-| **Switch** | ~15   | Toggle entities for schedules, EV settings, features, and ML options |
-| **Time**   | 8     | Start/end time inputs for battery schedules and EV deadlines         |
-| **Number** | 4     | Charge/discharge efficiency and EV target SoC controls               |
+| Type       | Count | Description                                                   |
+| ---------- | ----- | ------------------------------------------------------------- |
+| **Sensor** | ~40   | Read-only state, plan, diagnostic, financial, and EV entities |
+| **Select** | 2     | Force working mode override and Solcast likelihood selector   |
+| **Switch** | ~12   | Toggle entities for EV settings, features, and ML options     |
+| **Time**   | 2     | EV charge deadlines                                           |
+| **Number** | 4     | Charge/discharge efficiency and EV target SoC controls        |
 
 ---
 
@@ -79,12 +79,10 @@ all planner output as attributes.
 
 ### Plan output attributes
 
-| Attribute                                       | Type         | Description                                   |
-| ----------------------------------------------- | ------------ | --------------------------------------------- |
-| `hourly_recommendation`                         | dict \| null | The recommendation slot active **right now**  |
-| `hourly_recommendations`                        | list[dict]   | Full list of planner slots for the horizon    |
-| `batteries_schedules`                           | list         | Active battery discharge schedule definitions |
-| `batteries_schedules_remaining_capacity_needed` | float (kWh)  | Remaining discharge budget across schedules   |
+| Attribute                | Type         | Description                                  |
+| ------------------------ | ------------ | -------------------------------------------- |
+| `hourly_recommendation`  | dict \| null | The recommendation slot active **right now** |
+| `hourly_recommendations` | list[dict]   | Full list of planner slots for the horizon   |
 
 ### `hourly_recommendations` slot structure
 
@@ -682,23 +680,20 @@ EV switches are only created when the corresponding EV's planned load
 primary EV, `hsem_ev_second_planned_load_enabled` for the second EV
 (issue #859). All other switches are always created.
 
-| Entity                                              | Purpose                                        |
-| --------------------------------------------------- | ---------------------------------------------- |
-| `switch.hsem_read_only`                             | Block all hardware writes                      |
-| `switch.hsem_extended_attributes`                   | Enable extended diagnostic attributes          |
-| `switch.hsem_verbose_logging`                       | Enable verbose logging                         |
-| `switch.hsem_batteries_enable_batteries_schedule_1` | Toggle battery schedule 1                      |
-| `switch.hsem_batteries_enable_batteries_schedule_2` | Toggle battery schedule 2                      |
-| `switch.hsem_batteries_enable_batteries_schedule_3` | Toggle battery schedule 3                      |
-| `switch.hsem_ev_force_discharge`                    | Force EV maximum discharge power               |
-| `switch.hsem_ev_smart_charging`                     | Enable smart EV charging scheduling            |
-| `switch.hsem_ev_force_charge_now`                   | Force immediate EV charging                    |
-| `switch.hsem_ev_second_smart_charging`              | Enable smart charging for second EV            |
-| `switch.hsem_ev_second_force_charge_now`            | Force immediate second EV charging             |
-| `switch.hsem_ml_consumption`                        | Enable ML-based consumption prediction         |
-| `switch.hsem_ml_sequential`                         | Enable sequential (intra-day momentum) ML mode |
-| `switch.hsem_dynamic_discharge_floor`               | Enable dynamic discharge floor                 |
-| `switch.hsem_ev_auto_full_negative_price`           | Auto-Full EV on negative price                 |
+| Entity                                    | Purpose                                        |
+| ----------------------------------------- | ---------------------------------------------- |
+| `switch.hsem_read_only`                   | Block all hardware writes                      |
+| `switch.hsem_extended_attributes`         | Enable extended diagnostic attributes          |
+| `switch.hsem_verbose_logging`             | Enable verbose logging                         |
+| `switch.hsem_ev_force_discharge`          | Force EV maximum discharge power               |
+| `switch.hsem_ev_smart_charging`           | Enable smart EV charging scheduling            |
+| `switch.hsem_ev_force_charge_now`         | Force immediate EV charging                    |
+| `switch.hsem_ev_second_smart_charging`    | Enable smart charging for second EV            |
+| `switch.hsem_ev_second_force_charge_now`  | Force immediate second EV charging             |
+| `switch.hsem_ml_consumption`              | Enable ML-based consumption prediction         |
+| `switch.hsem_ml_sequential`               | Enable sequential (intra-day momentum) ML mode |
+| `switch.hsem_dynamic_discharge_floor`     | Enable dynamic discharge floor                 |
+| `switch.hsem_ev_auto_full_negative_price` | Auto-Full EV on negative price                 |
 
 ---
 
@@ -722,19 +717,12 @@ efficiency numbers are always created.
 
 `time.hsem_ev_deadline` is only created when `hsem_ev_planned_load_enabled`
 is set; `time.hsem_ev_second_deadline` only when
-`hsem_ev_second_planned_load_enabled` is set (issue #859). The battery
-schedule time entities are always created (tracked separately in #860).
+`hsem_ev_second_planned_load_enabled` is set (issue #859).
 
-| Entity                                 | Purpose                    |
-| -------------------------------------- | -------------------------- |
-| `time.hsem_batteries_schedule_1_start` | Schedule 1 start time      |
-| `time.hsem_batteries_schedule_1_end`   | Schedule 1 end time        |
-| `time.hsem_batteries_schedule_2_start` | Schedule 2 start time      |
-| `time.hsem_batteries_schedule_2_end`   | Schedule 2 end time        |
-| `time.hsem_batteries_schedule_3_start` | Schedule 3 start time      |
-| `time.hsem_batteries_schedule_3_end`   | Schedule 3 end time        |
-| `time.hsem_ev_deadline`                | Primary EV charge deadline |
-| `time.hsem_ev_second_deadline`         | Second EV charge deadline  |
+| Entity                         | Purpose                    |
+| ------------------------------ | -------------------------- |
+| `time.hsem_ev_deadline`        | Primary EV charge deadline |
+| `time.hsem_ev_second_deadline` | Second EV charge deadline  |
 
 ---
 

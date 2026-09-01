@@ -45,7 +45,7 @@ def _mock_config_entry(**option_overrides: object) -> MagicMock:
     entry = MagicMock()
     entry.entry_id = "test_entry_id"
     entry.options = {
-        "hsem_batteries_enable_batteries_schedule_1_start": "07:00:00",
+        "hsem_ev_deadline_time": "07:00:00",
         **option_overrides,
     }
     return entry
@@ -99,14 +99,14 @@ class TestHSEMTimeEntityConstruction:
     def _make_entity(
         self,
         default: str = "07:00:00",
-        key: str = "hsem_batteries_enable_batteries_schedule_1_start",
+        key: str = "hsem_ev_deadline_time",
     ) -> HSEMTimeEntity:
         hass = _mock_hass()
         config_entry = _mock_config_entry()
         description = HSEMTimeEntityDescription(
             key=key,
-            name="Batteries Discharge Schedule 1 Start",
-            description="Start time for schedule 1.",
+            name="EV Deadline",
+            description="EV charge deadline.",
             default_value=default,
         )
         return HSEMTimeEntity(hass, config_entry, description)
@@ -153,7 +153,7 @@ class TestHSEMTimeEntityConstruction:
 
     def test_unique_id_contains_key(self) -> None:
         """unique_id is derived from the config-entry key."""
-        key = "hsem_batteries_enable_batteries_schedule_1_start"
+        key = "hsem_ev_deadline_time"
         entity = self._make_entity(key=key)
         assert entity.unique_id is not None
         assert key in entity.unique_id
@@ -204,9 +204,9 @@ class TestHSEMTimeEntitySetValue:
         hass = _mock_hass()
         config_entry = _mock_config_entry()
         description = HSEMTimeEntityDescription(
-            key="hsem_batteries_enable_batteries_schedule_1_start",
-            name="Batteries Discharge Schedule 1 Start",
-            description="Start time for schedule 1.",
+            key="hsem_ev_deadline_time",
+            name="EV Deadline",
+            description="EV charge deadline.",
             default_value="07:00:00",
         )
         return HSEMTimeEntity(hass, config_entry, description)
@@ -230,10 +230,7 @@ class TestHSEMTimeEntitySetValue:
         entity.hass.config_entries.async_update_entry.assert_called_once()  # type: ignore[attr-defined]  # mock attribute set in test
         call_kwargs = entity.hass.config_entries.async_update_entry.call_args  # type: ignore[attr-defined]  # mock attribute set in test
         updated_options = call_kwargs[1]["options"]
-        assert (
-            updated_options["hsem_batteries_enable_batteries_schedule_1_start"]
-            == "21:30:00"
-        )
+        assert updated_options["hsem_ev_deadline_time"] == "21:30:00"
 
     @pytest.mark.asyncio
     async def test_set_value_calls_async_write_ha_state(self) -> None:
@@ -309,19 +306,13 @@ class TestTimePlatformSetup:
     """Verify that async_setup_entry registers the expected time entities."""
 
     @pytest.mark.asyncio
-    async def test_setup_entry_creates_eight_time_entities(self) -> None:
-        """Eight time entities (3 schedules + 2 EV deadlines) should be created."""
+    async def test_setup_entry_creates_two_time_entities(self) -> None:
+        """Two time entities (primary + second EV deadline) should be created."""
         from custom_components.hsem.time import async_setup_entry
 
         hass = _mock_hass()
         config_entry = _mock_config_entry(
             **{
-                "hsem_batteries_enable_batteries_schedule_1_start": "07:00:00",
-                "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
-                "hsem_batteries_enable_batteries_schedule_2_start": "17:00:00",
-                "hsem_batteries_enable_batteries_schedule_2_end": "21:00:00",
-                "hsem_batteries_enable_batteries_schedule_3_start": "23:00:00",
-                "hsem_batteries_enable_batteries_schedule_3_end": "02:00:00",
                 "hsem_ev_deadline_time": "07:00:00",
                 "hsem_ev_second_deadline_time": "07:00:00",
             }
@@ -338,7 +329,7 @@ class TestTimePlatformSetup:
         ):
             await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
-        assert len(added) == 8
+        assert len(added) == 2
 
     @pytest.mark.asyncio
     async def test_setup_entry_all_entities_are_time_entities(self) -> None:
@@ -348,12 +339,8 @@ class TestTimePlatformSetup:
         hass = _mock_hass()
         config_entry = _mock_config_entry(
             **{
-                "hsem_batteries_enable_batteries_schedule_1_start": "07:00:00",
-                "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
-                "hsem_batteries_enable_batteries_schedule_2_start": "17:00:00",
-                "hsem_batteries_enable_batteries_schedule_2_end": "21:00:00",
-                "hsem_batteries_enable_batteries_schedule_3_start": "23:00:00",
-                "hsem_batteries_enable_batteries_schedule_3_end": "02:00:00",
+                "hsem_ev_deadline_time": "07:00:00",
+                "hsem_ev_second_deadline_time": "07:00:00",
             }
         )
         added: list = []
@@ -379,12 +366,6 @@ class TestTimePlatformSetup:
         hass = _mock_hass()
         config_entry = _mock_config_entry(
             **{
-                "hsem_batteries_enable_batteries_schedule_1_start": "07:00:00",
-                "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
-                "hsem_batteries_enable_batteries_schedule_2_start": "17:00:00",
-                "hsem_batteries_enable_batteries_schedule_2_end": "21:00:00",
-                "hsem_batteries_enable_batteries_schedule_3_start": "23:00:00",
-                "hsem_batteries_enable_batteries_schedule_3_end": "02:00:00",
                 "hsem_ev_deadline_time": "07:00:00",
                 "hsem_ev_second_deadline_time": "07:00:00",
             }

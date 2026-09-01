@@ -31,7 +31,6 @@ from custom_components.hsem.coordinator_tracking import (
 from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
     async_collect_all_states,
-    build_battery_schedules,
     build_sensor_config,
 )
 from custom_components.hsem.models.live_state import LiveState
@@ -410,9 +409,6 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
                 unmatched[0],
             )
 
-        self._batteries_schedules_remaining_capacity_needed = sum(
-            s.needed_batteries_capacity for s in self._batteries_schedules if s.enabled
-        )
         # Preserve the plan explanation and data quality for the next CoordinatorData snapshot.
         self._plan_explanation = output.explanation
         self._data_quality = output.data_quality

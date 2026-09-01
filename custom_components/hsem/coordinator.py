@@ -68,7 +68,6 @@ from custom_components.hsem.coordinator_planner_phase import (
 from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
     async_collect_all_states,
-    build_battery_schedules,
     build_sensor_config,
 )
 from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
@@ -185,8 +184,6 @@ class HSEMDataUpdateCoordinator(
         self._snapshot: StateSnapshot | None = None
         self._hourly_recommendations: list[HourlyRecommendation] = []
         self._hourly_recommendation: HourlyRecommendation | None = None
-        self._batteries_schedules: list = []
-        self._batteries_schedules_remaining_capacity_needed: float = 0.0
         self._current_required_battery: float = 0.0
         self._next_update: str | None = None
 

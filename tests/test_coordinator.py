@@ -104,7 +104,6 @@ class TestCoordinatorData:
     def test_numeric_fields_default_to_zero(self) -> None:
         """Numeric accumulator fields must default to 0.0."""
         data = CoordinatorData()
-        assert data.batteries_schedules_remaining_capacity_needed == pytest.approx(0.0)
         assert data.current_required_battery == pytest.approx(0.0)
 
 

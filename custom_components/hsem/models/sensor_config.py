@@ -13,7 +13,6 @@ The :func:`build_sensor_config` factory function (in
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import time
 from typing import cast
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
@@ -39,20 +38,6 @@ class EVChargerConfig:
     past_target_confidence_factor: float = 0.9
     force_max_discharge_power: bool = False
     max_discharge_power: int = 0
-
-
-@dataclass
-class BatteryScheduleConfig:
-    """Configuration for one charge/discharge battery schedule window.
-
-    Defines whether the schedule window is enabled and its start/end times.
-    Used as a nested config block within :class:`SensorConfig` for up to
-    three independent battery schedule windows.
-    """
-
-    enabled: bool = False
-    start: time | None = None
-    end: time | None = None
 
 
 @dataclass
@@ -123,10 +108,6 @@ class SensorConfig:
         batteries_expected_cycles: Expected total cycle life of the battery.
         batteries_cycle_cost: User-configured extra per-kWh cycle cost.
             Added to the auto-derived depreciation threshold.  0.0 = disabled.
-
-        batteries_schedule_1: First discharge-window schedule config.
-        batteries_schedule_2: Second discharge-window schedule config.
-        batteries_schedule_3: Third discharge-window schedule config.
 
         batteries_enable_excess_export: Enable opportunistic forced-discharge export.
         batteries_excess_export_discharge_buffer: Safety buffer percentage to keep.
@@ -256,17 +237,6 @@ class SensorConfig:
         )
     )
 
-    # Battery discharge schedules
-    batteries_schedule_1: BatteryScheduleConfig = field(
-        default_factory=BatteryScheduleConfig
-    )
-    batteries_schedule_2: BatteryScheduleConfig = field(
-        default_factory=BatteryScheduleConfig
-    )
-    batteries_schedule_3: BatteryScheduleConfig = field(
-        default_factory=BatteryScheduleConfig
-    )
-
     # Excess export
     batteries_enable_excess_export: bool = False
     batteries_excess_export_discharge_buffer: float = 10.0
@@ -363,14 +333,6 @@ class SensorConfig:
     house_consumption_energy_weight_3d: int = 20
     house_consumption_energy_weight_7d: int = 15
     house_consumption_energy_weight_14d: int = 10
-
-    def schedule_configs(self) -> list[BatteryScheduleConfig]:
-        """Return all three schedule configs as a list."""
-        return [
-            self.batteries_schedule_1,
-            self.batteries_schedule_2,
-            self.batteries_schedule_3,
-        ]
 
     def __repr__(self) -> str:
         return (

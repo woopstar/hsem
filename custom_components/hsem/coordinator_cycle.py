@@ -42,7 +42,6 @@ from custom_components.hsem.custom_sensors.hourly_data_populator.prices_solcast 
 )
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
     async_collect_all_states,
-    build_battery_schedules,
     build_sensor_config,
 )
 from custom_components.hsem.models.live_state import EVLiveState, LiveState
@@ -171,11 +170,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             cfg.recommendation_interval_length,
         )
 
-        # 4. Build battery-schedule objects from config.
-        self._batteries_schedules = build_battery_schedules(cfg)
-        self._batteries_schedules.sort(key=lambda x: x.start)
-
-        # 5. Populate weighted house-consumption averages.
+        # 4. Populate weighted house-consumption averages.
         set_hsem_verbose(cfg.verbose_logging)
 
         if cfg.ml_consumption_enabled:
@@ -277,7 +272,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         else:
             await self._set_update_interval()
 
-        # 6. Determine working state: forced, missing, or full pipeline.
+        # 5. Determine working state: forced, missing, or full pipeline.
         state: str | None = None
 
         if live.missing_entities and live.force_working_mode_state == "auto":
@@ -293,7 +288,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 live.force_working_mode_state,
             )
 
-        # 7. Populate electricity prices and Solcast PV estimates.
+        # 6. Populate electricity prices and Solcast PV estimates.
         populate_price_and_solcast_from_snapshot(
             self._hourly_recommendations,
             self._snapshot,
@@ -578,10 +573,6 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             live=self._live,
             hourly_recommendations=list(self._hourly_recommendations),
             hourly_recommendation=self._hourly_recommendation,
-            batteries_schedules=list(self._batteries_schedules),
-            batteries_schedules_remaining_capacity_needed=(
-                self._batteries_schedules_remaining_capacity_needed
-            ),
             current_required_battery=self._current_required_battery,
             state=state,
             last_updated=last_updated,

@@ -16,12 +16,11 @@ All tests are synchronous with no Home Assistant imports.
 
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
@@ -81,11 +80,6 @@ def _make_two_slot_input(
             hour=1, avg_1d=1.0, avg_3d=1.0, avg_7d=1.0, avg_14d=1.0
         ),
     ]
-    schedule = BatteryScheduleInput(
-        enabled=True,
-        start=time(1, 0),
-        end=time(2, 0),
-    )
     return PlannerInput(
         now_iso="2024-06-15T00:00:00+02:00",
         interval_minutes=60,
@@ -107,7 +101,6 @@ def _make_two_slot_input(
         consumption_averages=consumption,
         price_points=prices,
         solcast_slots=solar,
-        battery_schedules=[schedule],
         excess_export_enabled=False,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
         is_read_only=True,
@@ -213,7 +206,7 @@ class TestOpportunisticChargeThreshold:
         battery_purchase_price: float = 0.0,
         battery_expected_cycles: int = 6000,
     ) -> PlannerInput:
-        """24-slot flat-price input with no discharge schedule."""
+        """24-slot flat-price input."""
         prices = [
             PricePoint(hour=h, import_price=import_price, export_price=0.0)
             for h in range(24)
@@ -239,7 +232,6 @@ class TestOpportunisticChargeThreshold:
             consumption_averages=consumption,
             price_points=prices,
             solcast_slots=solar,
-            battery_schedules=[],  # no discharge schedule → opportunistic path
             excess_export_enabled=False,
             months_winter=[1, 2, 3, 4, 10, 11, 12],
             is_read_only=True,
