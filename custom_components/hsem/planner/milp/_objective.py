@@ -52,7 +52,6 @@ def _build_objective(
     ev_var_offsets: list[int],
     ev_pen_offsets: list[int],
     active_evs: list[EVConfig],
-    p_imp: np.ndarray,  # type: ignore[name-defined]
     p_imp_obj: np.ndarray,  # type: ignore[name-defined]
     p_exp: np.ndarray,  # type: ignore[name-defined]
     p_soc: float,
@@ -95,7 +94,7 @@ def _build_objective(
         )
         _deferred_by_lp_idx = [_by_slot_idx[i] for i in future_idx]
 
-    p_imp_max = float(np.max(p_imp)) if m > 0 else 0.1
+    p_imp_max = float(np.max(p_imp_obj)) if m > 0 else 0.1
     use_discount = time_discount_rate < 1.0 - 1e-9
 
     for t in range(m):
