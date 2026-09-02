@@ -1231,9 +1231,11 @@ unfinished port. Only the dead seven-bucket charge-rate learner from #7 was take
 entities, `BatterySchedule`/`BatteryScheduleInput`, and the
 `apply_discharge_schedules`/`apply_charge_schedules`/`apply_arbitrage_grid_charge`
 passes in `engine_core.py`) functionally inert whenever MILP is active — the
-schedule-consuming heuristic candidates are commented out in MILP-only mode,
-and both surviving candidates (`no_action`, `passive`) discard schedule-derived
-recommendations before scoring. The user explicitly chose full removal over
+schedule-consuming heuristic candidates were commented out in MILP-only mode
+(later deleted entirely in issue #897, since MILP is the sole active
+optimisation authority), and both surviving candidates (`no_action`,
+`passive`) discard schedule-derived recommendations before scoring. The
+user explicitly chose full removal over
 re-wiring it as a MILP-unavailable fallback or leaving it documented as inert,
 consciously overriding the earlier "keep it" precedent. Do not resurrect
 battery-schedule config/entities/code from this history as if it were still
