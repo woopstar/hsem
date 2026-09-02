@@ -9,17 +9,15 @@ Acceptance criteria from issue #267:
 - HSEM can charge at night for morning peak use.
 - Tests cover cheap 02:00 grid charge and expensive 07:00 consumption.
 - ``next_window_start_dt`` resolves the next occurrence correctly.
-- ``interval_ends_before_window_start`` allows pre-midnight charge slots.
+- Comparing an interval's end against ``next_window_start_dt(...)`` allows
+  pre-midnight charge slots.
 - The discharge window on the next calendar day is correctly included in
   battery-schedule capacity planning.
 """
 
 from datetime import UTC, datetime, time, timedelta
 
-from custom_components.hsem.utils.time_windows import (
-    interval_ends_before_window_start,
-    next_window_start_dt,
-)
+from custom_components.hsem.utils.time_windows import next_window_start_dt
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -112,97 +110,6 @@ class TestNextWindowStartDt:
 
 
 # ---------------------------------------------------------------------------
-# Tests for interval_ends_before_window_start (cross-day scenarios)
-# ---------------------------------------------------------------------------
-
-
-class TestIntervalEndsBeforeWindowStartCrossDay:
-    """Cross-date-boundary tests for interval_ends_before_window_start.
-
-    These complement the existing TestIntervalEndsBeforeWindowStart tests in
-    test_midnight_rollover.py, focusing on the P0-03 scenario.
-    """
-
-    def test_night_charge_slot_before_next_day_morning_window(self):
-        """A 02:00-03:00 slot tonight ends before a 07:00 window tomorrow.
-
-        Scenario: now=22:00 day D, charge slot ends at 03:00 day D+1,
-        discharge window starts at 07:00 day D+1.
-        Expected: True — the slot is a valid pre-charge window.
-        """
-        now = _dt(22, 0)  # 22:00 tonight
-        charge_slot_end = _dt(3, 0, day_offset=1)  # 03:00 tomorrow
-        discharge_window_start = time(7, 0)  # 07:00
-
-        assert (
-            interval_ends_before_window_start(
-                charge_slot_end, discharge_window_start, now
-            )
-            is True
-        ), (
-            "A 03:00 charge slot end should be before a 07:00 discharge window "
-            "when it is currently 22:00"
-        )
-
-    def test_charge_slot_at_02_before_07_discharge(self):
-        """P0-03 acceptance criterion: cheap 02:00 charge before expensive 07:00 use.
-
-        Slot ends at 03:00 (UTC), window starts at 07:00.  With now=22:00 the
-        function should confirm 03:00 < 07:00 (next day).
-        """
-        now = _dt(22, 0)
-        charge_slot_end = _dt(3, 0, day_offset=1)  # 03:00 next day
-        discharge_window_start = time(7, 0)
-
-        result = interval_ends_before_window_start(
-            charge_slot_end, discharge_window_start, now
-        )
-        assert result is True, (
-            "02:00-03:00 grid charge must be flagged as 'before' the 07:00 "
-            "morning discharge window (cross-day boundary)"
-        )
-
-    def test_charge_slot_overlapping_discharge_window_excluded(self):
-        """A slot that ends at 08:00 is NOT before the 07:00 discharge window."""
-        now = _dt(22, 0)
-        charge_slot_end = _dt(8, 0, day_offset=1)  # 08:00 next day
-        discharge_window_start = time(7, 0)
-
-        assert (
-            interval_ends_before_window_start(
-                charge_slot_end, discharge_window_start, now
-            )
-            is False
-        ), "A slot ending at 08:00 must NOT be treated as 'before' the 07:00 window"
-
-    def test_same_evening_slot_before_next_morning_window(self):
-        """A 22:30-23:00 slot tonight is before the 07:00 window tomorrow."""
-        now = _dt(22, 0)
-        charge_slot_end = _dt(23, 0)  # 23:00 tonight
-        discharge_window_start = time(7, 0)
-
-        assert (
-            interval_ends_before_window_start(
-                charge_slot_end, discharge_window_start, now
-            )
-            is True
-        ), "A 22:30-23:00 slot tonight is before tomorrow's 07:00 discharge window"
-
-    def test_slot_after_current_time_but_past_window_start_excluded(self):
-        """A slot ending at 09:00 is after the 07:00 window → must be excluded."""
-        now = _dt(22, 0)
-        charge_slot_end = _dt(9, 0, day_offset=1)  # 09:00 next day
-        discharge_window_start = time(7, 0)
-
-        assert (
-            interval_ends_before_window_start(
-                charge_slot_end, discharge_window_start, now
-            )
-            is False
-        )
-
-
-# ---------------------------------------------------------------------------
 # Integration-style tests: simulate the full planning scenario
 # ---------------------------------------------------------------------------
 
@@ -273,10 +180,7 @@ class TestCrossDayChargePlanningIntegration:
 
         # Identify valid pre-charge intervals: not yet passed, before the window
         valid_charge_intervals = [
-            iv
-            for iv in intervals
-            if iv["end"] > now
-            and interval_ends_before_window_start(iv["end"], discharge_start, now)
+            iv for iv in intervals if iv["end"] > now and iv["end"] <= window_dt
         ]
 
         # The 02:00-03:00 slot must be among valid charge windows
@@ -332,11 +236,9 @@ class TestCrossDayChargePlanningIntegration:
         intervals = self._make_intervals(now, interval_minutes=60, total_hours=48)
 
         # No interval ending after the window start should be flagged as valid charge
+        window_dt = next_window_start_dt(now, discharge_start)
         post_window_slots = [
-            iv
-            for iv in intervals
-            if iv["end"] > next_window_start_dt(now, discharge_start)
-            and interval_ends_before_window_start(iv["end"], discharge_start, now)
+            iv for iv in intervals if iv["end"] > window_dt and iv["end"] <= window_dt
         ]
 
         assert post_window_slots == [], (
@@ -381,11 +283,9 @@ class TestCrossDayChargePlanningIntegration:
             tagged.append({**iv, "import_price": price})
 
         # Filter valid charge intervals
+        window_dt = next_window_start_dt(now, discharge_start)
         valid_charge = [
-            iv
-            for iv in tagged
-            if iv["end"] > now
-            and interval_ends_before_window_start(iv["end"], discharge_start, now)
+            iv for iv in tagged if iv["end"] > now and iv["end"] <= window_dt
         ]
 
         # Sort by cheapest first (mirrors planner logic)

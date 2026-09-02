@@ -14,9 +14,7 @@ Windows.
 """
 
 import asyncio
-from datetime import UTC, datetime, time, timedelta
-
-from custom_components.hsem.utils.time_windows import interval_ends_before_window_start
+from datetime import UTC, datetime, timedelta
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -32,68 +30,15 @@ def _dt(hour: int, minute: int = 0, date_offset: int = 0) -> datetime:
 
 
 # ---------------------------------------------------------------------------
-# Tests for interval_ends_before_window_start
-#
-# Note: the sibling ``is_time_in_window`` helper (formerly tested here) was
-# removed as dead code in issue #891 — it had no production caller.
-# Production cross-midnight window handling lives inline in
-# ``planner/discharge_scheduler.py``, exercised by the planner test suite
-# and ``tests/test_cross_day_charge_windows.py``.
-# ---------------------------------------------------------------------------
-
-
-class TestIntervalEndsBeforeWindowStart:
-    """Unit tests for interval_ends_before_window_start helper."""
-
-    def test_interval_ends_before_same_day_window(self):
-        """Interval ending at 06:00 is before a same-day window at 07:00."""
-        now = _dt(5, 0)  # 05:00
-        interval_end = _dt(6, 0)  # 06:00
-        window_start = time(7, 0)
-        assert (
-            interval_ends_before_window_start(interval_end, window_start, now) is True
-        )
-
-    def test_interval_ends_after_same_day_window(self):
-        """Interval ending at 08:00 is NOT before a window starting at 07:00."""
-        now = _dt(5, 0)
-        interval_end = _dt(8, 0)
-        window_start = time(7, 0)
-        assert (
-            interval_ends_before_window_start(interval_end, window_start, now) is False
-        )
-
-    def test_interval_ends_before_cross_midnight_window(self):
-        """Interval ending at 22:00 is before a cross-midnight window at 23:00."""
-        now = _dt(21, 0)  # 21:00
-        interval_end = _dt(22, 0)  # 22:00
-        window_start = time(23, 0)  # tonight at 23:00
-        assert (
-            interval_ends_before_window_start(interval_end, window_start, now) is True
-        )
-
-    def test_interval_ends_after_cross_midnight_window_start(self):
-        """Interval ending at 23:30 is NOT before a cross-midnight window at 23:00."""
-        now = _dt(21, 0)
-        interval_end = _dt(23, 30)
-        window_start = time(23, 0)
-        assert (
-            interval_ends_before_window_start(interval_end, window_start, now) is False
-        )
-
-    def test_interval_next_day_before_midnight_window_start(self):
-        """Interval ending 00:30 tomorrow is NOT before a window at 23:00 today."""
-        now = _dt(21, 0)  # today 21:00
-        # interval ends tomorrow at 00:30
-        interval_end = _dt(0, 30, date_offset=1)
-        window_start = time(23, 0)  # tonight
-        assert (
-            interval_ends_before_window_start(interval_end, window_start, now) is False
-        )
-
-
-# ---------------------------------------------------------------------------
 # Tests for schedule validator (batteries_schedule_*.py)
+#
+# Note: the former ``interval_ends_before_window_start`` unit tests that
+# lived in this module were removed in issue #898 along with the helper
+# itself — it had no production caller and could not safely replace
+# ``pre_charge.py``'s per-occurrence eligible-slot filter (see that file's
+# comments). Cross-midnight eligible-slot filtering is now covered directly
+# via ``apply_charge_schedules`` in
+# ``tests/planner/test_charge_scheduler_capacity.py``.
 # ---------------------------------------------------------------------------
 
 

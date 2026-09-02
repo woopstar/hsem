@@ -23,10 +23,7 @@ import pytest
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner.engine_core import _parse_now
 from custom_components.hsem.planner.slot_population import build_slots
-from custom_components.hsem.utils.time_windows import (
-    interval_ends_before_window_start,
-    next_window_start_dt,
-)
+from custom_components.hsem.utils.time_windows import next_window_start_dt
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -258,55 +255,7 @@ class TestNextWindowStartDstFallback:
 
 
 # ---------------------------------------------------------------------------
-# 4. interval_ends_before_window_start: correct across DST transitions
-# ---------------------------------------------------------------------------
-
-
-class TestIntervalEndsDst:
-    """interval_ends_before_window_start must be consistent across DST transitions."""
-
-    def test_spring_forward_interval_before_gap(self):
-        """An interval ending at 01:30 is before a 03:00 window on spring-forward day."""
-        now = _parse_now("2024-03-31T00:00:00+01:00")
-        # Interval ends at 01:30 UTC+1
-        interval_end = _parse_now("2024-03-31T01:30:00+01:00")
-        # Window starts at 03:00 (wall clock — UTC+2 after the spring-forward)
-        assert interval_ends_before_window_start(interval_end, time(3, 0), now)
-
-    def test_spring_forward_interval_after_gap(self):
-        """An interval ending at 04:00 UTC+2 is before tomorrow's 03:00 window.
-
-        When *now* is 03:30 UTC+2, the 03:00 wall-clock time has already passed
-        today, so ``next_window_start_dt`` advances to 03:00 tomorrow.
-        An interval ending at 04:00 *today* ends before 03:00 *tomorrow*, so
-        the function correctly returns ``True``.
-        """
-        now = _parse_now("2024-03-31T03:30:00+02:00")
-        interval_end = _parse_now("2024-03-31T04:00:00+02:00")
-        # 04:00 today < 03:00 tomorrow → interval ends before the (next-day) window
-        assert interval_ends_before_window_start(interval_end, time(3, 0), now)
-
-    def test_autumn_fallback_interval_before_fold(self):
-        """An interval ending at 01:30 UTC+2 is before a 03:00 window on fallback day."""
-        now = _parse_now("2024-10-27T00:00:00+02:00")
-        interval_end = _parse_now("2024-10-27T01:30:00+02:00")
-        assert interval_ends_before_window_start(interval_end, time(3, 0), now)
-
-    def test_autumn_fallback_interval_after_fold(self):
-        """An interval ending at 04:00 UTC+1 is before tomorrow's 03:00 window.
-
-        When *now* is 03:30 UTC+1 (post-fold), the 03:00 wall-clock time has
-        already passed today (03:00 == now's day, rolled to next-day).  An
-        interval ending at 04:00 today ends before 03:00 tomorrow.
-        """
-        now = _parse_now("2024-10-27T03:30:00+01:00")
-        interval_end = _parse_now("2024-10-27T04:00:00+01:00")
-        # 04:00 today < 03:00 tomorrow → interval ends before the (next-day) window
-        assert interval_ends_before_window_start(interval_end, time(3, 0), now)
-
-
-# ---------------------------------------------------------------------------
-# 5. Full planner run: planner executes without error on DST days
+# 4. Full planner run: planner executes without error on DST days
 # ---------------------------------------------------------------------------
 
 

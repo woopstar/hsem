@@ -147,43 +147,45 @@ class TestP001MonthMatching:
 
 
 class TestP002MidnightRollover:
-    """OLD BUG: ``interval_ends_before_window_start`` only handled same-day
-    windows (start < end).  A cross-midnight window such as 23:00-02:00 was
-    silently treated as always-false, causing HSEM to skip valid overnight
-    charge/discharge windows entirely.
+    """OLD BUG: the eligible-slot ``interval_end <= window_start`` comparison
+    only handled same-day windows (start < end).  A cross-midnight window
+    such as 23:00-02:00 was silently treated as always-false, causing HSEM
+    to skip valid overnight charge/discharge windows entirely.
 
-    FIX: The helper now detects when ``start > end`` (cross-midnight) and
-    uses the corresponding logic branch.
+    FIX: ``next_window_start_dt`` resolves ``window_start`` to a
+    timezone-aware datetime on the correct calendar date, so comparing
+    against it (as ``pre_charge.py``'s eligible-slot filter and
+    ``discharge_scheduler.py`` both do) handles cross-midnight windows
+    without false positives.
 
     Note: the sibling ``is_time_in_window`` helper covered by the original
-    fix was removed as dead code in issue #891 — it had no production
-    caller. Production cross-midnight window handling for discharge
-    schedules lives inline in ``planner/discharge_scheduler.py`` (the
-    ``sched.end > sched.start`` branch), exercised by
-    ``tests/test_cross_day_charge_windows.py`` and the planner test suite.
+    fix was removed as dead code in issue #891, and the thin
+    ``interval_ends_before_window_start`` wrapper (which had no production
+    caller and could not safely replace ``pre_charge.py``'s per-occurrence
+    filter) was removed in issue #898. Production cross-midnight window
+    handling lives inline in ``planner/discharge_scheduler.py`` (the
+    ``sched.end > sched.start`` branch) and
+    ``planner/charging/pre_charge.py``'s eligible-slot filter, exercised by
+    ``tests/test_cross_day_charge_windows.py``,
+    ``tests/planner/test_charge_scheduler_capacity.py``, and the planner
+    test suite.
     """
 
     def test_interval_ending_before_cross_midnight_window_start(self) -> None:
         """An interval ending at 22:00 is before a 23:00 cross-midnight window."""
-        from custom_components.hsem.utils.time_windows import (
-            interval_ends_before_window_start,
-        )
+        from custom_components.hsem.utils.time_windows import next_window_start_dt
 
         now = _dt(21, 0)
         interval_end = _dt(22, 0)
-        assert interval_ends_before_window_start(interval_end, time(23, 0), now) is True
+        assert interval_end <= next_window_start_dt(now, time(23, 0))
 
     def test_interval_ending_inside_cross_midnight_window_is_not_before(self) -> None:
         """An interval ending at 23:30 is NOT before the 23:00 window start."""
-        from custom_components.hsem.utils.time_windows import (
-            interval_ends_before_window_start,
-        )
+        from custom_components.hsem.utils.time_windows import next_window_start_dt
 
         now = _dt(21, 0)
         interval_end = _dt(23, 30)
-        assert (
-            interval_ends_before_window_start(interval_end, time(23, 0), now) is False
-        )
+        assert not (interval_end <= next_window_start_dt(now, time(23, 0)))
 
 
 # ===========================================================================
@@ -241,29 +243,21 @@ class TestP003NextDayCharging:
         This is the P0-03 key scenario: planning a 02:00 grid charge at 22:00
         to cover morning peak use the following day.
         """
-        from custom_components.hsem.utils.time_windows import (
-            interval_ends_before_window_start,
-        )
+        from custom_components.hsem.utils.time_windows import next_window_start_dt
 
         now = _dt(22, 0)
         charge_slot_end = _dt(3, 0, day_offset=1)  # 03:00 next day
-        assert (
-            interval_ends_before_window_start(charge_slot_end, time(7, 0), now) is True
-        ), (
+        assert charge_slot_end <= next_window_start_dt(now, time(7, 0)), (
             "02:00-03:00 charge slot must be flagged as 'before' the 07:00 discharge window"
         )
 
     def test_slot_after_discharge_window_excluded(self) -> None:
         """A slot ending at 08:00 is NOT before the 07:00 window."""
-        from custom_components.hsem.utils.time_windows import (
-            interval_ends_before_window_start,
-        )
+        from custom_components.hsem.utils.time_windows import next_window_start_dt
 
         now = _dt(22, 0)
         charge_slot_end = _dt(8, 0, day_offset=1)
-        assert (
-            interval_ends_before_window_start(charge_slot_end, time(7, 0), now) is False
-        )
+        assert not (charge_slot_end <= next_window_start_dt(now, time(7, 0)))
 
 
 # ===========================================================================
