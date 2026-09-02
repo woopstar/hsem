@@ -106,3 +106,8 @@ class CoordinatorData:
     #: Amperage in the second EV's OCPP server's last ``SetChargingProfile``
     #: (issue #886). ``None`` until the first profile has been sent.
     ocpp_second_last_requested_current_a: int | None = None
+    #: Primary OCPP server's anti-flap state machine state (issue #892):
+    #: one of "idle", "starting", "charging", "stopping".
+    ocpp_anti_flap_state: str = "idle"
+    #: Second EV's OCPP server anti-flap state machine state (issue #892).
+    ocpp_second_anti_flap_state: str = "idle"

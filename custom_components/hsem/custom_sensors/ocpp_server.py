@@ -1,8 +1,9 @@
 """Embedded OCPP 1.6 WebSocket server for EV charger control.
 
 This module provides an optional, LAN-only OCPP 1.6 JSON WebSocket server
-that listens for charger connections and dispatches :class:`SetChargingProfile`
-commands based on HSEM's EV charging plan.
+that listens for charger connections and dispatches
+:class:`RemoteStartTransaction`/:class:`SetChargingProfile`/
+:class:`RemoteStopTransaction` commands based on HSEM's EV charging plan.
 
 Architecture::
 
@@ -10,7 +11,8 @@ Architecture::
                                   │
                                   ├── Reads EV plan from CoordinatorData
                                   ├── Writes charger state to CoordinatorData
-                                  └── Dispatches SetChargingProfile commands
+                                  └── Dispatches RemoteStart/SetChargingProfile/
+                                      RemoteStop commands
 
 .. important::
     This server binds to ``0.0.0.0`` by default.  The port MUST NOT be
@@ -38,6 +40,10 @@ from typing import Any
 
 from aiohttp import web
 
+from custom_components.hsem.custom_sensors.ocpp_commands import OCPPCommandsMixin
+from custom_components.hsem.custom_sensors.ocpp_message_handlers import (
+    OCPPMessageHandlersMixin,
+)
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -58,13 +64,30 @@ _DEFAULT_STOP_WINDOW_S = 180  # Sustained shortage required before stopping
 # Per-slot epsilon for floating-point comparisons (kWh)
 _SLOT_EPSILON = 1e-6
 
+# Minimum seconds between RemoteStartTransaction retries while a session
+# still hasn't confirmed a transaction (issue #892). Rejected, dropped, or
+# unanswered start requests are retried on this cadence rather than only
+# once.
+_REMOTE_START_RETRY_INTERVAL_S = 60
 
-class OCPPServer:
+# aiohttp WebSocket-level ping interval (issue #892). Detects a charger that
+# silently stops responding (dead TCP, network drop) without a clean close —
+# aiohttp auto-pings at this interval and closes the connection if no pong
+# arrives within half of it, independent of OCPP's own application-level
+# Heartbeat message.
+_WS_HEARTBEAT_INTERVAL_S = 30.0
+
+
+class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
     """Embedded OCPP 1.6 WebSocket server for LAN-only EV charger control.
 
     Listens on a configurable TCP port and handles OCPP 1.6 JSON messages
     from one or more chargers.  Charge targets are pushed from the HSEM
-    planner via :meth:`update_charge_target`.
+    planner via :meth:`update_charge_target`. Charger-initiated message
+    handlers (BootNotification, Heartbeat, etc.) live in
+    :class:`OCPPMessageHandlersMixin`, and low-level outbound command
+    senders live in :class:`OCPPCommandsMixin` — both split out to satisfy
+    the 30 KB / 1000-line file limit.
 
     Attributes:
         hass: The Home Assistant instance (used only for helper access).
@@ -112,6 +135,14 @@ class OCPPServer:
         # Anti-flap state machine: "idle", "starting", "charging", "stopping"
         self._flap_state: str = "idle"
 
+        # RemoteStartTransaction retry tracking (issue #892). HSEM never
+        # correlates OCPP CALLRESULTs to a specific outbound request, so the
+        # only reliable "did it actually start" signal is the charger's own
+        # subsequent StartTransaction call (session.transaction_id). While
+        # that stays None after a start attempt, retry on a cooldown rather
+        # than assuming the single attempt succeeded.
+        self._last_remote_start_attempt: datetime | None = None
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -119,12 +150,15 @@ class OCPPServer:
     async def start(self) -> None:
         """Start the aiohttp WebSocket server.
 
-        Creates an :class:`aiohttp.web.Application` with a single route,
-        ``/``, that upgrades to WebSocket and delegates to
-        :meth:`_handle_charger`.
+        Creates an :class:`aiohttp.web.Application` with a wildcard route
+        that upgrades any path to WebSocket and delegates to
+        :meth:`_handle_charger`, which derives the charge-point identifier
+        from the connection path (``/`` → ``"default"``, ``/222819`` →
+        ``"222819"``). A literal ``/`` route alone would 404 any charger
+        connecting with its own CPID in the path (issue #892).
         """
         app = web.Application()
-        app.router.add_get("/", self._handle_charger)
+        app.router.add_get("/{tail:.*}", self._handle_charger)
 
         self._runner = web.AppRunner(app)
         await self._runner.setup()
@@ -179,6 +213,17 @@ class OCPPServer:
         charger this session.
         """
         return self._last_sent_current_a if self._last_sent_current_a >= 0 else None
+
+    @property
+    def anti_flap_state(self) -> str:
+        """Return the anti-flap state machine's current state.
+
+        One of ``"idle"``, ``"starting"``, ``"charging"``, ``"stopping"``.
+        Exposed for diagnostics (issue #892) — without this, diagnosing why
+        a charger isn't starting/stopping requires reading source code to
+        understand HSEM's own internal state.
+        """
+        return self._flap_state
 
     @property
     def charger_sessions(self) -> dict[str, ChargerSession]:
@@ -237,10 +282,26 @@ class OCPPServer:
                     target_at = now
                 elapsed = (now - target_at).total_seconds()
                 if elapsed >= self._start_window_s:
-                    self._flap_state = "charging"
-                    await self._send_set_charging_profile(
+                    remote_start_ok = True
+                    if session.transaction_id is None:
+                        remote_start_ok = await self._send_remote_start(
+                            session, now=now
+                        )
+                    profile_ok = await self._send_set_charging_profile(
                         session, int(target_w), max_current_a
                     )
+                    if remote_start_ok and profile_ok:
+                        self._flap_state = "charging"
+                    else:
+                        # Stay "starting" so the next cycle retries — the
+                        # start window has already elapsed, so elapsed
+                        # will still satisfy the threshold immediately
+                        # (issue #892).
+                        _LOGGER.warning(
+                            "OCPP %s: failed to send start commands — "
+                            "will retry next cycle",
+                            session.cpid,
+                        )
                 else:
                     _LOGGER.debug(
                         "OCPP anti-flap: waiting for start window "
@@ -249,6 +310,12 @@ class OCPPServer:
                         self._start_window_s,
                     )
             elif self._flap_state == "charging":
+                # Still no confirmed transaction from the charger — the
+                # first RemoteStartTransaction may have been rejected,
+                # dropped, or simply never answered. Retry on a cooldown
+                # rather than leaving the session stuck (issue #892).
+                if session.transaction_id is None and self._remote_start_due(now):
+                    await self._send_remote_start(session, now=now)
                 # Already charging — update if target changed materially
                 if abs(target_w - self._last_sent_target) > 50.0:
                     await self._send_set_charging_profile(
@@ -266,8 +333,17 @@ class OCPPServer:
                     zero_at = now
                 elapsed = (now - zero_at).total_seconds()
                 if elapsed >= self._stop_window_s:
-                    self._flap_state = "idle"
-                    await self._send_remote_stop(session)
+                    if await self._send_remote_stop(session):
+                        self._flap_state = "idle"
+                    else:
+                        # Stay "stopping" so the next cycle retries
+                        # immediately — the stop window has already
+                        # elapsed (issue #892).
+                        _LOGGER.warning(
+                            "OCPP %s: failed to send RemoteStopTransaction "
+                            "— will retry next cycle",
+                            session.cpid,
+                        )
                 else:
                     _LOGGER.debug(
                         "OCPP anti-flap: waiting for stop window "
@@ -278,9 +354,38 @@ class OCPPServer:
             self._target_entered_at = None
             self._target_power_w = 0.0
 
+    def _remote_start_due(self, now: datetime) -> bool:
+        """Return whether enough time has passed to retry RemoteStartTransaction.
+
+        Args:
+            now: Current timestamp.
+        """
+        if self._last_remote_start_attempt is None:
+            return True
+        elapsed = (now - self._last_remote_start_attempt).total_seconds()
+        return elapsed >= _REMOTE_START_RETRY_INTERVAL_S
+
+    def _reset_anti_flap_state(self) -> None:
+        """Reset the anti-flap state machine to a clean idle state.
+
+        Called when a charger disconnects (issue #892): the state machine
+        assumes it is talking to one continuously-connected charger, so
+        stale start/stop timers or a stale "charging" belief must not
+        survive into a fresh connection — a reconnect goes through the
+        normal start window again rather than resuming as if nothing
+        happened.
+        """
+        self._flap_state = "idle"
+        self._target_entered_at = None
+        self._zero_entered_at = None
+        self._target_power_w = 0.0
+        self._last_sent_target = -1.0
+        self._last_sent_current_a = -1
+        self._last_remote_start_attempt = None
+
     async def send_set_charging_profile(
         self, cpid: str, max_power_w: int, max_current_a: int = 16
-    ) -> None:
+    ) -> bool:
         """Directly send a ``SetChargingProfile`` to a charger.
 
         Bypasses the anti-flap state machine.  Use
@@ -295,17 +400,20 @@ class OCPPServer:
             cpid: Charge-point identifier.
             max_power_w: Maximum charging power in watts.
             max_current_a: Maximum current in amperes.
+
+        Returns:
+            ``True`` if the message was written to the socket.
         """
         if cpid not in self._chargers:
             _LOGGER.warning(
                 "Cannot send SetChargingProfile — charger %s not connected", cpid
             )
-            return
-        await self._send_set_charging_profile(
+            return False
+        return await self._send_set_charging_profile(
             self._chargers[cpid], max_power_w, max_current_a
         )
 
-    async def send_remote_stop(self, cpid: str) -> None:
+    async def send_remote_stop(self, cpid: str) -> bool:
         """Directly send a ``RemoteStopTransaction`` to a charger.
 
         Bypasses the anti-flap state machine — see
@@ -314,13 +422,17 @@ class OCPPServer:
 
         Args:
             cpid: Charge-point identifier.
+
+        Returns:
+            ``True`` if the message was written to the socket (or there was
+            no active transaction to stop).
         """
         if cpid not in self._chargers:
             _LOGGER.warning(
                 "Cannot send RemoteStopTransaction — charger %s not connected", cpid
             )
-            return
-        await self._send_remote_stop(self._chargers[cpid])
+            return False
+        return await self._send_remote_stop(self._chargers[cpid])
 
     # ------------------------------------------------------------------
     # WebSocket handler
@@ -343,7 +455,24 @@ class OCPPServer:
         cpid = request.path.strip("/") or "default"
         _LOGGER.info("OCPP charger connected: CPID=%s from %s", cpid, request.remote)
 
-        ws = web.WebSocketResponse()
+        # A reconnect under the same CPID must not silently orphan a still-
+        # open previous WebSocket — close it before replacing (issue #892).
+        existing = self._chargers.get(cpid)
+        if existing is not None and existing.websocket is not None:
+            _LOGGER.warning(
+                "OCPP charger %s reconnecting — closing previous WebSocket", cpid
+            )
+            try:
+                await existing.websocket.close()
+            except Exception:
+                _LOGGER.debug(
+                    "Error closing previous WebSocket for %s — ignoring", cpid
+                )
+
+        # heartbeat= makes aiohttp auto-ping the peer and close the
+        # connection if no pong arrives — detects a silently dead
+        # connection without waiting on OCPP's own Heartbeat (issue #892).
+        ws = web.WebSocketResponse(heartbeat=_WS_HEARTBEAT_INTERVAL_S)
         await ws.prepare(request)
 
         session = ChargerSession(
@@ -365,12 +494,26 @@ class OCPPServer:
             _LOGGER.debug("Charger %s disconnected", cpid)
         finally:
             self._chargers.pop(cpid, None)
+            # The anti-flap state machine assumes one continuously-connected
+            # charger — a stale "charging"/timer belief must not survive a
+            # disconnect into whatever reconnects next (issue #892).
+            self._reset_anti_flap_state()
             _LOGGER.info("OCPP charger %s session ended", cpid)
 
         return ws
 
     async def _handle_message(self, session: ChargerSession, raw: str) -> None:
         """Parse and dispatch an incoming OCPP JSON message.
+
+        OCPP-J message shapes differ by type, so ``msg[2]`` cannot be
+        blindly read as an action name for every message: a CALL is
+        ``[2, id, action, payload]``, but a CALLRESULT is only
+        ``[3, id, payload]`` — a reply to something *HSEM* sent (e.g.
+        ``RemoteStartTransaction.conf``), not a new request. Treating a
+        CALLRESULT's payload as an action name used to raise
+        ``TypeError: unhashable type: 'dict'`` deep in :meth:`_dispatch`
+        (issue #892), silently discarding every response to HSEM's own
+        outbound calls.
 
         Args:
             session: The charger session.
@@ -383,11 +526,40 @@ class OCPPServer:
                 return
 
             msg_type = msg[0]  # OCPP message type indicator
-            msg_id = msg[1]  # Unique message ID
-            action = msg[2]  # e.g. "BootNotification", "Heartbeat"
-            payload = msg[3] if len(msg) > 3 else {}
 
-            await self._dispatch(session, msg_type, msg_id, action, payload)
+            if msg_type == _CALL:
+                msg_id = msg[1]
+                action = msg[2]
+                payload = msg[3] if len(msg) > 3 else {}
+                await self._dispatch(session, msg_id, action, payload)
+            elif msg_type == _CALLRESULT:
+                # Response to an outbound HSEM call (RemoteStartTransaction,
+                # SetChargingProfile, RemoteStopTransaction). HSEM does not
+                # correlate these to a specific request today — the
+                # ground-truth confirmation that a session actually started
+                # is the charger's own subsequent StartTransaction call,
+                # handled by _handle_start_transaction() and retried on a
+                # cooldown by update_charge_target() while it never arrives.
+                _LOGGER.debug(
+                    "OCPP CALLRESULT from %s (id=%s): %s",
+                    session.cpid,
+                    msg[1],
+                    msg[2],
+                )
+            elif msg_type == _CALLERROR:
+                _LOGGER.warning(
+                    "OCPP CALLERROR from %s (id=%s): %s",
+                    session.cpid,
+                    msg[1],
+                    msg[2:],
+                )
+            else:
+                _LOGGER.warning(
+                    "Unknown OCPP message type %s from %s: %s",
+                    msg_type,
+                    session.cpid,
+                    raw,
+                )
         except json.JSONDecodeError:
             _LOGGER.warning("Invalid JSON from charger %s: %s", session.cpid, raw)
         except Exception:
@@ -398,16 +570,14 @@ class OCPPServer:
     async def _dispatch(
         self,
         session: ChargerSession,
-        msg_type: int,
         msg_id: str,
         action: str,
         payload: dict,
     ) -> None:
-        """Route an OCPP message to the appropriate handler.
+        """Route an incoming OCPP CALL to the appropriate handler.
 
         Args:
             session: The charger session.
-            msg_type: OCPP message type indicator.
             msg_id: Unique message ID.
             action: OCPP action name.
             payload: Message payload dict.
@@ -427,315 +597,5 @@ class OCPPServer:
             handler = self._handle_unknown
 
         response = await handler(session, payload)
-        if response is not None and msg_type == _CALL:
+        if response is not None:
             await self._send_response(session, msg_id, response)
-
-    async def _send_response(
-        self, session: ChargerSession, msg_id: str, payload: dict
-    ) -> None:
-        """Send a CALLRESULT (type 3) message back to the charger.
-
-        Args:
-            session: The charger session.
-            msg_id: The original message ID being answered.
-            payload: The response payload.
-        """
-        try:
-            msg = json.dumps([_CALLRESULT, msg_id, payload])
-            await session.websocket.send_str(msg)
-        except Exception:
-            _LOGGER.exception(
-                "Failed to send OCPP response to charger %s", session.cpid
-            )
-
-    async def _send_call(
-        self, session: ChargerSession, action: str, payload: dict
-    ) -> None:
-        """Send a CALL (type 2) message to the charger.
-
-        Args:
-            session: The charger session.
-            action: OCPP action name (e.g. "SetChargingProfile").
-            payload: The message payload.
-        """
-        try:
-            msg_id = f"hsem-{datetime.now(UTC).timestamp()}"
-            msg = json.dumps([_CALL, msg_id, action, payload])
-            await session.websocket.send_str(msg)
-        except Exception:
-            _LOGGER.exception(
-                "Failed to send OCPP call '%s' to charger %s",
-                action,
-                session.cpid,
-            )
-
-    async def _send_set_charging_profile(
-        self, session: ChargerSession, max_power_w: int, max_current_a: int = 16
-    ) -> None:
-        """Send a ``SetChargingProfile`` request.
-
-        Builds a TxDefaultProfile that limits charging to *max_current_a*
-        amps, which at 230 V nominally equals *max_power_w*.
-
-        Args:
-            session: The charger session.
-            max_power_w: Maximum charging power in watts.
-            max_current_a: Maximum current in amperes.
-        """
-        # OCPP 1.6 ChargingProfile structure
-        charging_profile = {
-            "chargingProfileId": 1,
-            "stackLevel": 0,
-            "chargingProfilePurpose": "TxDefaultProfile",
-            "chargingProfileKind": "Relative",
-            "chargingSchedule": {
-                "chargingRateUnit": "A",
-                "chargingSchedulePeriod": [
-                    {
-                        "startPeriod": 0,
-                        "limit": max_current_a,
-                    }
-                ],
-            },
-        }
-
-        payload = {
-            "connectorId": 1,
-            "csChargingProfiles": charging_profile,
-        }
-
-        await self._send_call(session, "SetChargingProfile", payload)
-        self._last_sent_target = float(max_power_w)
-        self._last_sent_current_a = max_current_a
-        _LOGGER.debug(
-            "Sent SetChargingProfile to %s: max %d A (~%d W)",
-            session.cpid,
-            max_current_a,
-            max_power_w,
-        )
-
-    async def _send_remote_stop(self, session: ChargerSession) -> None:
-        """Send a ``RemoteStopTransaction`` request.
-
-        Args:
-            session: The charger session.
-        """
-        if session.transaction_id is not None:
-            payload = {"transactionId": session.transaction_id}
-        else:
-            payload = {}
-        await self._send_call(session, "RemoteStopTransaction", payload)
-        self._last_sent_target = -1.0
-        self._last_sent_current_a = -1
-        _LOGGER.debug(
-            "Sent RemoteStopTransaction to %s (tx=%s)",
-            session.cpid,
-            session.transaction_id,
-        )
-
-    # ------------------------------------------------------------------
-    # OCPP message handlers
-    # ------------------------------------------------------------------
-
-    async def _handle_boot_notification(
-        self, session: ChargerSession, payload: dict
-    ) -> dict:
-        """Handle a ``BootNotification`` request.
-
-        Records charger identity and returns an ``Accepted`` response with
-        a 300-second heartbeat interval.
-
-        Args:
-            session: The charger session.
-            payload: BootNotification payload.
-
-        Returns:
-            Response dict with status, interval, and currentTime.
-        """
-        session.vendor = payload.get("chargePointVendor", "")
-        session.model = payload.get("chargePointModel", "")
-        session.firmware = payload.get("firmwareVersion", "")
-        session.serial = payload.get("chargePointSerialNumber", "")
-        _LOGGER.info(
-            "OCPP BootNotification from %s: vendor=%s, model=%s, fw=%s, serial=%s",
-            session.cpid,
-            session.vendor,
-            session.model,
-            session.firmware,
-            session.serial,
-        )
-        return {
-            "status": "Accepted",
-            "interval": 300,
-            "currentTime": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        }
-
-    async def _handle_heartbeat(self, session: ChargerSession, payload: dict) -> dict:
-        """Handle a ``Heartbeat`` request.
-
-        Args:
-            session: The charger session.
-            payload: Heartbeat payload (unused).
-
-        Returns:
-            Response dict with currentTime.
-        """
-        session.last_heartbeat = datetime.now(UTC)
-        return {
-            "currentTime": session.last_heartbeat.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        }
-
-    async def _handle_status_notification(
-        self, session: ChargerSession, payload: dict
-    ) -> dict:
-        """Handle a ``StatusNotification`` request.
-
-        Updates the charger's status based on connector status.
-
-        Args:
-            session: The charger session.
-            payload: StatusNotification payload.
-
-        Returns:
-            Empty dict (CALLRESULT per OCPP spec).
-        """
-        new_status = payload.get("status", "")
-        if new_status:
-            session.status = new_status
-            _LOGGER.debug(
-                "OCPP charger %s status changed to '%s'", session.cpid, new_status
-            )
-        return {}
-
-    async def _handle_meter_values(
-        self, session: ChargerSession, payload: dict
-    ) -> dict:
-        """Handle a ``MeterValues`` request.
-
-        Parses power and energy readings from the meter values and updates
-        the session state.
-
-        Args:
-            session: The charger session.
-            payload: MeterValues payload.
-
-        Returns:
-            ``None`` (empty response per OCPP spec).
-        """
-        connector_id = payload.get("connectorId", 0)
-        meter_values = payload.get("meterValue", [])
-
-        for mv in meter_values:
-            sampled_values = mv.get("sampledValue", [])
-            for sv in sampled_values:
-                measurand = sv.get("measurand", "")
-                value = sv.get("value", "0")
-                try:
-                    numeric_value = float(value)
-                except ValueError, TypeError:
-                    continue
-
-                if measurand == "Power.Active.Import":
-                    session.current_power_w = numeric_value
-                elif measurand == "Energy.Active.Import.Register":
-                    session.current_energy_wh = numeric_value
-                elif measurand == "":
-                    # Many chargers send power in an unlabelled field
-                    unit = sv.get("unit", "")
-                    if unit == "W" or unit == "":
-                        session.current_power_w = numeric_value
-
-        _LOGGER.debug(
-            "OCPP MeterValues from %s (connector %d): power=%.0fW, energy=%.0fWh",
-            session.cpid,
-            connector_id,
-            session.current_power_w,
-            session.current_energy_wh,
-        )
-        return {}
-
-    async def _handle_authorize(self, session: ChargerSession, payload: dict) -> dict:
-        """Handle an ``Authorize`` request.
-
-        Always accepts — this is a LAN-only server with no authentication.
-
-        Args:
-            session: The charger session.
-            payload: Authorize payload.
-
-        Returns:
-            Response dict with idTagInfo status.
-        """
-        id_tag = payload.get("idTag", "unknown")
-        _LOGGER.debug("OCPP Authorize from %s: idTag=%s", session.cpid, id_tag)
-        return {"idTagInfo": {"status": "Accepted"}}
-
-    async def _handle_start_transaction(
-        self, session: ChargerSession, payload: dict
-    ) -> dict:
-        """Handle a ``StartTransaction`` request.
-
-        Records the transaction ID and returns an ``Accepted`` response.
-
-        Args:
-            session: The charger session.
-            payload: StartTransaction payload.
-
-        Returns:
-            Response dict with transactionId and idTagInfo.
-        """
-        transaction_id = payload.get("transactionId", 0)
-        session.transaction_id = transaction_id
-        _LOGGER.info(
-            "OCPP StartTransaction from %s: tx=%d",
-            session.cpid,
-            transaction_id,
-        )
-        return {
-            "transactionId": transaction_id,
-            "idTagInfo": {"status": "Accepted"},
-        }
-
-    async def _handle_stop_transaction(
-        self, session: ChargerSession, payload: dict
-    ) -> dict:
-        """Handle a ``StopTransaction`` request.
-
-        Clears the transaction ID and returns an ``Accepted`` response.
-
-        Args:
-            session: The charger session.
-            payload: StopTransaction payload.
-
-        Returns:
-            Response dict with idTagInfo.
-        """
-        transaction_id = payload.get("transactionId")
-        _LOGGER.info(
-            "OCPP StopTransaction from %s: tx=%s",
-            session.cpid,
-            transaction_id,
-        )
-        session.transaction_id = None
-        return {"idTagInfo": {"status": "Accepted"}}
-
-    async def _handle_unknown(
-        self, session: ChargerSession, payload: dict
-    ) -> dict | None:
-        """Handle an unknown/unsupported OCPP action.
-
-        Logs a warning and returns ``None`` so no CALLERROR is sent.
-
-        Args:
-            session: The charger session.
-            payload: Message payload.
-
-        Returns:
-            ``None``.
-        """
-        _LOGGER.debug(
-            "OCPP unknown action from charger %s: payload=%s",
-            session.cpid,
-            payload,
-        )
-        return None

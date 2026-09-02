@@ -1,0 +1,226 @@
+"""OCPP 1.6 charger-initiated message handlers.
+
+Extracted from :mod:`ocpp_server` to satisfy the repository's 30 KB /
+1000-line file limit. These handlers only read/write ``session``/``payload``
+— none of them touch :class:`~ocpp_server.OCPPServer` state — so they mix
+cleanly into :class:`~ocpp_server.OCPPServer` without any behaviour change.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime
+
+from custom_components.hsem.models.ocpp_session import ChargerSession
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class OCPPMessageHandlersMixin:
+    """Handlers for OCPP messages initiated by a connected charger."""
+
+    async def _handle_boot_notification(
+        self, session: ChargerSession, payload: dict
+    ) -> dict:
+        """Handle a ``BootNotification`` request.
+
+        Records charger identity and returns an ``Accepted`` response with
+        a 300-second heartbeat interval.
+
+        Args:
+            session: The charger session.
+            payload: BootNotification payload.
+
+        Returns:
+            Response dict with status, interval, and currentTime.
+        """
+        session.vendor = payload.get("chargePointVendor", "")
+        session.model = payload.get("chargePointModel", "")
+        session.firmware = payload.get("firmwareVersion", "")
+        session.serial = payload.get("chargePointSerialNumber", "")
+        _LOGGER.info(
+            "OCPP BootNotification from %s: vendor=%s, model=%s, fw=%s, serial=%s",
+            session.cpid,
+            session.vendor,
+            session.model,
+            session.firmware,
+            session.serial,
+        )
+        return {
+            "status": "Accepted",
+            "interval": 300,
+            "currentTime": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+
+    async def _handle_heartbeat(self, session: ChargerSession, payload: dict) -> dict:
+        """Handle a ``Heartbeat`` request.
+
+        Args:
+            session: The charger session.
+            payload: Heartbeat payload (unused).
+
+        Returns:
+            Response dict with currentTime.
+        """
+        session.last_heartbeat = datetime.now(UTC)
+        return {
+            "currentTime": session.last_heartbeat.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+
+    async def _handle_status_notification(
+        self, session: ChargerSession, payload: dict
+    ) -> dict:
+        """Handle a ``StatusNotification`` request.
+
+        Updates the charger's status based on connector status.
+
+        Args:
+            session: The charger session.
+            payload: StatusNotification payload.
+
+        Returns:
+            Empty dict (CALLRESULT per OCPP spec).
+        """
+        new_status = payload.get("status", "")
+        if new_status:
+            session.status = new_status
+            _LOGGER.debug(
+                "OCPP charger %s status changed to '%s'", session.cpid, new_status
+            )
+        return {}
+
+    async def _handle_meter_values(
+        self, session: ChargerSession, payload: dict
+    ) -> dict:
+        """Handle a ``MeterValues`` request.
+
+        Parses power and energy readings from the meter values and updates
+        the session state.
+
+        Args:
+            session: The charger session.
+            payload: MeterValues payload.
+
+        Returns:
+            ``None`` (empty response per OCPP spec).
+        """
+        connector_id = payload.get("connectorId", 0)
+        meter_values = payload.get("meterValue", [])
+
+        for mv in meter_values:
+            sampled_values = mv.get("sampledValue", [])
+            for sv in sampled_values:
+                measurand = sv.get("measurand", "")
+                value = sv.get("value", "0")
+                try:
+                    numeric_value = float(value)
+                except ValueError, TypeError:
+                    continue
+
+                if measurand == "Power.Active.Import":
+                    session.current_power_w = numeric_value
+                elif measurand == "Energy.Active.Import.Register":
+                    session.current_energy_wh = numeric_value
+                elif measurand == "":
+                    # Many chargers send power in an unlabelled field
+                    unit = sv.get("unit", "")
+                    if unit == "W" or unit == "":
+                        session.current_power_w = numeric_value
+
+        _LOGGER.debug(
+            "OCPP MeterValues from %s (connector %d): power=%.0fW, energy=%.0fWh",
+            session.cpid,
+            connector_id,
+            session.current_power_w,
+            session.current_energy_wh,
+        )
+        return {}
+
+    async def _handle_authorize(self, session: ChargerSession, payload: dict) -> dict:
+        """Handle an ``Authorize`` request.
+
+        Always accepts — this is a LAN-only server with no authentication.
+
+        Args:
+            session: The charger session.
+            payload: Authorize payload.
+
+        Returns:
+            Response dict with idTagInfo status.
+        """
+        id_tag = payload.get("idTag", "unknown")
+        _LOGGER.debug("OCPP Authorize from %s: idTag=%s", session.cpid, id_tag)
+        return {"idTagInfo": {"status": "Accepted"}}
+
+    async def _handle_start_transaction(
+        self, session: ChargerSession, payload: dict
+    ) -> dict:
+        """Handle a ``StartTransaction`` request.
+
+        Records the transaction ID and returns an ``Accepted`` response.
+
+        Args:
+            session: The charger session.
+            payload: StartTransaction payload.
+
+        Returns:
+            Response dict with transactionId and idTagInfo.
+        """
+        transaction_id = payload.get("transactionId", 0)
+        session.transaction_id = transaction_id
+        _LOGGER.info(
+            "OCPP StartTransaction from %s: tx=%d",
+            session.cpid,
+            transaction_id,
+        )
+        return {
+            "transactionId": transaction_id,
+            "idTagInfo": {"status": "Accepted"},
+        }
+
+    async def _handle_stop_transaction(
+        self, session: ChargerSession, payload: dict
+    ) -> dict:
+        """Handle a ``StopTransaction`` request.
+
+        Clears the transaction ID and returns an ``Accepted`` response.
+
+        Args:
+            session: The charger session.
+            payload: StopTransaction payload.
+
+        Returns:
+            Response dict with idTagInfo.
+        """
+        transaction_id = payload.get("transactionId")
+        _LOGGER.info(
+            "OCPP StopTransaction from %s: tx=%s",
+            session.cpid,
+            transaction_id,
+        )
+        session.transaction_id = None
+        return {"idTagInfo": {"status": "Accepted"}}
+
+    async def _handle_unknown(
+        self, session: ChargerSession, payload: dict
+    ) -> dict | None:
+        """Handle an unknown/unsupported OCPP action.
+
+        Logs a warning and returns ``None`` so no CALLERROR is sent.
+
+        Args:
+            session: The charger session.
+            payload: Message payload.
+
+        Returns:
+            ``None``.
+        """
+        _LOGGER.debug(
+            "OCPP unknown action from charger %s: payload=%s",
+            session.cpid,
+            payload,
+        )
+        return None
+
+
+__all__ = ["OCPPMessageHandlersMixin"]

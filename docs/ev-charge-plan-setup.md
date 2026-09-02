@@ -407,6 +407,58 @@ amperage is derived from the same command and phase topology backing
 `coordinator_helpers.ocpp_charge_target()` (issue #886), and is exposed for
 diagnostics as `requested_current_a` on `sensor.hsem_ocpp_charger_status`.
 
+When starting a session, HSEM also sends `RemoteStartTransaction` (fixed
+`idTag: "HSEM"`) alongside `SetChargingProfile` if the charger has no active
+transaction yet (`transaction_id` unset) — a charging profile alone only
+configures a ceiling, it does not authorize or start a session. If your
+charger requires local authorization (RFID/app) before it will accept a
+remote start, configure it for free-vending / no-authorization-required, or
+`RemoteStartTransaction` will be rejected and the charger stays in
+`SuspendedEVSE` regardless (issue #892).
+
+HSEM does not correlate a charger's CALLRESULT/CALLERROR reply to a specific
+outbound call — the only confirmation it trusts is the charger's own,
+separately-initiated `StartTransaction` message. While a session stays
+unconfirmed (`transaction_id` still unset) after a start attempt, HSEM
+retries `RemoteStartTransaction` roughly once a minute rather than giving up
+after a single attempt, so a rejected, dropped, or unanswered start request
+is retried automatically. It stops retrying the moment `StartTransaction`
+arrives.
+
+The charge point ID (`hsem_ocpp_cpid`) must match the path segment your
+charger connects with — HSEM derives it from the WebSocket connection path
+(`ws://host:port/` → `"default"`, `ws://host:port/222819` → `"222819"`),
+not from anything in `BootNotification`. Leave `hsem_ocpp_cpid` empty only
+if your charger connects to the bare root path. The diagnostic `url`
+attribute on `sensor.hsem_ocpp_charger_status` already includes the
+configured CPID, so pointing your charger at exactly that URL is always
+correct.
+
+**Further stability hardening (issue #892):**
+
+- A failed send (e.g. the WebSocket write itself throws) is never mistaken
+  for success — the anti-flap state machine only commits a start/stop
+  transition once the command actually reaches the socket, and retries on
+  the next cycle otherwise.
+- The anti-flap state machine's current state (`"idle"`, `"starting"`,
+  `"charging"`, `"stopping"`) is exposed as `anti_flap_state` on
+  `sensor.hsem_ocpp_charger_status` for diagnostics.
+- A disconnect resets all anti-flap bookkeeping, so a reconnecting charger
+  goes through a clean start window rather than inheriting stale state
+  from before the drop.
+- A reconnect under the same CPID closes any still-open previous
+  WebSocket first, so a stale connection is never silently orphaned.
+- The embedded WebSocket server pings every 30 seconds
+  (aiohttp's `heartbeat`) and closes the connection if a charger stops
+  responding, detecting a dead connection faster than waiting on OCPP's
+  own application-level `Heartbeat` interval.
+
+To stop, HSEM sends `RemoteStopTransaction` with the transaction's
+`transactionId` — mandatory per OCPP 1.6. If the anti-flap target drops back
+to zero before a session ever started (no `RemoteStartTransaction` was sent
+yet), there is nothing to stop and HSEM skips the call rather than sending an
+invalid, schema-violating request (issue #892).
+
 This distinction drives the asymmetric ceiling deadband: a _reduction_ can force a
 charger to throttle, an _increase_ only offers headroom it may or may not take.
 
