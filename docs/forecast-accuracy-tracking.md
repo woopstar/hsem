@@ -131,7 +131,8 @@ Key methods:
 | `finalise_record(start)`                 | Finalise a specific record                                           |
 | `finalise_past_records(now)`             | Finalise all records whose `end <= now`                              |
 | `set_forecasts(start, pv_kwh, load_kwh)` | Set forecast values (only if not finalised)                          |
-| `to_dict()` / `load_from_dict(data)`     | Serialize / deserialize the full record list                         |
+| `to_persistence_dict(now, max_records)`  | Serialize the bounded records that matter across a restart           |
+| `load_from_dict(data)`                   | Deserialize records produced by `to_persistence_dict()`              |
 
 The default maximum is 2880 records, which covers approximately 30 days
 of 15-minute slots. Older records are automatically pruned.
@@ -288,8 +289,8 @@ The forecast tracker data survives HA restarts using the standard
 `RestoreEntity` pattern already used by other HSEM diagnostic sensors:
 
 1. **Every cycle**, the sensor's `extra_state_attributes` includes a
-   `_forecast_tracker_data` key containing the full serialised record
-   list from `tracker.to_dict()`.
+   `_forecast_tracker_data` key containing the bounded record list from
+   `tracker.to_persistence_dict()`.
 
 2. **HA's recorder** automatically stores these attributes in its database.
 

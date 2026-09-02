@@ -8,7 +8,7 @@ the complete model that was passed to the solver.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any
 
 from custom_components.hsem.utils.logger import log_planner
@@ -27,10 +27,6 @@ class IncumbentValidation:
     max_inequality_violation: float = 0.0
     max_bound_violation: float = 0.0
     max_integrality_violation: float = 0.0
-
-    def as_dict(self) -> dict[str, Any]:
-        """Return JSON-safe fields for planner diagnostics."""
-        return asdict(self)
 
 
 def _invalid(
