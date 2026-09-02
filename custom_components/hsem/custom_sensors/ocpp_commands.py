@@ -1,11 +1,13 @@
 """Low-level outbound OCPP 1.6 command senders.
 
-Extracted from :mod:`ocpp_server` to satisfy the repository's 30 KB /
-1000-line file limit. A pure move: these methods keep their exact
-behaviour and mix back into :class:`~ocpp_server.OCPPServer`, so ``self``
-and every attribute reference (``_last_sent_target``,
-``_last_sent_current_a``, ``_last_remote_start_attempt``,
-``_remote_start_due``) are unchanged.
+Originally extracted from :mod:`ocpp_server` to satisfy the repository's
+30 KB / 1000-line file limit; these methods mix back into
+:class:`~ocpp_server.OCPPServer`, so ``self`` and every attribute
+reference (``_last_sent_target``, ``_last_sent_current_a``,
+``_last_remote_start_attempt``, ``_last_remote_stop_attempt``,
+``_remote_start_due``) resolve there. Also registers outbound
+:data:`_TRACKED_RESPONSE_ACTIONS` message IDs on the session (issue #906)
+so the matching CALLRESULT's ``status`` can be recorded once it arrives.
 """
 
 from __future__ import annotations
@@ -29,6 +31,16 @@ _CALLRESULT = 3  # Server → Client response
 # same fixed tag (issue #892).
 _REMOTE_START_ID_TAG = "HSEM"
 
+# Outbound actions whose CALLRESULT status HSEM tracks on the session (issue
+# #906). HSEM previously logged every CALLRESULT at debug level without
+# reading its ``status`` field, so a charger silently rejecting a command
+# (e.g. "Rejected"/"NotSupported") was indistinguishable from acceptance —
+# the diagnostic sensor's "requested current" only ever reflected what was
+# *sent*, never what was actually applied.
+_TRACKED_RESPONSE_ACTIONS = frozenset(
+    {"RemoteStartTransaction", "SetChargingProfile", "RemoteStopTransaction"}
+)
+
 
 class OCPPCommandsMixin:
     """Low-level senders for OCPP commands HSEM issues to a charger."""
@@ -36,6 +48,7 @@ class OCPPCommandsMixin:
     # Declared (not assigned) so mypy uses OCPPServer.__init__'s types
     # rather than inferring a narrower type from the assignments below.
     _last_remote_start_attempt: datetime | None
+    _last_remote_stop_attempt: datetime | None
     _last_sent_target: float
     _last_sent_current_a: int
 
@@ -62,6 +75,15 @@ class OCPPCommandsMixin:
     ) -> bool:
         """Send a CALL (type 2) message to the charger.
 
+        For actions in :data:`_TRACKED_RESPONSE_ACTIONS`, registers the
+        message ID so the eventual CALLRESULT can be matched back to this
+        action and its ``status`` recorded on
+        :attr:`ChargerSession.last_call_status` (issue #906). Only the most
+        recent pending call per action is kept — an earlier attempt's
+        response (if it ever arrives) is no longer meaningful once a retry
+        has been sent, and dropping it keeps the dict from growing across
+        repeated retries.
+
         Args:
             session: The charger session.
             action: OCPP action name (e.g. "SetChargingProfile").
@@ -77,6 +99,15 @@ class OCPPCommandsMixin:
             msg_id = f"hsem-{datetime.now(UTC).timestamp()}"
             msg = json.dumps([_CALL, msg_id, action, payload])
             await session.websocket.send_str(msg)
+            if action in _TRACKED_RESPONSE_ACTIONS:
+                stale = [
+                    pending_id
+                    for pending_id, pending_action in session.pending_calls.items()
+                    if pending_action == action
+                ]
+                for pending_id in stale:
+                    del session.pending_calls[pending_id]
+                session.pending_calls[msg_id] = action
             return True
         except Exception:
             _LOGGER.exception(
@@ -175,7 +206,9 @@ class OCPPCommandsMixin:
             )
         return sent
 
-    async def _send_remote_stop(self, session: ChargerSession) -> bool:
+    async def _send_remote_stop(
+        self, session: ChargerSession, *, now: datetime | None = None
+    ) -> bool:
         """Send a ``RemoteStopTransaction`` request.
 
         ``transactionId`` is a *mandatory* field on OCPP 1.6's
@@ -188,13 +221,21 @@ class OCPPCommandsMixin:
         reject or ignore it, so skip the call entirely instead (issue
         #892).
 
+        Records the attempt timestamp (issue #906) so
+        :meth:`OCPPServer._remote_stop_due` can pace retries while the
+        charger hasn't yet confirmed the stop via its own
+        ``StopTransaction`` call — mirroring how :meth:`_send_remote_start`
+        paces start retries against :attr:`ChargerSession.transaction_id`.
+
         Args:
             session: The charger session.
+            now: Current timestamp (injected for testability).
 
         Returns:
             ``True`` if the message was written to the socket, or if there
             was no active transaction (nothing to stop counts as success).
         """
+        self._last_remote_stop_attempt = now if now is not None else datetime.now(UTC)
         self._last_sent_target = -1.0
         self._last_sent_current_a = -1
         if session.transaction_id is None:

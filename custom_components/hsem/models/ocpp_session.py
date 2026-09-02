@@ -7,7 +7,7 @@ readings (from MeterValues), and transaction state.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -36,6 +36,17 @@ class ChargerSession:
             value (issue #894). ``None`` until the first StatusNotification
             is handled. Used to distinguish a transient status flap from a
             charger stuck reporting a non-"Charging" state.
+        pending_calls: Outstanding outbound CALL message IDs awaiting a
+            CALLRESULT, mapped to the action name that was sent (issue
+            #906). Only tracks actions HSEM cares about confirming
+            (``RemoteStartTransaction``, ``SetChargingProfile``,
+            ``RemoteStopTransaction``) — popped once the matching
+            CALLRESULT arrives.
+        last_call_status: Most recent confirmed ``status`` value from a
+            charger's CALLRESULT for each tracked action, e.g.
+            ``{"SetChargingProfile": "Rejected"}`` (issue #906). Lets the
+            anti-flap state machine and diagnostics distinguish "message
+            written to the socket" from "charger actually accepted it".
     """
 
     cpid: str = ""
@@ -51,3 +62,5 @@ class ChargerSession:
     last_heartbeat: datetime | None = None
     connected_at: datetime | None = None
     status_changed_at: datetime | None = None
+    pending_calls: dict[str, str] = field(default_factory=dict)
+    last_call_status: dict[str, str] = field(default_factory=dict)
