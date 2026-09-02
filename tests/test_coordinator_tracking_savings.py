@@ -2,8 +2,12 @@
 
 Regression coverage: the savings tracker sensor lost its state on every
 Home Assistant restart because ``accumulate_savings`` accumulated data in
-memory but never called ``SavingsTracker.save_history()``, unlike the
-sibling ``accumulate_financials`` helper which persists every cycle.
+memory but never triggered a save of ``SavingsTracker``. Since issue #890,
+persistence is centralised in
+:func:`~custom_components.hsem.coordinator_persistence.persist_all_trackers`,
+called once per cycle after ``accumulate_savings``/``accumulate_financials``
+run -- these tests exercise that combined flow rather than
+``accumulate_savings`` in isolation.
 """
 
 from __future__ import annotations
@@ -17,6 +21,8 @@ import pytest
 
 from homeassistant.core import HomeAssistant
 
+from custom_components.hsem.coordinator_persistence import persist_all_trackers
+from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.coordinator_tracking import accumulate_savings
 from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
     DailyPlanVsActualTracker,
@@ -34,9 +40,17 @@ def _make_hass(config_dir: Path) -> HomeAssistant:
     )
 
 
+def _make_coordinator(savings_tracker: SavingsTracker) -> CoordinatorSharedState:
+    """Build a minimal fake coordinator exposing just the savings tracker."""
+    return cast(
+        CoordinatorSharedState,
+        SimpleNamespace(_savings_tracker=savings_tracker),
+    )
+
+
 @pytest.mark.asyncio
 async def test_accumulate_savings_persists_to_disk(tmp_path: Path) -> None:
-    """accumulate_savings must write the savings history file every cycle.
+    """accumulate_savings + persist_all_trackers must write the history file.
 
     Without this, the tracker's totals only ever live in memory and are
     lost whenever Home Assistant restarts, even though ``load_history``
@@ -57,10 +71,14 @@ async def test_accumulate_savings_persists_to_disk(tmp_path: Path) -> None:
         hourly_recommendation=None,
         hass=hass,
     )
+    await persist_all_trackers(
+        _make_coordinator(savings_tracker), only=["_savings_tracker"]
+    )
 
     history_path = tmp_path / ".storage" / "hsem_savings_history.json"
     assert history_path.exists(), (
-        "accumulate_savings did not persist the savings tracker state to disk"
+        "accumulate_savings + persist_all_trackers did not persist the "
+        "savings tracker state to disk"
     )
 
     # A tracker restored from that file should reflect the same totals,
@@ -99,6 +117,9 @@ async def test_accumulate_savings_survives_simulated_restart(tmp_path: Path) -> 
             daily_tracker=daily_tracker,
             hourly_recommendation=None,
             hass=hass,
+        )
+        await persist_all_trackers(
+            _make_coordinator(tracker_before_restart), only=["_savings_tracker"]
         )
 
     assert tracker_before_restart.baseline_cost > 0.0

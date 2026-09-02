@@ -27,6 +27,7 @@ from custom_components.hsem.coordinator_helpers import (
     assess_load_forecast,
     ocpp_charge_target,
 )
+from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import (
     CoordinatorSharedState,
 )
@@ -482,12 +483,8 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 ),
                 last_planner_output=getattr(self, "_last_planner_output", None),
             )
-            if (
-                prediction_record_added
-                and self._prediction_tracker.history_file
-                and not await self._prediction_tracker.save_history()
-            ):
-                async_log("warning", "Failed to persist prediction tracker state")
+            if prediction_record_added:
+                await persist_all_trackers(self, only=["_prediction_tracker"])
 
             load_hold = apply_load_forecast_hold(
                 self._hourly_recommendations,
