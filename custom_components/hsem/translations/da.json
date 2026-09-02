@@ -1148,6 +1148,24 @@
           "unavailable": "Utilgængelig"
         }
       },
+      "ev_soc_economics": {
+        "name": "EV SoC-økonomi",
+        "state": {
+          "ready": "Klar",
+          "not_connected": "Ikke tilsluttet",
+          "smart_charging_disabled": "Smart opladning deaktiveret",
+          "unavailable": "Utilgængelig"
+        }
+      },
+      "ev_second_soc_economics": {
+        "name": "EV 2 SoC-økonomi",
+        "state": {
+          "ready": "Klar",
+          "not_connected": "Ikke tilsluttet",
+          "smart_charging_disabled": "Smart opladning deaktiveret",
+          "unavailable": "Utilgængelig"
+        }
+      },
       "force_mode": {
         "name": "Tving arbejdstilstand",
         "state": {

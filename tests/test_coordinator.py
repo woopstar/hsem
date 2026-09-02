@@ -40,7 +40,12 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.coordinator_builder import generate_recommendation_intervals
+from custom_components.hsem.coordinator_ev_soc_economics import (
+    EV_SOC_ECONOMICS_RECOMPUTE_MIN_SECONDS,
+)
+from custom_components.hsem.coordinator_helpers import _StaleUpdateCycle
 from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.models.sensor_config import SensorConfig
 
@@ -664,3 +669,136 @@ class TestEVDeadlinePacingReplan:
         live.ev_planned_load_deadline = now + timedelta(hours=1)
 
         assert coordinator._ev_deadline_pacing_requires_replan(live, now) is False
+
+
+# ---------------------------------------------------------------------------
+# EV SoC economics — throttled recompute (issue #903)
+# ---------------------------------------------------------------------------
+
+
+def _coordinator_with_executor(
+    now: datetime,
+) -> tuple[HSEMDataUpdateCoordinator, MagicMock]:
+    """Return a bare coordinator plus its synchronous fake executor-job mock.
+
+    The mock is returned separately (not re-read off ``coordinator.hass``)
+    because ``coordinator.hass`` is statically typed as ``HomeAssistant`` —
+    mypy resolves attribute access against that declared type regardless of
+    the mock assigned at runtime, so assertions must go through this handle.
+    """
+    coordinator = _make_bare_coordinator()
+    coordinator._ev_soc_economics = None
+    coordinator._ev_second_soc_economics = None
+    coordinator._ev_soc_economics_last_computed = None
+    coordinator._last_planner_input = None
+    coordinator._update_generation = 0
+
+    async def _run_sync(fn: Any, *args: Any) -> Any:
+        return fn(*args)
+
+    executor_mock = MagicMock(side_effect=_run_sync)
+    hass = MagicMock()
+    hass.async_add_executor_job = executor_mock
+    coordinator.hass = hass  # type: ignore[assignment]  # test monkey-patch
+    return coordinator, executor_mock
+
+
+class TestEvSoCEconomicsRecompute:
+    """Throttling, gating, and stale-cycle behaviour for the EV SoC economics mixin."""
+
+    @pytest.mark.asyncio
+    async def test_noop_without_last_planner_input(self) -> None:
+        """No planner input yet (first cycle) -> executor never invoked."""
+        now = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
+        coordinator, executor_mock = _coordinator_with_executor(now)
+        assert coordinator._last_planner_input is None
+
+        await coordinator._maybe_compute_ev_soc_economics(now, 0)
+
+        executor_mock.assert_not_called()
+        assert coordinator._ev_soc_economics is None
+        assert coordinator._ev_second_soc_economics is None
+        assert coordinator._ev_soc_economics_last_computed is None
+
+    @pytest.mark.asyncio
+    async def test_computes_on_first_call(self) -> None:
+        """A fresh planner input with no prior timestamp triggers one computation."""
+        now = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
+        coordinator, executor_mock = _coordinator_with_executor(now)
+        coordinator._last_planner_input = PlannerInput(now_iso=now.isoformat())
+
+        await coordinator._maybe_compute_ev_soc_economics(now, 0)
+
+        executor_mock.assert_called_once()
+        assert coordinator._ev_soc_economics is not None
+        assert coordinator._ev_second_soc_economics is not None
+        # Both EVs disabled by default PlannerInput() -> guard short-circuit.
+        assert coordinator._ev_soc_economics.state == "smart_charging_disabled"
+        assert coordinator._ev_second_soc_economics.state == "smart_charging_disabled"
+        assert coordinator._ev_soc_economics_last_computed == now
+
+    @pytest.mark.asyncio
+    async def test_throttled_within_window(self) -> None:
+        """A recompute inside the throttle window is skipped entirely."""
+        now = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
+        coordinator, executor_mock = _coordinator_with_executor(now)
+        coordinator._last_planner_input = PlannerInput(now_iso=now.isoformat())
+        last_computed = now - timedelta(
+            seconds=EV_SOC_ECONOMICS_RECOMPUTE_MIN_SECONDS - 1
+        )
+        coordinator._ev_soc_economics_last_computed = last_computed
+
+        await coordinator._maybe_compute_ev_soc_economics(now, 0)
+
+        executor_mock.assert_not_called()
+        assert coordinator._ev_soc_economics_last_computed == last_computed
+
+    @pytest.mark.asyncio
+    async def test_recomputes_after_throttle_window_elapses(self) -> None:
+        """Once the throttle window has elapsed, a recompute runs again."""
+        now = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
+        coordinator, executor_mock = _coordinator_with_executor(now)
+        coordinator._last_planner_input = PlannerInput(now_iso=now.isoformat())
+        coordinator._ev_soc_economics_last_computed = now - timedelta(
+            seconds=EV_SOC_ECONOMICS_RECOMPUTE_MIN_SECONDS + 1
+        )
+
+        await coordinator._maybe_compute_ev_soc_economics(now, 0)
+
+        executor_mock.assert_called_once()
+        assert coordinator._ev_soc_economics_last_computed == now
+
+    @pytest.mark.asyncio
+    async def test_both_evs_solved_in_a_single_executor_job(self) -> None:
+        """Primary and second EV are computed via exactly one executor job."""
+        now = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
+        coordinator, executor_mock = _coordinator_with_executor(now)
+        coordinator._last_planner_input = PlannerInput(now_iso=now.isoformat())
+
+        await coordinator._maybe_compute_ev_soc_economics(now, 0)
+
+        assert executor_mock.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_stale_generation_discards_result(self) -> None:
+        """A generation bump while the executor job ran discards the result."""
+        now = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
+        coordinator, executor_mock = _coordinator_with_executor(now)
+        coordinator._last_planner_input = PlannerInput(now_iso=now.isoformat())
+
+        async def _run_and_bump_generation(fn: Any, *args: Any) -> Any:
+            result = fn(*args)
+            coordinator._update_generation = 1
+            return result
+
+        executor_mock.side_effect = _run_and_bump_generation
+
+        with pytest.raises(_StaleUpdateCycle):
+            await coordinator._maybe_compute_ev_soc_economics(
+                now, captured_generation=0
+            )
+
+        # The stale result must never be published.
+        assert coordinator._ev_soc_economics is None
+        assert coordinator._ev_second_soc_economics is None
+        assert coordinator._ev_soc_economics_last_computed is None

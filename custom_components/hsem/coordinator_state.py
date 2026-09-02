@@ -47,6 +47,7 @@ from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
+from custom_components.hsem.planner.ev_soc_economics import EVSoCEconomicsResult
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
 from custom_components.hsem.utils.ev_delivered_energy import EVDeliveredEnergyTracker
@@ -87,6 +88,9 @@ class CoordinatorSharedState(_Base):
     _ev_last_command_w: dict[str, float]
     _ev_second_charging_plan: EVChargingPlan | None
     _ev_second_delivered_energy_tracker: EVDeliveredEnergyTracker
+    _ev_soc_economics: EVSoCEconomicsResult | None
+    _ev_second_soc_economics: EVSoCEconomicsResult | None
+    _ev_soc_economics_last_computed: datetime | None
     _event_update_pending: bool
     _financial_tracker: FinancialTracker
     _force_working_mode_entity: str | None
@@ -160,6 +164,11 @@ class CoordinatorSharedState(_Base):
     async def _async_handle_update(self, event: Any = None) -> None: ...
 
     async def _run_planner_phase(self, *args: Any, **kwargs: Any) -> Any: ...
+
+    # Method provided by CoordinatorEvSoCEconomicsMixin.
+    async def _maybe_compute_ev_soc_economics(
+        self, now: datetime, captured_generation: int
+    ) -> None: ...
 
     async def _set_update_interval(
         self, override_minutes: int | None = None

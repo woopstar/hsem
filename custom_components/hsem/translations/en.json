@@ -1121,6 +1121,24 @@
           "unavailable": "Unavailable"
         }
       },
+      "ev_soc_economics": {
+        "name": "EV SoC Economics",
+        "state": {
+          "ready": "Ready",
+          "not_connected": "Not Connected",
+          "smart_charging_disabled": "Smart Charging Disabled",
+          "unavailable": "Unavailable"
+        }
+      },
+      "ev_second_soc_economics": {
+        "name": "EV 2 SoC Economics",
+        "state": {
+          "ready": "Ready",
+          "not_connected": "Not Connected",
+          "smart_charging_disabled": "Smart Charging Disabled",
+          "unavailable": "Unavailable"
+        }
+      },
       "force_mode": {
         "name": "Force Working Mode",
         "state": {

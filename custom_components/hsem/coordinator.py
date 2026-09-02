@@ -46,6 +46,9 @@ from custom_components.hsem.coordinator_ev_command_stability import (
 from custom_components.hsem.coordinator_ev_deadline_pacing import (
     CoordinatorEvDeadlinePacingMixin,
 )
+from custom_components.hsem.coordinator_ev_soc_economics import (
+    CoordinatorEvSoCEconomicsMixin,
+)
 from custom_components.hsem.coordinator_helpers import (
     LoadForecastSignature,
     apply_force_charge_now,
@@ -85,6 +88,7 @@ from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
+from custom_components.hsem.planner.ev_soc_economics import EVSoCEconomicsResult
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
 from custom_components.hsem.utils.ev_delivered_energy import EVDeliveredEnergyTracker
@@ -129,6 +133,7 @@ class HSEMDataUpdateCoordinator(
     CoordinatorLivePowerMixin,
     CoordinatorEvDeadlinePacingMixin,
     CoordinatorEvCommandStabilityMixin,
+    CoordinatorEvSoCEconomicsMixin,
     DataUpdateCoordinator[CoordinatorData],
 ):
     """DataUpdateCoordinator for HSEM.
@@ -207,6 +212,11 @@ class HSEMDataUpdateCoordinator(
         # Most recent planner input/output retained for diagnostics dumps.
         self._last_planner_input: PlannerInput | None = None
         self._last_planner_output: PlannerOutput | None = None
+        # EV SoC economics cost/feasibility tables (issue #903), throttled
+        # independently of the normal replan cadence.
+        self._ev_soc_economics: EVSoCEconomicsResult | None = None
+        self._ev_second_soc_economics: EVSoCEconomicsResult | None = None
+        self._ev_soc_economics_last_computed: datetime | None = None
 
         # Previous planner winner name and score for hysteresis (issue #372).
         # Persisted across cycles so the planner can compare against the

@@ -337,6 +337,58 @@ Diagnostic sensors displaying the EV charging plan details.
 
 ---
 
+## EV SoC economics sensors
+
+Diagnostic sensors exposing the real-money cost of charging each EV to
+50/60/70/80/100 % SoC by the next occurrence of 08:00 and by the next
+occurrence of 17:00 (issue #903). Each combination is computed by
+re-running the pure planner engine (`run_planner()`) on a clone of the
+coordinator's last-used planner input with only that EV's target-SoC and
+deadline overridden — no other input changes, so the cost reflects "what
+would it cost to change _only_ this choice right now". No auto-recommended
+target is exposed; the raw cost/delta numbers are surfaced and the user
+decides.
+
+Recomputation is throttled independently of the normal replan cadence (at
+most every 30 minutes), since each recompute is up to ~8 extra
+`run_planner()` solves per EV.
+
+**Entities:**
+
+- `sensor.hsem_ev_soc_economics` — Primary EV, created only when `hsem_ev_planned_load_enabled` is set
+- `sensor.hsem_ev_second_soc_economics` — Second EV, created only when `hsem_ev_second_planned_load_enabled` is set
+
+| State                     | Meaning                                           |
+| ------------------------- | ------------------------------------------------- |
+| `not_connected`           | EV is not plugged in                              |
+| `smart_charging_disabled` | Smart charging turned off                         |
+| `ready`                   | Cost table computed and available                 |
+| `unavailable`             | Not configured, or capacity/charger power is zero |
+
+**Key attributes:**
+
+| Attribute         | Description                                                       |
+| ----------------- | ----------------------------------------------------------------- |
+| `current_soc_pct` | EV's current SoC at computation time                              |
+| `points`          | Flat list of cost/feasibility entries, one per (target, deadline) |
+
+Each entry in `points` has:
+
+| Field                 | Description                                                                                                             |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `target_soc_pct`      | Target SoC evaluated (50/60/70/80/100)                                                                                  |
+| `deadline_label`      | `"08:00"` or `"17:00"`                                                                                                  |
+| `deadline`            | ISO-8601 deadline datetime actually used                                                                                |
+| `total_cost`          | Real-money cost of reaching this target by this deadline (`0.0` when the target is already met — no solve is triggered) |
+| `feasible`            | Whether the charger's rated power can physically reach this target by this deadline, independent of price               |
+| `delta_from_previous` | Cost delta vs. the previous (lower) target in the same deadline column (`null` for the first target)                    |
+| `delta_per_10pct`     | `delta_from_previous` normalised to cost per 10 percentage points of SoC (`null` for the first target)                  |
+
+`points` is deliberately flat (not pre-grouped by deadline) — group it by
+`deadline_label` (e.g. via a Jinja `groupby` filter) for display.
+
+---
+
 ## EV charger calculated power sensors
 
 Diagnostic sensors exposing the planner's calculated EV charger power for the

@@ -16,6 +16,7 @@ from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
+from custom_components.hsem.planner.ev_soc_economics import EVSoCEconomicsResult
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.inverter_verify import CycleApplySummary
 from custom_components.hsem.utils.prediction_tracker import PredictionTracker
@@ -65,6 +66,12 @@ class CoordinatorData:
     ev_charging_plan: EVChargingPlan | None = None
     #: EV optimal charging plan for the second EV (None when disabled).
     ev_second_charging_plan: EVChargingPlan | None = None
+    #: EV SoC economics cost/feasibility table for the primary EV (None when
+    #: not yet computed or disabled).
+    ev_soc_economics: EVSoCEconomicsResult | None = None
+    #: EV SoC economics cost/feasibility table for the second EV (None when
+    #: not yet computed or disabled).
+    ev_second_soc_economics: EVSoCEconomicsResult | None = None
     #: ISO-format timestamp of the override expiry, or None when no timed
     #: override is active (issue #317).
     override_expiry: str | None = None
