@@ -32,6 +32,10 @@ class ChargerSession:
         transaction_id: Active OCPP transaction ID, or ``None`` when idle.
         last_heartbeat: Timestamp of the most recent Heartbeat message.
         connected_at: Timestamp when the WebSocket connection was established.
+        status_changed_at: Timestamp when ``status`` last actually changed
+            value (issue #894). ``None`` until the first StatusNotification
+            is handled. Used to distinguish a transient status flap from a
+            charger stuck reporting a non-"Charging" state.
     """
 
     cpid: str = ""
@@ -46,3 +50,4 @@ class ChargerSession:
     transaction_id: int | None = None
     last_heartbeat: datetime | None = None
     connected_at: datetime | None = None
+    status_changed_at: datetime | None = None

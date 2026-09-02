@@ -111,3 +111,11 @@ class CoordinatorData:
     ocpp_anti_flap_state: str = "idle"
     #: Second EV's OCPP server anti-flap state machine state (issue #892).
     ocpp_second_anti_flap_state: str = "idle"
+    #: True while the primary OCPP server's active charging session appears
+    #: stalled — stuck non-"Charging" despite an open transaction, per
+    #: :func:`~custom_components.hsem.custom_sensors.ocpp_server.charger_appears_stalled`
+    #: (issue #894).
+    ocpp_charger_stalled: bool = False
+    #: True while the second EV's OCPP server active charging session
+    #: appears stalled (issue #894).
+    ocpp_second_charger_stalled: bool = False

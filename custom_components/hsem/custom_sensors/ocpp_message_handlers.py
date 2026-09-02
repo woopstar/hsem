@@ -72,7 +72,12 @@ class OCPPMessageHandlersMixin:
     ) -> dict:
         """Handle a ``StatusNotification`` request.
 
-        Updates the charger's status based on connector status.
+        Updates the charger's status based on connector status, and records
+        when the status actually changed (issue #894) — a repeated
+        StatusNotification carrying the same status leaves
+        ``status_changed_at`` untouched, so it reflects how long the
+        charger has been stuck in its current state rather than the time
+        of the most recent heartbeat-style repeat.
 
         Args:
             session: The charger session.
@@ -83,6 +88,8 @@ class OCPPMessageHandlersMixin:
         """
         new_status = payload.get("status", "")
         if new_status:
+            if new_status != session.status:
+                session.status_changed_at = datetime.now(UTC)
             session.status = new_status
             _LOGGER.debug(
                 "OCPP charger %s status changed to '%s'", session.cpid, new_status

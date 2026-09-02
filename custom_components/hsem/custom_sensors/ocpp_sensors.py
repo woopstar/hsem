@@ -115,6 +115,18 @@ def _anti_flap_state(data: CoordinatorData, charger_index: int) -> str:
     return data.ocpp_anti_flap_state
 
 
+def _charger_stalled(data: CoordinatorData, charger_index: int) -> bool:
+    """Return whether the given EV server's active session appears stalled.
+
+    Mirrors :func:`~custom_components.hsem.custom_sensors.ocpp_server.charger_appears_stalled`
+    (issue #894) — ``True`` when the charger is stuck reporting a
+    non-"Charging" status despite an open transaction.
+    """
+    if charger_index == 2:
+        return data.ocpp_second_charger_stalled
+    return data.ocpp_charger_stalled
+
+
 def _connection_url(hass: Any, port: int, cpid: str) -> str | None:
     """Build a best-effort ``ws://<host>:<port>/<cpid>`` connection URL.
 
@@ -245,6 +257,7 @@ class HSEMOCPPChargerStatusSensor(
             "port": port,
             "requested_current_a": _last_requested_current_a(data, self._charger_index),
             "anti_flap_state": _anti_flap_state(data, self._charger_index),
+            "stalled": _charger_stalled(data, self._charger_index),
         }
         cpid = _configured_cpid(data.cfg, self._charger_index)
         url = _connection_url(self.hass, port, cpid)
@@ -261,6 +274,11 @@ class HSEMOCPPChargerStatusSensor(
                     "connected_at": (
                         session.connected_at.isoformat()
                         if session.connected_at
+                        else None
+                    ),
+                    "status_changed_at": (
+                        session.status_changed_at.isoformat()
+                        if session.status_changed_at
                         else None
                     ),
                 }
