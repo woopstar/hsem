@@ -260,3 +260,175 @@ class TestOpportunisticChargeCapacityCap:
             f"Total charged ({charged_after:.3f}) must not exceed "
             f"headroom ({headroom:.3f})"
         )
+
+
+def _slot_at(
+    start: datetime,
+    *,
+    hours: float = 1.0,
+    import_price: float = 0.30,
+    export_price: float = 0.05,
+    net_consumption: float = 0.0,
+    recommendation: str | None = None,
+) -> PlannedSlot:
+    """Build a PlannedSlot at an explicit start datetime (may cross midnight)."""
+    return PlannedSlot(
+        start=start,
+        end=start + timedelta(hours=hours),
+        price=SlotPrice(import_price=import_price, export_price=export_price),
+        estimated_net_consumption_kwh=net_consumption,
+        recommendation=recommendation,
+    )
+
+
+class TestEligibleSlotFilterCrossMidnight:
+    """Regression test for issue #898: apply_charge_schedules' eligible-slot
+    filter (``s.end <= window_start_abs``) must correctly resolve
+    cross-midnight windows and per-occurrence (day N) window starts using
+    the resolved absolute ``window_start_abs`` datetime — not a
+    time-of-day helper re-resolved against the original ``now`` (which
+    would collapse every occurrence onto the first one).
+
+    This exercises the real ``PlannedSlot``/``BatteryScheduleInput``
+    objects through ``apply_charge_schedules`` directly, rather than
+    testing a helper function in isolation.
+    """
+
+    def test_pre_midnight_and_post_midnight_slots_eligible_for_next_day_window(
+        self,
+    ) -> None:
+        """A charge slot crossing from 22:00 to 03:00 the next day is eligible
+        pre-charge for a discharge window starting at 07:00 the next day."""
+        now = datetime(2024, 6, 15, 21, 0, tzinfo=_TZ)
+
+        # Evening slot tonight (before midnight) — cheap.
+        evening_slot = _slot_at(
+            datetime(2024, 6, 15, 22, 0, tzinfo=_TZ), import_price=0.05
+        )
+        # Night slot crossing into the next calendar day — cheap.
+        night_slot = _slot_at(
+            datetime(2024, 6, 16, 2, 0, tzinfo=_TZ), import_price=0.05
+        )
+        # Discharge window slots (07:00-09:00 next day) — already assigned.
+        discharge_slots = [
+            _slot_at(
+                datetime(2024, 6, 16, h, 0, tzinfo=_TZ),
+                import_price=1.50,
+                net_consumption=4.0,
+                recommendation=Recommendations.BatteriesDischargeMode.value,
+            )
+            for h in (7, 8)
+        ]
+
+        slots = [evening_slot, night_slot, *discharge_slots]
+
+        sched = BatteryScheduleInput(
+            enabled=True,
+            start=datetime(2024, 6, 16, 7, 0, tzinfo=_TZ).time(),
+            end=datetime(2024, 6, 16, 9, 0, tzinfo=_TZ).time(),
+        )
+        sched._occurrences = [
+            (
+                datetime(2024, 6, 16, 7, 0, tzinfo=_TZ),
+                datetime(2024, 6, 16, 9, 0, tzinfo=_TZ),
+                6.0,
+                1.50,
+            ),
+        ]
+
+        apply_charge_schedules(
+            slots=slots,
+            battery_schedules=[sched],
+            now=now,
+            max_charge_per_interval=5.0,
+            current_kwh=0.0,
+            usable_kwh=10.0,
+            cycle_cost_per_kwh=0.0,
+            recommended_threshold=0.0,
+        )
+
+        assert evening_slot.recommendation is not None, (
+            "The 22:00-23:00 pre-midnight slot must be eligible for the "
+            "next day's 07:00 discharge window"
+        )
+        assert night_slot.recommendation is not None, (
+            "The 02:00-03:00 post-midnight slot must be eligible for the "
+            "same-day 07:00 discharge window"
+        )
+
+    def test_slot_between_occurrences_is_eligible_only_for_the_later_one(
+        self,
+    ) -> None:
+        """A slot ending after occurrence 1's window start but before
+        occurrence 2's window start must be budgeted against occurrence 2,
+        not silently excluded.
+
+        This is the scenario that makes the eligible-slot filter unsafe to
+        replace with a helper that re-resolves ``next_window_start_dt(now,
+        window_start)`` from the original ``now`` — that would always
+        resolve to occurrence 1's window start and wrongly exclude this
+        slot for every later occurrence.
+        """
+        now = datetime(2024, 6, 15, 22, 0, tzinfo=_TZ)
+
+        # Occurrence 1: discharge window 07:00-09:00 on 06-16.
+        occ1_discharge = [
+            _slot_at(
+                datetime(2024, 6, 16, h, 0, tzinfo=_TZ),
+                import_price=1.50,
+                net_consumption=4.0,
+                recommendation=Recommendations.BatteriesDischargeMode.value,
+            )
+            for h in (7, 8)
+        ]
+        # Slot after occurrence 1's window start, before occurrence 2's —
+        # must remain eligible for occurrence 2's budget.
+        mid_slot = _slot_at(datetime(2024, 6, 16, 12, 0, tzinfo=_TZ), import_price=0.05)
+        # Occurrence 2: discharge window 07:00-09:00 on 06-17.
+        occ2_discharge = [
+            _slot_at(
+                datetime(2024, 6, 17, h, 0, tzinfo=_TZ),
+                import_price=1.50,
+                net_consumption=4.0,
+                recommendation=Recommendations.BatteriesDischargeMode.value,
+            )
+            for h in (7, 8)
+        ]
+
+        slots = [*occ1_discharge, mid_slot, *occ2_discharge]
+
+        sched = BatteryScheduleInput(
+            enabled=True,
+            start=datetime(2024, 6, 16, 7, 0, tzinfo=_TZ).time(),
+            end=datetime(2024, 6, 16, 9, 0, tzinfo=_TZ).time(),
+        )
+        sched._occurrences = [
+            (
+                datetime(2024, 6, 16, 7, 0, tzinfo=_TZ),
+                datetime(2024, 6, 16, 9, 0, tzinfo=_TZ),
+                6.0,
+                1.50,
+            ),
+            (
+                datetime(2024, 6, 17, 7, 0, tzinfo=_TZ),
+                datetime(2024, 6, 17, 9, 0, tzinfo=_TZ),
+                6.0,
+                1.50,
+            ),
+        ]
+
+        apply_charge_schedules(
+            slots=slots,
+            battery_schedules=[sched],
+            now=now,
+            max_charge_per_interval=5.0,
+            current_kwh=0.0,
+            usable_kwh=10.0,
+            cycle_cost_per_kwh=0.0,
+            recommended_threshold=0.0,
+        )
+
+        assert mid_slot.recommendation is not None, (
+            "A slot between occurrence 1 and occurrence 2's window starts "
+            "must be assigned to occurrence 2's pre-charge budget"
+        )

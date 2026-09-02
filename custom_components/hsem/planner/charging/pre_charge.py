@@ -101,7 +101,12 @@ def apply_charge_schedules(
             sched, "_occurrences", []
         )
         if not occurrences:
-            # Fallback for callers that didn't go through apply_discharge_schedules
+            # apply_discharge_schedules (always called first, see engine_core.py)
+            # unconditionally sets sched._occurrences for every enabled
+            # schedule, but that list is legitimately empty when no future
+            # occurrence of the window falls within the planning horizon.
+            # This branch covers that case, not a caller skipping the prior
+            # pass.
             needed_fb: float = getattr(sched, "_needed_capacity", 0.0)
             avg_price_fb: float = getattr(sched, "_avg_import_price", 0.0)
             if needed_fb > 0:
@@ -147,7 +152,14 @@ def apply_charge_schedules(
                 )
 
             # Eligible charge slots: future, unassigned, and ending before
-            # this specific occurrence's window start.
+            # this specific occurrence's window start. window_start_abs is
+            # already a resolved absolute datetime for *this* occurrence
+            # (day N of a recurring schedule), so this is a plain datetime
+            # comparison — not a candidate for the now-removed
+            # interval_ends_before_window_start(interval_end, window_start:
+            # time, now) helper, which only resolves the *first* future
+            # occurrence relative to `now` and would silently break
+            # multi-occurrence (day 2+) budgeting if substituted here.
             eligible = [
                 s
                 for s in slots
