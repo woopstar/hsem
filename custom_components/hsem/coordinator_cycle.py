@@ -547,6 +547,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         ocpp_listening = False
         ocpp_last_requested_current_a: int | None = None
         ocpp_anti_flap_state = "idle"
+        ocpp_charger_stalled = False
         ocpp = getattr(self, "_ocpp_server", None)
         if ocpp is not None:
             ocpp_chargers = ocpp.charger_sessions
@@ -554,6 +555,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             ocpp_listening = ocpp.is_listening
             ocpp_last_requested_current_a = ocpp.last_requested_current_a
             ocpp_anti_flap_state = ocpp.anti_flap_state
+            ocpp_charger_stalled = ocpp.is_stalled
 
         # Second EV's OCPP server state.
         ocpp_second_chargers: dict | None = None
@@ -561,6 +563,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         ocpp_second_listening = False
         ocpp_second_last_requested_current_a: int | None = None
         ocpp_second_anti_flap_state = "idle"
+        ocpp_second_charger_stalled = False
         ocpp_second = getattr(self, "_ocpp_second_server", None)
         if ocpp_second is not None:
             ocpp_second_chargers = ocpp_second.charger_sessions
@@ -568,6 +571,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             ocpp_second_listening = ocpp_second.is_listening
             ocpp_second_last_requested_current_a = ocpp_second.last_requested_current_a
             ocpp_second_anti_flap_state = ocpp_second.anti_flap_state
+            ocpp_second_charger_stalled = ocpp_second.is_stalled
 
         data = CoordinatorData(
             cfg=self._cfg,
@@ -601,6 +605,8 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             ocpp_second_last_requested_current_a=(ocpp_second_last_requested_current_a),
             ocpp_anti_flap_state=ocpp_anti_flap_state,
             ocpp_second_anti_flap_state=ocpp_second_anti_flap_state,
+            ocpp_charger_stalled=ocpp_charger_stalled,
+            ocpp_second_charger_stalled=ocpp_second_charger_stalled,
             capacity_learner=getattr(self, "_capacity_learner", CapacityLearner()),
             solar_hour_factors=dict(
                 getattr(self, "_solar_corrector", SolarForecastCorrector()).hour_factors

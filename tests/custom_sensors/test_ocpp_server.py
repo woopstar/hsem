@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -28,8 +29,10 @@ import pytest
 from aiohttp import web
 
 from custom_components.hsem.custom_sensors.ocpp_server import (
+    _CHARGER_STALL_THRESHOLD_S,
     _WS_HEARTBEAT_INTERVAL_S,
     OCPPServer,
+    charger_appears_stalled,
 )
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
@@ -161,6 +164,39 @@ class TestStatusNotification:
                 charger_session, {"status": state}
             )
             assert charger_session.status == state
+
+    @pytest.mark.asyncio
+    async def test_status_changed_at_set_on_first_status(
+        self, ocpp_server, charger_session
+    ):
+        """status_changed_at is recorded the first time a status arrives (#894)."""
+        assert charger_session.status_changed_at is None
+        await ocpp_server._handle_status_notification(
+            charger_session, {"status": "Charging"}
+        )
+        assert charger_session.status_changed_at is not None
+
+    @pytest.mark.asyncio
+    async def test_status_changed_at_updates_only_on_actual_change(
+        self, ocpp_server, charger_session
+    ):
+        """Repeating the same status must not bump status_changed_at (#894)."""
+        await ocpp_server._handle_status_notification(
+            charger_session, {"status": "Charging"}
+        )
+        first_changed_at = charger_session.status_changed_at
+
+        # Repeat the same status — timestamp must stay put.
+        await ocpp_server._handle_status_notification(
+            charger_session, {"status": "Charging"}
+        )
+        assert charger_session.status_changed_at == first_changed_at
+
+        # An actual change updates the timestamp.
+        await ocpp_server._handle_status_notification(
+            charger_session, {"status": "SuspendedEVSE"}
+        )
+        assert charger_session.status_changed_at != first_changed_at
 
 
 # ---------------------------------------------------------------------------
@@ -924,6 +960,226 @@ class TestAntiFlapStateDiagnostic:
 
 
 # ---------------------------------------------------------------------------
+# Charger-stall diagnostics (issue #894)
+# ---------------------------------------------------------------------------
+
+
+class TestChargerAppearsStalled:
+    """Tests for the pure charger_appears_stalled() helper."""
+
+    def _session(
+        self,
+        transaction_id: int | None = 42,
+        status: str = "SuspendedEVSE",
+        status_changed_at: datetime | None = None,
+    ) -> ChargerSession:
+        if status_changed_at is None:
+            status_changed_at = datetime.now(UTC) - timedelta(
+                seconds=_CHARGER_STALL_THRESHOLD_S + 1
+            )
+        return ChargerSession(
+            cpid="test-cpid",
+            transaction_id=transaction_id,
+            status=status,
+            status_changed_at=status_changed_at,
+        )
+
+    def test_stalled_when_over_threshold(self):
+        """SuspendedEVSE held past the threshold with an open tx is stalled."""
+        session = self._session()
+        assert charger_appears_stalled(session, datetime.now(UTC)) is True
+
+    def test_not_stalled_when_under_threshold(self):
+        """A transient status flap under the threshold is not stalled."""
+        now = datetime.now(UTC)
+        session = self._session(status_changed_at=now - timedelta(seconds=5))
+        assert charger_appears_stalled(session, now) is False
+
+    def test_exactly_at_threshold_is_stalled(self):
+        """The boundary is inclusive: >= threshold counts as stalled."""
+        now = datetime.now(UTC)
+        session = self._session(
+            status_changed_at=now - timedelta(seconds=_CHARGER_STALL_THRESHOLD_S)
+        )
+        assert charger_appears_stalled(session, now) is True
+
+    def test_no_transaction_never_stalled(self):
+        """Without an open transaction, nothing can be flagged as stalled."""
+        session = self._session(transaction_id=None)
+        assert charger_appears_stalled(session, datetime.now(UTC)) is False
+
+    def test_suspended_ev_never_flagged(self):
+        """SuspendedEV is EV-decided and must never be flagged, at any age."""
+        session = self._session(
+            status="SuspendedEV",
+            status_changed_at=datetime.now(UTC) - timedelta(hours=1),
+        )
+        assert charger_appears_stalled(session, datetime.now(UTC)) is False
+
+    @pytest.mark.parametrize("status", ["Faulted", "Unavailable"])
+    def test_faulted_and_unavailable_flagged(self, status):
+        """Faulted/Unavailable are unambiguous problems once past threshold."""
+        session = self._session(status=status)
+        assert charger_appears_stalled(session, datetime.now(UTC)) is True
+
+    def test_charging_status_never_stalled(self):
+        """A charger actively reporting 'Charging' is never stalled."""
+        session = self._session(status="Charging")
+        assert charger_appears_stalled(session, datetime.now(UTC)) is False
+
+    def test_no_status_changed_at_never_stalled(self):
+        """Without a recorded status_changed_at, there's nothing to compare."""
+        session = ChargerSession(
+            cpid="test-cpid",
+            transaction_id=42,
+            status="SuspendedEVSE",
+            status_changed_at=None,
+        )
+        assert charger_appears_stalled(session, datetime.now(UTC)) is False
+
+    def test_custom_threshold_respected(self):
+        """A caller-supplied threshold overrides the module default."""
+        now = datetime.now(UTC)
+        session = self._session(status_changed_at=now - timedelta(seconds=10))
+        assert charger_appears_stalled(session, now, threshold_s=5) is True
+        assert charger_appears_stalled(session, now, threshold_s=20) is False
+
+
+class TestIsStalledWiring:
+    """Tests for is_stalled surfacing through update_charge_target()."""
+
+    @pytest.mark.asyncio
+    async def test_is_stalled_true_while_charging_and_stuck(
+        self, ocpp_server, charger_session
+    ):
+        """A charging session stuck in SuspendedEVSE is surfaced as stalled."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now
+        )
+        assert ocpp_server._flap_state == "charging"
+        assert ocpp_server.is_stalled is False
+
+        charger_session.transaction_id = 1
+        charger_session.status = "SuspendedEVSE"
+        charger_session.status_changed_at = now - timedelta(
+            seconds=_CHARGER_STALL_THRESHOLD_S + 1
+        )
+        await ocpp_server.update_charge_target(
+            "test-cpid",
+            target_power_kw=7.2,
+            now=now + timedelta(seconds=1),
+        )
+        assert ocpp_server.is_stalled is True
+
+    @pytest.mark.asyncio
+    async def test_is_stalled_false_for_suspended_ev(
+        self, ocpp_server, charger_session
+    ):
+        """SuspendedEV (EV-decided pause) is never surfaced as stalled."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now
+        )
+        charger_session.transaction_id = 1
+        charger_session.status = "SuspendedEV"
+        charger_session.status_changed_at = now - timedelta(
+            seconds=_CHARGER_STALL_THRESHOLD_S + 1
+        )
+        await ocpp_server.update_charge_target(
+            "test-cpid",
+            target_power_kw=7.2,
+            now=now + timedelta(seconds=1),
+        )
+        assert ocpp_server.is_stalled is False
+
+    @pytest.mark.asyncio
+    async def test_warning_logged_once_not_every_cycle(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """The stall warning is logged once, not on every subsequent cycle."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now
+        )
+        charger_session.transaction_id = 1
+        charger_session.status = "SuspendedEVSE"
+        charger_session.status_changed_at = now - timedelta(
+            seconds=_CHARGER_STALL_THRESHOLD_S + 1
+        )
+
+        with caplog.at_level(logging.WARNING):
+            await ocpp_server.update_charge_target(
+                "test-cpid",
+                target_power_kw=7.2,
+                now=now + timedelta(seconds=1),
+            )
+            await ocpp_server.update_charge_target(
+                "test-cpid",
+                target_power_kw=7.2,
+                now=now + timedelta(seconds=2),
+            )
+
+        stall_warnings = [r for r in caplog.records if "appears stalled" in r.message]
+        assert len(stall_warnings) == 1
+
+    @pytest.mark.asyncio
+    async def test_is_stalled_resets_when_status_recovers(
+        self, ocpp_server, charger_session
+    ):
+        """Once the charger reports 'Charging' again, stalled clears."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now
+        )
+        charger_session.transaction_id = 1
+        charger_session.status = "SuspendedEVSE"
+        charger_session.status_changed_at = now - timedelta(
+            seconds=_CHARGER_STALL_THRESHOLD_S + 1
+        )
+        await ocpp_server.update_charge_target(
+            "test-cpid",
+            target_power_kw=7.2,
+            now=now + timedelta(seconds=1),
+        )
+        assert ocpp_server.is_stalled is True
+
+        charger_session.status = "Charging"
+        charger_session.status_changed_at = now + timedelta(seconds=2)
+        await ocpp_server.update_charge_target(
+            "test-cpid",
+            target_power_kw=7.2,
+            now=now + timedelta(seconds=2),
+        )
+        assert ocpp_server.is_stalled is False
+
+    @pytest.mark.asyncio
+    async def test_no_stall_before_threshold_elapsed(
+        self, ocpp_server, charger_session
+    ):
+        """A brief SuspendedEVSE flap under the threshold is not flagged."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        now = datetime.now(UTC)
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now
+        )
+        charger_session.transaction_id = 1
+        charger_session.status = "SuspendedEVSE"
+        charger_session.status_changed_at = now
+
+        await ocpp_server.update_charge_target(
+            "test-cpid",
+            target_power_kw=7.2,
+            now=now + timedelta(seconds=5),
+        )
+        assert ocpp_server.is_stalled is False
+
+
+# ---------------------------------------------------------------------------
 # Reset anti-flap state on disconnect (issue #892)
 # ---------------------------------------------------------------------------
 
@@ -940,6 +1196,8 @@ class TestResetAntiFlapStateOnDisconnect:
         ocpp_server._last_sent_target = 7200.0
         ocpp_server._last_sent_current_a = 32
         ocpp_server._last_remote_start_attempt = datetime.now(UTC)
+        ocpp_server._stalled = True
+        ocpp_server._stall_logged = True
 
         ocpp_server._reset_anti_flap_state()
 
@@ -949,6 +1207,7 @@ class TestResetAntiFlapStateOnDisconnect:
         assert ocpp_server._target_power_w == 0.0
         assert ocpp_server.last_requested_current_a is None
         assert ocpp_server._last_remote_start_attempt is None
+        assert ocpp_server.is_stalled is False
 
     @pytest.mark.asyncio
     async def test_disconnect_resets_state_via_real_connection(self, mock_hass):

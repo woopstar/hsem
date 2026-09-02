@@ -459,6 +459,22 @@ to zero before a session ever started (no `RemoteStartTransaction` was sent
 yet), there is nothing to stop and HSEM skips the call rather than sending an
 invalid, schema-violating request (issue #892).
 
+**Charger-stall diagnostics (issue #894):** an open transaction and a valid
+`SetChargingProfile` do not guarantee current is actually flowing — the
+charger can report `StatusNotification` status `"SuspendedEVSE"`,
+`"Faulted"`, or `"Unavailable"` indefinitely instead of `"Charging"`. HSEM
+tracks when a session's status last actually changed
+(`ChargerSession.status_changed_at`, exposed per connector as
+`status_changed_at` under `sensor.hsem_ocpp_charger_status`'s CPID
+attribute) and, once the anti-flap state machine has reached `"charging"`,
+flags the session as stalled if it has been stuck in one of those three
+statuses for more than 5 minutes. The result is exposed as `stalled` on
+`sensor.hsem_ocpp_charger_status` (and its second-EV variant) and logged
+once as a warning when first detected — this is diagnostics-only, no
+retry or corrective OCPP call is triggered. `"SuspendedEV"` is excluded on
+purpose: it means the _EV_ decided to pause (e.g. battery full, car-side
+scheduled charging), which is normal and never counts as a stall.
+
 This distinction drives the asymmetric ceiling deadband: a _reduction_ can force a
 charger to throttle, an _increase_ only offers headroom it may or may not take.
 

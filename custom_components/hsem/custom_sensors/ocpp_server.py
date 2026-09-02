@@ -77,6 +77,54 @@ _REMOTE_START_RETRY_INTERVAL_S = 60
 # Heartbeat message.
 _WS_HEARTBEAT_INTERVAL_S = 30.0
 
+# StatusNotification values that indicate the charge *point* — not the EV —
+# is withholding current (issue #894). "SuspendedEV" is deliberately
+# excluded: it means the EV itself decided to pause (e.g. battery full,
+# car-side scheduled charging), which is normal and must never be flagged.
+_STALL_STATUSES = frozenset({"SuspendedEVSE", "Faulted", "Unavailable"})
+
+# Minimum time a charger must stay in one of _STALL_STATUSES with an open
+# transaction before it's considered stalled (issue #894). Long enough to
+# not flag a transient flap (e.g. a few seconds in "SuspendedEVSE" before
+# returning to "Charging"), short enough to be a useful diagnostic.
+_CHARGER_STALL_THRESHOLD_S = 300
+
+
+def charger_appears_stalled(
+    session: ChargerSession,
+    now: datetime,
+    threshold_s: float = _CHARGER_STALL_THRESHOLD_S,
+) -> bool:
+    """Return whether *session* looks like a silently stalled charge (issue #894).
+
+    ``True`` only when all of the following hold:
+
+    - ``session.transaction_id`` is not ``None`` (a transaction is open —
+      HSEM believes it authorized and profiled a charge).
+    - ``session.status`` is one of ``"SuspendedEVSE"``, ``"Faulted"``, or
+      ``"Unavailable"`` — a charge-point-side problem, not an EV-decided
+      pause (``"SuspendedEV"`` is never flagged).
+    - ``session.status_changed_at`` is set and older than *threshold_s*.
+
+    Pure and diagnostics-only — never triggers a corrective OCPP call.
+
+    Args:
+        session: The charger session to evaluate.
+        now: Current timestamp (injected for testability).
+        threshold_s: Minimum seconds the status must have been unchanged.
+
+    Returns:
+        ``True`` if the session appears stalled.
+    """
+    if session.transaction_id is None:
+        return False
+    if session.status not in _STALL_STATUSES:
+        return False
+    if session.status_changed_at is None:
+        return False
+    elapsed = (now - session.status_changed_at).total_seconds()
+    return elapsed >= threshold_s
+
 
 class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
     """Embedded OCPP 1.6 WebSocket server for LAN-only EV charger control.
@@ -142,6 +190,13 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
         # that stays None after a start attempt, retry on a cooldown rather
         # than assuming the single attempt succeeded.
         self._last_remote_start_attempt: datetime | None = None
+
+        # Charger-stall diagnostics (issue #894): whether the active
+        # charging session currently appears stuck non-"Charging" despite
+        # an open transaction, and whether the warning has already been
+        # logged for the current stall (so it logs once, not every cycle).
+        self._stalled: bool = False
+        self._stall_logged: bool = False
 
     # ------------------------------------------------------------------
     # Public API
@@ -226,6 +281,18 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
         return self._flap_state
 
     @property
+    def is_stalled(self) -> bool:
+        """Return whether the active charging session appears stalled.
+
+        ``True`` while :func:`charger_appears_stalled` has held for the
+        connected charger during the most recent :meth:`update_charge_target`
+        call (issue #894) — the charger is reporting a non-"Charging" status
+        despite an open transaction. Diagnostics-only; never triggers a
+        corrective OCPP call.
+        """
+        return self._stalled
+
+    @property
     def charger_sessions(self) -> dict[str, ChargerSession]:
         """Return a copy of the current charger sessions dict."""
         return dict(self._chargers)
@@ -274,6 +341,10 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
         if target_w > _SLOT_EPSILON:
             # Target is non-zero — handle start window
             if self._flap_state in ("idle", "stopping", "starting"):
+                # Not yet charging — the stall diagnostic only applies once
+                # a session is confirmed "charging" (issue #894).
+                self._stalled = False
+                self._stall_logged = False
                 if self._flap_state != "starting":
                     self._target_entered_at = now
                     self._flap_state = "starting"
@@ -321,9 +392,32 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
                     await self._send_set_charging_profile(
                         session, int(target_w), max_current_a
                     )
+
+                # Stall diagnostics (issue #894): a charger stuck reporting
+                # SuspendedEVSE/Faulted/Unavailable despite an open
+                # transaction and a valid profile already sent is a silent
+                # fault. Diagnostics-only — no corrective OCPP call.
+                if charger_appears_stalled(session, now, _CHARGER_STALL_THRESHOLD_S):
+                    if not self._stall_logged:
+                        _LOGGER.warning(
+                            "OCPP %s: charger appears stalled — status "
+                            "'%s' unchanged for over %ds with transaction "
+                            "%s open",
+                            session.cpid,
+                            session.status,
+                            _CHARGER_STALL_THRESHOLD_S,
+                            session.transaction_id,
+                        )
+                        self._stall_logged = True
+                    self._stalled = True
+                else:
+                    self._stalled = False
+                    self._stall_logged = False
             self._zero_entered_at = None
         else:
             # Target is zero — handle stop window
+            self._stalled = False
+            self._stall_logged = False
             if self._flap_state == "charging" or self._flap_state == "starting":
                 if self._flap_state != "stopping":
                     self._zero_entered_at = now
@@ -382,6 +476,8 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
         self._last_sent_target = -1.0
         self._last_sent_current_a = -1
         self._last_remote_start_attempt = None
+        self._stalled = False
+        self._stall_logged = False
 
     async def send_set_charging_profile(
         self, cpid: str, max_power_w: int, max_current_a: int = 16

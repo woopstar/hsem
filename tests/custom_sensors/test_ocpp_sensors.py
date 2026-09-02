@@ -11,6 +11,7 @@ Covers:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 from custom_components.hsem.coordinator_data import CoordinatorData
@@ -197,6 +198,76 @@ def test_second_charger_attributes_use_second_anti_flap_state() -> None:
     )
     sensor.hass = _make_hass_without_url()
     assert sensor.extra_state_attributes["anti_flap_state"] == "stopping"
+
+
+def test_attributes_expose_stalled() -> None:
+    """stalled mirrors the OCPP server's stall diagnostic (issue #894)."""
+    data = CoordinatorData(
+        cfg=SensorConfig(ocpp_enabled=True, ocpp_port=9000),
+        ocpp_listening=True,
+        ocpp_charger_stalled=True,
+    )
+    sensor = HSEMOCPPChargerStatusSensor(_make_config_entry(), _make_coordinator(data))
+    sensor.hass = _make_hass_without_url()
+    assert sensor.extra_state_attributes["stalled"] is True
+
+
+def test_attributes_stalled_defaults_false() -> None:
+    """stalled defaults to False when no stall has been detected."""
+    data = CoordinatorData(
+        cfg=SensorConfig(ocpp_enabled=True, ocpp_port=9000),
+        ocpp_listening=True,
+    )
+    sensor = HSEMOCPPChargerStatusSensor(_make_config_entry(), _make_coordinator(data))
+    sensor.hass = _make_hass_without_url()
+    assert sensor.extra_state_attributes["stalled"] is False
+
+
+def test_second_charger_attributes_use_second_stalled() -> None:
+    """charger_index=2 reads the second server's stall diagnostic."""
+    data = CoordinatorData(
+        cfg=SensorConfig(
+            ocpp_enabled=True, ocpp_second_enabled=True, ocpp_second_port=9001
+        ),
+        ocpp_second_listening=True,
+        ocpp_second_charger_stalled=True,
+        ocpp_charger_stalled=False,
+    )
+    sensor = HSEMOCPPChargerStatusSensor(
+        _make_config_entry(), _make_coordinator(data), charger_index=2
+    )
+    sensor.hass = _make_hass_without_url()
+    assert sensor.extra_state_attributes["stalled"] is True
+
+
+def test_attributes_include_status_changed_at_per_charger() -> None:
+    """status_changed_at is exposed per connected CPID (issue #894)."""
+    changed_at = datetime(2026, 1, 1, tzinfo=UTC)
+    data = CoordinatorData(
+        cfg=SensorConfig(ocpp_enabled=True, ocpp_port=9000),
+        ocpp_listening=True,
+        ocpp_chargers={
+            "CP1": ChargerSession(
+                cpid="CP1", status="SuspendedEVSE", status_changed_at=changed_at
+            )
+        },
+    )
+    sensor = HSEMOCPPChargerStatusSensor(_make_config_entry(), _make_coordinator(data))
+    sensor.hass = _make_hass_without_url()
+    attrs = sensor.extra_state_attributes
+    assert attrs["CP1"]["status_changed_at"] == changed_at.isoformat()
+
+
+def test_attributes_status_changed_at_none_when_unset() -> None:
+    """status_changed_at is None before any status has been recorded."""
+    data = CoordinatorData(
+        cfg=SensorConfig(ocpp_enabled=True, ocpp_port=9000),
+        ocpp_listening=True,
+        ocpp_chargers={"CP1": ChargerSession(cpid="CP1", status="Available")},
+    )
+    sensor = HSEMOCPPChargerStatusSensor(_make_config_entry(), _make_coordinator(data))
+    sensor.hass = _make_hass_without_url()
+    assert sensor.extra_state_attributes["CP1"]["status_changed_at"] is None
 
 
 def test_attributes_url_includes_configured_cpid() -> None:
