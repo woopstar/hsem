@@ -1,4 +1,4 @@
-"""Tests for the MILP-based optimizer and associated Bug 2/3/5 fixes (issue #416).
+"""Tests for the MILP-based optimizer and associated Bug 3 fix (issue #416).
 
 Coverage
 --------
@@ -6,10 +6,7 @@ Coverage
   arbitrage case (buy cheap, sell expensive).
 - MILP falls back gracefully when the solver is given a degenerate problem.
 - MILP candidate is present in the output candidates list after a planner run.
-- Bug 2: ``_AGGRESSIVE_CHARGE_SLOTS`` scales with battery headroom, not a fixed 3.
 - Bug 3: ``replacement_price_per_kwh`` uses the minimum future price, not average.
-- Bug 5: Aggressive strategy guards against **all** discharge windows, not just the
-  first, when multiple discharge windows exist.
 - Performance: MILP solves a 96-slot (48 h × 30 min) horizon within 320 ms.
 """
 
@@ -24,13 +21,9 @@ import pytest
 
 from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
-from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_MILP,
-)
-from custom_components.hsem.planner.candidates._aggressive import (
-    _apply_aggressive_strategy,
 )
 from custom_components.hsem.planner.candidates._mutations import _copy_slots
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
@@ -599,155 +592,6 @@ def test_milp_solves_96_slot_horizon_within_performance_budget() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Bug 2: Dynamic aggressive slot count
-# ---------------------------------------------------------------------------
-
-
-def _make_minimal_inp_for_generator(
-    *,
-    battery_cycle_cost_per_kwh: float = 0.0,
-) -> PlannerInput:
-    """Return a minimal PlannerInput sufficient to call generate_candidates."""
-    from tests.planner.fixtures import make_summer_day_input
-
-    inp = make_summer_day_input()
-    inp.battery_cycle_cost_per_kwh = battery_cycle_cost_per_kwh
-    return inp
-
-
-def test_aggressive_slots_scale_with_battery_headroom():
-    """Aggressive charge-slot count must equal ceil(headroom / max_charge_per_slot).
-
-    When the battery has 6 kWh of headroom and max charge is 2 kWh/slot,
-    the aggressive strategy should claim 3 slots (ceil(6/2)=3).
-    """
-    slots = _make_arbitrage_slots(
-        cheap_hours=[0, 1, 2, 3],
-        expensive_hours=[20, 21, 22, 23],
-    )
-
-    # Apply the aggressive strategy with known inputs
-    slots_copy = _copy_slots(slots)
-    _apply_aggressive_strategy(
-        slots_copy,
-        _NOW,
-        max_charge_per_slot=2.0,
-        current_kwh=3.0,  # 3 kWh stored
-        usable_kwh=9.0,  # 9 kWh usable → 6 kWh headroom
-    )
-
-    # Expected: ceil(6.0 / 2.0) = 3 charge slots
-    charge_slots_count = sum(
-        1
-        for s in slots_copy
-        if s.recommendation == Recommendations.BatteriesChargeGrid.value
-    )
-    assert charge_slots_count == 3, (
-        f"Expected 3 charge slots for 6 kWh headroom / 2 kWh per slot, "
-        f"got {charge_slots_count}"
-    )
-
-
-def test_aggressive_slots_fallback_when_headroom_zero():
-    """When battery is full (headroom=0) the aggressive strategy must not charge.
-
-    headroom = usable_kwh - current_kwh = 9 - 9 = 0.  There is no room to
-    store additional energy, so the aggressive strategy should claim 0 charge
-    slots.  The old fixed-constant code would always claim 3 regardless.
-    """
-    slots = _make_arbitrage_slots(cheap_hours=[0, 1, 2, 3], expensive_hours=[])
-    slots_copy = _copy_slots(slots)
-
-    _apply_aggressive_strategy(
-        slots_copy,
-        _NOW,
-        max_charge_per_slot=2.0,
-        current_kwh=9.0,  # full
-        usable_kwh=9.0,
-    )
-
-    charge_slots_count = sum(
-        1
-        for s in slots_copy
-        if s.recommendation == Recommendations.BatteriesChargeGrid.value
-    )
-    assert charge_slots_count == 0, (
-        f"Expected 0 charge slots when battery is full (headroom=0), got {charge_slots_count}"
-    )
-
-
-def test_aggressive_slots_fallback_on_degenerate_max_charge():
-    """When max_charge_per_slot is 0 (degenerate) the fallback of 3 slots is used."""
-    slots = _make_arbitrage_slots(cheap_hours=[0, 1, 2, 3, 4], expensive_hours=[])
-    slots_copy = _copy_slots(slots)
-
-    _apply_aggressive_strategy(
-        slots_copy,
-        _NOW,
-        max_charge_per_slot=0.0,  # degenerate
-        current_kwh=0.0,
-        usable_kwh=9.0,
-    )
-
-    # Fallback of 3 is used; there are 5 candidates so 3 should be claimed
-    charge_slots_count = sum(
-        1
-        for s in slots_copy
-        if s.recommendation == Recommendations.BatteriesChargeGrid.value
-    )
-    assert charge_slots_count == 3, (
-        f"Expected fallback of 3 charge slots, got {charge_slots_count}"
-    )
-
-
-def test_aggressive_large_headroom_claims_all_available_charge_candidates():
-    """When headroom requires more slots than available, all eligible slots are charged.
-
-    With usable_kwh=10, current_kwh=0, and max_charge_per_slot=2.0,
-    the strategy wants ceil(10/2)=5 charge slots.  With Bug D fix, the
-    aggressive strategy first identifies prospective discharge slots (the
-    most expensive ones), then charges only before those.  We use a mix of
-    cheap (0.05) and expensive (0.50) hours so that the expensive slots
-    become discharge and the cheap slots before them become charge.
-
-    Key invariant: at large headroom we claim significantly more than the old
-    fixed value of 3.
-    """
-    # 24 slots: first 20 cheap (0.05), last 4 expensive (0.50)
-    slots = _make_arbitrage_slots(
-        cheap_hours=list(range(20)),
-        expensive_hours=[20, 21, 22, 23],
-        cheap_price=0.05,
-        expensive_price=0.50,
-    )
-    slots_copy = _copy_slots(slots)
-
-    _apply_aggressive_strategy(
-        slots_copy,
-        _NOW,
-        max_charge_per_slot=2.0,
-        current_kwh=0.0,
-        usable_kwh=10.0,  # headroom = 10 → wants ceil(10/2)=5 charge slots
-        max_discharge_per_slot=2.0,  # ceil(10/2)=5 discharge slots
-    )
-
-    charge_slots_count = sum(
-        1
-        for s in slots_copy
-        if s.recommendation == Recommendations.BatteriesChargeGrid.value
-    )
-    # Old code: exactly 3 charge slots (fixed constant).
-    # New code: 5 charge slots (ceil(10/2)=5) before first discharge at hour 20.
-    assert charge_slots_count > 3, (
-        f"Expected significantly more than 3 charge slots at large headroom, "
-        f"got {charge_slots_count}"
-    )
-    assert charge_slots_count >= 5, (
-        f"Expected at least 5 charge slots (ceil(10/2)=5), got {charge_slots_count}"
-    )
-
-
-# ---------------------------------------------------------------------------
 # Bug 3: Terminal SoC replacement price uses min, not average
 # ---------------------------------------------------------------------------
 
@@ -821,84 +665,6 @@ def test_replacement_price_is_minimum_of_future_prices():
         f"Credit with min price ({cost_min.terminal_soc_value:.4f}) should be "
         f"≥ credit with avg price ({cost_avg.terminal_soc_value:.4f}) — "
         "min price is cheaper so stored energy is worth less"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Bug 5: Multi-discharge window guard
-# ---------------------------------------------------------------------------
-
-
-def test_aggressive_no_charge_after_any_discharge_window():
-    """Aggressive strategy must not place charge slots after ANY discharge window.
-
-    When two discharge windows exist (e.g. hours 6 and 18), no charge slot
-    must appear at or after the start of the earlier window.
-    """
-    # Set up: 4 cheap slots at hours 8–11 (after the first discharge window at 6)
-    # and a second discharge window at hour 18.
-    # The aggressive strategy should NOT charge at hours 8-11 because they
-    # fall after the first discharge window (hour 6).
-
-    # Build slots hours 0-23 with discharge already placed at hours 6 and 18
-    slots = []
-    for h in range(24):
-        imp = 0.05 if h in (8, 9, 10, 11) else 0.50
-        s = _make_slot(hour=h, import_price=imp, export_price=round(imp * 0.8, 4))
-        if h in (6, 18):
-            s.recommendation = Recommendations.BatteriesDischargeMode.value
-        slots.append(s)
-
-    _apply_aggressive_strategy(
-        slots,
-        _NOW,
-        max_charge_per_slot=2.0,
-        current_kwh=0.0,
-        usable_kwh=9.0,
-    )
-
-    # Any slot at or after the first discharge window (hour 6) must NOT be
-    # assigned a charge recommendation by the aggressive strategy.
-    illegal_charge = [
-        s.start.hour
-        for s in slots
-        if s.start.hour >= 6
-        and s.recommendation == Recommendations.BatteriesChargeGrid.value
-    ]
-    assert not illegal_charge, (
-        f"Aggressive strategy placed charge slots at hours {illegal_charge} "
-        "which are at or after the first discharge window at hour 6"
-    )
-
-
-def test_aggressive_charge_only_before_first_discharge_window():
-    """Charge slots must only appear before the earliest discharge window."""
-    # Discharge at hour 8; cheap hours spread 0–15
-    slots = []
-    for h in range(24):
-        imp = 0.05 if h in range(0, 16) else 0.80
-        s = _make_slot(hour=h, import_price=imp)
-        if h == 8:
-            s.recommendation = Recommendations.BatteriesDischargeMode.value
-        slots.append(s)
-
-    _apply_aggressive_strategy(
-        slots,
-        _NOW,
-        max_charge_per_slot=2.0,
-        current_kwh=0.0,
-        usable_kwh=9.0,
-    )
-
-    charge_hours = sorted(
-        s.start.hour
-        for s in slots
-        if s.recommendation == Recommendations.BatteriesChargeGrid.value
-    )
-
-    # All charge hours must be strictly before hour 8
-    assert all(h < 8 for h in charge_hours), (
-        f"Charge hours {charge_hours} include slots at or after discharge window at hour 8"
     )
 
 

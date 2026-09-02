@@ -15,7 +15,8 @@ Selection algorithm
    for edge cases.)
 3. Score all valid candidates with :func:`~cost_function.score_plan`.
 4. Pick the candidate with the **lowest total cost** (lower = better).
-5. If no candidate is valid (degenerate edge case), fall back to ``baseline``.
+5. If no candidate is eligible (degenerate edge case), fall back to
+   ``passive`` (fail-closed); ``no_action`` never becomes executable.
 6. Return the winning slots plus a list of
    :class:`~custom_components.hsem.models.planner_outputs.RejectedPlan`
    entries describing every non-selected candidate and the reason it lost.
@@ -37,7 +38,6 @@ from datetime import datetime, timedelta
 
 from custom_components.hsem.models.rejected_plan import RejectedPlan
 from custom_components.hsem.planner.candidate_generator import (
-    CANDIDATE_BASELINE,
     CANDIDATE_MILP,
     CANDIDATE_NO_ACTION,
     CANDIDATE_PASSIVE,
@@ -290,16 +290,22 @@ def select_best_candidate(  # NOSONAR
         eligible = valid
 
     if not eligible:
-        # Degenerate case — fall back to baseline regardless of validity
-        winner = _find_by_name(candidates, CANDIDATE_BASELINE)
-        if winner is None and candidates:
-            winner = candidates[0]
+        # Degenerate case: every candidate failed SoC validation.  Fall
+        # back to `passive` (fail-closed) regardless of its own validation
+        # result.  `no_action` must never become executable (issue #897).
+        winner = _find_by_name(candidates, CANDIDATE_PASSIVE)
+        if winner is None:
+            winner = next(
+                (c for c in candidates if c.name != CANDIDATE_NO_ACTION), None
+            )
         if winner is None:
             raise RuntimeError("[selector] No candidates available")
         winner.is_valid = True
         winner.rejection_reason = ""
         log_planner(
-            "warning", "[selector] No eligible candidates — falling back to baseline"
+            "warning",
+            "[selector] No eligible candidates — falling back to %s",
+            winner.name,
         )
     else:
         # Provide the deferred-export correction (issue #592) with the
