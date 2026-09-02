@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
@@ -22,6 +23,7 @@ from custom_components.hsem.planner.ev_planner import (
     rebuild_ev_plan_from_slots,
 )
 from custom_components.hsem.utils.datetime_utils import slot_contains, utc_key
+from custom_components.hsem.utils.logger import async_log
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.phase_power import charger_power_to_current_a
 from custom_components.hsem.utils.recommendations import Recommendations
@@ -325,6 +327,56 @@ def apply_force_charge_now(
         override_second=force_second,
         live=live,
     )
+
+
+def reset_force_charge_on_disconnect(
+    *,
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    was_connected: bool | None,
+    is_connected: bool | None,
+    option_key: str,
+    ev_label: str,
+) -> bool:
+    """Clear a force-charge-now option on a connected → disconnected transition.
+
+    ``apply_current_ev_power_override`` already zeroes the forced charger
+    power once an EV is disconnected, but leaves the switch itself (and its
+    config-entry option) on — so forced full-power charging silently re-arms
+    the moment the EV reconnects. This clears the option so the switch
+    entity (via its own config-update listener) reflects ``off`` and the
+    user must explicitly re-enable it.
+
+    Args:
+        hass: The Home Assistant instance, needed to persist the option.
+        config_entry: The HSEM config entry backing the force-charge switch.
+        was_connected: EV connection state as of the last accepted plan.
+        is_connected: EV connection state observed this cycle.
+        option_key: The force-charge-now option key to reset
+            (``hsem_ev_force_charge_now`` or ``hsem_ev_second_force_charge_now``).
+        ev_label: Human-readable EV label, used only in the log message.
+
+    Returns:
+        ``True`` if the option was reset, ``False`` for a no-op (no
+        disconnect transition, or the option was already ``False``).
+    """
+    if was_connected is not True or is_connected is not False:
+        return False
+    if not bool(get_config_value(config_entry, option_key)):
+        return False
+
+    hass.config_entries.async_update_entry(
+        config_entry,
+        options={**config_entry.options, option_key: False},
+    )
+    async_log(
+        "info",
+        "[ev] %s disconnected while force-charge-now was on — "
+        "automatically resetting %s to off.",
+        ev_label,
+        option_key,
+    )
+    return True
 
 
 # ---------------------------------------------------------------------------
