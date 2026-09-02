@@ -258,6 +258,13 @@ reflect the forced session.
 Use this for ad-hoc "charge now" scenarios (e.g. unexpected trip) without
 enabling the full smart-charging schedule.
 
+**The switch auto-disables when the EV disconnects (issue #900).** If the
+EV is unplugged while force-charge-now is on, HSEM resets the switch to off
+as soon as the disconnect is detected, instead of leaving it armed. This
+prevents forced full-power charging from silently resuming the next time
+the EV is plugged in — you must re-enable the switch explicitly for another
+forced session.
+
 ### Session-aware EV demand
 
 When an EV is actively drawing power, HSEM distinguishes demand it can
