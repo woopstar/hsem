@@ -6,9 +6,11 @@ rollups (today, last 7 days, last 30 days, this month, this year).
 
 from __future__ import annotations
 
+import asyncio
 import math
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 
@@ -485,6 +487,19 @@ class FinancialTracker:
                     tracker.daily_log[entry.date] = entry
 
         return tracker
+
+    async def save_history(self) -> bool:
+        """Persist tracker state to disk atomically.
+
+        Returns:
+            ``True`` if the state was successfully persisted to disk.
+        """
+        if not self.history_file:
+            return False
+        data = self.as_dict()
+        path = Path(self.history_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return await asyncio.to_thread(self._write_history_file, data, path)
 
     @staticmethod
     def _read_history_file(path: Any) -> dict[str, Any] | None:

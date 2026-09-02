@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -485,6 +486,35 @@ class TestFinancialTrackerPersistence:
         restored = FinancialTracker.from_dict(d)
         assert restored._last_import_energy_kwh is None
         assert restored._last_export_energy_kwh is None
+
+    @pytest.mark.asyncio
+    async def test_save_history_without_history_file_returns_false(self) -> None:
+        """save_history is a no-op returning False when history_file is unset."""
+        tracker = FinancialTracker()
+        assert await tracker.save_history() is False
+
+    @pytest.mark.asyncio
+    async def test_save_history_writes_to_disk(self, tmp_path: Path) -> None:
+        """save_history persists state that a fresh tracker can restore."""
+        history_path = tmp_path / "hsem_financial_history.json"
+        original = FinancialTracker(history_file=str(history_path))
+        original.accumulate(
+            grid_import_energy_kwh=100.0,
+            grid_export_energy_kwh=50.0,
+            import_price=2.0,
+            export_price=1.0,
+        )
+
+        assert await original.save_history() is True
+        assert history_path.exists()
+
+        restored = FinancialTracker.from_dict(
+            FinancialTracker._read_history_file(history_path) or {}
+        )
+        assert restored.import_cost_total == pytest.approx(original.import_cost_total)
+        assert restored.export_income_total == pytest.approx(
+            original.export_income_total
+        )
 
 
 class TestFinancialTrackerSensorAttributes:

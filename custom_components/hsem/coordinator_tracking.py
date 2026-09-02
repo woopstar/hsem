@@ -337,16 +337,6 @@ async def _load_financial_tracker(tracker: FinancialTracker) -> None:
         async_log("error", "Failed to load financial tracker history")
 
 
-async def persist_financial_tracker(tracker: FinancialTracker) -> bool:
-    """Persist financial tracker state to disk atomically."""
-    if not tracker.history_file:
-        return False
-    data = tracker.as_dict()
-    path = Path(tracker.history_file)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return await asyncio.to_thread(FinancialTracker._write_history_file, data, path)
-
-
 async def accumulate_financials(
     *,
     now: datetime,
@@ -392,9 +382,6 @@ async def accumulate_financials(
 
     # Price the interval ending at midnight before rolling to the new day.
     tracker.check_day_rollover(now)
-
-    if not await persist_financial_tracker(tracker):
-        async_log("warning", "Failed to persist financial tracker state")
 
 
 # ---------------------------------------------------------------------------
@@ -493,9 +480,6 @@ async def accumulate_savings(
         baseline_cost_delta=baseline_cost_delta,
         switch_on=switch_on,
     )
-
-    if not await st.save_history():
-        async_log("warning", "Failed to persist savings tracker state")
 
 
 async def _init_savings_tracker(

@@ -86,6 +86,11 @@ case "${1:-}" in
     quality)
         run python -m pyright
         run python -m vulture custom_components/hsem tests vulture_whitelist.py --min-confidence 80
+        echo ""
+        echo "[info] Supplementary vulture pass (custom_components/hsem only, tests"
+        echo "[info] excluded, --min-confidence 0). Informational only -- same-named"
+        echo "[info] methods across classes still won't be flagged (issue #890)."
+        run python -m vulture custom_components/hsem vulture_whitelist.py --min-confidence 0 || true
         ;;
     format-check)
         prettier_run --check
@@ -113,6 +118,11 @@ case "${1:-}" in
         echo "=== Quality ==="
         run python -m pyright
         run python -m vulture custom_components/hsem tests vulture_whitelist.py --min-confidence 80
+        echo ""
+        echo "[info] Supplementary vulture pass (custom_components/hsem only, tests"
+        echo "[info] excluded, --min-confidence 0). Informational only -- same-named"
+        echo "[info] methods across classes still won't be flagged (issue #890)."
+        run python -m vulture custom_components/hsem vulture_whitelist.py --min-confidence 0 || true
         echo ""
         echo "=== Tests ==="
         run python -m pytest tests/ \

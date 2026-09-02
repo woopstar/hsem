@@ -29,6 +29,7 @@ from custom_components.hsem.coordinator_helpers import (
     live_demand_contradicts_zero_profile,
     load_forecast_signatures_match,
 )
+from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import (
     CoordinatorSharedState,
 )
@@ -384,6 +385,19 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             async_log(
                 "error",
                 "Savings tracker accumulation failed: %s",
+                e,
+            )
+
+        # Persist financial and savings tracker state (issues #599, #604,
+        # #890) through the shared registry -- see coordinator_persistence.py.
+        try:
+            await persist_all_trackers(
+                self, only=["_financial_tracker", "_savings_tracker"]
+            )
+        except Exception as e:
+            async_log(
+                "error",
+                "Tracker persistence failed: %s",
                 e,
             )
 
