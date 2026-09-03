@@ -585,3 +585,12 @@ class _StaleUpdateCycle(Exception):
 # run.  Rapid switch/number/time toggles restart this timer, so the planner
 # only rebuilds once after the user stops clicking.
 OPTIONS_UPDATE_DEBOUNCE_SECONDS = 0.25
+
+# Seconds to wait after the last significant OCPP protocol event (connect,
+# disconnect, StatusNotification change, StartTransaction/StopTransaction —
+# issue #908) before scheduling a coordinator refresh. A charger connecting
+# typically fires BootNotification + StatusNotification + StartTransaction
+# within a second or two of each other; this coalesces that burst into one
+# refresh instead of one per message, while still being far faster than
+# waiting for the multi-minute interval timer.
+OCPP_EVENT_DEBOUNCE_SECONDS = 2.0

@@ -1,15 +1,24 @@
 """OCPP 1.6 charger-initiated message handlers.
 
-Extracted from :mod:`ocpp_server` to satisfy the repository's 30 KB /
-1000-line file limit. These handlers only read/write ``session``/``payload``
-— none of them touch :class:`~ocpp_server.OCPPServer` state — so they mix
-cleanly into :class:`~ocpp_server.OCPPServer` without any behaviour change.
+Originally extracted from :mod:`ocpp_server` to satisfy the repository's
+30 KB / 1000-line file limit; these handlers mix into
+:class:`~ocpp_server.OCPPServer`. Most only read/write
+``session``/``payload``, but :meth:`_handle_start_transaction` also
+allocates from :attr:`~ocpp_server.OCPPServer._next_transaction_id`
+(issue #906) to assign each transaction a real, CS-issued ID rather than
+trusting whatever (if anything) the charger sent, and the status-change,
+start-transaction, and stop-transaction handlers call
+:meth:`~ocpp_server.OCPPServer._notify_significant_event` (issue #908) to
+trigger a debounced coordinator refresh promptly rather than waiting for
+the next scheduled cycle.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
+from typing import Any
 
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
@@ -18,6 +27,15 @@ _LOGGER = logging.getLogger(__name__)
 
 class OCPPMessageHandlersMixin:
     """Handlers for OCPP messages initiated by a connected charger."""
+
+    # Declared (not assigned) so mypy uses OCPPServer.__init__'s type rather
+    # than inferring one from _handle_start_transaction's usage below.
+    _next_transaction_id: int
+
+    # Declared (not assigned) so mypy resolves this against
+    # OCPPCommandsMixin._notify_significant_event() rather than reporting a
+    # missing attribute (issue #908).
+    _notify_significant_event: Callable[[], Coroutine[Any, Any, None]]
 
     async def _handle_boot_notification(
         self, session: ChargerSession, payload: dict
@@ -90,10 +108,16 @@ class OCPPMessageHandlersMixin:
         if new_status:
             if new_status != session.status:
                 session.status_changed_at = datetime.now(UTC)
-            session.status = new_status
-            _LOGGER.debug(
-                "OCPP charger %s status changed to '%s'", session.cpid, new_status
-            )
+                session.status = new_status
+                _LOGGER.debug(
+                    "OCPP charger %s status changed to '%s'", session.cpid, new_status
+                )
+                # Notify promptly (issue #908) — only on an actual change,
+                # not a repeated StatusNotification carrying the same
+                # status.
+                await self._notify_significant_event()
+            else:
+                session.status = new_status
         return {}
 
     async def _handle_meter_values(
@@ -164,22 +188,35 @@ class OCPPMessageHandlersMixin:
     ) -> dict:
         """Handle a ``StartTransaction`` request.
 
-        Records the transaction ID and returns an ``Accepted`` response.
+        Allocates a fresh transaction ID and returns it in an ``Accepted``
+        response.
+
+        Per OCPP 1.6 §5.14, ``StartTransaction.req`` (charger → CS) has no
+        ``transactionId`` field — allocating one is the CS's job, returned
+        in ``StartTransaction.conf``. Echoing back
+        ``payload.get("transactionId", 0)`` (issue #906) meant every real
+        charger, which never sends this field, got assigned ``0``. Chargers
+        that treat ``0`` as an unset/sentinel value would then reject or
+        ignore a subsequent ``RemoteStopTransaction`` carrying
+        ``transactionId: 0``, since it never numerically matched a
+        transaction they considered active.
 
         Args:
             session: The charger session.
-            payload: StartTransaction payload.
+            payload: StartTransaction payload (unused — see above).
 
         Returns:
-            Response dict with transactionId and idTagInfo.
+            Response dict with the CS-assigned transactionId and idTagInfo.
         """
-        transaction_id = payload.get("transactionId", 0)
+        transaction_id = self._next_transaction_id
+        self._next_transaction_id += 1
         session.transaction_id = transaction_id
         _LOGGER.info(
-            "OCPP StartTransaction from %s: tx=%d",
+            "OCPP StartTransaction from %s: assigned tx=%d",
             session.cpid,
             transaction_id,
         )
+        await self._notify_significant_event()
         return {
             "transactionId": transaction_id,
             "idTagInfo": {"status": "Accepted"},
@@ -206,6 +243,7 @@ class OCPPMessageHandlersMixin:
             transaction_id,
         )
         session.transaction_id = None
+        await self._notify_significant_event()
         return {"idTagInfo": {"status": "Accepted"}}
 
     async def _handle_unknown(

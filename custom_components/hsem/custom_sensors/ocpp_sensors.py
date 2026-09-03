@@ -271,6 +271,7 @@ class HSEMOCPPChargerStatusSensor(
                     "status": session.status,
                     "power_w": round(session.current_power_w, 1),
                     "transaction_id": session.transaction_id,
+                    "last_call_status": dict(session.last_call_status),
                     "connected_at": (
                         session.connected_at.isoformat()
                         if session.connected_at

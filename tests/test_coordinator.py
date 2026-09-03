@@ -79,6 +79,8 @@ def _make_bare_coordinator() -> HSEMDataUpdateCoordinator:
     coord._cfg = cfg
     coord._options_update_task = None
     coord._options_update_debounce_task = None
+    coord._ocpp_event_task = None
+    coord._ocpp_event_debounce_task = None
     return coord
 
 
@@ -389,6 +391,143 @@ class TestOptionsUpdateBackgroundTask:
 
         assert task.cancelling() or task.cancelled() or task.done()
         assert coordinator._options_update_task is None
+
+
+# ---------------------------------------------------------------------------
+# OCPP-event-triggered background task (issue #908)
+# ---------------------------------------------------------------------------
+
+
+class TestOcppEventDebounceBackgroundTask:
+    """async_ocpp_event must schedule a debounced pipeline refresh.
+
+    Mirrors TestOptionsUpdateBackgroundTask exactly — same
+    cancel-and-reschedule ``asyncio.Task`` debounce mechanism, applied to
+    significant OCPP protocol events (connect/disconnect/status-change/
+    start-stop) instead of options changes. Without this,
+    ``sensor.hsem_ocpp_charger_status`` would only reflect a live protocol
+    event once the coordinator's next scheduled cycle ran — up to the full
+    ``hsem_update_interval`` (default 5 minutes) later.
+    """
+
+    @pytest.mark.asyncio
+    @patch(
+        "custom_components.hsem.coordinator_lifecycle.OCPP_EVENT_DEBOUNCE_SECONDS",
+        0.0,
+    )
+    async def test_ocpp_event_schedules_background_task(self) -> None:
+        """async_ocpp_event returns immediately after scheduling a task."""
+        coordinator = _make_bare_coordinator()
+        coordinator.hass = MagicMock()
+
+        scheduled: list[asyncio.Task] = []
+
+        def _create_task(coro: Any, *, name: str, **kwargs: Any) -> asyncio.Task:
+            task = asyncio.get_running_loop().create_task(coro, name=name)
+            scheduled.append(task)
+            return task
+
+        coordinator.hass.async_create_task = MagicMock(side_effect=_create_task)
+
+        async def _noop_cycle(*args: Any, **kwargs: Any) -> None:
+            await asyncio.sleep(0)
+
+        coordinator._async_handle_update = _noop_cycle  # type: ignore[method-assign]  # test monkey-patch
+
+        await coordinator.async_ocpp_event()
+
+        coordinator.hass.async_create_task.assert_called_once()  # type: ignore[union-attr]  # mock assertion
+        call_kwargs = coordinator.hass.async_create_task.call_args[1]  # type: ignore[attr-defined]
+        assert call_kwargs.get("eager_start") is False
+        assert len(scheduled) == 1
+        assert scheduled[0].get_name() == "hsem_ocpp_event_debounce"
+
+        # Let the debounce task finish; it then schedules the background task.
+        await scheduled[0]
+        assert len(scheduled) == 2
+        assert scheduled[1].get_name() == "hsem_ocpp_event_update"
+        await scheduled[1]
+
+    @pytest.mark.asyncio
+    @patch(
+        "custom_components.hsem.coordinator_lifecycle.OCPP_EVENT_DEBOUNCE_SECONDS",
+        0.0,
+    )
+    async def test_burst_of_events_collapses_to_one_refresh(self) -> None:
+        """A burst of OCPP events (e.g. connect + StatusNotification +
+        StartTransaction) collapses into a single refresh."""
+        coordinator = _make_bare_coordinator()
+        coordinator.hass = MagicMock()
+
+        scheduled: list[asyncio.Task] = []
+
+        def _create_task(coro: Any, *, name: str, **kwargs: Any) -> asyncio.Task:
+            task = asyncio.get_running_loop().create_task(coro, name=name)
+            scheduled.append(task)
+            return task
+
+        coordinator.hass.async_create_task = MagicMock(side_effect=_create_task)
+
+        started = asyncio.Event()
+
+        async def _blocking_cycle(*args: Any, **kwargs: Any) -> None:
+            started.set()
+            await asyncio.sleep(60)
+
+        coordinator._async_handle_update = _blocking_cycle  # type: ignore[method-assign]  # test monkey-patch
+
+        await coordinator.async_ocpp_event()
+        assert len(scheduled) == 1
+        debounce_task = scheduled[0]
+        assert debounce_task.get_name() == "hsem_ocpp_event_debounce"
+
+        await started.wait()
+        assert len(scheduled) == 2
+        background_task = scheduled[1]
+        assert background_task.get_name() == "hsem_ocpp_event_update"
+
+        # A second event cancels the previous debounce/background tasks and
+        # schedules a fresh debounce task.
+        await coordinator.async_ocpp_event()
+        assert len(scheduled) == 3
+        assert scheduled[2].get_name() == "hsem_ocpp_event_debounce"
+
+        await scheduled[2]
+        assert background_task.cancelled() or background_task.cancelling()
+
+    @pytest.mark.asyncio
+    @patch(
+        "custom_components.hsem.coordinator_lifecycle.OCPP_EVENT_DEBOUNCE_SECONDS",
+        0.0,
+    )
+    async def test_teardown_cancels_pending_ocpp_event_task(self) -> None:
+        """async_teardown must cancel pending debounce and OCPP-event tasks."""
+        coordinator = _make_bare_coordinator()
+        coordinator.hass = MagicMock()
+
+        async def _blocking_cycle(*args: Any, **kwargs: Any) -> None:
+            await asyncio.sleep(60)
+
+        coordinator._async_handle_update = _blocking_cycle  # type: ignore[method-assign]  # test monkey-patch
+        coordinator.hass.async_create_task = MagicMock(  # type: ignore[method-assign]  # test monkey-patch
+            side_effect=lambda coro, *, name, **kwargs: (
+                asyncio.get_running_loop().create_task(coro, name=name)
+            )
+        )
+
+        await coordinator.async_ocpp_event()
+        debounce_task = coordinator._ocpp_event_debounce_task
+        assert debounce_task is not None and not debounce_task.done()
+
+        await debounce_task
+        task = coordinator._ocpp_event_task
+        assert task is not None and not task.done()
+        assert coordinator._ocpp_event_debounce_task is None
+
+        await coordinator.async_teardown()
+
+        assert task.cancelling() or task.cancelled() or task.done()
+        assert coordinator._ocpp_event_task is None
 
 
 # ---------------------------------------------------------------------------

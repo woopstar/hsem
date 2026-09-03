@@ -423,14 +423,32 @@ remote start, configure it for free-vending / no-authorization-required, or
 `RemoteStartTransaction` will be rejected and the charger stays in
 `SuspendedEVSE` regardless (issue #892).
 
-HSEM does not correlate a charger's CALLRESULT/CALLERROR reply to a specific
-outbound call — the only confirmation it trusts is the charger's own,
-separately-initiated `StartTransaction` message. While a session stays
-unconfirmed (`transaction_id` still unset) after a start attempt, HSEM
-retries `RemoteStartTransaction` roughly once a minute rather than giving up
-after a single attempt, so a rejected, dropped, or unanswered start request
-is retried automatically. It stops retrying the moment `StartTransaction`
-arrives.
+The final confirmation that a session actually started is still the
+charger's own, separately-initiated `StartTransaction` message, not a
+CALLRESULT reply. While a session stays unconfirmed (`transaction_id` still
+unset) after a start attempt, HSEM retries `RemoteStartTransaction` roughly
+once a minute rather than giving up after a single attempt, so a rejected,
+dropped, or unanswered start request is retried automatically. It stops
+retrying the moment `StartTransaction` arrives.
+
+HSEM allocates the transaction ID itself when `StartTransaction` arrives — it
+does not trust a `transactionId` in the charger's request (issue #906). Per
+OCPP 1.6 §5.14, that field doesn't exist on `StartTransaction.req` in the
+first place; assigning one is the central system's job. Before this fix,
+every session's transaction ID silently defaulted to `0`, and a charger
+firmware that treats `0` as an unset/sentinel value could then reject or
+ignore a subsequent `RemoteStopTransaction` naming it.
+
+**CALLRESULT status is now tracked for the three commands HSEM sends**
+(`RemoteStartTransaction`, `SetChargingProfile`, `RemoteStopTransaction`,
+issue #906). A `"Rejected"`/`"NotSupported"` response is logged as a warning
+and recorded per charger as `last_call_status` on
+`sensor.hsem_ocpp_charger_status`'s CPID attribute — so if your charger
+rejects a requested amperage (e.g. it keeps charging at whatever was set
+locally in its own app instead of HSEM's `requested_current_a`), that
+rejection is now visible instead of silently assumed successful. A rejected
+`SetChargingProfile` is retried on the same roughly-once-a-minute cadence as
+a rejected start, without waiting for the target to change materially.
 
 The charge point ID (`hsem_ocpp_cpid`) must match the path segment your
 charger connects with — HSEM derives it from the WebSocket connection path
@@ -466,6 +484,14 @@ to zero before a session ever started (no `RemoteStartTransaction` was sent
 yet), there is nothing to stop and HSEM skips the call rather than sending an
 invalid, schema-violating request (issue #892).
 
+Sending the stop request is not the end of it: the ground-truth confirmation
+that the charger actually stopped is its own subsequent `StopTransaction`
+call clearing `transaction_id`, mirroring how `StartTransaction` confirms a
+start (issue #906). If `transaction_id` is still set once the stop window
+has elapsed, HSEM retries `RemoteStopTransaction` roughly once a minute
+instead of assuming a single attempt worked — a charger that silently
+ignores or rejects the first stop request no longer gets stuck charging.
+
 **Charger-stall diagnostics (issue #894):** an open transaction and a valid
 `SetChargingProfile` do not guarantee current is actually flowing — the
 charger can report `StatusNotification` status `"SuspendedEVSE"`,
@@ -484,6 +510,26 @@ scheduled charging), which is normal and never counts as a stall.
 
 This distinction drives the asymmetric ceiling deadband: a _reduction_ can force a
 charger to throttle, an _increase_ only offers headroom it may or may not take.
+
+**Sensor update latency (issue #908).** `sensor.hsem_ocpp_charger_status` and
+the other OCPP diagnostic sensors are coordinator-driven
+(`should_poll = False`) — Home Assistant only re-renders them when the
+coordinator publishes a fresh snapshot. HSEM's own regular cycle runs on
+`hsem_update_interval` minutes (default 5), so without an out-of-band trigger
+a car plugging in, unplugging, or a charge starting/stopping would be
+recorded internally the instant the OCPP message arrives but stay invisible
+in the frontend/history/logbook/templates for up to that full interval.
+
+HSEM now schedules a debounced coordinator refresh — typically within about
+2 seconds — whenever a charger connects, disconnects, its
+`StatusNotification` status changes, or `StartTransaction`/`StopTransaction`
+confirms a start/stop. A burst of related messages around one event (e.g.
+`BootNotification` + `StatusNotification` + `StartTransaction`, which
+usually arrive within about a second of each other on connect) coalesces
+into a single refresh instead of one per message. `MeterValues` and
+`Heartbeat` deliberately do **not** trigger a refresh — they arrive far more
+often and carry no state-transition information worth an out-of-band
+planner cycle.
 
 **go-e Charger.** The V2 API exposes `ama` (max ampere) for dynamic load balancing.
 go-e have confirmed setting it frequently is safe, but the community convention is

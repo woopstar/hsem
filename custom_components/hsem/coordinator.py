@@ -351,6 +351,13 @@ class HSEMDataUpdateCoordinator(
         # so the planner only runs once after the user stops clicking.
         self._options_update_debounce_task: asyncio.Task | None = None
 
+        # Same pattern for significant OCPP protocol events (issue #908) —
+        # a connect/disconnect/status-change/start-stop triggers a refresh
+        # a short debounce window later, instead of waiting for the next
+        # scheduled cycle (up to hsem_update_interval minutes away).
+        self._ocpp_event_task: asyncio.Task | None = None
+        self._ocpp_event_debounce_task: asyncio.Task | None = None
+
     # ------------------------------------------------------------------
     # HA lifecycle
     # ------------------------------------------------------------------
