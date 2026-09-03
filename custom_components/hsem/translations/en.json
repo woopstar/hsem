@@ -16,14 +16,11 @@
       "invalid_power_value": "Invalid power value — please enter a number.",
       "invalid_price_value": "Invalid price value — please enter a number.",
       "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
-      "invalid_time_format": "Invalid time format — expected HH:MM:SS.",
       "months_winter_empty": "Winter season must have at least one month.",
       "only_one_entry_allowed": "Only one configuration of HSEM is allowed.",
       "power_out_of_range": "Power value is outside the allowed range.",
       "price_out_of_range": "Price value is outside the allowed range.",
       "required": "This field is required.",
-      "start_time_after_end_time": "Start time must be before end time.",
-      "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead.",
       "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve.",
       "port_conflict": "The second OCPP port must differ from the first OCPP port."
     },
@@ -119,48 +116,6 @@
         },
         "description": "Configure the embedded OCPP 1.6 server for LAN-only EV charger control. When enabled, HSEM sends SetChargingProfile commands directly to your EV charger based on the charging plan.",
         "title": "OCPP Server"
-      },
-      "batteries_schedule_1": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule."
-        },
-        "description": "Configure battery discharge schedule 1, including its activation time.",
-        "title": "Battery Discharge Schedule 1"
-      },
-      "batteries_schedule_2": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule."
-        },
-        "description": "Configure battery discharge schedule 2, including its activation time.",
-        "title": "Battery Discharge Schedule 2"
-      },
-      "batteries_schedule_3": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
-        },
-        "description": "Configure battery discharge schedule 3, including its activation time.",
-        "title": "Battery Discharge Schedule 3"
       },
       "prices": {
         "data": {
@@ -339,32 +294,6 @@
         },
         "description": "Update the settings for HSEM",
         "title": "Update Huawei Solar Energy Management"
-      },
-      "batteries_schedules": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time",
-          "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time",
-          "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
-        },
-        "description": "Configure up to three battery discharge schedule windows, each with enable/disable toggle, start time, and end time. Schedules define when the battery may discharge to cover peak consumption or export to the grid.",
-        "title": "Battery Discharge Schedules"
       },
       "months": {
         "data": {
@@ -543,14 +472,11 @@
       "invalid_power_value": "Invalid power value — please enter a number.",
       "invalid_price_value": "Invalid price value — please enter a number.",
       "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
-      "invalid_time_format": "Invalid time format — expected HH:MM:SS.",
       "months_winter_empty": "Winter season must have at least one month.",
       "only_one_entry_allowed": "Only one configuration of HSEM is allowed.",
       "power_out_of_range": "Power value is outside the allowed range.",
       "price_out_of_range": "Price value is outside the allowed range.",
       "required": "This field is required.",
-      "start_time_after_end_time": "Start time must be before end time.",
-      "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead.",
       "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve.",
       "port_conflict": "The second OCPP port must differ from the first OCPP port."
     },
@@ -646,48 +572,6 @@
         },
         "description": "Configure the embedded OCPP 1.6 server for LAN-only EV charger control. When enabled, HSEM sends SetChargingProfile commands directly to your EV charger based on the charging plan.",
         "title": "OCPP Server"
-      },
-      "batteries_schedule_1": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule."
-        },
-        "description": "Configure battery discharge schedule 1, including its activation time.",
-        "title": "Battery Discharge Schedule 1"
-      },
-      "batteries_schedule_2": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule."
-        },
-        "description": "Configure battery discharge schedule 2, including its activation time.",
-        "title": "Battery Discharge Schedule 2"
-      },
-      "batteries_schedule_3": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
-        },
-        "description": "Configure battery discharge schedule 3, including its activation time.",
-        "title": "Battery Discharge Schedule 3"
       },
       "prices": {
         "data": {
@@ -866,32 +750,6 @@
         },
         "description": "Update the settings for HSEM",
         "title": "Update Huawei Solar Energy Management"
-      },
-      "batteries_schedules": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time",
-          "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time",
-          "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
-        },
-        "description": "Configure up to three battery discharge schedule windows, each with enable/disable toggle, start time, and end time. Schedules define when the battery may discharge to cover peak consumption or export to the grid.",
-        "title": "Battery Discharge Schedules"
       },
       "months": {
         "data": {
@@ -1212,15 +1070,6 @@
       "verbose_logging": {
         "name": "Verbose Logging"
       },
-      "batteries_schedule_1": {
-        "name": "Batteries Schedule 1"
-      },
-      "batteries_schedule_2": {
-        "name": "Batteries Schedule 2"
-      },
-      "batteries_schedule_3": {
-        "name": "Batteries Schedule 3"
-      },
       "ev_force_discharge": {
         "name": "EV Force Max Discharge Power"
       },
@@ -1272,24 +1121,6 @@
       }
     },
     "time": {
-      "schedule_1_start": {
-        "name": "Batteries Discharge Schedule 1 Start"
-      },
-      "schedule_1_end": {
-        "name": "Batteries Discharge Schedule 1 End"
-      },
-      "schedule_2_start": {
-        "name": "Batteries Discharge Schedule 2 Start"
-      },
-      "schedule_2_end": {
-        "name": "Batteries Discharge Schedule 2 End"
-      },
-      "schedule_3_start": {
-        "name": "Batteries Discharge Schedule 3 Start"
-      },
-      "schedule_3_end": {
-        "name": "Batteries Discharge Schedule 3 End"
-      },
       "ev_deadline": {
         "name": "EV Charge Deadline"
       },

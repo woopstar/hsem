@@ -108,7 +108,6 @@ def _make_ev_input(
         for h in range(24)
     ]
 
-    base = make_summer_day_input(now_iso=now_iso)
     return PlannerInput(
         now_iso=now_iso,
         interval_minutes=60,
@@ -126,7 +125,6 @@ def _make_ev_input(
         consumption_averages=averages,
         price_points=prices,
         solcast_slots=pv,
-        battery_schedules=base.battery_schedules,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
         excess_export_enabled=False,
         is_read_only=True,
@@ -587,7 +585,7 @@ class TestResolverPreservesEnergyFields:
     Energy fields (``ev_planned_load_kwh``, ``estimated_net_consumption_kwh``,
     ``batteries_charged_kwh``, ``grid_import_kwh``, ``grid_export_kwh``,
     ``batteries_discharged_kwh``) must be identical before and after the call
-    for all four resolver branches.
+    for all resolver branches.
     """
 
     _ENERGY_FIELDS = (
@@ -611,7 +609,7 @@ class TestResolverPreservesEnergyFields:
         )
         before = self._snapshot_energy(rec)
         resolve_current_recommendation(
-            rec, _make_live(import_price=-0.05), 0.0, _make_resolver_cfg()
+            rec, _make_live(import_price=-0.05), _make_resolver_cfg()
         )
         assert rec.recommendation == Recommendations.ForceExport.value
         assert self._snapshot_energy(rec) == before
@@ -624,24 +622,9 @@ class TestResolverPreservesEnergyFields:
         rec.ev_charger_calculated_power = 7500.0
         before = self._snapshot_energy(rec)
         resolve_current_recommendation(
-            rec, _make_live(ev_charging=True), 0.0, _make_resolver_cfg()
+            rec, _make_live(ev_charging=True), _make_resolver_cfg()
         )
         assert rec.recommendation == Recommendations.EVSmartCharging.value
-        assert self._snapshot_energy(rec) == before
-
-    def test_discharge_mode_branch_preserves_energy_fields(self):
-        """BatteriesDischargeMode override must not modify energy fields."""
-        rec = _make_hrec(
-            ev_kwh=1.0, estimated_net_consumption_kwh=0.8, batteries_charged_kwh=0.0
-        )
-        before = self._snapshot_energy(rec)
-        resolve_current_recommendation(
-            rec,
-            _make_live(battery_kwh=10.0),
-            batteries_schedules_remaining_capacity_needed=5.0,
-            cfg=_make_resolver_cfg(),
-        )
-        assert rec.recommendation == Recommendations.BatteriesDischargeMode.value
         assert self._snapshot_energy(rec) == before
 
     def test_grid_charge_preserved_branch_does_not_modify_any_field(self):
@@ -654,7 +637,7 @@ class TestResolverPreservesEnergyFields:
         before_rec = rec.recommendation
         before = self._snapshot_energy(rec)
         resolve_current_recommendation(
-            rec, _make_live(ev_charging=True), 0.0, _make_resolver_cfg()
+            rec, _make_live(ev_charging=True), _make_resolver_cfg()
         )
         assert rec.recommendation == before_rec  # unchanged
         assert self._snapshot_energy(rec) == before
@@ -671,19 +654,17 @@ class TestResolverPreservesEnergyFields:
         resolve_current_recommendation(
             rec,
             _make_live(ev_charging=False, import_price=0.20),
-            0.0,
             _make_resolver_cfg(),
         )
         assert rec.recommendation == before_rec
         assert self._snapshot_energy(rec) == before
 
     def test_ev_kwh_not_zeroed_by_any_resolver_branch(self):
-        """``ev_planned_load_kwh`` must survive all four resolver paths."""
-        for ev_charging, import_price, sched_needed in [
-            (True, 0.20, 0.0),  # EV branch
-            (False, -0.10, 0.0),  # Negative price branch
-            (False, 0.20, 3.0),  # Discharge mode branch
-            (False, 0.20, 0.0),  # No-op branch
+        """``ev_planned_load_kwh`` must survive all resolver paths."""
+        for ev_charging, import_price in [
+            (True, 0.20),  # EV branch
+            (False, -0.10),  # Negative price branch
+            (False, 0.20),  # No-op branch
         ]:
             rec = _make_hrec(ev_kwh=4.2)
             resolve_current_recommendation(
@@ -691,13 +672,11 @@ class TestResolverPreservesEnergyFields:
                 _make_live(
                     ev_charging=ev_charging, import_price=import_price, battery_kwh=10.0
                 ),
-                batteries_schedules_remaining_capacity_needed=sched_needed,
-                cfg=_make_resolver_cfg(),
+                _make_resolver_cfg(),
             )
             assert abs(rec.ev_planned_load_kwh - 4.2) < 1e-9, (
                 f"ev_planned_load_kwh was modified to {rec.ev_planned_load_kwh} "
-                f"by resolver (ev_charging={ev_charging}, price={import_price}, "
-                f"sched_needed={sched_needed})"
+                f"by resolver (ev_charging={ev_charging}, price={import_price})"
             )
 
 

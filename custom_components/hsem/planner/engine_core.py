@@ -24,16 +24,11 @@ from custom_components.hsem.planner.candidate_selector import (
     replacement_price_from_next_discharge,
     select_best_candidate,
 )
-from custom_components.hsem.planner.charging.arbitrage_charge import (
-    apply_arbitrage_grid_charge,
-)
 from custom_components.hsem.planner.charging.opportunistic_charge import (
     apply_opportunistic_charge,
 )
-from custom_components.hsem.planner.charging.pre_charge import apply_charge_schedules
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.discharge_scheduler import (
-    apply_discharge_schedules,
     apply_excess_export,
     apply_optimization_strategy,
     calculate_required_battery_until_solar,
@@ -77,7 +72,6 @@ from custom_components.hsem.utils.misc import (
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import (
     max_energy_per_slot_kwh,
-    roundtrip_loss_pct,
     slot_duration_hours,
 )
 
@@ -131,31 +125,11 @@ def _schedule_slots(
             the caller so heuristic and MILP paths use the same value.
     """
     mark_time_passed(slots, now)
-    apply_discharge_schedules(slots, inp.battery_schedules, now)
-    log_planner(
-        "debug",
-        "[core] _schedule_slots  pass=discharge_schedules  slots=%d",
-        len(slots),
-    )
     cd = clamp_efficiency(inp.battery_charge_efficiency_pct)
-    rlp = roundtrip_loss_pct(
-        inp.battery_charge_efficiency_pct,
-        inp.battery_discharge_efficiency_pct,
-    )
     mcphi = max_energy_per_slot_kwh(
         inp.battery_max_charge_power_w,
         inp.interval_minutes,
         efficiency_fraction=cd,
-    )
-    apply_charge_schedules(
-        slots,
-        inp.battery_schedules,
-        now,
-        mcphi,
-        current_kwh=current_kwh,
-        usable_kwh=usable_kwh,
-        cycle_cost_per_kwh=effective_cycle_cost,
-        recommended_threshold=rt,
     )
     apply_opportunistic_charge(
         slots,
@@ -165,17 +139,6 @@ def _schedule_slots(
         mcphi,
         rt,
         cycle_cost_per_kwh=effective_cycle_cost,
-    )
-    apply_arbitrage_grid_charge(
-        slots,
-        inp.battery_schedules,
-        now,
-        current_kwh,
-        usable_kwh,
-        mcphi,
-        conversion_loss_pct=rlp,
-        cycle_cost_per_kwh=effective_cycle_cost,
-        recommended_threshold=rt,
     )
     mcps = mcphi  # same formula — max charge energy per slot
     mdps: float | None = None

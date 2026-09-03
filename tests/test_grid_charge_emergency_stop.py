@@ -477,7 +477,6 @@ class TestErrorModeTopLevelGateIntegration:
         data.cfg = cfg
         data.live = live
         data.hourly_recommendation = rec
-        data.batteries_schedules_remaining_capacity_needed = 0.0
         data.current_required_battery = 0.0
         data.apply_summary = None
         return data

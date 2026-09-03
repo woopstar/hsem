@@ -11,7 +11,7 @@ The config flow is a multi-step wizard. Steps appear in this order:
 ```
 quick_setup → init → prices → months → solcast → huawei_solar
     → battery_economics → power → ev → [ev_second] → ev_planned_load
-    → [ev_second_planned_load] → ocpp → batteries_schedules
+    → [ev_second_planned_load] → ocpp
     → batteries_wait_mode → batteries_excess_export → weighted_values
     → energy_and_ml
 ```
@@ -205,18 +205,6 @@ fields are only shown when the second EV is configured.
 | Second OCPP enabled    | `hsem_ocpp_second_enabled` | `False` | Enable the dedicated second-EV server (only shown with second EV)                      |
 | Second OCPP port       | `hsem_ocpp_second_port`    | `9001`  | TCP port for the second EV's OCPP WebSocket server (must differ from the primary port) |
 | Second charge point ID | `hsem_ocpp_second_cpid`    | —       | Charge point identifier of the second EV charger                                       |
-
-### Step: `batteries_schedule_1/2/3`
-
-Battery charge/discharge schedule windows (up to three).
-
-| Field      | Key                                                | Default | Description                 |
-| ---------- | -------------------------------------------------- | ------- | --------------------------- |
-| Enabled    | `hsem_batteries_enable_batteries_schedule_N`       | Varies  | Toggle this schedule window |
-| Start time | `hsem_batteries_enable_batteries_schedule_N_start` | Varies  | Window start (HH:MM:SS)     |
-| End time   | `hsem_batteries_enable_batteries_schedule_N_end`   | Varies  | Window end (HH:MM:SS)       |
-
-Schedule 1 and 2 are enabled by default; schedule 3 is disabled by default.
 
 ### Step: `batteries_wait_mode`
 

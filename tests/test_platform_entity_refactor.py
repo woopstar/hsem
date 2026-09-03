@@ -12,7 +12,7 @@ Verifies that the select, switch, and time platform entities:
 
 Unique-ID format contract (must never change):
   - Switch:  ``"hsem_<entry_id>_<key>_switch"``   e.g. ``"hsem_<entry_id>_hsem_read_only_switch"``
-  - Time:    ``"hsem_<entry_id>_<key>_time"``     e.g. ``"hsem_<entry_id>_hsem_batteries_enable_batteries_schedule_1_start_time"``
+  - Time:    ``"hsem_<entry_id>_<key>_time"``     e.g. ``"hsem_<entry_id>_hsem_ev_deadline_time_time"``
   - Select:  ``"<key>_<entry_id>"``               e.g. ``"hsem_force_working_mode_test_entry_id"``
     (The key already carries the ``hsem_`` prefix; entry_id is appended for uniqueness.)
 """
@@ -51,21 +51,14 @@ def _mock_config_entry(entry_id: str = "test_entry_id", **opts: Any) -> MagicMoc
         "hsem_read_only": False,
         "hsem_extended_attributes": False,
         "hsem_verbose_logging": False,
-        "hsem_batteries_enable_batteries_schedule_1": True,
-        "hsem_batteries_enable_batteries_schedule_2": False,
-        "hsem_batteries_enable_batteries_schedule_3": False,
         "hsem_ev_charger_force_max_discharge_power": False,
         # Both EVs' planned load enabled by default so exhaustive
         # "all descriptions created" setup tests keep covering every switch
         # (issue #859 gates EV switches on these flags).
         "hsem_ev_planned_load_enabled": True,
         "hsem_ev_second_planned_load_enabled": True,
-        "hsem_batteries_enable_batteries_schedule_1_start": "07:00:00",
-        "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
-        "hsem_batteries_enable_batteries_schedule_2_start": "17:00:00",
-        "hsem_batteries_enable_batteries_schedule_2_end": "21:00:00",
-        "hsem_batteries_enable_batteries_schedule_3_start": "23:00:00",
-        "hsem_batteries_enable_batteries_schedule_3_end": "02:00:00",
+        "hsem_ev_deadline_time": "07:00:00",
+        "hsem_ev_second_deadline_time": "17:00:00",
         **opts,
     }
     return entry
@@ -95,9 +88,9 @@ def _make_switch(
 
 
 def _make_time(
-    key: str = "hsem_batteries_enable_batteries_schedule_1_start",
-    name: str = "Batteries Discharge Schedule 1 Start",
-    description: str = "Start time for schedule 1.",
+    key: str = "hsem_ev_deadline_time",
+    name: str = "EV Deadline",
+    description: str = "EV charge deadline.",
     default: str = "07:00:00",
 ) -> HSEMTimeEntity:
     hass = _mock_hass()
@@ -401,9 +394,9 @@ class TestSwitchPlatformSetup:
             "hsem_read_only": True,
             "hsem_extended_attributes": False,
             "hsem_verbose_logging": True,
-            "hsem_batteries_enable_batteries_schedule_1": False,
-            "hsem_batteries_enable_batteries_schedule_2": True,
-            "hsem_batteries_enable_batteries_schedule_3": False,
+            "hsem_dynamic_discharge_floor": False,
+            "hsem_ml_consumption_enabled": True,
+            "hsem_ml_consumption_sequential": False,
             "hsem_ev_charger_force_max_discharge_power": True,
         }
         config_entry = _mock_config_entry(**opts)  # type: ignore[arg-type]  # test helper: typed dict values
@@ -433,7 +426,7 @@ class TestTimeUniqueId:
 
     def test_unique_id_format(self) -> None:
         """unique_id must be 'hsem_<entry_id>_<key>_time'."""
-        key = "hsem_batteries_enable_batteries_schedule_1_start"
+        key = "hsem_ev_deadline_time"
         entity = _make_time(key=key)
         assert entity.unique_id == f"{DOMAIN}_test_entry_id_{key}_time"
 
@@ -451,8 +444,8 @@ class TestTimeUniqueId:
         assert entity._attr_unique_id == entity.unique_id
 
     def test_different_keys_produce_different_unique_ids(self) -> None:
-        e1 = _make_time(key="hsem_batteries_enable_batteries_schedule_1_start")
-        e2 = _make_time(key="hsem_batteries_enable_batteries_schedule_1_end")
+        e1 = _make_time(key="hsem_ev_deadline_time")
+        e2 = _make_time(key="hsem_ev_second_deadline_time")
         assert e1.unique_id != e2.unique_id
 
 
@@ -491,12 +484,8 @@ class TestTimePlatformSetupExtended:
 
         hass = _mock_hass()
         opts = {
-            "hsem_batteries_enable_batteries_schedule_1_start": "06:30:00",
-            "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
-            "hsem_batteries_enable_batteries_schedule_2_start": "16:00:00",
-            "hsem_batteries_enable_batteries_schedule_2_end": "20:30:00",
-            "hsem_batteries_enable_batteries_schedule_3_start": "22:00:00",
-            "hsem_batteries_enable_batteries_schedule_3_end": "01:00:00",
+            "hsem_ev_deadline_time": "06:30:00",
+            "hsem_ev_second_deadline_time": "20:30:00",
         }
         config_entry = _mock_config_entry(**opts)  # type: ignore[arg-type]  # test helper: typed dict values
         added: list[HSEMTimeEntity] = []
@@ -511,24 +500,8 @@ class TestTimePlatformSetupExtended:
             await async_setup_entry(hass, config_entry, add_entities)  # type: ignore[arg-type]  # HA AddEntitiesCallback stub too strict for test callback
 
         by_key = {e.entity_description.key: e for e in added}
-        assert by_key[
-            "hsem_batteries_enable_batteries_schedule_1_start"
-        ].native_value == time(6, 30)
-        assert by_key[
-            "hsem_batteries_enable_batteries_schedule_1_end"
-        ].native_value == time(9, 0)
-        assert by_key[
-            "hsem_batteries_enable_batteries_schedule_2_start"
-        ].native_value == time(16, 0)
-        assert by_key[
-            "hsem_batteries_enable_batteries_schedule_2_end"
-        ].native_value == time(20, 30)
-        assert by_key[
-            "hsem_batteries_enable_batteries_schedule_3_start"
-        ].native_value == time(22, 0)
-        assert by_key[
-            "hsem_batteries_enable_batteries_schedule_3_end"
-        ].native_value == time(1, 0)
+        assert by_key["hsem_ev_deadline_time"].native_value == time(6, 30)
+        assert by_key["hsem_ev_second_deadline_time"].native_value == time(20, 30)
 
     @pytest.mark.asyncio
     async def test_setup_uses_entity_description(self) -> None:

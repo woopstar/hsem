@@ -16,9 +16,6 @@ Usage example
 
 from __future__ import annotations
 
-from datetime import time
-
-from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
@@ -221,31 +218,6 @@ def _make_consumption_averages(
 
 
 # ---------------------------------------------------------------------------
-# Default battery schedules
-# ---------------------------------------------------------------------------
-
-
-def _default_schedules() -> list[BatteryScheduleInput]:
-    """Return the two default battery charge/discharge schedules.
-
-    - Schedule 1: discharge 07:00–09:00 (morning peak)
-    - Schedule 2: discharge 17:00–21:00 (evening peak)
-    """
-    return [
-        BatteryScheduleInput(
-            enabled=True,
-            start=time(7, 0),
-            end=time(9, 0),
-        ),
-        BatteryScheduleInput(
-            enabled=True,
-            start=time(17, 0),
-            end=time(21, 0),
-        ),
-    ]
-
-
-# ---------------------------------------------------------------------------
 # Public fixture factories
 # ---------------------------------------------------------------------------
 
@@ -259,7 +231,6 @@ def make_summer_day_input(
     battery_max_charge_power_w: float = 5000.0,
     interval_minutes: int = 60,
     interval_length_hours: int = 24,
-    schedules: list[BatteryScheduleInput] | None = None,
     months_winter: list[int] | None = None,
 ) -> PlannerInput:
     """Return a 24-hour summer planning input.
@@ -276,7 +247,6 @@ def make_summer_day_input(
         onversion loss (0-100 %).
         interval_minutes: Slot width in minutes (15 or 60).
         interval_length_hours: Planning horizon in hours (e.g. 24 or 48).
-        schedules: Override the default discharge schedules.
         months_winter: Override the list of winter months.
 
     Returns:
@@ -302,8 +272,6 @@ def make_summer_day_input(
         consumption_averages=_make_consumption_averages(_HOUSE_CONSUMPTION),
         price_points=_make_price_points(_SPOT_PRICES_SUMMER),
         solcast_slots=_make_solcast_slots(_SOLCAST_SUMMER),
-        # schedules
-        battery_schedules=schedules if schedules is not None else _default_schedules(),
         # excess export
         excess_export_enabled=True,
         excess_export_discharge_buffer_pct=10.0,
@@ -327,7 +295,6 @@ def make_winter_day_input(
     battery_max_charge_power_w: float = 5000.0,
     interval_minutes: int = 60,
     interval_length_hours: int = 24,
-    schedules: list[BatteryScheduleInput] | None = None,
     months_winter: list[int] | None = None,
 ) -> PlannerInput:
     """Return a 24-hour winter planning input.
@@ -344,7 +311,6 @@ def make_winter_day_input(
         onversion loss (0-100 %).
         interval_minutes: Slot width in minutes (15 or 60).
         interval_length_hours: Planning horizon in hours (e.g. 24 or 48).
-        schedules: Override the default discharge schedules.
         months_winter: Override the list of winter months.
 
     Returns:
@@ -370,8 +336,6 @@ def make_winter_day_input(
         consumption_averages=_make_consumption_averages(_HOUSE_CONSUMPTION),
         price_points=_make_price_points(_SPOT_PRICES_WINTER),
         solcast_slots=_make_solcast_slots(_SOLCAST_WINTER),
-        # schedules
-        battery_schedules=schedules if schedules is not None else _default_schedules(),
         # excess export disabled in winter (no meaningful solar surplus)
         excess_export_enabled=False,
         excess_export_discharge_buffer_pct=10.0,
@@ -435,7 +399,6 @@ def make_flat_price_input(
         consumption_averages=consumption,
         price_points=flat_prices,
         solcast_slots=no_solar,
-        battery_schedules=_default_schedules(),
         excess_export_enabled=False,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
         is_read_only=True,
@@ -494,7 +457,6 @@ def make_negative_price_input(
         consumption_averages=_make_consumption_averages(_HOUSE_CONSUMPTION),
         price_points=price_points,
         solcast_slots=_make_solcast_slots(_SOLCAST_SUMMER),
-        battery_schedules=_default_schedules(),
         excess_export_enabled=False,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
         is_read_only=True,

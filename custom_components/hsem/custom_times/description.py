@@ -9,26 +9,6 @@ from dataclasses import dataclass
 
 from homeassistant.components.time import TimeEntityDescription
 
-from custom_components.hsem.utils.sensornames.controls import (
-    get_schedule_1_end_time_entity_id,
-    get_schedule_1_end_time_key,
-    get_schedule_1_end_time_unique_id,
-    get_schedule_1_start_time_entity_id,
-    get_schedule_1_start_time_key,
-    get_schedule_1_start_time_unique_id,
-    get_schedule_2_end_time_entity_id,
-    get_schedule_2_end_time_key,
-    get_schedule_2_end_time_unique_id,
-    get_schedule_2_start_time_entity_id,
-    get_schedule_2_start_time_key,
-    get_schedule_2_start_time_unique_id,
-    get_schedule_3_end_time_entity_id,
-    get_schedule_3_end_time_key,
-    get_schedule_3_end_time_unique_id,
-    get_schedule_3_start_time_entity_id,
-    get_schedule_3_start_time_key,
-    get_schedule_3_start_time_unique_id,
-)
 from custom_components.hsem.utils.sensornames.ev import (
     get_ev_deadline_time_entity_id,
     get_ev_deadline_time_key,
@@ -49,30 +29,6 @@ def build_time_id_map(entry_id: str) -> dict[str, tuple[str, str]]:
         A dict mapping config-entry keys to (unique_id, entity_id) tuples.
     """
     return {
-        get_schedule_1_start_time_key(): (
-            get_schedule_1_start_time_unique_id(entry_id),
-            get_schedule_1_start_time_entity_id(),
-        ),
-        get_schedule_1_end_time_key(): (
-            get_schedule_1_end_time_unique_id(entry_id),
-            get_schedule_1_end_time_entity_id(),
-        ),
-        get_schedule_2_start_time_key(): (
-            get_schedule_2_start_time_unique_id(entry_id),
-            get_schedule_2_start_time_entity_id(),
-        ),
-        get_schedule_2_end_time_key(): (
-            get_schedule_2_end_time_unique_id(entry_id),
-            get_schedule_2_end_time_entity_id(),
-        ),
-        get_schedule_3_start_time_key(): (
-            get_schedule_3_start_time_unique_id(entry_id),
-            get_schedule_3_start_time_entity_id(),
-        ),
-        get_schedule_3_end_time_key(): (
-            get_schedule_3_end_time_unique_id(entry_id),
-            get_schedule_3_end_time_entity_id(),
-        ),
         get_ev_deadline_time_key(): (
             get_ev_deadline_time_unique_id(entry_id),
             get_ev_deadline_time_entity_id(),

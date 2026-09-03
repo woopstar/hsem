@@ -4,8 +4,8 @@ Single responsibility: read live HA entity states and return a typed
 :class:`~custom_components.hsem.models.live_state.LiveState` snapshot.
 
 Config-entry reading has moved to :mod:`config_reader`.
-Both :func:`build_sensor_config` and :func:`build_battery_schedules` are
-re-exported here so existing callers continue to work without changes.
+:func:`build_sensor_config` is re-exported here so existing callers
+continue to work without changes.
 
 This module also collects ALL HA states into an immutable
 :class:`~custom_components.hsem.models.state_snapshot.StateSnapshot`
@@ -26,7 +26,6 @@ from homeassistant.helpers.event import async_track_state_change_event
 
 # Re-export from config_reader so existing callers continue to work.
 from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401 — re-exported for backward compat in coordinator.py
-    build_battery_schedules,
     build_sensor_config,
 )
 from custom_components.hsem.custom_sensors.state_collector_compute import (  # noqa: F401 — re-exported for callers

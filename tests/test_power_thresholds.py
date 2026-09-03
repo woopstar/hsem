@@ -12,7 +12,7 @@ All tests are pure-Python — no Home Assistant runtime is required.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime
 
 import pytest
 
@@ -20,7 +20,6 @@ from custom_components.hsem.const import (
     NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH,
     SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH,
 )
-from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
@@ -29,7 +28,6 @@ from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.planner import run_planner
-from custom_components.hsem.planner.charge_scheduler import apply_charge_schedules
 from custom_components.hsem.planner.discharge_scheduler import (
     apply_optimization_strategy,
 )
@@ -77,7 +75,6 @@ def _make_minimal_input(
     months_winter: list[int] | None = None,
     battery_soc_pct: float = 50.0,
     interval_minutes: int = 60,
-    schedules: list[BatteryScheduleInput] | None = None,
 ) -> PlannerInput:
     """Build a PlannerInput from parallel per-hour lists."""
     prices = [
@@ -110,7 +107,6 @@ def _make_minimal_input(
         consumption_averages=consumption,
         price_points=prices,
         solcast_slots=solar,
-        battery_schedules=schedules if schedules is not None else [],
         excess_export_enabled=False,
         excess_export_discharge_buffer_pct=10.0,
         excess_export_price_threshold=0.10,
@@ -152,80 +148,7 @@ class TestConstantDefinitions:
 
 
 # ===========================================================================
-# 2. apply_charge_schedules — solar surplus threshold
-# ===========================================================================
-
-
-class TestSolarSurplusThresholdInChargeSchedules:
-    """Slots qualify for Priority-2 solar charge only when net consumption
-    is strictly below SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH."""
-
-    def _run(self, net_consumption: float) -> str | None:
-        """Return the recommendation assigned to a single candidate slot.
-
-        Priority-3 (cheapest grid hours) is disabled by setting a very large
-        depreciation threshold so the test can isolate whether Priority-2
-        (solar surplus) fires.  The flat 0.20 import price would never satisfy
-        a high depreciation guard, so the slot stays unassigned unless the
-        solar surplus condition triggers.
-        """
-        now = _now(0)
-        # Put the candidate slot just before a discharge window
-        candidate = _slot(hour=6, net_consumption=net_consumption)
-        # A later slot acts as the discharge window
-        discharge_slot = _slot(
-            hour=8,
-            net_consumption=0.5,
-            recommendation=Recommendations.BatteriesDischargeMode.value,
-        )
-        slots = [candidate, discharge_slot]
-
-        sched = BatteryScheduleInput(
-            enabled=True,
-            start=time(8, 0),
-            end=time(9, 0),
-        )
-        # Pre-set discharge schedule metadata (normally done by apply_discharge_schedules)
-        sched._needed_capacity = 0.5  # type: ignore[attr-defined]  # mock attribute set in test
-        sched._avg_import_price = 0.20  # type: ignore[attr-defined]  # mock attribute set in test
-
-        apply_charge_schedules(
-            slots=slots,
-            battery_schedules=[sched],
-            now=now,
-            max_charge_per_interval=5.0,
-            recommended_threshold=1000.0,
-        )
-        return candidate.recommendation
-
-    def test_large_solar_surplus_is_charged(self):
-        """A slot with -1.0 kWh net (strong surplus) must be solar-charged."""
-        assert self._run(-1.0) == _CHARGE_SOLAR
-
-    def test_at_exact_threshold_not_charged(self):
-        """A slot exactly at the threshold (-0.2) must NOT be solar-charged
-        (condition is strictly less-than)."""
-        assert self._run(SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH) is None
-
-    def test_just_below_threshold_is_charged(self):
-        """A slot just below the threshold (-0.21) must be solar-charged."""
-        assert self._run(SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH - 0.01) == _CHARGE_SOLAR
-
-    def test_just_above_threshold_not_charged(self):
-        """A slot just above the threshold (-0.19) must NOT be solar-charged."""
-        assert self._run(SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH + 0.01) is None
-
-    def test_zero_net_consumption_not_solar_charged(self):
-        """A balanced slot (0.0 kWh net) must NOT qualify for Priority-2."""
-        assert self._run(0.0) is None
-
-    def test_positive_net_consumption_not_solar_charged(self):
-        """A consumption slot (0.5 kWh net) must NOT qualify for Priority-2."""
-        assert self._run(0.5) is None
-
-
-# ===========================================================================
-# 3. apply_optimization_strategy — near-zero consumption threshold
+# 2. apply_optimization_strategy — near-zero consumption threshold
 # ===========================================================================
 
 
@@ -273,7 +196,7 @@ class TestNearZeroThresholdInOptimizationStrategy:
 
 
 # ===========================================================================
-# 4. apply_optimization_strategy — solar charging loop threshold
+# 3. apply_optimization_strategy — solar charging loop threshold
 # ===========================================================================
 
 
@@ -326,17 +249,16 @@ class TestSolarChargingLoopThreshold:
 
 
 # ===========================================================================
-# 5. End-to-end planner — threshold boundaries via run_planner
+# 4. End-to-end planner — threshold boundaries via run_planner
 # ===========================================================================
 
 
 class TestPlannerThresholdEndToEnd:
-    """Full planner runs to confirm thresholds are respected when coordinated
-    with schedule-based charge/discharge decisions."""
+    """Full planner runs to confirm thresholds are respected end-to-end."""
 
     def test_no_false_solar_charge_on_consumption_hours(self):
         """Hours where consumption clearly exceeds solar must NOT be
-        classified as BatteriesChargeSolar (summer, no schedule)."""
+        classified as BatteriesChargeSolar (summer)."""
         # High consumption at night, no solar at night
         solar = [0.0] * 6 + [0.1] * 18
         consumption = [1.5] * 6 + [0.05] * 18  # night consumption >> solar

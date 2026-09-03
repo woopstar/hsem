@@ -30,7 +30,6 @@ from custom_components.hsem.coordinator_helpers import (
 from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
     async_collect_all_states,
-    build_battery_schedules,
     build_sensor_config,
 )
 from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
@@ -69,8 +68,6 @@ class CoordinatorSharedState(_Base):
     """Type-only declaration of state shared across the coordinator mixins."""
 
     _avg_house_consumption_entity_id_cache: dict[str, str]
-    _batteries_schedules: list
-    _batteries_schedules_remaining_capacity_needed: float
     _capacity_learner: CapacityLearner
     _cfg: SensorConfig
     _config_entry: ConfigEntry

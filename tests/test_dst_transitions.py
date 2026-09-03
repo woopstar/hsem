@@ -264,9 +264,6 @@ class TestPlannerRunsDstDays:
 
     def _base_input(self, now_iso: str) -> PlannerInput:
         """Return a minimal PlannerInput for a 24-hour summer-like day."""
-        from custom_components.hsem.models.battery_schedule_input import (
-            BatteryScheduleInput,
-        )
         from custom_components.hsem.models.hourly_consumption_average import (
             HourlyConsumptionAverage,
         )
@@ -287,13 +284,6 @@ class TestPlannerRunsDstDays:
             )
             for h in range(24)
         ]
-        schedules = [
-            BatteryScheduleInput(
-                enabled=True,
-                start=time(17, 0),
-                end=time(21, 0),
-            )
-        ]
         return PlannerInput(
             now_iso=now_iso,
             interval_minutes=60,
@@ -311,7 +301,6 @@ class TestPlannerRunsDstDays:
             consumption_averages=consumption,
             price_points=prices,
             solcast_slots=solar,
-            battery_schedules=schedules,
             excess_export_enabled=False,
             months_winter=[1, 2, 3, 4, 10, 11, 12],
             is_read_only=True,

@@ -141,19 +141,6 @@ class TestPlannerInputRoundTrip:
         assert len(reconstructed.consumption_averages) == len(
             original.consumption_averages
         )
-        assert len(reconstructed.battery_schedules) == len(original.battery_schedules)
-
-    def test_battery_schedule_times_preserved(self) -> None:
-        original = make_summer_day_input()
-        dump = build_diagnostics_dump(original, run_planner(original))
-        reconstructed = load_planner_input_from_dump(dump)
-
-        for orig_sched, recon_sched in zip(
-            original.battery_schedules, reconstructed.battery_schedules
-        ):
-            assert recon_sched.start == orig_sched.start
-            assert recon_sched.end == orig_sched.end
-            assert recon_sched.enabled == orig_sched.enabled
 
     def test_null_battery_max_discharge_preserved(self) -> None:
         original = make_summer_day_input()

@@ -34,9 +34,6 @@ class CoordinatorData:
         hourly_recommendations: Full list of planner recommendation slots.
         hourly_recommendation: The recommendation slot active *right now*, or
             ``None`` when no matching slot exists.
-        batteries_schedules: Parsed battery charge/discharge schedule windows.
-        batteries_schedules_remaining_capacity_needed: Total remaining capacity
-            needed across all enabled battery schedules (kWh).
         current_required_battery: Required battery capacity from the planner (kWh).
         state: Working-mode recommendation string for the current slot, or one
             of the :class:`~utils.recommendations.Recommendations` sentinel values.
@@ -48,8 +45,6 @@ class CoordinatorData:
     live: LiveState | None = None
     hourly_recommendations: list[HourlyRecommendation] = field(default_factory=list)
     hourly_recommendation: HourlyRecommendation | None = None
-    batteries_schedules: list = field(default_factory=list)
-    batteries_schedules_remaining_capacity_needed: float = 0.0
     current_required_battery: float = 0.0
     state: str | None = None
     last_updated: str | None = None

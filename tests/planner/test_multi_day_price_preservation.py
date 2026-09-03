@@ -25,12 +25,10 @@ Acceptance criteria tested here:
 from __future__ import annotations
 
 import math
-from datetime import time
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
@@ -126,13 +124,6 @@ def _make_48h_input_with_day_offsets(
         consumption_averages=consumption_averages,
         price_points=price_points,
         solcast_slots=solcast_slots,
-        battery_schedules=[
-            BatteryScheduleInput(
-                enabled=True,
-                start=time(7, 0),
-                end=time(9, 0),
-            )
-        ],
         excess_export_enabled=False,
         excess_export_discharge_buffer_pct=10.0,
         excess_export_price_threshold=0.10,
@@ -390,7 +381,6 @@ class TestPlannerMultiDayPriceIsolation:
             consumption_averages=consumption,
             price_points=prices,
             solcast_slots=solar,
-            battery_schedules=[],
             excess_export_enabled=False,
             excess_export_discharge_buffer_pct=10.0,
             excess_export_price_threshold=0.10,

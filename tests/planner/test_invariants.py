@@ -35,7 +35,6 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
@@ -82,7 +81,6 @@ def _make_uniform_input(
     battery_max_charge_power_w: float = 5000.0,
     battery_purchase_price: float = 0.0,
     battery_expected_cycles: int = 6000,
-    schedules: list[BatteryScheduleInput] | None = None,
     excess_export_enabled: bool = False,
     house_power_includes_ev: bool = True,
     now_iso: str = "2024-06-15T00:00:00+02:00",
@@ -122,7 +120,6 @@ def _make_uniform_input(
         consumption_averages=consumption,
         price_points=prices,
         solcast_slots=solar,
-        battery_schedules=schedules if schedules is not None else [],
         excess_export_enabled=excess_export_enabled,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
         house_power_includes_ev=house_power_includes_ev,
@@ -597,37 +594,44 @@ class TestGridChargeAccounting:
     """
 
     def test_grid_import_exceeds_stored_with_conversion_loss(self):
-        """With 20% conversion loss, grid import for 1 kWh stored = 1.25 kWh.
+        """Any charge-efficiency loss < 100% means grid import > stored energy.
 
-        Hand calculation:
-          charge_efficiency = 1 - 0.20 = 0.80
-          To store 1 kWh: grid_import = 1.0 / 0.80 = 1.25 kWh
+        Hand calculation (default 97% charge efficiency, 3% conversion loss):
+          To store 1 kWh: grid_import = 1.0 / 0.97 ≈ 1.031 kWh
         """
-        # Build a minimal scenario: battery empty, one cheap slot, schedule forces charge
-        inp = _make_uniform_input(
+        # Cheap night hours followed by an expensive evening peak gives the
+        # MILP a natural economic incentive to charge from the grid, without
+        # needing to force it via a discharge schedule.
+        prices = [
+            PricePoint(hour=h, import_price=0.05 if h < 6 else 0.50, export_price=0.02)
+            for h in range(24)
+        ]
+        solar = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
+        consumption = [
+            HourlyConsumptionAverage(
+                hour=h, avg_1d=0.3, avg_3d=0.3, avg_7d=0.3, avg_14d=0.3
+            )
+            for h in range(24)
+        ]
+        inp = PlannerInput(
+            now_iso="2024-06-15T00:00:00+02:00",
+            interval_minutes=60,
+            interval_length_hours=24,
             battery_soc_pct=10.0,
             battery_rated_capacity_kwh=10.0,
             battery_end_of_discharge_soc_pct=10.0,
-            import_price=0.10,
-            load_kwh=0.0,
-        )
-        # Use a schedule that forces grid charge in hour 0
-        from datetime import time as dtime
-
-        inp.battery_schedules = [
-            BatteryScheduleInput(
-                enabled=True,
-                start=dtime(0, 0),
-                end=dtime(2, 0),
-            )
-        ]
-        # We need a discharge schedule later so the charge schedule fires
-        inp.battery_schedules.append(
-            BatteryScheduleInput(
-                enabled=True,
-                start=dtime(18, 0),
-                end=dtime(20, 0),
-            )
+            battery_max_charge_power_w=5000.0,
+            battery_purchase_price=10_000.0,
+            battery_expected_cycles=6000,
+            weight_1d=25,
+            weight_3d=30,
+            weight_7d=30,
+            weight_14d=15,
+            consumption_averages=consumption,
+            price_points=prices,
+            solcast_slots=solar,
+            months_winter=[1, 2, 3, 4, 10, 11, 12],
+            is_read_only=True,
         )
         result = run_planner(inp)
         charge_slots = [
@@ -636,12 +640,13 @@ class TestGridChargeAccounting:
             if s.recommendation == Recommendations.BatteriesChargeGrid.value
             and s.batteries_charged_kwh > 1e-9
         ]
+        assert charge_slots, "Expected at least one grid-charge slot on cheap hours"
         for slot in charge_slots:
             stored = slot.batteries_charged_kwh
-            # With 20% conversion loss, grid pull must exceed stored energy
+            # With any conversion loss, grid pull must exceed stored energy
             assert slot.grid_import_kwh > stored - 1e-6, (
                 f"Grid import {slot.grid_import_kwh:.4f} should exceed "
-                f"stored {stored:.4f} when conversion loss = 20%"
+                f"stored {stored:.4f} under charge-efficiency loss"
             )
 
     def test_cost_uses_grid_import_not_stored(self):
@@ -1252,7 +1257,6 @@ class TestMissingDataSentinel:
             consumption_averages=consumption,
             price_points=partial_prices,
             solcast_slots=solar,
-            battery_schedules=[],
             months_winter=[1, 2, 3, 4, 10, 11, 12],
             is_read_only=True,
         )
@@ -1322,10 +1326,7 @@ class TestSeasonalDeterminism:
         but does NOT assert that the final winner has zero discharge slots.
         """
         # January is always winter
-        inp = make_winter_day_input(
-            now_iso="2024-01-15T00:00:00+01:00",
-            schedules=[],  # no schedules so no schedule-driven discharge
-        )
+        inp = make_winter_day_input(now_iso="2024-01-15T00:00:00+01:00")
         result = run_planner(inp)
         # Check the baseline candidate's slots (the pre-candidate plan)
         # have correctly assigned wait-mode instead of discharge for winter.
@@ -1553,10 +1554,8 @@ class TestRequiredReserve:
     """
 
     def test_required_capacity_positive_on_summer_day(self):
-        """required_capacity_kwh must be > 0 when discharge windows are configured."""
+        """required_capacity_kwh must be >= 0 (energy needed until next solar surplus)."""
         result = run_planner(make_summer_day_input(battery_soc_pct=0.0))
-        # With discharge schedules active and empty battery there is reserve needed
-        # (the planner tries to charge before peak)
         assert result.required_capacity_kwh >= 0.0, (
             "required_capacity_kwh must be non-negative"
         )

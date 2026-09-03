@@ -1,7 +1,7 @@
 """Discharge scheduling for the HSEM planner.
 
 Single responsibility: decide *when* to discharge the battery
-based on discharge-window schedules, price signals, and seasonal strategy.
+based on price signals, excess-export gating, and seasonal strategy.
 
 All functions are pure — no I/O, no Home Assistant imports.  They mutate the
 :class:`PlannedSlot` list passed in and return nothing (or a scalar result).
@@ -10,9 +10,8 @@ All functions are pure — no I/O, no Home Assistant imports.  They mutate the
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
-from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
@@ -21,131 +20,6 @@ from custom_components.hsem.utils.recommendations import (
     DISCHARGE_RECS as _DISCHARGE_RECS,
     Recommendations,
 )
-from custom_components.hsem.utils.time_windows import next_window_start_dt
-
-# ---------------------------------------------------------------------------
-# Discharge schedule detection
-# ---------------------------------------------------------------------------
-
-
-def apply_discharge_schedules(
-    slots: list[PlannedSlot],
-    battery_schedules: list[BatteryScheduleInput],
-    now: datetime,
-) -> None:
-    """Mark slots inside each enabled discharge window as ``BatteriesDischargeMode``.
-
-    Also populates ``_needed_capacity`` and ``_avg_import_price`` as dynamic
-    attributes on each :class:`BatteryScheduleInput` so the charge planner can
-    read them without an extra pass.
-
-    Args:
-        slots: Mutable list of planned slots.
-        battery_schedules: Schedule configurations to evaluate.
-        now: Timezone-aware current datetime.
-    """
-    log_planner(
-        "debug",
-        "[disch] apply_discharge_schedules  schedules=%d  now=%s",
-        len(battery_schedules),
-        now.isoformat(),
-    )
-    for sched in battery_schedules:
-        if not sched.enabled:
-            continue
-
-        # Determine the last slot end in the planning horizon so we know how
-        # many days to cover.  We apply the discharge window once per calendar
-        # day that falls within [now, horizon_end].
-        future_slots = [s for s in slots if as_tz(s.end, now.tzinfo) > now]
-        if not future_slots:
-            continue
-        horizon_end = as_tz(future_slots[-1].end, now.tzinfo)
-
-        # Collect all occurrences of this schedule window within the horizon.
-        # Start from the first upcoming occurrence and advance one day at a time.
-        # Each occurrence is stored so apply_charge_schedules can schedule
-        # pre-charge independently per window occurrence.
-        window_start_abs = next_window_start_dt(now, sched.start)
-        occurrences: list[tuple[datetime, datetime, float, float]] = []
-        sched_total_net = 0.0
-
-        while window_start_abs < horizon_end:
-            if sched.end > sched.start:
-                window_end_abs = datetime.combine(
-                    window_start_abs.date(), sched.end
-                ).replace(tzinfo=now.tzinfo)
-            else:
-                # Cross-midnight discharge window
-                window_end_abs = datetime.combine(
-                    (window_start_abs + timedelta(days=1)).date(), sched.end
-                ).replace(tzinfo=now.tzinfo)
-
-            for slot in slots:
-                slot_start = as_tz(slot.start, now.tzinfo)
-                slot_end = as_tz(slot.end, now.tzinfo)
-                if slot_end <= now:
-                    continue
-                if slot_start >= window_start_abs and slot_end <= window_end_abs:
-                    slot.recommendation = Recommendations.BatteriesDischargeMode.value
-
-            # Capture per-occurrence capacity and avg price.
-            #
-            # Battery-relevant net consumption excludes EV planned load:
-            #   battery_net = avg_house_consumption - pv
-            #
-            # When base_load_includes_ev=False, estimated_net_consumption includes
-            # ev_planned_load_kwh.  The EV draws directly from grid/PV, not from
-            # the home battery, so including it in occ_needed would over-inflate
-            # the pre-charge target and cause the price-spread guard in
-            # _apply_grid_charge to reject otherwise profitable charge slots.
-            #
-            # ev_accounted_load_kwh is already captured in avg_house_consumption
-            # (base_load_includes_ev=True), so no correction is needed for that
-            # case — the battery must cover it.
-            occ_net = 0.0
-            occ_prices: list[float] = []
-            for s in slots:
-                s_start = as_tz(s.start, now.tzinfo)
-                s_end = as_tz(s.end, now.tzinfo)
-                if (
-                    s.recommendation == Recommendations.BatteriesDischargeMode.value
-                    and s_start >= window_start_abs
-                    and s_end <= window_end_abs
-                ):
-                    # Subtract extra EV load (injected, base_load_includes_ev=False)
-                    # so the battery only targets house coverage.
-                    battery_net = (
-                        s.estimated_net_consumption_kwh - s.ev_planned_load_kwh
-                    )
-                    occ_net += battery_net
-                    occ_prices.append(s.price.import_price)
-
-            occ_needed = max(occ_net, 0.0)
-            occ_avg_price = (
-                round(sum(occ_prices) / len(occ_prices), 3) if occ_prices else 0.0
-            )
-            # Store: (window_start, window_end, needed_kwh, avg_discharge_price)
-            occurrences.append(
-                (window_start_abs, window_end_abs, occ_needed, occ_avg_price)
-            )
-            sched_total_net += occ_net
-
-            # Advance to the same window start on the following calendar day
-            window_start_abs += timedelta(days=1)
-
-        # _occurrences: per-day data consumed by apply_charge_schedules
-        sched._occurrences = occurrences
-        # _needed_capacity: aggregate across all occurrences (used by coordinator)
-        sched._needed_capacity = max(sched_total_net, 0.0)
-        # _avg_import_price: average across all occurrences
-        all_occ_prices = [avg for _, _, _, avg in occurrences if avg > 0]
-        sched._avg_import_price = (
-            round(sum(all_occ_prices) / len(all_occ_prices), 3)
-            if all_occ_prices
-            else 0.0
-        )
-
 
 # ---------------------------------------------------------------------------
 # Excess export
@@ -334,9 +208,9 @@ def concentrate_discharge_on_expensive_slots(
 ) -> None:
     """Clear cheap discharge slots the battery cannot fully serve, per calendar day.
 
-    ``apply_discharge_schedules`` and ``apply_optimization_strategy`` mark
-    *every* slot in a discharge window as ``BatteriesDischargeMode``, but
-    the battery can only cover a fraction of them.  Without concentration
+    ``apply_optimization_strategy`` marks *every* slot in a discharge window
+    as ``BatteriesDischargeMode``, but the battery can only cover a fraction
+    of them.  Without concentration
     the SoC simulation greedily discharges in the *first* (cheapest) slots
     and runs out before the most expensive ones.
 

@@ -220,8 +220,6 @@ def make_bare_coordinator(
     coord._avg_house_consumption_entity_id_cache = {}
     coord._hourly_recommendations = []
     coord._hourly_recommendation = None
-    coord._batteries_schedules = []
-    coord._batteries_schedules_remaining_capacity_needed = 0.0
     coord._current_required_battery = 0.0
     coord._live = None
     coord._snapshot = None
@@ -2154,7 +2152,6 @@ class TestApplyPlannerOutputEvLoad:
     ) -> Any:
         """Return a bare coordinator whose _hourly_recommendations are pre-generated."""
         coord = make_bare_coordinator()
-        coord._batteries_schedules = []
         coord._hourly_recommendations = generate_recommendation_intervals(
             interval_minutes, total_hours
         )
@@ -2361,7 +2358,6 @@ class TestApplyPlannerOutputEvLoad:
             )
 
         coord = make_bare_coordinator()
-        coord._batteries_schedules = []
         coord._hourly_recommendations = recs
 
         coord._apply_planner_output(PlannerOutput(slots=slots))
@@ -2440,7 +2436,6 @@ class TestApplyPlannerOutputEvLoad:
             )
 
         coord = make_bare_coordinator()
-        coord._batteries_schedules = []
         coord._hourly_recommendations = recs
 
         coord._apply_planner_output(PlannerOutput(slots=slots))
@@ -2506,7 +2501,6 @@ class TestApplyPlannerOutputEvLoad:
         ]
 
         coord = make_bare_coordinator()
-        coord._batteries_schedules = []
         coord._hourly_recommendations = [orphan_rec]
 
         # Capture WARNING from HSEM_LOGGER directly (propagation is False)
@@ -2574,7 +2568,6 @@ class TestApplyPlannerOutputEvLoad:
         ]
 
         coord = make_bare_coordinator()
-        coord._batteries_schedules = []
         coord._hourly_recommendations = [orphan]
 
         coord._apply_planner_output(PlannerOutput(slots=slots))
@@ -2805,7 +2798,6 @@ class TestEvFieldsEndToEnd:
 
         # Build coordinator with matching hourly_recommendations
         coord = make_bare_coordinator()
-        coord._batteries_schedules = []
         # Generate recs aligned to planner slot starts
         coord._hourly_recommendations = [
             HourlyRecommendation(
