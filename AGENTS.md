@@ -171,6 +171,7 @@ If credentials, API keys, or tokens are required:
 - Run `./scripts/quality.sh lint` locally before committing.
 - Run `./scripts/quality.sh typing` after lint — mypy type checking.
 - Run `./scripts/quality.sh quality` after typing (pyright + vulture static checks).
+- Run `./scripts/quality.sh translations` if any user-facing string changed (en/da/de/es sync).
 - Run `./scripts/quality.sh test` to run the full test suite with coverage before opening a PR.
 - See `CODE_QUALITY_STANDARDS.md` for full quality rules and conventions.
 - **Never use `==` or `!=` to compare floating-point values.** In production code use an epsilon
