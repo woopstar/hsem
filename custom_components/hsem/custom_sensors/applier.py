@@ -100,6 +100,7 @@ async def async_apply_battery_settings(
     rec: HourlyRecommendation,
     current_required_battery_kwh: float,
     *,
+    wait_mode_reserve_kwh: float | None = None,
     primary_grid_charge_transition_reference_w: float | None = None,
     primary_grid_charge_transition_timed_out: bool = False,
 ) -> CycleApplySummary:
@@ -119,8 +120,16 @@ async def async_apply_battery_settings(
         cfg: Current sensor configuration.
         live: Live state snapshot.
         rec: The current-interval recommendation.
-        current_required_battery_kwh: Remaining energy required until end of day
-            (used when computing forcible-discharge target SoC).
+        current_required_battery_kwh: Energy required until the first forecast
+            solar-surplus slot (``calculate_required_battery_until_solar``).
+            Used for the EV discharge-cap SoC guard and forcible-discharge
+            gating — NOT for wait-mode self-consumption, which uses
+            ``wait_mode_reserve_kwh`` instead (issue #914).
+        wait_mode_reserve_kwh: Reserve derived from the selected plan's own
+            SoC trajectory (``calculate_required_battery_for_plan``). Gates
+            whether the battery may discharge during a ``batteries_wait_mode``
+            slot under ``self_consumption_with_reserve``. ``None`` means no
+            reliable reserve could be derived — falls back to strict Wait.
         primary_grid_charge_transition_reference_w: Passed through to
             :func:`~custom_sensors.phase_charge_limiter.build_phase_aware_charge_commands`
             (issue #831). See that function's docstring.
@@ -391,10 +400,11 @@ async def async_apply_battery_settings(
                     working_mode = WorkingModes.TimeOfUse.value
                 else:
                     working_mode = WorkingModes.MaximizeSelfConsumption.value
-            elif cfg.batteries_wait_mode_behavior == "self_consumption_with_reserve":
-                surplus = (
-                    live.battery_current_capacity_kwh - current_required_battery_kwh
-                )
+            elif (
+                cfg.batteries_wait_mode_behavior == "self_consumption_with_reserve"
+                and wait_mode_reserve_kwh is not None
+            ):
+                surplus = live.battery_current_capacity_kwh - wait_mode_reserve_kwh
                 if surplus > 1e-9:
                     working_mode = WorkingModes.MaximizeSelfConsumption.value
                 else:
@@ -471,15 +481,14 @@ async def async_apply_battery_settings(
         and cfg.batteries_wait_mode_behavior == "self_consumption_with_reserve"
         and working_mode == WorkingModes.MaximizeSelfConsumption.value
         and not relevant_evs
+        and wait_mode_reserve_kwh is not None
     )
-    if wait_mode_self_consumption:
+    if wait_mode_self_consumption and wait_mode_reserve_kwh is not None:
         slot_hours = slot_duration_hours(rec.start, rec.end)
-        surplus = max(
-            live.battery_current_capacity_kwh - current_required_battery_kwh, 0.0
-        )
+        surplus = max(live.battery_current_capacity_kwh - wait_mode_reserve_kwh, 0.0)
         cap_w = _wait_mode_self_consumption_cap_w(
             battery_capacity_kwh=live.battery_current_capacity_kwh,
-            required_capacity_kwh=current_required_battery_kwh,
+            required_capacity_kwh=wait_mode_reserve_kwh,
             slot_hours=slot_hours,
             max_discharge_power_w=max_discharge_power,
         )
@@ -506,7 +515,7 @@ async def async_apply_battery_settings(
                 "slot_hours=%.3f)",
                 cap_w,
                 live.battery_current_capacity_kwh,
-                current_required_battery_kwh,
+                wait_mode_reserve_kwh,
                 surplus,
                 slot_hours,
             )

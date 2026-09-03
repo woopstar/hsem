@@ -36,6 +36,7 @@ from custom_components.hsem.planner.discharge_scheduler import (
     apply_discharge_schedules,
     apply_excess_export,
     apply_optimization_strategy,
+    calculate_required_battery_for_plan,
     calculate_required_battery_until_solar,
 )
 from custom_components.hsem.planner.engine_ev import (
@@ -660,6 +661,11 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # drift and to ensure the final score matches the selector's score.
     slots = winner.slots
 
+    # Wait-mode self-consumption reserve (issue #914): derived from the
+    # *selected* plan's own simulated SoC trajectory, not the raw forecast
+    # scan used by ``rc``/``calculate_required_battery_until_solar`` above.
+    wait_mode_reserve_kwh = calculate_required_battery_for_plan(slots, now, current_kwh)
+
     _label_commanded_ev_slots(slots)
     cur_rec: str | None = None
     for s in slots:
@@ -688,14 +694,15 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     log_planner(
         "debug",
         "[core] run_planner DONE  winner=%s  cost=%.4f  score=%.4f  "
-        "cur_rec=%s  bsoc_end=%.1f%%  rc=%.3f  warnings=%d  missing=%d  "
-        "cw=%d  dw=%d",
+        "cur_rec=%s  bsoc_end=%.1f%%  rc=%.3f  wait_reserve=%s  warnings=%d  "
+        "missing=%d  cw=%d  dw=%d",
         winner.name,
         pc.total_cost,
         pc.score,
         cur_rec if cur_rec is not None else "(none)",
         bsoc_end,
         rc,
+        f"{wait_mode_reserve_kwh:.3f}" if wait_mode_reserve_kwh is not None else "None",
         len(warnings),
         len(missing_inputs),
         len(cw_out),
@@ -753,6 +760,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         current_recommendation=cur_rec,
         battery_soc_at_end=bsoc_end,
         required_capacity_kwh=rc,
+        wait_mode_reserve_kwh=wait_mode_reserve_kwh,
         missing_inputs=missing_inputs,
         warnings=warnings,
         time_series_index=tsi,

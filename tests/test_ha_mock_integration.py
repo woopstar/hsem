@@ -223,6 +223,7 @@ def make_bare_coordinator(
     coord._batteries_schedules = []
     coord._batteries_schedules_remaining_capacity_needed = 0.0
     coord._current_required_battery = 0.0
+    coord._current_wait_mode_reserve = None
     coord._live = None
     coord._snapshot = None
     coord._net_consumption_ema = None

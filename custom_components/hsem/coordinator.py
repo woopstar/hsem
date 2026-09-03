@@ -188,6 +188,7 @@ class HSEMDataUpdateCoordinator(
         self._batteries_schedules: list = []
         self._batteries_schedules_remaining_capacity_needed: float = 0.0
         self._current_required_battery: float = 0.0
+        self._current_wait_mode_reserve: float | None = None
         self._next_update: str | None = None
 
         # Entity resolution cache (persisted across cycles).

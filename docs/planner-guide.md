@@ -489,8 +489,13 @@ recommendation it is not changed by later rules in the same layer.
 > battery idle. When `hsem_batteries_wait_mode_behavior` is set to
 > `self_consumption_with_reserve`, the applier switches the inverter to
 > `MaximizeSelfConsumption` and caps discharge power so only surplus energy above
-> the planner's required reserve is used. This reduces unnecessary grid import
-> while still preserving capacity for future scheduled discharge windows.
+> the reserve is used. This reduces unnecessary grid import while still preserving
+> capacity for future scheduled discharge windows. The reserve is derived from the
+> **selected plan's own simulated SoC trajectory** (issue #914) — how far it dips
+> before its next actual solved charge — not from a raw forecast PV-surplus scan,
+> so a small or short-lived forecast surplus no longer lets the battery discharge
+> energy the plan needs for a later expensive period. If no reliable reserve can
+> be derived, the applier falls back to strict Wait for that slot.
 
 **Discharge concentration** (`concentrate_discharge_on_expensive_slots`) runs after the
 seasonal fill but before candidate generation. It re-evaluates all discharge-mode

@@ -1131,20 +1131,31 @@ instead of keeping the battery strictly idle.
 - When set to `"self_consumption_with_reserve"`, the applier
   (`custom_components/hsem/custom_sensors/applier.py`) switches the inverter to
   `MaximizeSelfConsumption` and caps the discharge power so only surplus energy
-  above the planner's required reserve (`current_required_battery_kwh`) can be
-  used. Once the battery reaches the reserve, the applier falls back to strict
-  TOU wait mode.
+  above the reserve can be used. Once the battery reaches the reserve, the
+  applier falls back to strict TOU wait mode.
 - PV surplus during wait-mode self-consumption is directed to charge the battery
   (`desired_excess = "charge"`), not exported to grid.
 - The cap is computed from the surplus energy and the slot duration so the
   reserve is preserved even if the house load is high.
 - EV-active slots keep their existing EV discharge cap logic; the wait-mode cap
   is not applied while an EV is charging.
+- **Reserve source (issue #914):** the wait-mode reserve is `wait_mode_reserve_kwh`
+  (`PlannerOutput`/`CoordinatorData.current_wait_mode_reserve`), computed by
+  `calculate_required_battery_for_plan()` in `discharge_scheduler.py` from the
+  _selected_ plan's own simulated SoC trajectory — how far it dips before its
+  next actual solved charge — **not** `current_required_battery_kwh` (which
+  is `calculate_required_battery_until_solar()`, unchanged, and still used
+  for `apply_excess_export()` and the EV discharge-cap SoC guard). `None`
+  means no reliable reserve could be derived; the applier then forces strict
+  TOU wait instead of enabling self-consumption. See `docs/planner-spec.md`
+  §"Wait-mode self-consumption reserve (issue #914)".
 
 Files involved: `flows/batteries_wait_mode.py`, `config_flow.py`,
 `options_flow.py`, `translations/en.json`, `const.py`,
 `models/sensor_config.py`, `custom_sensors/config_reader.py`,
-`custom_sensors/applier.py`.
+`custom_sensors/applier.py`, `planner/discharge_scheduler.py`,
+`planner/engine_core.py`, `models/planner_output.py`,
+`coordinator_planner_phase.py`, `coordinator_data.py`.
 
 ## GitHub Operations — `gh` CLI Is Available (Corrected 2026-08-30)
 
