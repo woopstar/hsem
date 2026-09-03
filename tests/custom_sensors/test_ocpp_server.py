@@ -29,8 +29,8 @@ import pytest
 from aiohttp import web
 
 from custom_components.hsem.custom_sensors.ocpp_server import (
-    _CHARGER_STALL_THRESHOLD_S,
     _WS_HEARTBEAT_INTERVAL_S,
+    CHARGER_STALL_THRESHOLD_S,
     OCPPServer,
     charger_appears_stalled,
 )
@@ -307,12 +307,44 @@ class TestTransaction:
     async def test_start_transaction_records_id(self, ocpp_server, charger_session):
         """StartTransaction should record the transaction ID."""
         assert charger_session.transaction_id is None
-        result = await ocpp_server._handle_start_transaction(
-            charger_session, {"transactionId": 42}
-        )
-        assert result["transactionId"] == 42
+        result = await ocpp_server._handle_start_transaction(charger_session, {})
+        assert result["transactionId"] == charger_session.transaction_id
         assert result["idTagInfo"]["status"] == "Accepted"
-        assert charger_session.transaction_id == 42
+        assert charger_session.transaction_id is not None
+
+    @pytest.mark.asyncio
+    async def test_start_transaction_allocates_own_id(
+        self, ocpp_server, charger_session
+    ):
+        """StartTransaction must not trust the charger's inbound transactionId.
+
+        Real chargers never send this field on StartTransaction.req (OCPP
+        1.6 §5.14 — allocating it is the CS's job); a spec-noncompliant
+        charger sending one must not be echoed back, since that used to
+        collapse every session to id 0 (issue #906).
+        """
+        result = await ocpp_server._handle_start_transaction(
+            charger_session, {"transactionId": 999}
+        )
+        assert result["transactionId"] != 999
+        assert charger_session.transaction_id != 999
+
+    @pytest.mark.asyncio
+    async def test_start_transaction_ids_are_unique(self, ocpp_server, mock_hass):
+        """Two sessions started in sequence must get distinct transaction IDs.
+
+        A charger that treats id 0 as an unset sentinel silently rejects
+        RemoteStopTransaction — the bug this test guards against (issue
+        #906): every session used to be assigned 0.
+        """
+        session_a = ChargerSession(cpid="cp-a", websocket=AsyncMock())
+        session_b = ChargerSession(cpid="cp-b", websocket=AsyncMock())
+        await ocpp_server._handle_start_transaction(session_a, {})
+        await ocpp_server._handle_start_transaction(session_b, {})
+        assert session_a.transaction_id is not None
+        assert session_a.transaction_id != 0
+        assert session_b.transaction_id is not None
+        assert session_b.transaction_id != session_a.transaction_id
 
     @pytest.mark.asyncio
     async def test_stop_transaction_clears_id(self, ocpp_server, charger_session):
@@ -975,7 +1007,7 @@ class TestChargerAppearsStalled:
     ) -> ChargerSession:
         if status_changed_at is None:
             status_changed_at = datetime.now(UTC) - timedelta(
-                seconds=_CHARGER_STALL_THRESHOLD_S + 1
+                seconds=CHARGER_STALL_THRESHOLD_S + 1
             )
         return ChargerSession(
             cpid="test-cpid",
@@ -999,7 +1031,7 @@ class TestChargerAppearsStalled:
         """The boundary is inclusive: >= threshold counts as stalled."""
         now = datetime.now(UTC)
         session = self._session(
-            status_changed_at=now - timedelta(seconds=_CHARGER_STALL_THRESHOLD_S)
+            status_changed_at=now - timedelta(seconds=CHARGER_STALL_THRESHOLD_S)
         )
         assert charger_appears_stalled(session, now) is True
 
@@ -1064,7 +1096,7 @@ class TestIsStalledWiring:
         charger_session.transaction_id = 1
         charger_session.status = "SuspendedEVSE"
         charger_session.status_changed_at = now - timedelta(
-            seconds=_CHARGER_STALL_THRESHOLD_S + 1
+            seconds=CHARGER_STALL_THRESHOLD_S + 1
         )
         await ocpp_server.update_charge_target(
             "test-cpid",
@@ -1086,7 +1118,7 @@ class TestIsStalledWiring:
         charger_session.transaction_id = 1
         charger_session.status = "SuspendedEV"
         charger_session.status_changed_at = now - timedelta(
-            seconds=_CHARGER_STALL_THRESHOLD_S + 1
+            seconds=CHARGER_STALL_THRESHOLD_S + 1
         )
         await ocpp_server.update_charge_target(
             "test-cpid",
@@ -1108,7 +1140,7 @@ class TestIsStalledWiring:
         charger_session.transaction_id = 1
         charger_session.status = "SuspendedEVSE"
         charger_session.status_changed_at = now - timedelta(
-            seconds=_CHARGER_STALL_THRESHOLD_S + 1
+            seconds=CHARGER_STALL_THRESHOLD_S + 1
         )
 
         with caplog.at_level(logging.WARNING):
@@ -1139,7 +1171,7 @@ class TestIsStalledWiring:
         charger_session.transaction_id = 1
         charger_session.status = "SuspendedEVSE"
         charger_session.status_changed_at = now - timedelta(
-            seconds=_CHARGER_STALL_THRESHOLD_S + 1
+            seconds=CHARGER_STALL_THRESHOLD_S + 1
         )
         await ocpp_server.update_charge_target(
             "test-cpid",
@@ -1196,6 +1228,8 @@ class TestResetAntiFlapStateOnDisconnect:
         ocpp_server._last_sent_target = 7200.0
         ocpp_server._last_sent_current_a = 32
         ocpp_server._last_remote_start_attempt = datetime.now(UTC)
+        ocpp_server._last_remote_stop_attempt = datetime.now(UTC)
+        ocpp_server._last_profile_retry_attempt = datetime.now(UTC)
         ocpp_server._stalled = True
         ocpp_server._stall_logged = True
 
@@ -1207,6 +1241,8 @@ class TestResetAntiFlapStateOnDisconnect:
         assert ocpp_server._target_power_w == 0.0
         assert ocpp_server.last_requested_current_a is None
         assert ocpp_server._last_remote_start_attempt is None
+        assert ocpp_server._last_remote_stop_attempt is None
+        assert ocpp_server._last_profile_retry_attempt is None
         assert ocpp_server.is_stalled is False
 
     @pytest.mark.asyncio
@@ -1418,3 +1454,265 @@ class TestNotifySignificantEvent:
             assert callback.await_count == 2
         finally:
             await server.stop()
+
+
+# ---------------------------------------------------------------------------
+# RemoteStopTransaction retry while unconfirmed (issue #906)
+# ---------------------------------------------------------------------------
+
+
+class TestRemoteStopRetry:
+    """Tests for retrying RemoteStopTransaction while unconfirmed."""
+
+    def test_due_initially(self, ocpp_server):
+        """With no prior attempt, a retry is immediately due."""
+        assert ocpp_server._remote_stop_due(datetime.now(UTC)) is True
+
+    def test_not_due_within_cooldown(self, ocpp_server):
+        """A retry is withheld until the cooldown has elapsed."""
+        now = datetime.now(UTC)
+        ocpp_server._last_remote_stop_attempt = now
+        assert ocpp_server._remote_stop_due(now + timedelta(seconds=10)) is False
+
+    def test_due_after_cooldown(self, ocpp_server):
+        """A retry becomes due once the cooldown has elapsed."""
+        now = datetime.now(UTC)
+        ocpp_server._last_remote_stop_attempt = now
+        assert ocpp_server._remote_stop_due(now + timedelta(seconds=61)) is True
+
+    @pytest.mark.asyncio
+    async def test_retries_after_cooldown_when_unconfirmed(
+        self, ocpp_server, charger_session
+    ):
+        """A stop the charger never confirmed keeps retrying on cooldown.
+
+        Regression test for issue #906: the anti-flap guard used to omit
+        "stopping" from its outer condition, so once the state machine
+        entered "stopping" this whole block was skipped on every later
+        cycle — a rejected or silently-ignored RemoteStopTransaction was
+        attempted once and then never retried.
+        """
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server._flap_state = "charging"
+        charger_session.transaction_id = 42
+        now = datetime.now(UTC)
+
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=now
+        )
+        assert ocpp_server._flap_state == "stopping"
+        assert _sent_actions(charger_session).count("RemoteStopTransaction") == 1
+
+        # Charger never confirmed (transaction_id stays set) — before the
+        # cooldown elapses, must not retry yet.
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=now + timedelta(seconds=30)
+        )
+        assert ocpp_server._flap_state == "stopping"
+        assert _sent_actions(charger_session).count("RemoteStopTransaction") == 1
+
+        # After the cooldown, retry.
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=now + timedelta(seconds=91)
+        )
+        assert ocpp_server._flap_state == "stopping"
+        assert _sent_actions(charger_session).count("RemoteStopTransaction") == 2
+
+    @pytest.mark.asyncio
+    async def test_retries_when_send_itself_fails(self, ocpp_server, charger_session):
+        """A failed socket write (not just an unconfirmed stop) is retried.
+
+        Before the fix, entering "stopping" made this block unreachable on
+        the next cycle regardless of whether the failure was a send error
+        or a silently-ignored command.
+        """
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server._flap_state = "charging"
+        charger_session.transaction_id = 42
+        charger_session.websocket.send_str = AsyncMock(
+            side_effect=[Exception("boom"), None]
+        )
+        now = datetime.now(UTC)
+
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=now
+        )
+        assert ocpp_server._flap_state == "stopping"
+        assert charger_session.websocket.send_str.call_count == 1
+
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=now + timedelta(seconds=61)
+        )
+        assert charger_session.websocket.send_str.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_transitions_to_idle_once_charger_confirms(
+        self, ocpp_server, charger_session
+    ):
+        """Once the charger's own StopTransaction clears transaction_id,
+        the state machine settles to idle and stops retrying."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server._flap_state = "charging"
+        charger_session.transaction_id = 42
+        now = datetime.now(UTC)
+
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=now
+        )
+        assert ocpp_server._flap_state == "stopping"
+
+        # Charger confirms via its own StopTransaction call.
+        charger_session.transaction_id = None
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=now + timedelta(seconds=30)
+        )
+        assert ocpp_server._flap_state == "idle"
+        assert _sent_actions(charger_session).count("RemoteStopTransaction") == 1
+
+
+# ---------------------------------------------------------------------------
+# CALLRESULT status tracking (issue #906)
+# ---------------------------------------------------------------------------
+
+
+class TestCallResultStatusTracking:
+    """Tests for recording CALLRESULT status on outbound commands."""
+
+    @pytest.mark.asyncio
+    async def test_records_status_for_tracked_action(
+        self, ocpp_server, charger_session
+    ):
+        """A CALLRESULT for a tracked outbound call records its status."""
+        await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=3680, max_current_a=16
+        )
+        assert charger_session.pending_calls
+        msg_id = next(iter(charger_session.pending_calls))
+
+        await ocpp_server._handle_message(
+            charger_session,
+            json.dumps([3, msg_id, {"status": "Rejected"}]),
+        )
+        assert charger_session.last_call_status["SetChargingProfile"] == "Rejected"
+        assert charger_session.pending_calls == {}
+
+    @pytest.mark.asyncio
+    async def test_logs_warning_on_non_accepted_status(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """A non-Accepted status is logged as a warning, not just recorded."""
+        await ocpp_server._send_remote_start(charger_session)
+        msg_id = next(iter(charger_session.pending_calls))
+
+        with caplog.at_level(logging.WARNING):
+            await ocpp_server._handle_message(
+                charger_session,
+                json.dumps([3, msg_id, {"status": "Rejected"}]),
+            )
+        assert "Rejected" in caplog.text
+        assert "RemoteStartTransaction" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_accepted_status_recorded_without_warning(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """An Accepted status is recorded silently (no warning)."""
+        await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=3680, max_current_a=16
+        )
+        msg_id = next(iter(charger_session.pending_calls))
+
+        with caplog.at_level(logging.WARNING):
+            await ocpp_server._handle_message(
+                charger_session,
+                json.dumps([3, msg_id, {"status": "Accepted"}]),
+            )
+        assert charger_session.last_call_status["SetChargingProfile"] == "Accepted"
+        assert "Rejected" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_unknown_msg_id_ignored(self, ocpp_server, charger_session):
+        """A CALLRESULT for an untracked/unknown message ID is a no-op."""
+        await ocpp_server._handle_message(
+            charger_session,
+            json.dumps([3, "unknown-id", {"status": "Accepted"}]),
+        )
+        assert charger_session.last_call_status == {}
+
+    @pytest.mark.asyncio
+    async def test_only_latest_pending_call_kept_per_action(
+        self, ocpp_server, charger_session
+    ):
+        """A retried call drops the earlier attempt's pending entry.
+
+        Otherwise pending_calls would grow without bound across retries,
+        and a stale CALLRESULT could be misattributed to an abandoned
+        earlier attempt.
+        """
+        await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=3680, max_current_a=16
+        )
+        first_id = next(iter(charger_session.pending_calls))
+        await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=7360, max_current_a=32
+        )
+        assert first_id not in charger_session.pending_calls
+        assert len(charger_session.pending_calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# SetChargingProfile retried after rejection (issue #906)
+# ---------------------------------------------------------------------------
+
+
+class TestSetChargingProfileRejectedRetry:
+    """Tests for retrying a rejected SetChargingProfile without waiting on
+    a material target change."""
+
+    @pytest.mark.asyncio
+    async def test_retries_on_cooldown_when_rejected(
+        self, ocpp_server, charger_session
+    ):
+        """A charger-rejected profile is resent on a cooldown, not forgotten.
+
+        Without this, HSEM's diagnostic sensor would keep showing a
+        "requested" current the charger already refused, with no way for
+        it to ever converge on a value the charger accepts.
+        """
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server._flap_state = "charging"
+        ocpp_server._last_sent_target = 3680.0
+        charger_session.transaction_id = 1
+        charger_session.last_call_status["SetChargingProfile"] = "Rejected"
+        now = datetime.now(UTC)
+
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=3.68, now=now
+        )
+        assert _sent_actions(charger_session).count("SetChargingProfile") == 1
+
+        # Cooldown not elapsed — must not spam the charger every cycle.
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=3.68, now=now + timedelta(seconds=10)
+        )
+        assert _sent_actions(charger_session).count("SetChargingProfile") == 1
+
+        # Cooldown elapsed — retry.
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=3.68, now=now + timedelta(seconds=61)
+        )
+        assert _sent_actions(charger_session).count("SetChargingProfile") == 2
+
+    @pytest.mark.asyncio
+    async def test_no_retry_when_status_unknown(self, ocpp_server, charger_session):
+        """No prior CALLRESULT and no material change means no resend."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server._flap_state = "charging"
+        ocpp_server._last_sent_target = 3680.0
+        charger_session.transaction_id = 1
+        now = datetime.now(UTC)
+
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=3.68, now=now
+        )
+        assert "SetChargingProfile" not in _sent_actions(charger_session)
