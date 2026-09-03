@@ -954,6 +954,40 @@ has zero cost. The LP always uses available PV to cover house load first.
 | 2d       | Export to grid                         | **−p_exp[t]** (revenue)                                                                                        | Battery full, EV doesn't want surplus, export price > 0                                                                                                                                                              |
 | 2e       | Curtail PV                             | `0` (free)                                                                                                     | Battery full, EV doesn't want surplus, `p_exp ≤ 0` (export costs money or is blocked)                                                                                                                                |
 
+#### Charge recommendation label: solar vs. grid (write-out, issue #913)
+
+The LP's `ec[t]` variable does not track _which_ energy source funds the
+charge — PV surplus and grid import both flow through the same slot's
+energy balance. `planner/milp/_write_results.py` derives the
+`batteries_charge_solar` vs. `batteries_charge_grid` **label** after
+solving by comparing the slot's resolved charge (`ec[t]`, after
+degenerate-vertex resolution) against forecast PV surplus (`pv_avail[t]`):
+
+- `pv_avail[t] ≥ ec[t] − _min_action_kwh` (forecast PV surplus can cover
+  the **entire** planned charge) → `batteries_charge_solar`. The applier
+  configures PV-only self-consumption charging (`MaximizeSelfConsumption`)
+  for this label — it never enables grid import.
+- Otherwise (PV covers none or only part of the planned charge) →
+  `batteries_charge_grid`. The applier opens a TOU grid-charge window for
+  this label, which still draws PV first and only imports the shortfall.
+
+A slot mostly funded by grid import must never be labelled
+`batteries_charge_solar` — the applier's self-consumption mode never
+enables grid import, so the grid-funded portion of the plan would be
+silently dropped and the real battery SoC would diverge from the planned
+trajectory (issue #913).
+
+Two guards take priority over this PV-coverage comparison:
+
+- **EV-charging-slot guard**: when an EV is also charging in the same
+  slot, always `batteries_charge_grid` — the EV consumes the solar
+  surplus, so the battery must draw from grid to actually receive the
+  energy the MILP allocated, regardless of PV coverage.
+- **Session-slot guard** (issue #615): a slot with active EV session
+  demand is never assigned `batteries_charge_grid`, even when PV covers
+  only part of the planned charge — this is a defensive fallback since the
+  LP constraints already prevent `ec[t] > 0` in session slots in practice.
+
 #### 3. Cover house-load deficit
 
 | Priority | Action            | Cost coefficient                                                                     | When taken                                                                   |

@@ -271,12 +271,17 @@ def _write_milp_results_to_slots(
         battery_export_dc = min(battery_export_dc, max(ed_kwh, 0.0))
 
         if ec_kwh > _min_action_kwh:
-            # Use BatteriesChargeSolar when PV surplus is available,
-            # BatteriesChargeGrid otherwise.  When EV is also charging
-            # in this slot, always use BatteriesChargeGrid — the EV
-            # will consume the solar surplus, so the battery must draw
-            # from grid to actually receive the energy the MILP allocated.
-            if pv_avail[lp_t] > _min_action_kwh and lp_t not in ev_charging_slots:
+            # Use BatteriesChargeSolar only when forecast PV surplus can
+            # cover the ENTIRE planned charge (issue #913) — a slot mostly
+            # funded by grid import must not be labelled solar-only,
+            # because the applier's self-consumption mode never enables
+            # grid import and the grid-funded portion of the plan would be
+            # silently dropped.  When EV is also charging in this slot,
+            # always use BatteriesChargeGrid — the EV will consume the
+            # solar surplus, so the battery must draw from grid to
+            # actually receive the energy the MILP allocated.
+            pv_covers_full_charge = pv_avail[lp_t] >= ec_kwh - _min_action_kwh
+            if pv_covers_full_charge and lp_t not in ev_charging_slots:
                 out_slots[
                     slot_i
                 ].recommendation = Recommendations.BatteriesChargeSolar.value
