@@ -1,15 +1,21 @@
 """OCPP 1.6 charger-initiated message handlers.
 
-Extracted from :mod:`ocpp_server` to satisfy the repository's 30 KB /
-1000-line file limit. These handlers only read/write ``session``/``payload``
-— none of them touch :class:`~ocpp_server.OCPPServer` state — so they mix
-cleanly into :class:`~ocpp_server.OCPPServer` without any behaviour change.
+Originally extracted from :mod:`ocpp_server` to satisfy the repository's
+30 KB / 1000-line file limit; these handlers mix into
+:class:`~ocpp_server.OCPPServer`. Most only read/write
+``session``/``payload``, but the status-change, start-transaction, and
+stop-transaction handlers also call
+:meth:`~ocpp_server.OCPPServer._notify_significant_event` (issue #908) to
+trigger a debounced coordinator refresh promptly rather than waiting for
+the next scheduled cycle.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
+from typing import Any
 
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
@@ -18,6 +24,11 @@ _LOGGER = logging.getLogger(__name__)
 
 class OCPPMessageHandlersMixin:
     """Handlers for OCPP messages initiated by a connected charger."""
+
+    # Declared (not assigned) so mypy resolves this against
+    # OCPPServer._notify_significant_event() rather than reporting a
+    # missing attribute (issue #908).
+    _notify_significant_event: Callable[[], Coroutine[Any, Any, None]]
 
     async def _handle_boot_notification(
         self, session: ChargerSession, payload: dict
@@ -90,10 +101,16 @@ class OCPPMessageHandlersMixin:
         if new_status:
             if new_status != session.status:
                 session.status_changed_at = datetime.now(UTC)
-            session.status = new_status
-            _LOGGER.debug(
-                "OCPP charger %s status changed to '%s'", session.cpid, new_status
-            )
+                session.status = new_status
+                _LOGGER.debug(
+                    "OCPP charger %s status changed to '%s'", session.cpid, new_status
+                )
+                # Notify promptly (issue #908) — only on an actual change,
+                # not a repeated StatusNotification carrying the same
+                # status.
+                await self._notify_significant_event()
+            else:
+                session.status = new_status
         return {}
 
     async def _handle_meter_values(
@@ -180,6 +197,7 @@ class OCPPMessageHandlersMixin:
             session.cpid,
             transaction_id,
         )
+        await self._notify_significant_event()
         return {
             "transactionId": transaction_id,
             "idTagInfo": {"status": "Accepted"},
@@ -206,6 +224,7 @@ class OCPPMessageHandlersMixin:
             transaction_id,
         )
         session.transaction_id = None
+        await self._notify_significant_event()
         return {"idTagInfo": {"status": "Accepted"}}
 
     async def _handle_unknown(

@@ -1,18 +1,22 @@
 """Low-level outbound OCPP 1.6 command senders.
 
-Extracted from :mod:`ocpp_server` to satisfy the repository's 30 KB /
-1000-line file limit. A pure move: these methods keep their exact
-behaviour and mix back into :class:`~ocpp_server.OCPPServer`, so ``self``
-and every attribute reference (``_last_sent_target``,
-``_last_sent_current_a``, ``_last_remote_start_attempt``,
-``_remote_start_due``) are unchanged.
+Originally extracted from :mod:`ocpp_server` to satisfy the repository's
+30 KB / 1000-line file limit; these methods mix into
+:class:`~ocpp_server.OCPPServer`, so ``self`` and every attribute
+reference (``_last_sent_target``, ``_last_sent_current_a``,
+``_last_remote_start_attempt``, ``_remote_start_due``) resolve there.
+Also hosts :meth:`OCPPCommandsMixin._notify_significant_event` (issue
+#908) — kept here rather than on :class:`~ocpp_server.OCPPServer` itself
+to stay under the file-size limit.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
+from typing import Any
 
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
@@ -38,6 +42,29 @@ class OCPPCommandsMixin:
     _last_remote_start_attempt: datetime | None
     _last_sent_target: float
     _last_sent_current_a: int
+    _on_significant_event: Callable[[], Coroutine[Any, Any, None]] | None
+
+    async def _notify_significant_event(self) -> None:
+        """Trigger a debounced coordinator refresh after a significant event.
+
+        "Significant" means a state transition worth reflecting in HA
+        promptly: a charger connecting/disconnecting, a
+        ``StatusNotification`` status change, or a confirmed
+        ``StartTransaction``/``StopTransaction`` (issue #908). Deliberately
+        NOT called for ``MeterValues``/``Heartbeat``/``Authorize``, which
+        arrive far more often and carry no state-transition information
+        the planner needs faster than its normal cadence.
+
+        Without this, a live ``ChargerSession`` mutation (e.g.
+        ``session.status`` changing) would sit unreflected in
+        ``sensor.hsem_ocpp_charger_status`` until the coordinator's next
+        scheduled cycle — up to the full ``hsem_update_interval`` (default
+        5 minutes) later. Cheap to await inline from the WebSocket message
+        loop: the callback only manages debounce/task bookkeeping and
+        returns immediately without blocking on the actual cycle.
+        """
+        if self._on_significant_event is not None:
+            await self._on_significant_event()
 
     async def _send_response(
         self, session: ChargerSession, msg_id: str, payload: dict

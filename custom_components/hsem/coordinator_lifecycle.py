@@ -18,6 +18,7 @@ from homeassistant.helpers.event import (
 )
 
 from custom_components.hsem.coordinator_helpers import (
+    OCPP_EVENT_DEBOUNCE_SECONDS,
     OPTIONS_UPDATE_DEBOUNCE_SECONDS,
     LoadForecastSignature,
 )
@@ -81,6 +82,7 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
                     port=cfg.ocpp_port,
                     start_window_s=cfg.ocpp_start_window_s,
                     stop_window_s=cfg.ocpp_stop_window_s,
+                    on_significant_event=self.async_ocpp_event,
                 )
                 await self._ocpp_server.start()
                 async_log("info", "OCPP server started on port %d", cfg.ocpp_port)
@@ -97,6 +99,7 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
                     port=cfg.ocpp_second_port,
                     start_window_s=cfg.ocpp_start_window_s,
                     stop_window_s=cfg.ocpp_stop_window_s,
+                    on_significant_event=self.async_ocpp_event,
                 )
                 await self._ocpp_second_server.start()
                 async_log(
@@ -185,6 +188,17 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
             debounce_task.cancel()
             self._options_update_debounce_task = None
 
+        # Same cleanup for the OCPP-event-triggered background task and
+        # debounce timer (issue #908).
+        ocpp_event_task = getattr(self, "_ocpp_event_task", None)
+        if ocpp_event_task is not None and not ocpp_event_task.done():
+            ocpp_event_task.cancel()
+            self._ocpp_event_task = None
+        ocpp_event_debounce_task = getattr(self, "_ocpp_event_debounce_task", None)
+        if ocpp_event_debounce_task is not None and not ocpp_event_debounce_task.done():
+            ocpp_event_debounce_task.cancel()
+            self._ocpp_event_debounce_task = None
+
         # Clear retained live-power state (window, replan budget, source
         # signature) so a stale estimate cannot survive teardown.
         self.reset_live_power_state()
@@ -255,6 +269,75 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
                 "debug",
                 "[coordinator] options-update task cancelled — superseded by a "
                 "newer options change.",
+            )
+
+    async def async_ocpp_event(self) -> None:
+        """Schedule a debounced pipeline refresh after a significant OCPP event.
+
+        Mirrors :meth:`async_options_updated` (issue #908). Without this,
+        an OCPP charger connecting, disconnecting, changing
+        ``StatusNotification`` status, or starting/stopping a transaction
+        updates the in-memory :class:`ChargerSession` immediately, but
+        ``sensor.hsem_ocpp_charger_status`` only reflects it once the
+        coordinator's next scheduled cycle runs — up to
+        ``hsem_update_interval`` minutes later (default 5). This is called
+        by :class:`~custom_components.hsem.custom_sensors.ocpp_server.OCPPServer`
+        via its ``on_significant_event`` callback, awaited directly from
+        the WebSocket message-handling loop — cheap, since it only manages
+        task bookkeeping and returns immediately without blocking on the
+        actual refresh.
+
+        A short debounce window coalesces a burst of related messages
+        (BootNotification + StatusNotification + StartTransaction on
+        connect, all typically within ~1 second of each other) into a
+        single refresh rather than one per message.
+        """
+        if (
+            self._ocpp_event_debounce_task is not None
+            and not self._ocpp_event_debounce_task.done()
+        ):
+            self._ocpp_event_debounce_task.cancel()
+        self._ocpp_event_debounce_task = self.hass.async_create_task(
+            self._async_ocpp_event_debounced(),
+            name="hsem_ocpp_event_debounce",
+            eager_start=False,
+        )
+
+    async def _async_ocpp_event_debounced(self) -> None:
+        """Wait for the debounce window, then schedule the refresh."""
+        try:
+            await asyncio.sleep(OCPP_EVENT_DEBOUNCE_SECONDS)
+        except asyncio.CancelledError:
+            # Superseded by a newer OCPP event — not an error.
+            async_log(
+                "debug",
+                "[coordinator] OCPP-event debounce cancelled — superseded by a "
+                "newer OCPP event.",
+            )
+            return
+
+        if self._ocpp_event_task is not None and not self._ocpp_event_task.done():
+            self._ocpp_event_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._ocpp_event_task
+
+        self._ocpp_event_task = self.hass.async_create_task(
+            self._async_ocpp_event_background(),
+            name="hsem_ocpp_event_update",
+            eager_start=False,
+        )
+        self._ocpp_event_debounce_task = None
+
+    async def _async_ocpp_event_background(self) -> None:
+        """Background wrapper: run the update cycle, swallowing cancellation."""
+        try:
+            await self._async_handle_update(None)
+        except asyncio.CancelledError:
+            # Superseded by a newer OCPP event — not an error.
+            async_log(
+                "debug",
+                "[coordinator] OCPP-event update task cancelled — superseded by "
+                "a newer OCPP event.",
             )
 
     # ------------------------------------------------------------------

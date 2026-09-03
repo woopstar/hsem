@@ -35,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
@@ -150,6 +151,7 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
         port: int = 9000,
         start_window_s: int = _DEFAULT_START_WINDOW_S,
         stop_window_s: int = _DEFAULT_STOP_WINDOW_S,
+        on_significant_event: Callable[[], Coroutine[Any, Any, None]] | None = None,
     ) -> None:
         """Initialise the OCPP server.
 
@@ -161,12 +163,21 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
                 a charge.
             stop_window_s: Seconds of sustained shortage before stopping
                 a charge.
+            on_significant_event: Optional async callback invoked (via
+                :meth:`_notify_significant_event`) on a charger connect,
+                disconnect, ``StatusNotification`` status change, or
+                confirmed start/stop transaction (issue #908) — wired by
+                the coordinator to a debounced refresh so
+                ``sensor.hsem_ocpp_charger_status`` doesn't wait for the
+                next scheduled cycle to reflect a live protocol event.
+                Deliberately not invoked for ``MeterValues``/``Heartbeat``.
         """
         self._hass = hass
         self._host = host
         self._port = port
         self._start_window_s = start_window_s
         self._stop_window_s = stop_window_s
+        self._on_significant_event = on_significant_event
 
         # Runtime state
         self._runner: web.AppRunner | None = None
@@ -577,6 +588,7 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
             connected_at=datetime.now(UTC),
         )
         self._chargers[cpid] = session
+        await self._notify_significant_event()
 
         try:
             async for msg in ws:
@@ -595,6 +607,7 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
             # disconnect into whatever reconnects next (issue #892).
             self._reset_anti_flap_state()
             _LOGGER.info("OCPP charger %s session ended", cpid)
+            await self._notify_significant_event()
 
         return ws
 

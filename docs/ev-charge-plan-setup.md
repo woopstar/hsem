@@ -485,6 +485,26 @@ scheduled charging), which is normal and never counts as a stall.
 This distinction drives the asymmetric ceiling deadband: a _reduction_ can force a
 charger to throttle, an _increase_ only offers headroom it may or may not take.
 
+**Sensor update latency (issue #908).** `sensor.hsem_ocpp_charger_status` and
+the other OCPP diagnostic sensors are coordinator-driven
+(`should_poll = False`) — Home Assistant only re-renders them when the
+coordinator publishes a fresh snapshot. HSEM's own regular cycle runs on
+`hsem_update_interval` minutes (default 5), so without an out-of-band trigger
+a car plugging in, unplugging, or a charge starting/stopping would be
+recorded internally the instant the OCPP message arrives but stay invisible
+in the frontend/history/logbook/templates for up to that full interval.
+
+HSEM now schedules a debounced coordinator refresh — typically within about
+2 seconds — whenever a charger connects, disconnects, its
+`StatusNotification` status changes, or `StartTransaction`/`StopTransaction`
+confirms a start/stop. A burst of related messages around one event (e.g.
+`BootNotification` + `StatusNotification` + `StartTransaction`, which
+usually arrive within about a second of each other on connect) coalesces
+into a single refresh instead of one per message. `MeterValues` and
+`Heartbeat` deliberately do **not** trigger a refresh — they arrive far more
+often and carry no state-transition information worth an out-of-band
+planner cycle.
+
 **go-e Charger.** The V2 API exposes `ama` (max ampere) for dynamic load balancing.
 go-e have confirmed setting it frequently is safe, but the community convention is
 still to apply hysteresis of roughly 0.5–1 A before moving the limit — for example

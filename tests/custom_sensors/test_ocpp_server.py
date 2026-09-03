@@ -1284,3 +1284,137 @@ class TestWebSocketHeartbeat:
                 assert kwargs.get("heartbeat") == _WS_HEARTBEAT_INTERVAL_S
         finally:
             await server.stop()
+
+
+# ---------------------------------------------------------------------------
+# Significant-event notification (issue #908)
+# ---------------------------------------------------------------------------
+
+
+class TestNotifySignificantEvent:
+    """Tests for the on_significant_event callback plumbing.
+
+    Verifies HSEM notifies promptly on state transitions worth reflecting
+    in HA right away (connect, disconnect, status change, confirmed
+    start/stop) and deliberately does NOT notify on high-frequency
+    messages that carry no transition information (MeterValues,
+    Heartbeat).
+    """
+
+    @pytest.mark.asyncio
+    async def test_noop_when_no_callback(self, ocpp_server):
+        """Without a callback configured, notifying is a safe no-op."""
+        await ocpp_server._notify_significant_event()
+
+    @pytest.mark.asyncio
+    async def test_invokes_configured_callback(self, mock_hass):
+        """A configured callback is awaited."""
+        callback = AsyncMock()
+        server = OCPPServer(hass=mock_hass, on_significant_event=callback)
+        await server._notify_significant_event()
+        callback.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_status_change_triggers_notification(
+        self, mock_hass, charger_session
+    ):
+        """A StatusNotification status change notifies significant-event."""
+        callback = AsyncMock()
+        server = OCPPServer(hass=mock_hass, on_significant_event=callback)
+        await server._handle_status_notification(
+            charger_session, {"status": "Preparing"}
+        )
+        callback.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_repeated_status_does_not_trigger_notification(
+        self, mock_hass, charger_session
+    ):
+        """A repeated StatusNotification with the same status is a no-op."""
+        callback = AsyncMock()
+        server = OCPPServer(hass=mock_hass, on_significant_event=callback)
+        charger_session.status = "Preparing"
+        await server._handle_status_notification(
+            charger_session, {"status": "Preparing"}
+        )
+        callback.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_start_transaction_triggers_notification(
+        self, mock_hass, charger_session
+    ):
+        """A StartTransaction notifies significant-event."""
+        callback = AsyncMock()
+        server = OCPPServer(hass=mock_hass, on_significant_event=callback)
+        await server._handle_start_transaction(charger_session, {"transactionId": 1})
+        callback.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_stop_transaction_triggers_notification(
+        self, mock_hass, charger_session
+    ):
+        """A StopTransaction notifies significant-event."""
+        callback = AsyncMock()
+        server = OCPPServer(hass=mock_hass, on_significant_event=callback)
+        charger_session.transaction_id = 1
+        await server._handle_stop_transaction(charger_session, {"transactionId": 1})
+        callback.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_meter_values_does_not_trigger_notification(
+        self, mock_hass, charger_session
+    ):
+        """MeterValues must not trigger a refresh — too frequent, no
+        state-transition information."""
+        callback = AsyncMock()
+        server = OCPPServer(hass=mock_hass, on_significant_event=callback)
+        await server._handle_meter_values(
+            charger_session,
+            {
+                "connectorId": 1,
+                "meterValue": [
+                    {
+                        "sampledValue": [
+                            {"measurand": "Power.Active.Import", "value": "1000"}
+                        ]
+                    }
+                ],
+            },
+        )
+        callback.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_does_not_trigger_notification(
+        self, mock_hass, charger_session
+    ):
+        """Heartbeat must not trigger a refresh."""
+        callback = AsyncMock()
+        server = OCPPServer(hass=mock_hass, on_significant_event=callback)
+        await server._handle_heartbeat(charger_session, {})
+        callback.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_connect_and_disconnect_trigger_notification(self, mock_hass):
+        """Both a charger WebSocket connect and disconnect notify
+        significant-event — regression coverage for issue #908: without
+        this, a plugged-in/unplugged EV wouldn't be reflected in
+        sensor.hsem_ocpp_charger_status until the next scheduled cycle."""
+        callback = AsyncMock()
+        server = OCPPServer(
+            hass=mock_hass,
+            host="127.0.0.1",
+            port=19018,
+            on_significant_event=callback,
+        )
+        await server.start()
+        try:
+            async with (
+                aiohttp.ClientSession() as client,
+                client.ws_connect("ws://127.0.0.1:19018/connect-test"),
+            ):
+                await asyncio.sleep(0.05)
+                assert callback.await_count == 1
+            await asyncio.sleep(0.05)
+            assert callback.await_count == 2
+        finally:
+            await server.stop()

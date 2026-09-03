@@ -135,6 +135,8 @@ class CoordinatorSharedState(_Base):
     _ml_predictor: ConsumptionPredictor | None
     _net_consumption_ema: float | None
     _next_update: str | None
+    _ocpp_event_debounce_task: asyncio.Task | None
+    _ocpp_event_task: asyncio.Task | None
     _ocpp_server: OCPPServer | None
     _ocpp_second_server: OCPPServer | None
     _ocpp_sessions: list
