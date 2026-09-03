@@ -34,6 +34,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.utils.sensornames.financial import (
@@ -82,6 +83,7 @@ class _FinancialSensorMixin(
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
+        self._hsem_device = HSEMDevice.FINANCIAL
         self._config_entry = config_entry
         self._restored_state: str | None = None
 

@@ -29,6 +29,7 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.sensornames.ev import (
     get_ev_charging_sensor_entity_id,
@@ -74,6 +75,7 @@ class HSEMEVChargingSensor(
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
+        self._hsem_device = HSEMDevice.EV_PRIMARY
 
         self._config_entry = config_entry
 

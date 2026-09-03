@@ -54,8 +54,13 @@ def get_ev_optimal_charging_plan_sensor_entity_id() -> str:
 
 # EV Second Optimal Charging Plan Sensor
 def get_ev_second_optimal_charging_plan_sensor_name() -> str:
-    """Return the display name for the second EV optimal charging plan sensor."""
-    return "EV 2 Optimal Charging Plan"
+    """Return the display name for the second EV optimal charging plan sensor.
+
+    Identical to the primary sensor's name — the EV Primary / EV Secondary
+    device (issue #875) disambiguates them, so the entity name carries no
+    redundant "Second"/"2" marker.
+    """
+    return "EV Optimal Charging Plan"
 
 
 def get_ev_second_optimal_charging_plan_sensor_unique_id(entry_id: str) -> str:
@@ -114,8 +119,13 @@ def get_ev_charger_current_limit_sensor_entity_id() -> str:
 
 # EV Second Charger Current Limit Sensor
 def get_ev_second_charger_current_limit_sensor_name() -> str:
-    """Return the display name for the second EV charger current limit sensor."""
-    return "EV 2 Charger Current Limit"
+    """Return the display name for the second EV charger current limit sensor.
+
+    Identical to the primary sensor's name — the EV Primary / EV Secondary
+    device (issue #875) disambiguates them, so the entity name carries no
+    redundant "Second"/"2" marker.
+    """
+    return "EV Charger Current Limit"
 
 
 def get_ev_second_charger_current_limit_sensor_unique_id(entry_id: str) -> str:
@@ -134,8 +144,13 @@ def get_ev_second_charger_current_limit_sensor_entity_id() -> str:
 
 # EV Second Charger Calculated Power Sensor
 def get_ev_second_charger_calculated_power_sensor_name() -> str:
-    """Return the display name for the second EV charger calculated power sensor."""
-    return "EV 2 Charger Calculated Power"
+    """Return the display name for the second EV charger calculated power sensor.
+
+    Identical to the primary sensor's name — the EV Primary / EV Secondary
+    device (issue #875) disambiguates them, so the entity name carries no
+    redundant "Second"/"2" marker.
+    """
+    return "EV Charger Calculated Power"
 
 
 def get_ev_second_charger_calculated_power_sensor_unique_id(entry_id: str) -> str:

@@ -224,6 +224,27 @@ The agent must:
 - Add or update tests for behavior changes, especially setup flows, coordinator behavior, and entity
   state handling.
 
+### Device Topology (issue #875)
+
+HSEM entities are split across **7 devices**, not one: Controller, Battery & Energy, Hourly
+Consumption Profile, Financial, Forecast, EV Primary, and EV Secondary. See
+`custom_components/hsem/devices.py` for the `HSEMDevice` enum and `DeviceInfo` construction, and
+`docs/sensors-reference.md` (Devices section) for the full entity-to-device mapping.
+
+- Every `HSEMEntity` subclass resolves `device_info` via `self._hsem_device` (a class attribute,
+  or set dynamically per instance for entities that come in primary/secondary EV pairs — see
+  `entity.py`). New entities MUST set `_hsem_device` explicitly unless they belong on Controller
+  (the default).
+- The Controller device keeps the pre-split `(DOMAIN, entry_id)` identifier; every other device is
+  `(DOMAIN, f"{entry_id}_<device>")`.
+- `unique_id` is the permanent identity key and must **never** change when moving an entity between
+  devices — only `device_id` (via `entity_registry.async_update_entity`) changes.
+- A one-time entity-registry migration (`custom_components/hsem/device_migration.py`), gated by a
+  migration-version flag on the config entry, reassigns `device_id` for pre-existing entities. It
+  runs once per config entry and is a no-op on subsequent calls.
+- EV Secondary / OCPP entity **names** (not `unique_id`/`entity_id`) drop redundant `"Second"`/`"2"`
+  markers — the device name already disambiguates them via `_attr_has_entity_name = True`.
+
 ## Git Workflow
 
 Branch naming convention:

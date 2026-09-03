@@ -45,14 +45,19 @@ def test_primary_sensor_names_unchanged():
 
 
 def test_second_sensor_names_are_distinct():
-    """charger_index=2 produces distinct, slugified second-server entities."""
+    """charger_index=2 produces distinct, slugified second-server entities.
+
+    The display name itself is identical to the primary sensor's — the EV
+    Primary / EV Secondary device (issue #875) disambiguates them instead of
+    a "Second"/"2" name marker.
+    """
     entity_id = get_ocpp_charger_power_sensor_entity_id(charger_index=2)
     unique_id = get_ocpp_charger_power_sensor_unique_id("entry", charger_index=2)
-    name = get_ocpp_charger_power_sensor_name(2)
+    name = get_ocpp_charger_power_sensor_name()
 
     assert entity_id == "sensor.hsem_ocpp_charger_power_sensor_second"
     assert unique_id == "hsem_entry_ocpp_charger_power_sensor_second"
-    assert name == "OCPP Charger Second Power"
+    assert name == "Charger Power"
     assert entity_id != get_ocpp_charger_power_sensor_entity_id()
 
 

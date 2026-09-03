@@ -21,6 +21,7 @@ from homeassistant.exceptions import (
 
 from custom_components.hsem.const import DOMAIN, MIN_HUAWEI_SOLAR_VERSION
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
+from custom_components.hsem.device_migration import async_migrate_devices
 from custom_components.hsem.services import (
     async_register_services,
     async_unregister_services,
@@ -193,6 +194,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool
     entry.runtime_data = HSEMRuntimeData(coordinator=coordinator)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # One-time entity-registry migration for the device split (issue #875).
+    # Gated internally so a second call is a no-op.
+    await async_migrate_devices(hass, entry)
 
     # Add update listener for options.
     entry.async_on_unload(entry.add_update_listener(async_update_options))

@@ -39,6 +39,7 @@ from custom_components.hsem.custom_sensors.integration_sensor import (
 from custom_components.hsem.custom_sensors.utility_meter_sensor import (
     HSEMUtilityMeterSensor,
 )
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.ha_helpers import ha_get_entity_state_and_convert
@@ -107,6 +108,7 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
             async_add_entities: HA callback to register derived child entities.
         """
         super().__init__(config_entry)
+        self._hsem_device = HSEMDevice.HOURLY_CONSUMPTION
         self._available = False
         self._missing_input_entities = True
         self._hsem_house_consumption_power = None

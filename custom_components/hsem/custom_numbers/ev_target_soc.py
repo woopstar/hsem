@@ -18,6 +18,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.core import HomeAssistant
 
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.misc import get_config_value
@@ -50,6 +51,7 @@ class HSEMEVTargetSocNumber(HSEMEntity, NumberEntity):
         *,
         unique_id: str = "",
         entity_id: str = "",
+        is_second: bool = False,
     ) -> None:
         """Initialize the number entity.
 
@@ -61,8 +63,14 @@ class HSEMEVTargetSocNumber(HSEMEntity, NumberEntity):
             default: Default value when no config entry value exists yet.
             unique_id: Stable unique ID for HA entity registry.
             entity_id: The desired entity_id string for this entity.
+            is_second: ``True`` when this number targets the second EV,
+                routing ``device_info`` to the EV Secondary device instead
+                of EV Primary.
         """
         super().__init__(config_entry)
+        self._hsem_device = (
+            HSEMDevice.EV_SECONDARY if is_second else HSEMDevice.EV_PRIMARY
+        )
 
         self.hass = hass
         self._config_entry = config_entry

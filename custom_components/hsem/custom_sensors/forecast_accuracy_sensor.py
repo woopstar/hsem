@@ -37,6 +37,7 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.forecast_tracker import ForecastTracker
@@ -78,6 +79,7 @@ class HSEMForecastAccuracySensor(
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
+        self._hsem_device = HSEMDevice.FORECAST
         self._attr_unique_id = get_forecast_accuracy_sensor_unique_id(
             config_entry.entry_id
         )
