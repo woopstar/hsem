@@ -39,16 +39,12 @@ from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.sensornames.ocpp import (
     get_ocpp_charger_info_sensor_entity_id,
-    get_ocpp_charger_info_sensor_name,
     get_ocpp_charger_info_sensor_unique_id,
     get_ocpp_charger_power_sensor_entity_id,
-    get_ocpp_charger_power_sensor_name,
     get_ocpp_charger_power_sensor_unique_id,
     get_ocpp_charger_sessions_sensor_entity_id,
-    get_ocpp_charger_sessions_sensor_name,
     get_ocpp_charger_sessions_sensor_unique_id,
     get_ocpp_charger_status_sensor_entity_id,
-    get_ocpp_charger_status_sensor_name,
     get_ocpp_charger_status_sensor_unique_id,
 )
 
@@ -203,14 +199,12 @@ class HSEMOCPPChargerStatusSensor(
         self.entity_id = get_ocpp_charger_status_sensor_entity_id(
             charger_index=charger_index
         )
-        self._name = get_ocpp_charger_status_sensor_name(charger_index)
+        self._attr_translation_key = (
+            "ocpp_charger_status"
+            if charger_index == 1
+            else "ocpp_second_charger_status"
+        )
         self._restored_state: str | None = None
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override
@@ -355,14 +349,10 @@ class HSEMOCPPChargerPowerSensor(
         self.entity_id = get_ocpp_charger_power_sensor_entity_id(
             charger_index=charger_index
         )
-        self._name = get_ocpp_charger_power_sensor_name(charger_index)
+        self._attr_translation_key = (
+            "ocpp_charger_power" if charger_index == 1 else "ocpp_second_charger_power"
+        )
         self._restored_state: str | None = None
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override
@@ -451,14 +441,10 @@ class HSEMOCPPChargerInfoSensor(
         self.entity_id = get_ocpp_charger_info_sensor_entity_id(
             charger_index=charger_index
         )
-        self._name = get_ocpp_charger_info_sensor_name(charger_index)
+        self._attr_translation_key = (
+            "ocpp_charger_info" if charger_index == 1 else "ocpp_second_charger_info"
+        )
         self._restored_state: str | None = None
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override
@@ -565,14 +551,12 @@ class HSEMOCPPChargerSessionsSensor(
         self.entity_id = get_ocpp_charger_sessions_sensor_entity_id(
             charger_index=charger_index
         )
-        self._name = get_ocpp_charger_sessions_sensor_name(charger_index)
+        self._attr_translation_key = (
+            "ocpp_charger_sessions"
+            if charger_index == 1
+            else "ocpp_second_charger_sessions"
+        )
         self._restored_state: str | None = None
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override

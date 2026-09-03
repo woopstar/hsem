@@ -33,7 +33,6 @@ from custom_components.hsem.coordinator import (
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_pv_curtailment_sensor_entity_id,
-    get_pv_curtailment_sensor_name,
     get_pv_curtailment_sensor_unique_id,
 )
 
@@ -74,6 +73,7 @@ class HSEMPVTailedSensor(
 
     _attr_icon = "mdi:solar-power"
     _attr_has_entity_name = True
+    _attr_translation_key = "pv_curtailment"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
@@ -96,7 +96,6 @@ class HSEMPVTailedSensor(
             config_entry.entry_id
         )
         self.entity_id = get_pv_curtailment_sensor_entity_id()
-        self._name = get_pv_curtailment_sensor_name()
 
         # Restored state used before the first coordinator cycle completes.
         self._restored_state: str | None = None
@@ -104,12 +103,6 @@ class HSEMPVTailedSensor(
     # ------------------------------------------------------------------
     # HA entity properties
     # ------------------------------------------------------------------
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override

@@ -172,7 +172,6 @@ def _make_sensor(data: CoordinatorData | None = None) -> HSEMPlanExplanationSens
     sensor._config_entry = config_entry
     sensor._attr_unique_id = "hsem_plan_explanation_sensor"
     sensor.entity_id = "sensor.hsem_plan_explanation_sensor"
-    sensor._name = "Plan Strategy"
     sensor._restored_state = None
     return sensor
 

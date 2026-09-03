@@ -56,7 +56,6 @@ from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_plan_explanation_sensor_entity_id,
-    get_plan_explanation_sensor_name,
     get_plan_explanation_sensor_unique_id,
 )
 
@@ -91,6 +90,7 @@ class HSEMPlanExplanationSensor(
 
     _attr_icon = "mdi:chart-gantt"
     _attr_has_entity_name = True
+    _attr_translation_key = "plan_explanation"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
@@ -112,7 +112,6 @@ class HSEMPlanExplanationSensor(
             config_entry.entry_id
         )
         self.entity_id = get_plan_explanation_sensor_entity_id()
-        self._name = get_plan_explanation_sensor_name()
 
         # Restored state used before the first coordinator cycle completes.
         self._restored_state: str | None = None
@@ -120,12 +119,6 @@ class HSEMPlanExplanationSensor(
     # ------------------------------------------------------------------
     # HA entity properties
     # ------------------------------------------------------------------
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override

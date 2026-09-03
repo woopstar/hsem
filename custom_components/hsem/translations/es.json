@@ -1,0 +1,1362 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "La integración HSEM ya está configurada",
+      "reconfigured_successfully": "Integración HSEM reconfigurada correctamente."
+    },
+    "error": {
+      "device_not_found": "No se encontró el dispositivo seleccionado.",
+      "energy_out_of_range": "El valor de energía está fuera del rango permitido.",
+      "entity_not_found": "No se encontró la entidad seleccionada.",
+      "entity_unavailable": "La entidad seleccionada no está disponible en este momento. Comprueba el dispositivo o el servicio.",
+      "hsem_house_consumption_energy_weight_total": "El total de los pesos de energía de consumo de la vivienda debe ser 100 %.",
+      "invalid_energy_value": "Valor de energía no válido: introduce un número.",
+      "invalid_entity_id": "Formato de ID de entidad no válido. Se espera \"domain.object_id\" con letras minúsculas, dígitos y guiones bajos.",
+      "invalid_month_value": "Uno o más valores de mes no son válidos. Los meses deben ser números enteros entre 1 y 12.",
+      "invalid_power_value": "Valor de potencia no válido: introduce un número.",
+      "invalid_price_value": "Valor de precio no válido: introduce un número.",
+      "invalid_sensor": "Sensor de entrada no válido. Elige un sensor válido.",
+      "invalid_time_format": "Formato de hora no válido: se espera HH:MM:SS.",
+      "months_winter_empty": "La temporada de invierno debe tener al menos un mes.",
+      "only_one_entry_allowed": "Solo se permite una configuración de HSEM.",
+      "power_out_of_range": "El valor de potencia está fuera del rango permitido.",
+      "price_out_of_range": "El valor de precio está fuera del rango permitido.",
+      "required": "Este campo es obligatorio.",
+      "start_time_after_end_time": "La hora de inicio debe ser anterior a la hora de fin.",
+      "start_time_equals_end_time": "La hora de inicio y la hora de fin no pueden ser iguales, ya que esto crea una ventana de duración cero. Desactiva la programación en su lugar.",
+      "invalid_wait_mode_behavior": "Comportamiento de modo de espera no válido. Elige Espera estricta o Autoconsumo con reserva.",
+      "port_conflict": "El segundo puerto OCPP debe ser diferente del primer puerto OCPP."
+    },
+    "step": {
+      "batteries_excess_export": {
+        "data": {
+          "hsem_batteries_enable_excess_export": "Activar exportación de batería excedente",
+          "hsem_batteries_excess_export_discharge_buffer": "Búfer de descarga (%)",
+          "hsem_batteries_forecast_reserve_pct": "Reserva de previsión para exportación de batería (+% SoC)",
+          "hsem_batteries_export_min_price": "Precio mínimo de exportación de batería"
+        },
+        "data_description": {
+          "hsem_batteries_enable_excess_export": "Activa o desactiva la función de exportación de batería excedente, que exporta automáticamente la capacidad de batería excedente a la red cuando resulta económicamente beneficioso.",
+          "hsem_batteries_excess_export_discharge_buffer": "Define el porcentaje del búfer de seguridad para mantener las reservas mínimas de batería (0-50 %). El valor predeterminado es 10 % para garantizar capacidad suficiente ante una demanda inesperada.",
+          "hsem_batteries_forecast_reserve_pct": "Puntos porcentuales adicionales de SoC por encima del límite de fin de descarga de Huawei que la exportación intencionada de batería debe dejar inmediatamente después de cada intervalo de exportación. Por ejemplo, un límite de Huawei del 15 % más una reserva del 5 % protege un 20 % de SoC. La reserva sigue disponible para la carga de la vivienda cuando la demanda real supera la previsión. Ajusta a 0 para desactivar (predeterminado).",
+          "hsem_batteries_export_min_price": "Límite mínimo estricto por intervalo para la exportación intencionada de batería a la red (issue #752). Cuando es > 0, HSEM prohíbe marcar un intervalo como force_batteries_discharge cuando el precio de exportación está estrictamente por debajo de este límite; la batería puede seguir sirviendo la carga de la vivienda en esos intervalos. Alcanzar el umbral NO activa automáticamente la exportación; el optimizador sigue decidiendo si vender resulta rentable. Se aplica únicamente a la exportación intencionada de batería a la red, no al autoconsumo normal, la exportación de PV ni la carga de PV. Ajusta a 0 para desactivar (predeterminado)."
+        },
+        "description": "Configura los ajustes de exportación de batería excedente para vender automáticamente el exceso de energía a la red cuando resulte económicamente beneficioso.",
+        "title": "Exportación de batería excedente"
+      },
+      "ev_planned_load": {
+        "data": {
+          "hsem_ev_planned_load_enabled": "Activar integración de carga planificada del VE",
+          "hsem_ev_planned_load_battery_capacity_kwh": "Capacidad de batería del VE (kWh)",
+          "hsem_ev_planned_load_charger_power_kw": "Potencia del cargador de VE (kW)",
+          "hsem_ev_planned_load_charger_efficiency": "Eficiencia del cargador de VE",
+          "hsem_ev_planned_load_charger_min_power_w": "Potencia mínima del cargador de VE (W)",
+          "hsem_ev_planned_load_charger_phase_topology": "Topología de fases del cargador",
+          "hsem_ev_planned_load_deadline_safety_margin_pct": "Margen de seguridad para la fecha límite (%)",
+          "hsem_ev_planned_load_command_deadband_a": "Banda muerta del límite máximo (A)",
+          "hsem_ev_planned_load_stub_floor_minutes": "Supresión de parada al final del intervalo (min)"
+        },
+        "data_description": {
+          "hsem_ev_planned_load_enabled": "Activa o desactiva la integración de carga planificada del VE.",
+          "hsem_ev_planned_load_battery_capacity_kwh": "Capacidad nominal de la batería del VE en kWh.",
+          "hsem_ev_planned_load_charger_power_kw": "Potencia de salida de CA del cargador de VE en kW.",
+          "hsem_ev_planned_load_charger_efficiency": "Eficiencia del cargador como porcentaje (1-100). Predeterminado: 100.",
+          "hsem_ev_planned_load_charger_min_power_w": "Potencia de CA mínima (W) que necesita el cargador de VE para empezar a cargar. Por debajo de este valor, el cargador no funcionará. Predeterminado: 1380 W (230 V × 6 A).",
+          "hsem_ev_planned_load_charger_phase_topology": "Cómo distribuye el cargador su carga entre las fases de la red eléctrica. Elige \"Monofásico o desconocido\" a menos que hayas confirmado que el cargador consume corriente equilibrada en las tres fases. Con la protección de fusible por fase activada, el valor predeterminado seguro asume que toda la orden del cargador puede recaer en una sola fase, lo que limita la carga planificada al margen del fusible monofásico.",
+          "hsem_ev_planned_load_deadline_safety_margin_pct": "Energía adicional presupuestada por encima del SoC objetivo, como porcentaje del déficit, para que la fricción normal de la carga (retrasos de inicio, límites mínimos de potencia, limitación) no provoque el incumplimiento de la fecha límite. Predeterminado: 0 % (desactivado).",
+          "hsem_ev_planned_load_command_deadband_a": "Reducción mínima del límite de carga publicado que se aplica realmente. Las reducciones menores se retienen, porque los planes competidores en amperios enteros suelen diferir entre sí por un margen de error de redondeo en el coste. Aumentar el límite nunca se retrasa, y una reducción que mejore el coste de carga de este intervalo en más del 5 % siempre se aplica. Predeterminado: 3 A; 0 desactiva.",
+          "hsem_ev_planned_load_stub_floor_minutes": "Al final de un intervalo, suprime la orden de parada durante estos minutos mientras el coche todavía necesite energía. Los segundos restantes no pueden contener suficiente energía para superar el mínimo del cargador, por lo que el plan no les asigna nada y la sesión se detendría y reiniciaría sin ninguna ventaja. Predeterminado: 2 minutos; 0 desactiva."
+        },
+        "description": "Configura la integración opcional de carga planificada del VE. Cuando está activada, HSEM tiene en cuenta la demanda de carga del VE prevista en cada intervalo del planificador.",
+        "title": "Integración de carga planificada del VE"
+      },
+      "ev_second_planned_load": {
+        "data": {
+          "hsem_ev_second_planned_load_enabled": "Activar integración de carga planificada del VE 2",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "Capacidad de batería del VE 2 (kWh)",
+          "hsem_ev_second_planned_load_charger_power_kw": "Potencia del cargador del VE 2 (kW)",
+          "hsem_ev_second_planned_load_charger_efficiency": "Eficiencia del cargador del VE 2",
+          "hsem_ev_second_planned_load_charger_min_power_w": "Potencia mínima del cargador del VE 2 (W)",
+          "hsem_ev_second_planned_load_charger_phase_topology": "Topología de fases del cargador",
+          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "Margen de seguridad para la fecha límite del VE 2 (%)",
+          "hsem_ev_second_planned_load_command_deadband_a": "Banda muerta del límite máximo del VE 2 (A)",
+          "hsem_ev_second_planned_load_stub_floor_minutes": "Supresión de parada al final del intervalo del VE 2 (min)"
+        },
+        "data_description": {
+          "hsem_ev_second_planned_load_enabled": "Activa o desactiva la integración de carga planificada para el segundo VE.",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "Capacidad nominal de la batería del segundo VE en kWh.",
+          "hsem_ev_second_planned_load_charger_power_kw": "Potencia de salida de CA del cargador del segundo VE en kW.",
+          "hsem_ev_second_planned_load_charger_efficiency": "Eficiencia del cargador del segundo VE como porcentaje (1-100). Predeterminado: 100.",
+          "hsem_ev_second_planned_load_charger_min_power_w": "Potencia de CA mínima (W) que necesita el cargador del segundo VE para empezar a cargar. Predeterminado: 1380 W (230 V × 6 A).",
+          "hsem_ev_second_planned_load_charger_phase_topology": "Cómo distribuye el cargador su carga entre las fases de la red eléctrica. Elige \"Monofásico o desconocido\" a menos que hayas confirmado que el cargador consume corriente equilibrada en las tres fases. Con la protección de fusible por fase activada, el valor predeterminado seguro asume que toda la orden del cargador puede recaer en una sola fase, lo que limita la carga planificada al margen del fusible monofásico.",
+          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "Igual que el margen de seguridad de fecha límite del VE principal, para el segundo VE. Predeterminado: 0 % (desactivado).",
+          "hsem_ev_second_planned_load_command_deadband_a": "Igual que la banda muerta del límite máximo del VE principal, para el segundo VE. Predeterminado: 3 A; 0 desactiva.",
+          "hsem_ev_second_planned_load_stub_floor_minutes": "Igual que la supresión de parada al final del intervalo del VE principal, para el segundo VE. Predeterminado: 2 minutos; 0 desactiva."
+        },
+        "description": "Configura la integración opcional de carga planificada para el segundo VE. Solo se muestra cuando el segundo cargador de VE está activado.",
+        "title": "Integración de carga planificada del VE 2"
+      },
+      "ocpp": {
+        "data": {
+          "hsem_ocpp_enabled": "Activar servidor OCPP",
+          "hsem_ocpp_port": "Puerto OCPP",
+          "hsem_ocpp_cpid": "ID del punto de carga",
+          "hsem_ocpp_start_window_s": "Ventana de inicio (s)",
+          "hsem_ocpp_stop_window_s": "Ventana de parada (s)",
+          "hsem_ocpp_second_enabled": "Activar segundo servidor OCPP",
+          "hsem_ocpp_second_port": "Segundo puerto OCPP",
+          "hsem_ocpp_second_cpid": "ID del segundo punto de carga"
+        },
+        "data_description": {
+          "hsem_ocpp_enabled": "Activa el servidor WebSocket OCPP 1.6 integrado para el control directo del cargador de VE. Solo para red local: no expongas el puerto a internet.",
+          "hsem_ocpp_port": "Puerto TCP para el servidor WebSocket OCPP. Predeterminado: 9000. Debe ser superior a 1024.",
+          "hsem_ocpp_cpid": "Identificador de punto de carga esperado del cargador de VE. Déjalo vacío para aceptar cualquier cargador.",
+          "hsem_ocpp_start_window_s": "Segundos de excedente sostenido necesarios antes de iniciar una carga. Evita ciclos rápidos de arranque y parada. Predeterminado: 60.",
+          "hsem_ocpp_stop_window_s": "Segundos de déficit sostenido necesarios antes de detener una carga. Evita ciclos rápidos de parada y arranque. Predeterminado: 180.",
+          "hsem_ocpp_second_enabled": "Activa un segundo servidor OCPP dedicado para el segundo VE. Solo disponible cuando la carga planificada del VE 2 está activada.",
+          "hsem_ocpp_second_port": "Puerto TCP para el segundo servidor WebSocket OCPP. Predeterminado: 9001. Debe ser diferente del puerto del primer servidor.",
+          "hsem_ocpp_second_cpid": "Identificador de punto de carga esperado del segundo cargador de VE. Déjalo vacío para aceptar cualquier cargador."
+        },
+        "description": "Configura el servidor OCPP 1.6 integrado para el control del cargador de VE únicamente en red local. Cuando está activado, HSEM envía órdenes SetChargingProfile directamente a tu cargador de VE según el plan de carga.",
+        "title": "Servidor OCPP"
+      },
+      "batteries_schedule_1": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_1": "Activar programación de batería 1",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Hora de fin de la programación de batería 1",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Hora de inicio de la programación de batería 1"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_1": "Activa o desactiva la primera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Especifica la hora de fin de la primera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Especifica la hora de inicio de la primera programación de descarga de batería."
+        },
+        "description": "Configura la programación de descarga de batería 1, incluida su hora de activación.",
+        "title": "Programación de descarga de batería 1"
+      },
+      "batteries_schedule_2": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_2": "Activar programación de batería 2",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Hora de fin de la programación de batería 2",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Hora de inicio de la programación de batería 2"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_2": "Activa o desactiva la segunda programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Especifica la hora de fin de la segunda programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Especifica la hora de inicio de la segunda programación de descarga de batería."
+        },
+        "description": "Configura la programación de descarga de batería 2, incluida su hora de activación.",
+        "title": "Programación de descarga de batería 2"
+      },
+      "batteries_schedule_3": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_3": "Activar programación de batería 3",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Hora de fin de la programación de batería 3",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Hora de inicio de la programación de batería 3"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_3": "Activa o desactiva la tercera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Especifica la hora de fin de la tercera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Especifica la hora de inicio de la tercera programación de descarga de batería."
+        },
+        "description": "Configura la programación de descarga de batería 3, incluida su hora de activación.",
+        "title": "Programación de descarga de batería 3"
+      },
+      "prices": {
+        "data": {
+          "hsem_import_electricity_price_sensor": "Sensor de precio de electricidad de importación",
+          "hsem_export_electricity_price_sensor": "Sensor de precio de electricidad de exportación",
+          "hsem_import_electricity_price_forecast_sensor": "Sensor de previsión de precio de importación (opcional)",
+          "hsem_export_electricity_price_forecast_sensor": "Sensor de previsión de precio de exportación (opcional)",
+          "hsem_export_electricity_min_price": "Precio mínimo de exportación requerido",
+          "hsem_electricity_price_update_interval": "Intervalo de actualización del precio de electricidad (minutos)"
+        },
+        "data_description": {
+          "hsem_import_electricity_price_sensor": "Selecciona el sensor que proporciona los precios de electricidad de importación (p. ej. Energi Data Service, Nordpool, Amber Electric).",
+          "hsem_export_electricity_price_sensor": "Selecciona el sensor que proporciona los precios de electricidad de exportación.",
+          "hsem_import_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de importación (usado por Amber Electric e integraciones similares).",
+          "hsem_export_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de exportación.",
+          "hsem_export_electricity_min_price": "Define el precio mínimo de exportación. Las exportaciones por debajo de este precio se bloquearán.",
+          "hsem_electricity_price_update_interval": "Con qué frecuencia proporciona nuevos datos tu sensor de precios (15, 30 o 60 minutos)."
+        },
+        "description": "Configura tus sensores de precio de electricidad para los precios de importación y exportación.",
+        "title": "Precios de electricidad"
+      },
+      "ev": {
+        "data": {
+          "hsem_ev_allow_charge_past_target_soc": "Permitir carga más allá del SoC objetivo (avanzado)",
+          "hsem_ev_charger_force_max_discharge_power": "Forzar potencia máxima de descarga del cargador de VE",
+          "hsem_ev_charger_max_discharge_power": "Potencia máxima de descarga del cargador de VE",
+          "hsem_ev_charger_power": "Sensor de potencia del cargador de VE",
+          "hsem_ev_charger_status": "Sensor de estado del cargador de VE",
+          "hsem_ev_connected": "Sensor de conexión del VE",
+          "hsem_ev_second_enabled": "Activar segundo cargador de VE",
+          "hsem_ev_soc": "Sensor de estado de carga (SoC) del VE",
+          "hsem_house_power_includes_ev_charger_power": "La potencia de la vivienda incluye la potencia del cargador de VE",
+          "hsem_ev_auto_full_negative_price": "Carga completa automática del VE con precio negativo",
+          "hsem_ev_past_target_confidence_factor": "Factor de confianza de carga del VE más allá del objetivo (avanzado)"
+        },
+        "data_description": {
+          "hsem_ev_allow_charge_past_target_soc": "Activa esta opción si quieres permitir que el sistema siga cargando la batería del VE incluso después de haber alcanzado el estado de carga (SoC) objetivo. Esto puede resultar útil en situaciones en las que quieras asegurarte de que el VE quede completamente cargado, independientemente del ajuste del objetivo.",
+          "hsem_ev_charger_force_max_discharge_power": "Activa esto si quieres forzar una potencia máxima de descarga específica para las baterías Huawei mientras el VE se está cargando.",
+          "hsem_ev_charger_max_discharge_power": "Define la potencia máxima de descarga de las baterías Huawei mientras el VE se está cargando.",
+          "hsem_ev_charger_power": "Selecciona el sensor que mide el consumo de potencia de tu cargador de VE.",
+          "hsem_ev_charger_status": "Selecciona el sensor o la entidad que indica si el cargador de VE está activo (p. ej., un interruptor o un sensor).",
+          "hsem_ev_connected": "Selecciona el sensor o la entidad que indica si el VE está conectado al cargador.",
+          "hsem_ev_second_enabled": "Activa o desactiva la configuración de un segundo cargador de VE.",
+          "hsem_ev_soc": "Selecciona el sensor que proporciona el estado de carga (SoC) actual de la batería de tu VE.",
+          "hsem_house_power_includes_ev_charger_power": "Activa esto si el sensor de potencia de consumo de la vivienda ya incluye el consumo de potencia del cargador de VE.",
+          "hsem_ev_auto_full_negative_price": "Cuando está activado, el VE se ajusta automáticamente a la potencia de carga máxima cuando el precio de la electricidad es cero o negativo. El modo de carga anterior se restaura cuando el precio sube por encima de cero.",
+          "hsem_ev_past_target_confidence_factor": "Multiplicador de confianza (0.0-1.0) aplicado a la valoración de importación futura evitada que se usa al cargar el VE más allá de su SoC objetivo. Valores más bajos hacen que el VE compita peor frente a la exportación del excedente de PV, para tener en cuenta la incertidumbre sobre si el VE realmente necesitará la energía adicional antes de su próxima carga. Predeterminado 0.9."
+        },
+        "description": "Configura los ajustes del cargador de VE para HSEM.",
+        "title": "Ajustes del cargador de VE (opcional)"
+      },
+      "ev_second": {
+        "data": {
+          "hsem_ev_second_allow_charge_past_target_soc": "Permitir carga más allá del SoC objetivo para el segundo VE (avanzado)",
+          "hsem_ev_second_charger_force_max_discharge_power": "Forzar potencia máxima de descarga del segundo cargador de VE",
+          "hsem_ev_second_charger_max_discharge_power": "Potencia máxima de descarga del segundo cargador de VE",
+          "hsem_ev_second_charger_power": "Sensor de potencia del segundo cargador de VE",
+          "hsem_ev_second_charger_status": "Sensor de estado del segundo cargador de VE",
+          "hsem_ev_second_connected": "Sensor de conexión del segundo VE",
+          "hsem_ev_second_soc": "Sensor de estado de carga (SoC) del segundo VE",
+          "hsem_ev_second_past_target_confidence_factor": "Factor de confianza de carga del segundo VE más allá del objetivo (avanzado)"
+        },
+        "data_description": {
+          "hsem_ev_second_allow_charge_past_target_soc": "Activa esta opción si quieres permitir que el sistema siga cargando la batería del VE incluso después de haber alcanzado el estado de carga (SoC) objetivo. Esto puede resultar útil en situaciones en las que quieras asegurarte de que el VE quede completamente cargado, independientemente del ajuste del objetivo.",
+          "hsem_ev_second_charger_force_max_discharge_power": "Activa esto si quieres forzar una potencia máxima de descarga específica para las baterías Huawei mientras el VE se está cargando.",
+          "hsem_ev_second_charger_max_discharge_power": "Define la potencia máxima de descarga de las baterías Huawei mientras el VE se está cargando.",
+          "hsem_ev_second_charger_power": "Selecciona el sensor que mide el consumo de potencia de tu cargador de VE.",
+          "hsem_ev_second_charger_status": "Selecciona el sensor o la entidad que indica si el cargador de VE está activo (p. ej., un interruptor o un sensor).",
+          "hsem_ev_second_connected": "Selecciona el sensor o la entidad que indica si el VE está conectado al cargador.",
+          "hsem_ev_second_soc": "Selecciona el sensor que proporciona el estado de carga (SoC) actual de la batería de tu VE.",
+          "hsem_ev_second_past_target_confidence_factor": "Multiplicador de confianza (0.0-1.0) aplicado a la valoración de importación futura evitada que se usa al cargar el segundo VE más allá de su SoC objetivo. Valores más bajos hacen que el VE compita peor frente a la exportación del excedente de PV, para tener en cuenta la incertidumbre sobre si el VE realmente necesitará la energía adicional antes de su próxima carga. Predeterminado 0.9."
+        },
+        "description": "Configura los ajustes del segundo cargador de VE para HSEM.",
+        "title": "Ajustes del segundo cargador de VE (opcional)"
+      },
+      "huawei_solar": {
+        "data": {
+          "hsem_batteries_charge_efficiency": "Eficiencia de carga de la batería (%)",
+          "hsem_batteries_cycle_cost": "Coste de ciclo de batería (por kWh)",
+          "hsem_batteries_discharge_efficiency": "Eficiencia de descarga de la batería (%)",
+          "hsem_batteries_expected_cycles": "Ciclos de batería esperados",
+          "hsem_batteries_purchase_price": "Precio de compra de la batería",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Uso del excedente de energía PV en TOU de las baterías Huawei",
+          "hsem_huawei_solar_batteries_forcible_charge": "Estado de carga forzada de la batería",
+          "hsem_huawei_solar_batteries_end_of_discharge_soc": "SOC de fin de descarga de las baterías Huawei (%)",
+          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Capacidad de corte de carga de las baterías Huawei (SoC máx. %)",
+          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "SOC de corte de carga desde la red de las baterías Huawei (%)",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Potencia máxima de carga de las baterías Huawei (W)",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Potencia máxima de descarga de las baterías Huawei (W)",
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Potencia máxima de carga desde la red de las baterías Huawei (W)",
+          "hsem_huawei_solar_batteries_charge_discharge_power": "Sensor de potencia de carga/descarga de la batería Huawei",
+          "hsem_huawei_solar_batteries_rated_capacity": "Capacidad máxima de la batería (Wh)",
+          "hsem_huawei_solar_batteries_state_of_capacity": "Sensor de estado de capacidad de las baterías Huawei",
+          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Períodos de carga y descarga TOU de las baterías Huawei",
+          "hsem_huawei_solar_batteries_working_mode": "Sensor de modo de funcionamiento de las baterías Huawei Solar",
+          "hsem_huawei_solar_device_id_batteries": "Dispositivo de baterías Huawei",
+          "hsem_huawei_solar_device_id_batteries_2": "Dispositivo de baterías Huawei 2",
+          "hsem_huawei_solar_device_id_inverter_1": "Dispositivo del inversor Huawei 1",
+          "hsem_huawei_solar_device_id_inverter_2": "Dispositivo del inversor Huawei 2",
+          "hsem_huawei_solar_inverter_active_power_control": "Sensor de control de potencia activa del inversor Huawei"
+        },
+        "data_description": {
+          "hsem_batteries_charge_efficiency": "Especifica la eficiencia de carga de tu batería como porcentaje (0-100). La energía almacenada en la batería equivale a la energía de entrada multiplicada por este factor. Las baterías de litio habituales alcanzan un 95-98 %. Predeterminado: 98 %.",
+          "hsem_batteries_discharge_efficiency": "Especifica la eficiencia de descarga de tu batería como porcentaje (0-100). La energía entregada a la vivienda equivale a la energía extraída de la batería multiplicada por este factor. Las baterías de litio habituales alcanzan un 95-98 %. Predeterminado: 98 %.",
+          "hsem_batteries_cycle_cost": "Coste adicional opcional por kWh de ciclado de la batería (por kWh). Se suma al umbral de depreciación calculado automáticamente. Ajusta a 0 para depender únicamente de la protección de depreciación. Ejemplo: 0.02 significa que el planificador requiere 2 céntimos adicionales de margen por kWh ciclado antes de aprobar la carga desde la red.",
+          "hsem_batteries_expected_cycles": "Introduce el número esperado de ciclos completos de carga/descarga durante la vida útil de la batería. Se usa para calcular el coste de depreciación por kWh y el umbral de precio mínimo de exportación recomendado. Las baterías LiFePO4 habituales admiten entre 4000 y 8000 ciclos.",
+          "hsem_batteries_purchase_price": "Introduce el precio de compra total de tu sistema de baterías en tu moneda local. Se usa junto con los ciclos esperados y la capacidad utilizable para calcular el coste de depreciación por kWh y el umbral de precio mínimo de exportación recomendado.",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Selecciona el sensor que proporciona el ajuste de uso del excedente de energía PV en los períodos TOU.",
+          "hsem_huawei_solar_batteries_forcible_charge": "Sensor que muestra el estado actual de carga/descarga forzada (p. ej. Detenido, Descargando a 5000 W durante 60 minutos)",
+          "hsem_huawei_solar_batteries_end_of_discharge_soc": "Especifica el porcentaje de SOC de fin de descarga para tus baterías Huawei. Cuando la batería alcanza este nivel de SOC, dejará de descargarse para evitar una descarga profunda y posibles daños a la batería.",
+          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Selecciona la entidad que define el estado de carga (SoC) máximo que la batería puede alcanzar durante la carga (registro STORAGE_CHARGING_CUTOFF_CAPACITY). Normalmente 90-100 %. Usado por la simulación de SoC como límite superior de SoC para que el planificador nunca programe carga por encima de este límite.",
+          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Especifica el porcentaje de SOC de corte de carga desde la red para tus baterías Huawei.",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Selecciona el sensor que proporciona la potencia máxima de carga de tus baterías Huawei en vatios (W).",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Selecciona el sensor que proporciona la potencia máxima de descarga de tus baterías Huawei.",
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Selecciona la entidad numérica que establece el límite máximo de potencia de carga desde la red de Huawei (W). Escrita por el limitador de seguridad de carga con reconocimiento de fase en tiempo real (issue #831) para mantener la carga financiada por la red por debajo del límite por fase del fusible principal. Opcional; solo se requiere cuando la carga con reconocimiento de fase está activada.",
+          "hsem_huawei_solar_batteries_charge_discharge_power": "Selecciona el sensor que informa de la potencia instantánea de carga/descarga de la batería con signo (positivo = cargando, negativo = descargando). Necesario para el limitador de seguridad de carga con reconocimiento de fase en tiempo real (issue #831), para eliminar la propia contribución de Huawei de la instantánea de fase en tiempo real antes de calcular el margen disponible. Opcional; solo se requiere cuando la carga con reconocimiento de fase está activada.",
+          "hsem_huawei_solar_batteries_rated_capacity": "Selecciona el sensor que proporciona la capacidad nominal total de tus baterías Huawei en vatios-hora (Wh).",
+          "hsem_huawei_solar_batteries_state_of_capacity": "Selecciona el sensor que proporciona el estado de carga (SOC) de tus baterías Huawei.",
+          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Selecciona el sensor que define los períodos de carga y descarga por franja horaria (TOU) de tus baterías Huawei.",
+          "hsem_huawei_solar_batteries_working_mode": "Selecciona el sensor que indica el modo de funcionamiento actual de tus baterías Huawei.",
+          "hsem_huawei_solar_device_id_batteries": "Selecciona tu dispositivo de batería Huawei.",
+          "hsem_huawei_solar_device_id_batteries_2": "Selecciona tu dispositivo de batería Huawei secundario, si corresponde.",
+          "hsem_huawei_solar_device_id_inverter_1": "Selecciona tu dispositivo de inversor Huawei principal.",
+          "hsem_huawei_solar_device_id_inverter_2": "Selecciona tu dispositivo de inversor Huawei secundario, si corresponde.",
+          "hsem_huawei_solar_inverter_active_power_control": "Selecciona el sensor que controla la salida de potencia activa de tu inversor Huawei."
+        },
+        "description": "Configura el modo de funcionamiento de las baterías solares Huawei.",
+        "title": "Sensores de Huawei Solar"
+      },
+      "battery_economics": {
+        "data": {
+          "hsem_batteries_purchase_price": "Precio de compra de la batería",
+          "hsem_batteries_expected_cycles": "Ciclos de batería esperados",
+          "hsem_batteries_cycle_cost": "Coste de ciclo de batería (por kWh)",
+          "hsem_batteries_capacity_loss_pct": "Pérdida de capacidad de la batería al final de su vida útil (%)",
+          "hsem_batteries_charge_efficiency": "Eficiencia de carga de la batería (%)",
+          "hsem_batteries_discharge_efficiency": "Eficiencia de descarga de la batería (%)",
+          "hsem_planner_hysteresis_enabled": "Histéresis a nivel de plan",
+          "hsem_planner_hysteresis_absolute": "Umbral absoluto de histéresis",
+          "hsem_planner_hysteresis_percentage": "Umbral porcentual de histéresis (%)",
+          "hsem_planner_window_hysteresis_minutes": "Tiempo de retención de histéresis de ventana (minutos)"
+        },
+        "data_description": {
+          "hsem_batteries_purchase_price": "Introduce el precio de compra total de tu sistema de baterías en tu moneda local. Se usa junto con los ciclos esperados y la capacidad utilizable para calcular el coste de depreciación por kWh y el umbral de precio mínimo de exportación recomendado.",
+          "hsem_batteries_expected_cycles": "Introduce el número esperado de ciclos completos de carga/descarga durante la vida útil de la batería. Se usa para calcular el coste de depreciación por kWh y el umbral de precio mínimo de exportación recomendado. Las baterías LiFePO4 habituales admiten entre 4000 y 8000 ciclos.",
+          "hsem_batteries_cycle_cost": "Coste adicional opcional por kWh de ciclado de la batería (por kWh). Se suma al umbral de depreciación calculado automáticamente. Ajusta a 0 para depender únicamente de la protección de depreciación. Ejemplo: 0.02 significa que el planificador requiere 2 céntimos adicionales de margen por kWh ciclado antes de aprobar la carga desde la red.",
+          "hsem_batteries_capacity_loss_pct": "Pérdida de capacidad esperada al final de la vida útil, como porcentaje. Las baterías LiFePO4 suelen alcanzar un 80 % de capacidad tras ~6000 ciclos (20 % de pérdida). El valor predeterminado del 30 % añade margen para el envejecimiento por calendario.",
+          "hsem_batteries_charge_efficiency": "Especifica la eficiencia de carga de tu batería como porcentaje (0-100). La energía almacenada en la batería equivale a la energía de entrada multiplicada por este factor. Las baterías de litio habituales alcanzan un 95-98 %. Predeterminado: 98 %.",
+          "hsem_batteries_discharge_efficiency": "Especifica la eficiencia de descarga de tu batería como porcentaje (0-100). La energía entregada a la vivienda equivale a la energía extraída de la batería multiplicada por este factor. Las baterías de litio habituales alcanzan un 95-98 %. Predeterminado: 98 %.",
+          "hsem_planner_hysteresis_enabled": "Cuando está activada, el planificador mantiene el plan candidato activo a menos que un nuevo plan mejore la puntuación por encima de los umbrales configurados. Evita la oscilación entre estrategias con puntuaciones equivalentes.",
+          "hsem_planner_hysteresis_absolute": "Mejora mínima absoluta de la puntuación necesaria para cambiar a un nuevo plan. 0.00 desactiva el umbral absoluto. La puntuación usa la misma moneda que tus precios de electricidad, por lo que un valor de 0.01 requiere una mejora de al menos 1 céntimo/kWh equivalente antes de cambiar.",
+          "hsem_planner_hysteresis_percentage": "Mejora mínima porcentual de la puntuación necesaria para cambiar a un nuevo plan. 0 % desactiva el umbral porcentual. El valor predeterminado del 5 % evita las oscilaciones entre planes casi idénticos.",
+          "hsem_planner_window_hysteresis_minutes": "Tiempo mínimo (minutos) que debe mantenerse una recomendación antes de poder cambiar. Evita alternancias rápidas como ev_smart_charging ↔ batteries_charge_solar. 0 desactiva la función. Predeterminado: 10."
+        },
+        "description": "Configura los parámetros económicos de la batería y la histéresis del planificador (anti-oscilación).",
+        "title": "Economía de la batería e histéresis"
+      },
+      "init": {
+        "data": {
+          "device_name": "Nombre",
+          "hsem_extended_attributes": "Atributos ampliados",
+          "hsem_read_only": "Solo lectura",
+          "hsem_recommendation_interval_length": "Duración del intervalo de recomendación",
+          "hsem_recommendation_interval_minutes": "Minutos del intervalo de recomendación",
+          "hsem_update_interval": "Intervalo de actualización",
+          "hsem_verbose_logging": "Registro detallado"
+        },
+        "data_description": {
+          "device_name": "Introduce un nombre único para este dispositivo.",
+          "hsem_extended_attributes": "Activa esta opción para exponer atributos de diagnóstico adicionales en la entidad del sensor.",
+          "hsem_read_only": "Activa esta opción para poner la integración en modo de solo lectura, evitando que envíe órdenes a los dispositivos.",
+          "hsem_recommendation_interval_length": "El número de intervalos de recomendación que se tienen en cuenta al calcular el uso óptimo de la batería.",
+          "hsem_recommendation_interval_minutes": "La duración en minutos de cada intervalo de recomendación utilizado para calcular el uso óptimo de la batería.",
+          "hsem_update_interval": "El intervalo de actualización en minutos del sensor de modo de funcionamiento.",
+          "hsem_verbose_logging": "Activa el registro de depuración detallado con fines de solución de problemas."
+        },
+        "description": "Actualiza los ajustes de HSEM",
+        "title": "Actualizar Huawei Solar Energy Management"
+      },
+      "batteries_schedules": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_1": "Activar programación de batería 1",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Hora de fin de la programación de batería 1",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Hora de inicio de la programación de batería 1",
+          "hsem_batteries_enable_batteries_schedule_2": "Activar programación de batería 2",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Hora de fin de la programación de batería 2",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Hora de inicio de la programación de batería 2",
+          "hsem_batteries_enable_batteries_schedule_3": "Activar programación de batería 3",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Hora de fin de la programación de batería 3",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Hora de inicio de la programación de batería 3"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_1": "Activa o desactiva la primera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Especifica la hora de fin de la primera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Especifica la hora de inicio de la primera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_2": "Activa o desactiva la segunda programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Especifica la hora de fin de la segunda programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Especifica la hora de inicio de la segunda programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_3": "Activa o desactiva la tercera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Especifica la hora de fin de la tercera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Especifica la hora de inicio de la tercera programación de descarga de batería."
+        },
+        "description": "Configura hasta tres ventanas de programación de descarga de batería, cada una con un interruptor de activación/desactivación, hora de inicio y hora de fin. Las programaciones definen cuándo puede descargarse la batería para cubrir picos de consumo o exportar a la red.",
+        "title": "Programaciones de descarga de batería"
+      },
+      "months": {
+        "data": {
+          "hsem_months_winter": "Meses considerados como invierno/primavera"
+        },
+        "data_description": {
+          "hsem_months_winter": "Selecciona los meses que deben considerarse invierno/primavera para los ajustes estacionales del modo de funcionamiento. Puedes seleccionar varios meses. Seleccionar los 12 meses está permitido: esto mantiene el modo invierno/primavera (TOU) activo todo el año."
+        },
+        "description": "Configura los meses que se consideran invierno/primavera. Durante estos meses, el sistema priorizará la carga de las baterías desde la energía de la red para garantizar niveles de batería suficientes en los períodos de menor producción solar. Los meses restantes se considerarán meses de verano/otoño.",
+        "title": "Meses de invierno/primavera"
+      },
+      "power": {
+        "data": {
+          "hsem_house_consumption_power": "Sensor de potencia de consumo de la vivienda",
+          "hsem_main_fuse_amps": "Valor nominal del fusible principal (amperios)",
+          "hsem_main_fuse_phases": "Número de fases del fusible principal",
+          "hsem_max_grid_export_power_kw": "Potencia máxima de exportación a la red (kW)",
+          "hsem_solar_production_power": "Sensor de potencia de producción solar",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Sensor de potencia activa del medidor, fase A",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Sensor de potencia activa del medidor, fase B",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Sensor de potencia activa del medidor, fase C",
+          "hsem_phase_aware_charging_enabled": "Activar limitador de seguridad de carga con reconocimiento de fase en tiempo real"
+        },
+        "data_description": {
+          "hsem_house_consumption_power": "Selecciona el sensor que mide el consumo total de potencia de tu vivienda.",
+          "hsem_main_fuse_amps": "El valor nominal del fusible/interruptor principal de tu vivienda en amperios (25, 35, etc.). El optimizador MILP respetará este límite al programar la carga de la batería y del VE. Ajusta a 0 para desactivar.",
+          "hsem_main_fuse_phases": "El número de fases de tu instalación eléctrica. Las instalaciones monofásicas DEBEN configurar este valor en 1; establecer 3 en una instalación monofásica hace que la protección del fusible sea 3 veces demasiado permisiva y no proporciona un límite de seguridad real. Predeterminado: 3 (trifásico).",
+          "hsem_max_grid_export_power_kw": "Potencia máxima de exportación a la red en kW: el límite de exportación del operador de red/inversor para conexiones con exportación limitada (p. ej., 5 kW). El planificador MILP nunca programará una exportación por encima de este límite, de modo que la exportación de batería y la exportación de PV compiten correctamente por el mismo límite. Ajusta a 0 para desactivar.",
+          "hsem_solar_production_power": "Selecciona el sensor que mide la potencia generada por tus paneles solares.",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Selecciona el sensor que mide la potencia activa en tiempo real en la fase A de tu medidor de potencia Huawei. Solo se requiere cuando la carga con reconocimiento de fase está activada.",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Selecciona el sensor que mide la potencia activa en tiempo real en la fase B de tu medidor de potencia Huawei. Solo se requiere cuando la carga con reconocimiento de fase está activada.",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Selecciona el sensor que mide la potencia activa en tiempo real en la fase C de tu medidor de potencia Huawei. Solo se requiere cuando la carga con reconocimiento de fase está activada.",
+          "hsem_phase_aware_charging_enabled": "Activa una comprobación de seguridad en tiempo real inmediatamente antes de cada escritura de hardware de carga desde la red de Huawei (issue #831). Usa los tres sensores de fase del medidor de potencia indicados a continuación, junto con la entidad de potencia máxima de carga desde la red de Huawei (paso huawei_solar), para limitar la carga financiada por la red de modo que nunca supere el valor nominal del fusible principal en ninguna fase, incluso si la carga cambió después de resolver el plan. Requiere main_fuse_phases = 3 y las cuatro entidades configuradas. Desactivado de forma predeterminada; totalmente compatible con versiones anteriores."
+        },
+        "description": "Selecciona los sensores de potencia para HSEM.",
+        "title": "Sensores de potencia"
+      },
+      "quick_setup": {
+        "data": {
+          "battery_soc": "Estado de capacidad de la batería",
+          "working_mode": "Modo de funcionamiento de las baterías",
+          "max_charge_power": "Potencia máxima de carga",
+          "max_discharge_power": "Potencia máxima de descarga",
+          "eod_soc": "SoC de fin de descarga",
+          "rated_capacity": "Capacidad nominal de las baterías",
+          "active_power_control": "Control de potencia activa",
+          "tou_periods": "Períodos de carga/descarga TOU",
+          "solcast_today": "Previsión de Solcast de hoy",
+          "solcast_tomorrow": "Previsión de Solcast de mañana",
+          "import_price": "Sensor de precio de electricidad de importación",
+          "export_price": "Sensor de precio de electricidad de exportación",
+          "house_power": "Potencia de consumo de la vivienda",
+          "solar_power": "Potencia de producción solar",
+          "use_quick_setup": "Usar configuración rápida"
+        },
+        "data_description": {
+          "battery_soc": "Sensor de estado de capacidad de la batería detectado automáticamente.",
+          "working_mode": "Entidad de modo de funcionamiento de las baterías detectada automáticamente.",
+          "max_charge_power": "Entidad de potencia máxima de carga detectada automáticamente.",
+          "max_discharge_power": "Entidad de potencia máxima de descarga detectada automáticamente.",
+          "eod_soc": "Entidad de SoC de fin de descarga detectada automáticamente.",
+          "rated_capacity": "Sensor de capacidad nominal de las baterías detectado automáticamente.",
+          "active_power_control": "Sensor de control de potencia activa del inversor detectado automáticamente.",
+          "tou_periods": "Sensor de períodos de carga/descarga TOU detectado automáticamente.",
+          "solcast_today": "Previsión PV de Solcast para hoy, detectada automáticamente.",
+          "solcast_tomorrow": "Previsión PV de Solcast para mañana, detectada automáticamente.",
+          "import_price": "Sensor de precio de electricidad de importación detectado automáticamente.",
+          "export_price": "Sensor de precio de electricidad de exportación detectado automáticamente.",
+          "house_power": "Sensor de potencia de consumo de la vivienda detectado automáticamente.",
+          "solar_power": "Sensor de potencia de producción solar detectado automáticamente.",
+          "use_quick_setup": "Actívalo para usar las entidades detectadas automáticamente y omitir el asistente de configuración completo entidad por entidad. Desactívalo para la configuración avanzada."
+        },
+        "description": "HSEM ha detectado automáticamente las siguientes entidades. {warning}Revisa las entidades detectadas a continuación. Puedes confirmar su uso o elegir la configuración avanzada para seleccionar las entidades manualmente.",
+        "title": "Configuración rápida: entidades detectadas automáticamente"
+      },
+      "solcast": {
+        "data": {
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Probabilidad de previsión preferida para usar en la previsión PV de Solcast",
+          "hsem_solcast_pv_forecast_forecast_today": "Sensor de previsión PV de Solcast de hoy",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Sensor de previsión PV de Solcast de mañana"
+        },
+        "data_description": {
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Selecciona la probabilidad de previsión preferida para las previsiones PV de Solcast.",
+          "hsem_solcast_pv_forecast_forecast_today": "Selecciona el sensor que proporciona la previsión de producción PV de hoy de Solcast.",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Selecciona el sensor que proporciona la previsión de producción PV de mañana de Solcast."
+        },
+        "description": "Selecciona los sensores de previsión de Solcast.",
+        "title": "Sensores de Solcast"
+      },
+      "user": {
+        "data": {
+          "device_name": "Nombre",
+          "hsem_extended_attributes": "Atributos ampliados",
+          "hsem_read_only": "Solo lectura",
+          "hsem_recommendation_interval_length": "Duración del intervalo de recomendación",
+          "hsem_recommendation_interval_minutes": "Minutos del intervalo de recomendación",
+          "hsem_update_interval": "Intervalo de actualización",
+          "hsem_verbose_logging": "Registro detallado"
+        },
+        "data_description": {
+          "device_name": "Introduce un nombre único para este dispositivo.",
+          "hsem_extended_attributes": "Activa esta opción para exponer atributos de diagnóstico adicionales en la entidad del sensor.",
+          "hsem_read_only": "Activa esta opción para poner la integración en modo de solo lectura, evitando que envíe órdenes a los dispositivos.",
+          "hsem_recommendation_interval_length": "El número de intervalos de recomendación que se tienen en cuenta al calcular el uso óptimo de la batería.",
+          "hsem_recommendation_interval_minutes": "La duración en minutos de cada intervalo de recomendación utilizado para calcular el uso óptimo de la batería.",
+          "hsem_update_interval": "El intervalo de actualización en minutos del sensor de modo de funcionamiento.",
+          "hsem_verbose_logging": "Activa el registro de depuración detallado con fines de solución de problemas."
+        },
+        "description": "Configura los ajustes de HSEM",
+        "title": "Configurar Huawei Solar Energy Management"
+      },
+      "weighted_values": {
+        "data": {
+          "hsem_house_consumption_energy_weight_14d": "Peso de energía de consumo de la vivienda a 14 días",
+          "hsem_house_consumption_energy_weight_1d": "Peso de energía de consumo de la vivienda a 1 día",
+          "hsem_house_consumption_energy_weight_3d": "Peso de energía de consumo de la vivienda a 3 días",
+          "hsem_house_consumption_energy_weight_7d": "Peso de energía de consumo de la vivienda a 7 días"
+        },
+        "data_description": {
+          "hsem_house_consumption_energy_weight_14d": "Especifica el porcentaje de peso para la energía de consumo de la vivienda de los últimos 14 días.",
+          "hsem_house_consumption_energy_weight_1d": "Especifica el porcentaje de peso para la energía de consumo de la vivienda del último día.",
+          "hsem_house_consumption_energy_weight_3d": "Especifica el porcentaje de peso para la energía de consumo de la vivienda de los últimos 3 días.",
+          "hsem_house_consumption_energy_weight_7d": "Especifica el porcentaje de peso para la energía de consumo de la vivienda de los últimos 7 días."
+        },
+        "description": "Configura los valores ponderados de la energía de consumo de la vivienda para estimar tu uso medio de potencia. El sistema calcula el consumo medio de cada hora a lo largo de 1, 3, 7 y 14 días. Estas medias se ponderan después para ofrecer una estimación combinada y ponderada. Este enfoque ayuda a suavizar anomalías, como un consumo inusualmente alto en un solo día debido a precios bajos, y proporciona una predicción fiable de tu uso de potencia esperado en intervalos de tiempo específicos (p. ej., entre las 16:00 y las 17:00).",
+        "title": "Valores ponderados"
+      },
+      "energy_and_ml": {
+        "data": {
+          "hsem_grid_import_energy_entity": "Sensor de energía de importación de la red",
+          "hsem_grid_export_energy_entity": "Sensor de energía de exportación a la red",
+          "hsem_pv_energy_entity": "Sensor de energía de producción PV",
+          "hsem_ml_consumption_enabled": "Activar predicción de consumo mediante ML",
+          "hsem_ml_consumption_energy_entity": "Sensor de energía de consumo de la vivienda (excl. batería y VE)",
+          "hsem_ml_consumption_history_days": "Días de historial para ML",
+          "hsem_ml_consumption_net_consumption": "Usar consumo neto (importación - exportación)",
+          "hsem_ml_consumption_temperature_entity": "Sensor de temperatura exterior",
+          "hsem_ml_consumption_sequential": "Predicción secuencial (función de retardo)"
+        },
+        "data_description": {
+          "hsem_grid_import_energy_entity": "Opcional: medidor acumulado de energía de importación de la red (kWh).",
+          "hsem_grid_export_energy_entity": "Opcional: medidor acumulado de energía de exportación a la red (kWh).",
+          "hsem_pv_energy_entity": "Opcional: medidor acumulado de energía de producción PV (kWh).",
+          "hsem_ml_consumption_enabled": "Cuando está activado, usa regresión ridge sobre el historial del recorder en lugar de medias móviles. Requiere 14 días o más de historial.",
+          "hsem_ml_consumption_energy_entity": "Medidor acumulado de energía de consumo de la vivienda (kWh). Debe excluir la batería Y la carga del VE; usa un sensor situado antes de ambos. Si no se configura, se recurre a la importación de red.",
+          "hsem_ml_consumption_history_days": "Días de historial del recorder para el entrenamiento de ML (7-90).",
+          "hsem_ml_consumption_net_consumption": "Resta la exportación a la red de la importación para obtener el consumo neto de la vivienda.",
+          "hsem_ml_consumption_temperature_entity": "Opcional: sensor de temperatura exterior en °C. Usa un sensor exterior, no un termostato interior.",
+          "hsem_ml_consumption_sequential": "Introduce cada predicción de intervalo como entrada de la siguiente. Captura la dinámica dentro de la hora (p. ej., los picos de cocina se propagan hacia adelante)."
+        },
+        "description": "Configura los medidores de energía y activa la predicción de consumo basada en ML.",
+        "title": "Energía y ML"
+      },
+      "batteries_wait_mode": {
+        "data": {
+          "hsem_batteries_wait_mode_behavior": "Comportamiento del modo de espera"
+        },
+        "data_description": {
+          "hsem_batteries_wait_mode_behavior": "Elige cómo se comporta la batería cuando HSEM selecciona el modo de espera. La espera estricta mantiene la batería inactiva. El autoconsumo con reserva permite que la vivienda use el excedente de energía de la batería por encima de la reserva requerida por el planificador, reduciendo la importación innecesaria de red."
+        },
+        "description": "Configura cómo se comporta la batería durante el modo de espera.",
+        "title": "Comportamiento de la batería en modo de espera"
+      }
+    }
+  },
+  "options": {
+    "error": {
+      "device_not_found": "No se encontró el dispositivo seleccionado.",
+      "energy_out_of_range": "El valor de energía está fuera del rango permitido.",
+      "entity_not_found": "No se encontró la entidad seleccionada.",
+      "entity_unavailable": "La entidad seleccionada no está disponible en este momento. Comprueba el dispositivo o el servicio.",
+      "hsem_house_consumption_energy_weight_total": "El total de los pesos de energía de consumo de la vivienda debe ser 100 %.",
+      "invalid_energy_value": "Valor de energía no válido: introduce un número.",
+      "invalid_entity_id": "Formato de ID de entidad no válido. Se espera \"domain.object_id\" con letras minúsculas, dígitos y guiones bajos.",
+      "invalid_month_value": "Uno o más valores de mes no son válidos. Los meses deben ser números enteros entre 1 y 12.",
+      "invalid_power_value": "Valor de potencia no válido: introduce un número.",
+      "invalid_price_value": "Valor de precio no válido: introduce un número.",
+      "invalid_sensor": "Sensor de entrada no válido. Elige un sensor válido.",
+      "invalid_time_format": "Formato de hora no válido: se espera HH:MM:SS.",
+      "months_winter_empty": "La temporada de invierno debe tener al menos un mes.",
+      "only_one_entry_allowed": "Solo se permite una configuración de HSEM.",
+      "power_out_of_range": "El valor de potencia está fuera del rango permitido.",
+      "price_out_of_range": "El valor de precio está fuera del rango permitido.",
+      "required": "Este campo es obligatorio.",
+      "start_time_after_end_time": "La hora de inicio debe ser anterior a la hora de fin.",
+      "start_time_equals_end_time": "La hora de inicio y la hora de fin no pueden ser iguales, ya que esto crea una ventana de duración cero. Desactiva la programación en su lugar.",
+      "invalid_wait_mode_behavior": "Comportamiento de modo de espera no válido. Elige Espera estricta o Autoconsumo con reserva.",
+      "port_conflict": "El segundo puerto OCPP debe ser diferente del primer puerto OCPP."
+    },
+    "step": {
+      "batteries_excess_export": {
+        "data": {
+          "hsem_batteries_enable_excess_export": "Activar exportación de batería excedente",
+          "hsem_batteries_excess_export_discharge_buffer": "Búfer de descarga (%)",
+          "hsem_batteries_forecast_reserve_pct": "Reserva de previsión para exportación de batería (+% SoC)",
+          "hsem_batteries_export_min_price": "Precio mínimo de exportación de batería"
+        },
+        "data_description": {
+          "hsem_batteries_enable_excess_export": "Activa o desactiva la función de exportación de batería excedente, que exporta automáticamente la capacidad de batería excedente a la red cuando resulta económicamente beneficioso.",
+          "hsem_batteries_excess_export_discharge_buffer": "Define el porcentaje del búfer de seguridad para mantener las reservas mínimas de batería (0-50 %). El valor predeterminado es 10 % para garantizar capacidad suficiente ante una demanda inesperada.",
+          "hsem_batteries_forecast_reserve_pct": "Puntos porcentuales adicionales de SoC por encima del límite de fin de descarga de Huawei que la exportación intencionada de batería debe dejar inmediatamente después de cada intervalo de exportación. Por ejemplo, un límite de Huawei del 15 % más una reserva del 5 % protege un 20 % de SoC. La reserva sigue disponible para la carga de la vivienda cuando la demanda real supera la previsión. Ajusta a 0 para desactivar (predeterminado).",
+          "hsem_batteries_export_min_price": "Límite mínimo estricto por intervalo para la exportación intencionada de batería a la red (issue #752). Cuando es > 0, HSEM prohíbe marcar un intervalo como force_batteries_discharge cuando el precio de exportación está estrictamente por debajo de este límite; la batería puede seguir sirviendo la carga de la vivienda en esos intervalos. Alcanzar el umbral NO activa automáticamente la exportación; el optimizador sigue decidiendo si vender resulta rentable. Se aplica únicamente a la exportación intencionada de batería a la red, no al autoconsumo normal, la exportación de PV ni la carga de PV. Ajusta a 0 para desactivar (predeterminado)."
+        },
+        "description": "Configura los ajustes de exportación de batería excedente para vender automáticamente el exceso de energía a la red cuando resulte económicamente beneficioso.",
+        "title": "Exportación de batería excedente"
+      },
+      "ev_planned_load": {
+        "data": {
+          "hsem_ev_planned_load_enabled": "Activar integración de carga planificada del VE",
+          "hsem_ev_planned_load_battery_capacity_kwh": "Capacidad de batería del VE (kWh)",
+          "hsem_ev_planned_load_charger_power_kw": "Potencia del cargador de VE (kW)",
+          "hsem_ev_planned_load_charger_efficiency": "Eficiencia del cargador de VE",
+          "hsem_ev_planned_load_charger_min_power_w": "Potencia mínima del cargador de VE (W)",
+          "hsem_ev_planned_load_charger_phase_topology": "Topología de fases del cargador",
+          "hsem_ev_planned_load_deadline_safety_margin_pct": "Margen de seguridad para la fecha límite (%)",
+          "hsem_ev_planned_load_command_deadband_a": "Banda muerta del límite máximo (A)",
+          "hsem_ev_planned_load_stub_floor_minutes": "Supresión de parada al final del intervalo (min)"
+        },
+        "data_description": {
+          "hsem_ev_planned_load_enabled": "Activa o desactiva la integración de carga planificada del VE.",
+          "hsem_ev_planned_load_battery_capacity_kwh": "Capacidad nominal de la batería del VE en kWh.",
+          "hsem_ev_planned_load_charger_power_kw": "Potencia de salida de CA del cargador de VE en kW.",
+          "hsem_ev_planned_load_charger_efficiency": "Eficiencia del cargador como porcentaje (1-100). Predeterminado: 100.",
+          "hsem_ev_planned_load_charger_min_power_w": "Potencia de CA mínima (W) que necesita el cargador de VE para empezar a cargar. Por debajo de este valor, el cargador no funcionará. Predeterminado: 1380 W (230 V × 6 A).",
+          "hsem_ev_planned_load_charger_phase_topology": "Cómo distribuye el cargador su carga entre las fases de la red eléctrica. Elige \"Monofásico o desconocido\" a menos que hayas confirmado que el cargador consume corriente equilibrada en las tres fases. Con la protección de fusible por fase activada, el valor predeterminado seguro asume que toda la orden del cargador puede recaer en una sola fase, lo que limita la carga planificada al margen del fusible monofásico.",
+          "hsem_ev_planned_load_deadline_safety_margin_pct": "Energía adicional presupuestada por encima del SoC objetivo, como porcentaje del déficit, para que la fricción normal de la carga (retrasos de inicio, límites mínimos de potencia, limitación) no provoque el incumplimiento de la fecha límite. Predeterminado: 0 % (desactivado).",
+          "hsem_ev_planned_load_command_deadband_a": "Reducción mínima del límite de carga publicado que se aplica realmente. Las reducciones menores se retienen, porque los planes competidores en amperios enteros suelen diferir entre sí por un margen de error de redondeo en el coste. Aumentar el límite nunca se retrasa, y una reducción que mejore el coste de carga de este intervalo en más del 5 % siempre se aplica. Predeterminado: 3 A; 0 desactiva.",
+          "hsem_ev_planned_load_stub_floor_minutes": "Al final de un intervalo, suprime la orden de parada durante estos minutos mientras el coche todavía necesite energía. Los segundos restantes no pueden contener suficiente energía para superar el mínimo del cargador, por lo que el plan no les asigna nada y la sesión se detendría y reiniciaría sin ninguna ventaja. Predeterminado: 2 minutos; 0 desactiva."
+        },
+        "description": "Configura la integración opcional de carga planificada del VE. Cuando está activada, HSEM tiene en cuenta la demanda de carga del VE prevista en cada intervalo del planificador.",
+        "title": "Integración de carga planificada del VE"
+      },
+      "ev_second_planned_load": {
+        "data": {
+          "hsem_ev_second_planned_load_enabled": "Activar integración de carga planificada del VE 2",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "Capacidad de batería del VE 2 (kWh)",
+          "hsem_ev_second_planned_load_charger_power_kw": "Potencia del cargador del VE 2 (kW)",
+          "hsem_ev_second_planned_load_charger_efficiency": "Eficiencia del cargador del VE 2",
+          "hsem_ev_second_planned_load_charger_min_power_w": "Potencia mínima del cargador del VE 2 (W)",
+          "hsem_ev_second_planned_load_charger_phase_topology": "Topología de fases del cargador",
+          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "Margen de seguridad para la fecha límite del VE 2 (%)",
+          "hsem_ev_second_planned_load_command_deadband_a": "Banda muerta del límite máximo del VE 2 (A)",
+          "hsem_ev_second_planned_load_stub_floor_minutes": "Supresión de parada al final del intervalo del VE 2 (min)"
+        },
+        "data_description": {
+          "hsem_ev_second_planned_load_enabled": "Activa o desactiva la integración de carga planificada para el segundo VE.",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "Capacidad nominal de la batería del segundo VE en kWh.",
+          "hsem_ev_second_planned_load_charger_power_kw": "Potencia de salida de CA del cargador del segundo VE en kW.",
+          "hsem_ev_second_planned_load_charger_efficiency": "Eficiencia del cargador del segundo VE como porcentaje (1-100). Predeterminado: 100.",
+          "hsem_ev_second_planned_load_charger_min_power_w": "Potencia de CA mínima (W) que necesita el cargador del segundo VE para empezar a cargar. Predeterminado: 1380 W (230 V × 6 A).",
+          "hsem_ev_second_planned_load_charger_phase_topology": "Cómo distribuye el cargador su carga entre las fases de la red eléctrica. Elige \"Monofásico o desconocido\" a menos que hayas confirmado que el cargador consume corriente equilibrada en las tres fases. Con la protección de fusible por fase activada, el valor predeterminado seguro asume que toda la orden del cargador puede recaer en una sola fase, lo que limita la carga planificada al margen del fusible monofásico.",
+          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "Igual que el margen de seguridad de fecha límite del VE principal, para el segundo VE. Predeterminado: 0 % (desactivado).",
+          "hsem_ev_second_planned_load_command_deadband_a": "Igual que la banda muerta del límite máximo del VE principal, para el segundo VE. Predeterminado: 3 A; 0 desactiva.",
+          "hsem_ev_second_planned_load_stub_floor_minutes": "Igual que la supresión de parada al final del intervalo del VE principal, para el segundo VE. Predeterminado: 2 minutos; 0 desactiva."
+        },
+        "description": "Configura la integración opcional de carga planificada para el segundo VE. Solo se muestra cuando el segundo cargador de VE está activado.",
+        "title": "Integración de carga planificada del VE 2"
+      },
+      "ocpp": {
+        "data": {
+          "hsem_ocpp_enabled": "Activar servidor OCPP",
+          "hsem_ocpp_port": "Puerto OCPP",
+          "hsem_ocpp_cpid": "ID del punto de carga",
+          "hsem_ocpp_start_window_s": "Ventana de inicio (s)",
+          "hsem_ocpp_stop_window_s": "Ventana de parada (s)",
+          "hsem_ocpp_second_enabled": "Activar segundo servidor OCPP",
+          "hsem_ocpp_second_port": "Segundo puerto OCPP",
+          "hsem_ocpp_second_cpid": "ID del segundo punto de carga"
+        },
+        "data_description": {
+          "hsem_ocpp_enabled": "Activa el servidor WebSocket OCPP 1.6 integrado para el control directo del cargador de VE. Solo para red local: no expongas el puerto a internet.",
+          "hsem_ocpp_port": "Puerto TCP para el servidor WebSocket OCPP. Predeterminado: 9000. Debe ser superior a 1024.",
+          "hsem_ocpp_cpid": "Identificador de punto de carga esperado del cargador de VE. Déjalo vacío para aceptar cualquier cargador.",
+          "hsem_ocpp_start_window_s": "Segundos de excedente sostenido necesarios antes de iniciar una carga. Evita ciclos rápidos de arranque y parada. Predeterminado: 60.",
+          "hsem_ocpp_stop_window_s": "Segundos de déficit sostenido necesarios antes de detener una carga. Evita ciclos rápidos de parada y arranque. Predeterminado: 180.",
+          "hsem_ocpp_second_enabled": "Activa un segundo servidor OCPP dedicado para el segundo VE. Solo disponible cuando la carga planificada del VE 2 está activada.",
+          "hsem_ocpp_second_port": "Puerto TCP para el segundo servidor WebSocket OCPP. Predeterminado: 9001. Debe ser diferente del puerto del primer servidor.",
+          "hsem_ocpp_second_cpid": "Identificador de punto de carga esperado del segundo cargador de VE. Déjalo vacío para aceptar cualquier cargador."
+        },
+        "description": "Configura el servidor OCPP 1.6 integrado para el control del cargador de VE únicamente en red local. Cuando está activado, HSEM envía órdenes SetChargingProfile directamente a tu cargador de VE según el plan de carga.",
+        "title": "Servidor OCPP"
+      },
+      "batteries_schedule_1": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_1": "Activar programación de batería 1",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Hora de fin de la programación de batería 1",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Hora de inicio de la programación de batería 1"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_1": "Activa o desactiva la primera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Especifica la hora de fin de la primera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Especifica la hora de inicio de la primera programación de descarga de batería."
+        },
+        "description": "Configura la programación de descarga de batería 1, incluida su hora de activación.",
+        "title": "Programación de descarga de batería 1"
+      },
+      "batteries_schedule_2": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_2": "Activar programación de batería 2",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Hora de fin de la programación de batería 2",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Hora de inicio de la programación de batería 2"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_2": "Activa o desactiva la segunda programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Especifica la hora de fin de la segunda programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Especifica la hora de inicio de la segunda programación de descarga de batería."
+        },
+        "description": "Configura la programación de descarga de batería 2, incluida su hora de activación.",
+        "title": "Programación de descarga de batería 2"
+      },
+      "batteries_schedule_3": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_3": "Activar programación de batería 3",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Hora de fin de la programación de batería 3",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Hora de inicio de la programación de batería 3"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_3": "Activa o desactiva la tercera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Especifica la hora de fin de la tercera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Especifica la hora de inicio de la tercera programación de descarga de batería."
+        },
+        "description": "Configura la programación de descarga de batería 3, incluida su hora de activación.",
+        "title": "Programación de descarga de batería 3"
+      },
+      "prices": {
+        "data": {
+          "hsem_import_electricity_price_sensor": "Sensor de precio de electricidad de importación",
+          "hsem_export_electricity_price_sensor": "Sensor de precio de electricidad de exportación",
+          "hsem_import_electricity_price_forecast_sensor": "Sensor de previsión de precio de importación (opcional)",
+          "hsem_export_electricity_price_forecast_sensor": "Sensor de previsión de precio de exportación (opcional)",
+          "hsem_export_electricity_min_price": "Precio mínimo de exportación requerido",
+          "hsem_electricity_price_update_interval": "Intervalo de actualización del precio de electricidad (minutos)"
+        },
+        "data_description": {
+          "hsem_import_electricity_price_sensor": "Selecciona el sensor que proporciona los precios de electricidad de importación (p. ej. Energi Data Service, Nordpool, Amber Electric).",
+          "hsem_export_electricity_price_sensor": "Selecciona el sensor que proporciona los precios de electricidad de exportación.",
+          "hsem_import_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de importación (usado por Amber Electric e integraciones similares).",
+          "hsem_export_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de exportación.",
+          "hsem_export_electricity_min_price": "Define el precio mínimo de exportación. Las exportaciones por debajo de este precio se bloquearán.",
+          "hsem_electricity_price_update_interval": "Con qué frecuencia proporciona nuevos datos tu sensor de precios (15, 30 o 60 minutos)."
+        },
+        "description": "Configura tus sensores de precio de electricidad para los precios de importación y exportación.",
+        "title": "Precios de electricidad"
+      },
+      "ev": {
+        "data": {
+          "hsem_ev_allow_charge_past_target_soc": "Permitir carga más allá del SoC objetivo (avanzado)",
+          "hsem_ev_charger_force_max_discharge_power": "Forzar potencia máxima de descarga del cargador de VE",
+          "hsem_ev_charger_max_discharge_power": "Potencia máxima de descarga del cargador de VE",
+          "hsem_ev_charger_power": "Sensor de potencia del cargador de VE",
+          "hsem_ev_charger_status": "Sensor de estado del cargador de VE",
+          "hsem_ev_connected": "Sensor de conexión del VE",
+          "hsem_ev_second_enabled": "Activar segundo cargador de VE",
+          "hsem_ev_soc": "Sensor de estado de carga (SoC) del VE",
+          "hsem_house_power_includes_ev_charger_power": "La potencia de la vivienda incluye la potencia del cargador de VE",
+          "hsem_ev_auto_full_negative_price": "Carga completa automática del VE con precio negativo",
+          "hsem_ev_past_target_confidence_factor": "Factor de confianza de carga del VE más allá del objetivo (avanzado)"
+        },
+        "data_description": {
+          "hsem_ev_allow_charge_past_target_soc": "Activa esta opción si quieres permitir que el sistema siga cargando la batería del VE incluso después de haber alcanzado el estado de carga (SoC) objetivo. Esto puede resultar útil en situaciones en las que quieras asegurarte de que el VE quede completamente cargado, independientemente del ajuste del objetivo.",
+          "hsem_ev_charger_force_max_discharge_power": "Activa esto si quieres forzar una potencia máxima de descarga específica para las baterías Huawei mientras el VE se está cargando.",
+          "hsem_ev_charger_max_discharge_power": "Define la potencia máxima de descarga de las baterías Huawei mientras el VE se está cargando.",
+          "hsem_ev_charger_power": "Selecciona el sensor que mide el consumo de potencia de tu cargador de VE.",
+          "hsem_ev_charger_status": "Selecciona el sensor o la entidad que indica si el cargador de VE está activo (p. ej., un interruptor o un sensor).",
+          "hsem_ev_connected": "Selecciona el sensor o la entidad que indica si el VE está conectado al cargador.",
+          "hsem_ev_second_enabled": "Activa o desactiva la configuración de un segundo cargador de VE.",
+          "hsem_ev_soc": "Selecciona el sensor que proporciona el estado de carga (SoC) actual de la batería de tu VE.",
+          "hsem_house_power_includes_ev_charger_power": "Activa esto si el sensor de potencia de consumo de la vivienda ya incluye el consumo de potencia del cargador de VE.",
+          "hsem_ev_auto_full_negative_price": "Cuando está activado, el VE se ajusta automáticamente a la potencia de carga máxima cuando el precio de la electricidad es cero o negativo. El modo de carga anterior se restaura cuando el precio sube por encima de cero.",
+          "hsem_ev_past_target_confidence_factor": "Multiplicador de confianza (0.0-1.0) aplicado a la valoración de importación futura evitada que se usa al cargar el VE más allá de su SoC objetivo. Valores más bajos hacen que el VE compita peor frente a la exportación del excedente de PV, para tener en cuenta la incertidumbre sobre si el VE realmente necesitará la energía adicional antes de su próxima carga. Predeterminado 0.9."
+        },
+        "description": "Configura los ajustes del cargador de VE para HSEM.",
+        "title": "Ajustes del cargador de VE (opcional)"
+      },
+      "ev_second": {
+        "data": {
+          "hsem_ev_second_allow_charge_past_target_soc": "Permitir carga más allá del SoC objetivo para el segundo VE (avanzado)",
+          "hsem_ev_second_charger_force_max_discharge_power": "Forzar potencia máxima de descarga del segundo cargador de VE",
+          "hsem_ev_second_charger_max_discharge_power": "Potencia máxima de descarga del segundo cargador de VE",
+          "hsem_ev_second_charger_power": "Sensor de potencia del segundo cargador de VE",
+          "hsem_ev_second_charger_status": "Sensor de estado del segundo cargador de VE",
+          "hsem_ev_second_connected": "Sensor de conexión del segundo VE",
+          "hsem_ev_second_soc": "Sensor de estado de carga (SoC) del segundo VE",
+          "hsem_ev_second_past_target_confidence_factor": "Factor de confianza de carga del segundo VE más allá del objetivo (avanzado)"
+        },
+        "data_description": {
+          "hsem_ev_second_allow_charge_past_target_soc": "Activa esta opción si quieres permitir que el sistema siga cargando la batería del VE incluso después de haber alcanzado el estado de carga (SoC) objetivo. Esto puede resultar útil en situaciones en las que quieras asegurarte de que el VE quede completamente cargado, independientemente del ajuste del objetivo.",
+          "hsem_ev_second_charger_force_max_discharge_power": "Activa esto si quieres forzar una potencia máxima de descarga específica para las baterías Huawei mientras el VE se está cargando.",
+          "hsem_ev_second_charger_max_discharge_power": "Define la potencia máxima de descarga de las baterías Huawei mientras el VE se está cargando.",
+          "hsem_ev_second_charger_power": "Selecciona el sensor que mide el consumo de potencia de tu cargador de VE.",
+          "hsem_ev_second_charger_status": "Selecciona el sensor o la entidad que indica si el cargador de VE está activo (p. ej., un interruptor o un sensor).",
+          "hsem_ev_second_connected": "Selecciona el sensor o la entidad que indica si el VE está conectado al cargador.",
+          "hsem_ev_second_soc": "Selecciona el sensor que proporciona el estado de carga (SoC) actual de la batería de tu VE.",
+          "hsem_ev_second_past_target_confidence_factor": "Multiplicador de confianza (0.0-1.0) aplicado a la valoración de importación futura evitada que se usa al cargar el segundo VE más allá de su SoC objetivo. Valores más bajos hacen que el VE compita peor frente a la exportación del excedente de PV, para tener en cuenta la incertidumbre sobre si el VE realmente necesitará la energía adicional antes de su próxima carga. Predeterminado 0.9."
+        },
+        "description": "Configura los ajustes del segundo cargador de VE para HSEM.",
+        "title": "Ajustes del segundo cargador de VE (opcional)"
+      },
+      "huawei_solar": {
+        "data": {
+          "hsem_batteries_charge_efficiency": "Eficiencia de carga de la batería (%)",
+          "hsem_batteries_cycle_cost": "Coste de ciclo de batería (por kWh)",
+          "hsem_batteries_discharge_efficiency": "Eficiencia de descarga de la batería (%)",
+          "hsem_batteries_expected_cycles": "Ciclos de batería esperados",
+          "hsem_batteries_purchase_price": "Precio de compra de la batería",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Uso del excedente de energía PV en TOU de las baterías Huawei",
+          "hsem_huawei_solar_batteries_forcible_charge": "Estado de carga forzada de la batería",
+          "hsem_huawei_solar_batteries_end_of_discharge_soc": "SOC de fin de descarga de las baterías Huawei (%)",
+          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Capacidad de corte de carga de las baterías Huawei (SoC máx. %)",
+          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "SOC de corte de carga desde la red de las baterías Huawei (%)",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Potencia máxima de carga de las baterías Huawei (W)",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Potencia máxima de descarga de las baterías Huawei (W)",
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Potencia máxima de carga desde la red de las baterías Huawei (W)",
+          "hsem_huawei_solar_batteries_charge_discharge_power": "Sensor de potencia de carga/descarga de la batería Huawei",
+          "hsem_huawei_solar_batteries_rated_capacity": "Capacidad máxima de la batería (Wh)",
+          "hsem_huawei_solar_batteries_state_of_capacity": "Sensor de estado de capacidad de las baterías Huawei",
+          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Períodos de carga y descarga TOU de las baterías Huawei",
+          "hsem_huawei_solar_batteries_working_mode": "Sensor de modo de funcionamiento de las baterías Huawei Solar",
+          "hsem_huawei_solar_device_id_batteries": "Dispositivo de baterías Huawei",
+          "hsem_huawei_solar_device_id_batteries_2": "Dispositivo de baterías Huawei 2",
+          "hsem_huawei_solar_device_id_inverter_1": "Dispositivo del inversor Huawei 1",
+          "hsem_huawei_solar_device_id_inverter_2": "Dispositivo del inversor Huawei 2",
+          "hsem_huawei_solar_inverter_active_power_control": "Sensor de control de potencia activa del inversor Huawei"
+        },
+        "data_description": {
+          "hsem_batteries_charge_efficiency": "Especifica la eficiencia de carga de tu batería como porcentaje (0-100). La energía almacenada en la batería equivale a la energía de entrada multiplicada por este factor. Las baterías de litio habituales alcanzan un 95-98 %. Predeterminado: 98 %.",
+          "hsem_batteries_discharge_efficiency": "Especifica la eficiencia de descarga de tu batería como porcentaje (0-100). La energía entregada a la vivienda equivale a la energía extraída de la batería multiplicada por este factor. Las baterías de litio habituales alcanzan un 95-98 %. Predeterminado: 98 %.",
+          "hsem_batteries_cycle_cost": "Coste adicional opcional por kWh de ciclado de la batería (por kWh). Se suma al umbral de depreciación calculado automáticamente. Ajusta a 0 para depender únicamente de la protección de depreciación. Ejemplo: 0.02 significa que el planificador requiere 2 céntimos adicionales de margen por kWh ciclado antes de aprobar la carga desde la red.",
+          "hsem_batteries_expected_cycles": "Introduce el número esperado de ciclos completos de carga/descarga durante la vida útil de la batería. Se usa para calcular el coste de depreciación por kWh y el umbral de precio mínimo de exportación recomendado. Las baterías LiFePO4 habituales admiten entre 4000 y 8000 ciclos.",
+          "hsem_batteries_purchase_price": "Introduce el precio de compra total de tu sistema de baterías en tu moneda local. Se usa junto con los ciclos esperados y la capacidad utilizable para calcular el coste de depreciación por kWh y el umbral de precio mínimo de exportación recomendado.",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Selecciona el sensor que proporciona el ajuste de uso del excedente de energía PV en los períodos TOU.",
+          "hsem_huawei_solar_batteries_forcible_charge": "Sensor que muestra el estado actual de carga/descarga forzada (p. ej. Detenido, Descargando a 5000 W durante 60 minutos)",
+          "hsem_huawei_solar_batteries_end_of_discharge_soc": "Especifica el porcentaje de SOC de fin de descarga para tus baterías Huawei. Cuando la batería alcanza este nivel de SOC, dejará de descargarse para evitar una descarga profunda y posibles daños a la batería.",
+          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Selecciona la entidad que define el estado de carga (SoC) máximo que la batería puede alcanzar durante la carga (registro STORAGE_CHARGING_CUTOFF_CAPACITY). Normalmente 90-100 %. Usado por la simulación de SoC como límite superior de SoC para que el planificador nunca programe carga por encima de este límite.",
+          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Especifica el porcentaje de SOC de corte de carga desde la red para tus baterías Huawei.",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Selecciona el sensor que proporciona la potencia máxima de carga de tus baterías Huawei en vatios (W).",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Selecciona el sensor que proporciona la potencia máxima de descarga de tus baterías Huawei.",
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Selecciona la entidad numérica que establece el límite máximo de potencia de carga desde la red de Huawei (W). Escrita por el limitador de seguridad de carga con reconocimiento de fase en tiempo real (issue #831) para mantener la carga financiada por la red por debajo del límite por fase del fusible principal. Opcional; solo se requiere cuando la carga con reconocimiento de fase está activada.",
+          "hsem_huawei_solar_batteries_charge_discharge_power": "Selecciona el sensor que informa de la potencia instantánea de carga/descarga de la batería con signo (positivo = cargando, negativo = descargando). Necesario para el limitador de seguridad de carga con reconocimiento de fase en tiempo real (issue #831), para eliminar la propia contribución de Huawei de la instantánea de fase en tiempo real antes de calcular el margen disponible. Opcional; solo se requiere cuando la carga con reconocimiento de fase está activada.",
+          "hsem_huawei_solar_batteries_rated_capacity": "Selecciona el sensor que proporciona la capacidad nominal total de tus baterías Huawei en vatios-hora (Wh).",
+          "hsem_huawei_solar_batteries_state_of_capacity": "Selecciona el sensor que proporciona el estado de carga (SOC) de tus baterías Huawei.",
+          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Selecciona el sensor que define los períodos de carga y descarga por franja horaria (TOU) de tus baterías Huawei.",
+          "hsem_huawei_solar_batteries_working_mode": "Selecciona el sensor que indica el modo de funcionamiento actual de tus baterías Huawei.",
+          "hsem_huawei_solar_device_id_batteries": "Selecciona tu dispositivo de batería Huawei.",
+          "hsem_huawei_solar_device_id_batteries_2": "Selecciona tu dispositivo de batería Huawei secundario, si corresponde.",
+          "hsem_huawei_solar_device_id_inverter_1": "Selecciona tu dispositivo de inversor Huawei principal.",
+          "hsem_huawei_solar_device_id_inverter_2": "Selecciona tu dispositivo de inversor Huawei secundario, si corresponde.",
+          "hsem_huawei_solar_inverter_active_power_control": "Selecciona el sensor que controla la salida de potencia activa de tu inversor Huawei."
+        },
+        "description": "Configura el modo de funcionamiento de las baterías solares Huawei.",
+        "title": "Sensores de Huawei Solar"
+      },
+      "battery_economics": {
+        "data": {
+          "hsem_batteries_purchase_price": "Precio de compra de la batería",
+          "hsem_batteries_expected_cycles": "Ciclos de batería esperados",
+          "hsem_batteries_cycle_cost": "Coste de ciclo de batería (por kWh)",
+          "hsem_batteries_capacity_loss_pct": "Pérdida de capacidad de la batería al final de su vida útil (%)",
+          "hsem_batteries_charge_efficiency": "Eficiencia de carga de la batería (%)",
+          "hsem_batteries_discharge_efficiency": "Eficiencia de descarga de la batería (%)",
+          "hsem_planner_hysteresis_enabled": "Histéresis a nivel de plan",
+          "hsem_planner_hysteresis_absolute": "Umbral absoluto de histéresis",
+          "hsem_planner_hysteresis_percentage": "Umbral porcentual de histéresis (%)",
+          "hsem_planner_window_hysteresis_minutes": "Tiempo de retención de histéresis de ventana (minutos)"
+        },
+        "data_description": {
+          "hsem_batteries_purchase_price": "Introduce el precio de compra total de tu sistema de baterías en tu moneda local. Se usa junto con los ciclos esperados y la capacidad utilizable para calcular el coste de depreciación por kWh y el umbral de precio mínimo de exportación recomendado.",
+          "hsem_batteries_expected_cycles": "Introduce el número esperado de ciclos completos de carga/descarga durante la vida útil de la batería. Se usa para calcular el coste de depreciación por kWh y el umbral de precio mínimo de exportación recomendado. Las baterías LiFePO4 habituales admiten entre 4000 y 8000 ciclos.",
+          "hsem_batteries_cycle_cost": "Coste adicional opcional por kWh de ciclado de la batería (por kWh). Se suma al umbral de depreciación calculado automáticamente. Ajusta a 0 para depender únicamente de la protección de depreciación. Ejemplo: 0.02 significa que el planificador requiere 2 céntimos adicionales de margen por kWh ciclado antes de aprobar la carga desde la red.",
+          "hsem_batteries_capacity_loss_pct": "Pérdida de capacidad esperada al final de la vida útil, como porcentaje. Las baterías LiFePO4 suelen alcanzar un 80 % de capacidad tras ~6000 ciclos (20 % de pérdida). El valor predeterminado del 30 % añade margen para el envejecimiento por calendario.",
+          "hsem_batteries_charge_efficiency": "Especifica la eficiencia de carga de tu batería como porcentaje (0-100). La energía almacenada en la batería equivale a la energía de entrada multiplicada por este factor. Las baterías de litio habituales alcanzan un 95-98 %. Predeterminado: 98 %.",
+          "hsem_batteries_discharge_efficiency": "Especifica la eficiencia de descarga de tu batería como porcentaje (0-100). La energía entregada a la vivienda equivale a la energía extraída de la batería multiplicada por este factor. Las baterías de litio habituales alcanzan un 95-98 %. Predeterminado: 98 %.",
+          "hsem_planner_hysteresis_enabled": "Cuando está activada, el planificador mantiene el plan candidato activo a menos que un nuevo plan mejore la puntuación por encima de los umbrales configurados. Evita la oscilación entre estrategias con puntuaciones equivalentes.",
+          "hsem_planner_hysteresis_absolute": "Mejora mínima absoluta de la puntuación necesaria para cambiar a un nuevo plan. 0.00 desactiva el umbral absoluto. La puntuación usa la misma moneda que tus precios de electricidad, por lo que un valor de 0.01 requiere una mejora de al menos 1 céntimo/kWh equivalente antes de cambiar.",
+          "hsem_planner_hysteresis_percentage": "Mejora mínima porcentual de la puntuación necesaria para cambiar a un nuevo plan. 0 % desactiva el umbral porcentual. El valor predeterminado del 5 % evita las oscilaciones entre planes casi idénticos.",
+          "hsem_planner_window_hysteresis_minutes": "Tiempo mínimo (minutos) que debe mantenerse una recomendación antes de poder cambiar. Evita alternancias rápidas como ev_smart_charging ↔ batteries_charge_solar. 0 desactiva la función. Predeterminado: 10."
+        },
+        "description": "Configura los parámetros económicos de la batería y la histéresis del planificador (anti-oscilación).",
+        "title": "Economía de la batería e histéresis"
+      },
+      "init": {
+        "data": {
+          "device_name": "Nombre",
+          "hsem_extended_attributes": "Atributos ampliados",
+          "hsem_read_only": "Solo lectura",
+          "hsem_recommendation_interval_length": "Duración del intervalo de recomendación",
+          "hsem_recommendation_interval_minutes": "Minutos del intervalo de recomendación",
+          "hsem_update_interval": "Intervalo de actualización",
+          "hsem_verbose_logging": "Registro detallado"
+        },
+        "data_description": {
+          "device_name": "Introduce un nombre único para este dispositivo.",
+          "hsem_extended_attributes": "Activa esta opción para exponer atributos de diagnóstico adicionales en la entidad del sensor.",
+          "hsem_read_only": "Activa esta opción para poner la integración en modo de solo lectura, evitando que envíe órdenes a los dispositivos.",
+          "hsem_recommendation_interval_length": "El número de intervalos de recomendación que se tienen en cuenta al calcular el uso óptimo de la batería.",
+          "hsem_recommendation_interval_minutes": "La duración en minutos de cada intervalo de recomendación utilizado para calcular el uso óptimo de la batería.",
+          "hsem_update_interval": "El intervalo de actualización en minutos del sensor de modo de funcionamiento.",
+          "hsem_verbose_logging": "Activa el registro de depuración detallado con fines de solución de problemas."
+        },
+        "description": "Actualiza los ajustes de HSEM",
+        "title": "Actualizar Huawei Solar Energy Management"
+      },
+      "batteries_schedules": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_1": "Activar programación de batería 1",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Hora de fin de la programación de batería 1",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Hora de inicio de la programación de batería 1",
+          "hsem_batteries_enable_batteries_schedule_2": "Activar programación de batería 2",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Hora de fin de la programación de batería 2",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Hora de inicio de la programación de batería 2",
+          "hsem_batteries_enable_batteries_schedule_3": "Activar programación de batería 3",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Hora de fin de la programación de batería 3",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Hora de inicio de la programación de batería 3"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_1": "Activa o desactiva la primera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Especifica la hora de fin de la primera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Especifica la hora de inicio de la primera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_2": "Activa o desactiva la segunda programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Especifica la hora de fin de la segunda programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Especifica la hora de inicio de la segunda programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_3": "Activa o desactiva la tercera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Especifica la hora de fin de la tercera programación de descarga de batería.",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Especifica la hora de inicio de la tercera programación de descarga de batería."
+        },
+        "description": "Configura hasta tres ventanas de programación de descarga de batería, cada una con un interruptor de activación/desactivación, hora de inicio y hora de fin. Las programaciones definen cuándo puede descargarse la batería para cubrir picos de consumo o exportar a la red.",
+        "title": "Programaciones de descarga de batería"
+      },
+      "months": {
+        "data": {
+          "hsem_months_winter": "Meses considerados como invierno/primavera"
+        },
+        "data_description": {
+          "hsem_months_winter": "Selecciona los meses que deben considerarse invierno/primavera para los ajustes estacionales del modo de funcionamiento. Puedes seleccionar varios meses. Seleccionar los 12 meses está permitido: esto mantiene el modo invierno/primavera (TOU) activo todo el año."
+        },
+        "description": "Configura los meses que se consideran invierno/primavera. Durante estos meses, el sistema priorizará la carga de las baterías desde la energía de la red para garantizar niveles de batería suficientes en los períodos de menor producción solar. Los meses restantes se considerarán meses de verano/otoño.",
+        "title": "Meses de invierno/primavera"
+      },
+      "power": {
+        "data": {
+          "hsem_house_consumption_power": "Sensor de potencia de consumo de la vivienda",
+          "hsem_main_fuse_amps": "Valor nominal del fusible principal (amperios)",
+          "hsem_main_fuse_phases": "Número de fases del fusible principal",
+          "hsem_max_grid_export_power_kw": "Potencia máxima de exportación a la red (kW)",
+          "hsem_solar_production_power": "Sensor de potencia de producción solar",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Sensor de potencia activa del medidor, fase A",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Sensor de potencia activa del medidor, fase B",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Sensor de potencia activa del medidor, fase C",
+          "hsem_phase_aware_charging_enabled": "Activar limitador de seguridad de carga con reconocimiento de fase en tiempo real"
+        },
+        "data_description": {
+          "hsem_house_consumption_power": "Selecciona el sensor que mide el consumo total de potencia de tu vivienda.",
+          "hsem_main_fuse_amps": "El valor nominal del fusible/interruptor principal de tu vivienda en amperios (25, 35, etc.). El optimizador MILP respetará este límite al programar la carga de la batería y del VE. Ajusta a 0 para desactivar.",
+          "hsem_main_fuse_phases": "El número de fases de tu instalación eléctrica. Las instalaciones monofásicas DEBEN configurar este valor en 1; establecer 3 en una instalación monofásica hace que la protección del fusible sea 3 veces demasiado permisiva y no proporciona un límite de seguridad real. Predeterminado: 3 (trifásico).",
+          "hsem_max_grid_export_power_kw": "Potencia máxima de exportación a la red en kW: el límite de exportación del operador de red/inversor para conexiones con exportación limitada (p. ej., 5 kW). El planificador MILP nunca programará una exportación por encima de este límite, de modo que la exportación de batería y la exportación de PV compiten correctamente por el mismo límite. Ajusta a 0 para desactivar.",
+          "hsem_solar_production_power": "Selecciona el sensor que mide la potencia generada por tus paneles solares.",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Selecciona el sensor que mide la potencia activa en tiempo real en la fase A de tu medidor de potencia Huawei. Solo se requiere cuando la carga con reconocimiento de fase está activada.",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Selecciona el sensor que mide la potencia activa en tiempo real en la fase B de tu medidor de potencia Huawei. Solo se requiere cuando la carga con reconocimiento de fase está activada.",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Selecciona el sensor que mide la potencia activa en tiempo real en la fase C de tu medidor de potencia Huawei. Solo se requiere cuando la carga con reconocimiento de fase está activada.",
+          "hsem_phase_aware_charging_enabled": "Activa una comprobación de seguridad en tiempo real inmediatamente antes de cada escritura de hardware de carga desde la red de Huawei (issue #831). Usa los tres sensores de fase del medidor de potencia indicados a continuación, junto con la entidad de potencia máxima de carga desde la red de Huawei (paso huawei_solar), para limitar la carga financiada por la red de modo que nunca supere el valor nominal del fusible principal en ninguna fase, incluso si la carga cambió después de resolver el plan. Requiere main_fuse_phases = 3 y las cuatro entidades configuradas. Desactivado de forma predeterminada; totalmente compatible con versiones anteriores."
+        },
+        "description": "Selecciona los sensores de potencia para HSEM.",
+        "title": "Sensores de potencia"
+      },
+      "solcast": {
+        "data": {
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Probabilidad de previsión preferida para usar en la previsión PV de Solcast",
+          "hsem_solcast_pv_forecast_forecast_today": "Sensor de previsión PV de Solcast de hoy",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Sensor de previsión PV de Solcast de mañana"
+        },
+        "data_description": {
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Selecciona la probabilidad de previsión preferida para las previsiones PV de Solcast.",
+          "hsem_solcast_pv_forecast_forecast_today": "Selecciona el sensor que proporciona la previsión de producción PV de hoy de Solcast.",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Selecciona el sensor que proporciona la previsión de producción PV de mañana de Solcast."
+        },
+        "description": "Selecciona los sensores de previsión de Solcast.",
+        "title": "Sensores de Solcast"
+      },
+      "weighted_values": {
+        "data": {
+          "hsem_house_consumption_energy_weight_14d": "Peso de energía de consumo de la vivienda a 14 días",
+          "hsem_house_consumption_energy_weight_1d": "Peso de energía de consumo de la vivienda a 1 día",
+          "hsem_house_consumption_energy_weight_3d": "Peso de energía de consumo de la vivienda a 3 días",
+          "hsem_house_consumption_energy_weight_7d": "Peso de energía de consumo de la vivienda a 7 días"
+        },
+        "data_description": {
+          "hsem_house_consumption_energy_weight_14d": "Especifica el porcentaje de peso para la energía de consumo de la vivienda de los últimos 14 días.",
+          "hsem_house_consumption_energy_weight_1d": "Especifica el porcentaje de peso para la energía de consumo de la vivienda del último día.",
+          "hsem_house_consumption_energy_weight_3d": "Especifica el porcentaje de peso para la energía de consumo de la vivienda de los últimos 3 días.",
+          "hsem_house_consumption_energy_weight_7d": "Especifica el porcentaje de peso para la energía de consumo de la vivienda de los últimos 7 días."
+        },
+        "description": "Configura los valores ponderados de la energía de consumo de la vivienda para estimar tu uso medio de potencia. El sistema calcula el consumo medio de cada hora a lo largo de 1, 3, 7 y 14 días. Estas medias se ponderan después para ofrecer una estimación combinada y ponderada. Este enfoque ayuda a suavizar anomalías, como un consumo inusualmente alto en un solo día debido a precios bajos, y proporciona una predicción fiable de tu uso de potencia esperado en intervalos de tiempo específicos (p. ej., entre las 16:00 y las 17:00).",
+        "title": "Valores ponderados"
+      },
+      "energy_and_ml": {
+        "data": {
+          "hsem_grid_import_energy_entity": "Sensor de energía de importación de la red",
+          "hsem_grid_export_energy_entity": "Sensor de energía de exportación a la red",
+          "hsem_pv_energy_entity": "Sensor de energía de producción PV",
+          "hsem_ml_consumption_enabled": "Activar predicción de consumo mediante ML",
+          "hsem_ml_consumption_energy_entity": "Sensor de energía de consumo de la vivienda (excl. batería y VE)",
+          "hsem_ml_consumption_history_days": "Días de historial para ML",
+          "hsem_ml_consumption_net_consumption": "Usar consumo neto (importación - exportación)",
+          "hsem_ml_consumption_temperature_entity": "Sensor de temperatura exterior",
+          "hsem_ml_consumption_sequential": "Predicción secuencial (función de retardo)"
+        },
+        "data_description": {
+          "hsem_grid_import_energy_entity": "Opcional: medidor acumulado de energía de importación de la red (kWh).",
+          "hsem_grid_export_energy_entity": "Opcional: medidor acumulado de energía de exportación a la red (kWh).",
+          "hsem_pv_energy_entity": "Opcional: medidor acumulado de energía de producción PV (kWh).",
+          "hsem_ml_consumption_enabled": "Cuando está activado, usa regresión ridge sobre el historial del recorder en lugar de medias móviles. Requiere 14 días o más de historial.",
+          "hsem_ml_consumption_energy_entity": "Medidor acumulado de energía de consumo de la vivienda (kWh). Debe excluir la batería Y la carga del VE; usa un sensor situado antes de ambos. Si no se configura, se recurre a la importación de red.",
+          "hsem_ml_consumption_history_days": "Días de historial del recorder para el entrenamiento de ML (7-90).",
+          "hsem_ml_consumption_net_consumption": "Resta la exportación a la red de la importación para obtener el consumo neto de la vivienda.",
+          "hsem_ml_consumption_temperature_entity": "Opcional: sensor de temperatura exterior en °C. Usa un sensor exterior, no un termostato interior.",
+          "hsem_ml_consumption_sequential": "Introduce cada predicción de intervalo como entrada de la siguiente. Captura la dinámica dentro de la hora (p. ej., los picos de cocina se propagan hacia adelante)."
+        },
+        "description": "Configura los medidores de energía y activa la predicción de consumo basada en ML.",
+        "title": "Energía y ML"
+      },
+      "batteries_wait_mode": {
+        "data": {
+          "hsem_batteries_wait_mode_behavior": "Comportamiento del modo de espera"
+        },
+        "data_description": {
+          "hsem_batteries_wait_mode_behavior": "Elige cómo se comporta la batería cuando HSEM selecciona el modo de espera. La espera estricta mantiene la batería inactiva. El autoconsumo con reserva permite que la vivienda use el excedente de energía de la batería por encima de la reserva requerida por el planificador, reduciendo la importación innecesaria de red."
+        },
+        "description": "Configura cómo se comporta la batería durante el modo de espera.",
+        "title": "Comportamiento de la batería en modo de espera"
+      }
+    }
+  },
+  "selector": {
+    "months": {
+      "options": {
+        "1": "enero",
+        "2": "febrero",
+        "3": "marzo",
+        "4": "abril",
+        "5": "mayo",
+        "6": "junio",
+        "7": "julio",
+        "8": "agosto",
+        "9": "septiembre",
+        "10": "octubre",
+        "11": "noviembre",
+        "12": "diciembre"
+      }
+    },
+    "update_interval_minutes": {
+      "options": {
+        "1": "1 minuto",
+        "5": "5 minutos",
+        "10": "10 minutos",
+        "15": "15 minutos",
+        "30": "30 minutos",
+        "45": "45 minutos",
+        "60": "60 minutos"
+      }
+    },
+    "pv_estimate_likelihood": {
+      "options": {
+        "pv_estimate": "50 % de probabilidad",
+        "pv_estimate10": "10 % de probabilidad",
+        "pv_estimate90": "90 % de probabilidad"
+      }
+    },
+    "update_interval_length": {
+      "options": {
+        "12": "12 horas",
+        "24": "24 horas",
+        "36": "36 horas",
+        "48": "48 horas",
+        "72": "72 horas"
+      }
+    },
+    "batteries_wait_mode_behavior": {
+      "options": {
+        "strict": "Espera estricta: la batería permanece inactiva",
+        "self_consumption_with_reserve": "Autoconsumo con reserva: usa el excedente por encima de la reserva del planificador"
+      }
+    },
+    "ev_charger_phase_topology": {
+      "options": {
+        "single_phase": "Monofásico o desconocido (valor predeterminado seguro)",
+        "three_phase_balanced": "Trifásico, equilibrado entre L1/L2/L3"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "applier_status": {
+        "name": "Estado de aplicación del inversor",
+        "state": {
+          "ok": "OK",
+          "unverified": "Sin verificar",
+          "failed": "Fallido",
+          "skipped": "Omitido",
+          "pending": "Pendiente"
+        }
+      },
+      "battery_soc": {
+        "name": "Estado de carga de la batería"
+      },
+      "daily_plan_vs_actual": {
+        "name": "Plan diario frente a real"
+      },
+      "degraded_mode": {
+        "name": "Estado del sistema",
+        "state": {
+          "ok": "OK",
+          "degraded": "Degradado",
+          "error": "Error"
+        }
+      },
+      "ev_charger_calculated_power": {
+        "name": "Potencia calculada del cargador de VE"
+      },
+      "ev_charger_current_limit": {
+        "name": "Límite de corriente del cargador de VE"
+      },
+      "ev_charging": {
+        "name": "Carga del VE activa",
+        "state": {
+          "on": "Activado",
+          "off": "Desactivado"
+        }
+      },
+      "ev_optimal_charging_plan": {
+        "name": "Plan de carga óptimo del VE",
+        "state": {
+          "charging": "Cargando",
+          "fully_charged": "Completamente cargado",
+          "not_connected": "No conectado",
+          "smart_charging_disabled": "Carga inteligente desactivada",
+          "waiting": "En espera",
+          "unavailable": "No disponible"
+        }
+      },
+      "ev_second_charger_calculated_power": {
+        "name": "Potencia calculada del cargador de VE 2"
+      },
+      "ev_second_charger_current_limit": {
+        "name": "Límite de corriente del cargador de VE 2"
+      },
+      "ev_second_optimal_charging_plan": {
+        "name": "Plan de carga óptimo del VE 2",
+        "state": {
+          "charging": "Cargando",
+          "fully_charged": "Completamente cargado",
+          "not_connected": "No conectado",
+          "smart_charging_disabled": "Carga inteligente desactivada",
+          "waiting": "En espera",
+          "unavailable": "No disponible"
+        }
+      },
+      "force_mode": {
+        "name": "Forzar modo de funcionamiento",
+        "state": {
+          "auto": "Auto",
+          "batteries_charge_grid": "Cargar desde la red",
+          "batteries_charge_solar": "Cargar desde solar",
+          "ev_smart_charging": "Carga inteligente del VE",
+          "batteries_discharge_mode": "Descarga",
+          "force_batteries_discharge": "Forzar descarga",
+          "force_export": "Forzar exportación",
+          "batteries_wait_mode": "Espera"
+        }
+      },
+      "forecast_accuracy": {
+        "name": "Precisión de la previsión"
+      },
+      "hardware_writes": {
+        "name": "Escrituras de hardware",
+        "state": {
+          "allowed": "Permitidas",
+          "blocked": "Bloqueadas"
+        }
+      },
+      "last_updated": {
+        "name": "Última actualización"
+      },
+      "missing_entities": {
+        "name": "Entidades de entrada faltantes"
+      },
+      "net_consumption": {
+        "name": "Consumo neto"
+      },
+      "next_update": {
+        "name": "Próxima actualización"
+      },
+      "plan_explanation": {
+        "name": "Estrategia del plan"
+      },
+      "read_only": {
+        "name": "Modo de solo lectura",
+        "state": {
+          "on": "Activado",
+          "off": "Desactivado"
+        }
+      },
+      "recommendation_interval": {
+        "name": "Intervalo de recomendación"
+      },
+      "update_interval": {
+        "name": "Intervalo de actualización"
+      },
+      "working_mode": {
+        "name": "Sensor de modo de funcionamiento",
+        "state": {
+          "time_passed": "Tiempo transcurrido",
+          "missing_input_entities": "Entidades de entrada faltantes",
+          "batteries_charge_grid": "Cargar desde la red",
+          "batteries_charge_solar": "Cargar desde solar",
+          "ev_smart_charging": "Carga inteligente del VE",
+          "batteries_discharge_mode": "Descarga",
+          "force_batteries_discharge": "Forzar descarga",
+          "force_export": "Forzar exportación",
+          "batteries_wait_mode": "Espera"
+        }
+      },
+      "effective_discharge_floor": {
+        "name": "Límite de descarga efectivo"
+      },
+      "ocpp_charger_status": {
+        "name": "Estado del cargador OCPP"
+      },
+      "ocpp_charger_power": {
+        "name": "Potencia del cargador OCPP"
+      },
+      "ocpp_charger_info": {
+        "name": "Información del cargador OCPP"
+      },
+      "ocpp_charger_sessions": {
+        "name": "Sesiones del cargador OCPP"
+      },
+      "export_income": {
+        "name": "Ingresos por exportación"
+      },
+      "import_cost": {
+        "name": "Coste de importación de red"
+      },
+      "net_grid_balance": {
+        "name": "Balance neto de red"
+      },
+      "prediction_accuracy": {
+        "name": "Precisión de la predicción"
+      },
+      "pv_curtailment": {
+        "name": "Recorte de PV"
+      },
+      "savings_tracker": {
+        "name": "Seguimiento de ahorro"
+      },
+      "solar_confidence": {
+        "name": "Confianza de la previsión solar"
+      },
+      "ocpp_second_charger_status": {
+        "name": "Estado del segundo cargador OCPP"
+      },
+      "ocpp_second_charger_power": {
+        "name": "Potencia del segundo cargador OCPP"
+      },
+      "ocpp_second_charger_info": {
+        "name": "Información del segundo cargador OCPP"
+      },
+      "ocpp_second_charger_sessions": {
+        "name": "Sesiones del segundo cargador OCPP"
+      }
+    },
+    "switch": {
+      "read_only": {
+        "name": "Modo de solo lectura"
+      },
+      "extended_attributes": {
+        "name": "Atributos ampliados"
+      },
+      "verbose_logging": {
+        "name": "Registro detallado"
+      },
+      "batteries_schedule_1": {
+        "name": "Programación de baterías 1"
+      },
+      "batteries_schedule_2": {
+        "name": "Programación de baterías 2"
+      },
+      "batteries_schedule_3": {
+        "name": "Programación de baterías 3"
+      },
+      "ev_force_discharge": {
+        "name": "Forzar potencia máxima de descarga del VE"
+      },
+      "ev_smart_charging": {
+        "name": "Carga inteligente del VE"
+      },
+      "ev_force_charge_now": {
+        "name": "Forzar carga del VE ahora"
+      },
+      "ev_second_smart_charging": {
+        "name": "Carga inteligente del VE 2"
+      },
+      "ev_second_force_charge_now": {
+        "name": "Forzar carga del VE 2 ahora"
+      },
+      "ml_consumption": {
+        "name": "Predicción de consumo mediante ML"
+      },
+      "ml_sequential": {
+        "name": "Predicción secuencial mediante ML"
+      },
+      "dynamic_discharge_floor": {
+        "name": "Límite de descarga dinámico"
+      },
+      "ev_auto_full_negative_price": {
+        "name": "Carga completa automática del VE con precio negativo"
+      }
+    },
+    "select": {
+      "force_working_mode": {
+        "name": "Forzar modo de funcionamiento"
+      },
+      "pv_estimate_likelihood": {
+        "name": "Probabilidad de estimación PV de Solcast"
+      }
+    },
+    "number": {
+      "charge_efficiency": {
+        "name": "Eficiencia de carga de la batería"
+      },
+      "discharge_efficiency": {
+        "name": "Eficiencia de descarga de la batería"
+      },
+      "ev_target_soc": {
+        "name": "SoC objetivo del VE"
+      },
+      "ev_second_target_soc": {
+        "name": "SoC objetivo del VE 2"
+      }
+    },
+    "time": {
+      "schedule_1_start": {
+        "name": "Inicio de la programación de descarga de baterías 1"
+      },
+      "schedule_1_end": {
+        "name": "Fin de la programación de descarga de baterías 1"
+      },
+      "schedule_2_start": {
+        "name": "Inicio de la programación de descarga de baterías 2"
+      },
+      "schedule_2_end": {
+        "name": "Fin de la programación de descarga de baterías 2"
+      },
+      "schedule_3_start": {
+        "name": "Inicio de la programación de descarga de baterías 3"
+      },
+      "schedule_3_end": {
+        "name": "Fin de la programación de descarga de baterías 3"
+      },
+      "ev_deadline": {
+        "name": "Fecha límite de carga del VE"
+      },
+      "ev_second_deadline": {
+        "name": "Fecha límite de carga del VE 2"
+      }
+    }
+  },
+  "services": {
+    "force_recalculation": {
+      "name": "Forzar recálculo",
+      "description": "Fuerza al coordinador de HSEM a ejecutar inmediatamente un ciclo completo de recálculo."
+    },
+    "set_temporary_override": {
+      "name": "Establecer anulación temporal",
+      "description": "Anula temporalmente el planificador automático forzando un modo de funcionamiento específico.",
+      "fields": {
+        "working_mode": {
+          "name": "Modo de funcionamiento",
+          "description": "El modo de funcionamiento que se va a forzar. Debe ser uno de los modos de anulación admitidos."
+        }
+      }
+    },
+    "clear_override": {
+      "name": "Borrar anulación",
+      "description": "Borra cualquier anulación temporal activa del modo de funcionamiento y vuelve al control automático del planificador."
+    },
+    "export_diagnostics": {
+      "name": "Exportar diagnósticos",
+      "description": "Exporta un volcado de diagnóstico estructurado de la integración HSEM con todos los ID de entidad ocultos."
+    },
+    "create_dashboard": {
+      "name": "Crear panel",
+      "description": "Crea o actualiza el panel Lovelace de HSEM. Establece force en true para sobrescribirlo."
+    }
+  }
+}

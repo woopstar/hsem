@@ -1,9 +1,11 @@
-"""OCPP-related sensor name generators.
+"""OCPP-related sensor unique-ID and entity-ID generators.
 
-Provides getter functions for OCPP charger status, power, info, and
-sessions sensor names, unique IDs, and entity IDs.  Each OCPP server
-(one per EV) exposes its own set of sensors; ``charger_index`` selects
-between the primary (``1``) and second (``2``) EV's server.
+Display names for these sensors come from Home Assistant's translation
+system (``_attr_translation_key`` + ``translations/*.json``), not from
+functions in this module. Provides getter functions for OCPP charger
+status, power, info, and sessions sensor unique IDs and entity IDs.  Each
+OCPP server (one per EV) exposes its own set of sensors; ``charger_index``
+selects between the primary (``1``) and second (``2``) EV's server.
 """
 
 from homeassistant.util import slugify as s
@@ -18,12 +20,6 @@ from custom_components.hsem.const import DOMAIN
 def _suffix(charger_index: int) -> str:
     """Return the name/entity suffix for a charger index."""
     return "" if charger_index == 1 else "_second"
-
-
-def get_ocpp_charger_status_sensor_name(charger_index: int = 1) -> str:
-    """Return the display name for the OCPP charger status sensor."""
-    suffix = " Second" if charger_index == 2 else ""
-    return f"OCPP Charger{suffix} Status"
 
 
 def get_ocpp_charger_status_sensor_unique_id(
@@ -48,12 +44,6 @@ def get_ocpp_charger_status_sensor_entity_id(charger_index: int = 1) -> str:
 # ---------------------------------------------------------------------------
 
 
-def get_ocpp_charger_power_sensor_name(charger_index: int = 1) -> str:
-    """Return the display name for the OCPP charger power sensor."""
-    suffix = " Second" if charger_index == 2 else ""
-    return f"OCPP Charger{suffix} Power"
-
-
 def get_ocpp_charger_power_sensor_unique_id(
     entry_id: str, charger_index: int = 1
 ) -> str:
@@ -76,12 +66,6 @@ def get_ocpp_charger_power_sensor_entity_id(charger_index: int = 1) -> str:
 # ---------------------------------------------------------------------------
 
 
-def get_ocpp_charger_info_sensor_name(charger_index: int = 1) -> str:
-    """Return the display name for the OCPP charger info sensor."""
-    suffix = " Second" if charger_index == 2 else ""
-    return f"OCPP Charger{suffix} Info"
-
-
 def get_ocpp_charger_info_sensor_unique_id(
     entry_id: str, charger_index: int = 1
 ) -> str:
@@ -102,12 +86,6 @@ def get_ocpp_charger_info_sensor_entity_id(charger_index: int = 1) -> str:
 # ---------------------------------------------------------------------------
 # OCPP Charger Sessions Sensor
 # ---------------------------------------------------------------------------
-
-
-def get_ocpp_charger_sessions_sensor_name(charger_index: int = 1) -> str:
-    """Return the display name for the OCPP charger sessions sensor."""
-    suffix = " Second" if charger_index == 2 else ""
-    return f"OCPP Charger{suffix} Sessions"
 
 
 def get_ocpp_charger_sessions_sensor_unique_id(

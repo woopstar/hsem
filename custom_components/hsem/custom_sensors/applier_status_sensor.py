@@ -45,7 +45,6 @@ from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.inverter_verify import ApplyStatus
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_applier_status_sensor_entity_id,
-    get_applier_status_sensor_name,
     get_applier_status_sensor_unique_id,
 )
 
@@ -101,19 +100,12 @@ class HSEMApplierStatusSensor(
             config_entry.entry_id
         )
         self.entity_id = get_applier_status_sensor_entity_id()
-        self._name = get_applier_status_sensor_name()
 
         self._restored_state: str | None = None
 
     # ------------------------------------------------------------------
     # HA entity properties
     # ------------------------------------------------------------------
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override

@@ -31,7 +31,6 @@ from custom_components.hsem.coordinator import (
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_read_only_sensor_entity_id,
-    get_read_only_sensor_name,
     get_read_only_sensor_unique_id,
 )
 
@@ -76,7 +75,6 @@ class HSEMReadOnlySensor(
 
         self._attr_unique_id = get_read_only_sensor_unique_id(config_entry.entry_id)
         self.entity_id = get_read_only_sensor_entity_id()
-        self._name = get_read_only_sensor_name()
 
         # Restored state used before the first coordinator cycle completes.
         self._restored_state: str | None = None
@@ -84,12 +82,6 @@ class HSEMReadOnlySensor(
     # ------------------------------------------------------------------
     # HA entity properties
     # ------------------------------------------------------------------
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override

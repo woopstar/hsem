@@ -35,7 +35,6 @@ from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_hardware_writes_sensor_entity_id,
-    get_hardware_writes_sensor_name,
     get_hardware_writes_sensor_unique_id,
 )
 
@@ -86,19 +85,12 @@ class HSEMHardwareWritesSensor(
             config_entry.entry_id
         )
         self.entity_id = get_hardware_writes_sensor_entity_id()
-        self._name = get_hardware_writes_sensor_name()
 
         self._restored_state: str | None = None
 
     # ------------------------------------------------------------------
     # HA entity properties
     # ------------------------------------------------------------------
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override
