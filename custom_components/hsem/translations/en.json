@@ -1057,7 +1057,7 @@
   "entity": {
     "sensor": {
       "applier_status": {
-        "name": "Applier Status",
+        "name": "Inverter Apply Status",
         "state": {
           "ok": "OK",
           "unverified": "Unverified",
@@ -1200,6 +1200,39 @@
       },
       "ocpp_charger_sessions": {
         "name": "OCPP Charger Sessions"
+      },
+      "export_income": {
+        "name": "Export Income"
+      },
+      "import_cost": {
+        "name": "Grid Import Cost"
+      },
+      "net_grid_balance": {
+        "name": "Net Grid Balance"
+      },
+      "prediction_accuracy": {
+        "name": "Prediction Accuracy"
+      },
+      "pv_curtailment": {
+        "name": "PV Curtailment"
+      },
+      "savings_tracker": {
+        "name": "Savings Tracker"
+      },
+      "solar_confidence": {
+        "name": "Solar Forecast Confidence"
+      },
+      "ocpp_second_charger_status": {
+        "name": "OCPP Charger Second Status"
+      },
+      "ocpp_second_charger_power": {
+        "name": "OCPP Charger Second Power"
+      },
+      "ocpp_second_charger_info": {
+        "name": "OCPP Charger Second Info"
+      },
+      "ocpp_second_charger_sessions": {
+        "name": "OCPP Charger Second Sessions"
       }
     },
     "switch": {

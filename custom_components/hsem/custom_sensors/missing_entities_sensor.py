@@ -32,7 +32,6 @@ from custom_components.hsem.coordinator import (
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_missing_entities_sensor_entity_id,
-    get_missing_entities_sensor_name,
     get_missing_entities_sensor_unique_id,
 )
 
@@ -54,6 +53,7 @@ class HSEMMissingEntitiesSensor(
 
     _attr_icon = "mdi:alert-circle-outline"
     _attr_has_entity_name = True
+    _attr_translation_key = "missing_entities"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_native_unit_of_measurement = None
 
@@ -77,19 +77,12 @@ class HSEMMissingEntitiesSensor(
             config_entry.entry_id
         )
         self.entity_id = get_missing_entities_sensor_entity_id()
-        self._name = get_missing_entities_sensor_name()
 
         self._restored_state: str | None = None
 
     # ------------------------------------------------------------------
     # HA entity properties
     # ------------------------------------------------------------------
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override

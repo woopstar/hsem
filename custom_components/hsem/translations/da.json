@@ -23,19 +23,23 @@
       "price_out_of_range": "Prisværdien er uden for det tilladte område.",
       "required": "Dette felt er påkrævet.",
       "start_time_after_end_time": "Starttidspunkt skal være før sluttidspunkt.",
-      "start_time_equals_end_time": "Starttidspunkt og sluttidspunkt kan ikke være ens - dette skaber et nul-længdevindue. Deaktiver tidsplanen i stedet."
+      "start_time_equals_end_time": "Starttidspunkt og sluttidspunkt kan ikke være ens - dette skaber et nul-længdevindue. Deaktiver tidsplanen i stedet.",
+      "invalid_wait_mode_behavior": "Ugyldig ventetilstand. Vælg Streng ventetilstand eller Selvforbrug med reserve.",
+      "port_conflict": "Den anden OCPP-port skal være forskellig fra den første OCPP-port."
     },
     "step": {
       "batteries_excess_export": {
         "data": {
           "hsem_batteries_enable_excess_export": "Aktiver overskuds-eksport",
           "hsem_batteries_excess_export_discharge_buffer": "Afladningsbuffer (%)",
-          "hsem_batteries_export_min_price": "Batterieksport Min. Pris"
+          "hsem_batteries_export_min_price": "Batterieksport Min. Pris",
+          "hsem_batteries_forecast_reserve_pct": "Batteri eksportprognose-reserve (+% SoC)"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Aktiver eller deaktiver eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
           "hsem_batteries_excess_export_discharge_buffer": "Indstil sikkerhedsbufferprocenten for at opretholde minimum batterireserver (0-50%). Standard er 10% for at sikre tilstrækkelig kapacitet til uventet efterspørgsel.",
-          "hsem_batteries_export_min_price": "Hårdt prægulv per slot for tilsigtet batteri-til-net eksport (issue #752). Når værdien > 0, forbyder HSEM at markere et slot som force_batteries_discharge når eksportprisen er strengt under dette gulv — batteriet kan stadig betjene husforbruget i disse slots. At nå tærsklen udløser IKKE automatisk eksport; optimizeren bestemmer stadig, om salg er økonomisk fordelagtigt. Gælder kun for tilsigtet batteri-til-net eksport, ikke for normalt selvforbrug, PV-eksport eller PV-opladning. Sæt til 0 for at deaktivere (standard)."
+          "hsem_batteries_export_min_price": "Hårdt prægulv per slot for tilsigtet batteri-til-net eksport (issue #752). Når værdien > 0, forbyder HSEM at markere et slot som force_batteries_discharge når eksportprisen er strengt under dette gulv — batteriet kan stadig betjene husforbruget i disse slots. At nå tærsklen udløser IKKE automatisk eksport; optimizeren bestemmer stadig, om salg er økonomisk fordelagtigt. Gælder kun for tilsigtet batteri-til-net eksport, ikke for normalt selvforbrug, PV-eksport eller PV-opladning. Sæt til 0 for at deaktivere (standard).",
+          "hsem_batteries_forecast_reserve_pct": "Ekstra SoC-procentpoint over Huaweis afladningsstop-grænse, som bevidst batterieksport skal efterlade umiddelbart efter hvert eksportinterval. For eksempel beskytter en Huawei-grænse på 15 % plus en 5 % reserve 20 % SoC. Reserven forbliver tilgængelig til husforbrug, når det faktiske forbrug overstiger prognosen. Sæt til 0 for at deaktivere (standard)."
         },
         "description": "Konfigurer indstillinger for eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
         "title": "Overskuds-eksport"
@@ -49,7 +53,8 @@
           "hsem_ev_planned_load_charger_min_power_w": "EV lader minimumseffekt (W)",
           "hsem_ev_planned_load_deadline_safety_margin_pct": "Sikkerhedsmargin til deadline (%)",
           "hsem_ev_planned_load_command_deadband_a": "Dødbånd for loft (A)",
-          "hsem_ev_planned_load_stub_floor_minutes": "Undertryk stop sidst i interval (min)"
+          "hsem_ev_planned_load_stub_floor_minutes": "Undertryk stop sidst i interval (min)",
+          "hsem_ev_planned_load_charger_phase_topology": "Laderens fasetopologi"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Aktiver eller deaktiver planlagt EV-opladningsbelastningsintegration.",
@@ -59,7 +64,8 @@
           "hsem_ev_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som EV-laderen skal bruge for at starte opladning. Under dette niveau vil laderen ikke fungere. Standard: 1380 W (230 V × 6 A).",
           "hsem_ev_planned_load_deadline_safety_margin_pct": "Ekstra energi budgetteret ud over mål-SoC, som en procentdel af manglen, så normal opladningsfriktion (startforsinkelser, minimumseffektgrænser, gennemtvinget reduktion) ikke får deadline til at blive overskredet. Standard: 0% (deaktiveret).",
           "hsem_ev_planned_load_command_deadband_a": "Mindste sænkning af det offentliggjorte ladeloft, der faktisk gennemføres. Mindre sænkninger holdes, fordi konkurrerende hele-ampere-planer typisk ligger inden for en afrundingsfejl af hinanden på pris. En hævning af loftet forsinkes aldrig, og en sænkning, der forbedrer dette intervals ladeomkostning med mere end 5 %, slipper altid igennem. Standard: 3 A; 0 deaktiverer.",
-          "hsem_ev_planned_load_stub_floor_minutes": "Undertryk en stop-kommando i så mange minutter sidst i et interval, mens bilen stadig mangler energi. De sidste sekunder kan ikke rumme nok energi til at nå laderens minimum, så planen tildeler dem ingenting, og ladningen ville stoppe og starte igen uden gevinst. Standard: 2 minutter; 0 deaktiverer."
+          "hsem_ev_planned_load_stub_floor_minutes": "Undertryk en stop-kommando i så mange minutter sidst i et interval, mens bilen stadig mangler energi. De sidste sekunder kan ikke rumme nok energi til at nå laderens minimum, så planen tildeler dem ingenting, og ladningen ville stoppe og starte igen uden gevinst. Standard: 2 minutter; 0 deaktiverer.",
+          "hsem_ev_planned_load_charger_phase_topology": "Hvordan laderen fordeler sin belastning på forsyningens faser. Vælg 'Enfaset eller ukendt', medmindre du har bekræftet, at laderen trækker balanceret strøm på alle tre faser. Med per-fase-sikringsbeskyttelse aktiveret antager det sikre standardvalg, at hele laderkommandoen kan lande på én fase, hvilket begrænser planlagt opladning til den enfasede sikrings kapacitet."
         },
         "description": "Konfigurer valgfri planlagt EV-opladningsbelastningsintegration. Når aktiveret, tager HSEM højde for kommende EV-opladningsbehov pr. planslot.",
         "title": "EV-planlagt belastningsintegration"
@@ -73,7 +79,8 @@
           "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 lader minimumseffekt (W)",
           "hsem_ev_second_planned_load_deadline_safety_margin_pct": "EV 2 sikkerhedsmargin til deadline (%)",
           "hsem_ev_second_planned_load_command_deadband_a": "EV 2 dødbånd for loft (A)",
-          "hsem_ev_second_planned_load_stub_floor_minutes": "EV 2 undertryk stop sidst i interval (min)"
+          "hsem_ev_second_planned_load_stub_floor_minutes": "EV 2 undertryk stop sidst i interval (min)",
+          "hsem_ev_second_planned_load_charger_phase_topology": "Laderens fasetopologi"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Aktiver eller deaktiver planlagt opladningsbelastningsintegration for den anden EV.",
@@ -83,7 +90,8 @@
           "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som den anden EV-lader skal bruge for at starte opladning. Standard: 1380 W (230 V × 6 A).",
           "hsem_ev_second_planned_load_deadline_safety_margin_pct": "Samme som den primære EVs sikkerhedsmargin til deadline, for den anden EV. Standard: 0% (deaktiveret).",
           "hsem_ev_second_planned_load_command_deadband_a": "Samme som den primære EVs dødbånd for loft, for den anden EV. Standard: 3 A; 0 deaktiverer.",
-          "hsem_ev_second_planned_load_stub_floor_minutes": "Samme som den primære EVs undertrykkelse af stop sidst i interval, for den anden EV. Standard: 2 minutter; 0 deaktiverer."
+          "hsem_ev_second_planned_load_stub_floor_minutes": "Samme som den primære EVs undertrykkelse af stop sidst i interval, for den anden EV. Standard: 2 minutter; 0 deaktiverer.",
+          "hsem_ev_second_planned_load_charger_phase_topology": "Hvordan laderen fordeler sin belastning på forsyningens faser. Vælg 'Enfaset eller ukendt', medmindre du har bekræftet, at laderen trækker balanceret strøm på alle tre faser. Med per-fase-sikringsbeskyttelse aktiveret antager det sikre standardvalg, at hele laderkommandoen kan lande på én fase, hvilket begrænser planlagt opladning til den enfasede sikrings kapacitet."
         },
         "description": "Konfigurer valgfri planlagt opladningsbelastningsintegration for den anden EV. Vises kun, når en anden EV-lader er aktiveret.",
         "title": "EV 2-planlagt belastningsintegration"
@@ -210,7 +218,9 @@
           "hsem_huawei_solar_device_id_inverter_1": "Huawei-vekselretter 1 enhed",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei-vekselretter 2 enhed",
           "hsem_huawei_solar_inverter_active_power_control": "Huawei-vekselretter aktiv effektkontrolsensor",
-          "hsem_huawei_solar_batteries_forcible_charge": "Tvungen Opladning"
+          "hsem_huawei_solar_batteries_forcible_charge": "Tvungen Opladning",
+          "hsem_huawei_solar_batteries_charge_discharge_power": "Huawei batteri op-/afladningseffekt-sensor",
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Huawei-batterier maksimal netopladningseffekt (W)"
         },
         "data_description": {
           "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0-100). Energi lagret i batteriet = inputenergi × denne faktor. Typiske lithium-batterier opnår 95-98%. Standard: 98%.",
@@ -233,7 +243,9 @@
           "hsem_huawei_solar_device_id_inverter_1": "Vælg din primære Huawei-vekselretterenhed.",
           "hsem_huawei_solar_device_id_inverter_2": "Vælg din sekundære Huawei-vekselretterenhed, hvis relevant.",
           "hsem_huawei_solar_inverter_active_power_control": "Vælg den sensor, der styrer aktiv effektudgang for din Huawei-vekselretter.",
-          "hsem_huawei_solar_batteries_forcible_charge": "Vælg sensoren der angiver om tvungen opladning er aktiv."
+          "hsem_huawei_solar_batteries_forcible_charge": "Vælg sensoren der angiver om tvungen opladning er aktiv.",
+          "hsem_huawei_solar_batteries_charge_discharge_power": "Vælg sensoren, der rapporterer den fortegnsbestemte øjeblikkelige batteri op-/afladningseffekt (positiv = opladning, negativ = afladning). Kræves af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at fjerne Huaweis eget bidrag fra det live faseøjebliksbillede, før rådighedsmargenen beregnes. Valgfrit — kræves kun når fasebevidst opladning er aktiveret.",
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Vælg tal-enheden, der sætter Huaweis maksimale loft for netopladningseffekt (W). Skrives af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at holde netfinansieret opladning under hovedsikringens per-fase-grænse. Valgfrit — kræves kun når fasebevidst opladning er aktiveret."
         },
         "description": "Konfigurer arbejdstilstanden for Huawei-solcellebatterier.",
         "title": "Huawei Solar-sensorer"
@@ -245,7 +257,11 @@
           "hsem_batteries_cycle_cost": "Batteri-cyklusomkostning (pr. kWh)",
           "hsem_batteries_charge_efficiency": "Batteri-opladningseffektivitet (%)",
           "hsem_batteries_discharge_efficiency": "Batteri-afladningseffektivitet (%)",
-          "hsem_batteries_capacity_loss_pct": "Kapacitetstab (%)"
+          "hsem_batteries_capacity_loss_pct": "Kapacitetstab (%)",
+          "hsem_planner_hysteresis_absolute": "Hysterese absolut tærskel",
+          "hsem_planner_hysteresis_enabled": "Hysterese på plan-niveau",
+          "hsem_planner_hysteresis_percentage": "Hysterese procenttærskel (%)",
+          "hsem_planner_window_hysteresis_minutes": "Hysterese-holdetid for vindue (minutter)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Indtast den samlede købspris for dit batterisystem. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
@@ -253,7 +269,11 @@
           "hsem_batteries_cycle_cost": "Valgfri ekstra per-kWh-omkostning ved at cykle batteriet (pr. kWh). Tilføjes oven på den automatisk beregnede afskrivningstærskel. Sæt til 0 for kun at stole på afskrivningsbeskyttelsen.",
           "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0-100). Energi lagret i batteriet = inputenergi × denne faktor. Typiske lithium-batterier opnår 95-98%. Standard: 98%.",
           "hsem_batteries_discharge_efficiency": "Angiv batteriets afladningseffektivitet som en procentdel (0-100). Energi leveret til huset = fjernet batterienergi × denne faktor. Typiske lithium-batterier opnår 95-98%. Standard: 98%.",
-          "hsem_batteries_capacity_loss_pct": "Forventet kapacitetstab ved end-of-life for batteriet (0-100%)."
+          "hsem_batteries_capacity_loss_pct": "Forventet kapacitetstab ved end-of-life for batteriet (0-100%).",
+          "hsem_planner_hysteresis_absolute": "Minimum absolut score-forbedring, der kræves for at skifte til en ny plan. 0,00 deaktiverer den absolutte tærskel. Scoren bruger samme valuta som dine elpriser, så en værdi på 0,01 kræver mindst 1 øre/kWh-ækvivalent forbedring, før der skiftes.",
+          "hsem_planner_hysteresis_enabled": "Når dette er aktiveret, beholder planlæggeren den aktive kandidatplan, medmindre en ny plan forbedrer scoren med mere end de konfigurerede tærskler. Forhindrer svingninger mellem ligestillede strategier.",
+          "hsem_planner_hysteresis_percentage": "Minimum procentvis score-forbedring, der kræves for at skifte til en ny plan. 0 % deaktiverer procenttærsklen. Standard 5 % forhindrer flapning mellem næsten identiske planer.",
+          "hsem_planner_window_hysteresis_minutes": "Minimumstid (minutter), en anbefaling skal fastholdes, før den kan ændres. Forhindrer hurtig veksling som f.eks. ev_smart_charging ↔ batteries_charge_solar. 0 deaktiverer funktionen. Standard 10."
         },
         "description": "Konfigurer batteriøkonomiske parametre, der påvirker afskrivningsberegninger og rundturseffektivitet.",
         "title": "Batteriøkonomi"
@@ -296,14 +316,22 @@
           "hsem_main_fuse_amps": "Hovedsikring (Ampere)",
           "hsem_main_fuse_phases": "Hovedsikringens faseantal",
           "hsem_max_grid_export_power_kw": "Maks. neteksporteffekt (kW)",
-          "hsem_solar_production_power": "Solproduktionseffektsensor"
+          "hsem_solar_production_power": "Solproduktionseffektsensor",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Effektmåler fase A aktiv effekt-sensor",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Effektmåler fase B aktiv effekt-sensor",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Effektmåler fase C aktiv effekt-sensor",
+          "hsem_phase_aware_charging_enabled": "Aktiver live fasebevidst opladningssikkerhedsbegrænser"
         },
         "data_description": {
           "hsem_house_consumption_power": "Vælg den sensor, der måler husets samlede strømforbrug.",
           "hsem_main_fuse_amps": "Husets hovedsikringsstørrelse i ampere (25, 35, osv.).  MILP-optimeringsværktøjet respekterer denne grænse ved planlægning af batteri- og elbilopladning.  Sæt til 0 for at deaktivere.",
           "hsem_main_fuse_phases": "Din elinstallations faseantal.  Enfasede installationer SKAL sættes til 1 — at indstille 3 på en enfaset installation gør sikringsbeskyttelsen 3 gange for slap og giver ingen reel sikkerhedsgrænse.  Standard er 3 (trefaset).",
           "hsem_max_grid_export_power_kw": "Maksimal neteksporteffekt i kW — netoperatørens/inverterens eksportloft for eksportbegrænsede tilslutninger (f.eks. 5 kW).  MILP-planlæggeren planlægger aldrig eksport over denne grænse, så batterieksport og soleksport konkurrerer korrekt om det samme loft.  Sæt til 0 for at deaktivere.",
-          "hsem_solar_production_power": "Vælg den sensor, der måler strømmen genereret af dine solpaneler."
+          "hsem_solar_production_power": "Vælg den sensor, der måler strømmen genereret af dine solpaneler.",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Vælg sensoren, der måler live aktiv effekt på fase A af din Huawei-effektmåler. Kræves kun når fasebevidst opladning er aktiveret.",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Vælg sensoren, der måler live aktiv effekt på fase B af din Huawei-effektmåler. Kræves kun når fasebevidst opladning er aktiveret.",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Vælg sensoren, der måler live aktiv effekt på fase C af din Huawei-effektmåler. Kræves kun når fasebevidst opladning er aktiveret.",
+          "hsem_phase_aware_charging_enabled": "Aktiver et live sikkerhedstjek umiddelbart før hver Huawei netopladnings-hardwareskrivning (issue #831). Bruger de tre effektmåler-fasesensorer nedenfor samt Huaweis maksimal-netopladningseffekt-enhed (huawei_solar-trinnet) til at begrænse netfinansieret opladning, så den aldrig presser nogen fase over hovedsikringens grænse, selv hvis belastningen ændrede sig efter planen blev løst. Kræver main_fuse_phases = 3 og alle fire enheder konfigureret. Deaktiveret som standard — fuldt bagudkompatibel."
         },
         "description": "Vælg effektsensorer til HSEM.",
         "title": "Effektsensorer"
@@ -444,14 +472,20 @@
           "hsem_ocpp_port": "OCPP Port",
           "hsem_ocpp_cpid": "Ladepunkt ID",
           "hsem_ocpp_start_window_s": "Startvindue (s)",
-          "hsem_ocpp_stop_window_s": "Stopvindue (s)"
+          "hsem_ocpp_stop_window_s": "Stopvindue (s)",
+          "hsem_ocpp_second_cpid": "Andet ladepunkt-ID",
+          "hsem_ocpp_second_enabled": "Aktiver anden OCPP-server",
+          "hsem_ocpp_second_port": "Anden OCPP-port"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiver den indbyggede OCPP 1.6 WebSocket-server til direkte EV-laderstyring. Kun LAN - eksponer ikke porten til internettet.",
           "hsem_ocpp_port": "TCP-port til OCPP WebSocket-serveren. Standard: 9000. Skal være over 1024.",
           "hsem_ocpp_cpid": "Forventet ladepunkt-identifikator for EV-laderen. Lad være tom for at acceptere enhver lader.",
           "hsem_ocpp_start_window_s": "Sekunder med vedvarende overskud før opladning starter. Forhindrer hurtig start-stop cykling. Standard: 60.",
-          "hsem_ocpp_stop_window_s": "Sekunder med vedvarende underskud før opladning stopper. Forhindrer hurtig stop-start cykling. Standard: 180."
+          "hsem_ocpp_stop_window_s": "Sekunder med vedvarende underskud før opladning stopper. Forhindrer hurtig stop-start cykling. Standard: 180.",
+          "hsem_ocpp_second_cpid": "Forventet ladepunkt-identifikator for den anden EV-lader. Lad være tom for at acceptere enhver lader.",
+          "hsem_ocpp_second_enabled": "Aktiver en anden, dedikeret OCPP-server til den anden EV. Kun tilgængelig når planlagt belastning for EV 2 er aktiveret.",
+          "hsem_ocpp_second_port": "TCP-port til den anden OCPP WebSocket-server. Standard: 9001. Skal være forskellig fra den første servers port."
         },
         "description": "Konfigurer den indbyggede OCPP 1.6 server til LAN-kun EV-laderstyring. Når aktiveret, sender HSEM SetChargingProfile-kommandoer direkte til din EV-lader baseret på opladeplanen.",
         "title": "OCPP Server"
@@ -462,7 +496,7 @@
           "working_mode": "Batterier Arbejdstilstand",
           "max_charge_power": "Maks Opladningseffekt",
           "max_discharge_power": "Maks Afladningseffekt",
-          "eod_soc": "End of Discharge SoC",
+          "eod_soc": "Afladningsstop SoC",
           "rated_capacity": "Batterier Nominel Kapacitet",
           "active_power_control": "Aktiv Effektstyring",
           "tou_periods": "TOU Opladning/Afladning Perioder",
@@ -479,7 +513,7 @@
           "working_mode": "Autodetekteret batterier arbejdstilstand enhed.",
           "max_charge_power": "Autodetekteret maksimal opladningseffekt enhed.",
           "max_discharge_power": "Autodetekteret maksimal afladningseffekt enhed.",
-          "eod_soc": "Autodetekteret end of discharge SoC enhed.",
+          "eod_soc": "Autodetekteret afladningsstop SoC-enhed.",
           "rated_capacity": "Autodetekteret batterier nominel kapacitet sensor.",
           "active_power_control": "Autodetekteret inverter aktiv effektstyring sensor.",
           "tou_periods": "Autodetekteret TOU opladning/afladning perioder sensor.",
@@ -516,48 +550,52 @@
       "price_out_of_range": "Prisværdien er uden for det tilladte område.",
       "required": "Dette felt er påkrævet.",
       "start_time_after_end_time": "Starttidspunkt skal være før sluttidspunkt.",
-      "start_time_equals_end_time": "Starttidspunkt og sluttidspunkt kan ikke være ens - dette skaber et nul-længdevindue. Deaktiver tidsplanen i stedet."
+      "start_time_equals_end_time": "Starttidspunkt og sluttidspunkt kan ikke være ens - dette skaber et nul-længdevindue. Deaktiver tidsplanen i stedet.",
+      "invalid_wait_mode_behavior": "Ugyldig ventetilstand. Vælg Streng ventetilstand eller Selvforbrug med reserve.",
+      "port_conflict": "Den anden OCPP-port skal være forskellig fra den første OCPP-port."
     },
     "step": {
       "batteries_excess_export": {
         "data": {
-          "hsem_batteries_enable_excess_export": "Enable Excess Battery Export",
-          "hsem_batteries_excess_export_discharge_buffer": "Discharge Buffer (%)",
-          "hsem_batteries_export_min_price": "Batterieksport Min. Pris"
+          "hsem_batteries_enable_excess_export": "Aktiver overskuds-eksport",
+          "hsem_batteries_excess_export_discharge_buffer": "Afladningsbuffer (%)",
+          "hsem_batteries_export_min_price": "Batterieksport Min. Pris",
+          "hsem_batteries_forecast_reserve_pct": "Batteri eksportprognose-reserve (+% SoC)"
         },
         "data_description": {
-          "hsem_batteries_enable_excess_export": "Enable or disable the excess battery export feature, which automatically exports excess battery capacity to the grid when economically beneficial.",
-          "hsem_batteries_excess_export_discharge_buffer": "Set the safety buffer percentage to maintain minimum battery reserves (0-50%). Default is 10% to ensure adequate capacity for unexpected demand.",
-          "hsem_batteries_export_min_price": "Hårdt prægulv per slot for tilsigtet batteri-til-net eksport (issue #752). Når værdien > 0, forbyder HSEM at markere et slot som force_batteries_discharge når eksportprisen er strengt under dette gulv — batteriet kan stadig betjene husforbruget i disse slots. At nå tærsklen udløser IKKE automatisk eksport; optimizeren bestemmer stadig, om salg er økonomisk fordelagtigt. Gælder kun for tilsigtet batteri-til-net eksport, ikke for normalt selvforbrug, PV-eksport eller PV-opladning. Sæt til 0 for at deaktivere (standard)."
+          "hsem_batteries_enable_excess_export": "Aktiver eller deaktiver eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
+          "hsem_batteries_excess_export_discharge_buffer": "Indstil sikkerhedsbufferprocenten for at opretholde minimum batterireserver (0-50%). Standard er 10% for at sikre tilstrækkelig kapacitet til uventet efterspørgsel.",
+          "hsem_batteries_export_min_price": "Hårdt prægulv per slot for tilsigtet batteri-til-net eksport (issue #752). Når værdien > 0, forbyder HSEM at markere et slot som force_batteries_discharge når eksportprisen er strengt under dette gulv — batteriet kan stadig betjene husforbruget i disse slots. At nå tærsklen udløser IKKE automatisk eksport; optimizeren bestemmer stadig, om salg er økonomisk fordelagtigt. Gælder kun for tilsigtet batteri-til-net eksport, ikke for normalt selvforbrug, PV-eksport eller PV-opladning. Sæt til 0 for at deaktivere (standard).",
+          "hsem_batteries_forecast_reserve_pct": "Ekstra SoC-procentpoint over Huaweis afladningsstop-grænse, som bevidst batterieksport skal efterlade umiddelbart efter hvert eksportinterval. For eksempel beskytter en Huawei-grænse på 15 % plus en 5 % reserve 20 % SoC. Reserven forbliver tilgængelig til husforbrug, når det faktiske forbrug overstiger prognosen. Sæt til 0 for at deaktivere (standard)."
         },
-        "description": "Configure excess battery export settings to automatically sell excess energy to the grid when economically beneficial.",
-        "title": "Excess Battery Export"
+        "description": "Konfigurer indstillinger for eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
+        "title": "Overskuds-eksport"
       },
       "batteries_schedules": {
         "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time",
-          "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time",
-          "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
+          "hsem_batteries_enable_batteries_schedule_1": "Aktiver batteritidsplan 1",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Batteritidsplan 1 sluttid",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Batteritidsplan 1 starttid",
+          "hsem_batteries_enable_batteries_schedule_2": "Aktiver batteritidsplan 2",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Batteritidsplan 2 sluttid",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Batteritidsplan 2 starttid",
+          "hsem_batteries_enable_batteries_schedule_3": "Aktiver batteritidsplan 3",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Batteritidsplan 3 sluttid",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Batteritidsplan 3 starttid"
         },
         "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
+          "hsem_batteries_enable_batteries_schedule_1": "Aktiver eller deaktiver den første batteri-afladningstidsplan.",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Angiv sluttidspunktet for den første batteri-afladningstidsplan.",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Angiv starttidspunktet for den første batteri-afladningstidsplan.",
+          "hsem_batteries_enable_batteries_schedule_2": "Aktiver eller deaktiver den anden batteri-afladningstidsplan.",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Angiv sluttidspunktet for den anden batteri-afladningstidsplan.",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Angiv starttidspunktet for den anden batteri-afladningstidsplan.",
+          "hsem_batteries_enable_batteries_schedule_3": "Aktiver eller deaktiver den tredje batteri-afladningstidsplan.",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Angiv sluttidspunktet for den tredje batteri-afladningstidsplan.",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Angiv starttidspunktet for den tredje batteri-afladningstidsplan."
         },
-        "description": "Configure up to three battery discharge schedule windows, each with enable/disable toggle, start time, and end time. Schedules define when the battery may discharge to cover peak consumption or export to the grid.",
-        "title": "Battery Discharge Schedules"
+        "description": "Konfigurer op til tre batteri-afladningstidsplaner, hver med til/fra-knap, starttid og sluttid.",
+        "title": "Batteri-afladningstidsplaner"
       },
       "ev_planned_load": {
         "data": {
@@ -565,14 +603,22 @@
           "hsem_ev_planned_load_battery_capacity_kwh": "EV batterikapacitet (kWh)",
           "hsem_ev_planned_load_charger_power_kw": "EV lader-effekt (kW)",
           "hsem_ev_planned_load_charger_efficiency": "EV lader-efficiens",
-          "hsem_ev_planned_load_charger_min_power_w": "EV lader minimumseffekt (W)"
+          "hsem_ev_planned_load_charger_min_power_w": "EV lader minimumseffekt (W)",
+          "hsem_ev_planned_load_charger_phase_topology": "Laderens fasetopologi",
+          "hsem_ev_planned_load_command_deadband_a": "Dødbånd for loft (A)",
+          "hsem_ev_planned_load_deadline_safety_margin_pct": "Sikkerhedsmargin til deadline (%)",
+          "hsem_ev_planned_load_stub_floor_minutes": "Undertryk stop sidst i interval (min)"
         },
         "data_description": {
           "hsem_ev_planned_load_enabled": "Aktiver eller deaktiver planlagt EV-opladningsbelastningsintegration.",
           "hsem_ev_planned_load_battery_capacity_kwh": "EV-batteriets nominelle kapacitet i kWh.",
           "hsem_ev_planned_load_charger_power_kw": "AC-udgangseffekt for EV-laderen i kW.",
           "hsem_ev_planned_load_charger_efficiency": "Laderefficiens i procent (1-100). Standard: 100.",
-          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som EV-laderen skal bruge for at starte opladning. Standard: 1380 W (230 V × 6 A)."
+          "hsem_ev_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som EV-laderen skal bruge for at starte opladning. Standard: 1380 W (230 V × 6 A).",
+          "hsem_ev_planned_load_charger_phase_topology": "Hvordan laderen fordeler sin belastning på forsyningens faser. Vælg 'Enfaset eller ukendt', medmindre du har bekræftet, at laderen trækker balanceret strøm på alle tre faser. Med per-fase-sikringsbeskyttelse aktiveret antager det sikre standardvalg, at hele laderkommandoen kan lande på én fase, hvilket begrænser planlagt opladning til den enfasede sikrings kapacitet.",
+          "hsem_ev_planned_load_command_deadband_a": "Mindste sænkning af det offentliggjorte ladeloft, der faktisk gennemføres. Mindre sænkninger holdes, fordi konkurrerende hele-ampere-planer typisk ligger inden for en afrundingsfejl af hinanden på pris. En hævning af loftet forsinkes aldrig, og en sænkning, der forbedrer dette intervals ladeomkostning med mere end 5 %, slipper altid igennem. Standard: 3 A; 0 deaktiverer.",
+          "hsem_ev_planned_load_deadline_safety_margin_pct": "Ekstra energi budgetteret ud over mål-SoC, som en procentdel af manglen, så normal opladningsfriktion (startforsinkelser, minimumseffektgrænser, gennemtvinget reduktion) ikke får deadline til at blive overskredet. Standard: 0% (deaktiveret).",
+          "hsem_ev_planned_load_stub_floor_minutes": "Undertryk en stop-kommando i så mange minutter sidst i et interval, mens bilen stadig mangler energi. De sidste sekunder kan ikke rumme nok energi til at nå laderens minimum, så planen tildeler dem ingenting, og ladningen ville stoppe og starte igen uden gevinst. Standard: 2 minutter; 0 deaktiverer."
         },
         "description": "Konfigurer valgfri planlagt EV-opladningsbelastningsintegration. Når aktiveret, tager HSEM højde for kommende EV-opladningsbehov pr. planslot.",
         "title": "EV-planlagt belastningsintegration"
@@ -586,7 +632,8 @@
           "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 lader minimumseffekt (W)",
           "hsem_ev_second_planned_load_deadline_safety_margin_pct": "EV 2 sikkerhedsmargin til deadline (%)",
           "hsem_ev_second_planned_load_command_deadband_a": "EV 2 dødbånd for loft (A)",
-          "hsem_ev_second_planned_load_stub_floor_minutes": "EV 2 undertryk stop sidst i interval (min)"
+          "hsem_ev_second_planned_load_stub_floor_minutes": "EV 2 undertryk stop sidst i interval (min)",
+          "hsem_ev_second_planned_load_charger_phase_topology": "Laderens fasetopologi"
         },
         "data_description": {
           "hsem_ev_second_planned_load_enabled": "Aktiver eller deaktiver planlagt opladningsbelastningsintegration for den anden EV.",
@@ -596,214 +643,227 @@
           "hsem_ev_second_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som den anden EV-lader skal bruge for at starte opladning. Standard: 1380 W (230 V × 6 A).",
           "hsem_ev_second_planned_load_deadline_safety_margin_pct": "Samme som den primære EVs sikkerhedsmargin til deadline, for den anden EV. Standard: 0% (deaktiveret).",
           "hsem_ev_second_planned_load_command_deadband_a": "Samme som den primære EVs dødbånd for loft, for den anden EV. Standard: 3 A; 0 deaktiverer.",
-          "hsem_ev_second_planned_load_stub_floor_minutes": "Samme som den primære EVs undertrykkelse af stop sidst i interval, for den anden EV. Standard: 2 minutter; 0 deaktiverer."
+          "hsem_ev_second_planned_load_stub_floor_minutes": "Samme som den primære EVs undertrykkelse af stop sidst i interval, for den anden EV. Standard: 2 minutter; 0 deaktiverer.",
+          "hsem_ev_second_planned_load_charger_phase_topology": "Hvordan laderen fordeler sin belastning på forsyningens faser. Vælg 'Enfaset eller ukendt', medmindre du har bekræftet, at laderen trækker balanceret strøm på alle tre faser. Med per-fase-sikringsbeskyttelse aktiveret antager det sikre standardvalg, at hele laderkommandoen kan lande på én fase, hvilket begrænser planlagt opladning til den enfasede sikrings kapacitet."
         },
         "description": "Konfigurer valgfri planlagt opladningsbelastningsintegration for den anden EV. Vises kun, når en anden EV-lader er aktiveret.",
         "title": "EV 2-planlagt belastningsintegration"
       },
       "prices": {
         "data": {
-          "hsem_import_electricity_price_sensor": "Import Electricity Price Sensor",
-          "hsem_export_electricity_price_sensor": "Export Electricity Price Sensor",
-          "hsem_import_electricity_price_forecast_sensor": "Import Electricity Price Forecast Sensor (optional)",
-          "hsem_export_electricity_price_forecast_sensor": "Export Electricity Price Forecast Sensor (optional)",
-          "hsem_export_electricity_min_price": "Export Minimum Price Required",
-          "hsem_electricity_price_update_interval": "Electricity Price Update Interval (minutes)"
+          "hsem_import_electricity_price_sensor": "Import-elprissensor",
+          "hsem_export_electricity_price_sensor": "Eksport-elprissensor",
+          "hsem_import_electricity_price_forecast_sensor": "Import-elprisprognose-sensor (valgfri)",
+          "hsem_export_electricity_price_forecast_sensor": "Eksport-elprisprognose-sensor (valgfri)",
+          "hsem_export_electricity_min_price": "Minimum eksportpris påkrævet",
+          "hsem_electricity_price_update_interval": "Elpris opdateringsinterval (minutter)"
         },
         "data_description": {
-          "hsem_import_electricity_price_sensor": "Select the sensor that provides import electricity prices (e.g. Energi Data Service, Nordpool, Amber Electric).",
-          "hsem_export_electricity_price_sensor": "Select the sensor that provides export electricity prices.",
-          "hsem_import_electricity_price_forecast_sensor": "Optional: select a separate sensor for import price forecasts (used by Amber Electric and similar integrations).",
-          "hsem_export_electricity_price_forecast_sensor": "Optional: select a separate sensor for export price forecasts.",
-          "hsem_export_electricity_min_price": "Set the minimum export price. Exports below this price will be blocked.",
-          "hsem_electricity_price_update_interval": "How often your price sensor provides new data (15, 30, or 60 minutes)."
+          "hsem_import_electricity_price_sensor": "Vælg den sensor, der leverer import-elpriser (f.eks. Energi Data Service, Nordpool, Amber Electric).",
+          "hsem_export_electricity_price_sensor": "Vælg den sensor, der leverer eksport-elpriser.",
+          "hsem_import_electricity_price_forecast_sensor": "Valgfrit: vælg en separat sensor til importprisprognoser (bruges af Amber Electric og lignende integrationer).",
+          "hsem_export_electricity_price_forecast_sensor": "Valgfrit: vælg en separat sensor til eksportprisprognoser.",
+          "hsem_export_electricity_min_price": "Indstil minimumsprisen for eksport. Eksport under denne pris blokeres.",
+          "hsem_electricity_price_update_interval": "Hvor ofte din prissensor giver nye data (15, 30 eller 60 minutter)."
         },
-        "description": "Configure your electricity price sensors for import and export pricing.",
-        "title": "Electricity Prices"
+        "description": "Konfigurer dine elprissensorer til import- og eksportpriser.",
+        "title": "Elpriser"
       },
       "ev": {
         "data": {
-          "hsem_ev_allow_charge_past_target_soc": "Allow Charging Past Target SoC (Advanced)",
-          "hsem_ev_charger_force_max_discharge_power": "EV Charger Force Max Discharge Power",
-          "hsem_ev_charger_max_discharge_power": "EV Charger Max Discharge Power",
-          "hsem_ev_charger_power": "EV Charger Power Sensor",
-          "hsem_ev_charger_status": "EV Charger Status Sensor",
-          "hsem_ev_connected": "EV Connected Sensor",
-          "hsem_ev_second_enabled": "Enable Second EV Charger",
-          "hsem_ev_soc": "EV State of Charge (SoC) Sensor",
-          "hsem_house_power_includes_ev_charger_power": "House Power Includes EV Charger Power",
+          "hsem_ev_allow_charge_past_target_soc": "Tillad opladning ud over mål-SoC (Avanceret)",
+          "hsem_ev_charger_force_max_discharge_power": "EV-lader tving maks. afladningseffekt",
+          "hsem_ev_charger_max_discharge_power": "EV-lader maks. afladningseffekt",
+          "hsem_ev_charger_power": "EV-lader effektsensor",
+          "hsem_ev_charger_status": "EV-lader statussensor",
+          "hsem_ev_connected": "EV tilsluttet sensor",
+          "hsem_ev_second_enabled": "Aktiver anden EV-lader",
+          "hsem_ev_soc": "EV ladetilstand (SoC) sensor",
+          "hsem_house_power_includes_ev_charger_power": "Husets effekt inkluderer EV-ladereffekt",
           "hsem_ev_auto_full_negative_price": "Auto-Fuld EV ved negativ pris",
           "hsem_ev_past_target_confidence_factor": "EV opladning ud over mål-SoC - Konfidensfaktor (Avanceret)"
         },
         "data_description": {
-          "hsem_ev_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
-          "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
-          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
-          "hsem_ev_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
-          "hsem_ev_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
-          "hsem_ev_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
-          "hsem_ev_second_enabled": "Enable or disable the configuration for a second EV charger.",
-          "hsem_ev_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
-          "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption.",
+          "hsem_ev_allow_charge_past_target_soc": "Aktiver denne mulighed, hvis du vil tillade systemet at fortsætte opladningen af EV-batteriet, selv efter det har nået mål-ladetilstanden (SoC).",
+          "hsem_ev_charger_force_max_discharge_power": "Aktiver dette, hvis du vil tvinge en specifik maks. afladningseffekt for Huawei-batterierne, mens EV oplader.",
+          "hsem_ev_charger_max_discharge_power": "Indstil den maksimale afladningseffekt for Huawei-batterierne, mens EV oplader.",
+          "hsem_ev_charger_power": "Vælg den sensor, der måler strømforbruget for din EV-lader.",
+          "hsem_ev_charger_status": "Vælg den sensor eller enhed, der angiver, om EV-laderen er aktiv.",
+          "hsem_ev_connected": "Vælg den sensor eller enhed, der angiver, om EV er tilsluttet laderen.",
+          "hsem_ev_second_enabled": "Aktiver eller deaktiver konfigurationen for en anden EV-lader.",
+          "hsem_ev_soc": "Vælg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri.",
+          "hsem_house_power_includes_ev_charger_power": "Aktiver dette, hvis husets forbrugseffektsensor allerede inkluderer EV-laderens strømforbrug.",
           "hsem_ev_auto_full_negative_price": "Når aktiveret, sættes elbilen automatisk til fuld opladningseffekt, når elprisen er nul eller negativ. Den tidligere opladningstilstand gendannes, når prisen stiger over nul.",
           "hsem_ev_past_target_confidence_factor": "Konfidensmultiplikator (0.0-1.0) der anvendes på værdien af undgået fremtidig import når EV'en oplades ud over sin mål-SoC. Lavere værdier gør EV'en mindre konkurrencedygtig mod eksport af overskuds-PV, for at tage højde for usikkerhed om, om EV'en faktisk vil have brug for den ekstra energi før næste opladning. Standard 0.9."
         },
-        "description": "Configure EV Charger settings for HSEM.",
-        "title": "EV Charger Settings (Optional)"
+        "description": "Konfigurer EV-laderindstillinger for HSEM.",
+        "title": "EV-laderindstillinger (Valgfri)"
       },
       "ev_second": {
         "data": {
-          "hsem_ev_second_allow_charge_past_target_soc": "Allow Charging Past Target SoC For Second EV (Advanced)",
-          "hsem_ev_second_charger_force_max_discharge_power": "Second EV Charger Force Max Discharge Power",
-          "hsem_ev_second_charger_max_discharge_power": "Second EV Charger Max Discharge Power",
-          "hsem_ev_second_charger_power": "Second EV Charger Power Sensor",
-          "hsem_ev_second_charger_status": "Second EV Charger Status Sensor",
-          "hsem_ev_second_connected": "Second EV Connected Sensor",
-          "hsem_ev_second_soc": "Second EV State of Charge (SoC) Sensor",
+          "hsem_ev_second_allow_charge_past_target_soc": "Tillad opladning ud over mål-SoC for anden EV (Avanceret)",
+          "hsem_ev_second_charger_force_max_discharge_power": "Anden EV-lader tving maks. afladningseffekt",
+          "hsem_ev_second_charger_max_discharge_power": "Anden EV-lader maks. afladningseffekt",
+          "hsem_ev_second_charger_power": "Anden EV-lader effektsensor",
+          "hsem_ev_second_charger_status": "Anden EV-lader statussensor",
+          "hsem_ev_second_connected": "Anden EV tilsluttet sensor",
+          "hsem_ev_second_soc": "Anden EV ladetilstand (SoC) sensor",
           "hsem_ev_second_past_target_confidence_factor": "Anden EV opladning ud over mål-SoC - Konfidensfaktor (Avanceret)"
         },
         "data_description": {
-          "hsem_ev_second_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
-          "hsem_ev_second_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
-          "hsem_ev_second_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
-          "hsem_ev_second_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
-          "hsem_ev_second_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
-          "hsem_ev_second_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
-          "hsem_ev_second_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
+          "hsem_ev_second_allow_charge_past_target_soc": "Aktiver denne mulighed, hvis du vil tillade systemet at fortsætte opladningen af EV-batteriet, selv efter det har nået mål-ladetilstanden (SoC).",
+          "hsem_ev_second_charger_force_max_discharge_power": "Aktiver dette, hvis du vil tvinge en specifik maks. afladningseffekt for Huawei-batterierne, mens EV oplader.",
+          "hsem_ev_second_charger_max_discharge_power": "Indstil den maksimale afladningseffekt for Huawei-batterierne, mens EV oplader.",
+          "hsem_ev_second_charger_power": "Vælg den sensor, der måler strømforbruget for din EV-lader.",
+          "hsem_ev_second_charger_status": "Vælg den sensor eller enhed, der angiver, om EV-laderen er aktiv.",
+          "hsem_ev_second_connected": "Vælg den sensor eller enhed, der angiver, om EV er tilsluttet laderen.",
+          "hsem_ev_second_soc": "Vælg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri.",
           "hsem_ev_second_past_target_confidence_factor": "Konfidensmultiplikator (0.0-1.0) der anvendes på værdien af undgået fremtidig import når den anden EV oplades ud over sin mål-SoC. Lavere værdier gør EV'en mindre konkurrencedygtig mod eksport af overskuds-PV, for at tage højde for usikkerhed om, om EV'en faktisk vil have brug for den ekstra energi før næste opladning. Standard 0.9."
         },
-        "description": "Configure Second EV Charger settings for HSEM.",
-        "title": "Second EV Charger Settings (Optional)"
+        "description": "Konfigurer anden EV-laderindstillinger for HSEM.",
+        "title": "Anden EV-laderindstillinger (Valgfri)"
       },
       "huawei_solar": {
         "data": {
-          "hsem_batteries_charge_efficiency": "Battery Charge Efficiency (%)",
+          "hsem_batteries_charge_efficiency": "Batteri-opladningseffektivitet (%)",
           "hsem_batteries_cycle_cost": "Battery Cycle Cost (pr. kWh)",
-          "hsem_batteries_discharge_efficiency": "Battery Discharge Efficiency (%)",
-          "hsem_batteries_expected_cycles": "Expected Battery Cycles",
-          "hsem_batteries_purchase_price": "Battery Purchase Price",
-          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei Batteries Excess PV energy use in TOU",
-          "hsem_huawei_solar_batteries_forcible_charge": "Battery Forcible Charge State",
-          "hsem_huawei_solar_batteries_end_of_discharge_soc": "Huawei Batteries End of Discharge SOC (%)",
-          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Huawei Batteries Charging Cutoff Capacity (Max SoC %)",
-          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei Batteries Grid Charge Cutoff SOC (%)",
-          "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei Batteries Maximum Charging Power (W)",
-          "hsem_huawei_solar_batteries_maximum_discharging_power": "Huawei Batteries Maximum Discharging Power (W)",
+          "hsem_batteries_discharge_efficiency": "Batteri-afladningseffektivitet (%)",
+          "hsem_batteries_expected_cycles": "Forventede battericyklusser",
+          "hsem_batteries_purchase_price": "Batteri-købspris",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei-batterier overskydende PV-energianvendelse i TOU",
+          "hsem_huawei_solar_batteries_forcible_charge": "Tvungen Opladning",
+          "hsem_huawei_solar_batteries_end_of_discharge_soc": "Huawei-batterier afladningsstop SOC (%)",
+          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Huawei-batterier opladningsstopkapacitet (maks. SoC %)",
+          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei-batterier netopladningsstop SOC (%)",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei-batterier maks. opladningseffekt (W)",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Huawei-batterier maks. afladningseffekt (W)",
           "hsem_huawei_solar_batteries_rated_capacity": "Battery Max Capacity (Watt)",
-          "hsem_huawei_solar_batteries_state_of_capacity": "Huawei Batteries State of Capacity Sensor",
-          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Huawei Batteries TOU Charging and Discharging Periods",
-          "hsem_huawei_solar_batteries_working_mode": "Huawei Solar Batteries Working Mode Sensor",
-          "hsem_huawei_solar_device_id_batteries": "Huawei Batteries Device",
-          "hsem_huawei_solar_device_id_batteries_2": "Huawei Batteries 2 Device",
-          "hsem_huawei_solar_device_id_inverter_1": "Huawei Inverter 1 Device",
-          "hsem_huawei_solar_device_id_inverter_2": "Huawei Inverter 2 Device",
-          "hsem_huawei_solar_inverter_active_power_control": "Huawei Inverter Active Power Control Sensor"
+          "hsem_huawei_solar_batteries_state_of_capacity": "Huawei-batterier kapacitetstilstandssensor",
+          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Huawei-batterier TOU-opladnings- og afladningsperioder",
+          "hsem_huawei_solar_batteries_working_mode": "Huawei Solar-batterier arbejdstilstandssensor",
+          "hsem_huawei_solar_device_id_batteries": "Huawei-batterienhed",
+          "hsem_huawei_solar_device_id_batteries_2": "Huawei-batterienhed 2",
+          "hsem_huawei_solar_device_id_inverter_1": "Huawei-vekselretter 1 enhed",
+          "hsem_huawei_solar_device_id_inverter_2": "Huawei-vekselretter 2 enhed",
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei-vekselretter aktiv effektkontrolsensor",
+          "hsem_huawei_solar_batteries_charge_discharge_power": "Huawei batteri op-/afladningseffekt-sensor",
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Huawei-batterier maksimal netopladningseffekt (W)"
         },
         "data_description": {
-          "hsem_batteries_charge_efficiency": "Specify the charge-side efficiency of your battery as a percentage (0–100). Energy stored in the battery equals the input energy multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %.",
-          "hsem_batteries_discharge_efficiency": "Specify the discharge-side efficiency of your battery as a percentage (0–100). Energy delivered to the house equals the battery energy removed multiplied by this factor. Typical lithium batteries achieve 95–98 %. Defaults to 98 %.",
+          "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0-100). Energi lagret i batteriet = inputenergi × denne faktor. Typiske lithium-batterier opnår 95-98%. Standard: 98%.",
+          "hsem_batteries_discharge_efficiency": "Angiv batteriets afladningseffektivitet som en procentdel (0-100). Energi leveret til huset = fjernet batterienergi × denne faktor. Typiske lithium-batterier opnår 95-98%. Standard: 98%.",
           "hsem_batteries_cycle_cost": "Optional extra per-kWh cost of cycling the battery (pr. kWh). Added on top of the auto-calculated depreciation threshold. Set to 0 to rely solely on the depreciation guard. Example: 0.02 means the planner requires 2 cent extra spread per kWh cycled before approving grid charging.",
-          "hsem_batteries_expected_cycles": "Enter the expected number of full charge/discharge cycles over the battery's lifetime. Used to calculate depreciation cost per kWh and the recommended minimum export price threshold. Typical LiFePO4 batteries support 4000–8000 cycles.",
-          "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in your local currency. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
-          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Select the sensor that provides setting for excess PV energy use in TOU periods.",
-          "hsem_huawei_solar_batteries_forcible_charge": "Sensor showing current forcible charge/discharge state (e.g. Stopped, Discharging at 5000W for 60 minutes)",
-          "hsem_huawei_solar_batteries_end_of_discharge_soc": "Specify the end of discharge SOC percentage for your Huawei batteries. When the battery reaches this SOC level, it will stop discharging to prevent deep discharge and potential damage to the battery.",
-          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Select the entity that defines the maximum state of charge (SoC) the battery is allowed to reach during charging (register STORAGE_CHARGING_CUTOFF_CAPACITY). Typically 90–10 %. Used by the SoC simulation as the upper SoC ceiling so the planner never schedules charging beyond this limit.",
-          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Specify the grid charge cutoff SOC percentage for your Huawei batteries.",
+          "hsem_batteries_expected_cycles": "Indtast det forventede antal fulde opladnings-/afladningscyklusser i batteriets levetid. Bruges til at beregne afskrivningsomkostning pr. kWh. Typiske LiFePO4-batterier understøtter 4000-8000 cyklusser.",
+          "hsem_batteries_purchase_price": "Indtast den samlede købspris for dit batterisystem. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Vælg den sensor, der giver indstilling for overskydende PV-energianvendelse i TOU-perioder.",
+          "hsem_huawei_solar_batteries_forcible_charge": "Vælg sensoren der angiver om tvungen opladning er aktiv.",
+          "hsem_huawei_solar_batteries_end_of_discharge_soc": "Angiv afladningsstop SOC-procent for dine Huawei-batterier. Når batteriet når dette SOC-niveau, stopper det afladning for at forhindre dybdeafladning.",
+          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Vælg den enhed, der definerer den maksimale ladetilstand (SoC), batteriet må nå under opladning. Typisk 90-100%. Bruges af SoC-simuleringen som den øvre SoC-grænse.",
+          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Angiv netopladningsstop SOC-procent for dine Huawei-batterier.",
           "hsem_huawei_solar_batteries_maximum_charging_power": "Select the sensor that provides the maximum charging power for your Huawei batteries in kilowatts (W).",
-          "hsem_huawei_solar_batteries_maximum_discharging_power": "Select the sensor that provides the maximum discharging power for your Huawei batteries.",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Vælg den sensor, der leverer den maksimale afladningseffekt for dine Huawei-batterier.",
           "hsem_huawei_solar_batteries_rated_capacity": "Select the sensor that provides the total rated capacity of your Huawei batteries in watts (W).",
-          "hsem_huawei_solar_batteries_state_of_capacity": "Select the sensor that provides the state of charge (SOC) of your Huawei batteries.",
-          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Select the sensor that defines the Time-of-Use (TOU) charging and discharging periods for your Huawei batteries.",
-          "hsem_huawei_solar_batteries_working_mode": "Select the sensor that indicates the current working mode of your Huawei batteries.",
-          "hsem_huawei_solar_device_id_batteries": "Select your Huawei battery device.",
-          "hsem_huawei_solar_device_id_batteries_2": "Select your secondary Huawei battery device, if applicable.",
-          "hsem_huawei_solar_device_id_inverter_1": "Select your primary Huawei inverter device.",
-          "hsem_huawei_solar_device_id_inverter_2": "Select your secondary Huawei inverter device, if applicable.",
-          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter."
+          "hsem_huawei_solar_batteries_state_of_capacity": "Vælg den sensor, der leverer ladetilstanden (SOC) for dine Huawei-batterier.",
+          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Vælg den sensor, der definerer Time-of-Use (TOU) opladnings- og afladningsperioder for dine Huawei-batterier.",
+          "hsem_huawei_solar_batteries_working_mode": "Vælg den sensor, der angiver den aktuelle arbejdstilstand for dine Huawei-batterier.",
+          "hsem_huawei_solar_device_id_batteries": "Vælg din Huawei-batterienhed.",
+          "hsem_huawei_solar_device_id_batteries_2": "Vælg din sekundære Huawei-batterienhed, hvis relevant.",
+          "hsem_huawei_solar_device_id_inverter_1": "Vælg din primære Huawei-vekselretterenhed.",
+          "hsem_huawei_solar_device_id_inverter_2": "Vælg din sekundære Huawei-vekselretterenhed, hvis relevant.",
+          "hsem_huawei_solar_inverter_active_power_control": "Vælg den sensor, der styrer aktiv effektudgang for din Huawei-vekselretter.",
+          "hsem_huawei_solar_batteries_charge_discharge_power": "Vælg sensoren, der rapporterer den fortegnsbestemte øjeblikkelige batteri op-/afladningseffekt (positiv = opladning, negativ = afladning). Kræves af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at fjerne Huaweis eget bidrag fra det live faseøjebliksbillede, før rådighedsmargenen beregnes. Valgfrit — kræves kun når fasebevidst opladning er aktiveret.",
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Vælg tal-enheden, der sætter Huaweis maksimale loft for netopladningseffekt (W). Skrives af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at holde netfinansieret opladning under hovedsikringens per-fase-grænse. Valgfrit — kræves kun når fasebevidst opladning er aktiveret."
         },
-        "description": "Configure the working mode for Huawei solar batteries.",
-        "title": "Huawei Solar Sensors"
+        "description": "Konfigurer arbejdstilstanden for Huawei-solcellebatterier.",
+        "title": "Huawei Solar-sensorer"
       },
       "init": {
         "data": {
-          "device_name": "Name",
-          "hsem_extended_attributes": "Extended Attributes",
-          "hsem_read_only": "Read Only",
-          "hsem_recommendation_interval_length": "Recommendation Interval Length",
-          "hsem_recommendation_interval_minutes": "Recommendation Interval Minutes",
-          "hsem_update_interval": "Update interval",
-          "hsem_verbose_logging": "Verbose Logging"
+          "device_name": "Navn",
+          "hsem_extended_attributes": "Udvidede attributter",
+          "hsem_read_only": "Kun læsning",
+          "hsem_recommendation_interval_length": "Anbefalingsinterval-længde",
+          "hsem_recommendation_interval_minutes": "Anbefalingsinterval-minutter",
+          "hsem_update_interval": "Opdateringsinterval",
+          "hsem_verbose_logging": "Detaljeret logning"
         },
         "data_description": {
-          "device_name": "Enter a unique name for this device.",
-          "hsem_extended_attributes": "Enable this option to expose extra diagnostic attributes on the sensor entity.",
-          "hsem_read_only": "Enable this option to set the integration to read-only mode, preventing it from sending commands to devices.",
+          "device_name": "Indtast et unikt navn for denne enhed.",
+          "hsem_extended_attributes": "Aktiver denne mulighed for at eksponere ekstra diagnostiske attributter på sensorenheden.",
+          "hsem_read_only": "Aktiver denne mulighed for at sætte integrationen i skrivebeskyttet tilstand, så den ikke sender kommandoer til enheder.",
           "hsem_recommendation_interval_length": "The length in minutes of each recommendation interval used to calculate optimal battery usage.",
           "hsem_recommendation_interval_minutes": "The number of recommendation intervals to consider when calculating optimal battery usage.",
-          "hsem_update_interval": "The update interval in minutes for the working mode sensor.",
-          "hsem_verbose_logging": "Enable verbose debug logging for troubleshooting purposes."
+          "hsem_update_interval": "Opdateringsintervallet i minutter for arbejdstilstandssensoren.",
+          "hsem_verbose_logging": "Aktiver detaljeret fejlfindingslogning til fejlfinding."
         },
-        "description": "Update the settings for HSEM",
-        "title": "Update Huawei Solar Energy Management"
+        "description": "Opdater indstillingerne for HSEM",
+        "title": "Opdater Huawei Solar Energy Management"
       },
       "months": {
         "data": {
-          "hsem_months_winter": "Months considered as Winter/Spring"
+          "hsem_months_winter": "Måneder betragtet som vinter/forår"
         },
         "data_description": {
           "hsem_months_winter": "Select the months that should be considered as Winter/Spring for the seasonal working mode adjustments. You can select multiple months. Selecting all 12 months is allowed — this keeps Winter/Spring (TOU) mode active year-round."
         },
-        "description": "Configure the months that are considered as Winter/Spring. During these months, the system will prioritize charging the batteries from grid energy to ensure sufficient battery levels during periods of lower solar production. Remaining months will be considered as Summer/Autum months.",
-        "title": "Winter/Spring Months"
+        "description": "Konfigurer de måneder, der betragtes som vinter/forår. I disse måneder prioriterer systemet opladning af batterierne fra netstrøm.",
+        "title": "Vinter/forår-måneder"
       },
       "power": {
         "data": {
-          "hsem_house_consumption_power": "House Consumption Power Sensor",
-          "hsem_main_fuse_amps": "Main Fuse Rating (Amps)",
-          "hsem_main_fuse_phases": "Main Fuse Phase Count",
-          "hsem_max_grid_export_power_kw": "Max Grid Export Power (kW)",
-          "hsem_solar_production_power": "Solar Production Power Sensor"
+          "hsem_house_consumption_power": "Husets forbrugseffektsensor",
+          "hsem_main_fuse_amps": "Hovedsikring (Ampere)",
+          "hsem_main_fuse_phases": "Hovedsikringens faseantal",
+          "hsem_max_grid_export_power_kw": "Maks. neteksporteffekt (kW)",
+          "hsem_solar_production_power": "Solproduktionseffektsensor",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Effektmåler fase A aktiv effekt-sensor",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Effektmåler fase B aktiv effekt-sensor",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Effektmåler fase C aktiv effekt-sensor",
+          "hsem_phase_aware_charging_enabled": "Aktiver live fasebevidst opladningssikkerhedsbegrænser"
         },
         "data_description": {
-          "hsem_house_consumption_power": "Select the sensor that measures your house's total power consumption.",
-          "hsem_main_fuse_amps": "Your house's main fuse/breaker rating in amps (25, 35, etc.).  The MILP optimizer will respect this limit when scheduling battery and EV charging.  Set to 0 to disable.",
-          "hsem_main_fuse_phases": "Your electrical installation's phase count.  Single-phase installations MUST set this to 1 — setting 3 on a single-phase install makes the fuse protection 3x too permissive and provides no real safety limit.  Defaults to 3 (three-phase).",
-          "hsem_max_grid_export_power_kw": "Maximum grid export power in kW — the DNO/inverter export cap for export-limited connections (e.g. 5 kW).  The MILP planner will never schedule export above this limit, so battery export and PV export correctly compete for the same cap.  Set to 0 to disable.",
-          "hsem_solar_production_power": "Select the sensor that measures the power generated by your solar panels."
+          "hsem_house_consumption_power": "Vælg den sensor, der måler husets samlede strømforbrug.",
+          "hsem_main_fuse_amps": "Husets hovedsikringsstørrelse i ampere (25, 35, osv.).  MILP-optimeringsværktøjet respekterer denne grænse ved planlægning af batteri- og elbilopladning.  Sæt til 0 for at deaktivere.",
+          "hsem_main_fuse_phases": "Din elinstallations faseantal.  Enfasede installationer SKAL sættes til 1 — at indstille 3 på en enfaset installation gør sikringsbeskyttelsen 3 gange for slap og giver ingen reel sikkerhedsgrænse.  Standard er 3 (trefaset).",
+          "hsem_max_grid_export_power_kw": "Maksimal neteksporteffekt i kW — netoperatørens/inverterens eksportloft for eksportbegrænsede tilslutninger (f.eks. 5 kW).  MILP-planlæggeren planlægger aldrig eksport over denne grænse, så batterieksport og soleksport konkurrerer korrekt om det samme loft.  Sæt til 0 for at deaktivere.",
+          "hsem_solar_production_power": "Vælg den sensor, der måler strømmen genereret af dine solpaneler.",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Vælg sensoren, der måler live aktiv effekt på fase A af din Huawei-effektmåler. Kræves kun når fasebevidst opladning er aktiveret.",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Vælg sensoren, der måler live aktiv effekt på fase B af din Huawei-effektmåler. Kræves kun når fasebevidst opladning er aktiveret.",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Vælg sensoren, der måler live aktiv effekt på fase C af din Huawei-effektmåler. Kræves kun når fasebevidst opladning er aktiveret.",
+          "hsem_phase_aware_charging_enabled": "Aktiver et live sikkerhedstjek umiddelbart før hver Huawei netopladnings-hardwareskrivning (issue #831). Bruger de tre effektmåler-fasesensorer nedenfor samt Huaweis maksimal-netopladningseffekt-enhed (huawei_solar-trinnet) til at begrænse netfinansieret opladning, så den aldrig presser nogen fase over hovedsikringens grænse, selv hvis belastningen ændrede sig efter planen blev løst. Kræver main_fuse_phases = 3 og alle fire enheder konfigureret. Deaktiveret som standard — fuldt bagudkompatibel."
         },
-        "description": "Select power sensors for HSEM.",
-        "title": "Power Sensors"
+        "description": "Vælg effektsensorer til HSEM.",
+        "title": "Effektsensorer"
       },
       "solcast": {
         "data": {
-          "hsem_solcast_pv_forecast_forecast_likelihood": "Solcast PV Forecast Preferred forecast likelihood to use",
-          "hsem_solcast_pv_forecast_forecast_today": "Solcast PV Forecast Today Sensor",
-          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV Forecast Tomorrow Sensor"
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Solcast PV-prognose foretrukket sandsynlighed",
+          "hsem_solcast_pv_forecast_forecast_today": "Solcast PV-prognose i dag sensor",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV-prognose i morgen sensor"
         },
         "data_description": {
-          "hsem_solcast_pv_forecast_forecast_likelihood": "Select the preferred forecast likelihood to use for Solcast PV forecasts.",
-          "hsem_solcast_pv_forecast_forecast_today": "Select the sensor that provides today's PV production forecast from Solcast.",
-          "hsem_solcast_pv_forecast_forecast_tomorrow": "Select the sensor that provides tomorrow's PV production forecast from Solcast."
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Vælg den foretrukne prognosesandsynlighed for Solcast PV-prognoser.",
+          "hsem_solcast_pv_forecast_forecast_today": "Vælg den sensor, der leverer dagens PV-produktionsprognose fra Solcast.",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Vælg den sensor, der leverer morgendagens PV-produktionsprognose fra Solcast."
         },
-        "description": "Select Solcast forecast sensors.",
-        "title": "Solcast Sensors"
+        "description": "Vælg Solcast-prognosesensorer.",
+        "title": "Solcast-sensorer"
       },
       "weighted_values": {
         "data": {
-          "hsem_house_consumption_energy_weight_14d": "House Consumption Energy Weight 14 Days",
-          "hsem_house_consumption_energy_weight_1d": "House Consumption Energy Weight 1 Day",
-          "hsem_house_consumption_energy_weight_3d": "House Consumption Energy Weight 3 Days",
-          "hsem_house_consumption_energy_weight_7d": "House Consumption Energy Weight 7 Days"
+          "hsem_house_consumption_energy_weight_14d": "Husets energivægt 14 dage",
+          "hsem_house_consumption_energy_weight_1d": "Husets energivægt 1 dag",
+          "hsem_house_consumption_energy_weight_3d": "Husets energivægt 3 dage",
+          "hsem_house_consumption_energy_weight_7d": "Husets energivægt 7 dage"
         },
         "data_description": {
-          "hsem_house_consumption_energy_weight_14d": "Specify the weight percentage for the house consumption energy over the last 14 days.",
-          "hsem_house_consumption_energy_weight_1d": "Specify the weight percentage for the house consumption energy over the last 1 day.",
-          "hsem_house_consumption_energy_weight_3d": "Specify the weight percentage for the house consumption energy over the last 3 days.",
-          "hsem_house_consumption_energy_weight_7d": "Specify the weight percentage for the house consumption energy over the last 7 days."
+          "hsem_house_consumption_energy_weight_14d": "Angiv vægtprocenten for husets energiforbrug over de sidste 14 dage.",
+          "hsem_house_consumption_energy_weight_1d": "Angiv vægtprocenten for husets energiforbrug over de sidste 1 dag.",
+          "hsem_house_consumption_energy_weight_3d": "Angiv vægtprocenten for husets energiforbrug over de sidste 3 dage.",
+          "hsem_house_consumption_energy_weight_7d": "Angiv vægtprocenten for husets energiforbrug over de sidste 7 dage."
         },
-        "description": "Configure the weighted values for house consumption energy to estimate your average power usage. The system calculates the average consumption for each hour over 1, 3, 7, and 14 days. These averages are then weighted to provide a combined, weighted estimate. This approach helps to smooth out anomalies, such as unusually high consumption on a single day due to low prices, and provides a reliable prediction of your expected power usage in specific time intervals (e.g., between 16:00 and 17:00).",
-        "title": "Weighted Values"
+        "description": "Konfigurer vægtede værdier for husets energiforbrug til at estimere dit gennemsnitlige strømforbrug.",
+        "title": "Vægtede værdier"
       },
       "batteries_schedule_1": {
         "data": {
@@ -854,7 +914,11 @@
           "hsem_batteries_capacity_loss_pct": "Kapacitetstab procent",
           "hsem_batteries_charge_efficiency": "Opladningseffektivitet procent",
           "hsem_batteries_discharge_efficiency": "Afladningseffektivitet procent",
-          "hsem_batteries_cycle_cost": "Cyklusomkostning pr. kWh"
+          "hsem_batteries_cycle_cost": "Cyklusomkostning pr. kWh",
+          "hsem_planner_hysteresis_absolute": "Hysterese absolut tærskel",
+          "hsem_planner_hysteresis_enabled": "Hysterese på plan-niveau",
+          "hsem_planner_hysteresis_percentage": "Hysterese procenttærskel (%)",
+          "hsem_planner_window_hysteresis_minutes": "Hysterese-holdetid for vindue (minutter)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Samlet købspris for batterisystemet (inkl. installation).",
@@ -862,7 +926,11 @@
           "hsem_batteries_capacity_loss_pct": "Procentdel af batteriværdi forbrugt over levetiden (standard 30 procent).",
           "hsem_batteries_charge_efficiency": "Opladningseffektivitet som procentdel (standard 95 procent).",
           "hsem_batteries_discharge_efficiency": "Afladningseffektivitet som procentdel (standard 95 procent).",
-          "hsem_batteries_cycle_cost": "Beregnet cyklusomkostning pr. kWh (vises kun, read-only)."
+          "hsem_batteries_cycle_cost": "Beregnet cyklusomkostning pr. kWh (vises kun, read-only).",
+          "hsem_planner_hysteresis_absolute": "Minimum absolut score-forbedring, der kræves for at skifte til en ny plan. 0,00 deaktiverer den absolutte tærskel. Scoren bruger samme valuta som dine elpriser, så en værdi på 0,01 kræver mindst 1 øre/kWh-ækvivalent forbedring, før der skiftes.",
+          "hsem_planner_hysteresis_enabled": "Når dette er aktiveret, beholder planlæggeren den aktive kandidatplan, medmindre en ny plan forbedrer scoren med mere end de konfigurerede tærskler. Forhindrer svingninger mellem ligestillede strategier.",
+          "hsem_planner_hysteresis_percentage": "Minimum procentvis score-forbedring, der kræves for at skifte til en ny plan. 0 % deaktiverer procenttærsklen. Standard 5 % forhindrer flapning mellem næsten identiske planer.",
+          "hsem_planner_window_hysteresis_minutes": "Minimumstid (minutter), en anbefaling skal fastholdes, før den kan ændres. Forhindrer hurtig veksling som f.eks. ev_smart_charging ↔ batteries_charge_solar. 0 deaktiverer funktionen. Standard 10."
         },
         "description": "Konfigurer batteriøkonomi-parametre til cyklusomkostningsberegning.",
         "title": "Batteriøkonomi"
@@ -909,14 +977,20 @@
           "hsem_ocpp_port": "OCPP Port",
           "hsem_ocpp_cpid": "Ladepunkt ID",
           "hsem_ocpp_start_window_s": "Startvindue (s)",
-          "hsem_ocpp_stop_window_s": "Stopvindue (s)"
+          "hsem_ocpp_stop_window_s": "Stopvindue (s)",
+          "hsem_ocpp_second_cpid": "Andet ladepunkt-ID",
+          "hsem_ocpp_second_enabled": "Aktiver anden OCPP-server",
+          "hsem_ocpp_second_port": "Anden OCPP-port"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiver den indbyggede OCPP 1.6 WebSocket-server til direkte EV-laderstyring. Kun LAN - eksponer ikke porten til internettet.",
           "hsem_ocpp_port": "TCP-port til OCPP WebSocket-serveren. Standard: 9000. Skal være over 1024.",
           "hsem_ocpp_cpid": "Forventet ladepunkt-identifikator for EV-laderen. Lad være tom for at acceptere enhver lader.",
           "hsem_ocpp_start_window_s": "Sekunder med vedvarende overskud før opladning starter. Standard: 60.",
-          "hsem_ocpp_stop_window_s": "Sekunder med vedvarende underskud før opladning stopper. Standard: 180."
+          "hsem_ocpp_stop_window_s": "Sekunder med vedvarende underskud før opladning stopper. Standard: 180.",
+          "hsem_ocpp_second_cpid": "Forventet ladepunkt-identifikator for den anden EV-lader. Lad være tom for at acceptere enhver lader.",
+          "hsem_ocpp_second_enabled": "Aktiver en anden, dedikeret OCPP-server til den anden EV. Kun tilgængelig når planlagt belastning for EV 2 er aktiveret.",
+          "hsem_ocpp_second_port": "TCP-port til den anden OCPP WebSocket-server. Standard: 9001. Skal være forskellig fra den første servers port."
         },
         "description": "Konfigurer den indbyggede OCPP 1.6 server til LAN-kun EV-laderstyring.",
         "title": "OCPP Server"
@@ -960,17 +1034,23 @@
     },
     "update_interval_length": {
       "options": {
-        "12": "12 hours",
-        "24": "24 hours",
-        "36": "36 hours",
-        "48": "48 hours",
-        "72": "72 hours"
+        "12": "12 timer",
+        "24": "24 timer",
+        "36": "36 timer",
+        "48": "48 timer",
+        "72": "72 timer"
       }
     },
     "batteries_wait_mode_behavior": {
       "options": {
         "strict": "Streng ventetilstand — batteriet forbliver inaktivt",
         "self_consumption_with_reserve": "Selvforbrug med reserve — brug overskud over planlæggerens reserve"
+      }
+    },
+    "ev_charger_phase_topology": {
+      "options": {
+        "single_phase": "Enfaset eller ukendt (sikkert standardvalg)",
+        "three_phase_balanced": "Trefaset, balanceret over L1/L2/L3"
       }
     }
   },
@@ -1043,27 +1123,13 @@
       "ev_second_target_soc": {
         "name": "EV 2 Mål SoC"
       },
-      "charge_rate_below_0": {
-        "name": "Maks. opladning (<0°C)"
-      },
-      "charge_rate_0_to_5": {
-        "name": "Maks. opladning (0-5°C)"
-      },
-      "charge_rate_6_to_15": {
-        "name": "Maks. opladning (6-15°C)"
-      },
-      "charge_rate_16_to_21": {
-        "name": "Maks. opladning (16-21°C)"
-      },
-      "charge_rate_21_to_35": {
-        "name": "Maks. opladning (21-35°C)"
-      },
-      "charge_rate_35_to_50": {
-        "name": "Maks. opladning (35-50°C)"
-      },
-      "charge_rate_above_50": {
-        "name": "Maks. opladning (>50°C)"
-      }
+      "charge_rate_below_0": {},
+      "charge_rate_0_to_5": {},
+      "charge_rate_6_to_15": {},
+      "charge_rate_16_to_21": {},
+      "charge_rate_21_to_35": {},
+      "charge_rate_35_to_50": {},
+      "charge_rate_above_50": {}
     },
     "time": {
       "schedule_1_start": {
@@ -1093,7 +1159,7 @@
     },
     "sensor": {
       "applier_status": {
-        "name": "Inverter-status",
+        "name": "Inverter-anvendelsesstatus",
         "state": {
           "ok": "OK",
           "unverified": "Ikke verificeret",
@@ -1224,6 +1290,51 @@
           "force_export": "Tving eksport",
           "batteries_wait_mode": "Vent"
         }
+      },
+      "ev_charger_calculated_power": {
+        "name": "EV-lader beregnet effekt"
+      },
+      "ev_charger_current_limit": {
+        "name": "EV-lader strømgrænse"
+      },
+      "ev_second_charger_calculated_power": {
+        "name": "EV 2-lader beregnet effekt"
+      },
+      "ev_second_charger_current_limit": {
+        "name": "EV 2-lader strømgrænse"
+      },
+      "export_income": {
+        "name": "Eksportindtægt"
+      },
+      "import_cost": {
+        "name": "Netimportomkostning"
+      },
+      "net_grid_balance": {
+        "name": "Netto nettobalance"
+      },
+      "prediction_accuracy": {
+        "name": "Forudsigelsesnøjagtighed"
+      },
+      "pv_curtailment": {
+        "name": "PV-begrænsning"
+      },
+      "savings_tracker": {
+        "name": "Besparelsessporing"
+      },
+      "solar_confidence": {
+        "name": "Solprognose-sikkerhed"
+      },
+      "ocpp_second_charger_status": {
+        "name": "OCPP Anden Lader-status"
+      },
+      "ocpp_second_charger_power": {
+        "name": "OCPP Anden Lader-effekt"
+      },
+      "ocpp_second_charger_info": {
+        "name": "OCPP Anden Lader-info"
+      },
+      "ocpp_second_charger_sessions": {
+        "name": "OCPP Anden Lader-sessioner"
       }
     }
   },

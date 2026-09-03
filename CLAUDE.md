@@ -116,6 +116,16 @@ Quick checklist before opening a planner PR:
 - [ ] Spec updated if semantics changed
 - [ ] Tests added or updated
 
+## Translations (Mandatory)
+
+HSEM ships English, Danish, German, and Spanish
+(`custom_components/hsem/translations/{en,da,de,es}.json`). `en.json` is the
+source of truth. Any new or changed user-facing string (entity name,
+config/options flow label, selector option, error, service) must be added to
+**all four** files in the same PR — activate the `hsem-translation-sync` skill
+and run `python3 scripts/validate_translations.py` before opening the PR; it
+must report 0 missing/stale/placeholder-mismatch keys.
+
 ## Development Workflow
 
 ```bash
@@ -199,10 +209,13 @@ See `AGENTS.md` → **Home Assistant Compliance** section for detailed requireme
 # Step 4: Run tests with coverage
 ./scripts/quality.sh test
 
-# Step 5: Verify no unintended changes
+# Step 5: Translations — if any user-facing string changed
+python3 scripts/validate_translations.py
+
+# Step 6: Verify no unintended changes
 git status
 
-# Step 6: Use pre-commit hooks (optional, but recommended)
+# Step 7: Use pre-commit hooks (optional, but recommended)
 pre-commit run --all-files
 ```
 

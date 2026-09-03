@@ -1,0 +1,1362 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "HSEM Integration ist bereits konfiguriert",
+      "reconfigured_successfully": "HSEM Integration erfolgreich neu konfiguriert."
+    },
+    "error": {
+      "device_not_found": "Das ausgewählte Gerät wurde nicht gefunden.",
+      "energy_out_of_range": "Der Energiewert liegt außerhalb des zulässigen Bereichs.",
+      "entity_not_found": "Die ausgewählte Entität wurde nicht gefunden.",
+      "entity_unavailable": "Die ausgewählte Entität ist derzeit nicht verfügbar. Überprüfe das Gerät oder den Dienst.",
+      "hsem_house_consumption_energy_weight_total": "Die Summe der Gewichtungen für den Hausverbrauch muss 100 % betragen.",
+      "invalid_energy_value": "Ungültiger Energiewert — bitte eine Zahl eingeben.",
+      "invalid_entity_id": "Ungültiges Entitäts-ID-Format. Erwartet wird \"domain.object_id\" mit Kleinbuchstaben, Ziffern und Unterstrichen.",
+      "invalid_month_value": "Ein oder mehrere Monatswerte sind ungültig. Monate müssen ganze Zahlen zwischen 1 und 12 sein.",
+      "invalid_power_value": "Ungültiger Leistungswert — bitte eine Zahl eingeben.",
+      "invalid_price_value": "Ungültiger Preiswert — bitte eine Zahl eingeben.",
+      "invalid_sensor": "Ungültiger Eingabesensor. Bitte wähle einen gültigen Sensor.",
+      "invalid_time_format": "Ungültiges Zeitformat — erwartet wird HH:MM:SS.",
+      "months_winter_empty": "Die Wintersaison muss mindestens einen Monat enthalten.",
+      "only_one_entry_allowed": "Nur eine Konfiguration von HSEM ist zulässig.",
+      "power_out_of_range": "Der Leistungswert liegt außerhalb des zulässigen Bereichs.",
+      "price_out_of_range": "Der Preiswert liegt außerhalb des zulässigen Bereichs.",
+      "required": "Dieses Feld ist erforderlich.",
+      "start_time_after_end_time": "Die Startzeit muss vor der Endzeit liegen.",
+      "start_time_equals_end_time": "Start- und Endzeit dürfen nicht identisch sein — das ergibt ein Zeitfenster der Länge null. Deaktiviere stattdessen den Zeitplan.",
+      "invalid_wait_mode_behavior": "Ungültiges Wartemodus-Verhalten. Wähle Strenges Warten oder Eigenverbrauch mit Reserve.",
+      "port_conflict": "Der zweite OCPP-Port muss sich vom ersten OCPP-Port unterscheiden."
+    },
+    "step": {
+      "batteries_excess_export": {
+        "data": {
+          "hsem_batteries_enable_excess_export": "Batterie-Überschussexport aktivieren",
+          "hsem_batteries_excess_export_discharge_buffer": "Entladepuffer (%)",
+          "hsem_batteries_forecast_reserve_pct": "Batterieexport-Prognosereserve (+% SoC)",
+          "hsem_batteries_export_min_price": "Mindestpreis für Batterieexport"
+        },
+        "data_description": {
+          "hsem_batteries_enable_excess_export": "Aktiviere oder deaktiviere die Funktion für den Export überschüssiger Batteriekapazität, die überschüssige Batteriekapazität automatisch ins Netz einspeist, wenn es wirtschaftlich vorteilhaft ist.",
+          "hsem_batteries_excess_export_discharge_buffer": "Lege den Sicherheitspuffer in Prozent fest, um minimale Batteriereserven zu erhalten (0-50 %). Standard sind 10 %, um ausreichend Kapazität für unerwarteten Bedarf sicherzustellen.",
+          "hsem_batteries_forecast_reserve_pct": "Zusätzliche SoC-Prozentpunkte über der Huawei-Entladeschluss-Grenze, die der beabsichtigte Batterieexport unmittelbar nach jedem Export-Slot freihalten muss. Zum Beispiel schützt eine Huawei-Grenze von 15 % zuzüglich einer Reserve von 5 % einen SoC von 20 %. Die Reserve bleibt für die Hauslast verfügbar, wenn der tatsächliche Bedarf die Prognose übersteigt. Auf 0 setzen, um zu deaktivieren (Standard).",
+          "hsem_batteries_export_min_price": "Feste Preisuntergrenze pro Slot für beabsichtigten Batterie-zu-Netz-Export (issue #752). Bei Werten > 0 verbietet HSEM, einen Slot als force_batteries_discharge zu markieren, wenn der Exportpreis strikt unter dieser Untergrenze liegt — die Batterie kann in diesen Slots weiterhin die Hausversorgung übernehmen. Das Erreichen der Schwelle löst NICHT automatisch einen Export aus; der Optimierer entscheidet weiterhin, ob sich der Verkauf lohnt. Gilt nur für den beabsichtigten Batterie-zu-Netz-Export, nicht für normalen Eigenverbrauch, PV-Export oder PV-Ladung. Auf 0 setzen, um zu deaktivieren (Standard)."
+        },
+        "description": "Konfiguriere Einstellungen für den Export überschüssiger Batteriekapazität, um überschüssige Energie automatisch ins Netz zu verkaufen, wenn es wirtschaftlich vorteilhaft ist.",
+        "title": "Batterie-Überschussexport"
+      },
+      "ev_planned_load": {
+        "data": {
+          "hsem_ev_planned_load_enabled": "EV-Lastplanung-Integration aktivieren",
+          "hsem_ev_planned_load_battery_capacity_kwh": "EV-Batteriekapazität (kWh)",
+          "hsem_ev_planned_load_charger_power_kw": "EV-Ladegerät Leistung (kW)",
+          "hsem_ev_planned_load_charger_efficiency": "EV-Ladegerät Effizienz",
+          "hsem_ev_planned_load_charger_min_power_w": "EV-Ladegerät Mindestleistung (W)",
+          "hsem_ev_planned_load_charger_phase_topology": "Phasentopologie des Ladegeräts",
+          "hsem_ev_planned_load_deadline_safety_margin_pct": "Sicherheitsmarge für Frist (%)",
+          "hsem_ev_planned_load_command_deadband_a": "Totband für Obergrenze (A)",
+          "hsem_ev_planned_load_stub_floor_minutes": "Unterdrückung des Stopps am Slot-Ende (Min.)"
+        },
+        "data_description": {
+          "hsem_ev_planned_load_enabled": "Aktiviere oder deaktiviere die Integration der geplanten EV-Ladelast.",
+          "hsem_ev_planned_load_battery_capacity_kwh": "Nennkapazität der EV-Batterie in kWh.",
+          "hsem_ev_planned_load_charger_power_kw": "AC-Ausgangsleistung des EV-Ladegeräts in kW.",
+          "hsem_ev_planned_load_charger_efficiency": "Ladegerät-Effizienz in Prozent (1-100). Standard: 100.",
+          "hsem_ev_planned_load_charger_min_power_w": "Minimale AC-Leistung (W), die das EV-Ladegerät benötigt, um mit dem Laden zu beginnen. Darunter arbeitet das Ladegerät nicht. Standard: 1380 W (230 V × 6 A).",
+          "hsem_ev_planned_load_charger_phase_topology": "Wie das Ladegerät seine Last auf die Netzphasen verteilt. Wähle 'Einphasig oder unbekannt', sofern du nicht bestätigt hast, dass das Ladegerät auf allen drei Phasen einen ausgeglichenen Strom zieht. Bei aktiviertem phasenbezogenem Sicherungsschutz geht die sichere Standardannahme davon aus, dass der gesamte Ladebefehl auf einer Phase landen kann, was das geplante Laden auf den einphasigen Sicherungsspielraum begrenzt.",
+          "hsem_ev_planned_load_deadline_safety_margin_pct": "Zusätzliche Energie, die über dem Ziel-SoC hinaus als Prozentsatz des Fehlbetrags eingeplant wird, damit normale Ladereibung (Startverzögerungen, Mindestleistungsgrenzen, Drosselung) die Frist nicht verfehlt. Standard: 0 % (deaktiviert).",
+          "hsem_ev_planned_load_command_deadband_a": "Kleinste tatsächlich angewendete Reduzierung der veröffentlichten Ladeobergrenze. Kleinere Reduzierungen werden zurückgehalten, da konkurrierende Pläne mit ganzen Ampere-Werten kostenmäßig meist innerhalb eines Rundungsfehlers zueinander liegen. Eine Anhebung der Obergrenze wird nie verzögert, und eine Reduzierung, die die Ladekosten dieses Slots um mehr als 5 % verbessert, wird immer durchgeführt. Standard: 3 A; 0 deaktiviert.",
+          "hsem_ev_planned_load_stub_floor_minutes": "Unterdrückt am Ende eines Slots für diese Anzahl an Minuten einen Stoppbefehl, solange das Fahrzeug noch Energie benötigt. Die verbleibenden Sekunden reichen nicht aus, um genug Energie für die Ladegerät-Mindestleistung bereitzustellen, sodass der Plan ihnen nichts zuweist und die Sitzung ohne Nutzen stoppen und neu starten würde. Standard: 2 Minuten; 0 deaktiviert."
+        },
+        "description": "Konfiguriere die optionale Integration der geplanten EV-Ladelast. Wenn aktiviert, berücksichtigt HSEM den bevorstehenden EV-Ladebedarf pro Planer-Slot.",
+        "title": "EV-Lastplanung-Integration"
+      },
+      "ev_second_planned_load": {
+        "data": {
+          "hsem_ev_second_planned_load_enabled": "EV-2-Lastplanung-Integration aktivieren",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Batteriekapazität (kWh)",
+          "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Ladegerät Leistung (kW)",
+          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Ladegerät Effizienz",
+          "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 Ladegerät Mindestleistung (W)",
+          "hsem_ev_second_planned_load_charger_phase_topology": "Phasentopologie des Ladegeräts",
+          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "EV 2 Sicherheitsmarge für Frist (%)",
+          "hsem_ev_second_planned_load_command_deadband_a": "EV 2 Totband für Obergrenze (A)",
+          "hsem_ev_second_planned_load_stub_floor_minutes": "EV 2 Unterdrückung des Stopps am Slot-Ende (Min.)"
+        },
+        "data_description": {
+          "hsem_ev_second_planned_load_enabled": "Aktiviere oder deaktiviere die Integration der geplanten Ladelast für das zweite EV.",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "Nennkapazität der Batterie des zweiten EVs in kWh.",
+          "hsem_ev_second_planned_load_charger_power_kw": "AC-Ausgangsleistung des zweiten EV-Ladegeräts in kW.",
+          "hsem_ev_second_planned_load_charger_efficiency": "Effizienz des zweiten EV-Ladegeräts in Prozent (1-100). Standard: 100.",
+          "hsem_ev_second_planned_load_charger_min_power_w": "Minimale AC-Leistung (W), die das zweite EV-Ladegerät zum Laden benötigt. Standard: 1380 W (230 V × 6 A).",
+          "hsem_ev_second_planned_load_charger_phase_topology": "Wie das Ladegerät seine Last auf die Netzphasen verteilt. Wähle 'Einphasig oder unbekannt', sofern du nicht bestätigt hast, dass das Ladegerät auf allen drei Phasen einen ausgeglichenen Strom zieht. Bei aktiviertem phasenbezogenem Sicherungsschutz geht die sichere Standardannahme davon aus, dass der gesamte Ladebefehl auf einer Phase landen kann, was das geplante Laden auf den einphasigen Sicherungsspielraum begrenzt.",
+          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "Wie die Sicherheitsmarge für die Frist des primären EVs, für das zweite EV. Standard: 0 % (deaktiviert).",
+          "hsem_ev_second_planned_load_command_deadband_a": "Wie das Totband für die Obergrenze des primären EVs, für das zweite EV. Standard: 3 A; 0 deaktiviert.",
+          "hsem_ev_second_planned_load_stub_floor_minutes": "Wie die Unterdrückung des Stopps am Slot-Ende des primären EVs, für das zweite EV. Standard: 2 Minuten; 0 deaktiviert."
+        },
+        "description": "Konfiguriere die optionale Integration der geplanten Ladelast für das zweite EV. Wird nur angezeigt, wenn ein zweites EV-Ladegerät aktiviert ist.",
+        "title": "EV-2-Lastplanung-Integration"
+      },
+      "ocpp": {
+        "data": {
+          "hsem_ocpp_enabled": "OCPP-Server aktivieren",
+          "hsem_ocpp_port": "OCPP-Port",
+          "hsem_ocpp_cpid": "Ladepunkt-ID",
+          "hsem_ocpp_start_window_s": "Startfenster (s)",
+          "hsem_ocpp_stop_window_s": "Stoppfenster (s)",
+          "hsem_ocpp_second_enabled": "Zweiten OCPP-Server aktivieren",
+          "hsem_ocpp_second_port": "Zweiter OCPP-Port",
+          "hsem_ocpp_second_cpid": "Zweite Ladepunkt-ID"
+        },
+        "data_description": {
+          "hsem_ocpp_enabled": "Aktiviere den eingebetteten OCPP-1.6-WebSocket-Server für die direkte Steuerung des EV-Ladegeräts. Nur LAN — setze den Port nicht dem Internet aus.",
+          "hsem_ocpp_port": "TCP-Port für den OCPP-WebSocket-Server. Standard: 9000. Muss über 1024 liegen.",
+          "hsem_ocpp_cpid": "Erwartete Ladepunkt-Kennung des EV-Ladegeräts. Leer lassen, um jedes Ladegerät zu akzeptieren.",
+          "hsem_ocpp_start_window_s": "Sekunden anhaltenden Überschusses, die vor dem Start eines Ladevorgangs erforderlich sind. Verhindert schnelles Start-Stopp-Takten. Standard: 60.",
+          "hsem_ocpp_stop_window_s": "Sekunden anhaltenden Mangels, die vor dem Stoppen eines Ladevorgangs erforderlich sind. Verhindert schnelles Stopp-Start-Takten. Standard: 180.",
+          "hsem_ocpp_second_enabled": "Aktiviere einen zweiten, dedizierten OCPP-Server für das zweite EV. Nur verfügbar, wenn die EV-2-Lastplanung aktiviert ist.",
+          "hsem_ocpp_second_port": "TCP-Port für den zweiten OCPP-WebSocket-Server. Standard: 9001. Muss sich vom Port des ersten Servers unterscheiden.",
+          "hsem_ocpp_second_cpid": "Erwartete Ladepunkt-Kennung des zweiten EV-Ladegeräts. Leer lassen, um jedes Ladegerät zu akzeptieren."
+        },
+        "description": "Konfiguriere den eingebetteten OCPP-1.6-Server für die reine LAN-Steuerung von EV-Ladegeräten. Wenn aktiviert, sendet HSEM SetChargingProfile-Befehle direkt an dein EV-Ladegerät auf Basis des Ladeplans.",
+        "title": "OCPP-Server"
+      },
+      "batteries_schedule_1": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_1": "Batterie-Zeitplan 1 aktivieren",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Batterie-Zeitplan 1 Endzeit",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Batterie-Zeitplan 1 Startzeit"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_1": "Aktiviere oder deaktiviere den ersten Batterie-Entladezeitplan.",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Lege die Endzeit für den ersten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Lege die Startzeit für den ersten Batterie-Entladezeitplan fest."
+        },
+        "description": "Konfiguriere Batterie-Entladezeitplan 1, einschließlich seiner Aktivierungszeit.",
+        "title": "Batterie-Entladezeitplan 1"
+      },
+      "batteries_schedule_2": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_2": "Batterie-Zeitplan 2 aktivieren",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Batterie-Zeitplan 2 Endzeit",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Batterie-Zeitplan 2 Startzeit"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_2": "Aktiviere oder deaktiviere den zweiten Batterie-Entladezeitplan.",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Lege die Endzeit für den zweiten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Lege die Startzeit für den zweiten Batterie-Entladezeitplan fest."
+        },
+        "description": "Konfiguriere Batterie-Entladezeitplan 2, einschließlich seiner Aktivierungszeit.",
+        "title": "Batterie-Entladezeitplan 2"
+      },
+      "batteries_schedule_3": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_3": "Batterie-Zeitplan 3 aktivieren",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Batterie-Zeitplan 3 Endzeit",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Batterie-Zeitplan 3 Startzeit"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_3": "Aktiviere oder deaktiviere den dritten Batterie-Entladezeitplan.",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Lege die Endzeit für den dritten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Lege die Startzeit für den dritten Batterie-Entladezeitplan fest."
+        },
+        "description": "Konfiguriere Batterie-Entladezeitplan 3, einschließlich seiner Aktivierungszeit.",
+        "title": "Batterie-Entladezeitplan 3"
+      },
+      "prices": {
+        "data": {
+          "hsem_import_electricity_price_sensor": "Stromimportpreis-Sensor",
+          "hsem_export_electricity_price_sensor": "Stromexportpreis-Sensor",
+          "hsem_import_electricity_price_forecast_sensor": "Stromimportpreis-Prognosesensor (optional)",
+          "hsem_export_electricity_price_forecast_sensor": "Stromexportpreis-Prognosesensor (optional)",
+          "hsem_export_electricity_min_price": "Erforderlicher Mindestexportpreis",
+          "hsem_electricity_price_update_interval": "Strompreis-Aktualisierungsintervall (Minuten)"
+        },
+        "data_description": {
+          "hsem_import_electricity_price_sensor": "Wähle den Sensor, der Stromimportpreise liefert (z. B. Energi Data Service, Nordpool, Amber Electric).",
+          "hsem_export_electricity_price_sensor": "Wähle den Sensor, der Stromexportpreise liefert.",
+          "hsem_import_electricity_price_forecast_sensor": "Optional: Wähle einen separaten Sensor für Importpreis-Prognosen (verwendet von Amber Electric und ähnlichen Integrationen).",
+          "hsem_export_electricity_price_forecast_sensor": "Optional: Wähle einen separaten Sensor für Exportpreis-Prognosen.",
+          "hsem_export_electricity_min_price": "Lege den Mindestexportpreis fest. Exporte unterhalb dieses Preises werden blockiert.",
+          "hsem_electricity_price_update_interval": "Wie oft dein Preissensor neue Daten liefert (15, 30 oder 60 Minuten)."
+        },
+        "description": "Konfiguriere deine Strompreissensoren für Import- und Exportpreise.",
+        "title": "Strompreise"
+      },
+      "ev": {
+        "data": {
+          "hsem_ev_allow_charge_past_target_soc": "Laden über Ziel-SoC hinaus erlauben (Erweitert)",
+          "hsem_ev_charger_force_max_discharge_power": "EV-Ladegerät maximale Entladeleistung erzwingen",
+          "hsem_ev_charger_max_discharge_power": "EV-Ladegerät maximale Entladeleistung",
+          "hsem_ev_charger_power": "EV-Ladegerät Leistungssensor",
+          "hsem_ev_charger_status": "EV-Ladegerät Statussensor",
+          "hsem_ev_connected": "EV verbunden Sensor",
+          "hsem_ev_second_enabled": "Zweites EV-Ladegerät aktivieren",
+          "hsem_ev_soc": "EV-Ladezustand (SoC) Sensor",
+          "hsem_house_power_includes_ev_charger_power": "Hausleistung enthält EV-Ladegerät-Leistung",
+          "hsem_ev_auto_full_negative_price": "EV bei negativem Preis automatisch vollladen",
+          "hsem_ev_past_target_confidence_factor": "EV-Konfidenzfaktor für Laden über Ziel-SoC hinaus (Erweitert)"
+        },
+        "data_description": {
+          "hsem_ev_allow_charge_past_target_soc": "Aktiviere diese Option, wenn du zulassen möchtest, dass das System die EV-Batterie auch nach Erreichen des Ziel-Ladezustands (SoC) weiter lädt. Dies kann in Szenarien nützlich sein, in denen du sicherstellen möchtest, dass das EV unabhängig von der Zieleinstellung vollständig geladen wird.",
+          "hsem_ev_charger_force_max_discharge_power": "Aktiviere dies, wenn du eine bestimmte maximale Entladeleistung für die Huawei-Batterien erzwingen möchtest, während das EV lädt.",
+          "hsem_ev_charger_max_discharge_power": "Lege die maximale Entladeleistung für die Huawei-Batterien fest, während das EV lädt.",
+          "hsem_ev_charger_power": "Wähle den Sensor, der den Stromverbrauch deines EV-Ladegeräts misst.",
+          "hsem_ev_charger_status": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV-Ladegerät aktiv ist (z. B. ein Schalter oder Sensor).",
+          "hsem_ev_connected": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV mit dem Ladegerät verbunden ist.",
+          "hsem_ev_second_enabled": "Aktiviere oder deaktiviere die Konfiguration für ein zweites EV-Ladegerät.",
+          "hsem_ev_soc": "Wähle den Sensor, der den aktuellen Ladezustand (SoC) deiner EV-Batterie liefert.",
+          "hsem_house_power_includes_ev_charger_power": "Aktiviere dies, wenn der Hausverbrauchsleistungssensor die Leistung des EV-Ladegeräts bereits enthält.",
+          "hsem_ev_auto_full_negative_price": "Wenn aktiviert, wird das EV automatisch auf volle Ladeleistung gesetzt, sobald der Strompreis null oder negativ ist. Der vorherige Lademodus wird wiederhergestellt, sobald der Preis über null steigt.",
+          "hsem_ev_past_target_confidence_factor": "Konfidenzmultiplikator (0,0-1,0), der auf die Bewertung des vermiedenen zukünftigen Imports angewendet wird, wenn das EV über seinen Ziel-SoC hinaus geladen wird. Niedrigere Werte machen das EV im Vergleich zum Export von überschüssigem PV-Strom weniger konkurrenzfähig, um der Unsicherheit Rechnung zu tragen, ob das EV die zusätzliche Energie vor dem nächsten Ladevorgang tatsächlich benötigt. Standard 0,9."
+        },
+        "description": "Konfiguriere die EV-Ladegerät-Einstellungen für HSEM.",
+        "title": "EV-Ladegerät-Einstellungen (Optional)"
+      },
+      "ev_second": {
+        "data": {
+          "hsem_ev_second_allow_charge_past_target_soc": "Laden über Ziel-SoC hinaus für zweites EV erlauben (Erweitert)",
+          "hsem_ev_second_charger_force_max_discharge_power": "Zweites EV-Ladegerät maximale Entladeleistung erzwingen",
+          "hsem_ev_second_charger_max_discharge_power": "Zweites EV-Ladegerät maximale Entladeleistung",
+          "hsem_ev_second_charger_power": "Zweites EV-Ladegerät Leistungssensor",
+          "hsem_ev_second_charger_status": "Zweites EV-Ladegerät Statussensor",
+          "hsem_ev_second_connected": "Zweites EV verbunden Sensor",
+          "hsem_ev_second_soc": "Zweites EV-Ladezustand (SoC) Sensor",
+          "hsem_ev_second_past_target_confidence_factor": "Konfidenzfaktor für zweites EV Laden über Ziel-SoC hinaus (Erweitert)"
+        },
+        "data_description": {
+          "hsem_ev_second_allow_charge_past_target_soc": "Aktiviere diese Option, wenn du zulassen möchtest, dass das System die EV-Batterie auch nach Erreichen des Ziel-Ladezustands (SoC) weiter lädt. Dies kann in Szenarien nützlich sein, in denen du sicherstellen möchtest, dass das EV unabhängig von der Zieleinstellung vollständig geladen wird.",
+          "hsem_ev_second_charger_force_max_discharge_power": "Aktiviere dies, wenn du eine bestimmte maximale Entladeleistung für die Huawei-Batterien erzwingen möchtest, während das EV lädt.",
+          "hsem_ev_second_charger_max_discharge_power": "Lege die maximale Entladeleistung für die Huawei-Batterien fest, während das EV lädt.",
+          "hsem_ev_second_charger_power": "Wähle den Sensor, der den Stromverbrauch deines EV-Ladegeräts misst.",
+          "hsem_ev_second_charger_status": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV-Ladegerät aktiv ist (z. B. ein Schalter oder Sensor).",
+          "hsem_ev_second_connected": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV mit dem Ladegerät verbunden ist.",
+          "hsem_ev_second_soc": "Wähle den Sensor, der den aktuellen Ladezustand (SoC) deiner EV-Batterie liefert.",
+          "hsem_ev_second_past_target_confidence_factor": "Konfidenzmultiplikator (0,0-1,0), der auf die Bewertung des vermiedenen zukünftigen Imports angewendet wird, wenn das zweite EV über seinen Ziel-SoC hinaus geladen wird. Niedrigere Werte machen das EV im Vergleich zum Export von überschüssigem PV-Strom weniger konkurrenzfähig, um der Unsicherheit Rechnung zu tragen, ob das EV die zusätzliche Energie vor dem nächsten Ladevorgang tatsächlich benötigt. Standard 0,9."
+        },
+        "description": "Konfiguriere die Einstellungen für das zweite EV-Ladegerät für HSEM.",
+        "title": "Einstellungen für zweites EV-Ladegerät (Optional)"
+      },
+      "huawei_solar": {
+        "data": {
+          "hsem_batteries_charge_efficiency": "Batterie-Ladeeffizienz (%)",
+          "hsem_batteries_cycle_cost": "Batterie-Zykluskosten (pro kWh)",
+          "hsem_batteries_discharge_efficiency": "Batterie-Entladeeffizienz (%)",
+          "hsem_batteries_expected_cycles": "Erwartete Batteriezyklen",
+          "hsem_batteries_purchase_price": "Batterie-Kaufpreis",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei-Batterien Nutzung von überschüssiger PV-Energie in TOU",
+          "hsem_huawei_solar_batteries_forcible_charge": "Batterie-Zwangsladezustand",
+          "hsem_huawei_solar_batteries_end_of_discharge_soc": "Huawei-Batterien Entladeschluss-SOC (%)",
+          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Huawei-Batterien Ladeabschaltkapazität (max. SoC %)",
+          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei-Batterien Netzladeabschaltung SOC (%)",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei-Batterien maximale Ladeleistung (W)",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Huawei-Batterien maximale Entladeleistung (W)",
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Huawei-Batterien maximale Netzladeleistung (W)",
+          "hsem_huawei_solar_batteries_charge_discharge_power": "Huawei Batterie Lade-/Entladeleistungssensor",
+          "hsem_huawei_solar_batteries_rated_capacity": "Batterie maximale Kapazität (Wh)",
+          "hsem_huawei_solar_batteries_state_of_capacity": "Huawei-Batterien Kapazitätszustand-Sensor",
+          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Huawei-Batterien TOU-Lade- und Entladezeiträume",
+          "hsem_huawei_solar_batteries_working_mode": "Huawei Solar-Batterien Arbeitsmodus-Sensor",
+          "hsem_huawei_solar_device_id_batteries": "Huawei-Batteriegerät",
+          "hsem_huawei_solar_device_id_batteries_2": "Huawei-Batteriegerät 2",
+          "hsem_huawei_solar_device_id_inverter_1": "Huawei-Wechselrichter 1 Gerät",
+          "hsem_huawei_solar_device_id_inverter_2": "Huawei-Wechselrichter 2 Gerät",
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei-Wechselrichter Wirkleistungssteuerung-Sensor"
+        },
+        "data_description": {
+          "hsem_batteries_charge_efficiency": "Gib die Ladeeffizienz deiner Batterie in Prozent an (0–100). Die in der Batterie gespeicherte Energie entspricht der eingehenden Energie multipliziert mit diesem Faktor. Typische Lithium-Batterien erreichen 95–98 %. Standard ist 98 %.",
+          "hsem_batteries_discharge_efficiency": "Gib die Entladeeffizienz deiner Batterie in Prozent an (0–100). Die an das Haus gelieferte Energie entspricht der entnommenen Batterieenergie multipliziert mit diesem Faktor. Typische Lithium-Batterien erreichen 95–98 %. Standard ist 98 %.",
+          "hsem_batteries_cycle_cost": "Optionale zusätzliche Kosten pro kWh für das Zyklieren der Batterie (pro kWh). Wird zusätzlich zur automatisch berechneten Abschreibungsschwelle addiert. Auf 0 setzen, um dich ausschließlich auf die Abschreibungssicherung zu verlassen. Beispiel: 0,02 bedeutet, dass der Planer 2 Cent zusätzliche Spanne pro zyklierter kWh benötigt, bevor er die Netzladung genehmigt.",
+          "hsem_batteries_expected_cycles": "Gib die erwartete Anzahl vollständiger Lade-/Entladezyklen über die Lebensdauer der Batterie ein. Wird verwendet, um die Abschreibungskosten pro kWh und den empfohlenen Mindestexportpreis zu berechnen. Typische LiFePO4-Batterien unterstützen 4000–8000 Zyklen.",
+          "hsem_batteries_purchase_price": "Gib den Gesamtkaufpreis deines Batteriesystems in deiner Landeswährung ein. Wird zusammen mit den erwarteten Zyklen und der nutzbaren Kapazität verwendet, um die Abschreibungskosten pro kWh und den empfohlenen Mindestexportpreis zu berechnen.",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Wähle den Sensor, der die Einstellung für die Nutzung überschüssiger PV-Energie in TOU-Zeiträumen liefert.",
+          "hsem_huawei_solar_batteries_forcible_charge": "Sensor, der den aktuellen Zwangslade-/Entladezustand anzeigt (z. B. Gestoppt, Entladung mit 5000 W für 60 Minuten)",
+          "hsem_huawei_solar_batteries_end_of_discharge_soc": "Gib den Entladeschluss-SOC-Prozentsatz für deine Huawei-Batterien an. Wenn die Batterie diesen SOC-Wert erreicht, stoppt sie die Entladung, um Tiefentladung und mögliche Schäden an der Batterie zu verhindern.",
+          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Wähle die Entität, die den maximalen Ladezustand (SoC) definiert, den die Batterie während des Ladens erreichen darf (Register STORAGE_CHARGING_CUTOFF_CAPACITY). Typischerweise 90–10 %. Wird von der SoC-Simulation als obere SoC-Grenze verwendet, sodass der Planer das Laden nie über dieses Limit hinaus plant.",
+          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Gib den Netzladeabschaltung-SOC-Prozentsatz für deine Huawei-Batterien an.",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Wähle den Sensor, der die maximale Ladeleistung für deine Huawei-Batterien in Watt (W) liefert.",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Wähle den Sensor, der die maximale Entladeleistung für deine Huawei-Batterien liefert.",
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Wähle die Zahlenentität, die die maximale Netzladeleistungsgrenze (W) von Huawei festlegt. Wird vom Live-Sicherheitsbegrenzer für phasenbewusstes Laden (issue #831) geschrieben, um netzfinanziertes Laden unterhalb der Phasengrenze der Hauptsicherung zu halten. Optional — nur erforderlich, wenn phasenbewusstes Laden aktiviert ist.",
+          "hsem_huawei_solar_batteries_charge_discharge_power": "Wähle den Sensor, der die vorzeichenbehaftete momentane Batterie-Lade-/Entladeleistung meldet (positiv = Laden, negativ = Entladen). Wird vom Live-Sicherheitsbegrenzer für phasenbewusstes Laden (issue #831) benötigt, um Huaweis eigenen Beitrag aus der Live-Phasen-Momentaufnahme zu entfernen, bevor der Spielraum berechnet wird. Optional — nur erforderlich, wenn phasenbewusstes Laden aktiviert ist.",
+          "hsem_huawei_solar_batteries_rated_capacity": "Wähle den Sensor, der die gesamte Nennkapazität deiner Huawei-Batterien in Wattstunden (Wh) liefert.",
+          "hsem_huawei_solar_batteries_state_of_capacity": "Wähle den Sensor, der den Ladezustand (SOC) deiner Huawei-Batterien liefert.",
+          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Wähle den Sensor, der die Time-of-Use(TOU)-Lade- und Entladezeiträume für deine Huawei-Batterien definiert.",
+          "hsem_huawei_solar_batteries_working_mode": "Wähle den Sensor, der den aktuellen Arbeitsmodus deiner Huawei-Batterien anzeigt.",
+          "hsem_huawei_solar_device_id_batteries": "Wähle dein Huawei-Batteriegerät.",
+          "hsem_huawei_solar_device_id_batteries_2": "Wähle dein sekundäres Huawei-Batteriegerät, falls zutreffend.",
+          "hsem_huawei_solar_device_id_inverter_1": "Wähle dein primäres Huawei-Wechselrichtergerät.",
+          "hsem_huawei_solar_device_id_inverter_2": "Wähle dein sekundäres Huawei-Wechselrichtergerät, falls zutreffend.",
+          "hsem_huawei_solar_inverter_active_power_control": "Wähle den Sensor, der die Wirkleistungsabgabe deines Huawei-Wechselrichters steuert."
+        },
+        "description": "Konfiguriere den Arbeitsmodus für Huawei-Solarbatterien.",
+        "title": "Huawei Solar-Sensoren"
+      },
+      "battery_economics": {
+        "data": {
+          "hsem_batteries_purchase_price": "Batterie-Kaufpreis",
+          "hsem_batteries_expected_cycles": "Erwartete Batteriezyklen",
+          "hsem_batteries_cycle_cost": "Batterie-Zykluskosten (pro kWh)",
+          "hsem_batteries_capacity_loss_pct": "Batteriekapazitätsverlust am Lebensende (%)",
+          "hsem_batteries_charge_efficiency": "Batterie-Ladeeffizienz (%)",
+          "hsem_batteries_discharge_efficiency": "Batterie-Entladeeffizienz (%)",
+          "hsem_planner_hysteresis_enabled": "Hysterese auf Planebene",
+          "hsem_planner_hysteresis_absolute": "Absoluter Hysterese-Schwellenwert",
+          "hsem_planner_hysteresis_percentage": "Prozentualer Hysterese-Schwellenwert (%)",
+          "hsem_planner_window_hysteresis_minutes": "Hysterese-Haltezeit für Fenster (Minuten)"
+        },
+        "data_description": {
+          "hsem_batteries_purchase_price": "Gib den Gesamtkaufpreis deines Batteriesystems in deiner Landeswährung ein. Wird zusammen mit den erwarteten Zyklen und der nutzbaren Kapazität verwendet, um die Abschreibungskosten pro kWh und den empfohlenen Mindestexportpreis zu berechnen.",
+          "hsem_batteries_expected_cycles": "Gib die erwartete Anzahl vollständiger Lade-/Entladezyklen über die Lebensdauer der Batterie ein. Wird verwendet, um die Abschreibungskosten pro kWh und den empfohlenen Mindestexportpreis zu berechnen. Typische LiFePO4-Batterien unterstützen 4000–8000 Zyklen.",
+          "hsem_batteries_cycle_cost": "Optionale zusätzliche Kosten pro kWh für das Zyklieren der Batterie (pro kWh). Wird zusätzlich zur automatisch berechneten Abschreibungsschwelle addiert. Auf 0 setzen, um dich ausschließlich auf die Abschreibungssicherung zu verlassen. Beispiel: 0,02 bedeutet, dass der Planer 2 Cent zusätzliche Spanne pro zyklierter kWh benötigt, bevor er die Netzladung genehmigt.",
+          "hsem_batteries_capacity_loss_pct": "Erwarteter Kapazitätsverlust am Lebensende in Prozent. LiFePO4 erreicht typischerweise nach ~6000 Zyklen 80 % Kapazität (20 % Verlust). Der Standardwert von 30 % fügt eine Marge für kalendarische Alterung hinzu.",
+          "hsem_batteries_charge_efficiency": "Gib die Ladeeffizienz deiner Batterie in Prozent an (0–100). Die in der Batterie gespeicherte Energie entspricht der eingehenden Energie multipliziert mit diesem Faktor. Typische Lithium-Batterien erreichen 95–98 %. Standard ist 98 %.",
+          "hsem_batteries_discharge_efficiency": "Gib die Entladeeffizienz deiner Batterie in Prozent an (0–100). Die an das Haus gelieferte Energie entspricht der entnommenen Batterieenergie multipliziert mit diesem Faktor. Typische Lithium-Batterien erreichen 95–98 %. Standard ist 98 %.",
+          "hsem_planner_hysteresis_enabled": "Wenn aktiviert, behält der Planer den aktiven Kandidatenplan bei, sofern ein neuer Plan die Bewertung nicht um mehr als die konfigurierten Schwellenwerte verbessert. Verhindert Oszillation zwischen gleich bewerteten Strategien.",
+          "hsem_planner_hysteresis_absolute": "Minimale absolute Bewertungsverbesserung, die für einen Wechsel zu einem neuen Plan erforderlich ist. 0,00 deaktiviert den absoluten Schwellenwert. Die Bewertung verwendet dieselbe Währung wie deine Strompreise, sodass ein Wert von 0,01 mindestens 1 Cent/kWh-äquivalente Verbesserung vor einem Wechsel erfordert.",
+          "hsem_planner_hysteresis_percentage": "Minimale prozentuale Bewertungsverbesserung, die für einen Wechsel zu einem neuen Plan erforderlich ist. 0 % deaktiviert den prozentualen Schwellenwert. Der Standardwert von 5 % verhindert Flattern zwischen nahezu identischen Plänen.",
+          "hsem_planner_window_hysteresis_minutes": "Minimale Zeit (Minuten), die eine Empfehlung gehalten werden muss, bevor sie sich ändern kann. Verhindert schnelles Umschalten wie z. B. ev_smart_charging ↔ batteries_charge_solar. 0 deaktiviert die Funktion. Standard 10."
+        },
+        "description": "Konfiguriere Batteriewirtschaftlichkeitsparameter und Planer-Hysterese (Anti-Flattern).",
+        "title": "Batteriewirtschaftlichkeit & Hysterese"
+      },
+      "init": {
+        "data": {
+          "device_name": "Name",
+          "hsem_extended_attributes": "Erweiterte Attribute",
+          "hsem_read_only": "Nur Lesen",
+          "hsem_recommendation_interval_length": "Empfehlungsintervall-Länge",
+          "hsem_recommendation_interval_minutes": "Empfehlungsintervall-Minuten",
+          "hsem_update_interval": "Aktualisierungsintervall",
+          "hsem_verbose_logging": "Ausführliche Protokollierung"
+        },
+        "data_description": {
+          "device_name": "Gib einen eindeutigen Namen für dieses Gerät ein.",
+          "hsem_extended_attributes": "Aktiviere diese Option, um zusätzliche Diagnoseattribute auf der Sensor-Entität bereitzustellen.",
+          "hsem_read_only": "Aktiviere diese Option, um die Integration in den Nur-Lese-Modus zu versetzen und das Senden von Befehlen an Geräte zu verhindern.",
+          "hsem_recommendation_interval_length": "Die Anzahl der Empfehlungsintervalle, die bei der Berechnung der optimalen Batterienutzung berücksichtigt werden.",
+          "hsem_recommendation_interval_minutes": "Die Länge in Minuten jedes Empfehlungsintervalls, das zur Berechnung der optimalen Batterienutzung verwendet wird.",
+          "hsem_update_interval": "Das Aktualisierungsintervall in Minuten für den Arbeitsmodus-Sensor.",
+          "hsem_verbose_logging": "Aktiviere ausführliche Debug-Protokollierung zu Fehlerbehebungszwecken."
+        },
+        "description": "Aktualisiere die Einstellungen für HSEM",
+        "title": "Huawei Solar Energy Management aktualisieren"
+      },
+      "batteries_schedules": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_1": "Batterie-Zeitplan 1 aktivieren",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Batterie-Zeitplan 1 Endzeit",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Batterie-Zeitplan 1 Startzeit",
+          "hsem_batteries_enable_batteries_schedule_2": "Batterie-Zeitplan 2 aktivieren",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Batterie-Zeitplan 2 Endzeit",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Batterie-Zeitplan 2 Startzeit",
+          "hsem_batteries_enable_batteries_schedule_3": "Batterie-Zeitplan 3 aktivieren",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Batterie-Zeitplan 3 Endzeit",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Batterie-Zeitplan 3 Startzeit"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_1": "Aktiviere oder deaktiviere den ersten Batterie-Entladezeitplan.",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Lege die Endzeit für den ersten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Lege die Startzeit für den ersten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_2": "Aktiviere oder deaktiviere den zweiten Batterie-Entladezeitplan.",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Lege die Endzeit für den zweiten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Lege die Startzeit für den zweiten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_3": "Aktiviere oder deaktiviere den dritten Batterie-Entladezeitplan.",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Lege die Endzeit für den dritten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Lege die Startzeit für den dritten Batterie-Entladezeitplan fest."
+        },
+        "description": "Konfiguriere bis zu drei Batterie-Entladezeitplan-Fenster, jeweils mit Ein-/Aus-Schalter, Startzeit und Endzeit. Zeitpläne legen fest, wann die Batterie entladen darf, um Verbrauchsspitzen zu decken oder ins Netz einzuspeisen.",
+        "title": "Batterie-Entladezeitpläne"
+      },
+      "months": {
+        "data": {
+          "hsem_months_winter": "Als Winter/Frühling betrachtete Monate"
+        },
+        "data_description": {
+          "hsem_months_winter": "Wähle die Monate, die für die saisonale Anpassung des Arbeitsmodus als Winter/Frühling gelten sollen. Du kannst mehrere Monate auswählen. Die Auswahl aller 12 Monate ist zulässig — dies hält den Winter/Frühling-Modus (TOU) ganzjährig aktiv. Die Auswahl aller 12 Monate ist zulässig — dies hält den Winter/Frühling-Modus (TOU) ganzjährig aktiv."
+        },
+        "description": "Konfiguriere die Monate, die als Winter/Frühling gelten. In diesen Monaten priorisiert das System das Laden der Batterien aus Netzenergie, um während Zeiten geringerer Solarproduktion ausreichende Batteriestände sicherzustellen. Die übrigen Monate gelten als Sommer/Herbst-Monate.",
+        "title": "Winter/Frühling-Monate"
+      },
+      "power": {
+        "data": {
+          "hsem_house_consumption_power": "Hausverbrauchsleistungssensor",
+          "hsem_main_fuse_amps": "Hauptsicherung Nennwert (Ampere)",
+          "hsem_main_fuse_phases": "Hauptsicherung Phasenanzahl",
+          "hsem_max_grid_export_power_kw": "Maximale Netzeinspeiseleistung (kW)",
+          "hsem_solar_production_power": "Solarproduktionsleistungssensor",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Stromzähler Phase A Wirkleistungssensor",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Stromzähler Phase B Wirkleistungssensor",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Stromzähler Phase C Wirkleistungssensor",
+          "hsem_phase_aware_charging_enabled": "Live-Sicherheitsbegrenzer für phasenbewusstes Laden aktivieren"
+        },
+        "data_description": {
+          "hsem_house_consumption_power": "Wähle den Sensor, der den Gesamtstromverbrauch deines Hauses misst.",
+          "hsem_main_fuse_amps": "Der Nennwert der Hauptsicherung/des Hauptschalters deines Hauses in Ampere (25, 35 usw.). Der MILP-Optimierer berücksichtigt diese Grenze bei der Planung von Batterie- und EV-Ladung. Auf 0 setzen, um zu deaktivieren.",
+          "hsem_main_fuse_phases": "Die Phasenanzahl deiner elektrischen Installation. Einphasige Installationen MÜSSEN auf 1 gesetzt werden — die Einstellung 3 bei einer einphasigen Installation macht den Sicherungsschutz 3-mal zu großzügig und bietet keine echte Sicherheitsgrenze. Standard ist 3 (dreiphasig).",
+          "hsem_max_grid_export_power_kw": "Maximale Netzeinspeiseleistung in kW — die Exportobergrenze des Netzbetreibers/Wechselrichters für exportbeschränkte Anschlüsse (z. B. 5 kW). Der MILP-Planer plant nie einen Export über diese Grenze hinaus, sodass Batterieexport und PV-Export korrekt um dieselbe Obergrenze konkurrieren. Auf 0 setzen, um zu deaktivieren.",
+          "hsem_solar_production_power": "Wähle den Sensor, der die von deinen Solarmodulen erzeugte Leistung misst.",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Wähle den Sensor, der die Live-Wirkleistung auf Phase A deines Huawei-Stromzählers misst. Nur erforderlich, wenn phasenbewusstes Laden aktiviert ist.",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Wähle den Sensor, der die Live-Wirkleistung auf Phase B deines Huawei-Stromzählers misst. Nur erforderlich, wenn phasenbewusstes Laden aktiviert ist.",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Wähle den Sensor, der die Live-Wirkleistung auf Phase C deines Huawei-Stromzählers misst. Nur erforderlich, wenn phasenbewusstes Laden aktiviert ist.",
+          "hsem_phase_aware_charging_enabled": "Aktiviere eine Live-Sicherheitsprüfung unmittelbar vor jedem Huawei-Netzlade-Hardware-Schreibvorgang (issue #831). Verwendet die drei unten stehenden Stromzähler-Phasensensoren sowie die Huawei-Netzladeleistungs-Obergrenze-Entität (Schritt huawei_solar), um netzfinanziertes Laden so zu begrenzen, dass keine Phase die Hauptsicherungsgrenze überschreitet, selbst wenn sich die Last nach der Planlösung geändert hat. Erfordert main_fuse_phases = 3 und alle vier konfigurierten Entitäten. Standardmäßig deaktiviert — vollständig abwärtskompatibel."
+        },
+        "description": "Wähle Leistungssensoren für HSEM aus.",
+        "title": "Leistungssensoren"
+      },
+      "quick_setup": {
+        "data": {
+          "battery_soc": "Batterie-Ladezustand",
+          "working_mode": "Batterien Arbeitsmodus",
+          "max_charge_power": "Max. Ladeleistung",
+          "max_discharge_power": "Max. Entladeleistung",
+          "eod_soc": "Entladeschluss-SoC",
+          "rated_capacity": "Batterien Nennkapazität",
+          "active_power_control": "Wirkleistungssteuerung",
+          "tou_periods": "TOU-Lade-/Entladezeiträume",
+          "solcast_today": "Solcast-Prognose heute",
+          "solcast_tomorrow": "Solcast-Prognose morgen",
+          "import_price": "Stromimportpreis-Sensor",
+          "export_price": "Stromexportpreis-Sensor",
+          "house_power": "Hausverbrauchsleistung",
+          "solar_power": "Solarproduktionsleistung",
+          "use_quick_setup": "Schnelleinrichtung verwenden"
+        },
+        "data_description": {
+          "battery_soc": "Automatisch erkannter Batterie-Ladezustandssensor.",
+          "working_mode": "Automatisch erkannte Batterien-Arbeitsmodus-Entität.",
+          "max_charge_power": "Automatisch erkannte maximale Ladeleistungsentität.",
+          "max_discharge_power": "Automatisch erkannte maximale Entladeleistungsentität.",
+          "eod_soc": "Automatisch erkannte Entladeschluss-SoC-Entität.",
+          "rated_capacity": "Automatisch erkannter Batterien-Nennkapazitätssensor.",
+          "active_power_control": "Automatisch erkannter Wechselrichter-Wirkleistungssteuerungssensor.",
+          "tou_periods": "Automatisch erkannter TOU-Lade-/Entladezeiträume-Sensor.",
+          "solcast_today": "Automatisch erkannte Solcast-PV-Prognose für heute.",
+          "solcast_tomorrow": "Automatisch erkannte Solcast-PV-Prognose für morgen.",
+          "import_price": "Automatisch erkannter Stromimportpreissensor.",
+          "export_price": "Automatisch erkannter Stromexportpreissensor.",
+          "house_power": "Automatisch erkannter Hausverbrauchsleistungssensor.",
+          "solar_power": "Automatisch erkannter Solarproduktionsleistungssensor.",
+          "use_quick_setup": "Aktivieren, um automatisch erkannte Entitäten zu verwenden und den vollständigen Assistenten für die Einrichtung einzelner Entitäten zu überspringen. Für die erweiterte Einrichtung deaktivieren."
+        },
+        "description": "HSEM hat die folgenden Entitäten automatisch erkannt. {warning}Überprüfe die unten erkannten Entitäten. Du kannst sie bestätigen oder die erweiterte Einrichtung wählen, um Entitäten manuell auszuwählen.",
+        "title": "Schnelleinrichtung — Automatisch erkannte Entitäten"
+      },
+      "solcast": {
+        "data": {
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Solcast PV-Prognose bevorzugte Prognosewahrscheinlichkeit",
+          "hsem_solcast_pv_forecast_forecast_today": "Solcast PV-Prognose heute Sensor",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV-Prognose morgen Sensor"
+        },
+        "data_description": {
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Wähle die bevorzugte Prognosewahrscheinlichkeit für Solcast-PV-Prognosen.",
+          "hsem_solcast_pv_forecast_forecast_today": "Wähle den Sensor, der die heutige PV-Produktionsprognose von Solcast liefert.",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Wähle den Sensor, der die morgige PV-Produktionsprognose von Solcast liefert."
+        },
+        "description": "Wähle Solcast-Prognosesensoren aus.",
+        "title": "Solcast-Sensoren"
+      },
+      "user": {
+        "data": {
+          "device_name": "Name",
+          "hsem_extended_attributes": "Erweiterte Attribute",
+          "hsem_read_only": "Nur Lesen",
+          "hsem_recommendation_interval_length": "Empfehlungsintervall-Länge",
+          "hsem_recommendation_interval_minutes": "Empfehlungsintervall-Minuten",
+          "hsem_update_interval": "Aktualisierungsintervall",
+          "hsem_verbose_logging": "Ausführliche Protokollierung"
+        },
+        "data_description": {
+          "device_name": "Gib einen eindeutigen Namen für dieses Gerät ein.",
+          "hsem_extended_attributes": "Aktiviere diese Option, um zusätzliche Diagnoseattribute auf der Sensor-Entität bereitzustellen.",
+          "hsem_read_only": "Aktiviere diese Option, um die Integration in den Nur-Lese-Modus zu versetzen und das Senden von Befehlen an Geräte zu verhindern.",
+          "hsem_recommendation_interval_length": "Die Anzahl der Empfehlungsintervalle, die bei der Berechnung der optimalen Batterienutzung berücksichtigt werden.",
+          "hsem_recommendation_interval_minutes": "Die Länge in Minuten jedes Empfehlungsintervalls, das zur Berechnung der optimalen Batterienutzung verwendet wird.",
+          "hsem_update_interval": "Das Aktualisierungsintervall in Minuten für den Arbeitsmodus-Sensor.",
+          "hsem_verbose_logging": "Aktiviere ausführliche Debug-Protokollierung zu Fehlerbehebungszwecken."
+        },
+        "description": "Konfiguriere die Einstellungen für HSEM",
+        "title": "Huawei Solar Energy Management konfigurieren"
+      },
+      "weighted_values": {
+        "data": {
+          "hsem_house_consumption_energy_weight_14d": "Hausverbrauchsenergie-Gewichtung 14 Tage",
+          "hsem_house_consumption_energy_weight_1d": "Hausverbrauchsenergie-Gewichtung 1 Tag",
+          "hsem_house_consumption_energy_weight_3d": "Hausverbrauchsenergie-Gewichtung 3 Tage",
+          "hsem_house_consumption_energy_weight_7d": "Hausverbrauchsenergie-Gewichtung 7 Tage"
+        },
+        "data_description": {
+          "hsem_house_consumption_energy_weight_14d": "Gib den Gewichtungsprozentsatz für den Hausverbrauch der letzten 14 Tage an.",
+          "hsem_house_consumption_energy_weight_1d": "Gib den Gewichtungsprozentsatz für den Hausverbrauch des letzten 1 Tages an.",
+          "hsem_house_consumption_energy_weight_3d": "Gib den Gewichtungsprozentsatz für den Hausverbrauch der letzten 3 Tage an.",
+          "hsem_house_consumption_energy_weight_7d": "Gib den Gewichtungsprozentsatz für den Hausverbrauch der letzten 7 Tage an."
+        },
+        "description": "Konfiguriere die gewichteten Werte für den Hausverbrauch, um deinen durchschnittlichen Stromverbrauch zu schätzen. Das System berechnet den durchschnittlichen Verbrauch für jede Stunde über 1, 3, 7 und 14 Tage. Diese Durchschnittswerte werden dann gewichtet, um eine kombinierte, gewichtete Schätzung zu liefern. Dieser Ansatz hilft, Anomalien auszugleichen, etwa einen ungewöhnlich hohen Verbrauch an einem einzelnen Tag aufgrund niedriger Preise, und liefert eine zuverlässige Vorhersage deines erwarteten Stromverbrauchs in bestimmten Zeitintervallen (z. B. zwischen 16:00 und 17:00 Uhr).",
+        "title": "Gewichtete Werte"
+      },
+      "energy_and_ml": {
+        "data": {
+          "hsem_grid_import_energy_entity": "Netzimport-Energiesensor",
+          "hsem_grid_export_energy_entity": "Netzeinspeisung-Energiesensor",
+          "hsem_pv_energy_entity": "PV-Produktions-Energiesensor",
+          "hsem_ml_consumption_enabled": "ML-Verbrauchsprognose aktivieren",
+          "hsem_ml_consumption_energy_entity": "Hausverbrauchs-Energiesensor (ohne Batterie & EV)",
+          "hsem_ml_consumption_history_days": "ML-Verlaufstage",
+          "hsem_ml_consumption_net_consumption": "Nettoverbrauch verwenden (Import - Export)",
+          "hsem_ml_consumption_temperature_entity": "Außentemperatursensor",
+          "hsem_ml_consumption_sequential": "Sequenzielle Vorhersage (Lag-Feature)"
+        },
+        "data_description": {
+          "hsem_grid_import_energy_entity": "Optional — kumulativer Netzimport-Energiezähler (kWh).",
+          "hsem_grid_export_energy_entity": "Optional — kumulativer Netzeinspeisung-Energiezähler (kWh).",
+          "hsem_pv_energy_entity": "Optional — kumulativer PV-Produktions-Energiezähler (kWh).",
+          "hsem_ml_consumption_enabled": "Wenn aktiviert, wird Ridge-Regression auf Basis der Recorder-Historie anstelle gleitender Durchschnitte verwendet. Erfordert mindestens 14 Tage Historie.",
+          "hsem_ml_consumption_energy_entity": "Kumulativer Hausverbrauchs-Energiezähler (kWh). Muss Batterie UND EV-Ladung ausschließen — verwende einen Sensor vor beiden. Fällt auf Netzimport zurück, falls nicht gesetzt.",
+          "hsem_ml_consumption_history_days": "Tage der Recorder-Historie für das ML-Training (7–90).",
+          "hsem_ml_consumption_net_consumption": "Ziehe Netzeinspeisung vom Import ab, um den Nettohausverbrauch zu erhalten.",
+          "hsem_ml_consumption_temperature_entity": "Optional — Außentemperatursensor in °C. Verwende einen Außensensor, keinen Innenraumthermostat.",
+          "hsem_ml_consumption_sequential": "Gibt jede Slot-Vorhersage als Eingabe für die nächste weiter. Erfasst untertägige Dynamik (z. B. wirken sich Kochspitzen weiter aus)."
+        },
+        "description": "Konfiguriere Energiezähler und aktiviere die ML-basierte Verbrauchsprognose.",
+        "title": "Energie & ML"
+      },
+      "batteries_wait_mode": {
+        "data": {
+          "hsem_batteries_wait_mode_behavior": "Wartemodus-Verhalten"
+        },
+        "data_description": {
+          "hsem_batteries_wait_mode_behavior": "Wähle, wie sich die Batterie verhält, wenn HSEM den Wartemodus auswählt. Strenges Warten hält die Batterie inaktiv. Eigenverbrauch mit Reserve erlaubt dem Haus, überschüssige Batterieenergie oberhalb der vom Planer benötigten Reserve zu nutzen, wodurch unnötiger Netzimport reduziert wird."
+        },
+        "description": "Konfiguriere, wie sich die Batterie im Wartemodus verhält.",
+        "title": "Batterie-Wartemodus-Verhalten"
+      }
+    }
+  },
+  "options": {
+    "error": {
+      "device_not_found": "Das ausgewählte Gerät wurde nicht gefunden.",
+      "energy_out_of_range": "Der Energiewert liegt außerhalb des zulässigen Bereichs.",
+      "entity_not_found": "Die ausgewählte Entität wurde nicht gefunden.",
+      "entity_unavailable": "Die ausgewählte Entität ist derzeit nicht verfügbar. Überprüfe das Gerät oder den Dienst.",
+      "hsem_house_consumption_energy_weight_total": "Die Summe der Gewichtungen für den Hausverbrauch muss 100 % betragen.",
+      "invalid_energy_value": "Ungültiger Energiewert — bitte eine Zahl eingeben.",
+      "invalid_entity_id": "Ungültiges Entitäts-ID-Format. Erwartet wird \"domain.object_id\" mit Kleinbuchstaben, Ziffern und Unterstrichen.",
+      "invalid_month_value": "Ein oder mehrere Monatswerte sind ungültig. Monate müssen ganze Zahlen zwischen 1 und 12 sein.",
+      "invalid_power_value": "Ungültiger Leistungswert — bitte eine Zahl eingeben.",
+      "invalid_price_value": "Ungültiger Preiswert — bitte eine Zahl eingeben.",
+      "invalid_sensor": "Ungültiger Eingabesensor. Bitte wähle einen gültigen Sensor.",
+      "invalid_time_format": "Ungültiges Zeitformat — erwartet wird HH:MM:SS.",
+      "months_winter_empty": "Die Wintersaison muss mindestens einen Monat enthalten.",
+      "only_one_entry_allowed": "Nur eine Konfiguration von HSEM ist zulässig.",
+      "power_out_of_range": "Der Leistungswert liegt außerhalb des zulässigen Bereichs.",
+      "price_out_of_range": "Der Preiswert liegt außerhalb des zulässigen Bereichs.",
+      "required": "Dieses Feld ist erforderlich.",
+      "start_time_after_end_time": "Die Startzeit muss vor der Endzeit liegen.",
+      "start_time_equals_end_time": "Start- und Endzeit dürfen nicht identisch sein — das ergibt ein Zeitfenster der Länge null. Deaktiviere stattdessen den Zeitplan.",
+      "invalid_wait_mode_behavior": "Ungültiges Wartemodus-Verhalten. Wähle Strenges Warten oder Eigenverbrauch mit Reserve.",
+      "port_conflict": "Der zweite OCPP-Port muss sich vom ersten OCPP-Port unterscheiden."
+    },
+    "step": {
+      "batteries_excess_export": {
+        "data": {
+          "hsem_batteries_enable_excess_export": "Batterie-Überschussexport aktivieren",
+          "hsem_batteries_excess_export_discharge_buffer": "Entladepuffer (%)",
+          "hsem_batteries_forecast_reserve_pct": "Batterieexport-Prognosereserve (+% SoC)",
+          "hsem_batteries_export_min_price": "Mindestpreis für Batterieexport"
+        },
+        "data_description": {
+          "hsem_batteries_enable_excess_export": "Aktiviere oder deaktiviere die Funktion für den Export überschüssiger Batteriekapazität, die überschüssige Batteriekapazität automatisch ins Netz einspeist, wenn es wirtschaftlich vorteilhaft ist.",
+          "hsem_batteries_excess_export_discharge_buffer": "Lege den Sicherheitspuffer in Prozent fest, um minimale Batteriereserven zu erhalten (0-50 %). Standard sind 10 %, um ausreichend Kapazität für unerwarteten Bedarf sicherzustellen.",
+          "hsem_batteries_forecast_reserve_pct": "Zusätzliche SoC-Prozentpunkte über der Huawei-Entladeschluss-Grenze, die der beabsichtigte Batterieexport unmittelbar nach jedem Export-Slot freihalten muss. Zum Beispiel schützt eine Huawei-Grenze von 15 % zuzüglich einer Reserve von 5 % einen SoC von 20 %. Die Reserve bleibt für die Hauslast verfügbar, wenn der tatsächliche Bedarf die Prognose übersteigt. Auf 0 setzen, um zu deaktivieren (Standard).",
+          "hsem_batteries_export_min_price": "Feste Preisuntergrenze pro Slot für beabsichtigten Batterie-zu-Netz-Export (issue #752). Bei Werten > 0 verbietet HSEM, einen Slot als force_batteries_discharge zu markieren, wenn der Exportpreis strikt unter dieser Untergrenze liegt — die Batterie kann in diesen Slots weiterhin die Hausversorgung übernehmen. Das Erreichen der Schwelle löst NICHT automatisch einen Export aus; der Optimierer entscheidet weiterhin, ob sich der Verkauf lohnt. Gilt nur für den beabsichtigten Batterie-zu-Netz-Export, nicht für normalen Eigenverbrauch, PV-Export oder PV-Ladung. Auf 0 setzen, um zu deaktivieren (Standard)."
+        },
+        "description": "Konfiguriere Einstellungen für den Export überschüssiger Batteriekapazität, um überschüssige Energie automatisch ins Netz zu verkaufen, wenn es wirtschaftlich vorteilhaft ist.",
+        "title": "Batterie-Überschussexport"
+      },
+      "ev_planned_load": {
+        "data": {
+          "hsem_ev_planned_load_enabled": "EV-Lastplanung-Integration aktivieren",
+          "hsem_ev_planned_load_battery_capacity_kwh": "EV-Batteriekapazität (kWh)",
+          "hsem_ev_planned_load_charger_power_kw": "EV-Ladegerät Leistung (kW)",
+          "hsem_ev_planned_load_charger_efficiency": "EV-Ladegerät Effizienz",
+          "hsem_ev_planned_load_charger_min_power_w": "EV-Ladegerät Mindestleistung (W)",
+          "hsem_ev_planned_load_charger_phase_topology": "Phasentopologie des Ladegeräts",
+          "hsem_ev_planned_load_deadline_safety_margin_pct": "Sicherheitsmarge für Frist (%)",
+          "hsem_ev_planned_load_command_deadband_a": "Totband für Obergrenze (A)",
+          "hsem_ev_planned_load_stub_floor_minutes": "Unterdrückung des Stopps am Slot-Ende (Min.)"
+        },
+        "data_description": {
+          "hsem_ev_planned_load_enabled": "Aktiviere oder deaktiviere die Integration der geplanten EV-Ladelast.",
+          "hsem_ev_planned_load_battery_capacity_kwh": "Nennkapazität der EV-Batterie in kWh.",
+          "hsem_ev_planned_load_charger_power_kw": "AC-Ausgangsleistung des EV-Ladegeräts in kW.",
+          "hsem_ev_planned_load_charger_efficiency": "Ladegerät-Effizienz in Prozent (1-100). Standard: 100.",
+          "hsem_ev_planned_load_charger_min_power_w": "Minimale AC-Leistung (W), die das EV-Ladegerät benötigt, um mit dem Laden zu beginnen. Darunter arbeitet das Ladegerät nicht. Standard: 1380 W (230 V × 6 A).",
+          "hsem_ev_planned_load_charger_phase_topology": "Wie das Ladegerät seine Last auf die Netzphasen verteilt. Wähle 'Einphasig oder unbekannt', sofern du nicht bestätigt hast, dass das Ladegerät auf allen drei Phasen einen ausgeglichenen Strom zieht. Bei aktiviertem phasenbezogenem Sicherungsschutz geht die sichere Standardannahme davon aus, dass der gesamte Ladebefehl auf einer Phase landen kann, was das geplante Laden auf den einphasigen Sicherungsspielraum begrenzt.",
+          "hsem_ev_planned_load_deadline_safety_margin_pct": "Zusätzliche Energie, die über dem Ziel-SoC hinaus als Prozentsatz des Fehlbetrags eingeplant wird, damit normale Ladereibung (Startverzögerungen, Mindestleistungsgrenzen, Drosselung) die Frist nicht verfehlt. Standard: 0 % (deaktiviert).",
+          "hsem_ev_planned_load_command_deadband_a": "Kleinste tatsächlich angewendete Reduzierung der veröffentlichten Ladeobergrenze. Kleinere Reduzierungen werden zurückgehalten, da konkurrierende Pläne mit ganzen Ampere-Werten kostenmäßig meist innerhalb eines Rundungsfehlers zueinander liegen. Eine Anhebung der Obergrenze wird nie verzögert, und eine Reduzierung, die die Ladekosten dieses Slots um mehr als 5 % verbessert, wird immer durchgeführt. Standard: 3 A; 0 deaktiviert.",
+          "hsem_ev_planned_load_stub_floor_minutes": "Unterdrückt am Ende eines Slots für diese Anzahl an Minuten einen Stoppbefehl, solange das Fahrzeug noch Energie benötigt. Die verbleibenden Sekunden reichen nicht aus, um genug Energie für die Ladegerät-Mindestleistung bereitzustellen, sodass der Plan ihnen nichts zuweist und die Sitzung ohne Nutzen stoppen und neu starten würde. Standard: 2 Minuten; 0 deaktiviert."
+        },
+        "description": "Konfiguriere die optionale Integration der geplanten EV-Ladelast. Wenn aktiviert, berücksichtigt HSEM den bevorstehenden EV-Ladebedarf pro Planer-Slot.",
+        "title": "EV-Lastplanung-Integration"
+      },
+      "ev_second_planned_load": {
+        "data": {
+          "hsem_ev_second_planned_load_enabled": "EV-2-Lastplanung-Integration aktivieren",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "EV 2 Batteriekapazität (kWh)",
+          "hsem_ev_second_planned_load_charger_power_kw": "EV 2 Ladegerät Leistung (kW)",
+          "hsem_ev_second_planned_load_charger_efficiency": "EV 2 Ladegerät Effizienz",
+          "hsem_ev_second_planned_load_charger_min_power_w": "EV 2 Ladegerät Mindestleistung (W)",
+          "hsem_ev_second_planned_load_charger_phase_topology": "Phasentopologie des Ladegeräts",
+          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "EV 2 Sicherheitsmarge für Frist (%)",
+          "hsem_ev_second_planned_load_command_deadband_a": "EV 2 Totband für Obergrenze (A)",
+          "hsem_ev_second_planned_load_stub_floor_minutes": "EV 2 Unterdrückung des Stopps am Slot-Ende (Min.)"
+        },
+        "data_description": {
+          "hsem_ev_second_planned_load_enabled": "Aktiviere oder deaktiviere die Integration der geplanten Ladelast für das zweite EV.",
+          "hsem_ev_second_planned_load_battery_capacity_kwh": "Nennkapazität der Batterie des zweiten EVs in kWh.",
+          "hsem_ev_second_planned_load_charger_power_kw": "AC-Ausgangsleistung des zweiten EV-Ladegeräts in kW.",
+          "hsem_ev_second_planned_load_charger_efficiency": "Effizienz des zweiten EV-Ladegeräts in Prozent (1-100). Standard: 100.",
+          "hsem_ev_second_planned_load_charger_min_power_w": "Minimale AC-Leistung (W), die das zweite EV-Ladegerät zum Laden benötigt. Standard: 1380 W (230 V × 6 A).",
+          "hsem_ev_second_planned_load_charger_phase_topology": "Wie das Ladegerät seine Last auf die Netzphasen verteilt. Wähle 'Einphasig oder unbekannt', sofern du nicht bestätigt hast, dass das Ladegerät auf allen drei Phasen einen ausgeglichenen Strom zieht. Bei aktiviertem phasenbezogenem Sicherungsschutz geht die sichere Standardannahme davon aus, dass der gesamte Ladebefehl auf einer Phase landen kann, was das geplante Laden auf den einphasigen Sicherungsspielraum begrenzt.",
+          "hsem_ev_second_planned_load_deadline_safety_margin_pct": "Wie die Sicherheitsmarge für die Frist des primären EVs, für das zweite EV. Standard: 0 % (deaktiviert).",
+          "hsem_ev_second_planned_load_command_deadband_a": "Wie das Totband für die Obergrenze des primären EVs, für das zweite EV. Standard: 3 A; 0 deaktiviert.",
+          "hsem_ev_second_planned_load_stub_floor_minutes": "Wie die Unterdrückung des Stopps am Slot-Ende des primären EVs, für das zweite EV. Standard: 2 Minuten; 0 deaktiviert."
+        },
+        "description": "Konfiguriere die optionale Integration der geplanten Ladelast für das zweite EV. Wird nur angezeigt, wenn ein zweites EV-Ladegerät aktiviert ist.",
+        "title": "EV-2-Lastplanung-Integration"
+      },
+      "ocpp": {
+        "data": {
+          "hsem_ocpp_enabled": "OCPP-Server aktivieren",
+          "hsem_ocpp_port": "OCPP-Port",
+          "hsem_ocpp_cpid": "Ladepunkt-ID",
+          "hsem_ocpp_start_window_s": "Startfenster (s)",
+          "hsem_ocpp_stop_window_s": "Stoppfenster (s)",
+          "hsem_ocpp_second_enabled": "Zweiten OCPP-Server aktivieren",
+          "hsem_ocpp_second_port": "Zweiter OCPP-Port",
+          "hsem_ocpp_second_cpid": "Zweite Ladepunkt-ID"
+        },
+        "data_description": {
+          "hsem_ocpp_enabled": "Aktiviere den eingebetteten OCPP-1.6-WebSocket-Server für die direkte Steuerung des EV-Ladegeräts. Nur LAN — setze den Port nicht dem Internet aus.",
+          "hsem_ocpp_port": "TCP-Port für den OCPP-WebSocket-Server. Standard: 9000. Muss über 1024 liegen.",
+          "hsem_ocpp_cpid": "Erwartete Ladepunkt-Kennung des EV-Ladegeräts. Leer lassen, um jedes Ladegerät zu akzeptieren.",
+          "hsem_ocpp_start_window_s": "Sekunden anhaltenden Überschusses, die vor dem Start eines Ladevorgangs erforderlich sind. Verhindert schnelles Start-Stopp-Takten. Standard: 60.",
+          "hsem_ocpp_stop_window_s": "Sekunden anhaltenden Mangels, die vor dem Stoppen eines Ladevorgangs erforderlich sind. Verhindert schnelles Stopp-Start-Takten. Standard: 180.",
+          "hsem_ocpp_second_enabled": "Aktiviere einen zweiten, dedizierten OCPP-Server für das zweite EV. Nur verfügbar, wenn die EV-2-Lastplanung aktiviert ist.",
+          "hsem_ocpp_second_port": "TCP-Port für den zweiten OCPP-WebSocket-Server. Standard: 9001. Muss sich vom Port des ersten Servers unterscheiden.",
+          "hsem_ocpp_second_cpid": "Erwartete Ladepunkt-Kennung des zweiten EV-Ladegeräts. Leer lassen, um jedes Ladegerät zu akzeptieren."
+        },
+        "description": "Konfiguriere den eingebetteten OCPP-1.6-Server für die reine LAN-Steuerung von EV-Ladegeräten. Wenn aktiviert, sendet HSEM SetChargingProfile-Befehle direkt an dein EV-Ladegerät auf Basis des Ladeplans.",
+        "title": "OCPP-Server"
+      },
+      "batteries_schedule_1": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_1": "Batterie-Zeitplan 1 aktivieren",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Batterie-Zeitplan 1 Endzeit",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Batterie-Zeitplan 1 Startzeit"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_1": "Aktiviere oder deaktiviere den ersten Batterie-Entladezeitplan.",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Lege die Endzeit für den ersten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Lege die Startzeit für den ersten Batterie-Entladezeitplan fest."
+        },
+        "description": "Konfiguriere Batterie-Entladezeitplan 1, einschließlich seiner Aktivierungszeit.",
+        "title": "Batterie-Entladezeitplan 1"
+      },
+      "batteries_schedule_2": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_2": "Batterie-Zeitplan 2 aktivieren",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Batterie-Zeitplan 2 Endzeit",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Batterie-Zeitplan 2 Startzeit"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_2": "Aktiviere oder deaktiviere den zweiten Batterie-Entladezeitplan.",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Lege die Endzeit für den zweiten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Lege die Startzeit für den zweiten Batterie-Entladezeitplan fest."
+        },
+        "description": "Konfiguriere Batterie-Entladezeitplan 2, einschließlich seiner Aktivierungszeit.",
+        "title": "Batterie-Entladezeitplan 2"
+      },
+      "batteries_schedule_3": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_3": "Batterie-Zeitplan 3 aktivieren",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Batterie-Zeitplan 3 Endzeit",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Batterie-Zeitplan 3 Startzeit"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_3": "Aktiviere oder deaktiviere den dritten Batterie-Entladezeitplan.",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Lege die Endzeit für den dritten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Lege die Startzeit für den dritten Batterie-Entladezeitplan fest."
+        },
+        "description": "Konfiguriere Batterie-Entladezeitplan 3, einschließlich seiner Aktivierungszeit.",
+        "title": "Batterie-Entladezeitplan 3"
+      },
+      "prices": {
+        "data": {
+          "hsem_import_electricity_price_sensor": "Stromimportpreis-Sensor",
+          "hsem_export_electricity_price_sensor": "Stromexportpreis-Sensor",
+          "hsem_import_electricity_price_forecast_sensor": "Stromimportpreis-Prognosesensor (optional)",
+          "hsem_export_electricity_price_forecast_sensor": "Stromexportpreis-Prognosesensor (optional)",
+          "hsem_export_electricity_min_price": "Erforderlicher Mindestexportpreis",
+          "hsem_electricity_price_update_interval": "Strompreis-Aktualisierungsintervall (Minuten)"
+        },
+        "data_description": {
+          "hsem_import_electricity_price_sensor": "Wähle den Sensor, der Stromimportpreise liefert (z. B. Energi Data Service, Nordpool, Amber Electric).",
+          "hsem_export_electricity_price_sensor": "Wähle den Sensor, der Stromexportpreise liefert.",
+          "hsem_import_electricity_price_forecast_sensor": "Optional: Wähle einen separaten Sensor für Importpreis-Prognosen (verwendet von Amber Electric und ähnlichen Integrationen).",
+          "hsem_export_electricity_price_forecast_sensor": "Optional: Wähle einen separaten Sensor für Exportpreis-Prognosen.",
+          "hsem_export_electricity_min_price": "Lege den Mindestexportpreis fest. Exporte unterhalb dieses Preises werden blockiert.",
+          "hsem_electricity_price_update_interval": "Wie oft dein Preissensor neue Daten liefert (15, 30 oder 60 Minuten)."
+        },
+        "description": "Konfiguriere deine Strompreissensoren für Import- und Exportpreise.",
+        "title": "Strompreise"
+      },
+      "ev": {
+        "data": {
+          "hsem_ev_allow_charge_past_target_soc": "Laden über Ziel-SoC hinaus erlauben (Erweitert)",
+          "hsem_ev_charger_force_max_discharge_power": "EV-Ladegerät maximale Entladeleistung erzwingen",
+          "hsem_ev_charger_max_discharge_power": "EV-Ladegerät maximale Entladeleistung",
+          "hsem_ev_charger_power": "EV-Ladegerät Leistungssensor",
+          "hsem_ev_charger_status": "EV-Ladegerät Statussensor",
+          "hsem_ev_connected": "EV verbunden Sensor",
+          "hsem_ev_second_enabled": "Zweites EV-Ladegerät aktivieren",
+          "hsem_ev_soc": "EV-Ladezustand (SoC) Sensor",
+          "hsem_house_power_includes_ev_charger_power": "Hausleistung enthält EV-Ladegerät-Leistung",
+          "hsem_ev_auto_full_negative_price": "EV bei negativem Preis automatisch vollladen",
+          "hsem_ev_past_target_confidence_factor": "EV-Konfidenzfaktor für Laden über Ziel-SoC hinaus (Erweitert)"
+        },
+        "data_description": {
+          "hsem_ev_allow_charge_past_target_soc": "Aktiviere diese Option, wenn du zulassen möchtest, dass das System die EV-Batterie auch nach Erreichen des Ziel-Ladezustands (SoC) weiter lädt. Dies kann in Szenarien nützlich sein, in denen du sicherstellen möchtest, dass das EV unabhängig von der Zieleinstellung vollständig geladen wird.",
+          "hsem_ev_charger_force_max_discharge_power": "Aktiviere dies, wenn du eine bestimmte maximale Entladeleistung für die Huawei-Batterien erzwingen möchtest, während das EV lädt.",
+          "hsem_ev_charger_max_discharge_power": "Lege die maximale Entladeleistung für die Huawei-Batterien fest, während das EV lädt.",
+          "hsem_ev_charger_power": "Wähle den Sensor, der den Stromverbrauch deines EV-Ladegeräts misst.",
+          "hsem_ev_charger_status": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV-Ladegerät aktiv ist (z. B. ein Schalter oder Sensor).",
+          "hsem_ev_connected": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV mit dem Ladegerät verbunden ist.",
+          "hsem_ev_second_enabled": "Aktiviere oder deaktiviere die Konfiguration für ein zweites EV-Ladegerät.",
+          "hsem_ev_soc": "Wähle den Sensor, der den aktuellen Ladezustand (SoC) deiner EV-Batterie liefert.",
+          "hsem_house_power_includes_ev_charger_power": "Aktiviere dies, wenn der Hausverbrauchsleistungssensor die Leistung des EV-Ladegeräts bereits enthält.",
+          "hsem_ev_auto_full_negative_price": "Wenn aktiviert, wird das EV automatisch auf volle Ladeleistung gesetzt, sobald der Strompreis null oder negativ ist. Der vorherige Lademodus wird wiederhergestellt, sobald der Preis über null steigt.",
+          "hsem_ev_past_target_confidence_factor": "Konfidenzmultiplikator (0,0-1,0), der auf die Bewertung des vermiedenen zukünftigen Imports angewendet wird, wenn das EV über seinen Ziel-SoC hinaus geladen wird. Niedrigere Werte machen das EV im Vergleich zum Export von überschüssigem PV-Strom weniger konkurrenzfähig, um der Unsicherheit Rechnung zu tragen, ob das EV die zusätzliche Energie vor dem nächsten Ladevorgang tatsächlich benötigt. Standard 0,9."
+        },
+        "description": "Konfiguriere die EV-Ladegerät-Einstellungen für HSEM.",
+        "title": "EV-Ladegerät-Einstellungen (Optional)"
+      },
+      "ev_second": {
+        "data": {
+          "hsem_ev_second_allow_charge_past_target_soc": "Laden über Ziel-SoC hinaus für zweites EV erlauben (Erweitert)",
+          "hsem_ev_second_charger_force_max_discharge_power": "Zweites EV-Ladegerät maximale Entladeleistung erzwingen",
+          "hsem_ev_second_charger_max_discharge_power": "Zweites EV-Ladegerät maximale Entladeleistung",
+          "hsem_ev_second_charger_power": "Zweites EV-Ladegerät Leistungssensor",
+          "hsem_ev_second_charger_status": "Zweites EV-Ladegerät Statussensor",
+          "hsem_ev_second_connected": "Zweites EV verbunden Sensor",
+          "hsem_ev_second_soc": "Zweites EV-Ladezustand (SoC) Sensor",
+          "hsem_ev_second_past_target_confidence_factor": "Konfidenzfaktor für zweites EV Laden über Ziel-SoC hinaus (Erweitert)"
+        },
+        "data_description": {
+          "hsem_ev_second_allow_charge_past_target_soc": "Aktiviere diese Option, wenn du zulassen möchtest, dass das System die EV-Batterie auch nach Erreichen des Ziel-Ladezustands (SoC) weiter lädt. Dies kann in Szenarien nützlich sein, in denen du sicherstellen möchtest, dass das EV unabhängig von der Zieleinstellung vollständig geladen wird.",
+          "hsem_ev_second_charger_force_max_discharge_power": "Aktiviere dies, wenn du eine bestimmte maximale Entladeleistung für die Huawei-Batterien erzwingen möchtest, während das EV lädt.",
+          "hsem_ev_second_charger_max_discharge_power": "Lege die maximale Entladeleistung für die Huawei-Batterien fest, während das EV lädt.",
+          "hsem_ev_second_charger_power": "Wähle den Sensor, der den Stromverbrauch deines EV-Ladegeräts misst.",
+          "hsem_ev_second_charger_status": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV-Ladegerät aktiv ist (z. B. ein Schalter oder Sensor).",
+          "hsem_ev_second_connected": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV mit dem Ladegerät verbunden ist.",
+          "hsem_ev_second_soc": "Wähle den Sensor, der den aktuellen Ladezustand (SoC) deiner EV-Batterie liefert.",
+          "hsem_ev_second_past_target_confidence_factor": "Konfidenzmultiplikator (0,0-1,0), der auf die Bewertung des vermiedenen zukünftigen Imports angewendet wird, wenn das zweite EV über seinen Ziel-SoC hinaus geladen wird. Niedrigere Werte machen das EV im Vergleich zum Export von überschüssigem PV-Strom weniger konkurrenzfähig, um der Unsicherheit Rechnung zu tragen, ob das EV die zusätzliche Energie vor dem nächsten Ladevorgang tatsächlich benötigt. Standard 0,9."
+        },
+        "description": "Konfiguriere die Einstellungen für das zweite EV-Ladegerät für HSEM.",
+        "title": "Einstellungen für zweites EV-Ladegerät (Optional)"
+      },
+      "huawei_solar": {
+        "data": {
+          "hsem_batteries_charge_efficiency": "Batterie-Ladeeffizienz (%)",
+          "hsem_batteries_cycle_cost": "Batterie-Zykluskosten (pro kWh)",
+          "hsem_batteries_discharge_efficiency": "Batterie-Entladeeffizienz (%)",
+          "hsem_batteries_expected_cycles": "Erwartete Batteriezyklen",
+          "hsem_batteries_purchase_price": "Batterie-Kaufpreis",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Huawei-Batterien Nutzung von überschüssiger PV-Energie in TOU",
+          "hsem_huawei_solar_batteries_forcible_charge": "Batterie-Zwangsladezustand",
+          "hsem_huawei_solar_batteries_end_of_discharge_soc": "Huawei-Batterien Entladeschluss-SOC (%)",
+          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Huawei-Batterien Ladeabschaltkapazität (max. SoC %)",
+          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Huawei-Batterien Netzladeabschaltung SOC (%)",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Huawei-Batterien maximale Ladeleistung (W)",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Huawei-Batterien maximale Entladeleistung (W)",
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Huawei-Batterien maximale Netzladeleistung (W)",
+          "hsem_huawei_solar_batteries_charge_discharge_power": "Huawei Batterie Lade-/Entladeleistungssensor",
+          "hsem_huawei_solar_batteries_rated_capacity": "Batterie maximale Kapazität (Wh)",
+          "hsem_huawei_solar_batteries_state_of_capacity": "Huawei-Batterien Kapazitätszustand-Sensor",
+          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Huawei-Batterien TOU-Lade- und Entladezeiträume",
+          "hsem_huawei_solar_batteries_working_mode": "Huawei Solar-Batterien Arbeitsmodus-Sensor",
+          "hsem_huawei_solar_device_id_batteries": "Huawei-Batteriegerät",
+          "hsem_huawei_solar_device_id_batteries_2": "Huawei-Batteriegerät 2",
+          "hsem_huawei_solar_device_id_inverter_1": "Huawei-Wechselrichter 1 Gerät",
+          "hsem_huawei_solar_device_id_inverter_2": "Huawei-Wechselrichter 2 Gerät",
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei-Wechselrichter Wirkleistungssteuerung-Sensor"
+        },
+        "data_description": {
+          "hsem_batteries_charge_efficiency": "Gib die Ladeeffizienz deiner Batterie in Prozent an (0–100). Die in der Batterie gespeicherte Energie entspricht der eingehenden Energie multipliziert mit diesem Faktor. Typische Lithium-Batterien erreichen 95–98 %. Standard ist 98 %.",
+          "hsem_batteries_discharge_efficiency": "Gib die Entladeeffizienz deiner Batterie in Prozent an (0–100). Die an das Haus gelieferte Energie entspricht der entnommenen Batterieenergie multipliziert mit diesem Faktor. Typische Lithium-Batterien erreichen 95–98 %. Standard ist 98 %.",
+          "hsem_batteries_cycle_cost": "Optionale zusätzliche Kosten pro kWh für das Zyklieren der Batterie (pro kWh). Wird zusätzlich zur automatisch berechneten Abschreibungsschwelle addiert. Auf 0 setzen, um dich ausschließlich auf die Abschreibungssicherung zu verlassen. Beispiel: 0,02 bedeutet, dass der Planer 2 Cent zusätzliche Spanne pro zyklierter kWh benötigt, bevor er die Netzladung genehmigt.",
+          "hsem_batteries_expected_cycles": "Gib die erwartete Anzahl vollständiger Lade-/Entladezyklen über die Lebensdauer der Batterie ein. Wird verwendet, um die Abschreibungskosten pro kWh und den empfohlenen Mindestexportpreis zu berechnen. Typische LiFePO4-Batterien unterstützen 4000–8000 Zyklen.",
+          "hsem_batteries_purchase_price": "Gib den Gesamtkaufpreis deines Batteriesystems in deiner Landeswährung ein. Wird zusammen mit den erwarteten Zyklen und der nutzbaren Kapazität verwendet, um die Abschreibungskosten pro kWh und den empfohlenen Mindestexportpreis zu berechnen.",
+          "hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou": "Wähle den Sensor, der die Einstellung für die Nutzung überschüssiger PV-Energie in TOU-Zeiträumen liefert.",
+          "hsem_huawei_solar_batteries_forcible_charge": "Sensor, der den aktuellen Zwangslade-/Entladezustand anzeigt (z. B. Gestoppt, Entladung mit 5000 W für 60 Minuten)",
+          "hsem_huawei_solar_batteries_end_of_discharge_soc": "Gib den Entladeschluss-SOC-Prozentsatz für deine Huawei-Batterien an. Wenn die Batterie diesen SOC-Wert erreicht, stoppt sie die Entladung, um Tiefentladung und mögliche Schäden an der Batterie zu verhindern.",
+          "hsem_huawei_solar_batteries_charging_cutoff_capacity": "Wähle die Entität, die den maximalen Ladezustand (SoC) definiert, den die Batterie während des Ladens erreichen darf (Register STORAGE_CHARGING_CUTOFF_CAPACITY). Typischerweise 90–10 %. Wird von der SoC-Simulation als obere SoC-Grenze verwendet, sodass der Planer das Laden nie über dieses Limit hinaus plant.",
+          "hsem_huawei_solar_batteries_grid_charge_cutoff_soc": "Gib den Netzladeabschaltung-SOC-Prozentsatz für deine Huawei-Batterien an.",
+          "hsem_huawei_solar_batteries_maximum_charging_power": "Wähle den Sensor, der die maximale Ladeleistung für deine Huawei-Batterien in Watt (W) liefert.",
+          "hsem_huawei_solar_batteries_maximum_discharging_power": "Wähle den Sensor, der die maximale Entladeleistung für deine Huawei-Batterien liefert.",
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Wähle die Zahlenentität, die die maximale Netzladeleistungsgrenze (W) von Huawei festlegt. Wird vom Live-Sicherheitsbegrenzer für phasenbewusstes Laden (issue #831) geschrieben, um netzfinanziertes Laden unterhalb der Phasengrenze der Hauptsicherung zu halten. Optional — nur erforderlich, wenn phasenbewusstes Laden aktiviert ist.",
+          "hsem_huawei_solar_batteries_charge_discharge_power": "Wähle den Sensor, der die vorzeichenbehaftete momentane Batterie-Lade-/Entladeleistung meldet (positiv = Laden, negativ = Entladen). Wird vom Live-Sicherheitsbegrenzer für phasenbewusstes Laden (issue #831) benötigt, um Huaweis eigenen Beitrag aus der Live-Phasen-Momentaufnahme zu entfernen, bevor der Spielraum berechnet wird. Optional — nur erforderlich, wenn phasenbewusstes Laden aktiviert ist.",
+          "hsem_huawei_solar_batteries_rated_capacity": "Wähle den Sensor, der die gesamte Nennkapazität deiner Huawei-Batterien in Wattstunden (Wh) liefert.",
+          "hsem_huawei_solar_batteries_state_of_capacity": "Wähle den Sensor, der den Ladezustand (SOC) deiner Huawei-Batterien liefert.",
+          "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods": "Wähle den Sensor, der die Time-of-Use(TOU)-Lade- und Entladezeiträume für deine Huawei-Batterien definiert.",
+          "hsem_huawei_solar_batteries_working_mode": "Wähle den Sensor, der den aktuellen Arbeitsmodus deiner Huawei-Batterien anzeigt.",
+          "hsem_huawei_solar_device_id_batteries": "Wähle dein Huawei-Batteriegerät.",
+          "hsem_huawei_solar_device_id_batteries_2": "Wähle dein sekundäres Huawei-Batteriegerät, falls zutreffend.",
+          "hsem_huawei_solar_device_id_inverter_1": "Wähle dein primäres Huawei-Wechselrichtergerät.",
+          "hsem_huawei_solar_device_id_inverter_2": "Wähle dein sekundäres Huawei-Wechselrichtergerät, falls zutreffend.",
+          "hsem_huawei_solar_inverter_active_power_control": "Wähle den Sensor, der die Wirkleistungsabgabe deines Huawei-Wechselrichters steuert."
+        },
+        "description": "Konfiguriere den Arbeitsmodus für Huawei-Solarbatterien.",
+        "title": "Huawei Solar-Sensoren"
+      },
+      "battery_economics": {
+        "data": {
+          "hsem_batteries_purchase_price": "Batterie-Kaufpreis",
+          "hsem_batteries_expected_cycles": "Erwartete Batteriezyklen",
+          "hsem_batteries_cycle_cost": "Batterie-Zykluskosten (pro kWh)",
+          "hsem_batteries_capacity_loss_pct": "Batteriekapazitätsverlust am Lebensende (%)",
+          "hsem_batteries_charge_efficiency": "Batterie-Ladeeffizienz (%)",
+          "hsem_batteries_discharge_efficiency": "Batterie-Entladeeffizienz (%)",
+          "hsem_planner_hysteresis_enabled": "Hysterese auf Planebene",
+          "hsem_planner_hysteresis_absolute": "Absoluter Hysterese-Schwellenwert",
+          "hsem_planner_hysteresis_percentage": "Prozentualer Hysterese-Schwellenwert (%)",
+          "hsem_planner_window_hysteresis_minutes": "Hysterese-Haltezeit für Fenster (Minuten)"
+        },
+        "data_description": {
+          "hsem_batteries_purchase_price": "Gib den Gesamtkaufpreis deines Batteriesystems in deiner Landeswährung ein. Wird zusammen mit den erwarteten Zyklen und der nutzbaren Kapazität verwendet, um die Abschreibungskosten pro kWh und den empfohlenen Mindestexportpreis zu berechnen.",
+          "hsem_batteries_expected_cycles": "Gib die erwartete Anzahl vollständiger Lade-/Entladezyklen über die Lebensdauer der Batterie ein. Wird verwendet, um die Abschreibungskosten pro kWh und den empfohlenen Mindestexportpreis zu berechnen. Typische LiFePO4-Batterien unterstützen 4000–8000 Zyklen.",
+          "hsem_batteries_cycle_cost": "Optionale zusätzliche Kosten pro kWh für das Zyklieren der Batterie (pro kWh). Wird zusätzlich zur automatisch berechneten Abschreibungsschwelle addiert. Auf 0 setzen, um dich ausschließlich auf die Abschreibungssicherung zu verlassen. Beispiel: 0,02 bedeutet, dass der Planer 2 Cent zusätzliche Spanne pro zyklierter kWh benötigt, bevor er die Netzladung genehmigt.",
+          "hsem_batteries_capacity_loss_pct": "Erwarteter Kapazitätsverlust am Lebensende in Prozent. LiFePO4 erreicht typischerweise nach ~6000 Zyklen 80 % Kapazität (20 % Verlust). Der Standardwert von 30 % fügt eine Marge für kalendarische Alterung hinzu.",
+          "hsem_batteries_charge_efficiency": "Gib die Ladeeffizienz deiner Batterie in Prozent an (0–100). Die in der Batterie gespeicherte Energie entspricht der eingehenden Energie multipliziert mit diesem Faktor. Typische Lithium-Batterien erreichen 95–98 %. Standard ist 98 %.",
+          "hsem_batteries_discharge_efficiency": "Gib die Entladeeffizienz deiner Batterie in Prozent an (0–100). Die an das Haus gelieferte Energie entspricht der entnommenen Batterieenergie multipliziert mit diesem Faktor. Typische Lithium-Batterien erreichen 95–98 %. Standard ist 98 %.",
+          "hsem_planner_hysteresis_enabled": "Wenn aktiviert, behält der Planer den aktiven Kandidatenplan bei, sofern ein neuer Plan die Bewertung nicht um mehr als die konfigurierten Schwellenwerte verbessert. Verhindert Oszillation zwischen gleich bewerteten Strategien.",
+          "hsem_planner_hysteresis_absolute": "Minimale absolute Bewertungsverbesserung, die für einen Wechsel zu einem neuen Plan erforderlich ist. 0,00 deaktiviert den absoluten Schwellenwert. Die Bewertung verwendet dieselbe Währung wie deine Strompreise, sodass ein Wert von 0,01 mindestens 1 Cent/kWh-äquivalente Verbesserung vor einem Wechsel erfordert.",
+          "hsem_planner_hysteresis_percentage": "Minimale prozentuale Bewertungsverbesserung, die für einen Wechsel zu einem neuen Plan erforderlich ist. 0 % deaktiviert den prozentualen Schwellenwert. Der Standardwert von 5 % verhindert Flattern zwischen nahezu identischen Plänen.",
+          "hsem_planner_window_hysteresis_minutes": "Minimale Zeit (Minuten), die eine Empfehlung gehalten werden muss, bevor sie sich ändern kann. Verhindert schnelles Umschalten wie z. B. ev_smart_charging ↔ batteries_charge_solar. 0 deaktiviert die Funktion. Standard 10."
+        },
+        "description": "Konfiguriere Batteriewirtschaftlichkeitsparameter und Planer-Hysterese (Anti-Flattern).",
+        "title": "Batteriewirtschaftlichkeit & Hysterese"
+      },
+      "init": {
+        "data": {
+          "device_name": "Name",
+          "hsem_extended_attributes": "Erweiterte Attribute",
+          "hsem_read_only": "Nur Lesen",
+          "hsem_recommendation_interval_length": "Empfehlungsintervall-Länge",
+          "hsem_recommendation_interval_minutes": "Empfehlungsintervall-Minuten",
+          "hsem_update_interval": "Aktualisierungsintervall",
+          "hsem_verbose_logging": "Ausführliche Protokollierung"
+        },
+        "data_description": {
+          "device_name": "Gib einen eindeutigen Namen für dieses Gerät ein.",
+          "hsem_extended_attributes": "Aktiviere diese Option, um zusätzliche Diagnoseattribute auf der Sensor-Entität bereitzustellen.",
+          "hsem_read_only": "Aktiviere diese Option, um die Integration in den Nur-Lese-Modus zu versetzen und das Senden von Befehlen an Geräte zu verhindern.",
+          "hsem_recommendation_interval_length": "Die Anzahl der Empfehlungsintervalle, die bei der Berechnung der optimalen Batterienutzung berücksichtigt werden.",
+          "hsem_recommendation_interval_minutes": "Die Länge in Minuten jedes Empfehlungsintervalls, das zur Berechnung der optimalen Batterienutzung verwendet wird.",
+          "hsem_update_interval": "Das Aktualisierungsintervall in Minuten für den Arbeitsmodus-Sensor.",
+          "hsem_verbose_logging": "Aktiviere ausführliche Debug-Protokollierung zu Fehlerbehebungszwecken."
+        },
+        "description": "Aktualisiere die Einstellungen für HSEM",
+        "title": "Huawei Solar Energy Management aktualisieren"
+      },
+      "batteries_schedules": {
+        "data": {
+          "hsem_batteries_enable_batteries_schedule_1": "Batterie-Zeitplan 1 aktivieren",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Batterie-Zeitplan 1 Endzeit",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Batterie-Zeitplan 1 Startzeit",
+          "hsem_batteries_enable_batteries_schedule_2": "Batterie-Zeitplan 2 aktivieren",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Batterie-Zeitplan 2 Endzeit",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Batterie-Zeitplan 2 Startzeit",
+          "hsem_batteries_enable_batteries_schedule_3": "Batterie-Zeitplan 3 aktivieren",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Batterie-Zeitplan 3 Endzeit",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Batterie-Zeitplan 3 Startzeit"
+        },
+        "data_description": {
+          "hsem_batteries_enable_batteries_schedule_1": "Aktiviere oder deaktiviere den ersten Batterie-Entladezeitplan.",
+          "hsem_batteries_enable_batteries_schedule_1_end": "Lege die Endzeit für den ersten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_1_start": "Lege die Startzeit für den ersten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_2": "Aktiviere oder deaktiviere den zweiten Batterie-Entladezeitplan.",
+          "hsem_batteries_enable_batteries_schedule_2_end": "Lege die Endzeit für den zweiten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_2_start": "Lege die Startzeit für den zweiten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_3": "Aktiviere oder deaktiviere den dritten Batterie-Entladezeitplan.",
+          "hsem_batteries_enable_batteries_schedule_3_end": "Lege die Endzeit für den dritten Batterie-Entladezeitplan fest.",
+          "hsem_batteries_enable_batteries_schedule_3_start": "Lege die Startzeit für den dritten Batterie-Entladezeitplan fest."
+        },
+        "description": "Konfiguriere bis zu drei Batterie-Entladezeitplan-Fenster, jeweils mit Ein-/Aus-Schalter, Startzeit und Endzeit. Zeitpläne legen fest, wann die Batterie entladen darf, um Verbrauchsspitzen zu decken oder ins Netz einzuspeisen.",
+        "title": "Batterie-Entladezeitpläne"
+      },
+      "months": {
+        "data": {
+          "hsem_months_winter": "Als Winter/Frühling betrachtete Monate"
+        },
+        "data_description": {
+          "hsem_months_winter": "Wähle die Monate, die für die saisonale Anpassung des Arbeitsmodus als Winter/Frühling gelten sollen. Du kannst mehrere Monate auswählen. Die Auswahl aller 12 Monate ist zulässig — dies hält den Winter/Frühling-Modus (TOU) ganzjährig aktiv. Die Auswahl aller 12 Monate ist zulässig — dies hält den Winter/Frühling-Modus (TOU) ganzjährig aktiv."
+        },
+        "description": "Konfiguriere die Monate, die als Winter/Frühling gelten. In diesen Monaten priorisiert das System das Laden der Batterien aus Netzenergie, um während Zeiten geringerer Solarproduktion ausreichende Batteriestände sicherzustellen. Die übrigen Monate gelten als Sommer/Herbst-Monate.",
+        "title": "Winter/Frühling-Monate"
+      },
+      "power": {
+        "data": {
+          "hsem_house_consumption_power": "Hausverbrauchsleistungssensor",
+          "hsem_main_fuse_amps": "Hauptsicherung Nennwert (Ampere)",
+          "hsem_main_fuse_phases": "Hauptsicherung Phasenanzahl",
+          "hsem_max_grid_export_power_kw": "Maximale Netzeinspeiseleistung (kW)",
+          "hsem_solar_production_power": "Solarproduktionsleistungssensor",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Stromzähler Phase A Wirkleistungssensor",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Stromzähler Phase B Wirkleistungssensor",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Stromzähler Phase C Wirkleistungssensor",
+          "hsem_phase_aware_charging_enabled": "Live-Sicherheitsbegrenzer für phasenbewusstes Laden aktivieren"
+        },
+        "data_description": {
+          "hsem_house_consumption_power": "Wähle den Sensor, der den Gesamtstromverbrauch deines Hauses misst.",
+          "hsem_main_fuse_amps": "Der Nennwert der Hauptsicherung/des Hauptschalters deines Hauses in Ampere (25, 35 usw.). Der MILP-Optimierer berücksichtigt diese Grenze bei der Planung von Batterie- und EV-Ladung. Auf 0 setzen, um zu deaktivieren.",
+          "hsem_main_fuse_phases": "Die Phasenanzahl deiner elektrischen Installation. Einphasige Installationen MÜSSEN auf 1 gesetzt werden — die Einstellung 3 bei einer einphasigen Installation macht den Sicherungsschutz 3-mal zu großzügig und bietet keine echte Sicherheitsgrenze. Standard ist 3 (dreiphasig).",
+          "hsem_max_grid_export_power_kw": "Maximale Netzeinspeiseleistung in kW — die Exportobergrenze des Netzbetreibers/Wechselrichters für exportbeschränkte Anschlüsse (z. B. 5 kW). Der MILP-Planer plant nie einen Export über diese Grenze hinaus, sodass Batterieexport und PV-Export korrekt um dieselbe Obergrenze konkurrieren. Auf 0 setzen, um zu deaktivieren.",
+          "hsem_solar_production_power": "Wähle den Sensor, der die von deinen Solarmodulen erzeugte Leistung misst.",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Wähle den Sensor, der die Live-Wirkleistung auf Phase A deines Huawei-Stromzählers misst. Nur erforderlich, wenn phasenbewusstes Laden aktiviert ist.",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Wähle den Sensor, der die Live-Wirkleistung auf Phase B deines Huawei-Stromzählers misst. Nur erforderlich, wenn phasenbewusstes Laden aktiviert ist.",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Wähle den Sensor, der die Live-Wirkleistung auf Phase C deines Huawei-Stromzählers misst. Nur erforderlich, wenn phasenbewusstes Laden aktiviert ist.",
+          "hsem_phase_aware_charging_enabled": "Aktiviere eine Live-Sicherheitsprüfung unmittelbar vor jedem Huawei-Netzlade-Hardware-Schreibvorgang (issue #831). Verwendet die drei unten stehenden Stromzähler-Phasensensoren sowie die Huawei-Netzladeleistungs-Obergrenze-Entität (Schritt huawei_solar), um netzfinanziertes Laden so zu begrenzen, dass keine Phase die Hauptsicherungsgrenze überschreitet, selbst wenn sich die Last nach der Planlösung geändert hat. Erfordert main_fuse_phases = 3 und alle vier konfigurierten Entitäten. Standardmäßig deaktiviert — vollständig abwärtskompatibel."
+        },
+        "description": "Wähle Leistungssensoren für HSEM aus.",
+        "title": "Leistungssensoren"
+      },
+      "solcast": {
+        "data": {
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Solcast PV-Prognose bevorzugte Prognosewahrscheinlichkeit",
+          "hsem_solcast_pv_forecast_forecast_today": "Solcast PV-Prognose heute Sensor",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Solcast PV-Prognose morgen Sensor"
+        },
+        "data_description": {
+          "hsem_solcast_pv_forecast_forecast_likelihood": "Wähle die bevorzugte Prognosewahrscheinlichkeit für Solcast-PV-Prognosen.",
+          "hsem_solcast_pv_forecast_forecast_today": "Wähle den Sensor, der die heutige PV-Produktionsprognose von Solcast liefert.",
+          "hsem_solcast_pv_forecast_forecast_tomorrow": "Wähle den Sensor, der die morgige PV-Produktionsprognose von Solcast liefert."
+        },
+        "description": "Wähle Solcast-Prognosesensoren aus.",
+        "title": "Solcast-Sensoren"
+      },
+      "weighted_values": {
+        "data": {
+          "hsem_house_consumption_energy_weight_14d": "Hausverbrauchsenergie-Gewichtung 14 Tage",
+          "hsem_house_consumption_energy_weight_1d": "Hausverbrauchsenergie-Gewichtung 1 Tag",
+          "hsem_house_consumption_energy_weight_3d": "Hausverbrauchsenergie-Gewichtung 3 Tage",
+          "hsem_house_consumption_energy_weight_7d": "Hausverbrauchsenergie-Gewichtung 7 Tage"
+        },
+        "data_description": {
+          "hsem_house_consumption_energy_weight_14d": "Gib den Gewichtungsprozentsatz für den Hausverbrauch der letzten 14 Tage an.",
+          "hsem_house_consumption_energy_weight_1d": "Gib den Gewichtungsprozentsatz für den Hausverbrauch des letzten 1 Tages an.",
+          "hsem_house_consumption_energy_weight_3d": "Gib den Gewichtungsprozentsatz für den Hausverbrauch der letzten 3 Tage an.",
+          "hsem_house_consumption_energy_weight_7d": "Gib den Gewichtungsprozentsatz für den Hausverbrauch der letzten 7 Tage an."
+        },
+        "description": "Konfiguriere die gewichteten Werte für den Hausverbrauch, um deinen durchschnittlichen Stromverbrauch zu schätzen. Das System berechnet den durchschnittlichen Verbrauch für jede Stunde über 1, 3, 7 und 14 Tage. Diese Durchschnittswerte werden dann gewichtet, um eine kombinierte, gewichtete Schätzung zu liefern. Dieser Ansatz hilft, Anomalien auszugleichen, etwa einen ungewöhnlich hohen Verbrauch an einem einzelnen Tag aufgrund niedriger Preise, und liefert eine zuverlässige Vorhersage deines erwarteten Stromverbrauchs in bestimmten Zeitintervallen (z. B. zwischen 16:00 und 17:00 Uhr).",
+        "title": "Gewichtete Werte"
+      },
+      "energy_and_ml": {
+        "data": {
+          "hsem_grid_import_energy_entity": "Netzimport-Energiesensor",
+          "hsem_grid_export_energy_entity": "Netzeinspeisung-Energiesensor",
+          "hsem_pv_energy_entity": "PV-Produktions-Energiesensor",
+          "hsem_ml_consumption_enabled": "ML-Verbrauchsprognose aktivieren",
+          "hsem_ml_consumption_energy_entity": "Hausverbrauchs-Energiesensor (ohne Batterie & EV)",
+          "hsem_ml_consumption_history_days": "ML-Verlaufstage",
+          "hsem_ml_consumption_net_consumption": "Nettoverbrauch verwenden (Import - Export)",
+          "hsem_ml_consumption_temperature_entity": "Außentemperatursensor",
+          "hsem_ml_consumption_sequential": "Sequenzielle Vorhersage (Lag-Feature)"
+        },
+        "data_description": {
+          "hsem_grid_import_energy_entity": "Optional — kumulativer Netzimport-Energiezähler (kWh).",
+          "hsem_grid_export_energy_entity": "Optional — kumulativer Netzeinspeisung-Energiezähler (kWh).",
+          "hsem_pv_energy_entity": "Optional — kumulativer PV-Produktions-Energiezähler (kWh).",
+          "hsem_ml_consumption_enabled": "Wenn aktiviert, wird Ridge-Regression auf Basis der Recorder-Historie anstelle gleitender Durchschnitte verwendet. Erfordert mindestens 14 Tage Historie.",
+          "hsem_ml_consumption_energy_entity": "Kumulativer Hausverbrauchs-Energiezähler (kWh). Muss Batterie UND EV-Ladung ausschließen — verwende einen Sensor vor beiden. Fällt auf Netzimport zurück, falls nicht gesetzt.",
+          "hsem_ml_consumption_history_days": "Tage der Recorder-Historie für das ML-Training (7–90).",
+          "hsem_ml_consumption_net_consumption": "Ziehe Netzeinspeisung vom Import ab, um den Nettohausverbrauch zu erhalten.",
+          "hsem_ml_consumption_temperature_entity": "Optional — Außentemperatursensor in °C. Verwende einen Außensensor, keinen Innenraumthermostat.",
+          "hsem_ml_consumption_sequential": "Gibt jede Slot-Vorhersage als Eingabe für die nächste weiter. Erfasst untertägige Dynamik (z. B. wirken sich Kochspitzen weiter aus)."
+        },
+        "description": "Konfiguriere Energiezähler und aktiviere die ML-basierte Verbrauchsprognose.",
+        "title": "Energie & ML"
+      },
+      "batteries_wait_mode": {
+        "data": {
+          "hsem_batteries_wait_mode_behavior": "Wartemodus-Verhalten"
+        },
+        "data_description": {
+          "hsem_batteries_wait_mode_behavior": "Wähle, wie sich die Batterie verhält, wenn HSEM den Wartemodus auswählt. Strenges Warten hält die Batterie inaktiv. Eigenverbrauch mit Reserve erlaubt dem Haus, überschüssige Batterieenergie oberhalb der vom Planer benötigten Reserve zu nutzen, wodurch unnötiger Netzimport reduziert wird."
+        },
+        "description": "Konfiguriere, wie sich die Batterie im Wartemodus verhält.",
+        "title": "Batterie-Wartemodus-Verhalten"
+      }
+    }
+  },
+  "selector": {
+    "months": {
+      "options": {
+        "1": "Januar",
+        "10": "Oktober",
+        "11": "November",
+        "12": "Dezember",
+        "2": "Februar",
+        "3": "März",
+        "4": "April",
+        "5": "Mai",
+        "6": "Juni",
+        "7": "Juli",
+        "8": "August",
+        "9": "September"
+      }
+    },
+    "update_interval_minutes": {
+      "options": {
+        "1": "1 Minute",
+        "10": "10 Minuten",
+        "15": "15 Minuten",
+        "30": "30 Minuten",
+        "45": "45 Minuten",
+        "5": "5 Minuten",
+        "60": "60 Minuten"
+      }
+    },
+    "pv_estimate_likelihood": {
+      "options": {
+        "pv_estimate": "50 % Wahrscheinlichkeit",
+        "pv_estimate10": "10 % Wahrscheinlichkeit",
+        "pv_estimate90": "90 % Wahrscheinlichkeit"
+      }
+    },
+    "update_interval_length": {
+      "options": {
+        "12": "12 Stunden",
+        "24": "24 Stunden",
+        "36": "36 Stunden",
+        "48": "48 Stunden",
+        "72": "72 Stunden"
+      }
+    },
+    "batteries_wait_mode_behavior": {
+      "options": {
+        "strict": "Strenges Warten — Batterie bleibt inaktiv",
+        "self_consumption_with_reserve": "Eigenverbrauch mit Reserve — überschüssige Energie oberhalb der Planer-Reserve nutzen"
+      }
+    },
+    "ev_charger_phase_topology": {
+      "options": {
+        "single_phase": "Einphasig oder unbekannt (sicherer Standard)",
+        "three_phase_balanced": "Dreiphasig, ausgeglichen über L1/L2/L3"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "applier_status": {
+        "name": "Anwendungsstatus",
+        "state": {
+          "ok": "OK",
+          "unverified": "Nicht verifiziert",
+          "failed": "Fehlgeschlagen",
+          "skipped": "Übersprungen",
+          "pending": "Ausstehend"
+        }
+      },
+      "battery_soc": {
+        "name": "Batterie-Ladezustand"
+      },
+      "daily_plan_vs_actual": {
+        "name": "Täglicher Plan vs. Tatsächlich"
+      },
+      "degraded_mode": {
+        "name": "Systemzustand",
+        "state": {
+          "ok": "OK",
+          "degraded": "Eingeschränkt",
+          "error": "Fehler"
+        }
+      },
+      "ev_charger_calculated_power": {
+        "name": "EV-Ladegerät berechnete Leistung"
+      },
+      "ev_charger_current_limit": {
+        "name": "EV-Ladegerät Stromgrenze"
+      },
+      "ev_charging": {
+        "name": "EV-Ladung aktiv",
+        "state": {
+          "on": "Ein",
+          "off": "Aus"
+        }
+      },
+      "ev_optimal_charging_plan": {
+        "name": "EV optimaler Ladeplan",
+        "state": {
+          "charging": "Lädt",
+          "fully_charged": "Vollständig geladen",
+          "not_connected": "Nicht verbunden",
+          "smart_charging_disabled": "Smart-Charging deaktiviert",
+          "waiting": "Wartet",
+          "unavailable": "Nicht verfügbar"
+        }
+      },
+      "ev_second_charger_calculated_power": {
+        "name": "EV 2 Ladegerät berechnete Leistung"
+      },
+      "ev_second_charger_current_limit": {
+        "name": "EV 2 Ladegerät Stromgrenze"
+      },
+      "ev_second_optimal_charging_plan": {
+        "name": "EV 2 optimaler Ladeplan",
+        "state": {
+          "charging": "Lädt",
+          "fully_charged": "Vollständig geladen",
+          "not_connected": "Nicht verbunden",
+          "smart_charging_disabled": "Smart-Charging deaktiviert",
+          "waiting": "Wartet",
+          "unavailable": "Nicht verfügbar"
+        }
+      },
+      "force_mode": {
+        "name": "Erzwungener Arbeitsmodus",
+        "state": {
+          "auto": "Auto",
+          "batteries_charge_grid": "Laden vom Netz",
+          "batteries_charge_solar": "Laden von Solar",
+          "ev_smart_charging": "EV Smart-Charging",
+          "batteries_discharge_mode": "Entladen",
+          "force_batteries_discharge": "Entladung erzwingen",
+          "force_export": "Export erzwingen",
+          "batteries_wait_mode": "Warten"
+        }
+      },
+      "forecast_accuracy": {
+        "name": "Prognosegenauigkeit"
+      },
+      "hardware_writes": {
+        "name": "Hardware-Schreibvorgänge",
+        "state": {
+          "allowed": "Erlaubt",
+          "blocked": "Blockiert"
+        }
+      },
+      "last_updated": {
+        "name": "Zuletzt aktualisiert"
+      },
+      "missing_entities": {
+        "name": "Fehlende Eingabeentitäten"
+      },
+      "net_consumption": {
+        "name": "Nettoverbrauch"
+      },
+      "next_update": {
+        "name": "Nächste Aktualisierung"
+      },
+      "plan_explanation": {
+        "name": "Planstrategie"
+      },
+      "read_only": {
+        "name": "Nur-Lese-Modus",
+        "state": {
+          "on": "Ein",
+          "off": "Aus"
+        }
+      },
+      "recommendation_interval": {
+        "name": "Empfehlungsintervall"
+      },
+      "update_interval": {
+        "name": "Aktualisierungsintervall"
+      },
+      "working_mode": {
+        "name": "Arbeitsmodus-Sensor",
+        "state": {
+          "time_passed": "Zeit verstrichen",
+          "missing_input_entities": "Fehlende Eingabeentitäten",
+          "batteries_charge_grid": "Laden vom Netz",
+          "batteries_charge_solar": "Laden von Solar",
+          "ev_smart_charging": "EV Smart-Charging",
+          "batteries_discharge_mode": "Entladen",
+          "force_batteries_discharge": "Entladung erzwingen",
+          "force_export": "Export erzwingen",
+          "batteries_wait_mode": "Warten"
+        }
+      },
+      "effective_discharge_floor": {
+        "name": "Effektive Entladeuntergrenze"
+      },
+      "ocpp_charger_status": {
+        "name": "OCPP-Ladegerät Status"
+      },
+      "ocpp_charger_power": {
+        "name": "OCPP-Ladegerät Leistung"
+      },
+      "ocpp_charger_info": {
+        "name": "OCPP-Ladegerät Info"
+      },
+      "ocpp_charger_sessions": {
+        "name": "OCPP-Ladegerät Sitzungen"
+      },
+      "export_income": {
+        "name": "Exporterlös"
+      },
+      "import_cost": {
+        "name": "Netzimportkosten"
+      },
+      "net_grid_balance": {
+        "name": "Netto-Netzbilanz"
+      },
+      "prediction_accuracy": {
+        "name": "Vorhersagegenauigkeit"
+      },
+      "pv_curtailment": {
+        "name": "PV-Abregelung"
+      },
+      "savings_tracker": {
+        "name": "Ersparnis-Tracker"
+      },
+      "solar_confidence": {
+        "name": "Solarprognose-Konfidenz"
+      },
+      "ocpp_second_charger_status": {
+        "name": "OCPP-Ladegerät 2 Status"
+      },
+      "ocpp_second_charger_power": {
+        "name": "OCPP-Ladegerät 2 Leistung"
+      },
+      "ocpp_second_charger_info": {
+        "name": "OCPP-Ladegerät 2 Info"
+      },
+      "ocpp_second_charger_sessions": {
+        "name": "OCPP-Ladegerät 2 Sitzungen"
+      }
+    },
+    "switch": {
+      "read_only": {
+        "name": "Nur-Lese-Modus"
+      },
+      "extended_attributes": {
+        "name": "Erweiterte Attribute"
+      },
+      "verbose_logging": {
+        "name": "Ausführliche Protokollierung"
+      },
+      "batteries_schedule_1": {
+        "name": "Batterie-Zeitplan 1"
+      },
+      "batteries_schedule_2": {
+        "name": "Batterie-Zeitplan 2"
+      },
+      "batteries_schedule_3": {
+        "name": "Batterie-Zeitplan 3"
+      },
+      "ev_force_discharge": {
+        "name": "EV maximale Entladeleistung erzwingen"
+      },
+      "ev_smart_charging": {
+        "name": "EV Smart-Charging"
+      },
+      "ev_force_charge_now": {
+        "name": "EV Laden jetzt erzwingen"
+      },
+      "ev_second_smart_charging": {
+        "name": "EV 2 Smart-Charging"
+      },
+      "ev_second_force_charge_now": {
+        "name": "EV 2 Laden jetzt erzwingen"
+      },
+      "ml_consumption": {
+        "name": "ML-Verbrauchsprognose"
+      },
+      "ml_sequential": {
+        "name": "ML-sequenzielle Vorhersage"
+      },
+      "dynamic_discharge_floor": {
+        "name": "Dynamische Entladeuntergrenze"
+      },
+      "ev_auto_full_negative_price": {
+        "name": "EV Auto-Vollladen bei negativem Preis"
+      }
+    },
+    "select": {
+      "force_working_mode": {
+        "name": "Erzwungener Arbeitsmodus"
+      },
+      "pv_estimate_likelihood": {
+        "name": "Solcast PV-Schätzung Wahrscheinlichkeit"
+      }
+    },
+    "number": {
+      "charge_efficiency": {
+        "name": "Batterie-Ladeeffizienz"
+      },
+      "discharge_efficiency": {
+        "name": "Batterie-Entladeeffizienz"
+      },
+      "ev_target_soc": {
+        "name": "EV Ziel-SoC"
+      },
+      "ev_second_target_soc": {
+        "name": "EV 2 Ziel-SoC"
+      }
+    },
+    "time": {
+      "schedule_1_start": {
+        "name": "Batterie-Entladezeitplan 1 Start"
+      },
+      "schedule_1_end": {
+        "name": "Batterie-Entladezeitplan 1 Ende"
+      },
+      "schedule_2_start": {
+        "name": "Batterie-Entladezeitplan 2 Start"
+      },
+      "schedule_2_end": {
+        "name": "Batterie-Entladezeitplan 2 Ende"
+      },
+      "schedule_3_start": {
+        "name": "Batterie-Entladezeitplan 3 Start"
+      },
+      "schedule_3_end": {
+        "name": "Batterie-Entladezeitplan 3 Ende"
+      },
+      "ev_deadline": {
+        "name": "EV Ladefrist"
+      },
+      "ev_second_deadline": {
+        "name": "EV 2 Ladefrist"
+      }
+    }
+  },
+  "services": {
+    "force_recalculation": {
+      "name": "Neuberechnung erzwingen",
+      "description": "Erzwingt, dass der HSEM-Koordinator sofort einen vollständigen Neuberechnungszyklus ausführt."
+    },
+    "set_temporary_override": {
+      "name": "Temporäre Übersteuerung festlegen",
+      "description": "Übersteuert vorübergehend den automatischen Planer, indem ein bestimmter Arbeitsmodus erzwungen wird.",
+      "fields": {
+        "working_mode": {
+          "name": "Arbeitsmodus",
+          "description": "Der zu erzwingende Arbeitsmodus. Muss einer der unterstützten Übersteuerungsmodi sein."
+        }
+      }
+    },
+    "clear_override": {
+      "name": "Übersteuerung löschen",
+      "description": "Löscht jede aktive temporäre Arbeitsmodus-Übersteuerung und kehrt zur automatischen Planersteuerung zurück."
+    },
+    "export_diagnostics": {
+      "name": "Diagnose exportieren",
+      "description": "Exportiert einen strukturierten Diagnose-Dump für die HSEM-Integration mit allen geschwärzten Entitäts-IDs."
+    },
+    "create_dashboard": {
+      "name": "Dashboard erstellen",
+      "description": "Erstellt oder aktualisiert das HSEM-Lovelace-Dashboard. Setze force auf true, um zu überschreiben."
+    }
+  }
+}
