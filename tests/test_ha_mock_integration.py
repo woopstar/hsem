@@ -235,6 +235,9 @@ def make_bare_coordinator(
     coord._data_quality = DataQuality()
     coord._ev_charging_plan = None
     coord._ev_second_charging_plan = None
+    coord._ev_soc_economics = None
+    coord._ev_second_soc_economics = None
+    coord._ev_soc_economics_last_computed = None
 
     from custom_components.hsem.custom_sensors.config_reader import build_sensor_config
 
@@ -776,7 +779,13 @@ class TestDryRunCycle:
         release_second_solve = asyncio.Event()
         outputs: list[PlannerOutput] = []
 
-        async def staged_executor(_func: Any, *_args: Any) -> PlannerOutput:
+        async def staged_executor(_func: Any, *_args: Any) -> Any:
+            # Only the main run_planner() solve is staged/blocking here; any
+            # other executor job (e.g. the EV SoC economics recompute) runs
+            # through immediately, like a real executor would.
+            if getattr(_func, "__name__", None) != "run_planner":
+                return _func(*_args)
+
             solve_number = len(outputs) + 1
             if solve_number == 1:
                 first_solve_started.set()

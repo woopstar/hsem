@@ -72,6 +72,46 @@ def get_ev_second_optimal_charging_plan_sensor_entity_id() -> str:
     return f"sensor.{s(f'{DOMAIN}_ev_second_optimal_charging_plan')}"
 
 
+# EV SoC Economics Sensor
+def get_ev_soc_economics_sensor_name() -> str:
+    """Return the display name for the EV SoC economics sensor."""
+    return "EV SoC Economics"
+
+
+def get_ev_soc_economics_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the EV SoC economics sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_ev_soc_economics"
+
+
+def get_ev_soc_economics_sensor_entity_id() -> str:
+    """Return the entity_id for the EV SoC economics sensor."""
+    return f"sensor.{s(f'{DOMAIN}_ev_soc_economics')}"
+
+
+# EV Second SoC Economics Sensor
+def get_ev_second_soc_economics_sensor_name() -> str:
+    """Return the display name for the second EV SoC economics sensor."""
+    return "EV 2 SoC Economics"
+
+
+def get_ev_second_soc_economics_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the second EV SoC economics sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_ev_second_soc_economics"
+
+
+def get_ev_second_soc_economics_sensor_entity_id() -> str:
+    """Return the entity_id for the second EV SoC economics sensor."""
+    return f"sensor.{s(f'{DOMAIN}_ev_second_soc_economics')}"
+
+
 # EV Charger Calculated Power Sensor
 def get_ev_charger_calculated_power_sensor_name() -> str:
     """Return the display name for the EV charger calculated power sensor."""
