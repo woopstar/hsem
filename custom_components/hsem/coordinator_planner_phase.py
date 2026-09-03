@@ -194,6 +194,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                 async_log("debug", "[planner] %s", warning)
 
             self._current_required_battery = planner_output.required_capacity_kwh
+            self._current_wait_mode_reserve = planner_output.wait_mode_reserve_kwh
             self._data_quality = replace(
                 planner_output.data_quality,
                 load_forecast_ready=True,
@@ -223,6 +224,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
 
             planner_output = deepcopy(self._last_planner_output)
             self._current_required_battery = planner_output.required_capacity_kwh
+            self._current_wait_mode_reserve = planner_output.wait_mode_reserve_kwh
             self._data_quality = replace(
                 planner_output.data_quality,
                 load_forecast_ready=True,

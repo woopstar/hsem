@@ -416,6 +416,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             "_window_hys_previous_rec",
             "_window_hys_previous_slot_start",
             "_current_required_battery",
+            "_current_wait_mode_reserve",
             "_plan_explanation",
             "_data_quality",
             "_ev_charging_plan",
@@ -583,6 +584,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 self._batteries_schedules_remaining_capacity_needed
             ),
             current_required_battery=self._current_required_battery,
+            current_wait_mode_reserve=self._current_wait_mode_reserve,
             state=state,
             last_updated=last_updated,
             next_update=self._next_update,

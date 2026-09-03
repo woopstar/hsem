@@ -203,6 +203,63 @@ def calculate_required_battery_until_solar(
     return result
 
 
+def calculate_required_battery_for_plan(
+    slots: list[PlannedSlot],
+    now: datetime,
+    current_capacity: float,
+) -> float | None:
+    """Derive the wait-mode reserve from the selected plan's SoC trajectory.
+
+    Unlike :func:`calculate_required_battery_until_solar`, which stops at the
+    first slot with *any* forecast PV surplus regardless of size, this reads
+    the already-simulated SoC trajectory of the *selected* plan
+    (``slot.estimated_battery_capacity_kwh``, populated by
+    :func:`~custom_components.hsem.planner.soc_simulation.simulate_soc` for
+    the winning candidate) and returns how far that trajectory dips below
+    ``current_capacity`` before the plan's next slot with an actual, solved
+    battery charge (grid or solar) — not just a forecast surplus. A small or
+    short-lived forecast surplus that the plan does not actually charge from
+    does not end the scan early, so the reserve still protects a later
+    planned discharge.
+
+    Slots are sorted by start time before scanning, so calling code does not
+    need to guarantee chronological order.
+
+    Args:
+        slots: The selected plan's slots (already SoC-simulated).
+        now: Timezone-aware current datetime.
+        current_capacity: Currently available battery energy in kWh.
+
+    Returns:
+        Required reserve in kWh, or ``None`` when no future slots exist and
+        the reserve cannot be derived — callers should fall back to strict
+        Wait behaviour in that case.
+    """
+    future_slots = sorted(
+        (s for s in slots if as_tz(s.end, now.tzinfo) > now),
+        key=lambda s: s.start,
+    )
+    if not future_slots:
+        return None
+
+    min_capacity = current_capacity
+    for slot in future_slots:
+        min_capacity = min(min_capacity, slot.estimated_battery_capacity_kwh)
+        if slot.batteries_charged_kwh > 1e-9:
+            break
+
+    result = round(max(current_capacity - min_capacity, 0.0), 3)
+    log_planner(
+        "debug",
+        "[disch] calculate_required_battery_for_plan  current=%.3f  "
+        "min_planned=%.3f  result=%.3f",
+        current_capacity,
+        min_capacity,
+        result,
+    )
+    return result
+
+
 def apply_excess_export(
     slots: list[PlannedSlot],
     now: datetime,

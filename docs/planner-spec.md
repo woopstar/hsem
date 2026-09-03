@@ -2041,6 +2041,48 @@ TOU; self-consumption-with-reserve still applies when unheld) and
 `ev_smart_charging` (which otherwise always executes as MSC to retain
 unexpected solar).
 
+### Wait-mode self-consumption reserve (issue #914)
+
+The **EV discharge-cap SoC guard** above and `apply_excess_export()` both use
+`current_required_battery_kwh`, derived from
+`calculate_required_battery_until_solar()` (`planner/discharge_scheduler.py`):
+it scans forward from `now` and accumulates positive net consumption **until
+the first slot with any forecast PV surplus** (`estimated_net_consumption_kwh
+< 0`), regardless of how small or short-lived that surplus is, or whether the
+selected plan can actually rely on it.
+
+The `batteries_wait_mode` self-consumption gate (the two usages described
+under "Wait Mode Self-Consumption with Reserve" — the MSC-vs-TOU decision and
+the discharge-cap computation) uses a **separate** reserve,
+`wait_mode_reserve_kwh`, computed by `calculate_required_battery_for_plan()`
+from the **selected** plan's own already-simulated SoC trajectory instead:
+
+```text
+for each future slot (chronological order, end > now):
+    min_capacity = min(min_capacity, slot.estimated_battery_capacity_kwh)
+    if slot.batteries_charged_kwh > 0:  # a genuine solved charge, not a
+        break                           # forecast surplus signal
+reserve = max(current_capacity - min_capacity, 0)
+```
+
+This protects the battery down to the deepest point the **winning
+candidate's** SoC simulation actually dips to before its own next solved
+charge (grid or solar) — a small forecast surplus slot that the plan does not
+actually charge from no longer truncates the reserve early. When the plan
+has no future charge anywhere in the horizon, the scan runs to the horizon
+end and the reserve naturally covers (up to) the full current capacity,
+which forces strict Wait behaviour via the normal `surplus <= 0` path — no
+special-cased fallback is needed for that case.
+
+`wait_mode_reserve_kwh` is `None` when it cannot be derived (no future slots
+in the horizon). The applier treats `None` as "fall back to strict Wait":
+`self_consumption_with_reserve` self-consumption is never enabled without a
+reliable reserve value.
+
+`calculate_required_battery_until_solar()` and `current_required_battery_kwh`
+are otherwise **unchanged** — they continue to gate the EV discharge-cap SoC
+guard and `apply_excess_export()` exactly as before.
+
 ### Live phase-aware grid-charge safety limiter (issue #831)
 
 `custom_sensors/phase_charge_limiter.py::build_phase_aware_charge_commands()`

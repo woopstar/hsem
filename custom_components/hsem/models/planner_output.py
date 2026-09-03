@@ -35,6 +35,21 @@ class PlannerOutput:
             slot is found.
         battery_soc_at_end:
             Estimated battery SoC (%) at the end of the planning horizon.
+        required_capacity_kwh:
+            Energy required until the first forecast solar-surplus slot
+            (``calculate_required_battery_until_solar``).  Used by the
+            excess-export scheduling pass and the applier's EV discharge-cap
+            SoC guard.  Not used to gate wait-mode self-consumption — see
+            ``wait_mode_reserve_kwh``.
+        wait_mode_reserve_kwh:
+            Reserve derived from the *selected* plan's own simulated SoC
+            trajectory (``calculate_required_battery_for_plan``): how far the
+            plan's battery capacity dips below its current level before the
+            plan's next slot with an actual solved charge.  Gates whether the
+            battery may discharge during a ``batteries_wait_mode`` slot under
+            ``self_consumption_with_reserve`` (issue #914).  ``None`` when no
+            reliable reserve could be derived — callers must fall back to
+            strict Wait behaviour in that case.
         missing_inputs:
             Names / identifiers of any inputs that were absent or invalid
             during planning.  An empty list means all inputs were present.
@@ -64,6 +79,7 @@ class PlannerOutput:
     current_recommendation: str | None = None
     battery_soc_at_end: float = 0.0
     required_capacity_kwh: float = 0.0
+    wait_mode_reserve_kwh: float | None = None
     missing_inputs: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     time_series_index: TimeSeriesIndex | None = field(default=None, repr=False)

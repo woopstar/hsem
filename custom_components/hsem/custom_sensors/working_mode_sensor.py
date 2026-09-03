@@ -567,6 +567,7 @@ class HSEMWorkingModeSensor(
                     live,
                     hourly_rec,
                     data.current_required_battery,
+                    wait_mode_reserve_kwh=data.current_wait_mode_reserve,
                     primary_grid_charge_transition_reference_w=transition_reference_w,
                     primary_grid_charge_transition_timed_out=transition_timed_out,
                 )
