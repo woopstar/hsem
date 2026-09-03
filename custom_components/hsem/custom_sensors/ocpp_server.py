@@ -70,6 +70,17 @@ _SLOT_EPSILON = 1e-6
 # once.
 _REMOTE_START_RETRY_INTERVAL_S = 60
 
+# Minimum seconds between RemoteStopTransaction retries while a transaction
+# stays open despite an attempted stop (issue #906). Mirrors
+# _REMOTE_START_RETRY_INTERVAL_S: a rejected, dropped, or unanswered stop
+# request is retried on this cadence instead of being assumed successful
+# the moment the message is written to the socket.
+_REMOTE_STOP_RETRY_INTERVAL_S = 60
+
+# Minimum seconds between SetChargingProfile retries after a "Rejected"/
+# "NotSupported" CALLRESULT (issue #906).
+_PROFILE_RETRY_INTERVAL_S = 60
+
 # aiohttp WebSocket-level ping interval (issue #892). Detects a charger that
 # silently stops responding (dead TCP, network drop) without a clean close —
 # aiohttp auto-pings at this interval and closes the connection if no pong
@@ -190,6 +201,23 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
         # that stays None after a start attempt, retry on a cooldown rather
         # than assuming the single attempt succeeded.
         self._last_remote_start_attempt: datetime | None = None
+
+        # Same pacing for RemoteStopTransaction retries (issue #906) — see
+        # _last_remote_start_attempt above; the ground-truth confirmation
+        # that a stop actually happened is session.transaction_id becoming
+        # None via the charger's own subsequent StopTransaction call.
+        self._last_remote_stop_attempt: datetime | None = None
+
+        # Pacing for SetChargingProfile retries triggered by a "Rejected"/
+        # "NotSupported" CALLRESULT (issue #906), so a charger that keeps
+        # rejecting the profile isn't resent it on every single coordinator
+        # cycle while waiting for a fresh CALLRESULT to arrive.
+        self._last_profile_retry_attempt: datetime | None = None
+
+        # Monotonically increasing transaction ID allocator (issue #906).
+        # OCPP 1.6 requires the CS to assign transaction IDs on
+        # StartTransaction — a charger never sends one in its request.
+        self._next_transaction_id: int = 1
 
         # Charger-stall diagnostics (issue #894): whether the active
         # charging session currently appears stuck non-"Charging" despite
@@ -387,8 +415,19 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
                 # rather than leaving the session stuck (issue #892).
                 if session.transaction_id is None and self._remote_start_due(now):
                     await self._send_remote_start(session, now=now)
-                # Already charging — update if target changed materially
-                if abs(target_w - self._last_sent_target) > 50.0:
+                # Already charging — update if target changed materially,
+                # or retry on a cooldown if the charger's last CALLRESULT
+                # rejected the profile (issue #906): a material-change
+                # check alone would otherwise never resend a limit the
+                # charger has already refused.
+                profile_status = session.last_call_status.get("SetChargingProfile")
+                material_change = abs(target_w - self._last_sent_target) > 50.0
+                rejected_retry = profile_status in (
+                    "Rejected",
+                    "NotSupported",
+                ) and self._profile_retry_due(now)
+                if material_change or rejected_retry:
+                    self._last_profile_retry_attempt = now
                     await self._send_set_charging_profile(
                         session, int(target_w), max_current_a
                     )
@@ -418,7 +457,13 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
             # Target is zero — handle stop window
             self._stalled = False
             self._stall_logged = False
-            if self._flap_state == "charging" or self._flap_state == "starting":
+            # "stopping" must stay in this guard alongside "charging" and
+            # "starting" (issue #906) — without it, once the state machine
+            # entered "stopping" below, this whole block was skipped on
+            # every subsequent cycle, so a stop that failed to send (or
+            # that the charger silently ignored) was never retried despite
+            # the "will retry next cycle" comment below.
+            if self._flap_state in ("charging", "starting", "stopping"):
                 if self._flap_state != "stopping":
                     self._zero_entered_at = now
                     self._flap_state = "stopping"
@@ -427,17 +472,23 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
                     zero_at = now
                 elapsed = (now - zero_at).total_seconds()
                 if elapsed >= self._stop_window_s:
-                    if await self._send_remote_stop(session):
+                    if session.transaction_id is None:
+                        # Ground truth: the charger has already confirmed
+                        # the stop via its own StopTransaction call (or
+                        # there was never anything to stop) — mirrors how
+                        # transaction_id becoming non-None confirms a
+                        # start (issue #906). Still call _send_remote_stop()
+                        # to reset its target-tracking bookkeeping; it
+                        # no-ops the actual socket write in this case.
+                        await self._send_remote_stop(session, now=now)
                         self._flap_state = "idle"
-                    else:
-                        # Stay "stopping" so the next cycle retries
-                        # immediately — the stop window has already
-                        # elapsed (issue #892).
-                        _LOGGER.warning(
-                            "OCPP %s: failed to send RemoteStopTransaction "
-                            "— will retry next cycle",
-                            session.cpid,
-                        )
+                    elif self._remote_stop_due(now):
+                        if not await self._send_remote_stop(session, now=now):
+                            _LOGGER.warning(
+                                "OCPP %s: failed to send RemoteStopTransaction "
+                                "— will retry next cycle",
+                                session.cpid,
+                            )
                 else:
                     _LOGGER.debug(
                         "OCPP anti-flap: waiting for stop window "
@@ -459,6 +510,33 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
         elapsed = (now - self._last_remote_start_attempt).total_seconds()
         return elapsed >= _REMOTE_START_RETRY_INTERVAL_S
 
+    def _remote_stop_due(self, now: datetime) -> bool:
+        """Return whether enough time has passed to retry RemoteStopTransaction.
+
+        Mirrors :meth:`_remote_start_due` (issue #906).
+
+        Args:
+            now: Current timestamp.
+        """
+        if self._last_remote_stop_attempt is None:
+            return True
+        elapsed = (now - self._last_remote_stop_attempt).total_seconds()
+        return elapsed >= _REMOTE_STOP_RETRY_INTERVAL_S
+
+    def _profile_retry_due(self, now: datetime) -> bool:
+        """Return whether enough time has passed to retry a rejected profile.
+
+        Paces :meth:`update_charge_target`'s resend of ``SetChargingProfile``
+        after a "Rejected"/"NotSupported" CALLRESULT (issue #906).
+
+        Args:
+            now: Current timestamp.
+        """
+        if self._last_profile_retry_attempt is None:
+            return True
+        elapsed = (now - self._last_profile_retry_attempt).total_seconds()
+        return elapsed >= _PROFILE_RETRY_INTERVAL_S
+
     def _reset_anti_flap_state(self) -> None:
         """Reset the anti-flap state machine to a clean idle state.
 
@@ -476,6 +554,8 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
         self._last_sent_target = -1.0
         self._last_sent_current_a = -1
         self._last_remote_start_attempt = None
+        self._last_remote_stop_attempt = None
+        self._last_profile_retry_attempt = None
         self._stalled = False
         self._stall_logged = False
 
@@ -630,17 +710,37 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
                 await self._dispatch(session, msg_id, action, payload)
             elif msg_type == _CALLRESULT:
                 # Response to an outbound HSEM call (RemoteStartTransaction,
-                # SetChargingProfile, RemoteStopTransaction). HSEM does not
-                # correlate these to a specific request today — the
-                # ground-truth confirmation that a session actually started
-                # is the charger's own subsequent StartTransaction call,
-                # handled by _handle_start_transaction() and retried on a
-                # cooldown by update_charge_target() while it never arrives.
+                # SetChargingProfile, RemoteStopTransaction). The
+                # ground-truth confirmation that a start/stop actually
+                # happened is still the charger's own subsequent
+                # StartTransaction/StopTransaction call (session.transaction_id
+                # flipping non-None/None), retried on a cooldown by
+                # update_charge_target() while it never arrives. But the
+                # CALLRESULT's own "status" field (issue #906) is recorded
+                # too — it's the charger's earliest signal that it rejected
+                # a command outright, used to surface a diagnostic and to
+                # retry a rejected SetChargingProfile without waiting on a
+                # material target change.
+                result_msg_id = msg[1]
+                result_payload = msg[2] if isinstance(msg[2], dict) else {}
+                action = session.pending_calls.pop(result_msg_id, None)
+                if action is not None:
+                    status = result_payload.get("status")
+                    if status:
+                        session.last_call_status[action] = status
+                        if status != "Accepted":
+                            _LOGGER.warning(
+                                "OCPP %s: charger responded '%s' to %s",
+                                session.cpid,
+                                status,
+                                action,
+                            )
                 _LOGGER.debug(
-                    "OCPP CALLRESULT from %s (id=%s): %s",
+                    "OCPP CALLRESULT from %s (id=%s, action=%s): %s",
                     session.cpid,
-                    msg[1],
-                    msg[2],
+                    result_msg_id,
+                    action,
+                    result_payload,
                 )
             elif msg_type == _CALLERROR:
                 _LOGGER.warning(

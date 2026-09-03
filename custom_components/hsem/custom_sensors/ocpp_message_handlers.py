@@ -1,9 +1,12 @@
 """OCPP 1.6 charger-initiated message handlers.
 
-Extracted from :mod:`ocpp_server` to satisfy the repository's 30 KB /
-1000-line file limit. These handlers only read/write ``session``/``payload``
-— none of them touch :class:`~ocpp_server.OCPPServer` state — so they mix
-cleanly into :class:`~ocpp_server.OCPPServer` without any behaviour change.
+Originally extracted from :mod:`ocpp_server` to satisfy the repository's
+30 KB / 1000-line file limit; these handlers mix into
+:class:`~ocpp_server.OCPPServer`. Most only read/write
+``session``/``payload``, but :meth:`_handle_start_transaction` also
+allocates from :attr:`~ocpp_server.OCPPServer._next_transaction_id`
+(issue #906) to assign each transaction a real, CS-issued ID rather than
+trusting whatever (if anything) the charger sent.
 """
 
 from __future__ import annotations
@@ -18,6 +21,10 @@ _LOGGER = logging.getLogger(__name__)
 
 class OCPPMessageHandlersMixin:
     """Handlers for OCPP messages initiated by a connected charger."""
+
+    # Declared (not assigned) so mypy uses OCPPServer.__init__'s type rather
+    # than inferring one from _handle_start_transaction's usage below.
+    _next_transaction_id: int
 
     async def _handle_boot_notification(
         self, session: ChargerSession, payload: dict
@@ -164,19 +171,31 @@ class OCPPMessageHandlersMixin:
     ) -> dict:
         """Handle a ``StartTransaction`` request.
 
-        Records the transaction ID and returns an ``Accepted`` response.
+        Allocates a fresh transaction ID and returns it in an ``Accepted``
+        response.
+
+        Per OCPP 1.6 §5.14, ``StartTransaction.req`` (charger → CS) has no
+        ``transactionId`` field — allocating one is the CS's job, returned
+        in ``StartTransaction.conf``. Echoing back
+        ``payload.get("transactionId", 0)`` (issue #906) meant every real
+        charger, which never sends this field, got assigned ``0``. Chargers
+        that treat ``0`` as an unset/sentinel value would then reject or
+        ignore a subsequent ``RemoteStopTransaction`` carrying
+        ``transactionId: 0``, since it never numerically matched a
+        transaction they considered active.
 
         Args:
             session: The charger session.
-            payload: StartTransaction payload.
+            payload: StartTransaction payload (unused — see above).
 
         Returns:
-            Response dict with transactionId and idTagInfo.
+            Response dict with the CS-assigned transactionId and idTagInfo.
         """
-        transaction_id = payload.get("transactionId", 0)
+        transaction_id = self._next_transaction_id
+        self._next_transaction_id += 1
         session.transaction_id = transaction_id
         _LOGGER.info(
-            "OCPP StartTransaction from %s: tx=%d",
+            "OCPP StartTransaction from %s: assigned tx=%d",
             session.cpid,
             transaction_id,
         )
