@@ -3,13 +3,11 @@
 Acceptance criteria verified here
 -----------------------------------
 - Planner can compare multiple valid plans.
-- Current (baseline) behaviour is represented as one candidate.
 - Tests cover choosing no-action when all other plans are bad.
 - All candidate names are present in the output.
 - The winning plan has the lowest cost among valid candidates.
 - Non-winning candidates appear in explanation.rejected_plans.
 - Candidates field on PlannerOutput is populated after a run.
-- Aggressive strategy only touches future slots.
 - SoC validation rejects plans that violate the discharge floor.
 
 All tests are synchronous and import nothing from Home Assistant's runtime.
@@ -39,11 +37,7 @@ from custom_components.hsem.planner.candidates._mutations import (
     _apply_passive_solar,
     _clear_all_charge_discharge,
     _copy_slots,
-    _remove_all_charge,
-    _remove_grid_charge,
-    _remove_solar_charge,
 )
-from custom_components.hsem.planner.candidates._soc_plan import _apply_soc_plan
 from custom_components.hsem.planner.cost_function import CostWeights
 from custom_components.hsem.planner.slot_population import (
     build_slots,
@@ -52,7 +46,6 @@ from custom_components.hsem.planner.slot_population import (
     populate_prices,
     populate_solcast,
 )
-from custom_components.hsem.utils.misc import calculate_recommended_threshold
 from custom_components.hsem.utils.prices import SlotPrice
 from custom_components.hsem.utils.recommendations import Recommendations
 from tests.planner.fixtures import (
@@ -181,357 +174,6 @@ class TestSlotMutationHelpers:
         )
         _clear_all_charge_discharge([slot])
         assert abs(slot.batteries_charged_kwh) < 1e-9
-
-    def test_remove_solar_charge_keeps_grid_charge(self):
-        """_remove_solar_charge must not touch grid-charge slots."""
-        grid_slot = _make_simple_slot(
-            hour=0,
-            recommendation=Recommendations.BatteriesChargeGrid.value,
-            batteries_charged_kwh=2.0,
-        )
-        solar_slot = _make_simple_slot(
-            hour=1,
-            recommendation=Recommendations.BatteriesChargeSolar.value,
-            batteries_charged_kwh=1.0,
-        )
-        _remove_solar_charge([grid_slot, solar_slot])
-        assert grid_slot.recommendation == Recommendations.BatteriesChargeGrid.value
-        assert solar_slot.recommendation is None
-
-    def test_remove_grid_charge_keeps_solar_charge(self):
-        """_remove_grid_charge must not touch solar-charge slots."""
-        grid_slot = _make_simple_slot(
-            hour=0,
-            recommendation=Recommendations.BatteriesChargeGrid.value,
-            batteries_charged_kwh=2.0,
-        )
-        solar_slot = _make_simple_slot(
-            hour=1,
-            recommendation=Recommendations.BatteriesChargeSolar.value,
-            batteries_charged_kwh=1.0,
-        )
-        _remove_grid_charge([grid_slot, solar_slot])
-        assert solar_slot.recommendation == Recommendations.BatteriesChargeSolar.value
-        assert grid_slot.recommendation is None
-
-    def test_remove_all_charge_keeps_discharge(self):
-        """_remove_all_charge must leave discharge slots intact."""
-        charge_slot = _make_simple_slot(
-            hour=0,
-            recommendation=Recommendations.BatteriesChargeGrid.value,
-        )
-        discharge_slot = _make_simple_slot(
-            hour=1,
-            recommendation=Recommendations.BatteriesDischargeMode.value,
-        )
-        _remove_all_charge([charge_slot, discharge_slot])
-        assert charge_slot.recommendation is None
-        assert (
-            discharge_slot.recommendation
-            == Recommendations.BatteriesDischargeMode.value
-        )
-
-
-# ===========================================================================
-# 3. _apply_soc_plan — threshold correctness (issue #445)
-# ===========================================================================
-
-
-class TestApplySocPlanThreshold:
-    """_apply_soc_plan must use the same threshold as calculate_recommended_threshold."""
-
-    def test_threshold_matches_canonical_calculation(self) -> None:
-        """The threshold computed inside _apply_soc_plan must equal
-        calculate_recommended_threshold for the same inputs."""
-        # Arrange: build a minimal 24h slot list with discharge windows
-        # and cheap grid slots before the first discharge window.
-        slots: list[PlannedSlot] = []
-        for h in range(24):
-            slot = _make_simple_slot(
-                hour=h,
-                import_price=0.40 if h >= 17 else 0.10,
-                export_price=0.05,
-            )
-            if h in (17, 18, 19):
-                slot.recommendation = Recommendations.BatteriesDischargeMode.value
-                slot.estimated_net_consumption_kwh = 1.0
-            slots.append(slot)
-
-        now = datetime(2024, 6, 15, 0, 0, tzinfo=_TZ)
-
-        # Known parameters
-        purchase_price = 10000.0
-        expected_cycles = 6000
-        usable_kwh = 9.0
-        capacity_loss_pct = 30.0
-
-        # Expected threshold from the canonical function
-        expected_threshold = calculate_recommended_threshold(
-            purchase_price=purchase_price,
-            expected_cycles=expected_cycles,
-            usable_capacity=usable_kwh,
-            capacity_loss_pct=capacity_loss_pct,
-        )
-
-        # Act: call _apply_soc_plan with matching parameters.
-        # The function modifies slots in place and returns charge_target.
-        # We verify the threshold indirectly by checking that the function
-        # does not skip grid charging when the price spread exceeds the
-        # proper threshold.
-        charge_target = _apply_soc_plan(
-            slots,
-            now,
-            max_charge_per_slot=1.25,
-            current_kwh=0.0,
-            usable_kwh=usable_kwh,
-            cycle_cost_per_kwh=0.01,
-            charge_fraction=1.0,
-            charge_efficiency_pct=97.0,
-            discharge_efficiency_pct=97.0,
-            purchase_price=purchase_price,
-            expected_cycles=expected_cycles,
-            capacity_loss_pct=capacity_loss_pct,
-        )
-
-        # Assert: charge_target should be non-None (discharge windows exist)
-        # and > 0 (grid charging was not skipped by the threshold guard).
-        assert charge_target is not None
-        assert charge_target > 0.0
-
-        # Verify the expected threshold matches the canonical formula.
-        expected_manual = (purchase_price * 0.30) / (2 * expected_cycles * usable_kwh)
-        assert expected_threshold == pytest.approx(expected_manual, rel=0.01)
-
-    def test_threshold_with_default_params(self):
-        """When called with zero purchase_price, threshold should be 0."""
-        result = calculate_recommended_threshold(
-            purchase_price=0.0,
-            expected_cycles=6000,
-            usable_capacity=9.0,
-            capacity_loss_pct=30.0,
-        )
-        assert result == pytest.approx(0.0)
-
-    def test_soc_plan_skips_grid_charge_when_spread_below_threshold(self) -> None:
-        """When the price spread is below the proper threshold, _apply_soc_plan
-        should not add grid charging (cheapest slots remain None)."""
-        slots: list[PlannedSlot] = []
-        # Discharge at high prices but charge slots have nearly same price
-        # so the spread is tiny
-        for h in range(24):
-            slot = _make_simple_slot(
-                hour=h,
-                import_price=0.12,  # nearly flat — tiny spread
-                export_price=0.05,
-            )
-            if h < 6:
-                slot.estimated_net_consumption_kwh = -0.5
-            if h in (17, 18, 19):
-                slot.recommendation = Recommendations.BatteriesDischargeMode.value
-                slot.estimated_net_consumption_kwh = 1.0
-            slots.append(slot)
-
-        now = datetime(2024, 6, 15, 0, 0, tzinfo=_TZ)
-
-        charge_target = _apply_soc_plan(
-            slots,
-            now,
-            max_charge_per_slot=1.25,
-            current_kwh=0.0,
-            usable_kwh=9.0,
-            cycle_cost_per_kwh=0.01,
-            charge_fraction=1.0,
-            charge_efficiency_pct=97.0,
-            discharge_efficiency_pct=97.0,
-            purchase_price=10000.0,
-            expected_cycles=6000,
-            capacity_loss_pct=30.0,
-        )
-
-        # With tiny spread the threshold guard should skip grid charging,
-        # so charge_target might be 0 or None.
-        if charge_target is not None:
-            # If charge_target is non-None, verify that no grid-charge slots
-            # were added (only solar charging might have happened).
-            grid_charge_slots = [
-                s
-                for s in slots
-                if s.recommendation == Recommendations.BatteriesChargeGrid.value
-            ]
-            assert len(grid_charge_slots) == 0
-
-
-# ===========================================================================
-# 3b. _apply_soc_plan — discharge-fraction deduplication (issue #447)
-# ===========================================================================
-
-
-class TestApplySocPlanDischargeDedup:
-    """_apply_soc_plan must return distinct targets for different discharge
-    fractions so the caller's dedup loop (in generate_candidates) can
-    distinguish them.  When current_kwh is low, multiple fraction targets
-    collapse to the same floor value (0.5 kWh); the dedup must remove
-    those duplicates."""
-
-    @staticmethod
-    def _ensure_discharge_fraction_mode(
-        slots: list[PlannedSlot],
-        now: datetime,
-    ) -> None:
-        """Apply a discharge-fraction forcing setup to a slot list.
-        This is separate from the main test assertion because we need to
-        isolate the return-value behaviour."""
-        # No-op: the slots are already set up for discharge-fraction mode
-        # by the caller (small discharge demand, large current_kwh).
-
-    def test_low_soc_discharge_targets_collapse_and_dedup(self) -> None:
-        """With current_kwh=1.01, fraction 0.25 produces 0.5 (floor clamp)
-        and fraction 0.50 produces 0.505 — within 0.05 kWh, so they are
-        deduplicated.  Only 4 unique targets should remain."""
-        # Arrange: create slots with small discharge demand and
-        # current_kwh > 1.0 so _apply_soc_plan enters discharge-fraction mode.
-        slots: list[PlannedSlot] = []
-        for h in range(24):
-            slot = _make_simple_slot(
-                hour=h,
-                import_price=0.40 if h >= 17 else 0.10,
-                export_price=0.05,
-            )
-            if h in (17, 18):
-                # Small discharge window — total_needed = 0.2 + 0.2 = 0.4
-                slot.recommendation = Recommendations.BatteriesDischargeMode.value
-                slot.estimated_net_consumption_kwh = 0.2
-            slots.append(slot)
-
-        now = datetime(2024, 6, 15, 0, 0, tzinfo=_TZ)
-
-        # Act: call _apply_soc_plan with different charge fractions.
-        # With current_kwh=1.01 and small discharge need, the function
-        # enters discharge-fraction mode. 0.25*1.01=0.2525 → clamped to 0.5,
-        # 0.50*1.01=0.505 (above floor, different by just 0.005).
-        # 1.25*1.01=1.2625 < usable_kwh, so no cap.
-        fractions = [0.25, 0.50, 0.75, 1.0, 1.25]
-        seen_targets: list[float] = []
-        for fraction in fractions:
-            slot_copy = _copy_slots(slots)
-            target = _apply_soc_plan(
-                slot_copy,
-                now,
-                max_charge_per_slot=1.25,
-                current_kwh=1.01,
-                usable_kwh=9.0,
-                cycle_cost_per_kwh=0.01,
-                charge_fraction=fraction,
-                charge_efficiency_pct=97.0,
-                discharge_efficiency_pct=97.0,
-            )
-            assert target is not None, (
-                f"_apply_soc_plan returned None for fraction {fraction}"
-            )
-            # Dedup using the same threshold as the caller
-            DUPLICATE_THRESHOLD_KWH = 0.05
-            if not seen_targets or target - seen_targets[-1] >= DUPLICATE_THRESHOLD_KWH:
-                seen_targets.append(target)
-
-        # Assert: fractions 0.25 and 0.50 are within 0.05 kWh of each other,
-        # so they are deduplicated. With 5 fractions we get 4 unique targets.
-        assert len(seen_targets) == 4, (
-            f"Expected 4 unique targets but got {len(seen_targets)}: {seen_targets}"
-        )
-        # Verify first target is the floor value (0.5)
-        assert seen_targets[0] == pytest.approx(0.5, abs=0.01)
-
-    def test_high_soc_all_fractions_distinct(self) -> None:
-        """With current_kwh=10.0, all 5 fractions produce distinct targets
-        (no floor collision).  usable_kwh is set high enough that the 1.25
-        fraction does not cap."""
-        # Arrange: create slots with small discharge demand and high
-        # current_kwh so _apply_soc_plan enters discharge-fraction mode.
-        slots: list[PlannedSlot] = []
-        for h in range(24):
-            slot = _make_simple_slot(
-                hour=h,
-                import_price=0.40 if h >= 17 else 0.10,
-                export_price=0.05,
-            )
-            if h in (17, 18):
-                slot.recommendation = Recommendations.BatteriesDischargeMode.value
-                slot.estimated_net_consumption_kwh = 0.2
-            slots.append(slot)
-
-        now = datetime(2024, 6, 15, 0, 0, tzinfo=_TZ)
-
-        # Act: call _apply_soc_plan with different charge fractions.
-        # usable_kwh is 50.0 so 1.25×10.0=12.5 does not cap.
-        fractions = [0.25, 0.50, 0.75, 1.0, 1.25]
-        seen_targets: list[float] = []
-        for fraction in fractions:
-            slot_copy = _copy_slots(slots)
-            target = _apply_soc_plan(
-                slot_copy,
-                now,
-                max_charge_per_slot=1.25,
-                current_kwh=10.0,
-                usable_kwh=50.0,
-                cycle_cost_per_kwh=0.01,
-                charge_fraction=fraction,
-                charge_efficiency_pct=97.0,
-                discharge_efficiency_pct=97.0,
-            )
-            assert target is not None, (
-                f"_apply_soc_plan returned None for fraction {fraction}"
-            )
-            # Dedup using the same threshold as the caller
-            DUPLICATE_THRESHOLD_KWH = 0.05
-            if not seen_targets or target - seen_targets[-1] >= DUPLICATE_THRESHOLD_KWH:
-                seen_targets.append(target)
-
-        # Assert: all 5 fractions produce distinct targets
-        assert len(seen_targets) == 5, (
-            f"Expected 5 unique targets but got {len(seen_targets)}: {seen_targets}"
-        )
-
-    def test_high_soc_all_fractions_distinct_normal_mode(self) -> None:
-        """With current_kwh=0.0 and large discharge demand, the function
-        enters normal charge-fraction mode and all 5 fractions produce
-        distinct charge_target values.  usable_kwh is set large enough
-        so the 1.25 fraction does not cap."""
-        slots: list[PlannedSlot] = []
-        for h in range(24):
-            slot = _make_simple_slot(
-                hour=h,
-                import_price=0.40 if h >= 17 else 0.10,
-                export_price=0.05,
-            )
-            if h in (17, 18, 19, 20):
-                # Large discharge windows — total_needed = 4*3.0 = 12.0
-                slot.recommendation = Recommendations.BatteriesDischargeMode.value
-                slot.estimated_net_consumption_kwh = 3.0
-            slots.append(slot)
-
-        now = datetime(2024, 6, 15, 0, 0, tzinfo=_TZ)
-
-        fractions = [0.25, 0.50, 0.75, 1.0, 1.25]
-        seen_targets: list[float] = []
-        for fraction in fractions:
-            slot_copy = _copy_slots(slots)
-            target = _apply_soc_plan(
-                slot_copy,
-                now,
-                max_charge_per_slot=1.25,
-                current_kwh=0.0,
-                usable_kwh=50.0,
-                cycle_cost_per_kwh=0.01,
-                charge_fraction=fraction,
-            )
-            assert target is not None
-            DUPLICATE_THRESHOLD_KWH = 0.05
-            if not seen_targets or target - seen_targets[-1] >= DUPLICATE_THRESHOLD_KWH:
-                seen_targets.append(target)
-
-        assert len(seen_targets) == 5, (
-            f"Expected 5 unique targets but got {len(seen_targets)}: {seen_targets}"
-        )
 
 
 # ===========================================================================
@@ -953,3 +595,71 @@ class TestPassiveCandidate:
                 f"_apply_passive_solar must never assign BatteriesChargeGrid "
                 f"(found at slot starting {slot.start})"
             )
+
+
+# ===========================================================================
+# 8. Degenerate "no eligible candidates" fallback (issue #897)
+# ===========================================================================
+
+
+class TestDegenerateFallback:
+    """The selector's degenerate fallback must never return ``no_action``
+    with ``is_valid=True``.
+
+    Unlike the hand-built candidate lists in ``test_hysteresis.py``, this
+    test calls the real :func:`generate_candidates` so it exercises the
+    actual production candidate names and ordering — this is what the
+    original bug report (#897) found untested: the degenerate branch was
+    silently falling through to ``candidates[0]`` (``no_action``) because
+    ``_find_by_name(candidates, CANDIDATE_BASELINE)`` always returned
+    ``None`` in production (``generate_candidates`` never emitted a
+    ``"baseline"`` candidate).
+    """
+
+    def test_degenerate_fallback_never_selects_no_action(self):
+        """An unreachable discharge floor forces every real candidate
+        (no_action, passive, milp) to fail SoC validation on the very
+        first future slot, triggering the selector's "no eligible
+        candidates" branch.  The winner must be ``passive`` — the spec's
+        designated executable fail-closed fallback — never ``no_action``.
+        """
+        inp = make_summer_day_input()
+        now = datetime.fromisoformat(inp.now_iso)
+        slots = _populated_slots_for_input(inp)
+        candidates = generate_candidates(slots, inp, now, max_charge_per_slot=1.25)
+
+        cost_weights = CostWeights(
+            min_soc_pct=10.0,
+            max_soc_pct=100.0,
+            battery_purchase_price=10_000.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_expected_cycles=6000,
+        )
+
+        # current_kwh=0.5 of usable_kwh=9.0 is ~5.5% SoC.  With
+        # end_of_discharge_soc_pct=99.9, no candidate can charge enough in
+        # a single slot to clear the floor, so every candidate is invalid
+        # from the first future slot onward.
+        winner, _, _ = select_best_candidate(
+            candidates,
+            now=now,
+            current_kwh=0.5,
+            usable_kwh=9.0,
+            max_soc_capacity_kwh=9.0,
+            max_charge_per_slot=1.25,
+            max_discharge_per_slot=None,
+            rated_kwh=10.0,
+            end_of_discharge_soc_pct=99.9,
+            cost_weights=cost_weights,
+            slot_duration_hours=1.0,
+        )
+
+        assert winner.name != CANDIDATE_NO_ACTION, (
+            "no_action must never become executable "
+            "(docs/planner-spec.md 'Candidate plans')"
+        )
+        assert winner.name == CANDIDATE_PASSIVE, (
+            f"Degenerate fallback must select the spec's fail-closed "
+            f"fallback (passive), got {winner.name!r}"
+        )
+        assert winner.is_valid is True

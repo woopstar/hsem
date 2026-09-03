@@ -1823,6 +1823,11 @@ Required production candidates:
 A validated MILP is the sole active optimisation authority. Passive is eligible
 only when no valid MILP exists; `no_action` never becomes executable.
 
+If SoC validation rejects every candidate (a degenerate edge case — expected
+to be rare), the selector falls back to `passive` regardless of its own
+validation result, since it is the designated fail-closed fallback. This
+never falls through to `no_action` (issue #897).
+
 The final returned plan must be the same plan that was selected.
 
 This invariant must always hold:
