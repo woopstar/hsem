@@ -123,8 +123,9 @@ HSEM ships English, Danish, German, and Spanish
 source of truth. Any new or changed user-facing string (entity name,
 config/options flow label, selector option, error, service) must be added to
 **all four** files in the same PR — activate the `hsem-translation-sync` skill
-and run `python3 scripts/validate_translations.py` before opening the PR; it
-must report 0 missing/stale/placeholder-mismatch keys.
+and run `./scripts/quality.sh translations` (or `python3 scripts/validate_translations.py`
+directly) before opening the PR; it must report 0 missing/stale/placeholder-mismatch
+keys. This check is also enforced by CI (`lint-and-test.yml`) and by `./scripts/quality.sh all`.
 
 ## Development Workflow
 
@@ -210,7 +211,7 @@ See `AGENTS.md` → **Home Assistant Compliance** section for detailed requireme
 ./scripts/quality.sh test
 
 # Step 5: Translations — if any user-facing string changed
-python3 scripts/validate_translations.py
+./scripts/quality.sh translations
 
 # Step 6: Verify no unintended changes
 git status
