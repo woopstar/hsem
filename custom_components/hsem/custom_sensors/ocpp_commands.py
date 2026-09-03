@@ -1,20 +1,27 @@
 """Low-level outbound OCPP 1.6 command senders.
 
 Originally extracted from :mod:`ocpp_server` to satisfy the repository's
-30 KB / 1000-line file limit; these methods mix back into
+30 KB / 1000-line file limit; these methods mix into
 :class:`~ocpp_server.OCPPServer`, so ``self`` and every attribute
 reference (``_last_sent_target``, ``_last_sent_current_a``,
 ``_last_remote_start_attempt``, ``_last_remote_stop_attempt``,
-``_remote_start_due``) resolve there. Also registers outbound
+``_flap_state``, ``_chargers``) resolve there. Also registers outbound
 :data:`_TRACKED_RESPONSE_ACTIONS` message IDs on the session (issue #906)
-so the matching CALLRESULT's ``status`` can be recorded once it arrives.
+so the matching CALLRESULT's ``status`` can be recorded once it arrives,
+hosts :meth:`OCPPCommandsMixin._notify_significant_event` (issue #908),
+and — moved here in the same size-limit rebalance — the retry-pacing
+helpers, anti-flap reset, stall diagnostics, and the public
+``send_set_charging_profile``/``send_remote_stop`` bypass API, which were
+pushing :mod:`ocpp_server` back over the 30 KB limit.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
+from typing import Any
 
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
@@ -41,6 +48,71 @@ _TRACKED_RESPONSE_ACTIONS = frozenset(
     {"RemoteStartTransaction", "SetChargingProfile", "RemoteStopTransaction"}
 )
 
+# Minimum seconds between RemoteStartTransaction retries while a session
+# still hasn't confirmed a transaction (issue #892). Rejected, dropped, or
+# unanswered start requests are retried on this cadence rather than only
+# once.
+_REMOTE_START_RETRY_INTERVAL_S = 60
+
+# Minimum seconds between RemoteStopTransaction retries while a transaction
+# stays open despite an attempted stop (issue #906). Mirrors
+# _REMOTE_START_RETRY_INTERVAL_S: a rejected, dropped, or unanswered stop
+# request is retried on this cadence instead of being assumed successful
+# the moment the message is written to the socket.
+_REMOTE_STOP_RETRY_INTERVAL_S = 60
+
+# Minimum seconds between SetChargingProfile retries after a "Rejected"/
+# "NotSupported" CALLRESULT (issue #906).
+_PROFILE_RETRY_INTERVAL_S = 60
+
+# StatusNotification values that indicate the charge *point* — not the EV —
+# is withholding current (issue #894). "SuspendedEV" is deliberately
+# excluded: it means the EV itself decided to pause (e.g. battery full,
+# car-side scheduled charging), which is normal and must never be flagged.
+_STALL_STATUSES = frozenset({"SuspendedEVSE", "Faulted", "Unavailable"})
+
+# Minimum time a charger must stay in one of _STALL_STATUSES with an open
+# transaction before it's considered stalled (issue #894). Long enough to
+# not flag a transient flap (e.g. a few seconds in "SuspendedEVSE" before
+# returning to "Charging"), short enough to be a useful diagnostic.
+CHARGER_STALL_THRESHOLD_S = 300
+
+
+def charger_appears_stalled(
+    session: ChargerSession,
+    now: datetime,
+    threshold_s: float = CHARGER_STALL_THRESHOLD_S,
+) -> bool:
+    """Return whether *session* looks like a silently stalled charge (issue #894).
+
+    ``True`` only when all of the following hold:
+
+    - ``session.transaction_id`` is not ``None`` (a transaction is open —
+      HSEM believes it authorized and profiled a charge).
+    - ``session.status`` is one of ``"SuspendedEVSE"``, ``"Faulted"``, or
+      ``"Unavailable"`` — a charge-point-side problem, not an EV-decided
+      pause (``"SuspendedEV"`` is never flagged).
+    - ``session.status_changed_at`` is set and older than *threshold_s*.
+
+    Pure and diagnostics-only — never triggers a corrective OCPP call.
+
+    Args:
+        session: The charger session to evaluate.
+        now: Current timestamp (injected for testability).
+        threshold_s: Minimum seconds the status must have been unchanged.
+
+    Returns:
+        ``True`` if the session appears stalled.
+    """
+    if session.transaction_id is None:
+        return False
+    if session.status not in _STALL_STATUSES:
+        return False
+    if session.status_changed_at is None:
+        return False
+    elapsed = (now - session.status_changed_at).total_seconds()
+    return elapsed >= threshold_s
+
 
 class OCPPCommandsMixin:
     """Low-level senders for OCPP commands HSEM issues to a charger."""
@@ -49,8 +121,39 @@ class OCPPCommandsMixin:
     # rather than inferring a narrower type from the assignments below.
     _last_remote_start_attempt: datetime | None
     _last_remote_stop_attempt: datetime | None
+    _last_profile_retry_attempt: datetime | None
     _last_sent_target: float
     _last_sent_current_a: int
+    _on_significant_event: Callable[[], Coroutine[Any, Any, None]] | None
+    _flap_state: str
+    _target_entered_at: datetime | None
+    _zero_entered_at: datetime | None
+    _target_power_w: float
+    _stalled: bool
+    _stall_logged: bool
+    _chargers: dict[str, ChargerSession]
+
+    async def _notify_significant_event(self) -> None:
+        """Trigger a debounced coordinator refresh after a significant event.
+
+        "Significant" means a state transition worth reflecting in HA
+        promptly: a charger connecting/disconnecting, a
+        ``StatusNotification`` status change, or a confirmed
+        ``StartTransaction``/``StopTransaction`` (issue #908). Deliberately
+        NOT called for ``MeterValues``/``Heartbeat``/``Authorize``, which
+        arrive far more often and carry no state-transition information
+        the planner needs faster than its normal cadence.
+
+        Without this, a live ``ChargerSession`` mutation (e.g.
+        ``session.status`` changing) would sit unreflected in
+        ``sensor.hsem_ocpp_charger_status`` until the coordinator's next
+        scheduled cycle — up to the full ``hsem_update_interval`` (default
+        5 minutes) later. Cheap to await inline from the WebSocket message
+        loop: the callback only manages debounce/task bookkeeping and
+        returns immediately without blocking on the actual cycle.
+        """
+        if self._on_significant_event is not None:
+            await self._on_significant_event()
 
     async def _send_response(
         self, session: ChargerSession, msg_id: str, payload: dict
@@ -222,10 +325,10 @@ class OCPPCommandsMixin:
         #892).
 
         Records the attempt timestamp (issue #906) so
-        :meth:`OCPPServer._remote_stop_due` can pace retries while the
-        charger hasn't yet confirmed the stop via its own
-        ``StopTransaction`` call — mirroring how :meth:`_send_remote_start`
-        paces start retries against :attr:`ChargerSession.transaction_id`.
+        :meth:`_remote_stop_due` can pace retries while the charger hasn't
+        yet confirmed the stop via its own ``StopTransaction`` call —
+        mirroring how :meth:`_send_remote_start` paces start retries
+        against :attr:`ChargerSession.transaction_id`.
 
         Args:
             session: The charger session.
@@ -256,5 +359,118 @@ class OCPPCommandsMixin:
         )
         return True
 
+    def _remote_start_due(self, now: datetime) -> bool:
+        """Return whether enough time has passed to retry RemoteStartTransaction.
 
-__all__ = ["OCPPCommandsMixin"]
+        Args:
+            now: Current timestamp.
+        """
+        if self._last_remote_start_attempt is None:
+            return True
+        elapsed = (now - self._last_remote_start_attempt).total_seconds()
+        return elapsed >= _REMOTE_START_RETRY_INTERVAL_S
+
+    def _remote_stop_due(self, now: datetime) -> bool:
+        """Return whether enough time has passed to retry RemoteStopTransaction.
+
+        Mirrors :meth:`_remote_start_due` (issue #906).
+
+        Args:
+            now: Current timestamp.
+        """
+        if self._last_remote_stop_attempt is None:
+            return True
+        elapsed = (now - self._last_remote_stop_attempt).total_seconds()
+        return elapsed >= _REMOTE_STOP_RETRY_INTERVAL_S
+
+    def _profile_retry_due(self, now: datetime) -> bool:
+        """Return whether enough time has passed to retry a rejected profile.
+
+        Paces :meth:`~ocpp_server.OCPPServer.update_charge_target`'s resend
+        of ``SetChargingProfile`` after a "Rejected"/"NotSupported"
+        CALLRESULT (issue #906).
+
+        Args:
+            now: Current timestamp.
+        """
+        if self._last_profile_retry_attempt is None:
+            return True
+        elapsed = (now - self._last_profile_retry_attempt).total_seconds()
+        return elapsed >= _PROFILE_RETRY_INTERVAL_S
+
+    def _reset_anti_flap_state(self) -> None:
+        """Reset the anti-flap state machine to a clean idle state.
+
+        Called when a charger disconnects (issue #892): the state machine
+        assumes it is talking to one continuously-connected charger, so
+        stale start/stop timers or a stale "charging" belief must not
+        survive into a fresh connection — a reconnect goes through the
+        normal start window again rather than resuming as if nothing
+        happened.
+        """
+        self._flap_state = "idle"
+        self._target_entered_at = None
+        self._zero_entered_at = None
+        self._target_power_w = 0.0
+        self._last_sent_target = -1.0
+        self._last_sent_current_a = -1
+        self._last_remote_start_attempt = None
+        self._last_remote_stop_attempt = None
+        self._last_profile_retry_attempt = None
+        self._stalled = False
+        self._stall_logged = False
+
+    async def send_set_charging_profile(
+        self, cpid: str, max_power_w: int, max_current_a: int = 16
+    ) -> bool:
+        """Directly send a ``SetChargingProfile`` to a charger.
+
+        Bypasses the anti-flap state machine.  Use
+        :meth:`~ocpp_server.OCPPServer.update_charge_target` for normal
+        planner-driven operation.
+
+        No HA service registers this as a manual override (see issue #843
+        — deliberately left unwired: registering it would let a user bypass
+        the anti-flap safety window with no corresponding product need).
+        Kept as public API for direct/test use.
+
+        Args:
+            cpid: Charge-point identifier.
+            max_power_w: Maximum charging power in watts.
+            max_current_a: Maximum current in amperes.
+
+        Returns:
+            ``True`` if the message was written to the socket.
+        """
+        if cpid not in self._chargers:
+            _LOGGER.warning(
+                "Cannot send SetChargingProfile — charger %s not connected", cpid
+            )
+            return False
+        return await self._send_set_charging_profile(
+            self._chargers[cpid], max_power_w, max_current_a
+        )
+
+    async def send_remote_stop(self, cpid: str) -> bool:
+        """Directly send a ``RemoteStopTransaction`` to a charger.
+
+        Bypasses the anti-flap state machine — see
+        :meth:`send_set_charging_profile` for why this is intentionally not
+        wired to an HA service (issue #843).
+
+        Args:
+            cpid: Charge-point identifier.
+
+        Returns:
+            ``True`` if the message was written to the socket (or there was
+            no active transaction to stop).
+        """
+        if cpid not in self._chargers:
+            _LOGGER.warning(
+                "Cannot send RemoteStopTransaction — charger %s not connected", cpid
+            )
+            return False
+        return await self._send_remote_stop(self._chargers[cpid])
+
+
+__all__ = ["CHARGER_STALL_THRESHOLD_S", "OCPPCommandsMixin", "charger_appears_stalled"]
