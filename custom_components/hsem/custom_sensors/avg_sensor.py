@@ -26,6 +26,7 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.restore_state import RestoreEntity
 
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.ha_helpers import ha_get_entity_state_and_convert
@@ -67,6 +68,7 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
             entity_id: Entity ID for the sensor.
         """
         super().__init__(config_entry)
+        self._hsem_device = HSEMDevice.HOURLY_CONSUMPTION
         self._hour_start = hour_start
         self._hour_end = hour_end
         self._average = avg

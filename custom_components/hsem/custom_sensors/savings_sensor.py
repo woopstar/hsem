@@ -35,6 +35,7 @@ from homeassistant.const import (
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.utils.sensornames.diagnostics import (
@@ -75,6 +76,7 @@ class HSEMSavingsSensor(
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
+        self._hsem_device = HSEMDevice.FINANCIAL
         self._attr_unique_id = get_savings_tracker_sensor_unique_id(
             config_entry.entry_id
         )

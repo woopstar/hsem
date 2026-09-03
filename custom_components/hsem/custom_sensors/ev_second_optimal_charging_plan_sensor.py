@@ -20,6 +20,7 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.sensornames.ev import (
     get_ev_second_optimal_charging_plan_sensor_entity_id,
@@ -60,6 +61,7 @@ class HSEMEVSecondOptimalChargingPlanSensor(
         """Initialise the second EV optimal charging plan sensor."""
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
+        self._hsem_device = HSEMDevice.EV_SECONDARY
 
         self._config_entry = config_entry
         self._attr_unique_id = get_ev_second_optimal_charging_plan_sensor_unique_id(

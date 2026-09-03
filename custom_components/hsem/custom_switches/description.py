@@ -5,10 +5,11 @@ Defines :class:`HSEMSwitchEntityDescription` and the
 (unique_id, entity_id) tuples.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from homeassistant.components.switch import SwitchEntityDescription
 
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.utils.sensornames.controls import (
     get_batteries_schedule_1_switch_entity_id,
     get_batteries_schedule_1_switch_key,
@@ -144,6 +145,10 @@ class HSEMSwitchEntityDescription(SwitchEntityDescription):
     description:
         Short human-readable description of the switch's purpose, exposed as
         an entity attribute for dashboard display.
+    hsem_device:
+        The HSEM device (issue #875) this switch's ``device_info`` resolves
+        to. Defaults to ``CONTROLLER``.
     """
 
     description: str = ""
+    hsem_device: HSEMDevice = field(default=HSEMDevice.CONTROLLER)

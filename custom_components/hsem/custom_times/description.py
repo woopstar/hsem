@@ -5,10 +5,11 @@ Defines :class:`HSEMTimeEntityDescription` and the
 (unique_id, entity_id) tuples.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from homeassistant.components.time import TimeEntityDescription
 
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.utils.sensornames.controls import (
     get_schedule_1_end_time_entity_id,
     get_schedule_1_end_time_key,
@@ -95,7 +96,11 @@ class HSEMTimeEntityDescription(TimeEntityDescription):
         as an entity attribute for dashboard display.
     default_value:
         Initial time value as an ``"HH:MM:SS"`` string.
+    hsem_device:
+        The HSEM device (issue #875) this time entity's ``device_info``
+        resolves to. Defaults to ``CONTROLLER``.
     """
 
     description: str = ""
     default_value: str = "00:00:00"
+    hsem_device: HSEMDevice = field(default=HSEMDevice.CONTROLLER)

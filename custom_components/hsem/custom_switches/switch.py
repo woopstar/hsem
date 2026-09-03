@@ -51,6 +51,7 @@ class HSEMSwitch(HSEMEntity, SwitchEntity):
             Entity description carrying ``key``, ``name``, and ``description``.
         """
         super().__init__(config_entry)
+        self._hsem_device = description.hsem_device
 
         self.hass = hass
         self._config_entry = config_entry

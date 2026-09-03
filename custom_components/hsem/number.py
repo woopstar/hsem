@@ -121,6 +121,7 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
                     config_key=config_keys[description.key],
                     unique_id=_id_map[description.key][0],
                     entity_id=_id_map[description.key][1],
+                    is_second=description.key == get_ev_second_target_soc_number_key(),
                 )
             )
         else:

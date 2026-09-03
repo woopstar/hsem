@@ -40,6 +40,7 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.sensornames.ev import (
     get_ev_charger_calculated_power_sensor_entity_id,
@@ -87,6 +88,9 @@ class HSEMEVChargerCalculatedPowerSensorBase(
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
+        self._hsem_device = (
+            HSEMDevice.EV_SECONDARY if self._is_second else HSEMDevice.EV_PRIMARY
+        )
 
         self._config_entry = config_entry
         self._restored_state: str | None = None

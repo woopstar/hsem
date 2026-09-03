@@ -44,6 +44,7 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.utils.phase_power import (
@@ -101,6 +102,9 @@ class HSEMEVChargerCurrentLimitSensorBase(
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
+        self._hsem_device = (
+            HSEMDevice.EV_SECONDARY if self._is_second else HSEMDevice.EV_PRIMARY
+        )
 
         self._config_entry = config_entry
 

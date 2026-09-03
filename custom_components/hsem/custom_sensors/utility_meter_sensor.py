@@ -14,6 +14,7 @@ from homeassistant.components.utility_meter.sensor import UtilityMeterSensor
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
 
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMEntity
 
 
@@ -57,6 +58,7 @@ class HSEMUtilityMeterSensor(UtilityMeterSensor, HSEMEntity):
             "config_entry is required for HSEMUtilityMeterSensor"
         )
         HSEMEntity.__init__(self, config_entry)
+        self._hsem_device = HSEMDevice.HOURLY_CONSUMPTION
         self._attr_unique_id = id
         self.entity_id = e_id
 

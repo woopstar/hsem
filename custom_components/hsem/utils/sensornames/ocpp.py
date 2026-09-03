@@ -20,10 +20,16 @@ def _suffix(charger_index: int) -> str:
     return "" if charger_index == 1 else "_second"
 
 
-def get_ocpp_charger_status_sensor_name(charger_index: int = 1) -> str:
-    """Return the display name for the OCPP charger status sensor."""
-    suffix = " Second" if charger_index == 2 else ""
-    return f"OCPP Charger{suffix} Status"
+def get_ocpp_charger_status_sensor_name() -> str:
+    """Return the display name for the OCPP charger status sensor.
+
+    Identical for both chargers — the EV Primary / EV Secondary device
+    (issue #875) disambiguates them, so the entity name carries neither
+    the redundant "OCPP" integration prefix nor a "Second"/"2" marker
+    (e.g. rendered as "EV Secondary Charger Status" via
+    ``_attr_has_entity_name``).
+    """
+    return "Charger Status"
 
 
 def get_ocpp_charger_status_sensor_unique_id(
@@ -48,10 +54,14 @@ def get_ocpp_charger_status_sensor_entity_id(charger_index: int = 1) -> str:
 # ---------------------------------------------------------------------------
 
 
-def get_ocpp_charger_power_sensor_name(charger_index: int = 1) -> str:
-    """Return the display name for the OCPP charger power sensor."""
-    suffix = " Second" if charger_index == 2 else ""
-    return f"OCPP Charger{suffix} Power"
+def get_ocpp_charger_power_sensor_name() -> str:
+    """Return the display name for the OCPP charger power sensor.
+
+    Identical for both chargers — the EV Primary / EV Secondary device
+    (issue #875) disambiguates them, so the entity name carries neither
+    the redundant "OCPP" integration prefix nor a "Second"/"2" marker.
+    """
+    return "Charger Power"
 
 
 def get_ocpp_charger_power_sensor_unique_id(
@@ -76,10 +86,14 @@ def get_ocpp_charger_power_sensor_entity_id(charger_index: int = 1) -> str:
 # ---------------------------------------------------------------------------
 
 
-def get_ocpp_charger_info_sensor_name(charger_index: int = 1) -> str:
-    """Return the display name for the OCPP charger info sensor."""
-    suffix = " Second" if charger_index == 2 else ""
-    return f"OCPP Charger{suffix} Info"
+def get_ocpp_charger_info_sensor_name() -> str:
+    """Return the display name for the OCPP charger info sensor.
+
+    Identical for both chargers — the EV Primary / EV Secondary device
+    (issue #875) disambiguates them, so the entity name carries neither
+    the redundant "OCPP" integration prefix nor a "Second"/"2" marker.
+    """
+    return "Charger Info"
 
 
 def get_ocpp_charger_info_sensor_unique_id(
@@ -104,10 +118,14 @@ def get_ocpp_charger_info_sensor_entity_id(charger_index: int = 1) -> str:
 # ---------------------------------------------------------------------------
 
 
-def get_ocpp_charger_sessions_sensor_name(charger_index: int = 1) -> str:
-    """Return the display name for the OCPP charger sessions sensor."""
-    suffix = " Second" if charger_index == 2 else ""
-    return f"OCPP Charger{suffix} Sessions"
+def get_ocpp_charger_sessions_sensor_name() -> str:
+    """Return the display name for the OCPP charger sessions sensor.
+
+    Identical for both chargers — the EV Primary / EV Secondary device
+    (issue #875) disambiguates them, so the entity name carries neither
+    the redundant "OCPP" integration prefix nor a "Second"/"2" marker.
+    """
+    return "Charger Sessions"
 
 
 def get_ocpp_charger_sessions_sensor_unique_id(
