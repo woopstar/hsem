@@ -10,7 +10,11 @@ trusting whatever (if anything) the charger sent, and the status-change,
 start-transaction, and stop-transaction handlers call
 :meth:`~ocpp_server.OCPPServer._notify_significant_event` (issue #908) to
 trigger a debounced coordinator refresh promptly rather than waiting for
-the next scheduled cycle.
+the next scheduled cycle. :meth:`_handle_start_transaction` also re-sends
+the charging profile once the transaction ID is known (issue #920
+follow-up) — a profile sent alongside ``RemoteStartTransaction`` can only
+ever be a transaction-agnostic ``TxDefaultProfile``, since the transaction
+ID isn't known yet at that point.
 """
 
 from __future__ import annotations
@@ -36,6 +40,16 @@ class OCPPMessageHandlersMixin:
     # OCPPCommandsMixin._notify_significant_event() rather than reporting a
     # missing attribute (issue #908).
     _notify_significant_event: Callable[[], Coroutine[Any, Any, None]]
+
+    # Declared (not assigned) so mypy resolves these against
+    # OCPPCommandsMixin's attributes/method rather than reporting missing
+    # attributes — used by _handle_start_transaction to re-send the charging
+    # profile once the transaction ID is known (issue #920 follow-up).
+    _last_sent_current_a: int
+    _last_sent_target: float
+    _send_set_charging_profile: Callable[
+        [ChargerSession, int, int], Coroutine[Any, Any, bool]
+    ]
 
     async def _handle_boot_notification(
         self, session: ChargerSession, payload: dict
@@ -217,6 +231,24 @@ class OCPPMessageHandlersMixin:
             transaction_id,
         )
         await self._notify_significant_event()
+
+        # Re-send the charging profile now that the transaction ID is known
+        # (issue #920 follow-up). A profile sent moments earlier alongside
+        # RemoteStartTransaction — the normal case, since HSEM authorizes
+        # before it can know what transaction ID the charger will assign —
+        # could only ever be a transaction-agnostic TxDefaultProfile.
+        # _send_set_charging_profile() also attaches a TxProfile bound to
+        # session.transaction_id whenever it's set, which some chargers
+        # require to actually throttle an already-running session; this is
+        # the first point after StartTransaction where that's possible.
+        # _last_sent_current_a stays -1 (never set) if no profile has been
+        # requested for this charger yet, in which case there's nothing to
+        # reapply.
+        if self._last_sent_current_a >= 0:
+            await self._send_set_charging_profile(
+                session, int(self._last_sent_target), self._last_sent_current_a
+            )
+
         return {
             "transactionId": transaction_id,
             "idTagInfo": {"status": "Accepted"},

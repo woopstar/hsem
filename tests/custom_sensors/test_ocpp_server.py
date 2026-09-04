@@ -356,6 +356,52 @@ class TestTransaction:
         assert result["idTagInfo"]["status"] == "Accepted"
         assert charger_session.transaction_id is None
 
+    @pytest.mark.asyncio
+    async def test_start_transaction_resends_profile_once_tx_known(
+        self, ocpp_server, charger_session
+    ):
+        """StartTransaction re-sends the profile so a TxProfile can bind (#920).
+
+        A SetChargingProfile sent alongside RemoteStartTransaction — the
+        normal timing, since HSEM authorizes before it can know the
+        charger-assigned transaction ID — can only ever be a
+        transaction-agnostic TxDefaultProfile. Once StartTransaction confirms
+        the ID, HSEM must re-send so the TxProfile companion (added in the
+        prior fix) actually gets a chance to bind to the live transaction.
+        """
+        # Simulate a profile already having been requested for this charger,
+        # as update_charge_target()/the debug service would have done just
+        # before RemoteStartTransaction was answered.
+        ocpp_server._last_sent_current_a = 16
+        ocpp_server._last_sent_target = 3680.0
+
+        await ocpp_server._handle_start_transaction(charger_session, {})
+
+        actions = [
+            json.loads(call.args[0])[2]
+            for call in charger_session.websocket.send_str.call_args_list
+        ]
+        assert actions.count("SetChargingProfile") == 2  # TxDefault + TxProfile
+        payloads = [
+            json.loads(call.args[0])[3]["csChargingProfiles"]
+            for call in charger_session.websocket.send_str.call_args_list
+        ]
+        purposes = {p["chargingProfilePurpose"] for p in payloads}
+        assert purposes == {"TxDefaultProfile", "TxProfile"}
+        tx_profile = next(
+            p for p in payloads if p["chargingProfilePurpose"] == "TxProfile"
+        )
+        assert tx_profile["transactionId"] == charger_session.transaction_id
+
+    @pytest.mark.asyncio
+    async def test_start_transaction_no_resend_when_nothing_sent_yet(
+        self, ocpp_server, charger_session
+    ):
+        """No profile resend when no SetChargingProfile has ever been sent."""
+        assert ocpp_server.last_requested_current_a is None
+        await ocpp_server._handle_start_transaction(charger_session, {})
+        charger_session.websocket.send_str.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # SetChargingProfile message construction

@@ -475,6 +475,29 @@ under the charger's own local decision. HSEM now also sends a `TxProfile`
 carrying the confirmed `transactionId` once
 `ChargerSession.transaction_id` is known (at a higher `stackLevel` than the
 `TxDefaultProfile`) — matching `lbbrhzn/ocpp`'s dual-profile strategy.
+Note the initial `SetChargingProfile` sent alongside `RemoteStartTransaction`
+is necessarily `TxDefaultProfile`-only, since the transaction ID isn't known
+until the charger's own `StartTransaction` arrives — HSEM now re-sends the
+profile from `_handle_start_transaction()` at that point specifically so the
+`TxProfile` companion gets a chance to bind to the now-known transaction.
+
+**A charger's connector status can change independently of any OCPP command
+HSEM sent — this is not necessarily a bug.** In one test session against the
+same go-e Charger V4, `StatusNotification` reported `"Charging"` roughly 36
+seconds _after_ a `RemoteStopTransaction` had already been accepted and
+`StopTransaction` confirmed the transaction closed, with no `MeterValues`
+reporting non-zero power at any point. A charger's connector status reflects
+what's physically happening at the plug, which is driven by the charger's
+own local logic (cable/car presence, its own charge-mode setting, PV-surplus
+automation, etc.) as much as by the OCPP central system's authorization.
+If a charger doesn't track HSEM's `RemoteStartTransaction`/
+`RemoteStopTransaction`/`SetChargingProfile` at all — starting or stopping on
+its own schedule regardless of what HSEM sent — check the charger's own
+local configuration for whatever setting hands charging-decision authority to
+the OCPP central system (often labelled something like "remote"/"neutral"/
+"OCPP-controlled" mode, as opposed to the charger's own automatic/PV-surplus/
+scheduled modes). This is a charger-configuration issue, not something
+fixable from the CS side of the OCPP link.
 
 **A `RemoteStopTransaction` that completes at the protocol level does not
 guarantee the charger actually stopped delivering power.** Testing against
