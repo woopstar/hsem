@@ -202,6 +202,13 @@ class OCPPCommandsMixin:
             msg_id = f"hsem-{datetime.now(UTC).timestamp()}"
             msg = json.dumps([_CALL, msg_id, action, payload])
             await session.websocket.send_str(msg)
+            _LOGGER.debug(
+                "OCPP CALL to %s (id=%s, action=%s): %s",
+                session.cpid,
+                msg_id,
+                action,
+                payload,
+            )
             if action in _TRACKED_RESPONSE_ACTIONS:
                 stale = [
                     pending_id
@@ -420,6 +427,29 @@ class OCPPCommandsMixin:
         self._stalled = False
         self._stall_logged = False
 
+    async def send_remote_start(self, cpid: str) -> bool:
+        """Directly send a ``RemoteStartTransaction`` to a charger.
+
+        Bypasses the anti-flap state machine — see
+        :meth:`send_set_charging_profile` for why the equivalent bypass
+        methods are not used for normal planner-driven operation. Wired to
+        the ``ocpp_debug_start_charging`` service (issue #920) for
+        diagnosing a charger that won't start over OCPP, without waiting
+        out the start window or the planner's own target.
+
+        Args:
+            cpid: Charge-point identifier.
+
+        Returns:
+            ``True`` if the message was written to the socket.
+        """
+        if cpid not in self._chargers:
+            _LOGGER.warning(
+                "Cannot send RemoteStartTransaction — charger %s not connected", cpid
+            )
+            return False
+        return await self._send_remote_start(self._chargers[cpid])
+
     async def send_set_charging_profile(
         self, cpid: str, max_power_w: int, max_current_a: int = 16
     ) -> bool:
@@ -429,10 +459,11 @@ class OCPPCommandsMixin:
         :meth:`~ocpp_server.OCPPServer.update_charge_target` for normal
         planner-driven operation.
 
-        No HA service registers this as a manual override (see issue #843
-        — deliberately left unwired: registering it would let a user bypass
-        the anti-flap safety window with no corresponding product need).
-        Kept as public API for direct/test use.
+        Wired to the ``ocpp_debug_start_charging`` service (issue #920) as a
+        manual override for diagnosing a charger that won't start over
+        OCPP — not used by the planner's own normal-operation path,
+        which goes through :meth:`~ocpp_server.OCPPServer.update_charge_target`
+        instead. Kept as public API for direct/test use.
 
         Args:
             cpid: Charge-point identifier.
@@ -454,9 +485,10 @@ class OCPPCommandsMixin:
     async def send_remote_stop(self, cpid: str) -> bool:
         """Directly send a ``RemoteStopTransaction`` to a charger.
 
-        Bypasses the anti-flap state machine — see
-        :meth:`send_set_charging_profile` for why this is intentionally not
-        wired to an HA service (issue #843).
+        Bypasses the anti-flap state machine. Wired to the
+        ``ocpp_debug_stop_charging`` service (issue #920) — see
+        :meth:`send_set_charging_profile` for why bypassing the anti-flap
+        window is reserved for manual debugging, not normal operation.
 
         Args:
             cpid: Charge-point identifier.
@@ -473,4 +505,8 @@ class OCPPCommandsMixin:
         return await self._send_remote_stop(self._chargers[cpid])
 
 
-__all__ = ["CHARGER_STALL_THRESHOLD_S", "OCPPCommandsMixin", "charger_appears_stalled"]
+__all__ = [
+    "CHARGER_STALL_THRESHOLD_S",
+    "OCPPCommandsMixin",
+    "charger_appears_stalled",
+]

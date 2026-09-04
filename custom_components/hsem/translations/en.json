@@ -1357,6 +1357,30 @@
     "create_dashboard": {
       "name": "Create dashboard",
       "description": "Create or update the HSEM Lovelace dashboard. Set force to true to overwrite."
+    },
+    "ocpp_debug_start_charging": {
+      "name": "OCPP debug start charging",
+      "description": "Diagnostics-only: manually send RemoteStartTransaction and SetChargingProfile to the connected OCPP charger, bypassing the anti-flap start window.",
+      "fields": {
+        "charger": {
+          "name": "Charger",
+          "description": "Which EV's embedded OCPP server to target."
+        },
+        "max_current_a": {
+          "name": "Max current",
+          "description": "Maximum charging current to request, in amperes."
+        }
+      }
+    },
+    "ocpp_debug_stop_charging": {
+      "name": "OCPP debug stop charging",
+      "description": "Diagnostics-only: manually send RemoteStopTransaction to the connected OCPP charger, bypassing the anti-flap stop window.",
+      "fields": {
+        "charger": {
+          "name": "Charger",
+          "description": "Which EV's embedded OCPP server to target."
+        }
+      }
     }
   }
 }

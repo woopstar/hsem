@@ -1,6 +1,6 @@
 # HSEM Services Reference
 
-HSEM exposes five Home Assistant services that allow automation, script, and
+HSEM exposes seven Home Assistant services that allow automation, script, and
 manual control over the planner and hardware writes.
 
 These services are **integration-level actions**: they operate on the single
@@ -12,13 +12,15 @@ below.
 
 ## Service listing
 
-| Service                       | Description                                     | Response |
-| ----------------------------- | ----------------------------------------------- | -------- |
-| `hsem.force_recalculation`    | Trigger an immediate full planner re-run        | None     |
-| `hsem.set_temporary_override` | Force a specific battery working mode           | None     |
-| `hsem.clear_override`         | Return to automatic planner control             | None     |
-| `hsem.create_dashboard`       | Create or update the bundled Lovelace dashboard | Dict     |
-| `hsem.export_diagnostics`     | Export structured diagnostic data               | Dict     |
+| Service                          | Description                                      | Response |
+| -------------------------------- | ------------------------------------------------ | -------- |
+| `hsem.force_recalculation`       | Trigger an immediate full planner re-run         | None     |
+| `hsem.set_temporary_override`    | Force a specific battery working mode            | None     |
+| `hsem.clear_override`            | Return to automatic planner control              | None     |
+| `hsem.create_dashboard`          | Create or update the bundled Lovelace dashboard  | Dict     |
+| `hsem.export_diagnostics`        | Export structured diagnostic data                | Dict     |
+| `hsem.ocpp_debug_start_charging` | Diagnostics-only: manually start an OCPP charger | None     |
+| `hsem.ocpp_debug_stop_charging`  | Diagnostics-only: manually stop an OCPP charger  | None     |
 
 ---
 
@@ -191,6 +193,71 @@ are redacted for safe sharing in issue reports.
 ```yaml
 service: hsem.export_diagnostics
 response_variable: diagnostics_result
+```
+
+---
+
+## 6. `hsem.ocpp_debug_start_charging`
+
+**Diagnostics-only.** Manually sends `RemoteStartTransaction` followed by
+`SetChargingProfile` directly to the currently connected OCPP charger,
+**bypassing the anti-flap state machine entirely**. Use this to check whether
+a charger accepts a bare OCPP start command at all when the normal
+planner-driven path doesn't seem to start it — it isolates a charger/protocol
+problem from a planner-logic problem.
+
+Because the anti-flap window is bypassed, the planner's own target still
+applies on the next coordinator cycle and may immediately stop the charger
+again if the plan calls for zero power. This service is not a substitute for
+normal operation.
+
+**Schema:**
+
+| Field           | Required | Type           | Description                                                                     |
+| --------------- | -------- | -------------- | ------------------------------------------------------------------------------- |
+| `charger`       | No       | Select         | `"primary"` (default) or `"second"` — which EV's embedded OCPP server to target |
+| `max_current_a` | No       | Integer (6–32) | Maximum charging current to request, in amperes. Default 16.                    |
+
+**Raises:**
+
+- `ServiceValidationError` when OCPP isn't enabled/configured for the selected EV, or no charger is currently connected.
+- `HomeAssistantError` when the commands fail to reach the charger.
+
+**Example:**
+
+```yaml
+service: hsem.ocpp_debug_start_charging
+data:
+  charger: primary
+  max_current_a: 10
+```
+
+---
+
+## 7. `hsem.ocpp_debug_stop_charging`
+
+**Diagnostics-only.** Manually sends `RemoteStopTransaction` directly to the
+currently connected OCPP charger, **bypassing the anti-flap state machine
+entirely**. Use this to check whether a charger accepts a bare OCPP stop
+command at all when the normal planner-driven path doesn't seem to stop it.
+
+**Schema:**
+
+| Field     | Required | Type   | Description                                                                     |
+| --------- | -------- | ------ | ------------------------------------------------------------------------------- |
+| `charger` | No       | Select | `"primary"` (default) or `"second"` — which EV's embedded OCPP server to target |
+
+**Raises:**
+
+- `ServiceValidationError` when OCPP isn't enabled/configured for the selected EV, or no charger is currently connected.
+- `HomeAssistantError` when the command fails to reach the charger.
+
+**Example:**
+
+```yaml
+service: hsem.ocpp_debug_stop_charging
+data:
+  charger: primary
 ```
 
 ---

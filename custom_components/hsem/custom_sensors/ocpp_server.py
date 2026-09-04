@@ -548,6 +548,13 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
                 msg_id = msg[1]
                 action = msg[2]
                 payload = msg[3] if len(msg) > 3 else {}
+                _LOGGER.debug(
+                    "OCPP CALL from %s (id=%s, action=%s): %s",
+                    session.cpid,
+                    msg_id,
+                    action,
+                    payload,
+                )
                 await self._dispatch(session, msg_id, action, payload)
             elif msg_type == _CALLRESULT:
                 # Response to an outbound HSEM call (RemoteStartTransaction,

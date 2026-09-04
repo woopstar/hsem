@@ -24,6 +24,8 @@ from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.services import (
     SCHEMA_CREATE_DASHBOARD,
+    SCHEMA_OCPP_DEBUG_START_CHARGING,
+    SCHEMA_OCPP_DEBUG_STOP_CHARGING,
     SERVICE_HANDLER_MAP,
     async_register_services,
     async_unregister_services,
@@ -365,6 +367,180 @@ async def test_create_dashboard_calls_helper_and_returns_result(
         "dashboard_path": "/config/hsem_dashboard.yaml",
         "dashboard_url": "/hsem-dashboard",
     }
+
+
+def _make_ocpp_server(cpid: str | None = "CP1") -> MagicMock:
+    """Return a mocked OCPPServer with one connected charger by default."""
+    server = MagicMock()
+    server.active_chargers = [cpid] if cpid else []
+    server.send_remote_start = AsyncMock(return_value=True)
+    server.send_set_charging_profile = AsyncMock(return_value=True)
+    server.send_remote_stop = AsyncMock(return_value=True)
+    return server
+
+
+def test_ocpp_debug_start_charging_schema_defaults() -> None:
+    """charger defaults to 'primary', max_current_a defaults to 16."""
+    result = SCHEMA_OCPP_DEBUG_START_CHARGING({})
+    assert result == {"charger": "primary", "max_current_a": 16}
+
+
+def test_ocpp_debug_start_charging_schema_rejects_unknown_charger() -> None:
+    """An unsupported 'charger' value is rejected."""
+    with pytest.raises(vol.Invalid):
+        SCHEMA_OCPP_DEBUG_START_CHARGING({"charger": "third"})
+
+
+def test_ocpp_debug_stop_charging_schema_defaults() -> None:
+    """charger defaults to 'primary' for the stop schema too."""
+    assert SCHEMA_OCPP_DEBUG_STOP_CHARGING({}) == {"charger": "primary"}
+
+
+@pytest.mark.asyncio
+async def test_ocpp_debug_start_charging_no_coordinator_raises(
+    mock_hass: MagicMock,
+) -> None:
+    """ocpp_debug_start_charging raises without a coordinator."""
+    call = _make_service_call(mock_hass, {"charger": "primary", "max_current_a": 16})
+    with (
+        patch.object(services_module, "_get_coordinator", return_value=None),
+        pytest.raises(ServiceValidationError),
+    ):
+        await services_module.async_handle_ocpp_debug_start_charging(call)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_start_charging_server_not_running_raises(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Raises when the selected EV's OCPP server isn't running."""
+    mock_coordinator._ocpp_server = None
+    call = _make_service_call(mock_hass, {"charger": "primary", "max_current_a": 16})
+    with pytest.raises(ServiceValidationError):
+        await services_module.async_handle_ocpp_debug_start_charging(call)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_start_charging_no_charger_connected_raises(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Raises when the OCPP server is running but nothing is connected."""
+    mock_coordinator._ocpp_server = _make_ocpp_server(cpid=None)
+    call = _make_service_call(mock_hass, {"charger": "primary", "max_current_a": 16})
+    with pytest.raises(ServiceValidationError):
+        await services_module.async_handle_ocpp_debug_start_charging(call)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_start_charging_sends_start_and_profile(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Success path sends RemoteStartTransaction then SetChargingProfile."""
+    server = _make_ocpp_server(cpid="CP1")
+    mock_coordinator._ocpp_server = server
+    call = _make_service_call(mock_hass, {"charger": "primary", "max_current_a": 10})
+
+    await services_module.async_handle_ocpp_debug_start_charging(call)
+
+    server.send_remote_start.assert_awaited_once_with("CP1")
+    server.send_set_charging_profile.assert_awaited_once_with("CP1", 2300, 10)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_start_charging_targets_second_charger(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """charger='second' targets the second EV's OCPP server."""
+    mock_coordinator._ocpp_server = None
+    second_server = _make_ocpp_server(cpid="CP2")
+    mock_coordinator._ocpp_second_server = second_server
+    call = _make_service_call(mock_hass, {"charger": "second", "max_current_a": 16})
+
+    await services_module.async_handle_ocpp_debug_start_charging(call)
+
+    second_server.send_remote_start.assert_awaited_once_with("CP2")
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_start_charging_raises_when_send_fails(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A failed send raises HomeAssistantError rather than silently succeeding."""
+    server = _make_ocpp_server(cpid="CP1")
+    server.send_remote_start = AsyncMock(return_value=False)
+    mock_coordinator._ocpp_server = server
+    call = _make_service_call(mock_hass, {"charger": "primary", "max_current_a": 16})
+
+    with pytest.raises(HomeAssistantError):
+        await services_module.async_handle_ocpp_debug_start_charging(call)
+
+
+@pytest.mark.asyncio
+async def test_ocpp_debug_stop_charging_no_coordinator_raises(
+    mock_hass: MagicMock,
+) -> None:
+    """ocpp_debug_stop_charging raises without a coordinator."""
+    call = _make_service_call(mock_hass, {"charger": "primary"})
+    with (
+        patch.object(services_module, "_get_coordinator", return_value=None),
+        pytest.raises(ServiceValidationError),
+    ):
+        await services_module.async_handle_ocpp_debug_stop_charging(call)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_stop_charging_no_charger_connected_raises(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Raises when nothing is connected to stop."""
+    mock_coordinator._ocpp_server = _make_ocpp_server(cpid=None)
+    call = _make_service_call(mock_hass, {"charger": "primary"})
+    with pytest.raises(ServiceValidationError):
+        await services_module.async_handle_ocpp_debug_stop_charging(call)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_stop_charging_sends_remote_stop(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Success path sends RemoteStopTransaction to the connected charger."""
+    server = _make_ocpp_server(cpid="CP1")
+    mock_coordinator._ocpp_server = server
+    call = _make_service_call(mock_hass, {"charger": "primary"})
+
+    await services_module.async_handle_ocpp_debug_stop_charging(call)
+
+    server.send_remote_stop.assert_awaited_once_with("CP1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_stop_charging_raises_when_send_fails(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A failed stop send raises HomeAssistantError."""
+    server = _make_ocpp_server(cpid="CP1")
+    server.send_remote_stop = AsyncMock(return_value=False)
+    mock_coordinator._ocpp_server = server
+    call = _make_service_call(mock_hass, {"charger": "primary"})
+
+    with pytest.raises(HomeAssistantError):
+        await services_module.async_handle_ocpp_debug_stop_charging(call)
 
 
 @pytest.mark.asyncio

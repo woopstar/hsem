@@ -1357,6 +1357,30 @@
     "create_dashboard": {
       "name": "Dashboard erstellen",
       "description": "Erstellt oder aktualisiert das HSEM-Lovelace-Dashboard. Setze force auf true, um zu überschreiben."
+    },
+    "ocpp_debug_start_charging": {
+      "name": "OCPP-Debug: Laden starten",
+      "description": "Nur für Diagnosezwecke: Sendet manuell RemoteStartTransaction und SetChargingProfile an das verbundene OCPP-Ladegerät, unter Umgehung des Anti-Flap-Startfensters.",
+      "fields": {
+        "charger": {
+          "name": "Ladegerät",
+          "description": "Welcher EV-eigene, eingebettete OCPP-Server angesprochen werden soll."
+        },
+        "max_current_a": {
+          "name": "Max. Strom",
+          "description": "Der maximal angeforderte Ladestrom in Ampere."
+        }
+      }
+    },
+    "ocpp_debug_stop_charging": {
+      "name": "OCPP-Debug: Laden stoppen",
+      "description": "Nur für Diagnosezwecke: Sendet manuell RemoteStopTransaction an das verbundene OCPP-Ladegerät, unter Umgehung des Anti-Flap-Stoppfensters.",
+      "fields": {
+        "charger": {
+          "name": "Ladegerät",
+          "description": "Welcher EV-eigene, eingebettete OCPP-Server angesprochen werden soll."
+        }
+      }
     }
   }
 }

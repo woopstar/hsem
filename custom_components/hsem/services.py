@@ -1,12 +1,16 @@
 """Service handlers for the HSEM integration.
 
-This module implements the five HSEM services:
+This module implements the HSEM services:
 
 - ``force_recalculation`` — Re-run the full planning pipeline immediately.
 - ``set_temporary_override`` — Force a specific working mode on the select entity.
 - ``clear_override`` — Reset the force-mode select to ``"auto"``.
 - ``export_diagnostics`` — Return a structured diagnostics dump as service response.
 - ``create_dashboard`` — Log the path to the bundled dashboard YAML.
+- ``ocpp_debug_start_charging`` — Manually send RemoteStartTransaction +
+  SetChargingProfile, bypassing the anti-flap state machine (issue #920).
+- ``ocpp_debug_stop_charging`` — Manually send RemoteStopTransaction, bypassing
+  the anti-flap state machine (issue #920).
 
 All services are integration-level actions; the coordinator is looked up from
 the only configured HSEM entry.  Service schemas are defined in ``services.yaml``.
@@ -48,6 +52,11 @@ SUPPORTED_OVERRIDE_MODES: list[str] = [
     "force_export",
 ]
 
+# OCPP debug services (issue #920) target the primary EV's server by default,
+# or the second EV's server (only relevant when configured/enabled) — mirrors
+# the "charger_index" convention used throughout ocpp_sensors.py.
+SUPPORTED_OCPP_CHARGERS: list[str] = ["primary", "second"]
+
 # ---------------------------------------------------------------------------
 # Service name constants
 # ---------------------------------------------------------------------------
@@ -57,6 +66,8 @@ SERVICE_SET_TEMPORARY_OVERRIDE = "set_temporary_override"
 SERVICE_CLEAR_OVERRIDE = "clear_override"
 SERVICE_EXPORT_DIAGNOSTICS = "export_diagnostics"
 SERVICE_CREATE_DASHBOARD = "create_dashboard"
+SERVICE_OCPP_DEBUG_START_CHARGING = "ocpp_debug_start_charging"
+SERVICE_OCPP_DEBUG_STOP_CHARGING = "ocpp_debug_stop_charging"
 
 # ---------------------------------------------------------------------------
 # Voluptuous schemas for input validation
@@ -81,6 +92,22 @@ SCHEMA_EXPORT_DIAGNOSTICS = vol.Schema({})
 SCHEMA_CREATE_DASHBOARD = vol.Schema(
     {
         vol.Optional("dashboard_path"): vol.All(vol.Coerce(str), vol.Length(min=1)),
+    }
+)
+
+SCHEMA_OCPP_DEBUG_START_CHARGING = vol.Schema(
+    {
+        vol.Optional("charger", default="primary"): vol.In(SUPPORTED_OCPP_CHARGERS),
+        vol.Optional("max_current_a", default=16): vol.All(
+            vol.Coerce(int),
+            vol.Range(min=6, max=32),
+        ),
+    }
+)
+
+SCHEMA_OCPP_DEBUG_STOP_CHARGING = vol.Schema(
+    {
+        vol.Optional("charger", default="primary"): vol.In(SUPPORTED_OCPP_CHARGERS),
     }
 )
 
@@ -110,6 +137,23 @@ def _get_coordinator(hass: HomeAssistant) -> HSEMDataUpdateCoordinator | None:
             if isinstance(coordinator, HSEMDataUpdateCoordinator):
                 return coordinator
     return None
+
+
+def _get_ocpp_server(coordinator: HSEMDataUpdateCoordinator, charger: str) -> Any:
+    """Return the running OCPP server for the selected EV, or ``None``.
+
+    Args:
+        coordinator: The HSEM coordinator.
+        charger: ``"primary"`` or ``"second"`` — selects which EV's embedded
+            OCPP server to target (issue #920). Mirrors the
+            ``charger_index`` convention in ``ocpp_sensors.py``.
+
+    Returns:
+        The :class:`~custom_components.hsem.custom_sensors.ocpp_server.OCPPServer`
+        instance, or ``None`` if that server isn't enabled/running.
+    """
+    attr = "_ocpp_second_server" if charger == "second" else "_ocpp_server"
+    return getattr(coordinator, attr, None)
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +374,124 @@ async def async_handle_create_dashboard(
     return result
 
 
+async def async_handle_ocpp_debug_start_charging(call: ServiceCall) -> None:
+    """Manually send RemoteStartTransaction + SetChargingProfile for debugging.
+
+    Bypasses the anti-flap state machine entirely and talks directly to the
+    connected charger via :meth:`OCPPServer.send_remote_start` and
+    :meth:`OCPPServer.send_set_charging_profile` (issue #920) — for
+    diagnosing why a charger won't start over OCPP, not for normal
+    operation. The planner's own anti-flap-gated target still runs on the
+    next coordinator cycle and may countermand this immediately if the plan
+    calls for zero power.
+
+    Args:
+        call: The service call with an optional ``charger`` key
+            (``"primary"``/``"second"``, default ``"primary"``) and optional
+            ``max_current_a`` key (default 16). ``call.hass`` provides the
+            Home Assistant instance.
+
+    Raises:
+        ServiceValidationError: When the coordinator or selected OCPP
+            server is unavailable, or no charger is currently connected.
+        HomeAssistantError: When the commands fail to reach the charger.
+    """
+    charger_choice: str = call.data["charger"]
+    max_current_a: int = call.data["max_current_a"]
+
+    coordinator = _get_coordinator(call.hass)
+    if coordinator is None:
+        raise ServiceValidationError(
+            "HSEM coordinator not found — integration may not be configured."
+        )
+
+    ocpp_server = _get_ocpp_server(coordinator, charger_choice)
+    if ocpp_server is None:
+        raise ServiceValidationError(
+            f"OCPP server for the '{charger_choice}' charger is not running "
+            "— check that OCPP is enabled in the config for this EV."
+        )
+
+    active = ocpp_server.active_chargers
+    if not active:
+        raise ServiceValidationError(
+            f"No charger currently connected to the '{charger_choice}' OCPP server."
+        )
+    cpid = active[0]
+
+    _LOGGER.warning(
+        "HSEM service: ocpp_debug_start_charging called for %s charger "
+        "(cpid=%s, max_current_a=%d) — bypassing anti-flap for debugging",
+        charger_choice,
+        cpid,
+        max_current_a,
+    )
+    start_ok = await ocpp_server.send_remote_start(cpid)
+    profile_ok = await ocpp_server.send_set_charging_profile(
+        cpid, max_current_a * 230, max_current_a
+    )
+    if not (start_ok and profile_ok):
+        raise HomeAssistantError(
+            f"HSEM service: failed to send start commands to charger '{cpid}' "
+            "— see the log for details."
+        )
+    _LOGGER.info("HSEM service: ocpp_debug_start_charging completed for cpid=%s", cpid)
+
+
+async def async_handle_ocpp_debug_stop_charging(call: ServiceCall) -> None:
+    """Manually send RemoteStopTransaction for debugging.
+
+    Bypasses the anti-flap state machine entirely via
+    :meth:`OCPPServer.send_remote_stop` (issue #920) — for diagnosing why a
+    charger won't stop over OCPP, not for normal operation.
+
+    Args:
+        call: The service call with an optional ``charger`` key
+            (``"primary"``/``"second"``, default ``"primary"``).
+            ``call.hass`` provides the Home Assistant instance.
+
+    Raises:
+        ServiceValidationError: When the coordinator or selected OCPP
+            server is unavailable, or no charger is currently connected.
+        HomeAssistantError: When the command fails to reach the charger.
+    """
+    charger_choice: str = call.data["charger"]
+
+    coordinator = _get_coordinator(call.hass)
+    if coordinator is None:
+        raise ServiceValidationError(
+            "HSEM coordinator not found — integration may not be configured."
+        )
+
+    ocpp_server = _get_ocpp_server(coordinator, charger_choice)
+    if ocpp_server is None:
+        raise ServiceValidationError(
+            f"OCPP server for the '{charger_choice}' charger is not running "
+            "— check that OCPP is enabled in the config for this EV."
+        )
+
+    active = ocpp_server.active_chargers
+    if not active:
+        raise ServiceValidationError(
+            f"No charger currently connected to the '{charger_choice}' OCPP server."
+        )
+    cpid = active[0]
+
+    _LOGGER.warning(
+        "HSEM service: ocpp_debug_stop_charging called for %s charger "
+        "(cpid=%s) — bypassing anti-flap for debugging",
+        charger_choice,
+        cpid,
+    )
+    stopped = await ocpp_server.send_remote_stop(cpid)
+    if not stopped:
+        raise HomeAssistantError(
+            f"HSEM service: failed to send RemoteStopTransaction to charger "
+            f"'{cpid}' — see the log for details."
+        )
+    _LOGGER.info("HSEM service: ocpp_debug_stop_charging completed for cpid=%s", cpid)
+
+
 # ---------------------------------------------------------------------------
 # Service registration
 # ---------------------------------------------------------------------------
@@ -353,6 +515,16 @@ SERVICE_HANDLER_MAP: dict[str, tuple[vol.Schema, Any, SupportsResponse]] = {
     SERVICE_FORCE_RECALCULATION: (
         SCHEMA_FORCE_RECALCULATION,
         async_handle_force_recalculation,
+        SupportsResponse.NONE,
+    ),
+    SERVICE_OCPP_DEBUG_START_CHARGING: (
+        SCHEMA_OCPP_DEBUG_START_CHARGING,
+        async_handle_ocpp_debug_start_charging,
+        SupportsResponse.NONE,
+    ),
+    SERVICE_OCPP_DEBUG_STOP_CHARGING: (
+        SCHEMA_OCPP_DEBUG_STOP_CHARGING,
+        async_handle_ocpp_debug_stop_charging,
         SupportsResponse.NONE,
     ),
     SERVICE_SET_TEMPORARY_OVERRIDE: (

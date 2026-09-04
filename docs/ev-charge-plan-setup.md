@@ -531,6 +531,30 @@ into a single refresh instead of one per message. `MeterValues` and
 often and carry no state-transition information worth an out-of-band
 planner cycle.
 
+**Manually debugging a charger that won't start/stop (issue #920).** Two
+diagnostics-only services bypass the anti-flap state machine entirely and
+talk directly to whichever charger is currently connected:
+`hsem.ocpp_debug_start_charging` (optional `charger`: `"primary"`/`"second"`,
+default `"primary"`; optional `max_current_a`, default 16) sends
+`RemoteStartTransaction` + `SetChargingProfile`, and
+`hsem.ocpp_debug_stop_charging` (same `charger` field) sends
+`RemoteStopTransaction`. Both raise an error if OCPP isn't enabled for the
+selected EV or nothing is currently connected. Because these bypass the
+anti-flap window, the planner's own target still applies on the next
+coordinator cycle and can immediately countermand a manual start/stop — use
+them to isolate whether the charger itself accepts a bare OCPP command, not
+as a substitute for normal operation.
+
+For full wire-level visibility, every incoming and outgoing OCPP `CALL` is
+logged at `DEBUG` with its action and full payload (`custom_components.hsem.custom_sensors.ocpp_server`
+for inbound, `custom_components.hsem.custom_sensors.ocpp_commands` for
+outbound) — enable debug logging for those loggers in
+`configuration.yaml` to see the exact conversation between HSEM and the
+charger. `pending_calls` (outbound commands still awaiting a CALLRESULT) is
+also exposed per CPID on `sensor.hsem_ocpp_charger_status`, alongside the
+existing `last_call_status`, so a command that never got acknowledged is
+visible without reading the log.
+
 **go-e Charger.** The V2 API exposes `ama` (max ampere) for dynamic load balancing.
 go-e have confirmed setting it frequently is safe, but the community convention is
 still to apply hysteresis of roughly 0.5–1 A before moving the limit — for example

@@ -1357,6 +1357,30 @@
     "create_dashboard": {
       "name": "Crear panel",
       "description": "Crea o actualiza el panel Lovelace de HSEM. Establece force en true para sobrescribirlo."
+    },
+    "ocpp_debug_start_charging": {
+      "name": "Depuración OCPP: iniciar carga",
+      "description": "Solo para diagnóstico: envía manualmente RemoteStartTransaction y SetChargingProfile al cargador OCPP conectado, saltándose la ventana de inicio anti-parpadeo.",
+      "fields": {
+        "charger": {
+          "name": "Cargador",
+          "description": "Qué servidor OCPP integrado de VE se debe usar."
+        },
+        "max_current_a": {
+          "name": "Corriente máxima",
+          "description": "La corriente máxima de carga que se solicitará, en amperios."
+        }
+      }
+    },
+    "ocpp_debug_stop_charging": {
+      "name": "Depuración OCPP: detener carga",
+      "description": "Solo para diagnóstico: envía manualmente RemoteStopTransaction al cargador OCPP conectado, saltándose la ventana de parada anti-parpadeo.",
+      "fields": {
+        "charger": {
+          "name": "Cargador",
+          "description": "Qué servidor OCPP integrado de VE se debe usar."
+        }
+      }
     }
   }
 }

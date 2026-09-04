@@ -783,6 +783,50 @@ class TestCallResultHandling:
 
 
 # ---------------------------------------------------------------------------
+# Wire-level DEBUG logging (issue #920)
+# ---------------------------------------------------------------------------
+
+
+class TestWireLevelDebugLogging:
+    """Every incoming/outgoing OCPP CALL is logged at DEBUG for diagnosing
+    why a charger silently doesn't respond to a start/stop as expected."""
+
+    @pytest.mark.asyncio
+    async def test_incoming_call_logged_with_action_and_payload(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """An inbound CALL's action and payload are logged before dispatch."""
+        raw = json.dumps(
+            [2, "charger-1", "StatusNotification", {"status": "Available"}]
+        )
+        # "custom_components.hsem" has its level explicitly set to WARNING by
+        # HSEM_LOGGER at import time (utils/logger.py) — an ancestor with a
+        # non-NOTSET level short-circuits Python's effective-level walk
+        # before it ever reaches root, so raising only root's level here
+        # would not actually let DEBUG through for this module's logger.
+        with caplog.at_level(
+            logging.DEBUG, logger="custom_components.hsem.custom_sensors.ocpp_server"
+        ):
+            await ocpp_server._handle_message(charger_session, raw)
+        assert "StatusNotification" in caplog.text
+        assert "Available" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_outgoing_call_logged_with_action_and_payload(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """An outbound CALL's action and payload are logged on send."""
+        with caplog.at_level(
+            logging.DEBUG, logger="custom_components.hsem.custom_sensors.ocpp_commands"
+        ):
+            await ocpp_server._send_call(
+                charger_session, "SetChargingProfile", {"connectorId": 1}
+            )
+        assert "SetChargingProfile" in caplog.text
+        assert "connectorId" in caplog.text
+
+
+# ---------------------------------------------------------------------------
 # Anti-flap logic tests
 # ---------------------------------------------------------------------------
 
@@ -890,6 +934,27 @@ class TestServerStartStop:
     async def test_send_remote_stop_to_unknown_charger(self, ocpp_server):
         """Sending RemoteStopTransaction to unknown CPID should be a no-op."""
         await ocpp_server.send_remote_stop("unknown")
+
+    @pytest.mark.asyncio
+    async def test_send_remote_start_to_unknown_charger(self, ocpp_server):
+        """Sending RemoteStartTransaction to unknown CPID should be a no-op."""
+        result = await ocpp_server.send_remote_start("unknown")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_remote_start_bypasses_anti_flap(
+        self, ocpp_server, charger_session
+    ):
+        """send_remote_start (issue #920) sends immediately, no start window wait."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        result = await ocpp_server.send_remote_start("test-cpid")
+        assert result is True
+        charger_session.websocket.send_str.assert_called_once()
+        msg = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        assert msg[2] == "RemoteStartTransaction"
+        assert msg[3] == {"idTag": "HSEM"}
+        # Bypass API must not touch the anti-flap state machine.
+        assert ocpp_server.anti_flap_state == "idle"
 
 
 # ---------------------------------------------------------------------------

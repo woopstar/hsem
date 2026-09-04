@@ -62,6 +62,59 @@ export_diagnostics:
     hsem_version, dump_timestamp, planner_input, planner_output, apply_result.
   fields: {}
 
+ocpp_debug_start_charging:
+  name: OCPP debug start charging
+  description: >-
+    Diagnostics-only: manually send RemoteStartTransaction and
+    SetChargingProfile to the currently connected OCPP charger, bypassing the
+    anti-flap start window entirely. Use this to check whether the charger
+    accepts a start command at all when the normal planner-driven path
+    doesn't seem to start it. The planner's own target still applies on the
+    next update cycle and may immediately stop the charger again if the plan
+    calls for zero power.
+  fields:
+    charger:
+      required: false
+      default: "primary"
+      selector:
+        select:
+          options:
+            - "primary"
+            - "second"
+      description: >-
+        Which EV's embedded OCPP server to target. "second" only applies
+        when the second EV's OCPP server is configured and enabled.
+    max_current_a:
+      required: false
+      default: 16
+      selector:
+        number:
+          min: 6
+          max: 32
+          unit_of_measurement: "A"
+          mode: box
+      description: "Maximum charging current to request, in amperes."
+
+ocpp_debug_stop_charging:
+  name: OCPP debug stop charging
+  description: >-
+    Diagnostics-only: manually send RemoteStopTransaction to the currently
+    connected OCPP charger, bypassing the anti-flap stop window entirely. Use
+    this to check whether the charger accepts a stop command at all when the
+    normal planner-driven path doesn't seem to stop it.
+  fields:
+    charger:
+      required: false
+      default: "primary"
+      selector:
+        select:
+          options:
+            - "primary"
+            - "second"
+      description: >-
+        Which EV's embedded OCPP server to target. "second" only applies
+        when the second EV's OCPP server is configured and enabled.
+
 create_dashboard:
   name: Create dashboard
   description: >-

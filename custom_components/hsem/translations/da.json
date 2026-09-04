@@ -1364,6 +1364,30 @@
     "create_dashboard": {
       "name": "Opret dashboard",
       "description": "Opret eller opdater HSEM Lovelace-dashboardet. Sæt force til true for at overskrive."
+    },
+    "ocpp_debug_start_charging": {
+      "name": "OCPP-fejlsøgning: start opladning",
+      "description": "Kun til fejlsøgning: send manuelt RemoteStartTransaction og SetChargingProfile til den tilsluttede OCPP-lader, uden om anti-flap-startvinduet.",
+      "fields": {
+        "charger": {
+          "name": "Lader",
+          "description": "Hvilken EV's indbyggede OCPP-server der skal målrettes."
+        },
+        "max_current_a": {
+          "name": "Maks. strøm",
+          "description": "Den maksimale opladningsstrøm, der skal anmodes om, i ampere."
+        }
+      }
+    },
+    "ocpp_debug_stop_charging": {
+      "name": "OCPP-fejlsøgning: stop opladning",
+      "description": "Kun til fejlsøgning: send manuelt RemoteStopTransaction til den tilsluttede OCPP-lader, uden om anti-flap-stopvinduet.",
+      "fields": {
+        "charger": {
+          "name": "Lader",
+          "description": "Hvilken EV's indbyggede OCPP-server der skal målrettes."
+        }
+      }
     }
   }
 }
