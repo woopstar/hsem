@@ -450,6 +450,33 @@ rejection is now visible instead of silently assumed successful. A rejected
 `SetChargingProfile` is retried on the same roughly-once-a-minute cadence as
 a rejected start, without waiting for the target to change materially.
 
+**`SetChargingProfile` accepted but the amp limit may never actually apply
+(issue #920 follow-up).** HSEM's `TxDefaultProfile` used
+`chargingProfileKind: "Relative"`, which per OCPP 1.6 §3.11 is only valid on
+a profile with purpose `"TxProfile"` — its schedule is anchored to that
+transaction's own start time, and `TxDefaultProfile` is deliberately
+transaction-agnostic (HSEM doesn't know the transaction ID yet when it sends
+the profile, immediately after `RemoteStartTransaction`). A charger can
+accept this invalid combination at the JSON-schema level (`"status":
+"Accepted"` in the CALLRESULT, `last_call_status` shows nothing wrong) while
+never actually applying the semantically-undefined schedule — indistinguishable
+from a silent no-op unless you inspect the full wire conversation via the
+DEBUG logging above. Fixed by sending `chargingProfileKind: "Absolute"`
+instead (with `startSchedule` omitted, meaning "effective immediately"),
+which is spec-valid for `TxDefaultProfile`. Found on a go-e Charger V4
+(firmware 60.6, OCPP 1.6) via `hsem.ocpp_debug_start_charging` plus the new
+wire-level DEBUG logging.
+
+**A `RemoteStopTransaction` that completes at the protocol level does not
+guarantee the charger actually stopped delivering power.** Testing against
+the same go-e Charger V4, `RemoteStopTransaction` was accepted and the
+charger's own subsequent `StopTransaction` confirmed the transaction closed
+(`transaction_id` cleared) — the OCPP exchange itself completed exactly as
+specced. If a charger still appears to keep charging after that, it points
+to charger-side firmware behavior (the relay/output not actually being cut
+on remote stop) rather than an HSEM-side protocol bug, and is worth
+reporting to the charger vendor with the DEBUG log excerpt as evidence.
+
 The charge point ID (`hsem_ocpp_cpid`) must match the path segment your
 charger connects with — HSEM derives it from the WebSocket connection path
 (`ws://host:port/` → `"default"`, `ws://host:port/222819` → `"222819"`),

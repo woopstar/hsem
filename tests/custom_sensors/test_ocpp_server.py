@@ -383,6 +383,11 @@ class TestSetChargingProfile:
         assert profile["chargingProfileId"] == 1
         assert profile["stackLevel"] == 0
         assert profile["chargingProfilePurpose"] == "TxDefaultProfile"
+        # "Relative" is only spec-valid for purpose "TxProfile" (OCPP 1.6
+        # §3.11) — "TxDefaultProfile" must use "Absolute" (issue #920
+        # follow-up: a charger can accept the invalid combination without
+        # error yet silently never apply the schedule).
+        assert profile["chargingProfileKind"] == "Absolute"
         schedule = profile["chargingSchedule"]
         assert schedule["chargingRateUnit"] == "A"
         assert schedule["chargingSchedulePeriod"][0]["limit"] == 16

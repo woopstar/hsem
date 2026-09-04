@@ -282,12 +282,26 @@ class OCPPCommandsMixin:
             material-change dedup filter would wrongly suppress a rightful
             retry.
         """
-        # OCPP 1.6 ChargingProfile structure
+        # OCPP 1.6 ChargingProfile structure. chargingProfileKind MUST be
+        # "Absolute" (or "Recurring") here, never "Relative" — per OCPP 1.6
+        # §3.11 (ChargingProfileKindType), "Relative" is only valid on a
+        # profile with purpose "TxProfile", where the schedule is anchored
+        # to that transaction's own start time. This profile's purpose is
+        # "TxDefaultProfile" (transaction-agnostic — it must apply to
+        # whichever transaction becomes active, since at send time no
+        # transaction/transactionId may exist yet), so there is no
+        # transaction start to be relative to. Sending "Relative" here is a
+        # spec-invalid combination (issue #920 follow-up): some chargers
+        # accept the message (JSON-schema valid) but then never actually
+        # apply the semantically-undefined schedule, which looked from the
+        # outside like SetChargingProfile silently not taking effect despite
+        # replying "Accepted". Omitting `startSchedule` under "Absolute"
+        # means "effective immediately", which is what HSEM wants here.
         charging_profile = {
             "chargingProfileId": 1,
             "stackLevel": 0,
             "chargingProfilePurpose": "TxDefaultProfile",
-            "chargingProfileKind": "Relative",
+            "chargingProfileKind": "Absolute",
             "chargingSchedule": {
                 "chargingRateUnit": "A",
                 "chargingSchedulePeriod": [
