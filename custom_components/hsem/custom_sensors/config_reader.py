@@ -586,6 +586,9 @@ def build_sensor_config(
     cfg.ml_consumption_temperature_entity = _optional_entity(
         get_config_value(config_entry, "hsem_ml_consumption_temperature_entity")
     )
+    cfg.ml_consumption_weather_forecast_entity = _optional_entity(
+        get_config_value(config_entry, "hsem_ml_consumption_weather_forecast_entity")
+    )
 
     # Consumption weights
     _w1d = convert_to_int(

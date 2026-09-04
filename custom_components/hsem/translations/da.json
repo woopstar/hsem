@@ -440,6 +440,7 @@
           "hsem_ml_consumption_history_days": "ML historik dage",
           "hsem_ml_consumption_net_consumption": "Brug nettoforbrug (import minus eksport)",
           "hsem_ml_consumption_temperature_entity": "Udendørs temperatur sensor",
+          "hsem_ml_consumption_weather_forecast_entity": "Vejrudsigt-enhed",
           "hsem_ml_consumption_sequential": "Sekventiel forudsigelse (lag-funktion)"
         },
         "data_description": {
@@ -451,6 +452,7 @@
           "hsem_ml_consumption_history_days": "Dage med optagerhistorik til ML-træning (7-90).",
           "hsem_ml_consumption_net_consumption": "Træk neteksport fra import for netto husforbrug.",
           "hsem_ml_consumption_temperature_entity": "Valgfri - udendørs temperatur sensor i grader C. Brug en udendørs sensor, ikke en indendørs termostat.",
+          "hsem_ml_consumption_weather_forecast_entity": "Valgfri - vejrudsigt-enhed til fremtidige tidsintervallers temperaturprognose. Kræver at den udendørs temperatur sensor ovenfor også er sat. Falder tilbage til den målte temperatur, hvis prognosedata mangler.",
           "hsem_ml_consumption_sequential": "Før hver slotsforudsigelse som input til den næste. Fanger intra-time momentum."
         },
         "description": "Konfigurer energimålere og aktiver ML-baseret forbrugsprognose.",
@@ -945,6 +947,7 @@
           "hsem_ml_consumption_history_days": "ML historik dage",
           "hsem_ml_consumption_net_consumption": "Brug nettoforbrug (import minus eksport)",
           "hsem_ml_consumption_temperature_entity": "Udendørs temperatur sensor",
+          "hsem_ml_consumption_weather_forecast_entity": "Vejrudsigt-enhed",
           "hsem_ml_consumption_sequential": "Sekventiel forudsigelse (lag-funktion)"
         },
         "data_description": {
@@ -956,6 +959,7 @@
           "hsem_ml_consumption_history_days": "Dage med optagerhistorik til ML-træning (7-90).",
           "hsem_ml_consumption_net_consumption": "Træk neteksport fra import for netto husforbrug.",
           "hsem_ml_consumption_temperature_entity": "Valgfri - udendørs temperatur sensor i grader C. Brug en udendørs sensor, ikke en indendørs termostat.",
+          "hsem_ml_consumption_weather_forecast_entity": "Valgfri - vejrudsigt-enhed til fremtidige tidsintervallers temperaturprognose. Kræver at den udendørs temperatur sensor ovenfor også er sat. Falder tilbage til den målte temperatur, hvis prognosedata mangler.",
           "hsem_ml_consumption_sequential": "Før hver slotsforudsigelse som input til den næste. Fanger intra-time momentum."
         },
         "description": "Konfigurer energimålere og aktiver ML-baseret forbrugsprognose.",
