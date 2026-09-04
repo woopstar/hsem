@@ -451,21 +451,30 @@ rejection is now visible instead of silently assumed successful. A rejected
 a rejected start, without waiting for the target to change materially.
 
 **`SetChargingProfile` accepted but the amp limit may never actually apply
-(issue #920 follow-up).** HSEM's `TxDefaultProfile` used
-`chargingProfileKind: "Relative"`, which per OCPP 1.6 §3.11 is only valid on
-a profile with purpose `"TxProfile"` — its schedule is anchored to that
-transaction's own start time, and `TxDefaultProfile` is deliberately
-transaction-agnostic (HSEM doesn't know the transaction ID yet when it sends
-the profile, immediately after `RemoteStartTransaction`). A charger can
-accept this invalid combination at the JSON-schema level (`"status":
-"Accepted"` in the CALLRESULT, `last_call_status` shows nothing wrong) while
-never actually applying the semantically-undefined schedule — indistinguishable
-from a silent no-op unless you inspect the full wire conversation via the
-DEBUG logging above. Fixed by sending `chargingProfileKind: "Absolute"`
-instead (with `startSchedule` omitted, meaning "effective immediately"),
-which is spec-valid for `TxDefaultProfile`. Found on a go-e Charger V4
-(firmware 60.6, OCPP 1.6) via `hsem.ocpp_debug_start_charging` plus the new
-wire-level DEBUG logging.
+(issue #920 follow-up).** Found on a go-e Charger V4 (firmware 60.6, OCPP
+1.6) via `hsem.ocpp_debug_start_charging` plus the new wire-level DEBUG
+logging: `RemoteStartTransaction` and `SetChargingProfile` were both
+accepted (`"status": "Accepted"`) and `StartTransaction` confirmed, but the
+requested amperage was not enforced. An initial attempt at the root cause —
+switching `chargingProfileKind` from `"Relative"` to `"Absolute"` on the
+theory that OCPP 1.6 §3.11 restricts `"Relative"` to `TxProfile`-purpose
+profiles only — turned out to be unsupported by real-world evidence: the
+mature [`lbbrhzn/ocpp`](https://github.com/lbbrhzn/ocpp) Home Assistant
+integration uses `"Relative"` universally, across `ChargePointMaxProfile`,
+`TxProfile`, and `TxDefaultProfile` alike, tested against a very wide range
+of real charger models. That change was reverted.
+
+The more likely real cause, found by cross-checking `lbbrhzn/ocpp`'s
+`ocppv16.py::set_charge_rate()`: HSEM only ever sent a `TxDefaultProfile`
+(transaction-agnostic — necessary because it's sent immediately after
+`RemoteStartTransaction`, before the transaction ID is even confirmed).
+Some chargers only actually throttle an _ongoing_ session via a
+transaction-scoped `TxProfile`, treating a bare `TxDefaultProfile` as a
+lower-priority default that doesn't override a session already running
+under the charger's own local decision. HSEM now also sends a `TxProfile`
+carrying the confirmed `transactionId` once
+`ChargerSession.transaction_id` is known (at a higher `stackLevel` than the
+`TxDefaultProfile`) — matching `lbbrhzn/ocpp`'s dual-profile strategy.
 
 **A `RemoteStopTransaction` that completes at the protocol level does not
 guarantee the charger actually stopped delivering power.** Testing against

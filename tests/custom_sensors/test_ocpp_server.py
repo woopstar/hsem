@@ -367,11 +367,12 @@ class TestSetChargingProfile:
 
     @pytest.mark.asyncio
     async def test_set_charging_profile_format(self, ocpp_server, charger_session):
-        """SetChargingProfile should send a correctly structured OCPP message."""
+        """Without an active transaction, only a TxDefaultProfile is sent."""
+        assert charger_session.transaction_id is None
         await ocpp_server._send_set_charging_profile(
             charger_session, max_power_w=3680, max_current_a=16
         )
-        # Verify that a WebSocket send was called
+        # Verify that exactly one WebSocket send was called
         charger_session.websocket.send_str.assert_called_once()
         sent_data = charger_session.websocket.send_str.call_args[0][0]
         msg = json.loads(sent_data)
@@ -383,15 +384,51 @@ class TestSetChargingProfile:
         assert profile["chargingProfileId"] == 1
         assert profile["stackLevel"] == 0
         assert profile["chargingProfilePurpose"] == "TxDefaultProfile"
-        # "Relative" is only spec-valid for purpose "TxProfile" (OCPP 1.6
-        # §3.11) — "TxDefaultProfile" must use "Absolute" (issue #920
-        # follow-up: a charger can accept the invalid combination without
-        # error yet silently never apply the schedule).
-        assert profile["chargingProfileKind"] == "Absolute"
+        # "Relative" matches lbbrhzn/ocpp (issue #920 follow-up), which uses
+        # it universally across ChargePointMaxProfile/TxProfile/
+        # TxDefaultProfile against a very wide range of real charger models —
+        # an earlier attempt to use "Absolute" here was reverted as
+        # unsupported by that real-world evidence.
+        assert profile["chargingProfileKind"] == "Relative"
         schedule = profile["chargingSchedule"]
         assert schedule["chargingRateUnit"] == "A"
         assert schedule["chargingSchedulePeriod"][0]["limit"] == 16
         assert schedule["chargingSchedulePeriod"][0]["startPeriod"] == 0
+
+    @pytest.mark.asyncio
+    async def test_also_sends_tx_profile_when_transaction_active(
+        self, ocpp_server, charger_session
+    ):
+        """With an active transaction, a TxProfile is also sent (issue #920).
+
+        Some chargers only actually throttle an ongoing session via a
+        transaction-scoped TxProfile, ignoring a bare TxDefaultProfile —
+        mirroring lbbrhzn/ocpp's dual-profile strategy closes that gap.
+        """
+        charger_session.transaction_id = 42
+        await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=3680, max_current_a=16
+        )
+        assert charger_session.websocket.send_str.call_count == 2
+
+        first_msg = json.loads(
+            charger_session.websocket.send_str.call_args_list[0][0][0]
+        )
+        default_profile = first_msg[3]["csChargingProfiles"]
+        assert default_profile["chargingProfilePurpose"] == "TxDefaultProfile"
+        assert "transactionId" not in default_profile
+
+        second_msg = json.loads(
+            charger_session.websocket.send_str.call_args_list[1][0][0]
+        )
+        tx_profile = second_msg[3]["csChargingProfiles"]
+        assert tx_profile["chargingProfilePurpose"] == "TxProfile"
+        assert tx_profile["chargingProfileKind"] == "Relative"
+        assert tx_profile["transactionId"] == 42
+        assert tx_profile["stackLevel"] > default_profile["stackLevel"]
+        assert (
+            tx_profile["chargingSchedule"]["chargingSchedulePeriod"][0]["limit"] == 16
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1007,6 +1044,43 @@ class TestFailedSendRollback:
         self, ocpp_server, charger_session
     ):
         """A failed SetChargingProfile must not update last_requested_current_a."""
+        charger_session.websocket.send_str.side_effect = ConnectionResetError()
+        sent = await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=3680, max_current_a=16
+        )
+        assert sent is False
+        assert ocpp_server.last_requested_current_a is None
+
+    @pytest.mark.asyncio
+    async def test_profile_send_succeeds_if_only_tx_profile_reaches_socket(
+        self, ocpp_server, charger_session
+    ):
+        """With an active transaction, success of either send counts (#920).
+
+        Regression test for a logic bug introduced alongside the dual-profile
+        send: a sentinel meant to represent "TxProfile wasn't attempted"
+        must not be conflated with "the attempt succeeded", or a fully
+        failed TxDefaultProfile-only send would be misreported as success.
+        This case exercises the opposite mix — TxDefaultProfile fails,
+        TxProfile succeeds — to confirm `or` correctly reports overall success.
+        """
+        charger_session.transaction_id = 42
+        charger_session.websocket.send_str.side_effect = [
+            ConnectionResetError(),  # TxDefaultProfile fails
+            None,  # TxProfile succeeds
+        ]
+        sent = await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=3680, max_current_a=16
+        )
+        assert sent is True
+        assert ocpp_server.last_requested_current_a == 16
+
+    @pytest.mark.asyncio
+    async def test_profile_send_fails_if_both_profiles_fail(
+        self, ocpp_server, charger_session
+    ):
+        """With an active transaction, both sends failing reports failure."""
+        charger_session.transaction_id = 42
         charger_session.websocket.send_str.side_effect = ConnectionResetError()
         sent = await ocpp_server._send_set_charging_profile(
             charger_session, max_power_w=3680, max_current_a=16
@@ -1756,22 +1830,25 @@ class TestSetChargingProfileRejectedRetry:
         charger_session.last_call_status["SetChargingProfile"] = "Rejected"
         now = datetime.now(UTC)
 
+        # Each SetChargingProfile "send" now emits two OCPP CALLs — a
+        # TxDefaultProfile and a transaction-bound TxProfile (issue #920
+        # follow-up) — since charger_session.transaction_id is set above.
         await ocpp_server.update_charge_target(
             "test-cpid", target_power_kw=3.68, now=now
         )
-        assert _sent_actions(charger_session).count("SetChargingProfile") == 1
+        assert _sent_actions(charger_session).count("SetChargingProfile") == 2
 
         # Cooldown not elapsed — must not spam the charger every cycle.
         await ocpp_server.update_charge_target(
             "test-cpid", target_power_kw=3.68, now=now + timedelta(seconds=10)
         )
-        assert _sent_actions(charger_session).count("SetChargingProfile") == 1
+        assert _sent_actions(charger_session).count("SetChargingProfile") == 2
 
         # Cooldown elapsed — retry.
         await ocpp_server.update_charge_target(
             "test-cpid", target_power_kw=3.68, now=now + timedelta(seconds=61)
         )
-        assert _sent_actions(charger_session).count("SetChargingProfile") == 2
+        assert _sent_actions(charger_session).count("SetChargingProfile") == 4
 
     @pytest.mark.asyncio
     async def test_no_retry_when_status_unknown(self, ocpp_server, charger_session):

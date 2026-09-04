@@ -264,10 +264,30 @@ class OCPPCommandsMixin:
     async def _send_set_charging_profile(
         self, session: ChargerSession, max_power_w: int, max_current_a: int = 16
     ) -> bool:
-        """Send a ``SetChargingProfile`` request.
+        """Send ``SetChargingProfile`` request(s) to limit charging current.
 
-        Builds a TxDefaultProfile that limits charging to *max_current_a*
-        amps, which at 230 V nominally equals *max_power_w*.
+        Always sends a ``TxDefaultProfile`` (applies to whichever transaction
+        becomes active on this connector). When a transaction is already
+        confirmed (:attr:`ChargerSession.transaction_id` is not ``None``),
+        also sends a ``TxProfile`` bound to that transaction — mirroring the
+        dual-profile strategy used by the mature ``lbbrhzn/ocpp`` Home
+        Assistant integration (issue #920 follow-up), after cross-checking
+        its ``ocppv16.py::set_charge_rate()``. Some chargers only actually
+        throttle an *ongoing* session via a transaction-scoped ``TxProfile``,
+        treating a bare ``TxDefaultProfile`` as a lower-priority default that
+        doesn't override a session already running under the charger's own
+        local decision — this was observed as a real charger accepting
+        (``"status": "Accepted"``) a `TxDefaultProfile`-only request without
+        the amp limit ever actually taking effect.
+
+        ``chargingProfileKind`` is ``"Relative"`` for both profiles —
+        matching ``lbbrhzn/ocpp``, which uses `"Relative"` universally
+        (`ChargePointMaxProfile`, `TxProfile`, and `TxDefaultProfile` alike)
+        across the very wide range of real charger models it's tested
+        against. An earlier attempt here to use `"Absolute"` instead, on the
+        theory that OCPP 1.6 §3.11 restricts `"Relative"` to `TxProfile`
+        only, was not supported by this real-world evidence and has been
+        reverted.
 
         Args:
             session: The charger session.
@@ -275,50 +295,59 @@ class OCPPCommandsMixin:
             max_current_a: Maximum current in amperes.
 
         Returns:
-            ``True`` if the message was written to the socket. Bookkeeping
-            (:attr:`_last_sent_target`, :attr:`_last_sent_current_a`) is
-            only updated on success (issue #892) — a failed send must not
-            be remembered as the charger's current ceiling, or the
-            material-change dedup filter would wrongly suppress a rightful
-            retry.
+            ``True`` if at least one profile was written to the socket.
+            Bookkeeping (:attr:`_last_sent_target`, :attr:`_last_sent_current_a`)
+            is only updated when at least one send succeeds (issue #892) — a
+            fully failed send must not be remembered as the charger's
+            current ceiling, or the material-change dedup filter would
+            wrongly suppress a rightful retry.
         """
-        # OCPP 1.6 ChargingProfile structure. chargingProfileKind MUST be
-        # "Absolute" (or "Recurring") here, never "Relative" — per OCPP 1.6
-        # §3.11 (ChargingProfileKindType), "Relative" is only valid on a
-        # profile with purpose "TxProfile", where the schedule is anchored
-        # to that transaction's own start time. This profile's purpose is
-        # "TxDefaultProfile" (transaction-agnostic — it must apply to
-        # whichever transaction becomes active, since at send time no
-        # transaction/transactionId may exist yet), so there is no
-        # transaction start to be relative to. Sending "Relative" here is a
-        # spec-invalid combination (issue #920 follow-up): some chargers
-        # accept the message (JSON-schema valid) but then never actually
-        # apply the semantically-undefined schedule, which looked from the
-        # outside like SetChargingProfile silently not taking effect despite
-        # replying "Accepted". Omitting `startSchedule` under "Absolute"
-        # means "effective immediately", which is what HSEM wants here.
-        charging_profile = {
+        schedule = {
+            "chargingRateUnit": "A",
+            "chargingSchedulePeriod": [
+                {
+                    "startPeriod": 0,
+                    "limit": max_current_a,
+                }
+            ],
+        }
+
+        tx_default_profile = {
             "chargingProfileId": 1,
             "stackLevel": 0,
             "chargingProfilePurpose": "TxDefaultProfile",
-            "chargingProfileKind": "Absolute",
-            "chargingSchedule": {
-                "chargingRateUnit": "A",
-                "chargingSchedulePeriod": [
-                    {
-                        "startPeriod": 0,
-                        "limit": max_current_a,
-                    }
-                ],
-            },
+            "chargingProfileKind": "Relative",
+            "chargingSchedule": schedule,
         }
+        default_sent = await self._send_call(
+            session,
+            "SetChargingProfile",
+            {"connectorId": 1, "csChargingProfiles": tx_default_profile},
+        )
 
-        payload = {
-            "connectorId": 1,
-            "csChargingProfiles": charging_profile,
-        }
+        # Also bind a TxProfile to the live transaction once known, at a
+        # higher stackLevel — a charger that only honours transaction-scoped
+        # profiles for an already-running session still gets the limit.
+        # `tx_sent` stays `None` (not `True`) when no transaction is active
+        # and nothing was attempted — `default_sent or True` would otherwise
+        # always evaluate to `True` even when the sole attempt failed.
+        tx_sent: bool | None = None
+        if session.transaction_id is not None:
+            tx_profile = {
+                "chargingProfileId": 2,
+                "stackLevel": 1,
+                "chargingProfilePurpose": "TxProfile",
+                "chargingProfileKind": "Relative",
+                "transactionId": session.transaction_id,
+                "chargingSchedule": schedule,
+            }
+            tx_sent = await self._send_call(
+                session,
+                "SetChargingProfile",
+                {"connectorId": 1, "csChargingProfiles": tx_profile},
+            )
 
-        sent = await self._send_call(session, "SetChargingProfile", payload)
+        sent = default_sent or bool(tx_sent)
         if sent:
             self._last_sent_target = float(max_power_w)
             self._last_sent_current_a = max_current_a
