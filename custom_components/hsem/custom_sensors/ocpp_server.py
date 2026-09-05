@@ -169,6 +169,13 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
         # StartTransaction — a charger never sends one in its request.
         self._next_transaction_id: int = 1
 
+        # Last transaction ID seen stopping, per CPID (issue #920
+        # follow-up). Deliberately server-level, not per ChargerSession:
+        # a session object is recreated on every reconnect, but this must
+        # outlive that to stop _handle_meter_values() re-adopting a
+        # transaction that has already ended.
+        self._ended_transactions: dict[str, int] = {}
+
         # Charger-stall diagnostics (issue #894): whether the active
         # charging session currently appears stuck non-"Charging" despite
         # an open transaction, and whether the warning has already been

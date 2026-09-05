@@ -480,18 +480,37 @@ class OCPPCommandsMixin:
         diagnosing a charger that won't start over OCPP, without waiting
         out the start window or the planner's own target.
 
+        A charger rejects ``RemoteStartTransaction`` outright when the
+        connector already has a transaction in progress, so an active
+        transaction is skipped rather than re-authorized (issue #920
+        follow-up) — the same precondition
+        :meth:`_send_remote_start` documents for its own callers, and the
+        mirror of :meth:`_send_remote_stop`'s "nothing to stop" skip.
+
         Args:
             cpid: Charge-point identifier.
 
         Returns:
-            ``True`` if the message was written to the socket.
+            ``True`` if the message was written to the socket, or if a
+            transaction was already running (nothing to start counts as
+            success).
         """
         if cpid not in self._chargers:
             _LOGGER.warning(
                 "Cannot send RemoteStartTransaction — charger %s not connected", cpid
             )
             return False
-        return await self._send_remote_start(self._chargers[cpid])
+        session = self._chargers[cpid]
+        if session.transaction_id is not None:
+            _LOGGER.info(
+                "OCPP %s already has transaction %s in progress — skipping "
+                "RemoteStartTransaction (a charger rejects it while one is "
+                "open; stop it first to start a new one)",
+                cpid,
+                session.transaction_id,
+            )
+            return True
+        return await self._send_remote_start(session)
 
     async def send_set_charging_profile(
         self, cpid: str, max_power_w: int, max_current_a: int = 16

@@ -488,6 +488,39 @@ response to its own still-pending request. Some charger firmware handles
 messages strictly request/response and can stop responding altogether if
 that ordering is violated.
 
+**A transaction the charger opened before HSEM restarted used to be
+invisible to HSEM, deadlocking start _and_ stop (issue #920 follow-up).**
+`ChargerSession` is recreated with `transaction_id = None` on every
+WebSocket connect, and only `StartTransaction` ever set it — so if the
+charger still had a transaction open from before an HSEM restart (or a
+reconnect), HSEM never learned about it. That deadlocks both directions at
+once:
+
+- **Stop did nothing at all.** `_send_remote_stop()` sees
+  `transaction_id is None`, logs "no active transaction — skipping
+  RemoteStopTransaction (nothing to stop)", and never puts anything on the
+  wire. The charger's transaction stays open forever.
+- **Start was rejected.** A charger rejects `RemoteStartTransaction` when
+  that connector already has a transaction in progress — so the stale
+  transaction blocks every new one.
+
+Observed exactly this way against a go-e Charger V4, which reported
+`transactionId: 2` on every `MeterValues` for 45 minutes while HSEM
+believed nothing was running, rejecting each `RemoteStartTransaction` and
+silently skipping each stop.
+
+`MeterValues` is the only inbound message that routinely carries the live
+`transactionId`, which makes it the natural recovery point. HSEM now adopts
+it whenever it has none recorded — the same "self-heal after restart"
+approach [`lbbrhzn/ocpp`](https://github.com/lbbrhzn/ocpp) uses. Adoption
+is guarded against reviving a transaction that has just ended (a charger's
+closing meter values arrive _after_ its `StopTransaction`): both an
+explicit `Transaction.End` reading context and the last transaction ID seen
+stopping on that CPID are checked, and that per-CPID marker is stored on
+the server so it survives the reconnect that replaces the session object.
+`send_remote_start()` also now skips re-authorizing an already-open
+transaction rather than sending a request the charger will only reject.
+
 **A charger's connector status can change independently of any OCPP command
 HSEM sent — this is not necessarily a bug.** In one test session against the
 same go-e Charger V4, `StatusNotification` reported `"Charging"` roughly 36

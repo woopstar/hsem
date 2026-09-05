@@ -279,6 +279,154 @@ class TestMeterValues:
 
 
 # ---------------------------------------------------------------------------
+# Stale-transaction adoption from MeterValues (issue #920)
+# ---------------------------------------------------------------------------
+
+
+def _meter_values_payload(
+    transaction_id: int | str | None = None, context: str | None = None
+) -> dict:
+    """Build a MeterValues payload, optionally with a txId/reading context."""
+    sampled: dict = {"measurand": "Power.Active.Import", "value": "0.00", "unit": "W"}
+    if context is not None:
+        sampled["context"] = context
+    payload: dict = {"connectorId": 1, "meterValue": [{"sampledValue": [sampled]}]}
+    if transaction_id is not None:
+        payload["transactionId"] = transaction_id
+    return payload
+
+
+class TestAdoptTransactionFromMeterValues:
+    """HSEM must learn about a transaction the charger already has open.
+
+    A ChargerSession is recreated with transaction_id=None on every
+    reconnect, and only StartTransaction ever set it — so a transaction
+    opened before an HSEM restart stayed invisible forever, deadlocking
+    both directions: RemoteStopTransaction skipped as "nothing to stop",
+    and RemoteStartTransaction rejected by the charger because that
+    connector already had a transaction in progress (issue #920).
+    """
+
+    @pytest.mark.asyncio
+    async def test_adopts_open_transaction_when_none_recorded(
+        self, ocpp_server, charger_session
+    ):
+        """An inbound MeterValues txId is adopted when HSEM has none."""
+        assert charger_session.transaction_id is None
+        await ocpp_server._handle_meter_values(
+            charger_session, _meter_values_payload(transaction_id=2)
+        )
+        assert charger_session.transaction_id == 2
+
+    @pytest.mark.asyncio
+    async def test_adoption_makes_remote_stop_actually_send(
+        self, ocpp_server, charger_session
+    ):
+        """The whole point: stop must now reach the wire, not be skipped."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        await ocpp_server._handle_meter_values(
+            charger_session, _meter_values_payload(transaction_id=2)
+        )
+        charger_session.websocket.send_str.reset_mock()
+
+        assert await ocpp_server.send_remote_stop("test-cpid") is True
+
+        charger_session.websocket.send_str.assert_called_once()
+        msg = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        assert msg[2] == "RemoteStopTransaction"
+        assert msg[3] == {"transactionId": 2}
+
+    @pytest.mark.asyncio
+    async def test_does_not_override_known_transaction(
+        self, ocpp_server, charger_session
+    ):
+        """A transaction HSEM already tracks is never silently replaced."""
+        charger_session.transaction_id = 7
+        await ocpp_server._handle_meter_values(
+            charger_session, _meter_values_payload(transaction_id=2)
+        )
+        assert charger_session.transaction_id == 7
+
+    @pytest.mark.asyncio
+    async def test_no_adoption_without_transaction_id(
+        self, ocpp_server, charger_session
+    ):
+        """MeterValues outside a transaction carry no txId — nothing to adopt."""
+        await ocpp_server._handle_meter_values(charger_session, _meter_values_payload())
+        assert charger_session.transaction_id is None
+
+    @pytest.mark.asyncio
+    async def test_does_not_revive_transaction_ended_by_stop(
+        self, ocpp_server, charger_session
+    ):
+        """Closing meter values arrive after StopTransaction — must not revive.
+
+        Otherwise every successful stop would immediately undo itself on
+        the charger's trailing MeterValues.
+        """
+        charger_session.transaction_id = 2
+        await ocpp_server._handle_stop_transaction(
+            charger_session, {"transactionId": 2}
+        )
+        assert charger_session.transaction_id is None
+
+        await ocpp_server._handle_meter_values(
+            charger_session, _meter_values_payload(transaction_id=2)
+        )
+        assert charger_session.transaction_id is None
+
+    @pytest.mark.asyncio
+    async def test_ended_marker_survives_reconnect(self, ocpp_server, charger_session):
+        """The ended marker is per-CPID, so a reconnect can't revive either."""
+        charger_session.transaction_id = 2
+        await ocpp_server._handle_stop_transaction(
+            charger_session, {"transactionId": 2}
+        )
+
+        # Simulate a reconnect: a brand-new session object for the same CPID.
+        reconnected = ChargerSession(cpid=charger_session.cpid, websocket=AsyncMock())
+        await ocpp_server._handle_meter_values(
+            reconnected, _meter_values_payload(transaction_id=2)
+        )
+        assert reconnected.transaction_id is None
+
+    @pytest.mark.asyncio
+    async def test_does_not_adopt_transaction_end_reading(
+        self, ocpp_server, charger_session
+    ):
+        """An explicit Transaction.End reading context is never adopted."""
+        await ocpp_server._handle_meter_values(
+            charger_session,
+            _meter_values_payload(transaction_id=2, context="Transaction.End"),
+        )
+        assert charger_session.transaction_id is None
+
+    @pytest.mark.asyncio
+    async def test_new_transaction_clears_ended_marker(
+        self, ocpp_server, charger_session
+    ):
+        """A fresh StartTransaction supersedes the ended marker for that CPID."""
+        charger_session.transaction_id = 2
+        await ocpp_server._handle_stop_transaction(
+            charger_session, {"transactionId": 2}
+        )
+        assert ocpp_server._ended_transactions.get(charger_session.cpid) == 2
+
+        await ocpp_server._handle_start_transaction(charger_session, {})
+        assert charger_session.cpid not in ocpp_server._ended_transactions
+
+    @pytest.mark.asyncio
+    async def test_non_numeric_transaction_id_ignored(
+        self, ocpp_server, charger_session
+    ):
+        """A malformed txId must not raise or be adopted."""
+        await ocpp_server._handle_meter_values(
+            charger_session, _meter_values_payload(transaction_id="not-a-number")
+        )
+        assert charger_session.transaction_id is None
+
+
+# ---------------------------------------------------------------------------
 # Authorize tests
 # ---------------------------------------------------------------------------
 
@@ -1049,6 +1197,25 @@ class TestServerStartStop:
         assert msg[3] == {"idTag": "HSEM"}
         # Bypass API must not touch the anti-flap state machine.
         assert ocpp_server.anti_flap_state == "idle"
+
+    @pytest.mark.asyncio
+    async def test_send_remote_start_skipped_when_transaction_active(
+        self, ocpp_server, charger_session
+    ):
+        """An already-open transaction is never re-authorized (issue #920).
+
+        A charger rejects RemoteStartTransaction outright while a
+        transaction is in progress on that connector, so sending one is
+        pointless noise — observed as repeated 'Rejected' CALLRESULTs
+        against a go-e Charger V4 holding a stale transaction open.
+        """
+        charger_session.transaction_id = 2
+        ocpp_server._chargers["test-cpid"] = charger_session
+
+        result = await ocpp_server.send_remote_start("test-cpid")
+
+        assert result is True  # nothing to start counts as success
+        charger_session.websocket.send_str.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

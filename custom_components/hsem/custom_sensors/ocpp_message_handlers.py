@@ -62,6 +62,12 @@ class OCPPMessageHandlersMixin:
     ]
     _background_tasks: set[asyncio.Task[Any]]
 
+    # Declared (not assigned) so mypy resolves this against
+    # OCPPServer.__init__'s type — last transaction ID seen stopping per
+    # CPID, so _adopt_transaction_from_meter_values() never revives a
+    # transaction that has already ended (issue #920 follow-up).
+    _ended_transactions: dict[str, int]
+
     async def _handle_boot_notification(
         self, session: ChargerSession, payload: dict
     ) -> dict:
@@ -151,7 +157,9 @@ class OCPPMessageHandlersMixin:
         """Handle a ``MeterValues`` request.
 
         Parses power and energy readings from the meter values and updates
-        the session state.
+        the session state. Also adopts the charger's own ``transactionId``
+        when HSEM has none recorded — see
+        :meth:`_adopt_transaction_from_meter_values`.
 
         Args:
             session: The charger session.
@@ -162,6 +170,8 @@ class OCPPMessageHandlersMixin:
         """
         connector_id = payload.get("connectorId", 0)
         meter_values = payload.get("meterValue", [])
+
+        await self._adopt_transaction_from_meter_values(session, payload, meter_values)
 
         for mv in meter_values:
             sampled_values = mv.get("sampledValue", [])
@@ -191,6 +201,76 @@ class OCPPMessageHandlersMixin:
             session.current_energy_wh,
         )
         return {}
+
+    async def _adopt_transaction_from_meter_values(
+        self, session: ChargerSession, payload: dict, meter_values: list
+    ) -> None:
+        """Adopt the charger's open ``transactionId`` when HSEM has none.
+
+        Self-heal after a restart or reconnect (issue #920 follow-up).
+        ``ChargerSession`` is recreated on every WebSocket connect with
+        ``transaction_id = None``, and only :meth:`_handle_start_transaction`
+        ever set it — so a transaction the charger opened before HSEM
+        restarted was invisible to HSEM forever. That deadlocks both
+        directions: ``RemoteStopTransaction`` is skipped entirely ("nothing
+        to stop") so the stale transaction is never closed, and
+        ``RemoteStartTransaction`` is rejected by the charger because that
+        connector already has a transaction in progress — observed exactly
+        this way against a go-e Charger V4, which kept reporting
+        ``transactionId: 2`` on every ``MeterValues`` for 45 minutes while
+        HSEM believed nothing was running.
+
+        ``MeterValues`` is the only inbound message that routinely carries
+        the live ``transactionId``, which makes it the natural recovery
+        point — the same approach ``lbbrhzn/ocpp`` uses (its
+        "Self-heal after restart: adopt incoming txId" branch).
+
+        Guarded against reviving a transaction that has just ended: a
+        charger's closing meter values arrive *after* its
+        ``StopTransaction``, so adopting them would immediately resurrect
+        the session HSEM just stopped. Both signals ``lbbrhzn/ocpp`` uses
+        are checked — an explicit ``Transaction.End`` reading context, and
+        the last transaction ID seen stopping on this CPID.
+
+        Args:
+            session: The charger session.
+            payload: The full MeterValues payload.
+            meter_values: The ``meterValue`` list from the payload.
+        """
+        if session.transaction_id is not None:
+            return
+
+        raw_transaction_id = payload.get("transactionId")
+        if raw_transaction_id is None:
+            return
+        try:
+            transaction_id = int(raw_transaction_id)
+        except ValueError, TypeError:
+            return
+        if transaction_id <= 0:
+            return
+
+        if transaction_id == self._ended_transactions.get(session.cpid):
+            return
+
+        for mv in meter_values:
+            for sv in mv.get("sampledValue", []):
+                if sv.get("context") == "Transaction.End":
+                    return
+
+        session.transaction_id = transaction_id
+        _LOGGER.warning(
+            "OCPP %s: adopted charger's already-open transaction %d from "
+            "MeterValues — HSEM had none recorded (restart/reconnect). "
+            "Stop commands can now target it.",
+            session.cpid,
+            transaction_id,
+        )
+        # Rare by construction (at most once per discovered stale
+        # transaction), unlike MeterValues itself — so unlike the rest of
+        # this handler it is worth an out-of-band refresh, on the same
+        # "only on a real transition" rule as _handle_status_notification.
+        await self._notify_significant_event()
 
     async def _handle_authorize(self, session: ChargerSession, payload: dict) -> dict:
         """Handle an ``Authorize`` request.
@@ -236,6 +316,10 @@ class OCPPMessageHandlersMixin:
         transaction_id = self._next_transaction_id
         self._next_transaction_id += 1
         session.transaction_id = transaction_id
+        # A fresh transaction supersedes any "already ended" marker for this
+        # charger (issue #920 follow-up) — that marker only exists to stop
+        # trailing meter values from reviving a closed transaction.
+        self._ended_transactions.pop(session.cpid, None)
         _LOGGER.info(
             "OCPP StartTransaction from %s: assigned tx=%d",
             session.cpid,
@@ -308,7 +392,13 @@ class OCPPMessageHandlersMixin:
     ) -> dict:
         """Handle a ``StopTransaction`` request.
 
-        Clears the transaction ID and returns an ``Accepted`` response.
+        Clears the transaction ID, records it as ended, and returns an
+        ``Accepted`` response.
+
+        The ended ID is remembered per CPID (issue #920 follow-up) so the
+        closing ``MeterValues`` that arrive right after a stop can't be
+        adopted by :meth:`_adopt_transaction_from_meter_values` and revive
+        the transaction HSEM just closed.
 
         Args:
             session: The charger session.
@@ -323,6 +413,16 @@ class OCPPMessageHandlersMixin:
             session.cpid,
             transaction_id,
         )
+        try:
+            if transaction_id is not None:
+                self._ended_transactions[session.cpid] = int(transaction_id)
+        except ValueError, TypeError:
+            _LOGGER.debug(
+                "OCPP %s: non-numeric transactionId %r on StopTransaction — "
+                "not recorded as ended",
+                session.cpid,
+                transaction_id,
+            )
         session.transaction_id = None
         await self._notify_significant_event()
         return {"idTagInfo": {"status": "Accepted"}}
