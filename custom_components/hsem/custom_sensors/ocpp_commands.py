@@ -23,6 +23,9 @@ from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
+from custom_components.hsem.custom_sensors.ocpp_control import (
+    STATION_MAX_CURRENT_KEY,
+)
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -140,6 +143,14 @@ class OCPPCommandsMixin:
     _stalled: bool
     _stall_logged: bool
     _chargers: dict[str, ChargerSession]
+
+    # Declared (not assigned) so mypy resolves these against
+    # OCPPControlMixin, which composes into the same OCPPServer (issue
+    # #920) — capability lookups read from the charger's own
+    # GetConfiguration reply rather than assuming defaults.
+    profile_stack_levels: Callable[[ChargerSession], tuple[int, int]]
+    station_max_current_a: Callable[[ChargerSession], int | None]
+    ensure_charging_allowed: Callable[[ChargerSession], Coroutine[Any, Any, None]]
 
     async def _notify_significant_event(self) -> None:
         """Trigger a debounced coordinator refresh after a significant event.
@@ -322,9 +333,26 @@ class OCPPCommandsMixin:
             ],
         }
 
+        # Install at the top of the stack-level range the charger reports,
+        # not the bottom (issue #920): higher levels win, so a profile at
+        # level 0 loses to anything already installed.
+        default_level, tx_level = self.profile_stack_levels(session)
+
+        station_max_a = self.station_max_current_a(session)
+        if station_max_a is not None and max_current_a > station_max_a:
+            _LOGGER.warning(
+                "OCPP %s: requested %d A but the charger caps itself at %d A "
+                "(%s) — the request is valid but cannot raise the limit "
+                "above the station maximum, so no change will be visible",
+                session.cpid,
+                max_current_a,
+                station_max_a,
+                STATION_MAX_CURRENT_KEY,
+            )
+
         tx_default_profile = {
             "chargingProfileId": 1,
-            "stackLevel": 0,
+            "stackLevel": default_level,
             "chargingProfilePurpose": "TxDefaultProfile",
             "chargingProfileKind": "Relative",
             "chargingSchedule": schedule,
@@ -345,7 +373,7 @@ class OCPPCommandsMixin:
         if session.transaction_id is not None:
             tx_profile = {
                 "chargingProfileId": 2,
-                "stackLevel": 1,
+                "stackLevel": tx_level,
                 "chargingProfilePurpose": "TxProfile",
                 "chargingProfileKind": "Relative",
                 "transactionId": session.transaction_id,
@@ -511,6 +539,9 @@ class OCPPCommandsMixin:
             )
             return False
         session = self._chargers[cpid]
+        # Take the charger back from any local "don't charge" state first,
+        # or the start below is accepted and then ignored (issue #920).
+        await self.ensure_charging_allowed(session)
         if session.transaction_id is not None:
             _LOGGER.info(
                 "OCPP %s already has transaction %s in progress — skipping "

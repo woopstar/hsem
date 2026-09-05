@@ -521,6 +521,32 @@ the server so it survives the reconnect that replaces the session object.
 `send_remote_start()` also now skips re-authorizing an already-open
 transaction rather than sending a request the charger will only reject.
 
+**A charger-local "don't charge" state overrides every OCPP command
+(issue #920).** Confirmed against a go-e Charger V4 (firmware 60.6) by
+dumping `GetConfiguration` before and after pressing "stop charge" in the
+go-e app:
+
+| Key                                       | Value                        | Why it matters                                                                                                                      |
+| ----------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `ForceState`                              | `Neutral` → `Off` after stop | Vendor-specific and **writable**. While `Off`, the charger accepts every OCPP command and obeys none, sitting in `SuspendedEVSE`.   |
+| `Station-MaxCurrent`                      | `12` (read-only)             | The charger's own physical cap. Requesting more (HSEM defaulted to 16 A) is valid but cannot raise it — so nothing visibly changes. |
+| `ChargeProfileMaxStackLevel`              | `20`                         | Higher stack levels win. HSEM used to install at 0/1 — the bottom — so any pre-existing profile outranked it.                       |
+| `ChargingScheduleAllowedChargingRateUnit` | `Current`                    | Amps are the right unit for this charger.                                                                                           |
+| `GetCompositeSchedule`                    | CALLERROR `NotImplemented`   | Advertised under `SmartCharging`, but not actually implemented.                                                                     |
+
+`ChangeAvailability` does **not** address this: it toggles
+Operative/Inoperative (connector status `Unavailable`), a different axis
+from `SuspendedEVSE`. Nothing in the OCPP core profile clears a vendor
+force-off — it has to be written back through the vendor key. HSEM now
+writes `ForceState=Neutral` before every remote start, gated on the charger
+actually reporting the key (so other brands never see it) and on it
+actually being `Off` (a no-op otherwise).
+
+More generally, HSEM now **asks** rather than assumes: a `GetConfiguration`
+is issued when a charger boots, and the reply drives charge-profile stack
+levels, the station current cap, and this take-over step. Use
+`hsem.ocpp_debug_diagnostics` to see the same dump yourself.
+
 **A charger's connector status can change independently of any OCPP command
 HSEM sent — this is not necessarily a bug.** In one test session against the
 same go-e Charger V4, `StatusNotification` reported `"Charging"` roughly 36

@@ -44,6 +44,37 @@ DIAGNOSTIC_ACTIONS = frozenset(
 )
 
 
+# go-e's vendor-specific key governing whether the charge point will
+# deliver power at all, independent of any OCPP transaction (issue #920).
+# Confirmed against a go-e Charger V4 (firmware 60.6): it reads back
+# ``Neutral`` normally and flips to ``Off`` the moment "stop charge" is
+# pressed in the go-e app — and while it is ``Off`` the charger accepts
+# RemoteStart/RemoteStop/SetChargingProfile and ignores all of them,
+# sitting in ``SuspendedEVSE``. It is writable, so a central system can
+# take back control. Keyed by name because it is vendor-specific: HSEM
+# only ever touches it on a charger that reports the key in its own
+# GetConfiguration reply.
+FORCE_STATE_KEY = "ForceState"
+
+#: ``ForceState`` value meaning "no local override — follow normal rules",
+#: which is what lets OCPP RemoteStart/RemoteStop actually govern.
+FORCE_STATE_NEUTRAL = "Neutral"
+
+#: ``ForceState`` value meaning "do not charge", which blocks everything.
+FORCE_STATE_OFF = "Off"
+
+# The charger's own physical current ceiling, reported read-only. Asking
+# for more than this is silently a no-op — the cause of "it did not set
+# the amps" against a station reporting 12 A while HSEM requested 16 A.
+STATION_MAX_CURRENT_KEY = "Station-MaxCurrent"
+
+# Highest charging-profile stack level the charger accepts. Higher wins,
+# so a profile installed at a low level can be overridden by any other
+# profile already present. lbbrhzn/ocpp reads this key and uses the top of
+# the range; HSEM previously hardcoded 0/1 — the bottom.
+MAX_STACK_LEVEL_KEY = "ChargeProfileMaxStackLevel"
+
+
 class OCPPControlMixin:
     """Senders that interrogate or administer a connected charger."""
 
@@ -167,6 +198,124 @@ class OCPPControlMixin:
                 "type": "Operative" if operative else "Inoperative",
             },
         )
+
+    def absorb_configuration_reply(
+        self, session: ChargerSession, payload: dict
+    ) -> None:
+        """Record a ``GetConfiguration`` reply on the session.
+
+        Lets HSEM read a charger's real capabilities instead of assuming
+        them (issue #920) — see :attr:`ChargerSession.configuration_keys`.
+
+        Args:
+            session: The charger session.
+            payload: The ``GetConfiguration`` CALLRESULT payload.
+        """
+        entries = payload.get("configurationKey")
+        if not isinstance(entries, list):
+            return
+        found: dict[str, str] = {}
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            key = entry.get("key")
+            if isinstance(key, str):
+                found[key] = str(entry.get("value", ""))
+        if not found:
+            return
+        session.configuration_keys = found
+        _LOGGER.info(
+            "OCPP %s: recorded %d configuration keys (%s=%s, %s=%s, %s=%s)",
+            session.cpid,
+            len(found),
+            MAX_STACK_LEVEL_KEY,
+            found.get(MAX_STACK_LEVEL_KEY, "?"),
+            STATION_MAX_CURRENT_KEY,
+            found.get(STATION_MAX_CURRENT_KEY, "?"),
+            FORCE_STATE_KEY,
+            found.get(FORCE_STATE_KEY, "n/a"),
+        )
+
+    async def ensure_charging_allowed(self, session: ChargerSession) -> None:
+        """Clear a charger-local block that would veto remote control.
+
+        HSEM "taking over" the charger (issue #920). A go-e parks
+        :data:`FORCE_STATE_KEY` at :data:`FORCE_STATE_OFF` when charging is
+        stopped from its own app, and while it sits there the charger
+        accepts every OCPP command and obeys none of them. Nothing in the
+        OCPP core profile clears that — ``ChangeAvailability`` addresses a
+        different axis (Operative/Inoperative, i.e. connector status
+        ``Unavailable``, not ``SuspendedEVSE``) — so it has to be written
+        back through the vendor key.
+
+        No-ops on any charger that doesn't report the key, and on one
+        already in a permissive state, so this is safe to call before every
+        start.
+
+        Args:
+            session: The charger session.
+        """
+        current = session.configuration_keys.get(FORCE_STATE_KEY)
+        if current is None or current != FORCE_STATE_OFF:
+            return
+        _LOGGER.warning(
+            "OCPP %s: charger is locally forced off (%s=%s) — clearing to "
+            "%s so remote start can take effect",
+            session.cpid,
+            FORCE_STATE_KEY,
+            current,
+            FORCE_STATE_NEUTRAL,
+        )
+        if await self.send_change_configuration(
+            session.cpid, FORCE_STATE_KEY, FORCE_STATE_NEUTRAL
+        ):
+            # Optimistic local update; the next GetConfiguration confirms it.
+            session.configuration_keys[FORCE_STATE_KEY] = FORCE_STATE_NEUTRAL
+
+    def profile_stack_levels(self, session: ChargerSession) -> tuple[int, int]:
+        """Return ``(tx_default_level, tx_profile_level)`` for this charger.
+
+        Higher stack levels win, so HSEM's profiles are installed at the
+        top of the range the charger advertises rather than at the bottom
+        (issue #920) — otherwise any profile already present outranks them.
+        The transaction-scoped ``TxProfile`` sits one above the
+        transaction-agnostic ``TxDefaultProfile``, matching
+        ``lbbrhzn/ocpp``'s ordering.
+
+        Falls back to the previous ``0``/``1`` when the charger hasn't
+        reported :data:`MAX_STACK_LEVEL_KEY`.
+
+        Args:
+            session: The charger session.
+
+        Returns:
+            Stack levels for the TxDefaultProfile and TxProfile.
+        """
+        raw = session.configuration_keys.get(MAX_STACK_LEVEL_KEY)
+        try:
+            top = int(raw) if raw is not None else 1
+        except ValueError:
+            top = 1
+        if top < 1:
+            return 0, max(top, 0)
+        return top - 1, top
+
+    def station_max_current_a(self, session: ChargerSession) -> int | None:
+        """Return the charger's own current ceiling, if it reports one.
+
+        Args:
+            session: The charger session.
+
+        Returns:
+            The cap in amperes, or ``None`` when unknown.
+        """
+        raw = session.configuration_keys.get(STATION_MAX_CURRENT_KEY)
+        if raw is None:
+            return None
+        try:
+            return int(float(raw))
+        except ValueError:
+            return None
 
     async def send_change_configuration(self, cpid: str, key: str, value: str) -> bool:
         """Write one OCPP configuration key on the charger.

@@ -279,6 +279,201 @@ class TestMeterValues:
 
 
 # ---------------------------------------------------------------------------
+# Charger capability discovery and take-over (issue #920)
+# ---------------------------------------------------------------------------
+
+
+def _configuration_reply(**keys: str) -> dict:
+    """Build a GetConfiguration CALLRESULT payload from key/value pairs."""
+    return {
+        "configurationKey": [
+            {"key": k, "value": v, "readonly": False} for k, v in keys.items()
+        ]
+    }
+
+
+class TestChargerCapabilityDiscovery:
+    """HSEM reads a charger's real capabilities instead of assuming them.
+
+    Confirmed against a go-e Charger V4 (firmware 60.6), whose
+    GetConfiguration reply showed Station-MaxCurrent=12 while HSEM was
+    requesting 16 A, ChargeProfileMaxStackLevel=20 while HSEM installed
+    profiles at level 0/1, and a writable vendor key ForceState that
+    flipped to "Off" when charging was stopped from the go-e app —
+    blocking every OCPP command while it stayed there (issue #920).
+    """
+
+    def test_absorbs_configuration_reply(self, ocpp_server, charger_session):
+        """A GetConfiguration reply is recorded on the session."""
+        ocpp_server.absorb_configuration_reply(
+            charger_session,
+            _configuration_reply(**{"Station-MaxCurrent": "12", "ForceState": "Off"}),
+        )
+        assert charger_session.configuration_keys["Station-MaxCurrent"] == "12"
+        assert charger_session.configuration_keys["ForceState"] == "Off"
+
+    def test_malformed_configuration_reply_ignored(self, ocpp_server, charger_session):
+        """A reply without a usable key list leaves the session untouched."""
+        ocpp_server.absorb_configuration_reply(charger_session, {})
+        ocpp_server.absorb_configuration_reply(
+            charger_session, {"configurationKey": "not-a-list"}
+        )
+        assert charger_session.configuration_keys == {}
+
+    def test_stack_levels_use_top_of_charger_range(self, ocpp_server, charger_session):
+        """Profiles install at the top of the range, TxProfile highest.
+
+        Higher stack levels win, so installing at 0/1 lets any
+        pre-existing profile outrank HSEM's.
+        """
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ChargeProfileMaxStackLevel="20")
+        )
+        assert ocpp_server.profile_stack_levels(charger_session) == (19, 20)
+
+    def test_stack_levels_fall_back_when_unreported(self, ocpp_server, charger_session):
+        """Without the key, keep the previous 0/1 behaviour."""
+        assert ocpp_server.profile_stack_levels(charger_session) == (0, 1)
+
+    def test_stack_levels_tolerate_garbage(self, ocpp_server, charger_session):
+        """A non-numeric stack level must not raise."""
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ChargeProfileMaxStackLevel="lots")
+        )
+        assert ocpp_server.profile_stack_levels(charger_session) == (0, 1)
+
+    def test_station_max_current_parsed(self, ocpp_server, charger_session):
+        """The station's own current cap is read back as an int."""
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(**{"Station-MaxCurrent": "12"})
+        )
+        assert ocpp_server.station_max_current_a(charger_session) == 12
+
+    def test_station_max_current_unknown(self, ocpp_server, charger_session):
+        """An unreported or unparseable cap reads as None, not a guess."""
+        assert ocpp_server.station_max_current_a(charger_session) is None
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(**{"Station-MaxCurrent": "n/a"})
+        )
+        assert ocpp_server.station_max_current_a(charger_session) is None
+
+    @pytest.mark.asyncio
+    async def test_profile_uses_discovered_stack_levels(
+        self, ocpp_server, charger_session
+    ):
+        """Sent profiles carry the discovered stack levels."""
+        charger_session.transaction_id = 3
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ChargeProfileMaxStackLevel="20")
+        )
+        await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=2760, max_current_a=12
+        )
+        levels = [
+            json.loads(call.args[0])[3]["csChargingProfiles"]["stackLevel"]
+            for call in charger_session.websocket.send_str.call_args_list
+        ]
+        assert levels == [19, 20]
+
+    @pytest.mark.asyncio
+    async def test_warns_when_request_exceeds_station_cap(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """Asking above the station cap is a no-op — say so explicitly.
+
+        This is why "it did not set the amps": HSEM requested 16 A from a
+        charger that caps itself at 12 A.
+        """
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(**{"Station-MaxCurrent": "12"})
+        )
+        with caplog.at_level(
+            logging.WARNING,
+            logger="custom_components.hsem.custom_sensors.ocpp_commands",
+        ):
+            await ocpp_server._send_set_charging_profile(
+                charger_session, max_power_w=3680, max_current_a=16
+            )
+        assert "caps itself at 12 A" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_no_warning_within_station_cap(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """A request at or below the cap is unremarkable."""
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(**{"Station-MaxCurrent": "12"})
+        )
+        with caplog.at_level(
+            logging.WARNING,
+            logger="custom_components.hsem.custom_sensors.ocpp_commands",
+        ):
+            await ocpp_server._send_set_charging_profile(
+                charger_session, max_power_w=2760, max_current_a=12
+            )
+        assert "caps itself" not in caplog.text
+
+
+class TestForceStateTakeOver:
+    """A charger-local "don't charge" state must be cleared before starting.
+
+    A go-e parks ForceState at "Off" when charging is stopped from its own
+    app, and while it sits there the charger accepts RemoteStart,
+    RemoteStop and SetChargingProfile and obeys none of them (issue #920).
+    """
+
+    @pytest.mark.asyncio
+    async def test_clears_force_state_off_before_start(
+        self, ocpp_server, charger_session
+    ):
+        """ForceState=Off is written back to Neutral, then the start is sent."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Off")
+        )
+
+        assert await ocpp_server.send_remote_start("test-cpid") is True
+
+        sent = [
+            json.loads(call.args[0])
+            for call in charger_session.websocket.send_str.call_args_list
+        ]
+        actions = [msg[2] for msg in sent]
+        assert actions == ["ChangeConfiguration", "RemoteStartTransaction"]
+        assert sent[0][3] == {"key": "ForceState", "value": "Neutral"}
+        # Optimistically reflected so a second start doesn't rewrite it.
+        assert charger_session.configuration_keys["ForceState"] == "Neutral"
+
+    @pytest.mark.asyncio
+    async def test_no_write_when_already_permissive(self, ocpp_server, charger_session):
+        """A charger already in Neutral is left alone."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Neutral")
+        )
+
+        await ocpp_server.send_remote_start("test-cpid")
+
+        actions = _sent_actions(charger_session)
+        assert "ChangeConfiguration" not in actions
+
+    @pytest.mark.asyncio
+    async def test_no_write_when_charger_lacks_the_key(
+        self, ocpp_server, charger_session
+    ):
+        """Non-go-e chargers never see the vendor key at all."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(HeartbeatInterval="300")
+        )
+
+        await ocpp_server.send_remote_start("test-cpid")
+
+        actions = _sent_actions(charger_session)
+        assert "ChangeConfiguration" not in actions
+
+
+# ---------------------------------------------------------------------------
 # Stale-transaction adoption from MeterValues (issue #920)
 # ---------------------------------------------------------------------------
 

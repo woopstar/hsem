@@ -68,6 +68,10 @@ class OCPPMessageHandlersMixin:
     # transaction that has already ended (issue #920 follow-up).
     _ended_transactions: dict[str, int]
 
+    # Declared (not assigned) so mypy resolves this against
+    # OCPPControlMixin, which composes into the same OCPPServer.
+    send_get_configuration: Callable[[str], Coroutine[Any, Any, bool]]
+
     async def _handle_boot_notification(
         self, session: ChargerSession, payload: dict
     ) -> dict:
@@ -95,11 +99,36 @@ class OCPPMessageHandlersMixin:
             session.firmware,
             session.serial,
         )
+        # Learn what this charger can actually do, rather than assuming
+        # (issue #920): the reply drives charge-profile stack levels, the
+        # station current cap, and whether a vendor "don't charge" key
+        # needs clearing before a remote start can take effect. Scheduled
+        # detached for the same reason as the profile resend — this
+        # handler's return value is only sent as the BootNotification
+        # CALLRESULT once it returns.
+        task = asyncio.create_task(self._request_configuration(session))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
         return {
             "status": "Accepted",
             "interval": 300,
             "currentTime": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
+
+    async def _request_configuration(self, session: ChargerSession) -> None:
+        """Background task: ask a newly-booted charger for its configuration.
+
+        Args:
+            session: The charger session.
+        """
+        try:
+            await self.send_get_configuration(session.cpid)
+        except Exception:
+            _LOGGER.exception(
+                "OCPP %s: GetConfiguration request after BootNotification failed",
+                session.cpid,
+            )
 
     async def _handle_heartbeat(self, session: ChargerSession, payload: dict) -> dict:
         """Handle a ``Heartbeat`` request.

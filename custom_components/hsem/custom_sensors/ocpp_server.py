@@ -603,6 +603,8 @@ class OCPPServer(OCPPCommandsMixin, OCPPControlMixin, OCPPMessageHandlersMixin):
                                 status,
                                 action,
                             )
+                if action == "GetConfiguration":
+                    self.absorb_configuration_reply(session, result_payload)
                 if action in DIAGNOSTIC_ACTIONS:
                     # The whole point of these calls is their answer, so it
                     # must be readable without turning on DEBUG.
@@ -620,10 +622,15 @@ class OCPPServer(OCPPCommandsMixin, OCPPControlMixin, OCPPMessageHandlersMixin):
                     result_payload,
                 )
             elif msg_type == _CALLERROR:
+                # Resolve which request errored — a bare id is unreadable,
+                # and "the charger rejected exactly this" is the whole
+                # value of the message (issue #920).
+                error_action = session.pending_calls.pop(msg[1], None)
                 _LOGGER.warning(
-                    "OCPP CALLERROR from %s (id=%s): %s",
+                    "OCPP CALLERROR from %s (id=%s, action=%s): %s",
                     session.cpid,
                     msg[1],
+                    error_action,
                     msg[2:],
                 )
             else:
