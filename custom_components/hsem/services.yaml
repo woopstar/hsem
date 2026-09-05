@@ -62,6 +62,155 @@ export_diagnostics:
     hsem_version, dump_timestamp, planner_input, planner_output, apply_result.
   fields: {}
 
+ocpp_debug_start_charging:
+  name: OCPP debug start charging
+  description: >-
+    Diagnostics-only: manually send RemoteStartTransaction and
+    SetChargingProfile to the currently connected OCPP charger, bypassing the
+    anti-flap start window entirely. Use this to check whether the charger
+    accepts a start command at all when the normal planner-driven path
+    doesn't seem to start it. The planner's own target still applies on the
+    next update cycle and may immediately stop the charger again if the plan
+    calls for zero power.
+  fields:
+    charger:
+      required: false
+      default: "primary"
+      selector:
+        select:
+          options:
+            - "primary"
+            - "second"
+      description: >-
+        Which EV's embedded OCPP server to target. "second" only applies
+        when the second EV's OCPP server is configured and enabled.
+    max_current_a:
+      required: false
+      default: 16
+      selector:
+        number:
+          min: 6
+          max: 32
+          unit_of_measurement: "A"
+          mode: box
+      description: "Maximum charging current to request, in amperes."
+
+ocpp_debug_stop_charging:
+  name: OCPP debug stop charging
+  description: >-
+    Diagnostics-only: manually send RemoteStopTransaction to the currently
+    connected OCPP charger, bypassing the anti-flap stop window entirely. Use
+    this to check whether the charger accepts a stop command at all when the
+    normal planner-driven path doesn't seem to stop it.
+  fields:
+    charger:
+      required: false
+      default: "primary"
+      selector:
+        select:
+          options:
+            - "primary"
+            - "second"
+      description: >-
+        Which EV's embedded OCPP server to target. "second" only applies
+        when the second EV's OCPP server is configured and enabled.
+
+ocpp_debug_diagnostics:
+  name: OCPP debug diagnostics
+  description: >-
+    Diagnostics-only: ask the connected OCPP charger for its own
+    configuration (GetConfiguration) and for the charging limit it has
+    actually computed from the profiles installed on the connector
+    (GetCompositeSchedule). Use this when the charger accepts every command
+    but still delivers no power — the replies show whether it supports
+    smart charging at all, whether it expects amps or watts, and what limit
+    it is really operating under. The answers are written to the HSEM log
+    as they arrive.
+  fields:
+    charger:
+      required: false
+      default: "primary"
+      selector:
+        select:
+          options:
+            - "primary"
+            - "second"
+      description: >-
+        Which EV's embedded OCPP server to target. "second" only applies
+        when the second EV's OCPP server is configured and enabled.
+
+ocpp_debug_set_availability:
+  name: OCPP debug set availability
+  description: >-
+    Diagnostics-only: set the charger's connector Operative or Inoperative
+    (OCPP ChangeAvailability). This is the standard way a central system
+    takes a connector into or out of service. Note that "Inoperative" maps
+    to connector status "Unavailable", which is not the same as
+    "SuspendedEVSE" — a charger that is already Operative but locally
+    refusing to deliver power will accept this and change nothing, which
+    itself rules out availability as the cause.
+  fields:
+    charger:
+      required: false
+      default: "primary"
+      selector:
+        select:
+          options:
+            - "primary"
+            - "second"
+      description: >-
+        Which EV's embedded OCPP server to target. "second" only applies
+        when the second EV's OCPP server is configured and enabled.
+    operative:
+      required: false
+      default: true
+      selector:
+        boolean:
+      description: "True for Operative (in service), false for Inoperative."
+    connector_id:
+      required: false
+      default: 1
+      selector:
+        number:
+          min: 0
+          max: 8
+          mode: box
+      description: >-
+        Connector to change. 0 addresses the whole charge point rather
+        than a single connector.
+
+ocpp_debug_set_configuration:
+  name: OCPP debug set configuration
+  description: >-
+    Diagnostics-only: write a single OCPP configuration key on the charger
+    (OCPP ChangeConfiguration). Use the OCPP debug diagnostics service
+    first to list the keys your charger actually exposes — including any
+    vendor-specific ones — then set the relevant key here. The charger's
+    reply (Accepted, Rejected, NotSupported, or RebootRequired) is written
+    to the HSEM log.
+  fields:
+    charger:
+      required: false
+      default: "primary"
+      selector:
+        select:
+          options:
+            - "primary"
+            - "second"
+      description: >-
+        Which EV's embedded OCPP server to target. "second" only applies
+        when the second EV's OCPP server is configured and enabled.
+    key:
+      required: true
+      selector:
+        text:
+      description: "Configuration key name, exactly as the charger reports it."
+    value:
+      required: true
+      selector:
+        text:
+      description: "New value. OCPP 1.6 carries all configuration values as strings."
+
 create_dashboard:
   name: Create dashboard
   description: >-

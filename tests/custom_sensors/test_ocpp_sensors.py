@@ -131,6 +131,32 @@ def test_attributes_include_per_charger_session_details() -> None:
     assert attrs["CP1"]["power_w"] == 7400.0
 
 
+def test_attributes_expose_pending_calls() -> None:
+    """pending_calls (issue #920) surfaces commands awaiting a CALLRESULT."""
+    session = ChargerSession(cpid="CP1", status="Charging")
+    session.pending_calls["hsem-1"] = "SetChargingProfile"
+    data = CoordinatorData(
+        cfg=SensorConfig(ocpp_enabled=True),
+        ocpp_chargers={"CP1": session},
+    )
+    sensor = HSEMOCPPChargerStatusSensor(_make_config_entry(), _make_coordinator(data))
+    sensor.hass = _make_hass_without_url()
+    attrs = sensor.extra_state_attributes
+    assert attrs["CP1"]["pending_calls"] == {"hsem-1": "SetChargingProfile"}
+
+
+def test_attributes_pending_calls_empty_when_none_outstanding() -> None:
+    """pending_calls is an empty dict, not missing, once all calls resolve."""
+    data = CoordinatorData(
+        cfg=SensorConfig(ocpp_enabled=True),
+        ocpp_chargers={"CP1": ChargerSession(cpid="CP1", status="Charging")},
+    )
+    sensor = HSEMOCPPChargerStatusSensor(_make_config_entry(), _make_coordinator(data))
+    sensor.hass = _make_hass_without_url()
+    attrs = sensor.extra_state_attributes
+    assert attrs["CP1"]["pending_calls"] == {}
+
+
 def test_attributes_expose_requested_current_a() -> None:
     """requested_current_a mirrors the last SetChargingProfile amps (#886)."""
     data = CoordinatorData(

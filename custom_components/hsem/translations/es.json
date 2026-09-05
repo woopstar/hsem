@@ -1361,6 +1361,76 @@
     "create_dashboard": {
       "name": "Crear panel",
       "description": "Crea o actualiza el panel Lovelace de HSEM. Establece force en true para sobrescribirlo."
+    },
+    "ocpp_debug_start_charging": {
+      "name": "Depuración OCPP: iniciar carga",
+      "description": "Solo para diagnóstico: envía manualmente RemoteStartTransaction y SetChargingProfile al cargador OCPP conectado, saltándose la ventana de inicio anti-parpadeo.",
+      "fields": {
+        "charger": {
+          "name": "Cargador",
+          "description": "Qué servidor OCPP integrado de VE se debe usar."
+        },
+        "max_current_a": {
+          "name": "Corriente máxima",
+          "description": "La corriente máxima de carga que se solicitará, en amperios."
+        }
+      }
+    },
+    "ocpp_debug_stop_charging": {
+      "name": "Depuración OCPP: detener carga",
+      "description": "Solo para diagnóstico: envía manualmente RemoteStopTransaction al cargador OCPP conectado, saltándose la ventana de parada anti-parpadeo.",
+      "fields": {
+        "charger": {
+          "name": "Cargador",
+          "description": "Qué servidor OCPP integrado de VE se debe usar."
+        }
+      }
+    },
+    "ocpp_debug_diagnostics": {
+      "name": "Depuración OCPP: diagnóstico",
+      "description": "Solo para diagnóstico: pregunta al cargador OCPP conectado por su propia configuración y por el límite de carga que realmente ha calculado, y registra las respuestas.",
+      "fields": {
+        "charger": {
+          "name": "Cargador",
+          "description": "Qué servidor OCPP integrado de VE se debe usar."
+        }
+      }
+    },
+    "ocpp_debug_set_availability": {
+      "name": "Depuración OCPP: establecer disponibilidad",
+      "description": "Solo para diagnóstico: establece el conector del cargador como Operative o Inoperative (OCPP ChangeAvailability).",
+      "fields": {
+        "charger": {
+          "name": "Cargador",
+          "description": "Qué servidor OCPP integrado de VE se debe usar."
+        },
+        "operative": {
+          "name": "Operative",
+          "description": "Verdadero para Operative (en servicio), falso para Inoperative."
+        },
+        "connector_id": {
+          "name": "Conector",
+          "description": "Conector que se va a cambiar. 0 se dirige a todo el punto de carga."
+        }
+      }
+    },
+    "ocpp_debug_set_configuration": {
+      "name": "Depuración OCPP: establecer configuración",
+      "description": "Solo para diagnóstico: escribe una única clave de configuración OCPP en el cargador (OCPP ChangeConfiguration).",
+      "fields": {
+        "charger": {
+          "name": "Cargador",
+          "description": "Qué servidor OCPP integrado de VE se debe usar."
+        },
+        "key": {
+          "name": "Clave",
+          "description": "Nombre de la clave de configuración, tal como la indica el cargador."
+        },
+        "value": {
+          "name": "Valor",
+          "description": "Nuevo valor. OCPP 1.6 transmite todos los valores de configuración como cadenas."
+        }
+      }
     }
   }
 }

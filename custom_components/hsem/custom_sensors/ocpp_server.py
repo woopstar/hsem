@@ -43,8 +43,14 @@ from aiohttp import web
 
 from custom_components.hsem.custom_sensors.ocpp_commands import (
     CHARGER_STALL_THRESHOLD_S,
+    HSEM_PROFILE_IDS,
+    TRACKED_RESPONSE_ACTIONS,
     OCPPCommandsMixin,
     charger_appears_stalled,
+)
+from custom_components.hsem.custom_sensors.ocpp_control import (
+    DIAGNOSTIC_ACTIONS,
+    OCPPControlMixin,
 )
 from custom_components.hsem.custom_sensors.ocpp_message_handlers import (
     OCPPMessageHandlersMixin,
@@ -77,7 +83,7 @@ _SLOT_EPSILON = 1e-6
 _WS_HEARTBEAT_INTERVAL_S = 30.0
 
 
-class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
+class OCPPServer(OCPPCommandsMixin, OCPPControlMixin, OCPPMessageHandlersMixin):
     """Embedded OCPP 1.6 WebSocket server for LAN-only EV charger control.
 
     Listens on a configurable TCP port and handles OCPP 1.6 JSON messages
@@ -169,12 +175,34 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
         # StartTransaction — a charger never sends one in its request.
         self._next_transaction_id: int = 1
 
+        # Last transaction ID seen stopping, per CPID (issue #920
+        # follow-up). Deliberately server-level, not per ChargerSession:
+        # a session object is recreated on every reconnect, but this must
+        # outlive that to stop _handle_meter_values() re-adopting a
+        # transaction that has already ended.
+        self._ended_transactions: dict[str, int] = {}
+
         # Charger-stall diagnostics (issue #894): whether the active
         # charging session currently appears stuck non-"Charging" despite
         # an open transaction, and whether the warning has already been
         # logged for the current stall (so it logs once, not every cycle).
         self._stalled: bool = False
         self._stall_logged: bool = False
+
+        # CPIDs where HSEM itself parked ForceState at "Off" (issue #920).
+        # Ownership-gated so shutdown lifts only HSEM's own block and never
+        # a stop the user made in the charger's app — same rule as the
+        # grid-charge emergency stop. Server-level, so it survives the
+        # session object being replaced on reconnect.
+        self._force_state_owned: set[str] = set()
+
+        # Strong references for fire-and-forget background tasks (issue
+        # #920 follow-up) — e.g. the post-StartTransaction profile resend,
+        # which must not be awaited inline before the StartTransaction
+        # CALLRESULT is sent (see OCPPMessageHandlersMixin._handle_start_transaction).
+        # Without a strong reference, asyncio may garbage-collect a task
+        # before it completes.
+        self._background_tasks: set[asyncio.Task[Any]] = set()
 
     # ------------------------------------------------------------------
     # Public API
@@ -204,7 +232,18 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
         )
 
     async def stop(self) -> None:
-        """Stop the server and close all charger connections."""
+        """Stop the server and close all charger connections.
+
+        Hands the charger back first (issue #920): HSEM's own charging
+        profiles are removed and any force-state hold it is still holding
+        is released. Both matter because both **persist on the charger** —
+        an unloaded HSEM must not leave a connector throttled to 0 A or
+        locally forced off, with nothing left in HA to explain why. This
+        runs before the sockets close, since it needs them.
+        """
+        await self.release_charging_profiles(HSEM_PROFILE_IDS)
+        await self.release_force_state_holds()
+
         # Close all charger sessions
         for cpid, session in list(self._chargers.items()):
             try:
@@ -548,6 +587,13 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
                 msg_id = msg[1]
                 action = msg[2]
                 payload = msg[3] if len(msg) > 3 else {}
+                _LOGGER.debug(
+                    "OCPP CALL from %s (id=%s, action=%s): %s",
+                    session.cpid,
+                    msg_id,
+                    action,
+                    payload,
+                )
                 await self._dispatch(session, msg_id, action, payload)
             elif msg_type == _CALLRESULT:
                 # Response to an outbound HSEM call (RemoteStartTransaction,
@@ -567,7 +613,7 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
                 action = session.pending_calls.pop(result_msg_id, None)
                 if action is not None:
                     status = result_payload.get("status")
-                    if status:
+                    if status and action in TRACKED_RESPONSE_ACTIONS:
                         session.last_call_status[action] = status
                         if status != "Accepted":
                             _LOGGER.warning(
@@ -576,6 +622,17 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
                                 status,
                                 action,
                             )
+                if action == "GetConfiguration":
+                    self.absorb_configuration_reply(session, result_payload)
+                if action in DIAGNOSTIC_ACTIONS:
+                    # The whole point of these calls is their answer, so it
+                    # must be readable without turning on DEBUG.
+                    _LOGGER.warning(
+                        "OCPP %s: %s reply: %s",
+                        session.cpid,
+                        action,
+                        result_payload,
+                    )
                 _LOGGER.debug(
                     "OCPP CALLRESULT from %s (id=%s, action=%s): %s",
                     session.cpid,
@@ -584,10 +641,15 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
                     result_payload,
                 )
             elif msg_type == _CALLERROR:
+                # Resolve which request errored — a bare id is unreadable,
+                # and "the charger rejected exactly this" is the whole
+                # value of the message (issue #920).
+                error_action = session.pending_calls.pop(msg[1], None)
                 _LOGGER.warning(
-                    "OCPP CALLERROR from %s (id=%s): %s",
+                    "OCPP CALLERROR from %s (id=%s, action=%s): %s",
                     session.cpid,
                     msg[1],
+                    error_action,
                     msg[2:],
                 )
             else:

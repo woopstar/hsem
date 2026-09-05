@@ -279,6 +279,533 @@ class TestMeterValues:
 
 
 # ---------------------------------------------------------------------------
+# Charger capability discovery and take-over (issue #920)
+# ---------------------------------------------------------------------------
+
+
+def _configuration_reply(**keys: str) -> dict:
+    """Build a GetConfiguration CALLRESULT payload from key/value pairs."""
+    return {
+        "configurationKey": [
+            {"key": k, "value": v, "readonly": False} for k, v in keys.items()
+        ]
+    }
+
+
+class TestChargerCapabilityDiscovery:
+    """HSEM reads a charger's real capabilities instead of assuming them.
+
+    Confirmed against a go-e Charger V4 (firmware 60.6), whose
+    GetConfiguration reply showed Station-MaxCurrent=12 while HSEM was
+    requesting 16 A, ChargeProfileMaxStackLevel=20 while HSEM installed
+    profiles at level 0/1, and a writable vendor key ForceState that
+    flipped to "Off" when charging was stopped from the go-e app —
+    blocking every OCPP command while it stayed there (issue #920).
+    """
+
+    def test_absorbs_configuration_reply(self, ocpp_server, charger_session):
+        """A GetConfiguration reply is recorded on the session."""
+        ocpp_server.absorb_configuration_reply(
+            charger_session,
+            _configuration_reply(**{"Station-MaxCurrent": "12", "ForceState": "Off"}),
+        )
+        assert charger_session.configuration_keys["Station-MaxCurrent"] == "12"
+        assert charger_session.configuration_keys["ForceState"] == "Off"
+
+    def test_malformed_configuration_reply_ignored(self, ocpp_server, charger_session):
+        """A reply without a usable key list leaves the session untouched."""
+        ocpp_server.absorb_configuration_reply(charger_session, {})
+        ocpp_server.absorb_configuration_reply(
+            charger_session, {"configurationKey": "not-a-list"}
+        )
+        assert charger_session.configuration_keys == {}
+
+    def test_stack_levels_use_top_of_charger_range(self, ocpp_server, charger_session):
+        """Profiles install at the top of the range, TxProfile highest.
+
+        Higher stack levels win, so installing at 0/1 lets any
+        pre-existing profile outrank HSEM's.
+        """
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ChargeProfileMaxStackLevel="20")
+        )
+        assert ocpp_server.profile_stack_levels(charger_session) == (19, 20)
+
+    def test_stack_levels_fall_back_when_unreported(self, ocpp_server, charger_session):
+        """Without the key, keep the previous 0/1 behaviour."""
+        assert ocpp_server.profile_stack_levels(charger_session) == (0, 1)
+
+    def test_stack_levels_tolerate_garbage(self, ocpp_server, charger_session):
+        """A non-numeric stack level must not raise."""
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ChargeProfileMaxStackLevel="lots")
+        )
+        assert ocpp_server.profile_stack_levels(charger_session) == (0, 1)
+
+    def test_station_max_current_parsed(self, ocpp_server, charger_session):
+        """The station's own current cap is read back as an int."""
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(**{"Station-MaxCurrent": "12"})
+        )
+        assert ocpp_server.station_max_current_a(charger_session) == 12
+
+    def test_station_max_current_unknown(self, ocpp_server, charger_session):
+        """An unreported or unparseable cap reads as None, not a guess."""
+        assert ocpp_server.station_max_current_a(charger_session) is None
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(**{"Station-MaxCurrent": "n/a"})
+        )
+        assert ocpp_server.station_max_current_a(charger_session) is None
+
+    @pytest.mark.asyncio
+    async def test_profile_uses_discovered_stack_levels(
+        self, ocpp_server, charger_session
+    ):
+        """Sent profiles carry the discovered stack levels."""
+        charger_session.transaction_id = 3
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ChargeProfileMaxStackLevel="20")
+        )
+        await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=2760, max_current_a=12
+        )
+        levels = [
+            json.loads(call.args[0])[3]["csChargingProfiles"]["stackLevel"]
+            for call in charger_session.websocket.send_str.call_args_list
+        ]
+        assert levels == [19, 20]
+
+    @pytest.mark.asyncio
+    async def test_warns_when_request_exceeds_station_cap(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """Asking above the station cap is a no-op — say so explicitly.
+
+        This is why "it did not set the amps": HSEM requested 16 A from a
+        charger that caps itself at 12 A.
+        """
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(**{"Station-MaxCurrent": "12"})
+        )
+        with caplog.at_level(
+            logging.WARNING,
+            logger="custom_components.hsem.custom_sensors.ocpp_commands",
+        ):
+            await ocpp_server._send_set_charging_profile(
+                charger_session, max_power_w=3680, max_current_a=16
+            )
+        assert "caps itself at 12 A" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_no_warning_within_station_cap(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """A request at or below the cap is unremarkable."""
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(**{"Station-MaxCurrent": "12"})
+        )
+        with caplog.at_level(
+            logging.WARNING,
+            logger="custom_components.hsem.custom_sensors.ocpp_commands",
+        ):
+            await ocpp_server._send_set_charging_profile(
+                charger_session, max_power_w=2760, max_current_a=12
+            )
+        assert "caps itself" not in caplog.text
+
+
+class TestForceStateTakeOver:
+    """A charger-local "don't charge" state must be cleared before starting.
+
+    A go-e parks ForceState at "Off" when charging is stopped from its own
+    app, and while it sits there the charger accepts RemoteStart,
+    RemoteStop and SetChargingProfile and obeys none of them (issue #920).
+    """
+
+    @pytest.mark.asyncio
+    async def test_clears_force_state_off_before_start(
+        self, ocpp_server, charger_session
+    ):
+        """ForceState=Off is written back to Neutral, then the start is sent."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Off")
+        )
+
+        assert await ocpp_server.send_remote_start("test-cpid") is True
+
+        sent = [
+            json.loads(call.args[0])
+            for call in charger_session.websocket.send_str.call_args_list
+        ]
+        actions = [msg[2] for msg in sent]
+        assert actions == ["ChangeConfiguration", "RemoteStartTransaction"]
+        assert sent[0][3] == {"key": "ForceState", "value": "Neutral"}
+        # Optimistically reflected so a second start doesn't rewrite it.
+        assert charger_session.configuration_keys["ForceState"] == "Neutral"
+
+    @pytest.mark.asyncio
+    async def test_no_write_when_already_permissive(self, ocpp_server, charger_session):
+        """A charger already in Neutral is left alone."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Neutral")
+        )
+
+        await ocpp_server.send_remote_start("test-cpid")
+
+        actions = _sent_actions(charger_session)
+        assert "ChangeConfiguration" not in actions
+
+    @pytest.mark.asyncio
+    async def test_no_write_when_charger_lacks_the_key(
+        self, ocpp_server, charger_session
+    ):
+        """Non-go-e chargers never see the vendor key at all."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(HeartbeatInterval="300")
+        )
+
+        await ocpp_server.send_remote_start("test-cpid")
+
+        actions = _sent_actions(charger_session)
+        assert "ChangeConfiguration" not in actions
+
+    @pytest.mark.asyncio
+    async def test_stop_holds_charger_off(self, ocpp_server, charger_session):
+        """Stop writes ForceState=Off — ending the transaction isn't enough.
+
+        Confirmed by testing: ForceState=Neutral means "charge if the car
+        asks", so a go-e keeps free-vending after RemoteStopTransaction is
+        accepted and its own StopTransaction confirms.
+        """
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.transaction_id = 2
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Neutral")
+        )
+
+        assert await ocpp_server.send_remote_stop("test-cpid") is True
+
+        sent = [
+            json.loads(call.args[0])
+            for call in charger_session.websocket.send_str.call_args_list
+        ]
+        # Standard OCPP first, vendor key last (issue #920).
+        assert [msg[2] for msg in sent] == [
+            "SetChargingProfile",
+            "SetChargingProfile",
+            "ChangeConfiguration",
+            "RemoteStopTransaction",
+        ]
+        assert (
+            sent[0][3]["csChargingProfiles"]["chargingSchedule"][
+                "chargingSchedulePeriod"
+            ][0]["limit"]
+            == 0
+        )
+        assert sent[2][3] == {"key": "ForceState", "value": "Off"}
+        assert charger_session.configuration_keys["ForceState"] == "Off"
+
+    @pytest.mark.asyncio
+    async def test_stop_holds_charger_off_with_no_transaction(
+        self, ocpp_server, charger_session
+    ):
+        """A stop still stops a charger free-vending with no transaction.
+
+        Power can flow with no transaction open at all, so "nothing to
+        stop" must not mean "do nothing" — but the charger has to actually
+        look like it is charging before HSEM writes a persistent 0 A
+        profile at it (issue #920).
+        """
+        ocpp_server._chargers["test-cpid"] = charger_session
+        assert charger_session.transaction_id is None
+        charger_session.status = "Charging"
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Neutral")
+        )
+
+        await ocpp_server.send_remote_stop("test-cpid")
+
+        actions = _sent_actions(charger_session)
+        assert actions == ["SetChargingProfile", "ChangeConfiguration"]
+
+    @pytest.mark.asyncio
+    async def test_no_zero_profile_when_nothing_is_charging(
+        self, ocpp_server, charger_session
+    ):
+        """Never park a persistent 0 A profile on an idle charger.
+
+        A TxDefaultProfile outlives the transaction, so writing one when
+        HSEM never started anything would leave a lasting block on a
+        connector HSEM never commanded — and could silently stop the user
+        charging by hand.
+        """
+        ocpp_server._chargers["test-cpid"] = charger_session
+        assert charger_session.transaction_id is None
+        assert charger_session.status == "Available"
+
+        await ocpp_server.send_remote_stop("test-cpid")
+
+        assert "SetChargingProfile" not in _sent_actions(charger_session)
+
+    @pytest.mark.asyncio
+    async def test_shutdown_releases_hsem_s_own_hold(
+        self, ocpp_server, charger_session
+    ):
+        """HSEM must not shut down still holding a charger blocked.
+
+        Otherwise an unload/restart after a stop leaves the charger
+        locally forced off until cleared in its own app.
+        """
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.transaction_id = 2
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Neutral")
+        )
+        await ocpp_server.send_remote_stop("test-cpid")
+        assert charger_session.configuration_keys["ForceState"] == "Off"
+        charger_session.websocket.send_str.reset_mock()
+
+        await ocpp_server.stop()
+
+        sent = [
+            json.loads(call.args[0])
+            for call in charger_session.websocket.send_str.call_args_list
+        ]
+        # HSEM's own profiles are cleared too, so an unloaded HSEM cannot
+        # leave the connector throttled to 0 A (issue #920).
+        assert [msg[2] for msg in sent] == [
+            "ClearChargingProfile",
+            "ClearChargingProfile",
+            "ChangeConfiguration",
+        ]
+        assert sent[-1][3] == {"key": "ForceState", "value": "Neutral"}
+
+    @pytest.mark.asyncio
+    async def test_shutdown_leaves_a_user_imposed_block_alone(
+        self, ocpp_server, charger_session
+    ):
+        """A stop the *user* made in the charger's app is never overridden.
+
+        Ownership-gated, mirroring the grid-charge emergency stop: HSEM
+        only ever lifts a block it imposed itself.
+        """
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Off")
+        )
+
+        await ocpp_server.stop()
+
+        # Profiles are still cleaned up — only the force-state hold is
+        # ownership-gated.
+        assert "ChangeConfiguration" not in _sent_actions(charger_session)
+
+    @pytest.mark.asyncio
+    async def test_shutdown_release_survives_a_send_failure(
+        self, ocpp_server, charger_session
+    ):
+        """A failed release must never block a clean shutdown."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.transaction_id = 2
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Neutral")
+        )
+        await ocpp_server.send_remote_stop("test-cpid")
+        charger_session.websocket.send_str.side_effect = ConnectionResetError()
+
+        await ocpp_server.stop()  # must not raise
+
+        assert ocpp_server._chargers == {}
+
+    @pytest.mark.asyncio
+    async def test_start_releases_ownership_so_shutdown_is_quiet(
+        self, ocpp_server, charger_session
+    ):
+        """Once HSEM has started again, it no longer holds a block."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.transaction_id = 2
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Neutral")
+        )
+        await ocpp_server.send_remote_stop("test-cpid")
+        charger_session.transaction_id = None
+        await ocpp_server.send_remote_start("test-cpid")
+        charger_session.websocket.send_str.reset_mock()
+
+        await ocpp_server.stop()
+
+        assert "ChangeConfiguration" not in _sent_actions(charger_session)
+
+    @pytest.mark.asyncio
+    async def test_stop_start_round_trip_is_self_healing(
+        self, ocpp_server, charger_session
+    ):
+        """HSEM's own stop must not lock out HSEM's own next start."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.transaction_id = 2
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Neutral")
+        )
+
+        await ocpp_server.send_remote_stop("test-cpid")
+        assert charger_session.configuration_keys["ForceState"] == "Off"
+
+        charger_session.transaction_id = None
+        await ocpp_server.send_remote_start("test-cpid")
+        assert charger_session.configuration_keys["ForceState"] == "Neutral"
+
+
+# ---------------------------------------------------------------------------
+# Stale-transaction adoption from MeterValues (issue #920)
+# ---------------------------------------------------------------------------
+
+
+def _meter_values_payload(
+    transaction_id: int | str | None = None, context: str | None = None
+) -> dict:
+    """Build a MeterValues payload, optionally with a txId/reading context."""
+    sampled: dict = {"measurand": "Power.Active.Import", "value": "0.00", "unit": "W"}
+    if context is not None:
+        sampled["context"] = context
+    payload: dict = {"connectorId": 1, "meterValue": [{"sampledValue": [sampled]}]}
+    if transaction_id is not None:
+        payload["transactionId"] = transaction_id
+    return payload
+
+
+class TestAdoptTransactionFromMeterValues:
+    """HSEM must learn about a transaction the charger already has open.
+
+    A ChargerSession is recreated with transaction_id=None on every
+    reconnect, and only StartTransaction ever set it — so a transaction
+    opened before an HSEM restart stayed invisible forever, deadlocking
+    both directions: RemoteStopTransaction skipped as "nothing to stop",
+    and RemoteStartTransaction rejected by the charger because that
+    connector already had a transaction in progress (issue #920).
+    """
+
+    @pytest.mark.asyncio
+    async def test_adopts_open_transaction_when_none_recorded(
+        self, ocpp_server, charger_session
+    ):
+        """An inbound MeterValues txId is adopted when HSEM has none."""
+        assert charger_session.transaction_id is None
+        await ocpp_server._handle_meter_values(
+            charger_session, _meter_values_payload(transaction_id=2)
+        )
+        assert charger_session.transaction_id == 2
+
+    @pytest.mark.asyncio
+    async def test_adoption_makes_remote_stop_actually_send(
+        self, ocpp_server, charger_session
+    ):
+        """The whole point: stop must now reach the wire, not be skipped."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        await ocpp_server._handle_meter_values(
+            charger_session, _meter_values_payload(transaction_id=2)
+        )
+        charger_session.websocket.send_str.reset_mock()
+
+        assert await ocpp_server.send_remote_stop("test-cpid") is True
+
+        stop = _sent_message(charger_session, "RemoteStopTransaction")
+        assert stop is not None
+        assert stop[3] == {"transactionId": 2}
+
+    @pytest.mark.asyncio
+    async def test_does_not_override_known_transaction(
+        self, ocpp_server, charger_session
+    ):
+        """A transaction HSEM already tracks is never silently replaced."""
+        charger_session.transaction_id = 7
+        await ocpp_server._handle_meter_values(
+            charger_session, _meter_values_payload(transaction_id=2)
+        )
+        assert charger_session.transaction_id == 7
+
+    @pytest.mark.asyncio
+    async def test_no_adoption_without_transaction_id(
+        self, ocpp_server, charger_session
+    ):
+        """MeterValues outside a transaction carry no txId — nothing to adopt."""
+        await ocpp_server._handle_meter_values(charger_session, _meter_values_payload())
+        assert charger_session.transaction_id is None
+
+    @pytest.mark.asyncio
+    async def test_does_not_revive_transaction_ended_by_stop(
+        self, ocpp_server, charger_session
+    ):
+        """Closing meter values arrive after StopTransaction — must not revive.
+
+        Otherwise every successful stop would immediately undo itself on
+        the charger's trailing MeterValues.
+        """
+        charger_session.transaction_id = 2
+        await ocpp_server._handle_stop_transaction(
+            charger_session, {"transactionId": 2}
+        )
+        assert charger_session.transaction_id is None
+
+        await ocpp_server._handle_meter_values(
+            charger_session, _meter_values_payload(transaction_id=2)
+        )
+        assert charger_session.transaction_id is None
+
+    @pytest.mark.asyncio
+    async def test_ended_marker_survives_reconnect(self, ocpp_server, charger_session):
+        """The ended marker is per-CPID, so a reconnect can't revive either."""
+        charger_session.transaction_id = 2
+        await ocpp_server._handle_stop_transaction(
+            charger_session, {"transactionId": 2}
+        )
+
+        # Simulate a reconnect: a brand-new session object for the same CPID.
+        reconnected = ChargerSession(cpid=charger_session.cpid, websocket=AsyncMock())
+        await ocpp_server._handle_meter_values(
+            reconnected, _meter_values_payload(transaction_id=2)
+        )
+        assert reconnected.transaction_id is None
+
+    @pytest.mark.asyncio
+    async def test_does_not_adopt_transaction_end_reading(
+        self, ocpp_server, charger_session
+    ):
+        """An explicit Transaction.End reading context is never adopted."""
+        await ocpp_server._handle_meter_values(
+            charger_session,
+            _meter_values_payload(transaction_id=2, context="Transaction.End"),
+        )
+        assert charger_session.transaction_id is None
+
+    @pytest.mark.asyncio
+    async def test_new_transaction_clears_ended_marker(
+        self, ocpp_server, charger_session
+    ):
+        """A fresh StartTransaction supersedes the ended marker for that CPID."""
+        charger_session.transaction_id = 2
+        await ocpp_server._handle_stop_transaction(
+            charger_session, {"transactionId": 2}
+        )
+        assert ocpp_server._ended_transactions.get(charger_session.cpid) == 2
+
+        await ocpp_server._handle_start_transaction(charger_session, {})
+        assert charger_session.cpid not in ocpp_server._ended_transactions
+
+    @pytest.mark.asyncio
+    async def test_non_numeric_transaction_id_ignored(
+        self, ocpp_server, charger_session
+    ):
+        """A malformed txId must not raise or be adopted."""
+        await ocpp_server._handle_meter_values(
+            charger_session, _meter_values_payload(transaction_id="not-a-number")
+        )
+        assert charger_session.transaction_id is None
+
+
+# ---------------------------------------------------------------------------
 # Authorize tests
 # ---------------------------------------------------------------------------
 
@@ -356,6 +883,58 @@ class TestTransaction:
         assert result["idTagInfo"]["status"] == "Accepted"
         assert charger_session.transaction_id is None
 
+    @pytest.mark.asyncio
+    async def test_start_transaction_resends_profile_once_tx_known(
+        self, ocpp_server, charger_session
+    ):
+        """StartTransaction re-sends the profile so a TxProfile can bind (#920).
+
+        A SetChargingProfile sent alongside RemoteStartTransaction — the
+        normal timing, since HSEM authorizes before it can know the
+        charger-assigned transaction ID — can only ever be a
+        transaction-agnostic TxDefaultProfile. Once StartTransaction confirms
+        the ID, HSEM must re-send so the TxProfile companion (added in the
+        prior fix) actually gets a chance to bind to the live transaction.
+
+        The resend runs as a detached background task (issue #920
+        follow-up) so the StartTransaction CALLRESULT isn't delayed behind
+        it — ``await asyncio.sleep(0)`` yields control once so that task
+        actually runs before asserting on its effects.
+        """
+        # Simulate a profile already having been requested for this charger,
+        # as update_charge_target()/the debug service would have done just
+        # before RemoteStartTransaction was answered.
+        ocpp_server._last_sent_current_a = 16
+        ocpp_server._last_sent_target = 3680.0
+
+        await ocpp_server._handle_start_transaction(charger_session, {})
+        await asyncio.sleep(0)
+
+        actions = [
+            json.loads(call.args[0])[2]
+            for call in charger_session.websocket.send_str.call_args_list
+        ]
+        assert actions.count("SetChargingProfile") == 2  # TxDefault + TxProfile
+        payloads = [
+            json.loads(call.args[0])[3]["csChargingProfiles"]
+            for call in charger_session.websocket.send_str.call_args_list
+        ]
+        purposes = {p["chargingProfilePurpose"] for p in payloads}
+        assert purposes == {"TxDefaultProfile", "TxProfile"}
+        tx_profile = next(
+            p for p in payloads if p["chargingProfilePurpose"] == "TxProfile"
+        )
+        assert tx_profile["transactionId"] == charger_session.transaction_id
+
+    @pytest.mark.asyncio
+    async def test_start_transaction_no_resend_when_nothing_sent_yet(
+        self, ocpp_server, charger_session
+    ):
+        """No profile resend when no SetChargingProfile has ever been sent."""
+        assert ocpp_server.last_requested_current_a is None
+        await ocpp_server._handle_start_transaction(charger_session, {})
+        charger_session.websocket.send_str.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # SetChargingProfile message construction
@@ -367,11 +946,12 @@ class TestSetChargingProfile:
 
     @pytest.mark.asyncio
     async def test_set_charging_profile_format(self, ocpp_server, charger_session):
-        """SetChargingProfile should send a correctly structured OCPP message."""
+        """Without an active transaction, only a TxDefaultProfile is sent."""
+        assert charger_session.transaction_id is None
         await ocpp_server._send_set_charging_profile(
             charger_session, max_power_w=3680, max_current_a=16
         )
-        # Verify that a WebSocket send was called
+        # Verify that exactly one WebSocket send was called
         charger_session.websocket.send_str.assert_called_once()
         sent_data = charger_session.websocket.send_str.call_args[0][0]
         msg = json.loads(sent_data)
@@ -383,10 +963,51 @@ class TestSetChargingProfile:
         assert profile["chargingProfileId"] == 1
         assert profile["stackLevel"] == 0
         assert profile["chargingProfilePurpose"] == "TxDefaultProfile"
+        # "Relative" matches lbbrhzn/ocpp (issue #920 follow-up), which uses
+        # it universally across ChargePointMaxProfile/TxProfile/
+        # TxDefaultProfile against a very wide range of real charger models —
+        # an earlier attempt to use "Absolute" here was reverted as
+        # unsupported by that real-world evidence.
+        assert profile["chargingProfileKind"] == "Relative"
         schedule = profile["chargingSchedule"]
         assert schedule["chargingRateUnit"] == "A"
         assert schedule["chargingSchedulePeriod"][0]["limit"] == 16
         assert schedule["chargingSchedulePeriod"][0]["startPeriod"] == 0
+
+    @pytest.mark.asyncio
+    async def test_also_sends_tx_profile_when_transaction_active(
+        self, ocpp_server, charger_session
+    ):
+        """With an active transaction, a TxProfile is also sent (issue #920).
+
+        Some chargers only actually throttle an ongoing session via a
+        transaction-scoped TxProfile, ignoring a bare TxDefaultProfile —
+        mirroring lbbrhzn/ocpp's dual-profile strategy closes that gap.
+        """
+        charger_session.transaction_id = 42
+        await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=3680, max_current_a=16
+        )
+        assert charger_session.websocket.send_str.call_count == 2
+
+        first_msg = json.loads(
+            charger_session.websocket.send_str.call_args_list[0][0][0]
+        )
+        default_profile = first_msg[3]["csChargingProfiles"]
+        assert default_profile["chargingProfilePurpose"] == "TxDefaultProfile"
+        assert "transactionId" not in default_profile
+
+        second_msg = json.loads(
+            charger_session.websocket.send_str.call_args_list[1][0][0]
+        )
+        tx_profile = second_msg[3]["csChargingProfiles"]
+        assert tx_profile["chargingProfilePurpose"] == "TxProfile"
+        assert tx_profile["chargingProfileKind"] == "Relative"
+        assert tx_profile["transactionId"] == 42
+        assert tx_profile["stackLevel"] > default_profile["stackLevel"]
+        assert (
+            tx_profile["chargingSchedule"]["chargingSchedulePeriod"][0]["limit"] == 16
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -440,6 +1061,15 @@ class TestLastRequestedCurrentA:
 # ---------------------------------------------------------------------------
 # RemoteStartTransaction dispatch (issue #892)
 # ---------------------------------------------------------------------------
+
+
+def _sent_message(charger_session: ChargerSession, action: str) -> list | None:
+    """Return the first OCPP message sent for *action*, or None."""
+    for call in charger_session.websocket.send_str.call_args_list:
+        msg = json.loads(call.args[0])
+        if msg[2] == action:
+            return msg  # type: ignore[no-any-return]
+    return None
 
 
 def _sent_actions(charger_session: ChargerSession) -> list[str]:
@@ -599,21 +1229,23 @@ class TestRemoteStopTransaction:
         """An active transaction is stopped with its transactionId."""
         charger_session.transaction_id = 99
         await ocpp_server._send_remote_stop(charger_session)
-        charger_session.websocket.send_str.assert_called_once()
-        msg = json.loads(charger_session.websocket.send_str.call_args[0][0])
-        assert msg[2] == "RemoteStopTransaction"
-        assert msg[3] == {"transactionId": 99}
+        stop = _sent_message(charger_session, "RemoteStopTransaction")
+        assert stop is not None
+        assert stop[3] == {"transactionId": 99}
 
     @pytest.mark.asyncio
     async def test_skipped_without_mandatory_transaction_id(
         self, ocpp_server, charger_session
     ):
-        """No active transaction means nothing to stop — and OCPP 1.6
-        requires transactionId on RemoteStopTransaction, so sending an
-        empty payload would be a schema violation. Must not be sent."""
+        """No active transaction means no RemoteStopTransaction.
+
+        OCPP 1.6 makes transactionId mandatory on that request, so an
+        empty payload would be a schema violation. The generic 0 A profile
+        still goes out — a charger can free-vend with no transaction open,
+        so "nothing to stop" must not mean "do nothing" (issue #920)."""
         assert charger_session.transaction_id is None
         await ocpp_server._send_remote_stop(charger_session)
-        charger_session.websocket.send_str.assert_not_called()
+        assert "RemoteStopTransaction" not in _sent_actions(charger_session)
 
     @pytest.mark.asyncio
     async def test_target_tracking_reset_even_when_skipped(
@@ -783,6 +1415,50 @@ class TestCallResultHandling:
 
 
 # ---------------------------------------------------------------------------
+# Wire-level DEBUG logging (issue #920)
+# ---------------------------------------------------------------------------
+
+
+class TestWireLevelDebugLogging:
+    """Every incoming/outgoing OCPP CALL is logged at DEBUG for diagnosing
+    why a charger silently doesn't respond to a start/stop as expected."""
+
+    @pytest.mark.asyncio
+    async def test_incoming_call_logged_with_action_and_payload(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """An inbound CALL's action and payload are logged before dispatch."""
+        raw = json.dumps(
+            [2, "charger-1", "StatusNotification", {"status": "Available"}]
+        )
+        # "custom_components.hsem" has its level explicitly set to WARNING by
+        # HSEM_LOGGER at import time (utils/logger.py) — an ancestor with a
+        # non-NOTSET level short-circuits Python's effective-level walk
+        # before it ever reaches root, so raising only root's level here
+        # would not actually let DEBUG through for this module's logger.
+        with caplog.at_level(
+            logging.DEBUG, logger="custom_components.hsem.custom_sensors.ocpp_server"
+        ):
+            await ocpp_server._handle_message(charger_session, raw)
+        assert "StatusNotification" in caplog.text
+        assert "Available" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_outgoing_call_logged_with_action_and_payload(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """An outbound CALL's action and payload are logged on send."""
+        with caplog.at_level(
+            logging.DEBUG, logger="custom_components.hsem.custom_sensors.ocpp_commands"
+        ):
+            await ocpp_server._send_call(
+                charger_session, "SetChargingProfile", {"connectorId": 1}
+            )
+        assert "SetChargingProfile" in caplog.text
+        assert "connectorId" in caplog.text
+
+
+# ---------------------------------------------------------------------------
 # Anti-flap logic tests
 # ---------------------------------------------------------------------------
 
@@ -891,6 +1567,109 @@ class TestServerStartStop:
         """Sending RemoteStopTransaction to unknown CPID should be a no-op."""
         await ocpp_server.send_remote_stop("unknown")
 
+    @pytest.mark.asyncio
+    async def test_send_remote_start_to_unknown_charger(self, ocpp_server):
+        """Sending RemoteStartTransaction to unknown CPID should be a no-op."""
+        result = await ocpp_server.send_remote_start("unknown")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_remote_start_bypasses_anti_flap(
+        self, ocpp_server, charger_session
+    ):
+        """send_remote_start (issue #920) sends immediately, no start window wait."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        result = await ocpp_server.send_remote_start("test-cpid")
+        assert result is True
+        charger_session.websocket.send_str.assert_called_once()
+        msg = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        assert msg[2] == "RemoteStartTransaction"
+        assert msg[3] == {"idTag": "HSEM"}
+        # Bypass API must not touch the anti-flap state machine.
+        assert ocpp_server.anti_flap_state == "idle"
+
+    @pytest.mark.asyncio
+    async def test_send_get_configuration_requests_all_keys(
+        self, ocpp_server, charger_session
+    ):
+        """GetConfiguration asks for every key (empty payload) (issue #920)."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        assert await ocpp_server.send_get_configuration("test-cpid") is True
+        msg = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        assert msg[2] == "GetConfiguration"
+        assert msg[3] == {}
+
+    @pytest.mark.asyncio
+    async def test_send_get_composite_schedule_payload(
+        self, ocpp_server, charger_session
+    ):
+        """GetCompositeSchedule asks for the connector's computed limit."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        assert await ocpp_server.send_get_composite_schedule("test-cpid") is True
+        msg = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        assert msg[2] == "GetCompositeSchedule"
+        assert msg[3]["connectorId"] == 1
+        assert msg[3]["duration"] == 3600
+        assert msg[3]["chargingRateUnit"] == "A"
+
+    @pytest.mark.asyncio
+    async def test_diagnostic_senders_no_op_for_unknown_charger(self, ocpp_server):
+        """Diagnostic queries to an unknown CPID are a no-op, not a crash."""
+        assert await ocpp_server.send_get_configuration("unknown") is False
+        assert await ocpp_server.send_get_composite_schedule("unknown") is False
+        assert await ocpp_server.send_change_availability("unknown") is False
+        assert await ocpp_server.send_change_configuration("unknown", "k", "v") is False
+
+    @pytest.mark.asyncio
+    async def test_send_change_availability_payload(self, ocpp_server, charger_session):
+        """ChangeAvailability carries the connector and Operative/Inoperative."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        assert await ocpp_server.send_change_availability("test-cpid") is True
+        msg = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        assert msg[2] == "ChangeAvailability"
+        assert msg[3] == {"connectorId": 1, "type": "Operative"}
+
+        await ocpp_server.send_change_availability(
+            "test-cpid", operative=False, connector_id=0
+        )
+        msg = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        assert msg[3] == {"connectorId": 0, "type": "Inoperative"}
+
+    @pytest.mark.asyncio
+    async def test_send_change_configuration_payload(
+        self, ocpp_server, charger_session
+    ):
+        """ChangeConfiguration passes the key/value through verbatim."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        assert (
+            await ocpp_server.send_change_configuration(
+                "test-cpid", "AuthorizeRemoteTxRequests", "false"
+            )
+            is True
+        )
+        msg = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        assert msg[2] == "ChangeConfiguration"
+        assert msg[3] == {"key": "AuthorizeRemoteTxRequests", "value": "false"}
+
+    @pytest.mark.asyncio
+    async def test_send_remote_start_skipped_when_transaction_active(
+        self, ocpp_server, charger_session
+    ):
+        """An already-open transaction is never re-authorized (issue #920).
+
+        A charger rejects RemoteStartTransaction outright while a
+        transaction is in progress on that connector, so sending one is
+        pointless noise — observed as repeated 'Rejected' CALLRESULTs
+        against a go-e Charger V4 holding a stale transaction open.
+        """
+        charger_session.transaction_id = 2
+        ocpp_server._chargers["test-cpid"] = charger_session
+
+        result = await ocpp_server.send_remote_start("test-cpid")
+
+        assert result is True  # nothing to start counts as success
+        charger_session.websocket.send_str.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Failed-send rollback (issue #892)
@@ -937,6 +1716,43 @@ class TestFailedSendRollback:
         self, ocpp_server, charger_session
     ):
         """A failed SetChargingProfile must not update last_requested_current_a."""
+        charger_session.websocket.send_str.side_effect = ConnectionResetError()
+        sent = await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=3680, max_current_a=16
+        )
+        assert sent is False
+        assert ocpp_server.last_requested_current_a is None
+
+    @pytest.mark.asyncio
+    async def test_profile_send_succeeds_if_only_tx_profile_reaches_socket(
+        self, ocpp_server, charger_session
+    ):
+        """With an active transaction, success of either send counts (#920).
+
+        Regression test for a logic bug introduced alongside the dual-profile
+        send: a sentinel meant to represent "TxProfile wasn't attempted"
+        must not be conflated with "the attempt succeeded", or a fully
+        failed TxDefaultProfile-only send would be misreported as success.
+        This case exercises the opposite mix — TxDefaultProfile fails,
+        TxProfile succeeds — to confirm `or` correctly reports overall success.
+        """
+        charger_session.transaction_id = 42
+        charger_session.websocket.send_str.side_effect = [
+            ConnectionResetError(),  # TxDefaultProfile fails
+            None,  # TxProfile succeeds
+        ]
+        sent = await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=3680, max_current_a=16
+        )
+        assert sent is True
+        assert ocpp_server.last_requested_current_a == 16
+
+    @pytest.mark.asyncio
+    async def test_profile_send_fails_if_both_profiles_fail(
+        self, ocpp_server, charger_session
+    ):
+        """With an active transaction, both sends failing reports failure."""
+        charger_session.transaction_id = 42
         charger_session.websocket.send_str.side_effect = ConnectionResetError()
         sent = await ocpp_server._send_set_charging_profile(
             charger_session, max_power_w=3680, max_current_a=16
@@ -1529,21 +2345,22 @@ class TestRemoteStopRetry:
         ocpp_server._chargers["test-cpid"] = charger_session
         ocpp_server._flap_state = "charging"
         charger_session.transaction_id = 42
-        charger_session.websocket.send_str = AsyncMock(
-            side_effect=[Exception("boom"), None]
-        )
+        charger_session.websocket.send_str = AsyncMock(side_effect=Exception("boom"))
         now = datetime.now(UTC)
 
         await ocpp_server.update_charge_target(
             "test-cpid", target_power_kw=0.0, now=now
         )
         assert ocpp_server._flap_state == "stopping"
-        assert charger_session.websocket.send_str.call_count == 1
+        # Attempted once and failed (_sent_actions records attempts, since
+        # the mock logs the call before raising).
+        assert _sent_actions(charger_session).count("RemoteStopTransaction") == 1
+        charger_session.websocket.send_str.side_effect = None
 
         await ocpp_server.update_charge_target(
             "test-cpid", target_power_kw=0.0, now=now + timedelta(seconds=61)
         )
-        assert charger_session.websocket.send_str.call_count == 2
+        assert _sent_actions(charger_session).count("RemoteStopTransaction") == 2
 
     @pytest.mark.asyncio
     async def test_transitions_to_idle_once_charger_confirms(
@@ -1631,6 +2448,64 @@ class TestCallResultStatusTracking:
         assert "Rejected" not in caplog.text
 
     @pytest.mark.asyncio
+    async def test_both_profiles_of_a_pair_stay_resolvable(
+        self, ocpp_server, charger_session
+    ):
+        """Two same-action calls must both keep their action name (#920).
+
+        The TxDefaultProfile/TxProfile pair are both "SetChargingProfile";
+        purging by action name meant the first one's CALLRESULT logged as
+        "action=None" and couldn't be matched to what it answered.
+        """
+        charger_session.transaction_id = 2
+        await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=3680, max_current_a=16
+        )
+        assert len(charger_session.pending_calls) == 2
+        assert set(charger_session.pending_calls.values()) == {"SetChargingProfile"}
+
+    @pytest.mark.asyncio
+    async def test_pending_calls_bounded(self, ocpp_server, charger_session):
+        """pending_calls can't grow without bound when replies never arrive."""
+        for _ in range(20):
+            await ocpp_server._send_call(charger_session, "Heartbeat", {})
+        assert len(charger_session.pending_calls) <= 8
+
+    @pytest.mark.asyncio
+    async def test_diagnostic_reply_logged_prominently(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """A diagnostic reply is logged above DEBUG — it's the whole point."""
+        await ocpp_server._send_call(charger_session, "GetCompositeSchedule", {})
+        msg_id = next(iter(charger_session.pending_calls))
+
+        with caplog.at_level(
+            logging.WARNING, logger="custom_components.hsem.custom_sensors.ocpp_server"
+        ):
+            await ocpp_server._handle_message(
+                charger_session,
+                json.dumps([3, msg_id, {"status": "Accepted", "chargingSchedule": {}}]),
+            )
+        assert "GetCompositeSchedule reply" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_untracked_action_status_not_recorded(
+        self, ocpp_server, charger_session
+    ):
+        """last_call_status stays limited to the three command actions.
+
+        Every action is now tracked in pending_calls for log resolution,
+        but last_call_status drives retry decisions and must not start
+        collecting statuses for unrelated calls.
+        """
+        await ocpp_server._send_call(charger_session, "GetConfiguration", {})
+        msg_id = next(iter(charger_session.pending_calls))
+        await ocpp_server._handle_message(
+            charger_session, json.dumps([3, msg_id, {"status": "Accepted"}])
+        )
+        assert "GetConfiguration" not in charger_session.last_call_status
+
+    @pytest.mark.asyncio
     async def test_unknown_msg_id_ignored(self, ocpp_server, charger_session):
         """A CALLRESULT for an untracked/unknown message ID is a no-op."""
         await ocpp_server._handle_message(
@@ -1640,14 +2515,17 @@ class TestCallResultStatusTracking:
         assert charger_session.last_call_status == {}
 
     @pytest.mark.asyncio
-    async def test_only_latest_pending_call_kept_per_action(
+    async def test_retries_keep_each_attempt_resolvable_but_bounded(
         self, ocpp_server, charger_session
     ):
-        """A retried call drops the earlier attempt's pending entry.
+        """Retries stay individually resolvable, with growth still bounded.
 
-        Otherwise pending_calls would grow without bound across retries,
-        and a stale CALLRESULT could be misattributed to an abandoned
-        earlier attempt.
+        Entries were originally purged by action name to stop pending_calls
+        growing without bound across retries. That also erased the first
+        half of the TxDefaultProfile/TxProfile pair, so its CALLRESULT
+        logged as "action=None" (issue #920). Bounding by count keeps both
+        properties: every attempt's own id resolves to its action, and the
+        map can't grow forever.
         """
         await ocpp_server._send_set_charging_profile(
             charger_session, max_power_w=3680, max_current_a=16
@@ -1656,8 +2534,8 @@ class TestCallResultStatusTracking:
         await ocpp_server._send_set_charging_profile(
             charger_session, max_power_w=7360, max_current_a=32
         )
-        assert first_id not in charger_session.pending_calls
-        assert len(charger_session.pending_calls) == 1
+        assert charger_session.pending_calls[first_id] == "SetChargingProfile"
+        assert len(charger_session.pending_calls) <= 8
 
 
 # ---------------------------------------------------------------------------
@@ -1686,22 +2564,25 @@ class TestSetChargingProfileRejectedRetry:
         charger_session.last_call_status["SetChargingProfile"] = "Rejected"
         now = datetime.now(UTC)
 
+        # Each SetChargingProfile "send" now emits two OCPP CALLs — a
+        # TxDefaultProfile and a transaction-bound TxProfile (issue #920
+        # follow-up) — since charger_session.transaction_id is set above.
         await ocpp_server.update_charge_target(
             "test-cpid", target_power_kw=3.68, now=now
         )
-        assert _sent_actions(charger_session).count("SetChargingProfile") == 1
+        assert _sent_actions(charger_session).count("SetChargingProfile") == 2
 
         # Cooldown not elapsed — must not spam the charger every cycle.
         await ocpp_server.update_charge_target(
             "test-cpid", target_power_kw=3.68, now=now + timedelta(seconds=10)
         )
-        assert _sent_actions(charger_session).count("SetChargingProfile") == 1
+        assert _sent_actions(charger_session).count("SetChargingProfile") == 2
 
         # Cooldown elapsed — retry.
         await ocpp_server.update_charge_target(
             "test-cpid", target_power_kw=3.68, now=now + timedelta(seconds=61)
         )
-        assert _sent_actions(charger_session).count("SetChargingProfile") == 2
+        assert _sent_actions(charger_session).count("SetChargingProfile") == 4
 
     @pytest.mark.asyncio
     async def test_no_retry_when_status_unknown(self, ocpp_server, charger_session):
