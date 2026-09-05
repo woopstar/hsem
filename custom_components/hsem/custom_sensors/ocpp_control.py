@@ -82,6 +82,7 @@ class OCPPControlMixin:
     # OCPPCommandsMixin rather than reporting missing attributes.
     _chargers: dict[str, ChargerSession]
     _send_call: Callable[[ChargerSession, str, dict], Coroutine[Any, Any, bool]]
+    _force_state_owned: set[str]
 
     def _require_session(self, cpid: str, action: str) -> ChargerSession | None:
         """Return the session for *cpid*, logging a warning when absent.
@@ -257,6 +258,9 @@ class OCPPControlMixin:
         """
         current = session.configuration_keys.get(FORCE_STATE_KEY)
         if current is None or current != FORCE_STATE_OFF:
+            # Nothing to clear — and if HSEM thought it owned a block here,
+            # it plainly no longer holds one.
+            self._force_state_owned.discard(session.cpid)
             return
         _LOGGER.warning(
             "OCPP %s: charger is locally forced off (%s=%s) — clearing to "
@@ -271,6 +275,7 @@ class OCPPControlMixin:
         ):
             # Optimistic local update; the next GetConfiguration confirms it.
             session.configuration_keys[FORCE_STATE_KEY] = FORCE_STATE_NEUTRAL
+            self._force_state_owned.discard(session.cpid)
 
     async def ensure_charging_blocked(self, session: ChargerSession) -> None:
         """Hold the charger off after HSEM stops a charge.
@@ -313,6 +318,51 @@ class OCPPControlMixin:
         ):
             # Optimistic local update; the next GetConfiguration confirms it.
             session.configuration_keys[FORCE_STATE_KEY] = FORCE_STATE_OFF
+            # Remember that *HSEM* imposed this block, so shutdown can lift
+            # it again without ever touching a block the user set themselves.
+            self._force_state_owned.add(session.cpid)
+
+    async def release_force_state_holds(self) -> None:
+        """Lift any charger block HSEM is still holding, before shutting down.
+
+        "Leave it as you found it" (issue #920). :meth:`ensure_charging_blocked`
+        parks a charger at :data:`FORCE_STATE_OFF` so a stop actually stops,
+        and :meth:`ensure_charging_allowed` lifts it again on the next start
+        — but that only helps while HSEM is running. Without this, an HSEM
+        that stops a charge and is then unloaded, reconfigured, or shut down
+        leaves the charger locally blocked indefinitely, and the user has to
+        clear it in the charger's own app. HSEM should not be able to die
+        holding a block.
+
+        Ownership-gated, following the same rule as the grid-charge
+        emergency stop: only a block HSEM itself imposed is lifted, so a
+        user who deliberately stopped charging in the charger's app does not
+        get quietly overridden on shutdown.
+
+        Failures are logged and swallowed — this runs on the teardown path
+        and must never prevent a clean shutdown.
+        """
+        for cpid in list(self._force_state_owned):
+            session = self._chargers.get(cpid)
+            if session is None:
+                continue
+            _LOGGER.info(
+                "OCPP %s: releasing HSEM's %s=%s hold before shutdown",
+                cpid,
+                FORCE_STATE_KEY,
+                FORCE_STATE_OFF,
+            )
+            try:
+                await self.send_change_configuration(
+                    cpid, FORCE_STATE_KEY, FORCE_STATE_NEUTRAL
+                )
+            except Exception:
+                _LOGGER.exception(
+                    "OCPP %s: failed to release %s hold during shutdown",
+                    cpid,
+                    FORCE_STATE_KEY,
+                )
+        self._force_state_owned.clear()
 
     def profile_stack_levels(self, session: ChargerSession) -> tuple[int, int]:
         """Return ``(tx_default_level, tx_profile_level)`` for this charger.

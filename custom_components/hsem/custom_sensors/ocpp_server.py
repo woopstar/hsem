@@ -188,6 +188,13 @@ class OCPPServer(OCPPCommandsMixin, OCPPControlMixin, OCPPMessageHandlersMixin):
         self._stalled: bool = False
         self._stall_logged: bool = False
 
+        # CPIDs where HSEM itself parked ForceState at "Off" (issue #920).
+        # Ownership-gated so shutdown lifts only HSEM's own block and never
+        # a stop the user made in the charger's app — same rule as the
+        # grid-charge emergency stop. Server-level, so it survives the
+        # session object being replaced on reconnect.
+        self._force_state_owned: set[str] = set()
+
         # Strong references for fire-and-forget background tasks (issue
         # #920 follow-up) — e.g. the post-StartTransaction profile resend,
         # which must not be awaited inline before the StartTransaction
@@ -224,7 +231,17 @@ class OCPPServer(OCPPCommandsMixin, OCPPControlMixin, OCPPMessageHandlersMixin):
         )
 
     async def stop(self) -> None:
-        """Stop the server and close all charger connections."""
+        """Stop the server and close all charger connections.
+
+        Releases any charger block HSEM is still holding first (issue
+        #920) — see
+        :meth:`~ocpp_control.OCPPControlMixin.release_force_state_holds`.
+        HSEM must not be able to shut down leaving a charger locally
+        forced off, which would otherwise need clearing in the charger's
+        own app. This runs before the sockets close, since it needs them.
+        """
+        await self.release_force_state_holds()
+
         # Close all charger sessions
         for cpid, session in list(self._chargers.items()):
             try:

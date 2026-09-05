@@ -556,6 +556,14 @@ left locally blocked. Starting it again from HSEM clears that
 automatically, but starting it from the **charger's own app** will need the
 block cleared there first.
 
+HSEM will not, however, shut down still holding that block: the OCPP
+server releases it on teardown (config-entry unload, reload, or HA
+shutdown), so a disabled or removed HSEM never leaves a charger stuck off.
+That release is **ownership-gated** — only a block HSEM imposed itself is
+lifted, so if _you_ stopped charging in the charger's app, HSEM leaves your
+choice alone. An unclean crash is the one case it cannot cover; the next
+HSEM start clears the block anyway.
+
 More generally, HSEM now **asks** rather than assumes: a `GetConfiguration`
 is issued when a charger boots, and the reply drives charge-profile stack
 levels, the station current cap, and both take-over steps. Use

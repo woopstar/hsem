@@ -520,6 +520,87 @@ class TestForceStateTakeOver:
         assert actions == ["ChangeConfiguration"]
 
     @pytest.mark.asyncio
+    async def test_shutdown_releases_hsem_s_own_hold(
+        self, ocpp_server, charger_session
+    ):
+        """HSEM must not shut down still holding a charger blocked.
+
+        Otherwise an unload/restart after a stop leaves the charger
+        locally forced off until cleared in its own app.
+        """
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.transaction_id = 2
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Neutral")
+        )
+        await ocpp_server.send_remote_stop("test-cpid")
+        assert charger_session.configuration_keys["ForceState"] == "Off"
+        charger_session.websocket.send_str.reset_mock()
+
+        await ocpp_server.stop()
+
+        sent = [
+            json.loads(call.args[0])
+            for call in charger_session.websocket.send_str.call_args_list
+        ]
+        assert [msg[2] for msg in sent] == ["ChangeConfiguration"]
+        assert sent[0][3] == {"key": "ForceState", "value": "Neutral"}
+
+    @pytest.mark.asyncio
+    async def test_shutdown_leaves_a_user_imposed_block_alone(
+        self, ocpp_server, charger_session
+    ):
+        """A stop the *user* made in the charger's app is never overridden.
+
+        Ownership-gated, mirroring the grid-charge emergency stop: HSEM
+        only ever lifts a block it imposed itself.
+        """
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Off")
+        )
+
+        await ocpp_server.stop()
+
+        charger_session.websocket.send_str.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_shutdown_release_survives_a_send_failure(
+        self, ocpp_server, charger_session
+    ):
+        """A failed release must never block a clean shutdown."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.transaction_id = 2
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Neutral")
+        )
+        await ocpp_server.send_remote_stop("test-cpid")
+        charger_session.websocket.send_str.side_effect = ConnectionResetError()
+
+        await ocpp_server.stop()  # must not raise
+
+        assert ocpp_server._chargers == {}
+
+    @pytest.mark.asyncio
+    async def test_start_releases_ownership_so_shutdown_is_quiet(
+        self, ocpp_server, charger_session
+    ):
+        """Once HSEM has started again, it no longer holds a block."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.transaction_id = 2
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Neutral")
+        )
+        await ocpp_server.send_remote_stop("test-cpid")
+        charger_session.transaction_id = None
+        await ocpp_server.send_remote_start("test-cpid")
+        charger_session.websocket.send_str.reset_mock()
+
+        await ocpp_server.stop()
+
+        charger_session.websocket.send_str.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_stop_start_round_trip_is_self_healing(
         self, ocpp_server, charger_session
     ):
