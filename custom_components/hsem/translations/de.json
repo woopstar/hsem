@@ -1381,6 +1381,16 @@
           "description": "Welcher EV-eigene, eingebettete OCPP-Server angesprochen werden soll."
         }
       }
+    },
+    "ocpp_debug_diagnostics": {
+      "name": "OCPP-Debug: Diagnose",
+      "description": "Nur für Diagnosezwecke: Fragt das verbundene OCPP-Ladegerät nach seiner eigenen Konfiguration und nach dem tatsächlich berechneten Ladelimit und protokolliert die Antworten.",
+      "fields": {
+        "charger": {
+          "name": "Ladegerät",
+          "description": "Welcher EV-eigene, eingebettete OCPP-Server angesprochen werden soll."
+        }
+      }
     }
   }
 }

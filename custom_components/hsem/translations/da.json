@@ -1388,6 +1388,16 @@
           "description": "Hvilken EV's indbyggede OCPP-server der skal målrettes."
         }
       }
+    },
+    "ocpp_debug_diagnostics": {
+      "name": "OCPP-fejlsøgning: diagnosticering",
+      "description": "Kun til fejlsøgning: spørg den tilsluttede OCPP-lader om dens egen konfiguration og om den opladningsgrænse, den faktisk har beregnet, og log svarene.",
+      "fields": {
+        "charger": {
+          "name": "Lader",
+          "description": "Hvilken EV's indbyggede OCPP-server der skal målrettes."
+        }
+      }
     }
   }
 }

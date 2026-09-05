@@ -1381,6 +1381,16 @@
           "description": "Qué servidor OCPP integrado de VE se debe usar."
         }
       }
+    },
+    "ocpp_debug_diagnostics": {
+      "name": "Depuración OCPP: diagnóstico",
+      "description": "Solo para diagnóstico: pregunta al cargador OCPP conectado por su propia configuración y por el límite de carga que realmente ha calculado, y registra las respuestas.",
+      "fields": {
+        "charger": {
+          "name": "Cargador",
+          "description": "Qué servidor OCPP integrado de VE se debe usar."
+        }
+      }
     }
   }
 }

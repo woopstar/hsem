@@ -48,6 +48,20 @@ _TRACKED_RESPONSE_ACTIONS = frozenset(
     {"RemoteStartTransaction", "SetChargingProfile", "RemoteStopTransaction"}
 )
 
+# Upper bound on outstanding outbound calls remembered per session, so the
+# pending_calls map stays small across retries while still keeping both
+# halves of a same-action pair (TxDefaultProfile + TxProfile) resolvable
+# when their CALLRESULTs arrive (issue #920 follow-up). Oldest entries are
+# dropped first; a charger that never answers a call would otherwise leak
+# one entry per attempt.
+_MAX_PENDING_CALLS = 8
+
+# Diagnostic actions whose full CALLRESULT payload is worth surfacing at
+# INFO rather than DEBUG (issue #920 follow-up) — these exist purely to
+# interrogate a charger that accepts every command yet delivers no power,
+# so their answers are the point, not incidental protocol chatter.
+DIAGNOSTIC_ACTIONS = frozenset({"GetConfiguration", "GetCompositeSchedule"})
+
 # Minimum seconds between RemoteStartTransaction retries while a session
 # still hasn't confirmed a transaction (issue #892). Rejected, dropped, or
 # unanswered start requests are retried on this cadence rather than only
@@ -209,15 +223,17 @@ class OCPPCommandsMixin:
                 action,
                 payload,
             )
-            if action in _TRACKED_RESPONSE_ACTIONS:
-                stale = [
-                    pending_id
-                    for pending_id, pending_action in session.pending_calls.items()
-                    if pending_action == action
-                ]
-                for pending_id in stale:
-                    del session.pending_calls[pending_id]
-                session.pending_calls[msg_id] = action
+            # Track every outbound action, not just the three whose status
+            # feeds last_call_status — otherwise a CALLRESULT for anything
+            # else logs as "action=None" and can't be matched to what it
+            # answers, which is exactly what wire-level debugging needs
+            # (issue #920 follow-up). Two calls of the *same* action sent
+            # back-to-back (the TxDefaultProfile/TxProfile pair) must both
+            # stay resolvable, so entries are bounded by count rather than
+            # purged by action name.
+            session.pending_calls[msg_id] = action
+            while len(session.pending_calls) > _MAX_PENDING_CALLS:
+                session.pending_calls.pop(next(iter(session.pending_calls)))
             return True
         except Exception:
             _LOGGER.exception(
@@ -544,6 +560,78 @@ class OCPPCommandsMixin:
             self._chargers[cpid], max_power_w, max_current_a
         )
 
+    async def send_get_configuration(self, cpid: str) -> bool:
+        """Ask the charger to dump its full OCPP configuration.
+
+        Diagnostic only (issue #920 follow-up). The answer settles
+        questions HSEM otherwise has to guess at when a charger accepts
+        every command but never delivers power — most importantly
+        ``SupportedFeatureProfiles`` (does it implement SmartCharging at
+        all?) and ``ChargingScheduleAllowedChargingRateUnit`` (does it want
+        amps or watts?). HSEM hardcodes ``chargingRateUnit: "A"``, which a
+        watt-only charger can accept as schema-valid and then apply as
+        nothing. ``lbbrhzn/ocpp`` queries this key before choosing a unit
+        rather than assuming.
+
+        The reply is logged in full — see
+        :data:`DIAGNOSTIC_ACTIONS`.
+
+        Args:
+            cpid: Charge-point identifier.
+
+        Returns:
+            ``True`` if the request was written to the socket.
+        """
+        if cpid not in self._chargers:
+            _LOGGER.warning(
+                "Cannot send GetConfiguration — charger %s not connected", cpid
+            )
+            return False
+        # An empty/absent key list means "return every key" per OCPP 1.6.
+        return await self._send_call(self._chargers[cpid], "GetConfiguration", {})
+
+    async def send_get_composite_schedule(
+        self, cpid: str, duration_s: int = 3600, connector_id: int = 1
+    ) -> bool:
+        """Ask the charger for the limit it has actually computed.
+
+        Diagnostic only (issue #920 follow-up), and the most direct
+        question available: ``GetCompositeSchedule`` returns the charger's
+        own combined view of every charging profile installed on a
+        connector. It distinguishes the two possibilities that a
+        ``"status": "Accepted"`` on ``SetChargingProfile`` cannot — a
+        profile that was accepted *and applied* (schedule shows the
+        requested amps) versus one accepted and silently ignored or
+        clamped to zero (schedule shows 0, or the call is rejected).
+
+        A charger sitting in ``SuspendedEVSE`` — which OCPP 1.6 defines as
+        the EVSE, not the EV, withholding energy, explicitly listing "a
+        smart charging restriction" as a cause — is exactly the case this
+        answers.
+
+        Args:
+            cpid: Charge-point identifier.
+            duration_s: Length of schedule to report, in seconds.
+            connector_id: Connector to report on.
+
+        Returns:
+            ``True`` if the request was written to the socket.
+        """
+        if cpid not in self._chargers:
+            _LOGGER.warning(
+                "Cannot send GetCompositeSchedule — charger %s not connected", cpid
+            )
+            return False
+        return await self._send_call(
+            self._chargers[cpid],
+            "GetCompositeSchedule",
+            {
+                "connectorId": connector_id,
+                "duration": duration_s,
+                "chargingRateUnit": "A",
+            },
+        )
+
     async def send_remote_stop(self, cpid: str) -> bool:
         """Directly send a ``RemoteStopTransaction`` to a charger.
 
@@ -569,6 +657,13 @@ class OCPPCommandsMixin:
 
 __all__ = [
     "CHARGER_STALL_THRESHOLD_S",
+    "DIAGNOSTIC_ACTIONS",
+    "TRACKED_RESPONSE_ACTIONS",
     "OCPPCommandsMixin",
     "charger_appears_stalled",
 ]
+
+#: Public alias — :mod:`ocpp_server` needs this to decide whether a
+#: CALLRESULT's status belongs in ``last_call_status`` now that every
+#: outbound action is tracked in ``pending_calls`` (issue #920 follow-up).
+TRACKED_RESPONSE_ACTIONS = _TRACKED_RESPONSE_ACTIONS

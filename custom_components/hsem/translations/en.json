@@ -1381,6 +1381,16 @@
           "description": "Which EV's embedded OCPP server to target."
         }
       }
+    },
+    "ocpp_debug_diagnostics": {
+      "name": "OCPP debug diagnostics",
+      "description": "Diagnostics-only: ask the connected OCPP charger for its own configuration and for the charging limit it has actually computed, and log the replies.",
+      "fields": {
+        "charger": {
+          "name": "Charger",
+          "description": "Which EV's embedded OCPP server to target."
+        }
+      }
     }
   }
 }

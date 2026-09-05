@@ -1199,6 +1199,36 @@ class TestServerStartStop:
         assert ocpp_server.anti_flap_state == "idle"
 
     @pytest.mark.asyncio
+    async def test_send_get_configuration_requests_all_keys(
+        self, ocpp_server, charger_session
+    ):
+        """GetConfiguration asks for every key (empty payload) (issue #920)."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        assert await ocpp_server.send_get_configuration("test-cpid") is True
+        msg = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        assert msg[2] == "GetConfiguration"
+        assert msg[3] == {}
+
+    @pytest.mark.asyncio
+    async def test_send_get_composite_schedule_payload(
+        self, ocpp_server, charger_session
+    ):
+        """GetCompositeSchedule asks for the connector's computed limit."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        assert await ocpp_server.send_get_composite_schedule("test-cpid") is True
+        msg = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        assert msg[2] == "GetCompositeSchedule"
+        assert msg[3]["connectorId"] == 1
+        assert msg[3]["duration"] == 3600
+        assert msg[3]["chargingRateUnit"] == "A"
+
+    @pytest.mark.asyncio
+    async def test_diagnostic_senders_no_op_for_unknown_charger(self, ocpp_server):
+        """Diagnostic queries to an unknown CPID are a no-op, not a crash."""
+        assert await ocpp_server.send_get_configuration("unknown") is False
+        assert await ocpp_server.send_get_composite_schedule("unknown") is False
+
+    @pytest.mark.asyncio
     async def test_send_remote_start_skipped_when_transaction_active(
         self, ocpp_server, charger_session
     ):
@@ -1994,6 +2024,64 @@ class TestCallResultStatusTracking:
         assert "Rejected" not in caplog.text
 
     @pytest.mark.asyncio
+    async def test_both_profiles_of_a_pair_stay_resolvable(
+        self, ocpp_server, charger_session
+    ):
+        """Two same-action calls must both keep their action name (#920).
+
+        The TxDefaultProfile/TxProfile pair are both "SetChargingProfile";
+        purging by action name meant the first one's CALLRESULT logged as
+        "action=None" and couldn't be matched to what it answered.
+        """
+        charger_session.transaction_id = 2
+        await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=3680, max_current_a=16
+        )
+        assert len(charger_session.pending_calls) == 2
+        assert set(charger_session.pending_calls.values()) == {"SetChargingProfile"}
+
+    @pytest.mark.asyncio
+    async def test_pending_calls_bounded(self, ocpp_server, charger_session):
+        """pending_calls can't grow without bound when replies never arrive."""
+        for _ in range(20):
+            await ocpp_server._send_call(charger_session, "Heartbeat", {})
+        assert len(charger_session.pending_calls) <= 8
+
+    @pytest.mark.asyncio
+    async def test_diagnostic_reply_logged_prominently(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """A diagnostic reply is logged above DEBUG — it's the whole point."""
+        await ocpp_server._send_call(charger_session, "GetCompositeSchedule", {})
+        msg_id = next(iter(charger_session.pending_calls))
+
+        with caplog.at_level(
+            logging.WARNING, logger="custom_components.hsem.custom_sensors.ocpp_server"
+        ):
+            await ocpp_server._handle_message(
+                charger_session,
+                json.dumps([3, msg_id, {"status": "Accepted", "chargingSchedule": {}}]),
+            )
+        assert "GetCompositeSchedule reply" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_untracked_action_status_not_recorded(
+        self, ocpp_server, charger_session
+    ):
+        """last_call_status stays limited to the three command actions.
+
+        Every action is now tracked in pending_calls for log resolution,
+        but last_call_status drives retry decisions and must not start
+        collecting statuses for unrelated calls.
+        """
+        await ocpp_server._send_call(charger_session, "GetConfiguration", {})
+        msg_id = next(iter(charger_session.pending_calls))
+        await ocpp_server._handle_message(
+            charger_session, json.dumps([3, msg_id, {"status": "Accepted"}])
+        )
+        assert "GetConfiguration" not in charger_session.last_call_status
+
+    @pytest.mark.asyncio
     async def test_unknown_msg_id_ignored(self, ocpp_server, charger_session):
         """A CALLRESULT for an untracked/unknown message ID is a no-op."""
         await ocpp_server._handle_message(
@@ -2003,14 +2091,17 @@ class TestCallResultStatusTracking:
         assert charger_session.last_call_status == {}
 
     @pytest.mark.asyncio
-    async def test_only_latest_pending_call_kept_per_action(
+    async def test_retries_keep_each_attempt_resolvable_but_bounded(
         self, ocpp_server, charger_session
     ):
-        """A retried call drops the earlier attempt's pending entry.
+        """Retries stay individually resolvable, with growth still bounded.
 
-        Otherwise pending_calls would grow without bound across retries,
-        and a stale CALLRESULT could be misattributed to an abandoned
-        earlier attempt.
+        Entries were originally purged by action name to stop pending_calls
+        growing without bound across retries. That also erased the first
+        half of the TxDefaultProfile/TxProfile pair, so its CALLRESULT
+        logged as "action=None" (issue #920). Bounding by count keeps both
+        properties: every attempt's own id resolves to its action, and the
+        map can't grow forever.
         """
         await ocpp_server._send_set_charging_profile(
             charger_session, max_power_w=3680, max_current_a=16
@@ -2019,8 +2110,8 @@ class TestCallResultStatusTracking:
         await ocpp_server._send_set_charging_profile(
             charger_session, max_power_w=7360, max_current_a=32
         )
-        assert first_id not in charger_session.pending_calls
-        assert len(charger_session.pending_calls) == 1
+        assert charger_session.pending_calls[first_id] == "SetChargingProfile"
+        assert len(charger_session.pending_calls) <= 8
 
 
 # ---------------------------------------------------------------------------

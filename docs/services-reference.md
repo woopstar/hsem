@@ -1,6 +1,6 @@
 # HSEM Services Reference
 
-HSEM exposes seven Home Assistant services that allow automation, script, and
+HSEM exposes eight Home Assistant services that allow automation, script, and
 manual control over the planner and hardware writes.
 
 These services are **integration-level actions**: they operate on the single
@@ -12,15 +12,16 @@ below.
 
 ## Service listing
 
-| Service                          | Description                                      | Response |
-| -------------------------------- | ------------------------------------------------ | -------- |
-| `hsem.force_recalculation`       | Trigger an immediate full planner re-run         | None     |
-| `hsem.set_temporary_override`    | Force a specific battery working mode            | None     |
-| `hsem.clear_override`            | Return to automatic planner control              | None     |
-| `hsem.create_dashboard`          | Create or update the bundled Lovelace dashboard  | Dict     |
-| `hsem.export_diagnostics`        | Export structured diagnostic data                | Dict     |
-| `hsem.ocpp_debug_start_charging` | Diagnostics-only: manually start an OCPP charger | None     |
-| `hsem.ocpp_debug_stop_charging`  | Diagnostics-only: manually stop an OCPP charger  | None     |
+| Service                          | Description                                                     | Response |
+| -------------------------------- | --------------------------------------------------------------- | -------- |
+| `hsem.force_recalculation`       | Trigger an immediate full planner re-run                        | None     |
+| `hsem.set_temporary_override`    | Force a specific battery working mode                           | None     |
+| `hsem.clear_override`            | Return to automatic planner control                             | None     |
+| `hsem.create_dashboard`          | Create or update the bundled Lovelace dashboard                 | Dict     |
+| `hsem.export_diagnostics`        | Export structured diagnostic data                               | Dict     |
+| `hsem.ocpp_debug_start_charging` | Diagnostics-only: manually start an OCPP charger                | None     |
+| `hsem.ocpp_debug_stop_charging`  | Diagnostics-only: manually stop an OCPP charger                 | None     |
+| `hsem.ocpp_debug_diagnostics`    | Diagnostics-only: query the charger's config and computed limit | None     |
 
 ---
 
@@ -256,6 +257,52 @@ command at all when the normal planner-driven path doesn't seem to stop it.
 
 ```yaml
 service: hsem.ocpp_debug_stop_charging
+data:
+  charger: primary
+```
+
+---
+
+## 8. `hsem.ocpp_debug_diagnostics`
+
+**Diagnostics-only.** Asks the connected OCPP charger two questions and logs
+its replies, for the case where the charger accepts every command HSEM sends
+yet still delivers no power:
+
+- **`GetConfiguration`** — the charger's own settings. Most useful keys:
+  `SupportedFeatureProfiles` (does it implement SmartCharging at all?) and
+  `ChargingScheduleAllowedChargingRateUnit` (does it expect amps or watts?
+  HSEM always sends amps, which a watt-only charger can accept as
+  schema-valid and then apply as nothing).
+- **`GetCompositeSchedule`** — the limit the charger has _actually_ computed
+  from every charging profile installed on the connector. This is the one
+  question a `"status": "Accepted"` on `SetChargingProfile` cannot answer: a
+  profile that was accepted _and applied_ reports the requested amps, while
+  one accepted and silently ignored reports 0 (or the call is rejected).
+
+Especially relevant when the charger sits in `SuspendedEVSE`, which OCPP 1.6
+defines as the _EVSE_ — not the EV — withholding energy, explicitly listing
+"a smart charging restriction" as a cause.
+
+**Schema:**
+
+| Field     | Required | Type   | Description                                                                     |
+| --------- | -------- | ------ | ------------------------------------------------------------------------------- |
+| `charger` | No       | Select | `"primary"` (default) or `"second"` — which EV's embedded OCPP server to target |
+
+**Raises:**
+
+- `ServiceValidationError` when OCPP isn't enabled/configured for the selected
+  EV, or no charger is currently connected.
+- `HomeAssistantError` when the queries fail to reach the charger.
+
+Replies arrive asynchronously and are written to the HSEM log at warning level
+as they come in, so they are visible without enabling DEBUG logging.
+
+**Example:**
+
+```yaml
+service: hsem.ocpp_debug_diagnostics
 data:
   charger: primary
 ```

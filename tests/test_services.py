@@ -544,6 +544,55 @@ async def test_ocpp_debug_stop_charging_raises_when_send_fails(
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_diagnostics_sends_both_queries(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """ocpp_debug_diagnostics queries config and the computed schedule."""
+    server = _make_ocpp_server(cpid="CP1")
+    server.send_get_configuration = AsyncMock(return_value=True)
+    server.send_get_composite_schedule = AsyncMock(return_value=True)
+    mock_coordinator._ocpp_server = server
+    call = _make_service_call(mock_hass, {"charger": "primary"})
+
+    await services_module.async_handle_ocpp_debug_diagnostics(call)
+
+    server.send_get_configuration.assert_awaited_once_with("CP1")
+    server.send_get_composite_schedule.assert_awaited_once_with("CP1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_diagnostics_no_charger_connected_raises(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Raises when nothing is connected to interrogate."""
+    mock_coordinator._ocpp_server = _make_ocpp_server(cpid=None)
+    call = _make_service_call(mock_hass, {"charger": "primary"})
+    with pytest.raises(ServiceValidationError):
+        await services_module.async_handle_ocpp_debug_diagnostics(call)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_diagnostics_raises_when_send_fails(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A failed diagnostic send raises rather than reporting success."""
+    server = _make_ocpp_server(cpid="CP1")
+    server.send_get_configuration = AsyncMock(return_value=False)
+    server.send_get_composite_schedule = AsyncMock(return_value=True)
+    mock_coordinator._ocpp_server = server
+    call = _make_service_call(mock_hass, {"charger": "primary"})
+
+    with pytest.raises(HomeAssistantError):
+        await services_module.async_handle_ocpp_debug_diagnostics(call)
+
+
+@pytest.mark.asyncio
 async def test_create_dashboard_passes_custom_path_to_helper(
     mock_hass: MagicMock,
 ) -> None:

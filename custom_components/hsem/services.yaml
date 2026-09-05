@@ -115,6 +115,30 @@ ocpp_debug_stop_charging:
         Which EV's embedded OCPP server to target. "second" only applies
         when the second EV's OCPP server is configured and enabled.
 
+ocpp_debug_diagnostics:
+  name: OCPP debug diagnostics
+  description: >-
+    Diagnostics-only: ask the connected OCPP charger for its own
+    configuration (GetConfiguration) and for the charging limit it has
+    actually computed from the profiles installed on the connector
+    (GetCompositeSchedule). Use this when the charger accepts every command
+    but still delivers no power — the replies show whether it supports
+    smart charging at all, whether it expects amps or watts, and what limit
+    it is really operating under. The answers are written to the HSEM log
+    as they arrive.
+  fields:
+    charger:
+      required: false
+      default: "primary"
+      selector:
+        select:
+          options:
+            - "primary"
+            - "second"
+      description: >-
+        Which EV's embedded OCPP server to target. "second" only applies
+        when the second EV's OCPP server is configured and enabled.
+
 create_dashboard:
   name: Create dashboard
   description: >-

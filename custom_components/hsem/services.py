@@ -11,6 +11,8 @@ This module implements the HSEM services:
   SetChargingProfile, bypassing the anti-flap state machine (issue #920).
 - ``ocpp_debug_stop_charging`` — Manually send RemoteStopTransaction, bypassing
   the anti-flap state machine (issue #920).
+- ``ocpp_debug_diagnostics`` — Query the charger's own configuration and the
+  charging limit it has actually computed (issue #920).
 
 All services are integration-level actions; the coordinator is looked up from
 the only configured HSEM entry.  Service schemas are defined in ``services.yaml``.
@@ -68,6 +70,7 @@ SERVICE_EXPORT_DIAGNOSTICS = "export_diagnostics"
 SERVICE_CREATE_DASHBOARD = "create_dashboard"
 SERVICE_OCPP_DEBUG_START_CHARGING = "ocpp_debug_start_charging"
 SERVICE_OCPP_DEBUG_STOP_CHARGING = "ocpp_debug_stop_charging"
+SERVICE_OCPP_DEBUG_DIAGNOSTICS = "ocpp_debug_diagnostics"
 
 # ---------------------------------------------------------------------------
 # Voluptuous schemas for input validation
@@ -106,6 +109,12 @@ SCHEMA_OCPP_DEBUG_START_CHARGING = vol.Schema(
 )
 
 SCHEMA_OCPP_DEBUG_STOP_CHARGING = vol.Schema(
+    {
+        vol.Optional("charger", default="primary"): vol.In(SUPPORTED_OCPP_CHARGERS),
+    }
+)
+
+SCHEMA_OCPP_DEBUG_DIAGNOSTICS = vol.Schema(
     {
         vol.Optional("charger", default="primary"): vol.In(SUPPORTED_OCPP_CHARGERS),
     }
@@ -154,6 +163,45 @@ def _get_ocpp_server(coordinator: HSEMDataUpdateCoordinator, charger: str) -> An
     """
     attr = "_ocpp_second_server" if charger == "second" else "_ocpp_server"
     return getattr(coordinator, attr, None)
+
+
+def _resolve_connected_charger(hass: HomeAssistant, charger: str) -> tuple[Any, str]:
+    """Return the running OCPP server and its connected CPID, or raise.
+
+    Shared by every ``ocpp_debug_*`` service (issue #920) so the three of
+    them can't drift in how they validate — all of them need exactly the
+    same three things to be true before they can talk to a charger.
+
+    Args:
+        hass: The Home Assistant instance.
+        charger: ``"primary"`` or ``"second"``.
+
+    Returns:
+        A ``(server, cpid)`` tuple for the connected charger.
+
+    Raises:
+        ServiceValidationError: When the coordinator or the selected EV's
+            OCPP server is unavailable, or no charger is connected to it.
+    """
+    coordinator = _get_coordinator(hass)
+    if coordinator is None:
+        raise ServiceValidationError(
+            "HSEM coordinator not found — integration may not be configured."
+        )
+
+    ocpp_server = _get_ocpp_server(coordinator, charger)
+    if ocpp_server is None:
+        raise ServiceValidationError(
+            f"OCPP server for the '{charger}' charger is not running "
+            "— check that OCPP is enabled in the config for this EV."
+        )
+
+    active = ocpp_server.active_chargers
+    if not active:
+        raise ServiceValidationError(
+            f"No charger currently connected to the '{charger}' OCPP server."
+        )
+    return ocpp_server, active[0]
 
 
 # ---------------------------------------------------------------------------
@@ -399,25 +447,7 @@ async def async_handle_ocpp_debug_start_charging(call: ServiceCall) -> None:
     charger_choice: str = call.data["charger"]
     max_current_a: int = call.data["max_current_a"]
 
-    coordinator = _get_coordinator(call.hass)
-    if coordinator is None:
-        raise ServiceValidationError(
-            "HSEM coordinator not found — integration may not be configured."
-        )
-
-    ocpp_server = _get_ocpp_server(coordinator, charger_choice)
-    if ocpp_server is None:
-        raise ServiceValidationError(
-            f"OCPP server for the '{charger_choice}' charger is not running "
-            "— check that OCPP is enabled in the config for this EV."
-        )
-
-    active = ocpp_server.active_chargers
-    if not active:
-        raise ServiceValidationError(
-            f"No charger currently connected to the '{charger_choice}' OCPP server."
-        )
-    cpid = active[0]
+    ocpp_server, cpid = _resolve_connected_charger(call.hass, charger_choice)
 
     _LOGGER.warning(
         "HSEM service: ocpp_debug_start_charging called for %s charger "
@@ -457,25 +487,7 @@ async def async_handle_ocpp_debug_stop_charging(call: ServiceCall) -> None:
     """
     charger_choice: str = call.data["charger"]
 
-    coordinator = _get_coordinator(call.hass)
-    if coordinator is None:
-        raise ServiceValidationError(
-            "HSEM coordinator not found — integration may not be configured."
-        )
-
-    ocpp_server = _get_ocpp_server(coordinator, charger_choice)
-    if ocpp_server is None:
-        raise ServiceValidationError(
-            f"OCPP server for the '{charger_choice}' charger is not running "
-            "— check that OCPP is enabled in the config for this EV."
-        )
-
-    active = ocpp_server.active_chargers
-    if not active:
-        raise ServiceValidationError(
-            f"No charger currently connected to the '{charger_choice}' OCPP server."
-        )
-    cpid = active[0]
+    ocpp_server, cpid = _resolve_connected_charger(call.hass, charger_choice)
 
     _LOGGER.warning(
         "HSEM service: ocpp_debug_stop_charging called for %s charger "
@@ -490,6 +502,60 @@ async def async_handle_ocpp_debug_stop_charging(call: ServiceCall) -> None:
             f"'{cpid}' — see the log for details."
         )
     _LOGGER.info("HSEM service: ocpp_debug_stop_charging completed for cpid=%s", cpid)
+
+
+async def async_handle_ocpp_debug_diagnostics(call: ServiceCall) -> None:
+    """Interrogate the charger about its own configuration and limits.
+
+    Diagnostics-only (issue #920). Sends ``GetConfiguration`` and
+    ``GetCompositeSchedule`` and logs the charger's replies at warning
+    level, to answer the questions a ``"status": "Accepted"`` on
+    ``SetChargingProfile`` cannot:
+
+    - Does the charger implement SmartCharging at all
+      (``SupportedFeatureProfiles``)?
+    - Does it want amps or watts
+      (``ChargingScheduleAllowedChargingRateUnit``)? HSEM always sends
+      amps, which a watt-only charger can accept and then apply as
+      nothing.
+    - What limit has it actually computed from the profiles installed on
+      the connector (``GetCompositeSchedule``)? A charger accepting a
+      16 A profile and then reporting a composite schedule of 0 A is the
+      signature of a profile that was accepted and silently ignored — and
+      of ``SuspendedEVSE``, which OCPP 1.6 defines as the EVSE withholding
+      energy, explicitly listing "a smart charging restriction" as a cause.
+
+    Replies arrive asynchronously and are logged by the OCPP server as
+    they come in, so this returns as soon as both requests are sent.
+
+    Args:
+        call: The service call with an optional ``charger`` key
+            (``"primary"``/``"second"``, default ``"primary"``).
+            ``call.hass`` provides the Home Assistant instance.
+
+    Raises:
+        ServiceValidationError: When the coordinator or selected OCPP
+            server is unavailable, or no charger is currently connected.
+        HomeAssistantError: When the requests fail to reach the charger.
+    """
+    charger_choice: str = call.data["charger"]
+    ocpp_server, cpid = _resolve_connected_charger(call.hass, charger_choice)
+
+    _LOGGER.warning(
+        "HSEM service: ocpp_debug_diagnostics called for %s charger "
+        "(cpid=%s) — querying GetConfiguration + GetCompositeSchedule; "
+        "replies are logged as they arrive",
+        charger_choice,
+        cpid,
+    )
+    config_ok = await ocpp_server.send_get_configuration(cpid)
+    schedule_ok = await ocpp_server.send_get_composite_schedule(cpid)
+    if not (config_ok and schedule_ok):
+        raise HomeAssistantError(
+            f"HSEM service: failed to send diagnostic queries to charger "
+            f"'{cpid}' — see the log for details."
+        )
+    _LOGGER.info("HSEM service: ocpp_debug_diagnostics sent for cpid=%s", cpid)
 
 
 # ---------------------------------------------------------------------------
@@ -515,6 +581,11 @@ SERVICE_HANDLER_MAP: dict[str, tuple[vol.Schema, Any, SupportsResponse]] = {
     SERVICE_FORCE_RECALCULATION: (
         SCHEMA_FORCE_RECALCULATION,
         async_handle_force_recalculation,
+        SupportsResponse.NONE,
+    ),
+    SERVICE_OCPP_DEBUG_DIAGNOSTICS: (
+        SCHEMA_OCPP_DEBUG_DIAGNOSTICS,
+        async_handle_ocpp_debug_diagnostics,
         SupportsResponse.NONE,
     ),
     SERVICE_OCPP_DEBUG_START_CHARGING: (

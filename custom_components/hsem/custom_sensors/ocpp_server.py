@@ -43,6 +43,8 @@ from aiohttp import web
 
 from custom_components.hsem.custom_sensors.ocpp_commands import (
     CHARGER_STALL_THRESHOLD_S,
+    DIAGNOSTIC_ACTIONS,
+    TRACKED_RESPONSE_ACTIONS,
     OCPPCommandsMixin,
     charger_appears_stalled,
 )
@@ -589,7 +591,7 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
                 action = session.pending_calls.pop(result_msg_id, None)
                 if action is not None:
                     status = result_payload.get("status")
-                    if status:
+                    if status and action in TRACKED_RESPONSE_ACTIONS:
                         session.last_call_status[action] = status
                         if status != "Accepted":
                             _LOGGER.warning(
@@ -598,6 +600,15 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
                                 status,
                                 action,
                             )
+                if action in DIAGNOSTIC_ACTIONS:
+                    # The whole point of these calls is their answer, so it
+                    # must be readable without turning on DEBUG.
+                    _LOGGER.warning(
+                        "OCPP %s: %s reply: %s",
+                        session.cpid,
+                        action,
+                        result_payload,
+                    )
                 _LOGGER.debug(
                     "OCPP CALLRESULT from %s (id=%s, action=%s): %s",
                     session.cpid,

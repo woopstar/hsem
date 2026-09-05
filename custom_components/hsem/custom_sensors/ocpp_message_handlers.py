@@ -259,6 +259,13 @@ class OCPPMessageHandlersMixin:
                     return
 
         session.transaction_id = transaction_id
+        # Never hand out an ID at or below one the charger is already using:
+        # _next_transaction_id restarts at 1 on every HSEM restart, so
+        # without this the next StartTransaction would be assigned an ID the
+        # charger has already seen (observed: HSEM assigned tx=1 moments
+        # after adopting the charger's live tx=2), leaving RemoteStop
+        # targeting an ambiguous ID.
+        self._next_transaction_id = max(self._next_transaction_id, transaction_id + 1)
         _LOGGER.warning(
             "OCPP %s: adopted charger's already-open transaction %d from "
             "MeterValues — HSEM had none recorded (restart/reconnect). "
