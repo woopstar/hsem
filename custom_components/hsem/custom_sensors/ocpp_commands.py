@@ -151,6 +151,7 @@ class OCPPCommandsMixin:
     profile_stack_levels: Callable[[ChargerSession], tuple[int, int]]
     station_max_current_a: Callable[[ChargerSession], int | None]
     ensure_charging_allowed: Callable[[ChargerSession], Coroutine[Any, Any, None]]
+    ensure_charging_blocked: Callable[[ChargerSession], Coroutine[Any, Any, None]]
 
     async def _notify_significant_event(self) -> None:
         """Trigger a debounced coordinator refresh after a significant event.
@@ -272,6 +273,10 @@ class OCPPCommandsMixin:
             ``True`` if the message was written to the socket.
         """
         self._last_remote_start_attempt = now if now is not None else datetime.now(UTC)
+        # Also needed here, not just in the public bypass: the anti-flap
+        # path reaches this directly, and a charger left locally forced off
+        # would accept the start below and ignore it (issue #920).
+        await self.ensure_charging_allowed(session)
         payload = {"idTag": _REMOTE_START_ID_TAG}
         sent = await self._send_call(session, "RemoteStartTransaction", payload)
         if sent:
@@ -429,6 +434,10 @@ class OCPPCommandsMixin:
         self._last_remote_stop_attempt = now if now is not None else datetime.now(UTC)
         self._last_sent_target = -1.0
         self._last_sent_current_a = -1
+        # Ending the transaction is not enough on a charger that free-vends
+        # when it has no local override (issue #920) — hold it off first, so
+        # a stop still stops even when there is no transaction to close.
+        await self.ensure_charging_blocked(session)
         if session.transaction_id is None:
             _LOGGER.debug(
                 "OCPP %s has no active transaction — skipping "

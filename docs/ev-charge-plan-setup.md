@@ -542,10 +542,30 @@ writes `ForceState=Neutral` before every remote start, gated on the charger
 actually reporting the key (so other brands never see it) and on it
 actually being `Off` (a no-op otherwise).
 
+**Stopping needs the same key.** Ending the OCPP transaction is not enough
+on its own: `ForceState: Neutral` means "no local override — charge if the
+car asks for it", so the charger simply free-vends after
+`RemoteStopTransaction` is accepted and its own `StopTransaction` confirms.
+It keeps delivering power with no transaction open at all. HSEM therefore
+writes `ForceState=Off` when stopping — the same thing the charger's app
+does — and clears it back to `Neutral` before the next remote start, so
+HSEM's own stop/start round-trip is self-healing.
+
+One consequence worth knowing: after HSEM stops a charge, the charger is
+left locally blocked. Starting it again from HSEM clears that
+automatically, but starting it from the **charger's own app** will need the
+block cleared there first.
+
 More generally, HSEM now **asks** rather than assumes: a `GetConfiguration`
 is issued when a charger boots, and the reply drives charge-profile stack
-levels, the station current cap, and this take-over step. Use
+levels, the station current cap, and both take-over steps. Use
 `hsem.ocpp_debug_diagnostics` to see the same dump yourself.
+
+**If the requested amps never seem to apply,** check `Station-MaxCurrent`
+in that dump first. Requesting _above_ the station's own cap is accepted
+but cannot raise it, so nothing changes — HSEM logs a warning naming both
+numbers when this happens. To verify amp control is working at all, request
+a value comfortably below the cap (and at or above `MinChargingCurrent`).
 
 **A charger's connector status can change independently of any OCPP command
 HSEM sent — this is not necessarily a bug.** In one test session against the

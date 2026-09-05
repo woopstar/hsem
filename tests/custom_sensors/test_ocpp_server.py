@@ -472,6 +472,71 @@ class TestForceStateTakeOver:
         actions = _sent_actions(charger_session)
         assert "ChangeConfiguration" not in actions
 
+    @pytest.mark.asyncio
+    async def test_stop_holds_charger_off(self, ocpp_server, charger_session):
+        """Stop writes ForceState=Off — ending the transaction isn't enough.
+
+        Confirmed by testing: ForceState=Neutral means "charge if the car
+        asks", so a go-e keeps free-vending after RemoteStopTransaction is
+        accepted and its own StopTransaction confirms.
+        """
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.transaction_id = 2
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Neutral")
+        )
+
+        assert await ocpp_server.send_remote_stop("test-cpid") is True
+
+        sent = [
+            json.loads(call.args[0])
+            for call in charger_session.websocket.send_str.call_args_list
+        ]
+        assert [msg[2] for msg in sent] == [
+            "ChangeConfiguration",
+            "RemoteStopTransaction",
+        ]
+        assert sent[0][3] == {"key": "ForceState", "value": "Off"}
+        assert charger_session.configuration_keys["ForceState"] == "Off"
+
+    @pytest.mark.asyncio
+    async def test_stop_holds_charger_off_with_no_transaction(
+        self, ocpp_server, charger_session
+    ):
+        """A stop still stops when there is no transaction to close.
+
+        Free-vending happens with no transaction open at all, so "nothing
+        to stop" must not mean "do nothing".
+        """
+        ocpp_server._chargers["test-cpid"] = charger_session
+        assert charger_session.transaction_id is None
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Neutral")
+        )
+
+        await ocpp_server.send_remote_stop("test-cpid")
+
+        actions = _sent_actions(charger_session)
+        assert actions == ["ChangeConfiguration"]
+
+    @pytest.mark.asyncio
+    async def test_stop_start_round_trip_is_self_healing(
+        self, ocpp_server, charger_session
+    ):
+        """HSEM's own stop must not lock out HSEM's own next start."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.transaction_id = 2
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Neutral")
+        )
+
+        await ocpp_server.send_remote_stop("test-cpid")
+        assert charger_session.configuration_keys["ForceState"] == "Off"
+
+        charger_session.transaction_id = None
+        await ocpp_server.send_remote_start("test-cpid")
+        assert charger_session.configuration_keys["ForceState"] == "Neutral"
+
 
 # ---------------------------------------------------------------------------
 # Stale-transaction adoption from MeterValues (issue #920)

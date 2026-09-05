@@ -272,6 +272,48 @@ class OCPPControlMixin:
             # Optimistic local update; the next GetConfiguration confirms it.
             session.configuration_keys[FORCE_STATE_KEY] = FORCE_STATE_NEUTRAL
 
+    async def ensure_charging_blocked(self, session: ChargerSession) -> None:
+        """Hold the charger off after HSEM stops a charge.
+
+        The other half of taking over the charger (issue #920), and
+        confirmed necessary by testing: ending the OCPP transaction is not
+        enough on its own. :data:`FORCE_STATE_NEUTRAL` means "no local
+        override — charge if the car asks for it", so a go-e left in
+        Neutral simply free-vends after ``RemoteStopTransaction`` is
+        accepted and its own ``StopTransaction`` confirms. The charger
+        keeps delivering power with no transaction open at all. Writing
+        :data:`FORCE_STATE_OFF` is what the go-e app's own stop button
+        does, and is the only thing that actually stops it.
+
+        This deliberately leaves the charger locally blocked. That is
+        recoverable rather than sticky: :meth:`ensure_charging_allowed`
+        clears it again before the next remote start, so HSEM's own
+        start/stop round-trip is self-healing. A charge started from the
+        charger's app after HSEM stopped will still need clearing there.
+
+        No-ops on any charger that doesn't report the key, and on one
+        already off.
+
+        Args:
+            session: The charger session.
+        """
+        current = session.configuration_keys.get(FORCE_STATE_KEY)
+        if current is None or current == FORCE_STATE_OFF:
+            return
+        _LOGGER.info(
+            "OCPP %s: holding charger off (%s=%s → %s) — ending the "
+            "transaction alone would let it keep free-vending",
+            session.cpid,
+            FORCE_STATE_KEY,
+            current,
+            FORCE_STATE_OFF,
+        )
+        if await self.send_change_configuration(
+            session.cpid, FORCE_STATE_KEY, FORCE_STATE_OFF
+        ):
+            # Optimistic local update; the next GetConfiguration confirms it.
+            session.configuration_keys[FORCE_STATE_KEY] = FORCE_STATE_OFF
+
     def profile_stack_levels(self, session: ChargerSession) -> tuple[int, int]:
         """Return ``(tx_default_level, tx_profile_level)`` for this charger.
 
