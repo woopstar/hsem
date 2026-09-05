@@ -2011,6 +2011,19 @@ applier (`applier._planned_ev_discharge_cap_w()` +
 scheduled neither charge nor discharge for the primary battery this slot
 (`primary_battery_hold` — see below), the cap is unconditionally 0 W.
 
+**Solar-charge-only slot (issue #922)**: when the recommendation is
+`batteries_charge_solar` and no EV is active/planned, the cap is
+unconditionally 0 W, mirroring the primary-battery-hold cap. A genuine
+solar-charge slot has a material `batteries_charged_kwh`, so
+`primary_battery_hold` is always `False` for it and would otherwise leave
+the discharge cap at its normal value. Huawei's `MaximizeSelfConsumption`
+firmware follows **live** house load vs. **live** PV, not the MILP's solved
+per-slot flow — without this cap the inverter discharges the battery
+whenever live load exceeds live PV, even though the MILP planned this slot
+as solar-charge-only with the grid covering any deficit. An active/planned
+EV takes precedence: when `relevant_evs` is non-empty the normal EV
+permission/rate-cap logic above governs instead of the blanket 0 W.
+
 **SoC guard:** when the battery's remaining usable energy is at or below
 the planner's required reserve (`current_required_battery_kwh` — energy
 needed until the next solar surplus), the cap is forced to 0 W so the
