@@ -1398,6 +1398,42 @@
           "description": "Hvilken EV's indbyggede OCPP-server der skal målrettes."
         }
       }
+    },
+    "ocpp_debug_set_availability": {
+      "name": "OCPP-fejlsøgning: angiv tilgængelighed",
+      "description": "Kun til fejlsøgning: sæt laderens konnektor til Operative eller Inoperative (OCPP ChangeAvailability).",
+      "fields": {
+        "charger": {
+          "name": "Lader",
+          "description": "Hvilken EV's indbyggede OCPP-server der skal målrettes."
+        },
+        "operative": {
+          "name": "Operative",
+          "description": "Sand for Operative (i drift), falsk for Inoperative."
+        },
+        "connector_id": {
+          "name": "Konnektor",
+          "description": "Konnektor der skal ændres. 0 adresserer hele ladepunktet."
+        }
+      }
+    },
+    "ocpp_debug_set_configuration": {
+      "name": "OCPP-fejlsøgning: angiv konfiguration",
+      "description": "Kun til fejlsøgning: skriv en enkelt OCPP-konfigurationsnøgle på laderen (OCPP ChangeConfiguration).",
+      "fields": {
+        "charger": {
+          "name": "Lader",
+          "description": "Hvilken EV's indbyggede OCPP-server der skal målrettes."
+        },
+        "key": {
+          "name": "Nøgle",
+          "description": "Konfigurationsnøglens navn, præcis som laderen rapporterer den."
+        },
+        "value": {
+          "name": "Værdi",
+          "description": "Ny værdi. OCPP 1.6 sender alle konfigurationsværdier som tekst."
+        }
+      }
     }
   }
 }

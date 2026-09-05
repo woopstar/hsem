@@ -1391,6 +1391,42 @@
           "description": "Qué servidor OCPP integrado de VE se debe usar."
         }
       }
+    },
+    "ocpp_debug_set_availability": {
+      "name": "Depuración OCPP: establecer disponibilidad",
+      "description": "Solo para diagnóstico: establece el conector del cargador como Operative o Inoperative (OCPP ChangeAvailability).",
+      "fields": {
+        "charger": {
+          "name": "Cargador",
+          "description": "Qué servidor OCPP integrado de VE se debe usar."
+        },
+        "operative": {
+          "name": "Operative",
+          "description": "Verdadero para Operative (en servicio), falso para Inoperative."
+        },
+        "connector_id": {
+          "name": "Conector",
+          "description": "Conector que se va a cambiar. 0 se dirige a todo el punto de carga."
+        }
+      }
+    },
+    "ocpp_debug_set_configuration": {
+      "name": "Depuración OCPP: establecer configuración",
+      "description": "Solo para diagnóstico: escribe una única clave de configuración OCPP en el cargador (OCPP ChangeConfiguration).",
+      "fields": {
+        "charger": {
+          "name": "Cargador",
+          "description": "Qué servidor OCPP integrado de VE se debe usar."
+        },
+        "key": {
+          "name": "Clave",
+          "description": "Nombre de la clave de configuración, tal como la indica el cargador."
+        },
+        "value": {
+          "name": "Valor",
+          "description": "Nuevo valor. OCPP 1.6 transmite todos los valores de configuración como cadenas."
+        }
+      }
     }
   }
 }

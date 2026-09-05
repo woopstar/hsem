@@ -1227,6 +1227,39 @@ class TestServerStartStop:
         """Diagnostic queries to an unknown CPID are a no-op, not a crash."""
         assert await ocpp_server.send_get_configuration("unknown") is False
         assert await ocpp_server.send_get_composite_schedule("unknown") is False
+        assert await ocpp_server.send_change_availability("unknown") is False
+        assert await ocpp_server.send_change_configuration("unknown", "k", "v") is False
+
+    @pytest.mark.asyncio
+    async def test_send_change_availability_payload(self, ocpp_server, charger_session):
+        """ChangeAvailability carries the connector and Operative/Inoperative."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        assert await ocpp_server.send_change_availability("test-cpid") is True
+        msg = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        assert msg[2] == "ChangeAvailability"
+        assert msg[3] == {"connectorId": 1, "type": "Operative"}
+
+        await ocpp_server.send_change_availability(
+            "test-cpid", operative=False, connector_id=0
+        )
+        msg = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        assert msg[3] == {"connectorId": 0, "type": "Inoperative"}
+
+    @pytest.mark.asyncio
+    async def test_send_change_configuration_payload(
+        self, ocpp_server, charger_session
+    ):
+        """ChangeConfiguration passes the key/value through verbatim."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        assert (
+            await ocpp_server.send_change_configuration(
+                "test-cpid", "AuthorizeRemoteTxRequests", "false"
+            )
+            is True
+        )
+        msg = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        assert msg[2] == "ChangeConfiguration"
+        assert msg[3] == {"key": "AuthorizeRemoteTxRequests", "value": "false"}
 
     @pytest.mark.asyncio
     async def test_send_remote_start_skipped_when_transaction_active(

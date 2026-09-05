@@ -13,6 +13,8 @@ This module implements the HSEM services:
   the anti-flap state machine (issue #920).
 - ``ocpp_debug_diagnostics`` — Query the charger's own configuration and the
   charging limit it has actually computed (issue #920).
+- ``ocpp_debug_set_availability`` — Set a connector Operative/Inoperative.
+- ``ocpp_debug_set_configuration`` — Write one OCPP configuration key.
 
 All services are integration-level actions; the coordinator is looked up from
 the only configured HSEM entry.  Service schemas are defined in ``services.yaml``.
@@ -71,6 +73,8 @@ SERVICE_CREATE_DASHBOARD = "create_dashboard"
 SERVICE_OCPP_DEBUG_START_CHARGING = "ocpp_debug_start_charging"
 SERVICE_OCPP_DEBUG_STOP_CHARGING = "ocpp_debug_stop_charging"
 SERVICE_OCPP_DEBUG_DIAGNOSTICS = "ocpp_debug_diagnostics"
+SERVICE_OCPP_DEBUG_SET_AVAILABILITY = "ocpp_debug_set_availability"
+SERVICE_OCPP_DEBUG_SET_CONFIGURATION = "ocpp_debug_set_configuration"
 
 # ---------------------------------------------------------------------------
 # Voluptuous schemas for input validation
@@ -117,6 +121,25 @@ SCHEMA_OCPP_DEBUG_STOP_CHARGING = vol.Schema(
 SCHEMA_OCPP_DEBUG_DIAGNOSTICS = vol.Schema(
     {
         vol.Optional("charger", default="primary"): vol.In(SUPPORTED_OCPP_CHARGERS),
+    }
+)
+
+SCHEMA_OCPP_DEBUG_SET_AVAILABILITY = vol.Schema(
+    {
+        vol.Optional("charger", default="primary"): vol.In(SUPPORTED_OCPP_CHARGERS),
+        vol.Optional("operative", default=True): vol.Coerce(bool),
+        vol.Optional("connector_id", default=1): vol.All(
+            vol.Coerce(int),
+            vol.Range(min=0, max=8),
+        ),
+    }
+)
+
+SCHEMA_OCPP_DEBUG_SET_CONFIGURATION = vol.Schema(
+    {
+        vol.Optional("charger", default="primary"): vol.In(SUPPORTED_OCPP_CHARGERS),
+        vol.Required("key"): vol.All(vol.Coerce(str), vol.Length(min=1)),
+        vol.Required("value"): vol.Coerce(str),
     }
 )
 
@@ -558,6 +581,95 @@ async def async_handle_ocpp_debug_diagnostics(call: ServiceCall) -> None:
     _LOGGER.info("HSEM service: ocpp_debug_diagnostics sent for cpid=%s", cpid)
 
 
+async def async_handle_ocpp_debug_set_availability(call: ServiceCall) -> None:
+    """Set the charger's connector Operative or Inoperative.
+
+    Diagnostics-only (issue #920). The standard OCPP 1.6 lever for a
+    central system to take a connector into or out of service — HSEM had
+    no equivalent of ``lbbrhzn/ocpp``'s "Availability" switch.
+
+    Note ``Inoperative`` maps to connector status ``"Unavailable"``, which
+    is a different thing from ``"SuspendedEVSE"``. A charger that is
+    already Operative but locally refusing to energise will accept this
+    and change nothing — an informative result in itself, since it rules
+    availability out as the cause.
+
+    Args:
+        call: The service call with an optional ``charger`` key
+            (``"primary"``/``"second"``, default ``"primary"``), an
+            optional ``operative`` key (default ``True``), and an optional
+            ``connector_id`` key (default 1; 0 means the whole charge
+            point). ``call.hass`` provides the Home Assistant instance.
+
+    Raises:
+        ServiceValidationError: When the coordinator or selected OCPP
+            server is unavailable, or no charger is currently connected.
+        HomeAssistantError: When the command fails to reach the charger.
+    """
+    charger_choice: str = call.data["charger"]
+    operative: bool = call.data["operative"]
+    connector_id: int = call.data["connector_id"]
+    ocpp_server, cpid = _resolve_connected_charger(call.hass, charger_choice)
+
+    _LOGGER.warning(
+        "HSEM service: ocpp_debug_set_availability called for %s charger "
+        "(cpid=%s, connector=%d) — setting %s",
+        charger_choice,
+        cpid,
+        connector_id,
+        "Operative" if operative else "Inoperative",
+    )
+    if not await ocpp_server.send_change_availability(
+        cpid, operative=operative, connector_id=connector_id
+    ):
+        raise HomeAssistantError(
+            f"HSEM service: failed to send ChangeAvailability to charger "
+            f"'{cpid}' — see the log for details."
+        )
+    _LOGGER.info("HSEM service: ocpp_debug_set_availability sent for cpid=%s", cpid)
+
+
+async def async_handle_ocpp_debug_set_configuration(call: ServiceCall) -> None:
+    """Write one OCPP configuration key on the charger.
+
+    Diagnostics-only (issue #920), and deliberately generic: rather than
+    HSEM guessing which vendor-specific key governs a charger that ignores
+    remote control, ``ocpp_debug_diagnostics`` lists the keys the charger
+    actually exposes and this writes whichever one turns out to matter —
+    no code change needed per charger model.
+
+    Args:
+        call: The service call with required ``key`` and ``value`` keys,
+            and an optional ``charger`` key (``"primary"``/``"second"``,
+            default ``"primary"``). ``call.hass`` provides the Home
+            Assistant instance.
+
+    Raises:
+        ServiceValidationError: When the coordinator or selected OCPP
+            server is unavailable, or no charger is currently connected.
+        HomeAssistantError: When the command fails to reach the charger.
+    """
+    charger_choice: str = call.data["charger"]
+    key: str = call.data["key"]
+    value: str = call.data["value"]
+    ocpp_server, cpid = _resolve_connected_charger(call.hass, charger_choice)
+
+    _LOGGER.warning(
+        "HSEM service: ocpp_debug_set_configuration called for %s charger "
+        "(cpid=%s) — setting %s=%s",
+        charger_choice,
+        cpid,
+        key,
+        value,
+    )
+    if not await ocpp_server.send_change_configuration(cpid, key, value):
+        raise HomeAssistantError(
+            f"HSEM service: failed to send ChangeConfiguration to charger "
+            f"'{cpid}' — see the log for details."
+        )
+    _LOGGER.info("HSEM service: ocpp_debug_set_configuration sent for cpid=%s", cpid)
+
+
 # ---------------------------------------------------------------------------
 # Service registration
 # ---------------------------------------------------------------------------
@@ -586,6 +698,16 @@ SERVICE_HANDLER_MAP: dict[str, tuple[vol.Schema, Any, SupportsResponse]] = {
     SERVICE_OCPP_DEBUG_DIAGNOSTICS: (
         SCHEMA_OCPP_DEBUG_DIAGNOSTICS,
         async_handle_ocpp_debug_diagnostics,
+        SupportsResponse.NONE,
+    ),
+    SERVICE_OCPP_DEBUG_SET_AVAILABILITY: (
+        SCHEMA_OCPP_DEBUG_SET_AVAILABILITY,
+        async_handle_ocpp_debug_set_availability,
+        SupportsResponse.NONE,
+    ),
+    SERVICE_OCPP_DEBUG_SET_CONFIGURATION: (
+        SCHEMA_OCPP_DEBUG_SET_CONFIGURATION,
+        async_handle_ocpp_debug_set_configuration,
         SupportsResponse.NONE,
     ),
     SERVICE_OCPP_DEBUG_START_CHARGING: (

@@ -1391,6 +1391,42 @@
           "description": "Which EV's embedded OCPP server to target."
         }
       }
+    },
+    "ocpp_debug_set_availability": {
+      "name": "OCPP debug set availability",
+      "description": "Diagnostics-only: set the charger's connector Operative or Inoperative (OCPP ChangeAvailability).",
+      "fields": {
+        "charger": {
+          "name": "Charger",
+          "description": "Which EV's embedded OCPP server to target."
+        },
+        "operative": {
+          "name": "Operative",
+          "description": "True for Operative (in service), false for Inoperative."
+        },
+        "connector_id": {
+          "name": "Connector",
+          "description": "Connector to change. 0 addresses the whole charge point."
+        }
+      }
+    },
+    "ocpp_debug_set_configuration": {
+      "name": "OCPP debug set configuration",
+      "description": "Diagnostics-only: write a single OCPP configuration key on the charger (OCPP ChangeConfiguration).",
+      "fields": {
+        "charger": {
+          "name": "Charger",
+          "description": "Which EV's embedded OCPP server to target."
+        },
+        "key": {
+          "name": "Key",
+          "description": "Configuration key name, exactly as the charger reports it."
+        },
+        "value": {
+          "name": "Value",
+          "description": "New value. OCPP 1.6 carries all configuration values as strings."
+        }
+      }
     }
   }
 }

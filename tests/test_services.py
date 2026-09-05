@@ -24,6 +24,8 @@ from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.services import (
     SCHEMA_CREATE_DASHBOARD,
+    SCHEMA_OCPP_DEBUG_SET_AVAILABILITY,
+    SCHEMA_OCPP_DEBUG_SET_CONFIGURATION,
     SCHEMA_OCPP_DEBUG_START_CHARGING,
     SCHEMA_OCPP_DEBUG_STOP_CHARGING,
     SERVICE_HANDLER_MAP,
@@ -590,6 +592,81 @@ async def test_ocpp_debug_diagnostics_raises_when_send_fails(
 
     with pytest.raises(HomeAssistantError):
         await services_module.async_handle_ocpp_debug_diagnostics(call)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_set_availability_sends_command(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """ocpp_debug_set_availability forwards operative/connector through."""
+    server = _make_ocpp_server(cpid="CP1")
+    server.send_change_availability = AsyncMock(return_value=True)
+    mock_coordinator._ocpp_server = server
+    call = _make_service_call(
+        mock_hass, {"charger": "primary", "operative": False, "connector_id": 0}
+    )
+
+    await services_module.async_handle_ocpp_debug_set_availability(call)
+
+    server.send_change_availability.assert_awaited_once_with(
+        "CP1", operative=False, connector_id=0
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_set_configuration_sends_key_value(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """ocpp_debug_set_configuration forwards the key/value verbatim."""
+    server = _make_ocpp_server(cpid="CP1")
+    server.send_change_configuration = AsyncMock(return_value=True)
+    mock_coordinator._ocpp_server = server
+    call = _make_service_call(
+        mock_hass,
+        {"charger": "primary", "key": "AuthorizeRemoteTxRequests", "value": "false"},
+    )
+
+    await services_module.async_handle_ocpp_debug_set_configuration(call)
+
+    server.send_change_configuration.assert_awaited_once_with(
+        "CP1", "AuthorizeRemoteTxRequests", "false"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_set_configuration_raises_when_send_fails(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A rejected/failed ChangeConfiguration send surfaces as an error."""
+    server = _make_ocpp_server(cpid="CP1")
+    server.send_change_configuration = AsyncMock(return_value=False)
+    mock_coordinator._ocpp_server = server
+    call = _make_service_call(
+        mock_hass, {"charger": "primary", "key": "K", "value": "V"}
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await services_module.async_handle_ocpp_debug_set_configuration(call)
+
+
+def test_ocpp_debug_set_configuration_schema_requires_key_and_value() -> None:
+    """key/value are mandatory — there is no sensible default for either."""
+    with pytest.raises(vol.Invalid):
+        SCHEMA_OCPP_DEBUG_SET_CONFIGURATION({"key": "OnlyKey"})
+    result = SCHEMA_OCPP_DEBUG_SET_CONFIGURATION({"key": "K", "value": "V"})
+    assert result["charger"] == "primary"  # type: ignore[index]
+
+
+def test_ocpp_debug_set_availability_schema_defaults() -> None:
+    """Availability defaults to Operative on connector 1."""
+    result = SCHEMA_OCPP_DEBUG_SET_AVAILABILITY({})
+    assert result == {"charger": "primary", "operative": True, "connector_id": 1}
 
 
 @pytest.mark.asyncio

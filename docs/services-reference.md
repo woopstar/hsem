@@ -1,6 +1,6 @@
 # HSEM Services Reference
 
-HSEM exposes eight Home Assistant services that allow automation, script, and
+HSEM exposes ten Home Assistant services that allow automation, script, and
 manual control over the planner and hardware writes.
 
 These services are **integration-level actions**: they operate on the single
@@ -305,6 +305,69 @@ as they come in, so they are visible without enabling DEBUG logging.
 service: hsem.ocpp_debug_diagnostics
 data:
   charger: primary
+```
+
+---
+
+## 9. `hsem.ocpp_debug_set_availability`
+
+**Diagnostics-only.** Sets a connector Operative or Inoperative via OCPP
+`ChangeAvailability` — the standard way a central system takes a connector
+into or out of service.
+
+Be aware of what this does _not_ cover: `Inoperative` maps to connector status
+`Unavailable`, which is a different thing from `SuspendedEVSE`. A charger that
+is already Operative but locally refusing to deliver power will answer
+`Accepted` and change nothing. That outcome is still informative — it rules
+availability out and points at a charger-local setting instead.
+
+**Schema:**
+
+| Field          | Required | Type          | Description                                                                     |
+| -------------- | -------- | ------------- | ------------------------------------------------------------------------------- |
+| `charger`      | No       | Select        | `"primary"` (default) or `"second"` — which EV's embedded OCPP server to target |
+| `operative`    | No       | Boolean       | `true` (default) for Operative, `false` for Inoperative                         |
+| `connector_id` | No       | Integer (0–8) | Connector to change. Default 1; `0` addresses the whole charge point            |
+
+**Example:**
+
+```yaml
+service: hsem.ocpp_debug_set_availability
+data:
+  operative: true
+```
+
+---
+
+## 10. `hsem.ocpp_debug_set_configuration`
+
+**Diagnostics-only.** Writes a single OCPP configuration key on the charger via
+`ChangeConfiguration`.
+
+Deliberately generic: rather than HSEM guessing which vendor-specific key
+governs a charger that ignores remote control, run
+`hsem.ocpp_debug_diagnostics` first to list the keys your charger actually
+exposes — including vendor-specific ones — then set whichever one matters here,
+with no code change needed per charger model.
+
+The charger's reply (`Accepted`, `Rejected`, `NotSupported`, or
+`RebootRequired`) is written to the HSEM log.
+
+**Schema:**
+
+| Field     | Required | Type   | Description                                                                     |
+| --------- | -------- | ------ | ------------------------------------------------------------------------------- |
+| `charger` | No       | Select | `"primary"` (default) or `"second"` — which EV's embedded OCPP server to target |
+| `key`     | Yes      | String | Configuration key name, exactly as the charger reports it                       |
+| `value`   | Yes      | String | New value. OCPP 1.6 carries all configuration values as strings                 |
+
+**Example:**
+
+```yaml
+service: hsem.ocpp_debug_set_configuration
+data:
+  key: AuthorizeRemoteTxRequests
+  value: "false"
 ```
 
 ---

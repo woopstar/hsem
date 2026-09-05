@@ -43,10 +43,13 @@ from aiohttp import web
 
 from custom_components.hsem.custom_sensors.ocpp_commands import (
     CHARGER_STALL_THRESHOLD_S,
-    DIAGNOSTIC_ACTIONS,
     TRACKED_RESPONSE_ACTIONS,
     OCPPCommandsMixin,
     charger_appears_stalled,
+)
+from custom_components.hsem.custom_sensors.ocpp_control import (
+    DIAGNOSTIC_ACTIONS,
+    OCPPControlMixin,
 )
 from custom_components.hsem.custom_sensors.ocpp_message_handlers import (
     OCPPMessageHandlersMixin,
@@ -79,7 +82,7 @@ _SLOT_EPSILON = 1e-6
 _WS_HEARTBEAT_INTERVAL_S = 30.0
 
 
-class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
+class OCPPServer(OCPPCommandsMixin, OCPPControlMixin, OCPPMessageHandlersMixin):
     """Embedded OCPP 1.6 WebSocket server for LAN-only EV charger control.
 
     Listens on a configurable TCP port and handles OCPP 1.6 JSON messages

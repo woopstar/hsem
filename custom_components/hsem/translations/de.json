@@ -1391,6 +1391,42 @@
           "description": "Welcher EV-eigene, eingebettete OCPP-Server angesprochen werden soll."
         }
       }
+    },
+    "ocpp_debug_set_availability": {
+      "name": "OCPP-Debug: Verfügbarkeit setzen",
+      "description": "Nur für Diagnosezwecke: Setzt den Anschluss des Ladegeräts auf Operative oder Inoperative (OCPP ChangeAvailability).",
+      "fields": {
+        "charger": {
+          "name": "Ladegerät",
+          "description": "Welcher EV-eigene, eingebettete OCPP-Server angesprochen werden soll."
+        },
+        "operative": {
+          "name": "Operative",
+          "description": "Wahr für Operative (in Betrieb), falsch für Inoperative."
+        },
+        "connector_id": {
+          "name": "Anschluss",
+          "description": "Zu ändernder Anschluss. 0 adressiert den gesamten Ladepunkt."
+        }
+      }
+    },
+    "ocpp_debug_set_configuration": {
+      "name": "OCPP-Debug: Konfiguration setzen",
+      "description": "Nur für Diagnosezwecke: Schreibt einen einzelnen OCPP-Konfigurationsschlüssel auf das Ladegerät (OCPP ChangeConfiguration).",
+      "fields": {
+        "charger": {
+          "name": "Ladegerät",
+          "description": "Welcher EV-eigene, eingebettete OCPP-Server angesprochen werden soll."
+        },
+        "key": {
+          "name": "Schlüssel",
+          "description": "Name des Konfigurationsschlüssels, genau wie vom Ladegerät gemeldet."
+        },
+        "value": {
+          "name": "Wert",
+          "description": "Neuer Wert. OCPP 1.6 überträgt alle Konfigurationswerte als Zeichenketten."
+        }
+      }
     }
   }
 }
