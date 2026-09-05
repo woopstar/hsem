@@ -59,6 +59,16 @@ _TRACKED_RESPONSE_ACTIONS = frozenset(
 # one entry per attempt.
 _MAX_PENDING_CALLS = 8
 
+# Stable charging-profile IDs HSEM owns. Reused on every send so each new
+# profile replaces HSEM's previous one rather than accumulating, and so
+# ClearChargingProfile can remove exactly HSEM's own profiles on teardown
+# without disturbing any installed by another system (issue #920).
+_TX_DEFAULT_PROFILE_ID = 1
+_TX_PROFILE_ID = 2
+
+#: The charging-profile IDs HSEM owns, for teardown to clear.
+HSEM_PROFILE_IDS = (_TX_DEFAULT_PROFILE_ID, _TX_PROFILE_ID)
+
 # Minimum seconds between RemoteStartTransaction retries while a session
 # still hasn't confirmed a transaction (issue #892). Rejected, dropped, or
 # unanswered start requests are retried on this cadence rather than only
@@ -287,6 +297,102 @@ class OCPPCommandsMixin:
             )
         return sent
 
+    def _charging_profiles(
+        self, session: ChargerSession, max_current_a: int
+    ) -> tuple[dict, dict | None]:
+        """Build the charging profile(s) expressing a current limit.
+
+        Shared by the planner-driven limit and by the zero-current stop
+        (issue #920) so the two can never drift in stack level, profile ID
+        or kind — the only difference between "charge at 8 A" and "do not
+        charge" is the number in the schedule.
+
+        Args:
+            session: The charger session.
+            max_current_a: Current limit in amperes; ``0`` means "draw
+                nothing".
+
+        Returns:
+            The ``TxDefaultProfile``, and a ``TxProfile`` bound to the live
+            transaction when one is open (``None`` otherwise).
+        """
+        schedule = {
+            "chargingRateUnit": "A",
+            "chargingSchedulePeriod": [
+                {
+                    "startPeriod": 0,
+                    "limit": max_current_a,
+                }
+            ],
+        }
+        # Install at the top of the stack-level range the charger reports,
+        # not the bottom (issue #920): higher levels win, so a profile at
+        # level 0 loses to anything already installed.
+        default_level, tx_level = self.profile_stack_levels(session)
+
+        tx_default_profile = {
+            "chargingProfileId": _TX_DEFAULT_PROFILE_ID,
+            "stackLevel": default_level,
+            "chargingProfilePurpose": "TxDefaultProfile",
+            "chargingProfileKind": "Relative",
+            "chargingSchedule": schedule,
+        }
+        tx_profile: dict | None = None
+        if session.transaction_id is not None:
+            tx_profile = {
+                "chargingProfileId": _TX_PROFILE_ID,
+                "stackLevel": tx_level,
+                "chargingProfilePurpose": "TxProfile",
+                "chargingProfileKind": "Relative",
+                "transactionId": session.transaction_id,
+                "chargingSchedule": schedule,
+            }
+        return tx_default_profile, tx_profile
+
+    async def _send_zero_current_profile(self, session: ChargerSession) -> bool:
+        """Tell the charger to draw nothing, using only standard OCPP.
+
+        The generic half of stopping a charge (issue #920). A charging
+        profile with a ``0 A`` limit is the idiomatic OCPP 1.6 way for an
+        energy-management system to say "do not draw power right now" — the
+        same mechanism as any other limit, just at zero — and it needs no
+        vendor-specific knowledge at all.
+
+        Sent alongside ``RemoteStopTransaction`` rather than instead of it:
+        ending the transaction is the correct protocol action, and this
+        covers a charger that keeps delivering power afterwards.
+
+        Deliberately does not touch :attr:`_last_sent_target` /
+        :attr:`_last_sent_current_a`. Those track the *charge target* the
+        anti-flap state machine is working toward; a stop already resets
+        them, and recording 0 A here would let the material-change filter
+        mistake the next real target for a continuation.
+
+        Args:
+            session: The charger session.
+
+        Returns:
+            ``True`` if at least one profile reached the socket.
+        """
+        tx_default_profile, tx_profile = self._charging_profiles(session, 0)
+        sent = await self._send_call(
+            session,
+            "SetChargingProfile",
+            {"connectorId": 1, "csChargingProfiles": tx_default_profile},
+        )
+        if tx_profile is not None:
+            sent = (
+                await self._send_call(
+                    session,
+                    "SetChargingProfile",
+                    {"connectorId": 1, "csChargingProfiles": tx_profile},
+                )
+                or sent
+            )
+        if sent:
+            _LOGGER.debug("Sent 0 A charging profile to %s", session.cpid)
+        return sent
+
     async def _send_set_charging_profile(
         self, session: ChargerSession, max_power_w: int, max_current_a: int = 16
     ) -> bool:
@@ -328,21 +434,6 @@ class OCPPCommandsMixin:
             current ceiling, or the material-change dedup filter would
             wrongly suppress a rightful retry.
         """
-        schedule = {
-            "chargingRateUnit": "A",
-            "chargingSchedulePeriod": [
-                {
-                    "startPeriod": 0,
-                    "limit": max_current_a,
-                }
-            ],
-        }
-
-        # Install at the top of the stack-level range the charger reports,
-        # not the bottom (issue #920): higher levels win, so a profile at
-        # level 0 loses to anything already installed.
-        default_level, tx_level = self.profile_stack_levels(session)
-
         station_max_a = self.station_max_current_a(session)
         if station_max_a is not None and max_current_a > station_max_a:
             _LOGGER.warning(
@@ -355,13 +446,7 @@ class OCPPCommandsMixin:
                 STATION_MAX_CURRENT_KEY,
             )
 
-        tx_default_profile = {
-            "chargingProfileId": 1,
-            "stackLevel": default_level,
-            "chargingProfilePurpose": "TxDefaultProfile",
-            "chargingProfileKind": "Relative",
-            "chargingSchedule": schedule,
-        }
+        tx_default_profile, tx_profile = self._charging_profiles(session, max_current_a)
         default_sent = await self._send_call(
             session,
             "SetChargingProfile",
@@ -375,15 +460,7 @@ class OCPPCommandsMixin:
         # and nothing was attempted — `default_sent or True` would otherwise
         # always evaluate to `True` even when the sole attempt failed.
         tx_sent: bool | None = None
-        if session.transaction_id is not None:
-            tx_profile = {
-                "chargingProfileId": 2,
-                "stackLevel": tx_level,
-                "chargingProfilePurpose": "TxProfile",
-                "chargingProfileKind": "Relative",
-                "transactionId": session.transaction_id,
-                "chargingSchedule": schedule,
-            }
+        if tx_profile is not None:
             tx_sent = await self._send_call(
                 session,
                 "SetChargingProfile",
@@ -434,9 +511,26 @@ class OCPPCommandsMixin:
         self._last_remote_stop_attempt = now if now is not None else datetime.now(UTC)
         self._last_sent_target = -1.0
         self._last_sent_current_a = -1
-        # Ending the transaction is not enough on a charger that free-vends
-        # when it has no local override (issue #920) — hold it off first, so
-        # a stop still stops even when there is no transaction to close.
+
+        # Stopping is a ladder, standard OCPP first (issue #920):
+        #
+        #   1. a 0 A charging profile — the idiomatic, fully generic way an
+        #      energy-management system says "draw nothing", and all a
+        #      compliant charger needs on top of step 2;
+        #   2. RemoteStopTransaction, below — the correct protocol action
+        #      for ending the transaction itself;
+        #   3. only then a vendor key, for a charger that ignores both.
+        #
+        # Step 1 runs before the transaction check because a charger can
+        # free-vend with no transaction open at all, so "nothing to stop"
+        # must not mean "do nothing" — but only when something plausibly
+        # *is* charging. A TxDefaultProfile persists on the charger, so
+        # writing 0 A when HSEM never started anything (e.g. a target that
+        # flipped to zero before the start window even fired) would leave
+        # a lasting block on a connector HSEM never commanded, and could
+        # silently stop the user charging by hand.
+        if session.transaction_id is not None or session.status == "Charging":
+            await self._send_zero_current_profile(session)
         await self.ensure_charging_blocked(session)
         if session.transaction_id is None:
             _LOGGER.debug(
@@ -619,6 +713,7 @@ class OCPPCommandsMixin:
 
 __all__ = [
     "CHARGER_STALL_THRESHOLD_S",
+    "HSEM_PROFILE_IDS",
     "TRACKED_RESPONSE_ACTIONS",
     "OCPPCommandsMixin",
     "charger_appears_stalled",

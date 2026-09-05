@@ -43,6 +43,7 @@ from aiohttp import web
 
 from custom_components.hsem.custom_sensors.ocpp_commands import (
     CHARGER_STALL_THRESHOLD_S,
+    HSEM_PROFILE_IDS,
     TRACKED_RESPONSE_ACTIONS,
     OCPPCommandsMixin,
     charger_appears_stalled,
@@ -233,13 +234,14 @@ class OCPPServer(OCPPCommandsMixin, OCPPControlMixin, OCPPMessageHandlersMixin):
     async def stop(self) -> None:
         """Stop the server and close all charger connections.
 
-        Releases any charger block HSEM is still holding first (issue
-        #920) — see
-        :meth:`~ocpp_control.OCPPControlMixin.release_force_state_holds`.
-        HSEM must not be able to shut down leaving a charger locally
-        forced off, which would otherwise need clearing in the charger's
-        own app. This runs before the sockets close, since it needs them.
+        Hands the charger back first (issue #920): HSEM's own charging
+        profiles are removed and any force-state hold it is still holding
+        is released. Both matter because both **persist on the charger** —
+        an unloaded HSEM must not leave a connector throttled to 0 A or
+        locally forced off, with nothing left in HA to explain why. This
+        runs before the sockets close, since it needs them.
         """
+        await self.release_charging_profiles(HSEM_PROFILE_IDS)
         await self.release_force_state_holds()
 
         # Close all charger sessions

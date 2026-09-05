@@ -542,7 +542,28 @@ writes `ForceState=Neutral` before every remote start, gated on the charger
 actually reporting the key (so other brands never see it) and on it
 actually being `Off` (a no-op otherwise).
 
-**Stopping needs the same key.** Ending the OCPP transaction is not enough
+**Stopping is a ladder, standard OCPP first.** HSEM tries the generic
+mechanisms before anything vendor-specific, so a compliant charger is
+handled entirely by steps 1–2 and never sees a vendor key:
+
+1. **`SetChargingProfile` with a `0 A` limit** — the idiomatic, fully
+   generic way an energy-management system says "draw nothing". Same
+   mechanism as any other limit, just at zero.
+2. **`RemoteStopTransaction`** — the correct protocol action for ending
+   the transaction itself.
+3. **A vendor key** (`ForceState`) — only for a charger that ignores both,
+   and only when it reports the key.
+
+Step 1 runs even when no transaction is open, because a charger can
+free-vend with power flowing and no transaction at all. It is skipped when
+nothing looks like it is charging, though: a `TxDefaultProfile` **persists
+on the charger**, so writing 0 A at an idle connector HSEM never commanded
+would leave a lasting block — and could silently stop you charging by hand.
+For the same reason HSEM clears its own charging profiles (IDs 1 and 2, by
+ID, so nothing another system installed is touched) when the OCPP server
+shuts down.
+
+**Why step 3 still exists.** Ending the OCPP transaction is not enough
 on its own: `ForceState: Neutral` means "no local override — charge if the
 car asks for it", so the charger simply free-vends after
 `RemoteStopTransaction` is accepted and its own `StopTransaction` confirms.

@@ -322,6 +322,56 @@ class OCPPControlMixin:
             # it again without ever touching a block the user set themselves.
             self._force_state_owned.add(session.cpid)
 
+    async def send_clear_charging_profile(self, cpid: str, profile_id: int) -> bool:
+        """Remove one charging profile HSEM installed.
+
+        Standard OCPP 1.6. Scoped to a specific ``chargingProfileId``
+        rather than clearing by purpose or connector, so this only ever
+        removes HSEM's own profiles and never one installed by another
+        system sharing the charger (issue #920).
+
+        Args:
+            cpid: Charge-point identifier.
+            profile_id: The ``chargingProfileId`` to remove.
+
+        Returns:
+            ``True`` if the request was written to the socket.
+        """
+        session = self._require_session(cpid, "ClearChargingProfile")
+        if session is None:
+            return False
+        return await self._send_call(
+            session, "ClearChargingProfile", {"id": profile_id}
+        )
+
+    async def release_charging_profiles(self, profile_ids: tuple[int, ...]) -> None:
+        """Remove HSEM's charging profiles from every connected charger.
+
+        The charging-profile counterpart to
+        :meth:`release_force_state_holds` (issue #920), and necessary for
+        the same reason: a ``TxDefaultProfile`` **persists on the charger**
+        across transactions, so a 0 A profile written by HSEM's stop would
+        still be throttling the connector to nothing long after HSEM was
+        unloaded — silently preventing the user from charging at all, with
+        nothing in HA left to explain why.
+
+        Failures are logged and swallowed; teardown must never be
+        blockable.
+
+        Args:
+            profile_ids: The ``chargingProfileId`` values HSEM owns.
+        """
+        for cpid in list(self._chargers):
+            for profile_id in profile_ids:
+                try:
+                    await self.send_clear_charging_profile(cpid, profile_id)
+                except Exception:
+                    _LOGGER.exception(
+                        "OCPP %s: failed to clear charging profile %d during shutdown",
+                        cpid,
+                        profile_id,
+                    )
+
     async def release_force_state_holds(self) -> None:
         """Lift any charger block HSEM is still holding, before shutting down.
 
