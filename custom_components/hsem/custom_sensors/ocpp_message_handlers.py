@@ -10,15 +10,24 @@ trusting whatever (if anything) the charger sent, and the status-change,
 start-transaction, and stop-transaction handlers call
 :meth:`~ocpp_server.OCPPServer._notify_significant_event` (issue #908) to
 trigger a debounced coordinator refresh promptly rather than waiting for
-the next scheduled cycle. :meth:`_handle_start_transaction` also re-sends
-the charging profile once the transaction ID is known (issue #920
+the next scheduled cycle. :meth:`_handle_start_transaction` also schedules
+a charging-profile resend once the transaction ID is known (issue #920
 follow-up) — a profile sent alongside ``RemoteStartTransaction`` can only
 ever be a transaction-agnostic ``TxDefaultProfile``, since the transaction
-ID isn't known yet at that point.
+ID isn't known yet at that point. The resend runs as a background task
+(:attr:`~ocpp_server.OCPPServer._background_tasks`), never awaited inline
+before returning — :meth:`~ocpp_server.OCPPServer._dispatch` sends this
+handler's returned dict to the charger as the StartTransaction CALLRESULT
+only *after* the handler coroutine returns, so awaiting extra
+``SetChargingProfile`` sends first would put two unsolicited CALLs on the
+wire before the charger receives the response to its own still-pending
+StartTransaction request. Some charger firmware handles messages strictly
+request/response and can misbehave when that ordering is violated.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
@@ -42,14 +51,16 @@ class OCPPMessageHandlersMixin:
     _notify_significant_event: Callable[[], Coroutine[Any, Any, None]]
 
     # Declared (not assigned) so mypy resolves these against
-    # OCPPCommandsMixin's attributes/method rather than reporting missing
-    # attributes — used by _handle_start_transaction to re-send the charging
-    # profile once the transaction ID is known (issue #920 follow-up).
+    # OCPPServer/OCPPCommandsMixin's attributes/method rather than reporting
+    # missing attributes — used by _handle_start_transaction to re-send the
+    # charging profile once the transaction ID is known (issue #920
+    # follow-up).
     _last_sent_current_a: int
     _last_sent_target: float
     _send_set_charging_profile: Callable[
         [ChargerSession, int, int], Coroutine[Any, Any, bool]
     ]
+    _background_tasks: set[asyncio.Task[Any]]
 
     async def _handle_boot_notification(
         self, session: ChargerSession, payload: dict
@@ -232,27 +243,65 @@ class OCPPMessageHandlersMixin:
         )
         await self._notify_significant_event()
 
-        # Re-send the charging profile now that the transaction ID is known
-        # (issue #920 follow-up). A profile sent moments earlier alongside
-        # RemoteStartTransaction — the normal case, since HSEM authorizes
-        # before it can know what transaction ID the charger will assign —
-        # could only ever be a transaction-agnostic TxDefaultProfile.
-        # _send_set_charging_profile() also attaches a TxProfile bound to
-        # session.transaction_id whenever it's set, which some chargers
-        # require to actually throttle an already-running session; this is
-        # the first point after StartTransaction where that's possible.
+        # Schedule a charging-profile resend now that the transaction ID is
+        # known (issue #920 follow-up). A profile sent moments earlier
+        # alongside RemoteStartTransaction — the normal case, since HSEM
+        # authorizes before it can know what transaction ID the charger
+        # will assign — could only ever be a transaction-agnostic
+        # TxDefaultProfile. _send_set_charging_profile() also attaches a
+        # TxProfile bound to session.transaction_id whenever it's set,
+        # which some chargers require to actually throttle an
+        # already-running session; this is the first point after
+        # StartTransaction where that's possible.
         # _last_sent_current_a stays -1 (never set) if no profile has been
         # requested for this charger yet, in which case there's nothing to
         # reapply.
+        #
+        # Deliberately NOT awaited inline: this coroutine's return value is
+        # sent to the charger as the StartTransaction CALLRESULT only after
+        # it returns (OCPPServer._dispatch). Awaiting the profile resend
+        # here first would put two unsolicited SetChargingProfile CALLs on
+        # the wire before the charger gets the response to its own
+        # still-pending StartTransaction request — some charger firmware
+        # expects strict request/response ordering and can stop responding
+        # to anything once that's violated.
         if self._last_sent_current_a >= 0:
-            await self._send_set_charging_profile(
-                session, int(self._last_sent_target), self._last_sent_current_a
+            task = asyncio.create_task(
+                self._resend_profile_after_start(
+                    session, int(self._last_sent_target), self._last_sent_current_a
+                )
             )
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
 
         return {
             "transactionId": transaction_id,
             "idTagInfo": {"status": "Accepted"},
         }
+
+    async def _resend_profile_after_start(
+        self, session: ChargerSession, max_power_w: int, max_current_a: int
+    ) -> None:
+        """Background task: resend a charging profile after StartTransaction.
+
+        Runs detached from :meth:`_handle_start_transaction` (issue #920
+        follow-up) — see that method's docstring for why it must not be
+        awaited inline. Exceptions are caught and logged here rather than
+        left to asyncio's default handler, since nothing else awaits or
+        retrieves this task's result.
+
+        Args:
+            session: The charger session.
+            max_power_w: Maximum charging power in watts to re-request.
+            max_current_a: Maximum charging current in amperes to re-request.
+        """
+        try:
+            await self._send_set_charging_profile(session, max_power_w, max_current_a)
+        except Exception:
+            _LOGGER.exception(
+                "OCPP %s: background profile resend after StartTransaction failed",
+                session.cpid,
+            )
 
     async def _handle_stop_transaction(
         self, session: ChargerSession, payload: dict

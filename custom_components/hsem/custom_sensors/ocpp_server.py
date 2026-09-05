@@ -176,6 +176,14 @@ class OCPPServer(OCPPCommandsMixin, OCPPMessageHandlersMixin):
         self._stalled: bool = False
         self._stall_logged: bool = False
 
+        # Strong references for fire-and-forget background tasks (issue
+        # #920 follow-up) — e.g. the post-StartTransaction profile resend,
+        # which must not be awaited inline before the StartTransaction
+        # CALLRESULT is sent (see OCPPMessageHandlersMixin._handle_start_transaction).
+        # Without a strong reference, asyncio may garbage-collect a task
+        # before it completes.
+        self._background_tasks: set[asyncio.Task[Any]] = set()
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------

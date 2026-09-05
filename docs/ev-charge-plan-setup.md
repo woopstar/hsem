@@ -480,6 +480,13 @@ is necessarily `TxDefaultProfile`-only, since the transaction ID isn't known
 until the charger's own `StartTransaction` arrives — HSEM now re-sends the
 profile from `_handle_start_transaction()` at that point specifically so the
 `TxProfile` companion gets a chance to bind to the now-known transaction.
+That resend runs as a **detached background task**, not awaited inline —
+`OCPPServer._dispatch()` only sends the `StartTransaction` CALLRESULT after
+the handler returns, so awaiting two more `SetChargingProfile` CALLs first
+would put unsolicited messages on the wire before the charger gets the
+response to its own still-pending request. Some charger firmware handles
+messages strictly request/response and can stop responding altogether if
+that ordering is violated.
 
 **A charger's connector status can change independently of any OCPP command
 HSEM sent — this is not necessarily a bug.** In one test session against the

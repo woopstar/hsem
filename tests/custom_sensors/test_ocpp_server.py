@@ -368,6 +368,11 @@ class TestTransaction:
         transaction-agnostic TxDefaultProfile. Once StartTransaction confirms
         the ID, HSEM must re-send so the TxProfile companion (added in the
         prior fix) actually gets a chance to bind to the live transaction.
+
+        The resend runs as a detached background task (issue #920
+        follow-up) so the StartTransaction CALLRESULT isn't delayed behind
+        it — ``await asyncio.sleep(0)`` yields control once so that task
+        actually runs before asserting on its effects.
         """
         # Simulate a profile already having been requested for this charger,
         # as update_charge_target()/the debug service would have done just
@@ -376,6 +381,7 @@ class TestTransaction:
         ocpp_server._last_sent_target = 3680.0
 
         await ocpp_server._handle_start_transaction(charger_session, {})
+        await asyncio.sleep(0)
 
         actions = [
             json.loads(call.args[0])[2]
