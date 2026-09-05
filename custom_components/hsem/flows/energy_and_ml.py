@@ -4,7 +4,8 @@ Combines daily plan-vs-actual energy meter configuration with the ML
 consumption prediction toggle.  When ML is enabled, the energy entities
 (grid import / export) are reused as data sources for the ridge regression
 predictor.  An optional temperature sensor improves weather-driven load
-predictions.
+predictions, and an optional weather forecast entity lets future prediction
+slots use forecast temperatures instead of a single broadcast value.
 """
 
 from typing import Any
@@ -95,6 +96,12 @@ async def get_energy_and_ml_step_schema(  # NOSONAR
                     config_entry, "hsem_ml_consumption_temperature_entity"
                 ),
             ): selector({"entity": {"domain": "sensor"}}),
+            vol.Optional(
+                "hsem_ml_consumption_weather_forecast_entity",
+                default=get_config_value(
+                    config_entry, "hsem_ml_consumption_weather_forecast_entity"
+                ),
+            ): selector({"entity": {"domain": "weather"}}),
         }
     )
 

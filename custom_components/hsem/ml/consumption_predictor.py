@@ -94,6 +94,14 @@ class ConsumptionPredictor:
         self.training_context: (
             tuple[str, str | None, bool, int, int, str | None] | None
         ) = None
+        #: Forecast-temperature diagnostics (issue #918) from the most
+        #: recent inference pass — set by the populator, not by predict
+        #: methods.  ``forecast_temperature_entity_configured`` reflects
+        #: whether a weather forecast entity was configured for that pass;
+        #: the two slot counters only count FUTURE prediction slots.
+        self.forecast_temperature_entity_configured: bool = False
+        self.forecast_temperature_slots_used: int = 0
+        self.fallback_temperature_slots_used: int = 0
 
     @property
     def days_of_history(self) -> float:

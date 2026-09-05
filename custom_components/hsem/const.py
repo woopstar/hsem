@@ -171,6 +171,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ml_consumption_net_consumption": False,
     "hsem_ml_consumption_sequential": False,
     "hsem_ml_consumption_temperature_entity": vol.UNDEFINED,
+    "hsem_ml_consumption_weather_forecast_entity": vol.UNDEFINED,
     # EV charging — auto-Full on negative price (issue #609)
     "hsem_ev_auto_full_negative_price": False,
 }

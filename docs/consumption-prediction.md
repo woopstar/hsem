@@ -97,6 +97,37 @@ where $f(\cdot)$ is the prediction function above and $E_{-1} = 0$.
 This captures intra-day momentum — a cooking spike at 08:00 naturally
 elevates 08:15's prediction.
 
+### Forecast temperature (optional, issue #918)
+
+By default, $T$ for every future slot is the single measured reading
+nearest to "now" (`hsem_ml_consumption_temperature_entity`), broadcast
+across the whole prediction horizon — the configured sensor supplies
+history, not a future weather forecast, so persisting the newest nearby
+reading is the safe default.
+
+When an optional `hsem_ml_consumption_weather_forecast_entity` (a HA
+`weather` entity) is also configured, each future slot instead uses a
+per-slot forecast temperature, linearly interpolated from the entity's
+hourly (or daily, as a fallback) forecast points to the planning slot's
+exact start time — including 15-minute slots. A genuine forecast value of
+$0\,^\circ\text{C}$ is valid data, never treated as missing. A slot falls
+back to the broadcast measured reading above when:
+
+- no weather forecast entity is configured, or the measured-temperature
+  feature itself is inactive (no `hsem_ml_consumption_temperature_entity`
+  or insufficient history) — forecast $T$ has no coefficient to feed in
+  that case;
+- the slot's start time falls outside the forecast's covered range (before
+  the earliest or after the latest forecast point — no extrapolation); or
+- the two forecast points bracketing the slot are more than 3 hours apart
+  (sparse/stale forecast data).
+
+This is purely an inference-time enhancement — historical training always
+uses the measured-temperature entity, unchanged. Forecast-vs-fallback
+per-slot usage counts are exposed as `ml_forecast_temperature_slots_used`
+and `ml_forecast_temperature_fallback_slots` attributes on
+`sensor.hsem_plan_explanation_sensor`.
+
 ### Fitting
 
 The normal equation is solved via Cholesky decomposition
