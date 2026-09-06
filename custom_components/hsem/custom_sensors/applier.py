@@ -207,7 +207,17 @@ async def async_apply_battery_settings(
         )
         if _ev_is_active_or_planned(ev=ev, planned_power_w=planned_power_w)
     )
-    if (primary_battery_hold or relevant_evs) and recommendation not in (
+    # A genuine batteries_charge_solar slot is solar-charge-only: the MILP
+    # expects the grid to cover any house-load deficit, not the battery.
+    # Huawei's own MaximizeSelfConsumption firmware behaviour follows live
+    # house load vs. live PV, so without an explicit 0 W cap it discharges
+    # the battery whenever live load exceeds live PV (issue #922).
+    # `_primary_battery_hold()` never returns True here since a real
+    # solar-charge slot has material `batteries_charged_kwh`.
+    solar_charge_only = recommendation == Recommendations.BatteriesChargeSolar.value
+    if (
+        primary_battery_hold or relevant_evs or solar_charge_only
+    ) and recommendation not in (
         Recommendations.ForceBatteriesDischarge.value,
         Recommendations.ForceExport.value,
     ):
@@ -220,7 +230,7 @@ async def async_apply_battery_settings(
                 # already ~0 and would drive the same result below anyway.
                 cap_w = 0
                 cap_reason = "planned battery hold"
-            else:
+            elif relevant_evs:
                 blocked = tuple(
                     name
                     for name, ev, _ in relevant_evs
@@ -273,6 +283,11 @@ async def async_apply_battery_settings(
                                 total_reservation_w,
                             )
                             cap_w = reserved_cap_w
+            else:
+                # solar_charge_only with no active/planned EV: the grid
+                # covers any house-load deficit this slot, never the battery.
+                cap_w = 0
+                cap_reason = "planned solar-charge-only slot"
 
             # SoC guard (issue #592, v6.2.0-beta1): never let the EV cap
             # drain the battery below the energy the planner has reserved

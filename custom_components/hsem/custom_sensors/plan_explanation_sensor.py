@@ -213,6 +213,21 @@ class HSEMPlanExplanationSensor(
                 ml_predictor.actual_history_days if ml_predictor is not None else 0.0
             )
 
+            # ML forecast-temperature diagnostics (issue #918).
+            d["ml_forecast_temperature_configured"] = bool(
+                cfg.ml_consumption_weather_forecast_entity
+            )
+            d["ml_forecast_temperature_slots_used"] = (
+                ml_predictor.forecast_temperature_slots_used
+                if ml_predictor is not None
+                else 0
+            )
+            d["ml_forecast_temperature_fallback_slots"] = (
+                ml_predictor.fallback_temperature_slots_used
+                if ml_predictor is not None
+                else 0
+            )
+
         return d
 
     # ------------------------------------------------------------------

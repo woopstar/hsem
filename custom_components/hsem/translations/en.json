@@ -502,6 +502,7 @@
           "hsem_ml_consumption_history_days": "ML history days",
           "hsem_ml_consumption_net_consumption": "Use net consumption (import - export)",
           "hsem_ml_consumption_temperature_entity": "Outdoor temperature sensor",
+          "hsem_ml_consumption_weather_forecast_entity": "Weather forecast entity",
           "hsem_ml_consumption_sequential": "Sequential prediction (lag feature)"
         },
         "data_description": {
@@ -513,6 +514,7 @@
           "hsem_ml_consumption_history_days": "Days of recorder history for ML training (7–90).",
           "hsem_ml_consumption_net_consumption": "Subtract grid export from import for net house consumption.",
           "hsem_ml_consumption_temperature_entity": "Optional—outdoor temperature sensor in °C. Use an outdoor sensor, not an indoor thermostat.",
+          "hsem_ml_consumption_weather_forecast_entity": "Optional—weather entity used for future-slot forecast temperatures. Requires the outdoor temperature sensor above to also be set. Falls back to the measured temperature when forecast data is missing.",
           "hsem_ml_consumption_sequential": "Feed each slot prediction as input to the next. Captures intra-hour momentum (e.g. cooking spikes carry forward)."
         },
         "description": "Configure energy meters and enable ML-based consumption prediction.",
@@ -969,6 +971,7 @@
           "hsem_ml_consumption_history_days": "ML history days",
           "hsem_ml_consumption_net_consumption": "Use net consumption (import - export)",
           "hsem_ml_consumption_temperature_entity": "Outdoor temperature sensor",
+          "hsem_ml_consumption_weather_forecast_entity": "Weather forecast entity",
           "hsem_ml_consumption_sequential": "Sequential prediction (lag feature)"
         },
         "data_description": {
@@ -980,6 +983,7 @@
           "hsem_ml_consumption_history_days": "Days of recorder history for ML training (7–90).",
           "hsem_ml_consumption_net_consumption": "Subtract grid export from import for net house consumption.",
           "hsem_ml_consumption_temperature_entity": "Optional—outdoor temperature sensor in °C. Use an outdoor sensor, not an indoor thermostat.",
+          "hsem_ml_consumption_weather_forecast_entity": "Optional—weather entity used for future-slot forecast temperatures. Requires the outdoor temperature sensor above to also be set. Falls back to the measured temperature when forecast data is missing.",
           "hsem_ml_consumption_sequential": "Feed each slot prediction as input to the next. Captures intra-hour momentum (e.g. cooking spikes carry forward)."
         },
         "description": "Configure energy meters and enable ML-based consumption prediction.",

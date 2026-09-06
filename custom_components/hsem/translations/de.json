@@ -502,6 +502,7 @@
           "hsem_ml_consumption_history_days": "ML-Verlaufstage",
           "hsem_ml_consumption_net_consumption": "Nettoverbrauch verwenden (Import - Export)",
           "hsem_ml_consumption_temperature_entity": "Außentemperatursensor",
+          "hsem_ml_consumption_weather_forecast_entity": "Wettervorhersage-Entität",
           "hsem_ml_consumption_sequential": "Sequenzielle Vorhersage (Lag-Feature)"
         },
         "data_description": {
@@ -513,6 +514,7 @@
           "hsem_ml_consumption_history_days": "Tage der Recorder-Historie für das ML-Training (7–90).",
           "hsem_ml_consumption_net_consumption": "Ziehe Netzeinspeisung vom Import ab, um den Nettohausverbrauch zu erhalten.",
           "hsem_ml_consumption_temperature_entity": "Optional — Außentemperatursensor in °C. Verwende einen Außensensor, keinen Innenraumthermostat.",
+          "hsem_ml_consumption_weather_forecast_entity": "Optional — Wetter-Entität für Vorhersagetemperaturen zukünftiger Zeitfenster. Erfordert, dass der obige Außentemperatursensor ebenfalls konfiguriert ist. Fällt auf die gemessene Temperatur zurück, wenn Vorhersagedaten fehlen.",
           "hsem_ml_consumption_sequential": "Gibt jede Slot-Vorhersage als Eingabe für die nächste weiter. Erfasst untertägige Dynamik (z. B. wirken sich Kochspitzen weiter aus)."
         },
         "description": "Konfiguriere Energiezähler und aktiviere die ML-basierte Verbrauchsprognose.",
@@ -969,6 +971,7 @@
           "hsem_ml_consumption_history_days": "ML-Verlaufstage",
           "hsem_ml_consumption_net_consumption": "Nettoverbrauch verwenden (Import - Export)",
           "hsem_ml_consumption_temperature_entity": "Außentemperatursensor",
+          "hsem_ml_consumption_weather_forecast_entity": "Wettervorhersage-Entität",
           "hsem_ml_consumption_sequential": "Sequenzielle Vorhersage (Lag-Feature)"
         },
         "data_description": {
@@ -980,6 +983,7 @@
           "hsem_ml_consumption_history_days": "Tage der Recorder-Historie für das ML-Training (7–90).",
           "hsem_ml_consumption_net_consumption": "Ziehe Netzeinspeisung vom Import ab, um den Nettohausverbrauch zu erhalten.",
           "hsem_ml_consumption_temperature_entity": "Optional — Außentemperatursensor in °C. Verwende einen Außensensor, keinen Innenraumthermostat.",
+          "hsem_ml_consumption_weather_forecast_entity": "Optional — Wetter-Entität für Vorhersagetemperaturen zukünftiger Zeitfenster. Erfordert, dass der obige Außentemperatursensor ebenfalls konfiguriert ist. Fällt auf die gemessene Temperatur zurück, wenn Vorhersagedaten fehlen.",
           "hsem_ml_consumption_sequential": "Gibt jede Slot-Vorhersage als Eingabe für die nächste weiter. Erfasst untertägige Dynamik (z. B. wirken sich Kochspitzen weiter aus)."
         },
         "description": "Konfiguriere Energiezähler und aktiviere die ML-basierte Verbrauchsprognose.",

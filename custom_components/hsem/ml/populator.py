@@ -22,6 +22,9 @@ from custom_components.hsem.ml.history_reader import (
     DEFAULT_MAX_HISTORY_DAYS,
     HistoryReader,
 )
+from custom_components.hsem.ml.weather_forecast_reader import (
+    read_weather_forecast_temperatures,
+)
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.datetime_utils import (
@@ -35,6 +38,7 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER
 type _HistorySample = tuple[datetime, int, float]
 type _HistoryCacheKey = tuple[int, str, str | None, bool, int, int]
 type _TemperatureCacheKey = tuple[int, str, int]
+type _ForecastCacheKey = tuple[int, str]
 type _PredictorContext = tuple[str, str | None, bool, int, int, str | None]
 
 # Cache final, fully processed history rather than an import-only intermediate.
@@ -47,6 +51,12 @@ _temperature_history_cache: dict[
     _TemperatureCacheKey, tuple[datetime, dict[datetime, float]]
 ] = {}
 _MIN_HISTORY_REFRESH = timedelta(minutes=60)
+
+# Forecast data changes more often than recorder history but a live
+# ``weather.get_forecasts`` service call is cheap — cache briefly so a
+# 1-5 minute coordinator cycle does not hammer the weather integration.
+_forecast_cache: dict[_ForecastCacheKey, tuple[datetime, dict[datetime, float]]] = {}
+_MIN_FORECAST_REFRESH = timedelta(minutes=15)
 
 
 async def populate_ml_house_consumption(
@@ -329,6 +339,48 @@ async def populate_ml_house_consumption(
     # physical folds of autumn's repeated wall hour.
     seq_predictions: dict[datetime, float] = {}
     prediction_temperature = _nearest_temperature(temperatures, reference_time)
+
+    # Forecast temperature (issue #918): an optional per-slot enhancement
+    # over the constant `prediction_temperature` broadcast above.  Only
+    # meaningful when the model was actually trained with a temperature
+    # feature (use_temp) — otherwise there is no coefficient for it to feed.
+    forecast_entity = cfg.ml_consumption_weather_forecast_entity
+    forecast_points: dict[datetime, float] | None = None
+    if use_temp and forecast_entity:
+        forecast_points = await _get_cached_forecast(hass, forecast_entity, now_ts)
+        if not forecast_points:
+            HSEM_LOGGER.info(
+                "ML populator: weather forecast entity %s has no usable "
+                "forecast data; future slots fall back to measured "
+                "temperature.",
+                forecast_entity,
+            )
+    elif forecast_entity and not use_temp:
+        HSEM_LOGGER.info(
+            "ML populator: weather forecast entity configured but the "
+            "temperature feature is inactive (no measured temperature "
+            "entity/history); forecast temperatures will not be used."
+        )
+
+    forecast_slots_used = 0
+    fallback_slots_used = 0
+    # Physical slot key -> whether that slot's temperature came from the
+    # forecast.  Populated for every slot handed to the predictor so the
+    # per-rec loop below can attribute usage without recomputing lookups.
+    temperature_source_by_key: dict[datetime, bool] = {}
+
+    def _resolve_future_temperature(
+        slot_start: datetime,
+    ) -> tuple[float | None, bool]:
+        """Return ``(temperature, used_forecast)`` for a future slot."""
+        if forecast_points:
+            forecast_value = _interpolate_forecast_temperature(
+                forecast_points, slot_start
+            )
+            if forecast_value is not None:
+                return forecast_value, True
+        return prediction_temperature, False
+
     if cfg.ml_consumption_sequential:
         sequence_keys = sorted(
             {
@@ -337,11 +389,19 @@ async def populate_ml_house_consumption(
             }
         )
         sequence_starts = [normalize_datetime(key) for key in sequence_keys]
-        sequential_temperatures = (
-            {key: prediction_temperature for key in sequence_keys}
-            if prediction_temperature is not None
-            else None
-        )
+        sequential_temperatures: dict[datetime, float] | None = None
+        if forecast_points or prediction_temperature is not None:
+            sequential_temperatures = {}
+            for key in sequence_keys:
+                temp_value, used_forecast = _resolve_future_temperature(
+                    normalize_datetime(key)
+                )
+                if temp_value is None:
+                    continue
+                sequential_temperatures[key] = temp_value
+                temperature_source_by_key[key] = used_forecast
+            if not sequential_temperatures:
+                sequential_temperatures = None
         seq_predictions = predictor.predict_sequential(
             sequence_starts, sequential_temperatures
         )
@@ -361,6 +421,11 @@ async def populate_ml_house_consumption(
             if seq_predictions:
                 # Sequential mode: use precomputed chained prediction.
                 mean = seq_predictions.get(physical_key, 0.0)
+                seq_used_forecast = temperature_source_by_key.get(physical_key)
+                if seq_used_forecast is True:
+                    forecast_slots_used += 1
+                elif seq_used_forecast is False:
+                    fallback_slots_used += 1
                 # Safety buffer: use DOW-slot std from raw groups.
                 std = 0.0
                 if predictor.trained:
@@ -373,11 +438,17 @@ async def populate_ml_house_consumption(
                         std = mean * 0.2
             else:
                 # Independent mode: predict each slot separately.
+                temp_value, used_forecast = _resolve_future_temperature(rec_start)
+                if temp_value is not None:
+                    if used_forecast:
+                        forecast_slots_used += 1
+                    else:
+                        fallback_slots_used += 1
                 mean, std = predictor.predict_with_std(
                     slot_index,
                     rec_day_offset,
                     reference_time,
-                    prediction_temperature,
+                    temp_value,
                 )
             rel_uncertainty = std / mean if mean > 0 else 0.0
             if rel_uncertainty < 0.1:
@@ -420,6 +491,21 @@ async def populate_ml_house_consumption(
             total_safe,
             predicted_count,
         )
+
+    # Forecast-vs-fallback diagnostics (issue #918), exposed via
+    # sensor.hsem_plan_explanation_sensor attributes.
+    predictor.forecast_temperature_entity_configured = bool(forecast_entity)
+    predictor.forecast_temperature_slots_used = forecast_slots_used
+    predictor.fallback_temperature_slots_used = fallback_slots_used
+    if forecast_entity and use_temp:
+        HSEM_LOGGER.info(
+            "ML populator: forecast temperature used for %d/%d future slots"
+            " (measured-temperature fallback for %d).",
+            forecast_slots_used,
+            predicted_count,
+            fallback_slots_used,
+        )
+
     return True, predictor
 
 
@@ -434,10 +520,77 @@ def _physical_elapsed(later: datetime, earlier: datetime) -> timedelta:
     return utc_key(later_aware) - utc_key(earlier_aware)
 
 
-def _cache_is_fresh(cached_at: datetime, current: datetime) -> bool:
+def _cache_is_fresh(
+    cached_at: datetime,
+    current: datetime,
+    window: timedelta = _MIN_HISTORY_REFRESH,
+) -> bool:
     """Return whether a cache timestamp is within the physical refresh window."""
     age = _physical_elapsed(current, cached_at)
-    return timedelta(0) <= age < _MIN_HISTORY_REFRESH
+    return timedelta(0) <= age < window
+
+
+async def _get_cached_forecast(
+    hass: HomeAssistant,
+    entity_id: str,
+    now_ts: datetime,
+) -> dict[datetime, float] | None:
+    """Fetch forecast temperature points for *entity_id*, cached briefly.
+
+    Returns ``None`` when the entity is unavailable or has no usable
+    forecast data — callers must treat that as "no forecast coverage" and
+    fall back to the existing measured-temperature behaviour.
+    """
+    cache_key: _ForecastCacheKey = (id(hass), entity_id)
+    cached = _forecast_cache.get(cache_key)
+    if cached is not None and _cache_is_fresh(cached[0], now_ts, _MIN_FORECAST_REFRESH):
+        return cached[1]
+
+    points = await read_weather_forecast_temperatures(hass, entity_id)
+    if points:
+        _forecast_cache[cache_key] = (now_ts, points)
+    return points
+
+
+def _interpolate_forecast_temperature(
+    points: dict[datetime, float],
+    target: datetime,
+    max_gap: timedelta = timedelta(hours=3),
+) -> float | None:
+    """Linearly interpolate a forecast temperature at *target* physical time.
+
+    Returns ``None`` when *target* falls outside the forecast's covered range
+    (before the earliest or after the latest point — no extrapolation) or
+    when the two bracketing points are farther apart than *max_gap*
+    (sparse/stale forecast data). A genuine ``0.0`` forecast value is a valid
+    result, never treated as missing.
+    """
+    if not points:
+        return None
+
+    ordered = sorted(points.items(), key=lambda item: utc_key(item[0]))
+    keys_utc = [utc_key(timestamp) for timestamp, _value in ordered]
+    target_utc = utc_key(target)
+
+    for key_utc, (_timestamp, value) in zip(keys_utc, ordered, strict=True):
+        if key_utc == target_utc:
+            return value
+
+    if target_utc < keys_utc[0] or target_utc > keys_utc[-1]:
+        return None
+
+    for index in range(len(ordered) - 1):
+        lo_utc, hi_utc = keys_utc[index], keys_utc[index + 1]
+        if lo_utc < target_utc < hi_utc:
+            gap = hi_utc - lo_utc
+            if gap > max_gap:
+                return None
+            fraction = (target_utc - lo_utc) / gap
+            lo_value = ordered[index][1]
+            hi_value = ordered[index + 1][1]
+            return lo_value + (hi_value - lo_value) * fraction
+
+    return None
 
 
 def _history_meets_minimum_span(

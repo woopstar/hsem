@@ -502,6 +502,7 @@
           "hsem_ml_consumption_history_days": "Días de historial para ML",
           "hsem_ml_consumption_net_consumption": "Usar consumo neto (importación - exportación)",
           "hsem_ml_consumption_temperature_entity": "Sensor de temperatura exterior",
+          "hsem_ml_consumption_weather_forecast_entity": "Entidad de previsión meteorológica",
           "hsem_ml_consumption_sequential": "Predicción secuencial (función de retardo)"
         },
         "data_description": {
@@ -513,6 +514,7 @@
           "hsem_ml_consumption_history_days": "Días de historial del recorder para el entrenamiento de ML (7-90).",
           "hsem_ml_consumption_net_consumption": "Resta la exportación a la red de la importación para obtener el consumo neto de la vivienda.",
           "hsem_ml_consumption_temperature_entity": "Opcional: sensor de temperatura exterior en °C. Usa un sensor exterior, no un termostato interior.",
+          "hsem_ml_consumption_weather_forecast_entity": "Opcional: entidad meteorológica usada para las temperaturas previstas de los intervalos futuros. Requiere que el sensor de temperatura exterior anterior también esté configurado. Recurre a la temperatura medida cuando faltan datos de previsión.",
           "hsem_ml_consumption_sequential": "Introduce cada predicción de intervalo como entrada de la siguiente. Captura la dinámica dentro de la hora (p. ej., los picos de cocina se propagan hacia adelante)."
         },
         "description": "Configura los medidores de energía y activa la predicción de consumo basada en ML.",
@@ -969,6 +971,7 @@
           "hsem_ml_consumption_history_days": "Días de historial para ML",
           "hsem_ml_consumption_net_consumption": "Usar consumo neto (importación - exportación)",
           "hsem_ml_consumption_temperature_entity": "Sensor de temperatura exterior",
+          "hsem_ml_consumption_weather_forecast_entity": "Entidad de previsión meteorológica",
           "hsem_ml_consumption_sequential": "Predicción secuencial (función de retardo)"
         },
         "data_description": {
@@ -980,6 +983,7 @@
           "hsem_ml_consumption_history_days": "Días de historial del recorder para el entrenamiento de ML (7-90).",
           "hsem_ml_consumption_net_consumption": "Resta la exportación a la red de la importación para obtener el consumo neto de la vivienda.",
           "hsem_ml_consumption_temperature_entity": "Opcional: sensor de temperatura exterior en °C. Usa un sensor exterior, no un termostato interior.",
+          "hsem_ml_consumption_weather_forecast_entity": "Opcional: entidad meteorológica usada para las temperaturas previstas de los intervalos futuros. Requiere que el sensor de temperatura exterior anterior también esté configurado. Recurre a la temperatura medida cuando faltan datos de previsión.",
           "hsem_ml_consumption_sequential": "Introduce cada predicción de intervalo como entrada de la siguiente. Captura la dinámica dentro de la hora (p. ej., los picos de cocina se propagan hacia adelante)."
         },
         "description": "Configura los medidores de energía y activa la predicción de consumo basada en ML.",

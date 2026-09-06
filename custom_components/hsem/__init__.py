@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Coroutine
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
@@ -157,26 +158,15 @@ async def async_setup(hass: HomeAssistant, _config: dict[str, Any]) -> bool:
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool:
-    """Set up the HSEM integration from a config entry.
+async def _run_coordinator_setup_step(coro: Coroutine[Any, Any, None]) -> None:
+    """Run one coordinator setup step, translating failures for HA's config-entry lifecycle.
 
-    Creates the shared :class:`HSEMDataUpdateCoordinator`, runs the first
-    update cycle, forwards platform setups, and adds an options update
-    listener.  Services are registered once in ``async_setup``.
+    Shared by both ``coordinator.async_setup()`` and
+    ``coordinator.async_run_first_refresh()`` (issue #926) so a failure in
+    either phase is treated identically by Home Assistant.
     """
-    if not await check_huawei_solar_version(hass):
-        raise ConfigEntryError(
-            "Huawei Solar integration is not installed or version is too old"
-        )
-
-    # Initialise the HSEM dedicated log file (hsem.log in the config dir).
-    await async_init_hsem_logger(hass)
-
-    # Create the shared DataUpdateCoordinator and run the first update cycle.
-    coordinator = HSEMDataUpdateCoordinator(hass, entry)
-
     try:
-        await coordinator.async_setup()
+        await coro
     except ConfigEntryNotReady:
         raise
     except ConfigEntryAuthFailed:
@@ -190,9 +180,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool
     except Exception as exc:
         raise ConfigEntryError(f"Unexpected error during HSEM setup: {exc}") from exc
 
+
+async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool:
+    """Set up the HSEM integration from a config entry.
+
+    Creates the shared :class:`HSEMDataUpdateCoordinator`, forwards platform
+    setups, runs the first update cycle, and adds an options update
+    listener.  Services are registered once in ``async_setup``.
+
+    The first update cycle intentionally runs *after* platform setups are
+    forwarded: it reads HSEM's own select/number/switch/time entities back
+    via the live HA state machine, so those entities must already exist
+    (issue #926) — running it earlier raced the entity registry and logged
+    spurious "not found" warnings on every restart/reload.
+    """
+    if not await check_huawei_solar_version(hass):
+        raise ConfigEntryError(
+            "Huawei Solar integration is not installed or version is too old"
+        )
+
+    # Initialise the HSEM dedicated log file (hsem.log in the config dir).
+    await async_init_hsem_logger(hass)
+
+    # Create the shared DataUpdateCoordinator.
+    coordinator = HSEMDataUpdateCoordinator(hass, entry)
+
+    await _run_coordinator_setup_step(coordinator.async_setup())
+
     entry.runtime_data = HSEMRuntimeData(coordinator=coordinator)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Run the first update cycle now that HSEM's own entities exist.
+    await _run_coordinator_setup_step(coordinator.async_run_first_refresh())
 
     # Add update listener for options.
     entry.async_on_unload(entry.add_update_listener(async_update_options))

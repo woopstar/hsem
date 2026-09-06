@@ -337,6 +337,11 @@ class SensorConfig:
     ml_consumption_net_consumption: bool = False
     ml_consumption_sequential: bool = False
     ml_consumption_temperature_entity: str | None = None
+    #: Optional weather entity supplying forecast temperatures for FUTURE
+    #: inference slots.  Requires ml_consumption_temperature_entity to also
+    #: be configured (and to have trained a temperature-aware model) —
+    #: otherwise the predictor has no temperature coefficient to feed.
+    ml_consumption_weather_forecast_entity: str | None = None
 
     # Planner hysteresis — keep the active plan unless a new plan is
     # materially better (anti-flapping, issue #372).

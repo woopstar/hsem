@@ -107,6 +107,9 @@ class _FakePredictor:
         self.prediction_requests: list[tuple[int, int]] = []
         self.sequential_requests: list[list[datetime]] = []
         self.sequential_temperature_requests: list[dict[datetime, float] | None] = []
+        self.forecast_temperature_entity_configured = False
+        self.forecast_temperature_slots_used = 0
+        self.fallback_temperature_slots_used = 0
 
     def train(
         self,

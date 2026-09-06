@@ -1065,6 +1065,116 @@ class TestEvDischargePermissionAndHeldExport:
 
 
 # ---------------------------------------------------------------------------
+# BatteriesChargeSolar discharge cap (issue #922)
+# ---------------------------------------------------------------------------
+
+
+class TestSolarChargeDischargeCap:
+    """batteries_charge_solar must cap Huawei discharge to 0 W (issue #922).
+
+    Without this cap, Huawei's MaximizeSelfConsumption firmware discharges
+    the battery whenever live house load exceeds live PV, even though the
+    MILP solved this slot as solar-charge-only with the grid covering any
+    deficit.
+    """
+
+    @staticmethod
+    def _cfg_and_live() -> tuple[SensorConfig, LiveState]:
+        cfg = _make_cfg(read_only=False)
+        cfg.huawei_solar_batteries_maximum_discharging_power = "number.max_discharge"
+        cfg.huawei_solar_batteries_excess_pv_energy_use_in_tou = "select.excess_pv"
+        cfg.huawei_solar_batteries_tou_charging_and_discharging_periods = (
+            "sensor.tou_periods"
+        )
+        cfg.huawei_solar_device_id_batteries = "bat1"
+        live = _make_live(degraded_mode=DegradedMode.OK)
+        live.huawei_batteries_max_discharge_power_w = 5000
+        live.huawei_batteries_excess_pv_use_in_tou = "charge"
+        return cfg, live
+
+    @staticmethod
+    async def _run(cfg, live, rec):
+        written: dict[str, object] = {}
+
+        async def _record_desired(entity_id, desired, writer, reader, **kwargs):  # type: ignore[no-untyped-def]
+            written[entity_id] = desired
+            return ApplyResult(
+                entity_id=entity_id,
+                desired=desired,
+                actual=desired,
+                status=ApplyStatus.OK,
+                attempts=1,
+            )
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                side_effect=_record_desired,
+            ),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_set_tou_periods",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await async_apply_battery_settings(_make_sensor(), cfg, live, rec, 0.0)
+        return written
+
+    @pytest.mark.asyncio
+    async def test_solar_charge_caps_discharge_to_zero(self):
+        """A genuine solar-charge-only slot forces max discharge power to 0 W."""
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        cfg, live = self._cfg_and_live()
+        rec = _make_rec_with_energy(
+            Recommendations.BatteriesChargeSolar.value,
+            batteries_charged_kwh=1.0,
+        )
+
+        written = await self._run(cfg, live, rec)
+
+        assert written["number.max_discharge"] == 0
+
+    @pytest.mark.asyncio
+    async def test_cap_lifts_on_recommendation_change(self):
+        """Once the recommendation permits discharge, the normal cap is restored."""
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        cfg, live = self._cfg_and_live()
+        # Simulate a prior cycle that left the cap at 0 W for a solar-charge
+        # slot; this cycle's recommendation now permits discharge.
+        live.huawei_batteries_max_discharge_power_w = 0
+        rec = _make_rec_with_energy(
+            Recommendations.BatteriesDischargeMode.value,
+            batteries_discharged_kwh=1.0,
+        )
+
+        written = await self._run(cfg, live, rec)
+
+        assert written["number.max_discharge"] == 2500
+
+    @pytest.mark.asyncio
+    async def test_ev_active_precedence_over_solar_charge_cap(self):
+        """An active, permitted EV's own planned rate governs, not a blanket 0."""
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        cfg, live = self._cfg_and_live()
+        live.ev.is_charging = True
+        live.ev.force_max_discharge_power = True
+        live.ev.max_discharge_power_w = 4000
+        rec = _make_rec_with_energy(
+            Recommendations.BatteriesChargeSolar.value,
+            batteries_charged_kwh=1.0,
+            batteries_discharged_kwh=0.5,  # 0.5 kWh over a 1 h slot = 500 W
+            ev_charger_calculated_power=3000.0,
+        )
+
+        written = await self._run(cfg, live, rec)
+
+        assert written["number.max_discharge"] == 500
+
+
+# ---------------------------------------------------------------------------
 # ForceBatteriesDischarge — excess PV routing regression (issue #819)
 # ---------------------------------------------------------------------------
 
