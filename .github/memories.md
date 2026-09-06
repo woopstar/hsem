@@ -1408,6 +1408,23 @@ _Actual fix:_ cross-checking `lbbrhzn/ocpp`'s `ocppv16.py::set_charge_rate()` sh
 
 **Test gotcha:** `_sent_actions()` reads `send_str.call_args_list`, which records a call even when the mock _raises_ — so it measures send **attempts**, not deliveries. Asserting `== []` after a failed write is wrong; count the action instead.
 
+**OCPP subprotocol was never negotiated (found by the user, 2026-09-05).** `_handle_charger()` built `web.WebSocketResponse(heartbeat=...)` with no `protocols=`, so the server never selected the `ocpp1.6` subprotocol the charger offered. `home-assistant.log` carried `Client protocols ['ocpp1.6'] don't overlap server-known ones ()` on almost every connect from the very first log in this investigation — **it was visible the whole time and went unread**. OCPP-J 1.6 §3.1.2 requires the central system to select the offered subprotocol; a client that gets none back may close the connection outright. This go-e firmware tolerated it, so it never presented as a symptom. Fixed with `protocols=("ocpp1.6",)` plus a warning when negotiation yields anything else. The regression test drives a **real WebSocket** (`aiohttp.ClientSession().ws_connect(..., protocols=("ocpp1.6",))`) and asserts `ws.protocol` — the bug lives entirely in the handshake, so a unit test against the handler cannot see it. Verified by reverting the fix and watching it fail with the exact log line from production.
+
+**Lesson: read the warnings already in the log before adding new ones.** Four fixes were built on top of a connection whose handshake was quietly non-conformant, and the evidence was in the first file read.
+
+**OCPP module layout after the #920 size rebalance** (30 KB hard limit; `ocpp_server.py` and `ocpp_commands.py` were both pushed over during this work and had to be split):
+
+| Module                     | Responsibility                                                           |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `ocpp_server.py`           | Lifecycle, handshake, message routing/dispatch                           |
+| `ocpp_anti_flap.py`        | `update_charge_target()` — continuous target → discrete start/stop       |
+| `ocpp_commands.py`         | Transaction-level commands + raw CALL/CALLRESULT plumbing                |
+| `ocpp_profiles.py`         | Charging-profile construction/dispatch (real limit _and_ the 0 A stop)   |
+| `ocpp_control.py`          | Interrogation and administration (Get/ChangeConfiguration, availability) |
+| `ocpp_message_handlers.py` | Charger-initiated message handlers                                       |
+
+**MRO gotcha:** mixins that _define_ a sender must precede those carrying a `Callable` forward declaration of it, or mypy reports "Definition in base class X is incompatible with definition in base class Y". `ocpp_server.py` also re-exports `charger_appears_stalled`/`CHARGER_STALL_THRESHOLD_S` via `__all__`, because `ocpp_sensors.py` and `coordinator_data.py` document them at that path.
+
 **Diagnostic lesson worth keeping:** three fixes in a row (profile kind, TxProfile, resend ordering) were aimed at `SetChargingProfile` because that's where the visible symptom was ("amps don't apply"), while the actual blocker sat in an inbound message nobody was reading. The wire-level DEBUG logging from #920 is what eventually exposed it — the `'Rejected'` CALLRESULT and the `transactionId: 2` in `MeterValues` were both only visible because every inbound/outbound CALL is now logged in full. When a charger rejects a command, read what the charger is _telling you_ in its own messages before changing what HSEM sends.
 
 **Test-timing gotcha:** a task from `asyncio.create_task()` does not run merely because the creating coroutine returns — it needs the event loop to get a turn. Since the mocked `websocket.send_str` (`AsyncMock`) never performs genuine suspension, a _single_ `await asyncio.sleep(0)` after the triggering call is enough to let the entire detached task run to completion before assertions — no need to loop or explicitly gather the task.

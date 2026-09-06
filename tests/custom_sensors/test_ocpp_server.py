@@ -1283,6 +1283,53 @@ class TestRemoteStopTransaction:
 # ---------------------------------------------------------------------------
 
 
+class TestSubprotocolNegotiation:
+    """The server must select the OCPP subprotocol the charger offers.
+
+    OCPP-J 1.6 §3.1.2 has the charge point offer "ocpp1.6" in
+    Sec-WebSocket-Protocol and requires the central system to select it. A
+    client that gets nothing back is entitled to close the connection
+    immediately. HSEM used to complete the handshake with no subprotocol
+    at all, which this charger's firmware tolerated and a stricter one
+    would not.
+
+    Driven through a real WebSocket rather than the handler, because the
+    bug lives entirely in the handshake — a unit test on internals cannot
+    see it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_offered_subprotocol_is_echoed_back(self, mock_hass):
+        """A client offering 'ocpp1.6' gets 'ocpp1.6' selected."""
+        server = OCPPServer(hass=mock_hass, host="127.0.0.1", port=19020)
+        await server.start()
+        try:
+            async with (
+                aiohttp.ClientSession() as client,
+                client.ws_connect(
+                    "ws://127.0.0.1:19020/222819", protocols=("ocpp1.6",)
+                ) as ws,
+            ):
+                assert ws.protocol == "ocpp1.6"
+        finally:
+            await server.stop()
+
+    @pytest.mark.asyncio
+    async def test_client_offering_nothing_still_connects(self, mock_hass):
+        """Declaring a subprotocol must not shut out a client without one."""
+        server = OCPPServer(hass=mock_hass, host="127.0.0.1", port=19021)
+        await server.start()
+        try:
+            async with (
+                aiohttp.ClientSession() as client,
+                client.ws_connect("ws://127.0.0.1:19021/222819"),
+            ):
+                await asyncio.sleep(0.05)
+                assert "222819" in server.active_chargers
+        finally:
+            await server.stop()
+
+
 class TestCpidPathRouting:
     """Tests that any WebSocket path reaches the handler, not just '/'."""
 
