@@ -1427,6 +1427,20 @@
           "description": "New value. OCPP 1.6 carries all configuration values as strings."
         }
       }
+    },
+    "ocpp_debug_set_current": {
+      "name": "OCPP debug set current",
+      "description": "Diagnostics-only: send a charging profile at the given current and nothing else, to isolate whether the charger honours profiles. Use 0 for the generic stop.",
+      "fields": {
+        "charger": {
+          "name": "Charger",
+          "description": "Which EV's embedded OCPP server to target."
+        },
+        "current_a": {
+          "name": "Current",
+          "description": "Current limit to request. 0 means draw nothing; otherwise 6-32 A."
+        }
+      }
     }
   }
 }

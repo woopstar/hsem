@@ -1,6 +1,6 @@
 # HSEM Services Reference
 
-HSEM exposes ten Home Assistant services that allow automation, script, and
+HSEM exposes eleven Home Assistant services that allow automation, script, and
 manual control over the planner and hardware writes.
 
 These services are **integration-level actions**: they operate on the single
@@ -12,16 +12,19 @@ below.
 
 ## Service listing
 
-| Service                          | Description                                                     | Response |
-| -------------------------------- | --------------------------------------------------------------- | -------- |
-| `hsem.force_recalculation`       | Trigger an immediate full planner re-run                        | None     |
-| `hsem.set_temporary_override`    | Force a specific battery working mode                           | None     |
-| `hsem.clear_override`            | Return to automatic planner control                             | None     |
-| `hsem.create_dashboard`          | Create or update the bundled Lovelace dashboard                 | Dict     |
-| `hsem.export_diagnostics`        | Export structured diagnostic data                               | Dict     |
-| `hsem.ocpp_debug_start_charging` | Diagnostics-only: manually start an OCPP charger                | None     |
-| `hsem.ocpp_debug_stop_charging`  | Diagnostics-only: manually stop an OCPP charger                 | None     |
-| `hsem.ocpp_debug_diagnostics`    | Diagnostics-only: query the charger's config and computed limit | None     |
+| Service                             | Description                                                        | Response |
+| ----------------------------------- | ------------------------------------------------------------------ | -------- |
+| `hsem.force_recalculation`          | Trigger an immediate full planner re-run                           | None     |
+| `hsem.set_temporary_override`       | Force a specific battery working mode                              | None     |
+| `hsem.clear_override`               | Return to automatic planner control                                | None     |
+| `hsem.create_dashboard`             | Create or update the bundled Lovelace dashboard                    | Dict     |
+| `hsem.export_diagnostics`           | Export structured diagnostic data                                  | Dict     |
+| `hsem.ocpp_debug_start_charging`    | Diagnostics-only: manually start an OCPP charger                   | None     |
+| `hsem.ocpp_debug_stop_charging`     | Diagnostics-only: manually stop an OCPP charger                    | None     |
+| `hsem.ocpp_debug_diagnostics`       | Diagnostics-only: query the charger's config and computed limit    | None     |
+| `hsem.ocpp_debug_set_current`       | Diagnostics-only: send only a charging profile, at a given current | None     |
+| `hsem.ocpp_debug_set_availability`  | Diagnostics-only: set a connector Operative/Inoperative            | None     |
+| `hsem.ocpp_debug_set_configuration` | Diagnostics-only: write one OCPP configuration key                 | None     |
 
 ---
 
@@ -368,6 +371,42 @@ service: hsem.ocpp_debug_set_configuration
 data:
   key: AuthorizeRemoteTxRequests
   value: "false"
+```
+
+---
+
+## 11. `hsem.ocpp_debug_set_current`
+
+**Diagnostics-only**, and the narrowest of these services: it sends a
+`SetChargingProfile` and **nothing else** — no `RemoteStartTransaction`, no
+vendor force-state write.
+
+That isolation is the whole point. Every other action changes more than one
+thing at once, so a visible change can't be attributed. This one answers a
+single question: **does the charger honour charging profiles at all?**
+
+`current_a: 0` is the interesting case — a 0 A profile is the generic,
+standards-only way an energy-management system says "draw nothing". If it
+stops a charge on its own, no vendor-specific handling is needed for that
+charger.
+
+**Schema:**
+
+| Field       | Required | Type         | Description                                                                                                        |
+| ----------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `charger`   | No       | Select       | `"primary"` (default) or `"second"` — which EV's embedded OCPP server to target                                    |
+| `current_a` | Yes      | `0`, or 6–32 | Current limit. `0` means draw nothing; 1–5 A is rejected, since no charger delivers below its `MinChargingCurrent` |
+
+A value above the charger's own `Station-MaxCurrent` is accepted but cannot
+raise the limit, so it will look like nothing happened — HSEM logs a warning
+naming both numbers when that is why.
+
+**Example:**
+
+```yaml
+service: hsem.ocpp_debug_set_current
+data:
+  current_a: 8
 ```
 
 ---

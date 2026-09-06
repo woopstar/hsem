@@ -26,6 +26,7 @@ from custom_components.hsem.services import (
     SCHEMA_CREATE_DASHBOARD,
     SCHEMA_OCPP_DEBUG_SET_AVAILABILITY,
     SCHEMA_OCPP_DEBUG_SET_CONFIGURATION,
+    SCHEMA_OCPP_DEBUG_SET_CURRENT,
     SCHEMA_OCPP_DEBUG_START_CHARGING,
     SCHEMA_OCPP_DEBUG_STOP_CHARGING,
     SERVICE_HANDLER_MAP,
@@ -667,6 +668,52 @@ def test_ocpp_debug_set_availability_schema_defaults() -> None:
     """Availability defaults to Operative on connector 1."""
     result = SCHEMA_OCPP_DEBUG_SET_AVAILABILITY({})
     assert result == {"charger": "primary", "operative": True, "connector_id": 1}
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_set_current_sends_only_a_profile(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """set_current sends a profile and nothing else — that's the point.
+
+    Its whole value is isolating one variable: no remote start, no vendor
+    force-state write, so a visible change can only come from the profile.
+    """
+    server = _make_ocpp_server(cpid="CP1")
+    mock_coordinator._ocpp_server = server
+    call = _make_service_call(mock_hass, {"charger": "primary", "current_a": 8})
+
+    await services_module.async_handle_ocpp_debug_set_current(call)
+
+    server.send_set_charging_profile.assert_awaited_once_with("CP1", 1840, 8)
+    server.send_remote_start.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("get_coordinator_patcher")
+async def test_ocpp_debug_set_current_allows_zero(
+    mock_hass: MagicMock,
+    mock_coordinator: MagicMock,
+) -> None:
+    """0 A is the generic OCPP "draw nothing" stop, so it must be sendable."""
+    server = _make_ocpp_server(cpid="CP1")
+    mock_coordinator._ocpp_server = server
+    call = _make_service_call(mock_hass, {"charger": "primary", "current_a": 0})
+
+    await services_module.async_handle_ocpp_debug_set_current(call)
+
+    server.send_set_charging_profile.assert_awaited_once_with("CP1", 0, 0)
+
+
+def test_ocpp_debug_set_current_schema_allows_zero_but_not_unusable_amps() -> None:
+    """0 is meaningful; 1-5 A is below any charger's MinChargingCurrent."""
+    assert SCHEMA_OCPP_DEBUG_SET_CURRENT({"current_a": 0})["current_a"] == 0  # type: ignore[index]
+    assert SCHEMA_OCPP_DEBUG_SET_CURRENT({"current_a": 8})["current_a"] == 8  # type: ignore[index]
+    for unusable in (3, 33, -1):
+        with pytest.raises(vol.Invalid):
+            SCHEMA_OCPP_DEBUG_SET_CURRENT({"current_a": unusable})
 
 
 @pytest.mark.asyncio

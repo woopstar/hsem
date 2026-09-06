@@ -1427,6 +1427,20 @@
           "description": "Nuevo valor. OCPP 1.6 transmite todos los valores de configuración como cadenas."
         }
       }
+    },
+    "ocpp_debug_set_current": {
+      "name": "Depuración OCPP: establecer corriente",
+      "description": "Solo para diagnóstico: envía únicamente un perfil de carga con la corriente indicada, para determinar si el cargador respeta los perfiles. Usa 0 para la parada genérica.",
+      "fields": {
+        "charger": {
+          "name": "Cargador",
+          "description": "Qué servidor OCPP integrado de VE se debe usar."
+        },
+        "current_a": {
+          "name": "Corriente",
+          "description": "Límite de corriente solicitado. 0 significa no consumir nada; si no, 6-32 A."
+        }
+      }
     }
   }
 }

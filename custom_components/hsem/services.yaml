@@ -139,6 +139,42 @@ ocpp_debug_diagnostics:
         Which EV's embedded OCPP server to target. "second" only applies
         when the second EV's OCPP server is configured and enabled.
 
+ocpp_debug_set_current:
+  name: OCPP debug set current
+  description: >-
+    Diagnostics-only: send a charging profile at the given current and
+    nothing else - no remote start, no vendor force-state write. That
+    isolation is the point: it answers whether the charger honours charging
+    profiles at all, which no other action can, because they all change
+    more than one thing at once. Use 0 to test the generic "draw nothing"
+    stop. Note a value above the charger's own Station-MaxCurrent is
+    accepted but cannot raise the limit, so it will look like nothing
+    happened.
+  fields:
+    charger:
+      required: false
+      default: "primary"
+      selector:
+        select:
+          options:
+            - "primary"
+            - "second"
+      description: >-
+        Which EV's embedded OCPP server to target. "second" only applies
+        when the second EV's OCPP server is configured and enabled.
+    current_a:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 32
+          unit_of_measurement: "A"
+          mode: box
+      description: >-
+        Current limit to request. 0 means "draw nothing" (the generic OCPP
+        stop); otherwise 6-32 A, since no charger delivers below its
+        MinChargingCurrent.
+
 ocpp_debug_set_availability:
   name: OCPP debug set availability
   description: >-

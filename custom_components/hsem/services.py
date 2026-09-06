@@ -15,6 +15,8 @@ This module implements the HSEM services:
   charging limit it has actually computed (issue #920).
 - ``ocpp_debug_set_availability`` — Set a connector Operative/Inoperative.
 - ``ocpp_debug_set_configuration`` — Write one OCPP configuration key.
+- ``ocpp_debug_set_current`` — Send only a charging profile, at a given current
+  (``0`` = draw nothing), to isolate whether profiles are honoured at all.
 
 All services are integration-level actions; the coordinator is looked up from
 the only configured HSEM entry.  Service schemas are defined in ``services.yaml``.
@@ -75,6 +77,7 @@ SERVICE_OCPP_DEBUG_STOP_CHARGING = "ocpp_debug_stop_charging"
 SERVICE_OCPP_DEBUG_DIAGNOSTICS = "ocpp_debug_diagnostics"
 SERVICE_OCPP_DEBUG_SET_AVAILABILITY = "ocpp_debug_set_availability"
 SERVICE_OCPP_DEBUG_SET_CONFIGURATION = "ocpp_debug_set_configuration"
+SERVICE_OCPP_DEBUG_SET_CURRENT = "ocpp_debug_set_current"
 
 # ---------------------------------------------------------------------------
 # Voluptuous schemas for input validation
@@ -131,6 +134,18 @@ SCHEMA_OCPP_DEBUG_SET_AVAILABILITY = vol.Schema(
         vol.Optional("connector_id", default=1): vol.All(
             vol.Coerce(int),
             vol.Range(min=0, max=8),
+        ),
+    }
+)
+
+SCHEMA_OCPP_DEBUG_SET_CURRENT = vol.Schema(
+    {
+        vol.Optional("charger", default="primary"): vol.In(SUPPORTED_OCPP_CHARGERS),
+        # 0 is meaningful — it is the generic OCPP way to say "draw
+        # nothing" — but 1-5 A is not: no charger delivers below its
+        # MinChargingCurrent, which is 6 A on every unit seen so far.
+        vol.Required("current_a"): vol.Any(
+            0, vol.All(vol.Coerce(int), vol.Range(min=6, max=32))
         ),
     }
 )
@@ -581,6 +596,61 @@ async def async_handle_ocpp_debug_diagnostics(call: ServiceCall) -> None:
     _LOGGER.info("HSEM service: ocpp_debug_diagnostics sent for cpid=%s", cpid)
 
 
+async def async_handle_ocpp_debug_set_current(call: ServiceCall) -> None:
+    """Send only a charging profile, at a given current.
+
+    Diagnostics-only (issue #920), and deliberately the narrowest of the
+    OCPP debug services: it sends a ``SetChargingProfile`` and nothing
+    else. No ``RemoteStartTransaction``, no vendor force-state write. That
+    isolation is the point — it answers "does this charger honour charging
+    profiles at all?", which nothing else can, because every other path
+    changes more than one thing at once.
+
+    ``current_a: 0`` is the interesting case: a 0 A profile is the generic,
+    standards-only way an energy-management system says "draw nothing". If
+    it stops a charge on its own, HSEM's stop needs no vendor-specific
+    handling for that charger.
+
+    Remember a request above the charger's own ``Station-MaxCurrent`` is
+    accepted but cannot raise the limit, so it will look like nothing
+    happened — HSEM logs a warning naming both numbers when that is why.
+
+    Args:
+        call: The service call with a required ``current_a`` key (``0``, or
+            6-32 A) and an optional ``charger`` key
+            (``"primary"``/``"second"``, default ``"primary"``).
+            ``call.hass`` provides the Home Assistant instance.
+
+    Raises:
+        ServiceValidationError: When the coordinator or selected OCPP
+            server is unavailable, or no charger is currently connected.
+        HomeAssistantError: When the profile fails to reach the charger.
+    """
+    charger_choice: str = call.data["charger"]
+    current_a: int = call.data["current_a"]
+    ocpp_server, cpid = _resolve_connected_charger(call.hass, charger_choice)
+
+    _LOGGER.warning(
+        "HSEM service: ocpp_debug_set_current called for %s charger "
+        "(cpid=%s) — sending a %d A charging profile and nothing else",
+        charger_choice,
+        cpid,
+        current_a,
+    )
+    if not await ocpp_server.send_set_charging_profile(
+        cpid, current_a * 230, current_a
+    ):
+        raise HomeAssistantError(
+            f"HSEM service: failed to send charging profile to charger "
+            f"'{cpid}' — see the log for details."
+        )
+    _LOGGER.info(
+        "HSEM service: ocpp_debug_set_current sent %d A for cpid=%s",
+        current_a,
+        cpid,
+    )
+
+
 async def async_handle_ocpp_debug_set_availability(call: ServiceCall) -> None:
     """Set the charger's connector Operative or Inoperative.
 
@@ -698,6 +768,11 @@ SERVICE_HANDLER_MAP: dict[str, tuple[vol.Schema, Any, SupportsResponse]] = {
     SERVICE_OCPP_DEBUG_DIAGNOSTICS: (
         SCHEMA_OCPP_DEBUG_DIAGNOSTICS,
         async_handle_ocpp_debug_diagnostics,
+        SupportsResponse.NONE,
+    ),
+    SERVICE_OCPP_DEBUG_SET_CURRENT: (
+        SCHEMA_OCPP_DEBUG_SET_CURRENT,
+        async_handle_ocpp_debug_set_current,
         SupportsResponse.NONE,
     ),
     SERVICE_OCPP_DEBUG_SET_AVAILABILITY: (

@@ -1427,6 +1427,20 @@
           "description": "Neuer Wert. OCPP 1.6 überträgt alle Konfigurationswerte als Zeichenketten."
         }
       }
+    },
+    "ocpp_debug_set_current": {
+      "name": "OCPP-Debug: Strom setzen",
+      "description": "Nur für Diagnosezwecke: Sendet ausschließlich ein Ladeprofil mit dem angegebenen Strom, um festzustellen, ob das Ladegerät Profile berücksichtigt. 0 ist der generische Stopp.",
+      "fields": {
+        "charger": {
+          "name": "Ladegerät",
+          "description": "Welcher EV-eigene, eingebettete OCPP-Server angesprochen werden soll."
+        },
+        "current_a": {
+          "name": "Strom",
+          "description": "Angeforderte Strombegrenzung. 0 bedeutet nichts beziehen; sonst 6-32 A."
+        }
+      }
     }
   }
 }

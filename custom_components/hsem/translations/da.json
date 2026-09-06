@@ -1434,6 +1434,20 @@
           "description": "Ny værdi. OCPP 1.6 sender alle konfigurationsværdier som tekst."
         }
       }
+    },
+    "ocpp_debug_set_current": {
+      "name": "OCPP-fejlsøgning: angiv strøm",
+      "description": "Kun til fejlsøgning: send udelukkende en opladningsprofil med den angivne strøm, for at afgøre om laderen respekterer profiler. Brug 0 til det generiske stop.",
+      "fields": {
+        "charger": {
+          "name": "Lader",
+          "description": "Hvilken EV's indbyggede OCPP-server der skal målrettes."
+        },
+        "current_a": {
+          "name": "Strøm",
+          "description": "Strømgrænse der skal anmodes om. 0 betyder træk intet; ellers 6-32 A."
+        }
+      }
     }
   }
 }
