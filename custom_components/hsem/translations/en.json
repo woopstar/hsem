@@ -176,7 +176,7 @@
           "hsem_export_electricity_price_sensor": "Select the sensor that provides export electricity prices.",
           "hsem_import_electricity_price_forecast_sensor": "Optional: select a separate sensor for import price forecasts (used by Amber Electric and similar integrations).",
           "hsem_export_electricity_price_forecast_sensor": "Optional: select a separate sensor for export price forecasts.",
-          "hsem_export_electricity_min_price": "Set the minimum export price. Exports below this price will be blocked.",
+          "hsem_export_electricity_min_price": "Per-slot floor for intentional battery-to-grid export. Below this price HSEM will not force the battery to discharge into the grid — the battery still serves house load normally, and reaching the threshold does not auto-trigger export. This does not block PV export: surplus solar continues to export at any non-negative price. Only a negative export price causes HSEM to block all grid export, since exporting would then cost money.",
           "hsem_electricity_price_update_interval": "How often your price sensor provides new data (15, 30, or 60 minutes)."
         },
         "description": "Configure your electricity price sensors for import and export pricing.",
@@ -705,7 +705,7 @@
           "hsem_export_electricity_price_sensor": "Select the sensor that provides export electricity prices.",
           "hsem_import_electricity_price_forecast_sensor": "Optional: select a separate sensor for import price forecasts (used by Amber Electric and similar integrations).",
           "hsem_export_electricity_price_forecast_sensor": "Optional: select a separate sensor for export price forecasts.",
-          "hsem_export_electricity_min_price": "Set the minimum export price. Exports below this price will be blocked.",
+          "hsem_export_electricity_min_price": "Per-slot floor for intentional battery-to-grid export. Below this price HSEM will not force the battery to discharge into the grid — the battery still serves house load normally, and reaching the threshold does not auto-trigger export. This does not block PV export: surplus solar continues to export at any non-negative price. Only a negative export price causes HSEM to block all grid export, since exporting would then cost money.",
           "hsem_electricity_price_update_interval": "How often your price sensor provides new data (15, 30, or 60 minutes)."
         },
         "description": "Configure your electricity price sensors for import and export pricing.",
