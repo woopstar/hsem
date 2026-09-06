@@ -169,6 +169,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Import Electricity Price Forecast Sensor (optional)",
           "hsem_export_electricity_price_forecast_sensor": "Export Electricity Price Forecast Sensor (optional)",
           "hsem_export_electricity_min_price": "Export Minimum Price Required",
+          "hsem_export_fee_per_kwh": "Export Fee Per kWh",
           "hsem_electricity_price_update_interval": "Electricity Price Update Interval (minutes)"
         },
         "data_description": {
@@ -177,6 +178,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Optional: select a separate sensor for import price forecasts (used by Amber Electric and similar integrations).",
           "hsem_export_electricity_price_forecast_sensor": "Optional: select a separate sensor for export price forecasts.",
           "hsem_export_electricity_min_price": "Set the minimum export price. Exports below this price will be blocked.",
+          "hsem_export_fee_per_kwh": "Retailer margin and balancing fees subtracted from the raw export price before HSEM decides whether exporting is profitable (issue #925). If your net export revenue is lower than the market price shown by your price sensor, set this to your total per-kWh fee. When the net price (market price minus this fee) goes negative, HSEM physically curtails PV export instead of exporting at a loss. Set to 0 if your export price sensor already reflects net revenue.",
           "hsem_electricity_price_update_interval": "How often your price sensor provides new data (15, 30, or 60 minutes)."
         },
         "description": "Configure your electricity price sensors for import and export pricing.",
@@ -698,6 +700,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Import Electricity Price Forecast Sensor (optional)",
           "hsem_export_electricity_price_forecast_sensor": "Export Electricity Price Forecast Sensor (optional)",
           "hsem_export_electricity_min_price": "Export Minimum Price Required",
+          "hsem_export_fee_per_kwh": "Export Fee Per kWh",
           "hsem_electricity_price_update_interval": "Electricity Price Update Interval (minutes)"
         },
         "data_description": {
@@ -706,6 +709,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Optional: select a separate sensor for import price forecasts (used by Amber Electric and similar integrations).",
           "hsem_export_electricity_price_forecast_sensor": "Optional: select a separate sensor for export price forecasts.",
           "hsem_export_electricity_min_price": "Set the minimum export price. Exports below this price will be blocked.",
+          "hsem_export_fee_per_kwh": "Retailer margin and balancing fees subtracted from the raw export price before HSEM decides whether exporting is profitable (issue #925). If your net export revenue is lower than the market price shown by your price sensor, set this to your total per-kWh fee. When the net price (market price minus this fee) goes negative, HSEM physically curtails PV export instead of exporting at a loss. Set to 0 if your export price sensor already reflects net revenue.",
           "hsem_electricity_price_update_interval": "How often your price sensor provides new data (15, 30, or 60 minutes)."
         },
         "description": "Configure your electricity price sensors for import and export pricing.",

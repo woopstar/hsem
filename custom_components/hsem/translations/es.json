@@ -169,6 +169,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Sensor de previsión de precio de importación (opcional)",
           "hsem_export_electricity_price_forecast_sensor": "Sensor de previsión de precio de exportación (opcional)",
           "hsem_export_electricity_min_price": "Precio mínimo de exportación requerido",
+          "hsem_export_fee_per_kwh": "Tarifa de exportación por kWh",
           "hsem_electricity_price_update_interval": "Intervalo de actualización del precio de electricidad (minutos)"
         },
         "data_description": {
@@ -177,6 +178,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de importación (usado por Amber Electric e integraciones similares).",
           "hsem_export_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de exportación.",
           "hsem_export_electricity_min_price": "Define el precio mínimo de exportación. Las exportaciones por debajo de este precio se bloquearán.",
+          "hsem_export_fee_per_kwh": "Margen de la comercializadora y tarifas de balance que se restan del precio de exportación bruto antes de que HSEM decida si exportar es rentable (issue #925). Si tu ingreso neto real por exportar es inferior al precio de mercado que muestra tu sensor de precios, indica aquí tu tarifa total por kWh. Cuando el precio neto (precio de mercado menos esta tarifa) se vuelve negativo, HSEM limita físicamente la exportación fotovoltaica en lugar de exportar con pérdidas. Ponlo a 0 si tu sensor de precio de exportación ya refleja el ingreso neto.",
           "hsem_electricity_price_update_interval": "Con qué frecuencia proporciona nuevos datos tu sensor de precios (15, 30 o 60 minutos)."
         },
         "description": "Configura tus sensores de precio de electricidad para los precios de importación y exportación.",
@@ -698,6 +700,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Sensor de previsión de precio de importación (opcional)",
           "hsem_export_electricity_price_forecast_sensor": "Sensor de previsión de precio de exportación (opcional)",
           "hsem_export_electricity_min_price": "Precio mínimo de exportación requerido",
+          "hsem_export_fee_per_kwh": "Tarifa de exportación por kWh",
           "hsem_electricity_price_update_interval": "Intervalo de actualización del precio de electricidad (minutos)"
         },
         "data_description": {
@@ -706,6 +709,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de importación (usado por Amber Electric e integraciones similares).",
           "hsem_export_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de exportación.",
           "hsem_export_electricity_min_price": "Define el precio mínimo de exportación. Las exportaciones por debajo de este precio se bloquearán.",
+          "hsem_export_fee_per_kwh": "Margen de la comercializadora y tarifas de balance que se restan del precio de exportación bruto antes de que HSEM decida si exportar es rentable (issue #925). Si tu ingreso neto real por exportar es inferior al precio de mercado que muestra tu sensor de precios, indica aquí tu tarifa total por kWh. Cuando el precio neto (precio de mercado menos esta tarifa) se vuelve negativo, HSEM limita físicamente la exportación fotovoltaica en lugar de exportar con pérdidas. Ponlo a 0 si tu sensor de precio de exportación ya refleja el ingreso neto.",
           "hsem_electricity_price_update_interval": "Con qué frecuencia proporciona nuevos datos tu sensor de precios (15, 30 o 60 minutos)."
         },
         "description": "Configura tus sensores de precio de electricidad para los precios de importación y exportación.",
