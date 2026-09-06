@@ -169,6 +169,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Sensor de previsión de precio de importación (opcional)",
           "hsem_export_electricity_price_forecast_sensor": "Sensor de previsión de precio de exportación (opcional)",
           "hsem_export_electricity_min_price": "Precio mínimo de exportación requerido",
+          "hsem_curtail_pv_below_export_min_price": "Recortar exportación FV por debajo del precio mínimo",
           "hsem_electricity_price_update_interval": "Intervalo de actualización del precio de electricidad (minutos)"
         },
         "data_description": {
@@ -177,6 +178,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de importación (usado por Amber Electric e integraciones similares).",
           "hsem_export_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de exportación.",
           "hsem_export_electricity_min_price": "Define el precio mínimo de exportación. Las exportaciones por debajo de este precio se bloquearán.",
+          "hsem_curtail_pv_below_export_min_price": "Cuando está habilitado, bloquea físicamente toda la exportación a la red (el mismo límite que para precios negativos) cuando el precio de exportación cae por debajo del precio mínimo de exportación indicado arriba, incluso si sigue siendo positivo. Cuando está deshabilitado (predeterminado), el excedente de FV sigue exportándose hasta el límite de exportación a la red configurado para cualquier precio no negativo (issue #767); solo la exportación de batería a la red está controlada por el precio mínimo.",
           "hsem_electricity_price_update_interval": "Con qué frecuencia proporciona nuevos datos tu sensor de precios (15, 30 o 60 minutos)."
         },
         "description": "Configura tus sensores de precio de electricidad para los precios de importación y exportación.",
@@ -698,6 +700,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Sensor de previsión de precio de importación (opcional)",
           "hsem_export_electricity_price_forecast_sensor": "Sensor de previsión de precio de exportación (opcional)",
           "hsem_export_electricity_min_price": "Precio mínimo de exportación requerido",
+          "hsem_curtail_pv_below_export_min_price": "Recortar exportación FV por debajo del precio mínimo",
           "hsem_electricity_price_update_interval": "Intervalo de actualización del precio de electricidad (minutos)"
         },
         "data_description": {
@@ -706,6 +709,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de importación (usado por Amber Electric e integraciones similares).",
           "hsem_export_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de exportación.",
           "hsem_export_electricity_min_price": "Define el precio mínimo de exportación. Las exportaciones por debajo de este precio se bloquearán.",
+          "hsem_curtail_pv_below_export_min_price": "Cuando está habilitado, bloquea físicamente toda la exportación a la red (el mismo límite que para precios negativos) cuando el precio de exportación cae por debajo del precio mínimo de exportación indicado arriba, incluso si sigue siendo positivo. Cuando está deshabilitado (predeterminado), el excedente de FV sigue exportándose hasta el límite de exportación a la red configurado para cualquier precio no negativo (issue #767); solo la exportación de batería a la red está controlada por el precio mínimo.",
           "hsem_electricity_price_update_interval": "Con qué frecuencia proporciona nuevos datos tu sensor de precios (15, 30 o 60 minutos)."
         },
         "description": "Configura tus sensores de precio de electricidad para los precios de importación y exportación.",

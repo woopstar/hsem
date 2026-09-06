@@ -169,6 +169,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Stromimportpreis-Prognosesensor (optional)",
           "hsem_export_electricity_price_forecast_sensor": "Stromexportpreis-Prognosesensor (optional)",
           "hsem_export_electricity_min_price": "Erforderlicher Mindestexportpreis",
+          "hsem_curtail_pv_below_export_min_price": "PV-Export unter Mindestpreis abregeln",
           "hsem_electricity_price_update_interval": "Strompreis-Aktualisierungsintervall (Minuten)"
         },
         "data_description": {
@@ -177,6 +178,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Optional: Wähle einen separaten Sensor für Importpreis-Prognosen (verwendet von Amber Electric und ähnlichen Integrationen).",
           "hsem_export_electricity_price_forecast_sensor": "Optional: Wähle einen separaten Sensor für Exportpreis-Prognosen.",
           "hsem_export_electricity_min_price": "Lege den Mindestexportpreis fest. Exporte unterhalb dieses Preises werden blockiert.",
+          "hsem_curtail_pv_below_export_min_price": "Wenn aktiviert, wird die gesamte Netzeinspeisung physisch blockiert (dieselbe Grenze wie bei negativen Preisen), sobald der Exportpreis unter den oben festgelegten Mindestexportpreis fällt, auch wenn er noch positiv ist. Wenn deaktiviert (Standard), wird überschüssiger PV-Export weiterhin bis zum konfigurierten Netzexportlimit bei jedem nicht negativen Preis fortgesetzt (Issue #767); nur der Batterie-zu-Netz-Export wird durch den Mindestpreis gesteuert.",
           "hsem_electricity_price_update_interval": "Wie oft dein Preissensor neue Daten liefert (15, 30 oder 60 Minuten)."
         },
         "description": "Konfiguriere deine Strompreissensoren für Import- und Exportpreise.",
@@ -698,6 +700,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Stromimportpreis-Prognosesensor (optional)",
           "hsem_export_electricity_price_forecast_sensor": "Stromexportpreis-Prognosesensor (optional)",
           "hsem_export_electricity_min_price": "Erforderlicher Mindestexportpreis",
+          "hsem_curtail_pv_below_export_min_price": "PV-Export unter Mindestpreis abregeln",
           "hsem_electricity_price_update_interval": "Strompreis-Aktualisierungsintervall (Minuten)"
         },
         "data_description": {
@@ -706,6 +709,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Optional: Wähle einen separaten Sensor für Importpreis-Prognosen (verwendet von Amber Electric und ähnlichen Integrationen).",
           "hsem_export_electricity_price_forecast_sensor": "Optional: Wähle einen separaten Sensor für Exportpreis-Prognosen.",
           "hsem_export_electricity_min_price": "Lege den Mindestexportpreis fest. Exporte unterhalb dieses Preises werden blockiert.",
+          "hsem_curtail_pv_below_export_min_price": "Wenn aktiviert, wird die gesamte Netzeinspeisung physisch blockiert (dieselbe Grenze wie bei negativen Preisen), sobald der Exportpreis unter den oben festgelegten Mindestexportpreis fällt, auch wenn er noch positiv ist. Wenn deaktiviert (Standard), wird überschüssiger PV-Export weiterhin bis zum konfigurierten Netzexportlimit bei jedem nicht negativen Preis fortgesetzt (Issue #767); nur der Batterie-zu-Netz-Export wird durch den Mindestpreis gesteuert.",
           "hsem_electricity_price_update_interval": "Wie oft dein Preissensor neue Daten liefert (15, 30 oder 60 Minuten)."
         },
         "description": "Konfiguriere deine Strompreissensoren für Import- und Exportpreise.",

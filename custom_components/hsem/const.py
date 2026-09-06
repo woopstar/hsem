@@ -45,6 +45,10 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_deadline_time": "07:00",
     "hsem_ev_second_deadline_time": "07:00",
     "hsem_export_electricity_min_price": -0.00,
+    # Opt-in physical PV curtailment below export_electricity_min_price (issue #930).
+    # False = disabled (default) — preserves the #767 behavior where surplus PV
+    # export continues for any non-negative price.
+    "hsem_curtail_pv_below_export_min_price": False,
     "hsem_electricity_price_update_interval": 15,
     "hsem_export_electricity_price_sensor": "sensor.energi_data_service_produktion",
     "hsem_import_electricity_price_sensor": "sensor.energi_data_service",

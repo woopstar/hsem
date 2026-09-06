@@ -263,6 +263,9 @@ def build_sensor_config(
         )
         or 0.0
     )
+    cfg.curtail_pv_below_export_min_price = convert_to_boolean(
+        get_config_value(config_entry, "hsem_curtail_pv_below_export_min_price")
+    )
 
     # First EV charger
     ev = EVChargerConfig()

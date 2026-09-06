@@ -409,6 +409,203 @@ class TestInverterPowerControlSafetyGate:
         assert mock_wv.call_args.kwargs["desired"] == 10000
 
     @pytest.mark.asyncio
+    async def test_curtail_option_disabled_low_positive_price_keeps_exporting(self):
+        """Option disabled (default): low positive price must not block export.
+
+        Regression guard for issue #767's unconditional behavior — with
+        ``curtail_pv_below_export_min_price`` left at its default ``False``,
+        a positive export price below ``export_electricity_min_price`` must
+        not trigger a watt-limit write, exactly as before issue #930.
+        """
+        sensor = _make_sensor()
+        cfg = _make_cfg(read_only=False)
+        cfg.huawei_solar_device_id_inverter_1 = "device_abc"
+        cfg.huawei_solar_inverter_active_power_control = (
+            "sensor.inverter_active_power_control"
+        )
+        cfg.export_electricity_min_price = 0.22
+        cfg.curtail_pv_below_export_min_price = False
+
+        live = _make_live(degraded_mode=DegradedMode.OK)
+        live.export_electricity_price = 0.10
+        live.huawei_inverter_active_power_control = "Unlimited"
+
+        mock_state = MagicMock()
+        mock_state.state = "Unlimited"
+        sensor.hass.states.get.return_value = mock_state
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.utils.huawei.async_set_grid_export_power_watt"
+            ) as mock_watt_write,
+            patch(
+                "custom_components.hsem.utils.huawei.async_set_grid_export_power_pct"
+            ) as mock_pct_write,
+            patch(
+                "custom_components.hsem.custom_sensors.applier_power_control.async_write_and_verify",
+                new_callable=AsyncMock,
+            ) as mock_wv,
+        ):
+            _summary = await async_apply_inverter_power_control(sensor, cfg, live)
+
+        mock_watt_write.assert_not_called()
+        mock_pct_write.assert_not_called()
+        mock_wv.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_curtail_option_enabled_blocks_export_below_positive_threshold(self):
+        """Option enabled: a non-negative price below the threshold blocks export.
+
+        Issue #930 acceptance criterion: with the opt-in enabled, whenever
+        ``export_price < export_electricity_min_price`` (including
+        non-negative prices), the applier must write ``GRID_EXPORT_LIMIT_WATT``,
+        the same physical block used for negative prices.
+        """
+        from custom_components.hsem.const import GRID_EXPORT_LIMIT_WATT
+
+        sensor = _make_sensor()
+        cfg = _make_cfg(read_only=False)
+        cfg.huawei_solar_device_id_inverter_1 = "device_abc"
+        cfg.huawei_solar_inverter_active_power_control = (
+            "sensor.inverter_active_power_control"
+        )
+        cfg.export_electricity_min_price = 0.22
+        cfg.curtail_pv_below_export_min_price = True
+
+        live = _make_live(degraded_mode=DegradedMode.OK)
+        live.export_electricity_price = 0.10
+        # Inverter currently unlimited; must switch to the watt-limit block.
+        live.huawei_inverter_active_power_control = "Unlimited"
+
+        mock_state = MagicMock()
+        mock_state.state = "Unlimited"
+        sensor.hass.states.get.return_value = mock_state
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.utils.huawei.async_set_grid_export_power_pct"
+            ) as mock_pct_write,
+            patch(
+                "custom_components.hsem.custom_sensors.applier_power_control.async_write_and_verify",
+                new_callable=AsyncMock,
+            ) as mock_wv,
+        ):
+            from custom_components.hsem.utils.inverter_verify import ApplyResult
+
+            mock_wv.return_value = ApplyResult(
+                entity_id="sensor.inverter_active_power_control",
+                desired=GRID_EXPORT_LIMIT_WATT,
+                actual=GRID_EXPORT_LIMIT_WATT,
+                status=ApplyStatus.OK,
+                attempts=1,
+            )
+            _summary = await async_apply_inverter_power_control(sensor, cfg, live)
+
+        mock_pct_write.assert_not_called()
+        mock_wv.assert_called_once()
+        assert mock_wv.call_args.kwargs["desired"] == GRID_EXPORT_LIMIT_WATT
+
+    @pytest.mark.asyncio
+    async def test_curtail_option_enabled_allows_export_above_threshold(self):
+        """Option enabled: price at/above the threshold still exports up to the DNO cap."""
+        sensor = _make_sensor()
+        cfg = _make_cfg(read_only=False)
+        cfg.huawei_solar_device_id_inverter_1 = "device_abc"
+        cfg.huawei_solar_inverter_active_power_control = (
+            "sensor.inverter_active_power_control"
+        )
+        cfg.max_grid_export_power_kw = 10.0
+        cfg.export_electricity_min_price = 0.02
+        cfg.curtail_pv_below_export_min_price = True
+
+        live = _make_live(degraded_mode=DegradedMode.OK)
+        live.export_electricity_price = 0.05
+        live.huawei_inverter_active_power_control = "Unlimited"
+
+        mock_state = MagicMock()
+        mock_state.state = "Unlimited"
+        sensor.hass.states.get.return_value = mock_state
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.utils.huawei.async_set_grid_export_power_pct"
+            ) as mock_pct_write,
+            patch(
+                "custom_components.hsem.custom_sensors.applier_power_control.async_write_and_verify",
+                new_callable=AsyncMock,
+            ) as mock_wv,
+        ):
+            from custom_components.hsem.utils.inverter_verify import ApplyResult
+
+            mock_wv.return_value = ApplyResult(
+                entity_id="sensor.inverter_active_power_control",
+                desired=10000,
+                actual=10000,
+                status=ApplyStatus.OK,
+                attempts=1,
+            )
+            _summary = await async_apply_inverter_power_control(sensor, cfg, live)
+
+        mock_pct_write.assert_not_called()
+        mock_wv.assert_called_once()
+        assert mock_wv.call_args.kwargs["desired"] == 10000
+
+    @pytest.mark.asyncio
+    async def test_curtail_option_does_not_affect_negative_price_block(self):
+        """Negative export prices always block export, regardless of the opt-in.
+
+        Covers both option states to prove the negative-price path is
+        unaffected either way (issue #930 acceptance criterion).
+        """
+        from custom_components.hsem.const import GRID_EXPORT_LIMIT_WATT
+
+        for opt_in in (False, True):
+            sensor = _make_sensor()
+            cfg = _make_cfg(read_only=False)
+            cfg.huawei_solar_device_id_inverter_1 = "device_abc"
+            cfg.huawei_solar_inverter_active_power_control = (
+                "sensor.inverter_active_power_control"
+            )
+            cfg.export_electricity_min_price = 0.22
+            cfg.curtail_pv_below_export_min_price = opt_in
+
+            live = _make_live(degraded_mode=DegradedMode.OK)
+            live.export_electricity_price = -0.05
+            live.huawei_inverter_active_power_control = "Unlimited"
+
+            mock_state = MagicMock()
+            mock_state.state = "Unlimited"
+            sensor.hass.states.get.return_value = mock_state
+
+            with (
+                patch(_LOGGER_PATCH, new_callable=MagicMock),
+                patch(
+                    "custom_components.hsem.utils.huawei.async_set_grid_export_power_pct"
+                ) as mock_pct_write,
+                patch(
+                    "custom_components.hsem.custom_sensors.applier_power_control.async_write_and_verify",
+                    new_callable=AsyncMock,
+                ) as mock_wv,
+            ):
+                from custom_components.hsem.utils.inverter_verify import ApplyResult
+
+                mock_wv.return_value = ApplyResult(
+                    entity_id="sensor.inverter_active_power_control",
+                    desired=GRID_EXPORT_LIMIT_WATT,
+                    actual=GRID_EXPORT_LIMIT_WATT,
+                    status=ApplyStatus.OK,
+                    attempts=1,
+                )
+                _summary = await async_apply_inverter_power_control(sensor, cfg, live)
+
+            mock_pct_write.assert_not_called()
+            mock_wv.assert_called_once()
+            assert mock_wv.call_args.kwargs["desired"] == GRID_EXPORT_LIMIT_WATT
+
+    @pytest.mark.asyncio
     async def test_grid_export_cap_skips_when_already_at_limit(self):
         """No write is needed when the inverter already reports the configured cap."""
         sensor = _make_sensor()

@@ -86,6 +86,12 @@ async def get_prices_step_schema(
                     }
                 }
             ),
+            vol.Optional(
+                "hsem_curtail_pv_below_export_min_price",
+                default=get_config_value(
+                    config_entry, "hsem_curtail_pv_below_export_min_price"
+                ),
+            ): selector({"boolean": {}}),
             vol.Required(
                 "hsem_electricity_price_update_interval",
                 default=str(

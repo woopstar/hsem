@@ -129,6 +129,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Import-elprisprognose-sensor (valgfri)",
           "hsem_export_electricity_price_forecast_sensor": "Eksport-elprisprognose-sensor (valgfri)",
           "hsem_export_electricity_min_price": "Minimum eksportpris påkrævet",
+          "hsem_curtail_pv_below_export_min_price": "Begræns PV-eksport under minimumspris",
           "hsem_electricity_price_update_interval": "Elpris opdateringsinterval (minutter)"
         },
         "data_description": {
@@ -137,6 +138,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Valgfrit: vælg en separat sensor til importprisprognoser (bruges af Amber Electric og lignende integrationer).",
           "hsem_export_electricity_price_forecast_sensor": "Valgfrit: vælg en separat sensor til eksportprisprognoser.",
           "hsem_export_electricity_min_price": "Indstil minimumsprisen for eksport. Eksport under denne pris blokeres.",
+          "hsem_curtail_pv_below_export_min_price": "Når aktiveret, blokeres al neteksport fysisk (samme grænse som ved negative priser), når eksportprisen falder under minimumseksportprisen ovenfor, selv hvis den stadig er positiv. Når deaktiveret (standard), fortsætter overskydende PV-eksport op til den konfigurerede neteksportgrænse ved enhver ikke-negativ pris (issue #767); kun batteri-til-net-eksport styres af minimumsprisen.",
           "hsem_electricity_price_update_interval": "Hvor ofte din prissensor giver nye data (15, 30 eller 60 minutter)."
         },
         "description": "Konfigurer dine elprissensorer til import- og eksportpriser.",
@@ -658,6 +660,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Import-elprisprognose-sensor (valgfri)",
           "hsem_export_electricity_price_forecast_sensor": "Eksport-elprisprognose-sensor (valgfri)",
           "hsem_export_electricity_min_price": "Minimum eksportpris påkrævet",
+          "hsem_curtail_pv_below_export_min_price": "Begræns PV-eksport under minimumspris",
           "hsem_electricity_price_update_interval": "Elpris opdateringsinterval (minutter)"
         },
         "data_description": {
@@ -666,6 +669,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Valgfrit: vælg en separat sensor til importprisprognoser (bruges af Amber Electric og lignende integrationer).",
           "hsem_export_electricity_price_forecast_sensor": "Valgfrit: vælg en separat sensor til eksportprisprognoser.",
           "hsem_export_electricity_min_price": "Indstil minimumsprisen for eksport. Eksport under denne pris blokeres.",
+          "hsem_curtail_pv_below_export_min_price": "Når aktiveret, blokeres al neteksport fysisk (samme grænse som ved negative priser), når eksportprisen falder under minimumseksportprisen ovenfor, selv hvis den stadig er positiv. Når deaktiveret (standard), fortsætter overskydende PV-eksport op til den konfigurerede neteksportgrænse ved enhver ikke-negativ pris (issue #767); kun batteri-til-net-eksport styres af minimumsprisen.",
           "hsem_electricity_price_update_interval": "Hvor ofte din prissensor giver nye data (15, 30 eller 60 minutter)."
         },
         "description": "Konfigurer dine elprissensorer til import- og eksportpriser.",
