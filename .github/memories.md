@@ -1039,6 +1039,31 @@ Regression tests: `tests/test_avg_sensor_partial_day.py`.
 
 ---
 
+## Avg Sensor Must Reject Negative/Non-Finite Utility-Meter Readings (issue #938)
+
+`HSEMAvgSensor._async_store_utility_meter_value` and the `async_added_to_hass`
+restore path never validated the tracked utility-meter's value before writing
+it into `self._measurements`. A misconfigured net-consumption accounting mode
+produced one negative reading; once persisted it became the sole "1d" sample
+(the "1d" window holds only 1 entry) and kept `assess_load_forecast()`
+(`coordinator_helpers.py`, ~line 436) fail-closed with
+`reason="invalid_future_values"` — engaging `safety_hold` — even after the
+source misconfiguration was corrected, because the window would not refresh
+until that specific hour block completed again on a later day.
+
+Canonical rule: **reject non-finite/negative readings before they ever reach
+`self._measurements`**, both at write time (`_async_store_utility_meter_value`
+— log a warning and skip storing, leaving any existing sample for that date
+untouched) and at restore time (`async_added_to_hass` — drop bad entries out
+of the restored `measurements` dict so a value persisted by a pre-fix version
+is never replayed). A rejected sample leaves the sensor `unavailable` (never
+a negative published average), so the very next completed block produces a
+fresh valid sample instead of waiting out a multi-day window.
+
+Regression tests: `tests/test_avg_sensor_negative_guard.py`.
+
+---
+
 ## Solar-Charge Mislabel at Zero PV (issue #720 follow-up)
 
 `apply_optimization_strategy` used `NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH`

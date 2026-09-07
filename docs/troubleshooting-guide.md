@@ -101,6 +101,15 @@ zero-load forecast.
 - **Fix:** Wait for the next statistics cycle (usually 5 minutes), or repair an
   average sensor that remains unavailable. HSEM retries every minute and runs a
   fresh plan when the profile recovers.
+- **Misconfigured utility meter (e.g. net-consumption accounting) producing a
+  negative reading:** the rolling-average sensors
+  (`sensor.hsem_*_avg_energy_{1,3,7,14}d_*`) reject non-finite/negative
+  readings before storing them — a bad reading is logged and skipped rather
+  than persisted, so the sensor reports `unavailable` for that block instead
+  of a negative value. Once the source configuration is corrected, the next
+  completed hour block stores a valid sample and `load_forecast_ready`
+  recovers on the next cycle — it does not wait for a multi-day window to
+  age out the bad entry.
 
 ---
 
