@@ -48,6 +48,14 @@ _TRACKED_RESPONSE_ACTIONS = frozenset(
     {"RemoteStartTransaction", "SetChargingProfile", "RemoteStopTransaction"}
 )
 
+# Upper bound on outstanding outbound calls remembered per session, so the
+# pending_calls map stays small across retries while still keeping both
+# halves of a same-action pair (TxDefaultProfile + TxProfile) resolvable
+# when their CALLRESULTs arrive (issue #920 follow-up). Oldest entries are
+# dropped first; a charger that never answers a call would otherwise leak
+# one entry per attempt.
+_MAX_PENDING_CALLS = 8
+
 # Minimum seconds between RemoteStartTransaction retries while a session
 # still hasn't confirmed a transaction (issue #892). Rejected, dropped, or
 # unanswered start requests are retried on this cadence rather than only
@@ -133,6 +141,18 @@ class OCPPCommandsMixin:
     _stall_logged: bool
     _chargers: dict[str, ChargerSession]
 
+    # Declared (not assigned) so mypy resolves these against
+    # OCPPControlMixin, which composes into the same OCPPServer (issue
+    # #920) — capability lookups read from the charger's own
+    # GetConfiguration reply rather than assuming defaults.
+    profile_stack_levels: Callable[[ChargerSession], tuple[int, int]]
+    station_max_current_a: Callable[[ChargerSession], int | None]
+    ensure_charging_allowed: Callable[[ChargerSession], Coroutine[Any, Any, None]]
+
+    # Declared (not assigned) so mypy resolves this against
+    # OCPPProfilesMixin — the generic, fully standards-only stop mechanism.
+    _send_zero_current_profile: Callable[[ChargerSession], Coroutine[Any, Any, bool]]
+
     async def _notify_significant_event(self) -> None:
         """Trigger a debounced coordinator refresh after a significant event.
 
@@ -202,15 +222,24 @@ class OCPPCommandsMixin:
             msg_id = f"hsem-{datetime.now(UTC).timestamp()}"
             msg = json.dumps([_CALL, msg_id, action, payload])
             await session.websocket.send_str(msg)
-            if action in _TRACKED_RESPONSE_ACTIONS:
-                stale = [
-                    pending_id
-                    for pending_id, pending_action in session.pending_calls.items()
-                    if pending_action == action
-                ]
-                for pending_id in stale:
-                    del session.pending_calls[pending_id]
-                session.pending_calls[msg_id] = action
+            _LOGGER.debug(
+                "OCPP CALL to %s (id=%s, action=%s): %s",
+                session.cpid,
+                msg_id,
+                action,
+                payload,
+            )
+            # Track every outbound action, not just the three whose status
+            # feeds last_call_status — otherwise a CALLRESULT for anything
+            # else logs as "action=None" and can't be matched to what it
+            # answers, which is exactly what wire-level debugging needs
+            # (issue #920 follow-up). Two calls of the *same* action sent
+            # back-to-back (the TxDefaultProfile/TxProfile pair) must both
+            # stay resolvable, so entries are bounded by count rather than
+            # purged by action name.
+            session.pending_calls[msg_id] = action
+            while len(session.pending_calls) > _MAX_PENDING_CALLS:
+                session.pending_calls.pop(next(iter(session.pending_calls)))
             return True
         except Exception:
             _LOGGER.exception(
@@ -244,6 +273,10 @@ class OCPPCommandsMixin:
             ``True`` if the message was written to the socket.
         """
         self._last_remote_start_attempt = now if now is not None else datetime.now(UTC)
+        # Also needed here, not just in the public bypass: the anti-flap
+        # path reaches this directly, and a charger left locally forced off
+        # would accept the start below and ignore it (issue #920).
+        await self.ensure_charging_allowed(session)
         payload = {"idTag": _REMOTE_START_ID_TAG}
         sent = await self._send_call(session, "RemoteStartTransaction", payload)
         if sent:
@@ -251,61 +284,6 @@ class OCPPCommandsMixin:
                 "Sent RemoteStartTransaction to %s (idTag=%s)",
                 session.cpid,
                 _REMOTE_START_ID_TAG,
-            )
-        return sent
-
-    async def _send_set_charging_profile(
-        self, session: ChargerSession, max_power_w: int, max_current_a: int = 16
-    ) -> bool:
-        """Send a ``SetChargingProfile`` request.
-
-        Builds a TxDefaultProfile that limits charging to *max_current_a*
-        amps, which at 230 V nominally equals *max_power_w*.
-
-        Args:
-            session: The charger session.
-            max_power_w: Maximum charging power in watts.
-            max_current_a: Maximum current in amperes.
-
-        Returns:
-            ``True`` if the message was written to the socket. Bookkeeping
-            (:attr:`_last_sent_target`, :attr:`_last_sent_current_a`) is
-            only updated on success (issue #892) — a failed send must not
-            be remembered as the charger's current ceiling, or the
-            material-change dedup filter would wrongly suppress a rightful
-            retry.
-        """
-        # OCPP 1.6 ChargingProfile structure
-        charging_profile = {
-            "chargingProfileId": 1,
-            "stackLevel": 0,
-            "chargingProfilePurpose": "TxDefaultProfile",
-            "chargingProfileKind": "Relative",
-            "chargingSchedule": {
-                "chargingRateUnit": "A",
-                "chargingSchedulePeriod": [
-                    {
-                        "startPeriod": 0,
-                        "limit": max_current_a,
-                    }
-                ],
-            },
-        }
-
-        payload = {
-            "connectorId": 1,
-            "csChargingProfiles": charging_profile,
-        }
-
-        sent = await self._send_call(session, "SetChargingProfile", payload)
-        if sent:
-            self._last_sent_target = float(max_power_w)
-            self._last_sent_current_a = max_current_a
-            _LOGGER.debug(
-                "Sent SetChargingProfile to %s: max %d A (~%d W)",
-                session.cpid,
-                max_current_a,
-                max_power_w,
             )
         return sent
 
@@ -341,6 +319,37 @@ class OCPPCommandsMixin:
         self._last_remote_stop_attempt = now if now is not None else datetime.now(UTC)
         self._last_sent_target = -1.0
         self._last_sent_current_a = -1
+
+        # Stopping is standard OCPP only (issue #920 follow-up):
+        #
+        #   1. a 0 A charging profile — the idiomatic, fully generic way an
+        #      energy-management system says "draw nothing";
+        #   2. RemoteStopTransaction, below — the correct protocol action
+        #      for ending the transaction itself.
+        #
+        # No vendor key is written here. This was originally step 3 of a
+        # three-step ladder (a vendor `ForceState` write, escalated to
+        # automatically on every stop) — but user testing proved a bare 0 A
+        # profile alone (no RemoteStop, no vendor write) stops a go-e
+        # Charger V4 and is reported by the charger's own app as "stopped
+        # by OCPP". Writing a vendor key unconditionally when the generic
+        # mechanism already works contradicts the point of trying
+        # generic-first: it would leave the charger locally forced off
+        # after every single stop for no reason, so that step was removed
+        # entirely. A charger that genuinely needs a vendor write to
+        # actually stop is still reachable manually via the
+        # `ocpp_debug_set_configuration` service.
+        #
+        # Step 1 runs before the transaction check because a charger can
+        # free-vend with no transaction open at all, so "nothing to stop"
+        # must not mean "do nothing" — but only when something plausibly
+        # *is* charging. A TxDefaultProfile persists on the charger, so
+        # writing 0 A when HSEM never started anything (e.g. a target that
+        # flipped to zero before the start window even fired) would leave
+        # a lasting block on a connector HSEM never commanded, and could
+        # silently stop the user charging by hand.
+        if session.transaction_id is not None or session.status == "Charging":
+            await self._send_zero_current_profile(session)
         if session.transaction_id is None:
             _LOGGER.debug(
                 "OCPP %s has no active transaction — skipping "
@@ -420,43 +429,58 @@ class OCPPCommandsMixin:
         self._stalled = False
         self._stall_logged = False
 
-    async def send_set_charging_profile(
-        self, cpid: str, max_power_w: int, max_current_a: int = 16
-    ) -> bool:
-        """Directly send a ``SetChargingProfile`` to a charger.
+    async def send_remote_start(self, cpid: str) -> bool:
+        """Directly send a ``RemoteStartTransaction`` to a charger.
 
-        Bypasses the anti-flap state machine.  Use
-        :meth:`~ocpp_server.OCPPServer.update_charge_target` for normal
-        planner-driven operation.
+        Bypasses the anti-flap state machine — see
+        :meth:`send_set_charging_profile` for why the equivalent bypass
+        methods are not used for normal planner-driven operation. Wired to
+        the ``ocpp_debug_start_charging`` service (issue #920) for
+        diagnosing a charger that won't start over OCPP, without waiting
+        out the start window or the planner's own target.
 
-        No HA service registers this as a manual override (see issue #843
-        — deliberately left unwired: registering it would let a user bypass
-        the anti-flap safety window with no corresponding product need).
-        Kept as public API for direct/test use.
+        A charger rejects ``RemoteStartTransaction`` outright when the
+        connector already has a transaction in progress, so an active
+        transaction is skipped rather than re-authorized (issue #920
+        follow-up) — the same precondition
+        :meth:`_send_remote_start` documents for its own callers, and the
+        mirror of :meth:`_send_remote_stop`'s "nothing to stop" skip.
 
         Args:
             cpid: Charge-point identifier.
-            max_power_w: Maximum charging power in watts.
-            max_current_a: Maximum current in amperes.
 
         Returns:
-            ``True`` if the message was written to the socket.
+            ``True`` if the message was written to the socket, or if a
+            transaction was already running (nothing to start counts as
+            success).
         """
         if cpid not in self._chargers:
             _LOGGER.warning(
-                "Cannot send SetChargingProfile — charger %s not connected", cpid
+                "Cannot send RemoteStartTransaction — charger %s not connected", cpid
             )
             return False
-        return await self._send_set_charging_profile(
-            self._chargers[cpid], max_power_w, max_current_a
-        )
+        session = self._chargers[cpid]
+        # Take the charger back from any local "don't charge" state first,
+        # or the start below is accepted and then ignored (issue #920).
+        await self.ensure_charging_allowed(session)
+        if session.transaction_id is not None:
+            _LOGGER.info(
+                "OCPP %s already has transaction %s in progress — skipping "
+                "RemoteStartTransaction (a charger rejects it while one is "
+                "open; stop it first to start a new one)",
+                cpid,
+                session.transaction_id,
+            )
+            return True
+        return await self._send_remote_start(session)
 
     async def send_remote_stop(self, cpid: str) -> bool:
         """Directly send a ``RemoteStopTransaction`` to a charger.
 
-        Bypasses the anti-flap state machine — see
-        :meth:`send_set_charging_profile` for why this is intentionally not
-        wired to an HA service (issue #843).
+        Bypasses the anti-flap state machine. Wired to the
+        ``ocpp_debug_stop_charging`` service (issue #920) — see
+        :meth:`send_set_charging_profile` for why bypassing the anti-flap
+        window is reserved for manual debugging, not normal operation.
 
         Args:
             cpid: Charge-point identifier.
@@ -473,4 +497,14 @@ class OCPPCommandsMixin:
         return await self._send_remote_stop(self._chargers[cpid])
 
 
-__all__ = ["CHARGER_STALL_THRESHOLD_S", "OCPPCommandsMixin", "charger_appears_stalled"]
+__all__ = [
+    "CHARGER_STALL_THRESHOLD_S",
+    "TRACKED_RESPONSE_ACTIONS",
+    "OCPPCommandsMixin",
+    "charger_appears_stalled",
+]
+
+#: Public alias — :mod:`ocpp_server` needs this to decide whether a
+#: CALLRESULT's status belongs in ``last_call_status`` now that every
+#: outbound action is tracked in ``pending_calls`` (issue #920 follow-up).
+TRACKED_RESPONSE_ACTIONS = _TRACKED_RESPONSE_ACTIONS

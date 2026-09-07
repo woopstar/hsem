@@ -12,6 +12,7 @@ Features (index order):
 
 from __future__ import annotations
 
+import bisect
 import math
 from datetime import UTC, datetime, timedelta
 from typing import override
@@ -161,6 +162,12 @@ class ConsumptionPredictor:
         w = np.zeros(n, dtype=np.float64)
 
         temps = temperatures or {}
+        # Sorted once per call so the per-sample lookup below is O(log M)
+        # instead of rebuilding and linearly scanning the whole dict for
+        # every one of the (potentially thousands of) history samples.
+        sorted_temps = (
+            self._sorted_temperature_points(temps) if self._use_temperature else []
+        )
         self._raw_groups.clear()
 
         # Sequential lag follows physical time, not wall-clock slot order.
@@ -211,7 +218,7 @@ class ConsumptionPredictor:
                     second=0,
                     microsecond=0,
                 )
-                temperature_value = self._lookup_temperature(temps, slot_start)
+                temperature_value = self._nearest_from_sorted(sorted_temps, slot_start)
                 X[valid, self._temp_offset] = temperature_value
 
             # A lag is valid only across one exact physical interval.  Reset
@@ -348,6 +355,8 @@ class ConsumptionPredictor:
             return {}
 
         temps = temperatures or {}
+        # Sorted once per call — see the identical optimization in train().
+        sorted_temps = self._sorted_temperature_points(temps) if temps else None
         slot_minutes = 1440 // self._slots_per_day
         slot_duration = timedelta(minutes=slot_minutes)
         prev = 0.0
@@ -366,7 +375,11 @@ class ConsumptionPredictor:
         for physical_start in sorted(physical_slots):
             slot_dt = physical_slots[physical_start]
             slot = (slot_dt.hour * 60 + slot_dt.minute) // slot_minutes
-            temp_val = self._lookup_temperature(temps, slot_dt) if temps else None
+            temp_val = (
+                self._nearest_from_sorted(sorted_temps, slot_dt)
+                if sorted_temps is not None
+                else None
+            )
             is_contiguous = (
                 prev_timestamp_utc is not None
                 and physical_start - prev_timestamp_utc == slot_duration
@@ -518,27 +531,60 @@ class ConsumptionPredictor:
         temperatures: dict[datetime, float],
         target: datetime,
     ) -> float:
-        """Find the temperature closest to the target physical timestamp."""
-        finite_temperatures = [
-            (timestamp, value)
+        """Find the temperature closest to the target physical timestamp.
+
+        Convenience wrapper for a single ad-hoc lookup.  Callers that need
+        many lookups against the same *temperatures* dict (``train()``,
+        ``predict_sequential()``) should sort once with
+        ``_sorted_temperature_points`` and reuse ``_nearest_from_sorted`` —
+        rebuilding and linearly scanning the whole dict per call turns an
+        O(n) training pass into O(n * m).
+        """
+        sorted_points = ConsumptionPredictor._sorted_temperature_points(temperatures)
+        return ConsumptionPredictor._nearest_from_sorted(sorted_points, target)
+
+    @staticmethod
+    def _sorted_temperature_points(
+        temperatures: dict[datetime, float],
+    ) -> list[tuple[datetime, float]]:
+        """Pre-sort finite temperature points by UTC instant.
+
+        Enables O(log m) nearest-neighbour lookups via ``_nearest_from_sorted``
+        instead of an O(m) rebuild-and-scan per call.
+        """
+        points = [
+            (
+                (
+                    timestamp
+                    if timestamp.tzinfo is not None
+                    else timestamp.astimezone()
+                ).astimezone(UTC),
+                value,
+            )
             for timestamp, value in temperatures.items()
             if math.isfinite(value)
         ]
-        if not finite_temperatures:
+        points.sort(key=lambda item: item[0])
+        return points
+
+    @staticmethod
+    def _nearest_from_sorted(
+        sorted_points: list[tuple[datetime, float]],
+        target: datetime,
+    ) -> float:
+        """Return the temperature nearest to *target* from pre-sorted UTC points."""
+        if not sorted_points:
             return 0.0
         target_aware = target if target.tzinfo is not None else target.astimezone()
         target_utc = target_aware.astimezone(UTC)
 
-        def physical_distance(item: tuple[datetime, float]) -> float:
-            timestamp = item[0]
-            aware = (
-                timestamp
-                if timestamp.tzinfo is not None
-                else timestamp.replace(tzinfo=target_aware.tzinfo)
-            )
-            return abs((aware.astimezone(UTC) - target_utc).total_seconds())
+        index = bisect.bisect_left(sorted_points, target_utc, key=lambda item: item[0])
+        candidates = sorted_points[max(index - 1, 0) : index + 1]
 
-        _best_timestamp, best_value = min(finite_temperatures, key=physical_distance)
+        _best_timestamp, best_value = min(
+            candidates,
+            key=lambda item: abs((item[0] - target_utc).total_seconds()),
+        )
         return best_value
 
     # ------------------------------------------------------------------
