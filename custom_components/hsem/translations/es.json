@@ -176,7 +176,7 @@
           "hsem_export_electricity_price_sensor": "Selecciona el sensor que proporciona los precios de electricidad de exportación.",
           "hsem_import_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de importación (usado por Amber Electric e integraciones similares).",
           "hsem_export_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de exportación.",
-          "hsem_export_electricity_min_price": "Define el precio mínimo de exportación. Las exportaciones por debajo de este precio se bloquearán.",
+          "hsem_export_electricity_min_price": "Límite por franja horaria para la exportación forzada de batería a la red. Por debajo de este precio, HSEM no obliga a la batería a descargarse hacia la red; la batería sigue cubriendo el consumo de la casa con normalidad, y alcanzar el umbral no activa la exportación automáticamente. Esto no bloquea la exportación fotovoltaica: el excedente solar sigue exportándose a cualquier precio no negativo. Solo un precio de exportación negativo hace que HSEM bloquee toda la exportación a la red, ya que entonces exportar costaría dinero.",
           "hsem_electricity_price_update_interval": "Con qué frecuencia proporciona nuevos datos tu sensor de precios (15, 30 o 60 minutos)."
         },
         "description": "Configura tus sensores de precio de electricidad para los precios de importación y exportación.",
@@ -705,7 +705,7 @@
           "hsem_export_electricity_price_sensor": "Selecciona el sensor que proporciona los precios de electricidad de exportación.",
           "hsem_import_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de importación (usado por Amber Electric e integraciones similares).",
           "hsem_export_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de exportación.",
-          "hsem_export_electricity_min_price": "Define el precio mínimo de exportación. Las exportaciones por debajo de este precio se bloquearán.",
+          "hsem_export_electricity_min_price": "Límite por franja horaria para la exportación forzada de batería a la red. Por debajo de este precio, HSEM no obliga a la batería a descargarse hacia la red; la batería sigue cubriendo el consumo de la casa con normalidad, y alcanzar el umbral no activa la exportación automáticamente. Esto no bloquea la exportación fotovoltaica: el excedente solar sigue exportándose a cualquier precio no negativo. Solo un precio de exportación negativo hace que HSEM bloquee toda la exportación a la red, ya que entonces exportar costaría dinero.",
           "hsem_electricity_price_update_interval": "Con qué frecuencia proporciona nuevos datos tu sensor de precios (15, 30 o 60 minutos)."
         },
         "description": "Configura tus sensores de precio de electricidad para los precios de importación y exportación.",

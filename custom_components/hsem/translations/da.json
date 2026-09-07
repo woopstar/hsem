@@ -136,7 +136,7 @@
           "hsem_export_electricity_price_sensor": "Vælg den sensor, der leverer eksport-elpriser.",
           "hsem_import_electricity_price_forecast_sensor": "Valgfrit: vælg en separat sensor til importprisprognoser (bruges af Amber Electric og lignende integrationer).",
           "hsem_export_electricity_price_forecast_sensor": "Valgfrit: vælg en separat sensor til eksportprisprognoser.",
-          "hsem_export_electricity_min_price": "Indstil minimumsprisen for eksport. Eksport under denne pris blokeres.",
+          "hsem_export_electricity_min_price": "Grænse pr. tidsrum for tvungen batteri-til-net-eksport. Under denne pris tvinger HSEM ikke batteriet til at aflade til nettet – batteriet dækker stadig husets forbrug som normalt, og at nå tærsklen udløser ikke automatisk eksport. Dette blokerer ikke PV-eksport: overskydende solenergi eksporteres fortsat ved enhver ikke-negativ pris. Kun en negativ eksportpris får HSEM til at blokere al net-eksport, da eksport så koster penge.",
           "hsem_electricity_price_update_interval": "Hvor ofte din prissensor giver nye data (15, 30 eller 60 minutter)."
         },
         "description": "Konfigurer dine elprissensorer til import- og eksportpriser.",
@@ -665,7 +665,7 @@
           "hsem_export_electricity_price_sensor": "Vælg den sensor, der leverer eksport-elpriser.",
           "hsem_import_electricity_price_forecast_sensor": "Valgfrit: vælg en separat sensor til importprisprognoser (bruges af Amber Electric og lignende integrationer).",
           "hsem_export_electricity_price_forecast_sensor": "Valgfrit: vælg en separat sensor til eksportprisprognoser.",
-          "hsem_export_electricity_min_price": "Indstil minimumsprisen for eksport. Eksport under denne pris blokeres.",
+          "hsem_export_electricity_min_price": "Grænse pr. tidsrum for tvungen batteri-til-net-eksport. Under denne pris tvinger HSEM ikke batteriet til at aflade til nettet – batteriet dækker stadig husets forbrug som normalt, og at nå tærsklen udløser ikke automatisk eksport. Dette blokerer ikke PV-eksport: overskydende solenergi eksporteres fortsat ved enhver ikke-negativ pris. Kun en negativ eksportpris får HSEM til at blokere al net-eksport, da eksport så koster penge.",
           "hsem_electricity_price_update_interval": "Hvor ofte din prissensor giver nye data (15, 30 eller 60 minutter)."
         },
         "description": "Konfigurer dine elprissensorer til import- og eksportpriser.",

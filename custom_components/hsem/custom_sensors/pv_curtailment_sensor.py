@@ -2,7 +2,13 @@
 
 Curtailment occurs when the inverter throttles solar production because there
 is no place for the energy to go — the battery is full, house consumption is
-low, and grid export is blocked (export price below the configured minimum).
+low, and grid export is physically blocked. Since issue #767, HSEM only
+physically blocks the whole grid connection point when the export price is
+**negative** (exporting would cost money); a positive-but-low export price
+below ``export_electricity_min_price``/``batteries_export_min_price`` only
+gates intentional *battery*-to-grid export, PV surplus keeps exporting
+normally. Do not conflate "export price below the configured minimum" with
+"grid export is blocked" — see ``applier_power_control.py``.
 
 The sensor uses two complementary detection methods:
 
@@ -16,8 +22,8 @@ The sensor uses two complementary detection methods:
    non-negative export price regardless of price-based curtailment.
 
 2. **Derived**: When the battery SoC is high (≥ 95 %) AND the export price
-   is below the minimum threshold, curtailment is likely even if the direct
-   register has not yet updated.
+   is negative (the only case where HSEM itself blocks grid export),
+   curtailment is likely even if the direct register has not yet updated.
 
 The sensor state is either ``"curtailed"`` or ``"normal"``.
 """
@@ -64,9 +70,13 @@ _UNLIMITED_STATES: frozenset[str] = frozenset(
 # combined with export price blocking.
 _DERIVED_SOC_THRESHOLD: float = 95.0
 
-# Export price threshold (currency/kWh) below which export is considered
-# blocked for the derived detection method.
-_DERIVED_EXPORT_PRICE_THRESHOLD: float = 0.01
+# Export price (currency/kWh) at/above which the applier keeps the grid
+# connection point unlimited (issue #767) — PV surplus export is never
+# blocked by ``export_electricity_min_price``/``batteries_export_min_price``,
+# only intentional battery-to-grid export is gated. Only a strictly negative
+# export price causes the applier to physically block the whole connection
+# point, so that is the only price condition the derived heuristic may use.
+_DERIVED_EXPORT_PRICE_THRESHOLD: float = 0.0
 
 # Tolerance (W) when comparing the inverter's reported watt limit against the
 # expected routine grid-export cap, to absorb minor Modbus read-back rounding.
@@ -235,7 +245,8 @@ def _is_derived_curtailment(live: Any) -> bool:
     Curtailment is likely when:
     - PV is actually producing (> 0 W)
     - Battery SoC is high (≥ ``_DERIVED_SOC_THRESHOLD``)
-    - Export price is below the minimum (effectively blocked)
+    - Export price is negative (the only case where HSEM's applier
+      physically blocks the whole grid connection point — issue #767)
     - The active power control register is unavailable (None)
 
     If the register is available and says "Unlimited", the inverter is
@@ -256,7 +267,9 @@ def _is_derived_curtailment(live: Any) -> bool:
     if soc is None or soc < _DERIVED_SOC_THRESHOLD:
         return False
 
-    # Export must be price-blocked.
+    # Export must be negative-price-blocked (issue #767 — a positive-but-low
+    # price below the configured minimum does NOT block PV export, only
+    # intentional battery-to-grid export).
     export_price = live.export_electricity_price
     if export_price >= _DERIVED_EXPORT_PRICE_THRESHOLD:
         return False
