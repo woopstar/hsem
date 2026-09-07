@@ -65,8 +65,18 @@ def _build_objective(
     current_kwh: float = 0.0,
     pv_avail: np.ndarray | None = None,  # type: ignore[name-defined]
     base_load: np.ndarray | None = None,  # type: ignore[name-defined]
+    export_fee_per_kwh: float = 0.0,
 ) -> np.ndarray:  # type: ignore[name-defined]
     """Build the linear objective vector for the MILP.
+
+    Args:
+        export_fee_per_kwh: Retailer margin/balancing fee per kWh exported
+            (issue #925). Netted out of ``p_exp`` for every export-revenue
+            and terminal-SoC term below, so the LP itself prefers
+            curtailment (``curt[t]``, zero objective cost) over an export
+            whose net revenue is negative — without any new hard
+            constraint. Does not affect ``p_exp`` used elsewhere (e.g. the
+            battery-export floor mask), only this function's own economics.
 
     Returns:
         Numpy array ``c_obj`` of length ``n_vars``.
@@ -74,6 +84,12 @@ def _build_objective(
     import numpy as np
 
     c_obj = np.zeros(n_vars)
+
+    # Net export price for this objective's own economics only (issue #925).
+    # The battery-export floor mask (computed upstream in sanitize_prices)
+    # intentionally stays on the raw price — only economic terms here use
+    # the fee-adjusted value.
+    p_exp_net = p_exp - export_fee_per_kwh if export_fee_per_kwh > 1e-9 else p_exp
 
     # Deferred-export correction (issue #592): for each LP slot, the
     # minimum export price among later slots whose PV surplus exceeds the
@@ -91,6 +107,7 @@ def _build_objective(
             usable_kwh=usable_kwh,
             max_charge_per_slot=max_charge_per_slot,
             now=now,
+            export_fee_per_kwh=export_fee_per_kwh,
         )
         _deferred_by_lp_idx = [_by_slot_idx[i] for i in future_idx]
 
@@ -113,7 +130,7 @@ def _build_objective(
         # Cycle cost through auxiliary variable m[t] (= max(ec, ed))
         c_obj[m_off + t] = cycle_cost_per_kwh * discount
         c_obj[gi_off + t] = p_imp_obj[t] * discount  # grid import cost
-        c_obj[ge_off + t] = -p_exp[t] * discount  # export revenue (negative = gain)
+        c_obj[ge_off + t] = -p_exp_net[t] * discount  # export revenue (negative = gain)
         c_obj[battery_export_off + t] = _BATTERY_EXPORT_SOURCE_TIEBREAK
         # pv[t] has zero objective cost
         # curt[t] has zero objective cost (curtailment is free)
@@ -187,7 +204,7 @@ def _build_objective(
             _charge_premium = compute_charge_premium(
                 replacement_price_per_kwh=replacement_price_per_kwh,
                 imp_price_obj=p_imp_obj[t],
-                exp_price=p_exp[t],
+                exp_price=p_exp_net[t],
                 charge_eff=charge_eff,
                 deferred_export_price=(
                     _deferred_by_lp_idx[t] if _deferred_by_lp_idx else None

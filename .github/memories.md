@@ -283,6 +283,47 @@ in the objective) and the LP prefers curtailment (cost 0) over export
 The raw `slot.price.export_price` is **not** mutated — clamping only affects
 optimisation and scoring.
 
+## Export Fee Per kWh — Net Export Pricing (Issue #925)
+
+Real net export revenue can be negative even when the raw market price is
+positive, because retailer margin/balancing fees eat into it. Rather than
+adding a second "block PV below price X" mechanism (which is exactly what
+issue #767 reverted), `export_fee_per_kwh` (config `hsem_export_fee_per_kwh`,
+default `0.0`) is subtracted from the export price so the **existing**
+negative-price mechanics fire correctly:
+
+- **Applier** (`applier_power_control.py`): the `< 0.0` physical
+  connection-point block now checks `net_export_price = export_price -
+cfg.export_fee_per_kwh`, not the raw price.
+- **MILP objective** (`milp/_objective.py::_build_objective`): builds a
+  local `p_exp_net = p_exp - export_fee_per_kwh` and uses it for BOTH the
+  export-revenue coefficient (`c_obj[ge_off+t]`) and the
+  `compute_charge_premium(exp_price=...)` call. The
+  `deferred_export_price_by_slot()` call also receives `export_fee_per_kwh`
+  directly (that helper independently re-reads `slots[i].price.export_price`,
+  bypassing the local `p_exp` array entirely). No new LP constraint needed —
+  `curt[t]` already has zero objective cost, so the LP already prefers
+  curtailment once net price goes negative.
+- **Cost function** (`cost_function.py::score_plan`): mirrors the objective
+  exactly via `CostWeights.export_fee_per_kwh` — export-revenue term,
+  `deferred_export_price_by_slot()` call, and `compute_charge_premium` call
+  all net the same fee. Grep both files together when touching either —
+  same rule as the terminal-SoC valuation mismatch class (issues #638/#657).
+- **Reported cost** (`milp/_write_results.py` → `cost_helpers.py`):
+  `grid_cash_flow_cost()`/`slot_grid_cash_flow_cost()` net the fee into
+  `estimated_cost_currency` too, so it matches what the LP optimised for.
+
+**Ordering rule in `grid_cash_flow_cost()` and `score_plan()`:** the fee is
+subtracted only when the slot's export revenue was NOT already zeroed by the
+`export_min_price`/`battery_export_min_price` floor check. Applying the fee
+after a floor-zero would manufacture a negative revenue for export that was
+never counted — floor-zero and fee-netting are mutually exclusive per slot.
+
+**Explicitly unaffected:** `export_min_price`/`battery_export_min_price`
+floor comparisons stay on the **raw** price — this is a separate, additive
+concept, not a replacement for those floors. Default `0.0` is fully
+backward compatible.
+
 ## Grid Export Power Cap — Applier Enforcement (Issue #770)
 
 `max_grid_export_power_kw` (config step `power`) is a hard cap on grid export.

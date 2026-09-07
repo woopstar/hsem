@@ -177,6 +177,23 @@ behaviour — the battery should discharge to avoid paying to import.
 - **Fix:** If you don't want force-export, disable it in your battery
   schedule configuration (set _Allow Forced Export_ to off).
 
+**2e. Export price is positive but exporting still loses money**
+
+Your price sensor reports the raw market spot price, but your retailer's
+margin and balancing fees can mean the real net revenue is negative even
+when the market price is a small positive number (issue #925).
+
+- **Check:** HSEM → **Configure** → **Electricity Prices** step. Compare
+  your electricity bill's actual per-kWh export payout against the market
+  price shown by your price sensor for the same period. The difference is
+  your retailer fee.
+- **Fix:** Set _Export Fee Per kWh_ to that difference. HSEM subtracts it
+  from the raw export price before deciding whether exporting is
+  worthwhile — once the net price goes negative, HSEM physically curtails
+  PV export instead of exporting at a loss, exactly like a genuinely
+  negative market price. Leave at `0` if your price sensor already reports
+  net revenue.
+
 ---
 
 ## 3. Wrong PV forecast

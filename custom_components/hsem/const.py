@@ -45,6 +45,9 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_deadline_time": "07:00",
     "hsem_ev_second_deadline_time": "07:00",
     "hsem_export_electricity_min_price": -0.00,
+    # Retailer margin/balancing-fee cost per kWh exported (issue #925).
+    # 0.0 = disabled (default) — fully backward compatible.
+    "hsem_export_fee_per_kwh": 0.0,
     "hsem_electricity_price_update_interval": 15,
     "hsem_export_electricity_price_sensor": "sensor.energi_data_service_produktion",
     "hsem_import_electricity_price_sensor": "sensor.energi_data_service",

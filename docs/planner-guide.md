@@ -291,6 +291,7 @@ The pre-charge window ends at `schedule.start` and is sized to fill the battery 
 | `excess_export_price_threshold`      | Auto-calculated | Computed at runtime from battery depreciation settings (purchase price, expected cycles, usable capacity) via `calculate_recommended_threshold()`.                                                                                                                                                                                                                                                                                                                                                                                 |
 | `export_min_price`                   | `0.0`           | Minimum export price for intentional battery-to-grid discharge. The inverter no longer throttles the grid feed-in limit for positive prices; surplus PV export is always allowed (issue #767). Negative export prices still trigger a physical block because exporting then costs money.                                                                                                                                                                                                                                           |
 | `battery_export_min_price`           | `0.0`           | Per-slot hard floor for intentional battery-to-grid export (issue #752). When > 0 and a slot's raw `export_price` is strictly below this value, the MILP caps `ed[t]` so the battery can only serve house load (no grid export) for that slot — `force_batteries_discharge` is never labelled there. Reaching the threshold does NOT auto-trigger export; the optimizer still decides. Applies only to intentional battery-to-grid export, not to normal battery self-consumption, PV export, or PV charging. Set to 0 to disable. |
+| `export_fee_per_kwh`                 | `0.0`           | Retailer margin/balancing fee per kWh exported (issue #925), netted out of the export price everywhere export profitability is decided (applier physical block, MILP objective, cost function) — but never applied to `export_min_price`/`battery_export_min_price` floor comparisons, which stay on the raw price. A raw price that is positive but net-negative after this fee is treated like a negative price, so PV export gets physically curtailed instead of exported at a loss.                                           |
 
 The reserve uses one checkpoint for every slot in a contiguous forecast
 PV-surplus run. That checkpoint follows the run's demand window—immediately
@@ -908,6 +909,17 @@ battery-destined export revenue on slots blocked by
 **Negative export prices** are the exception: when exporting costs
 money, the applier still writes a physical watt limit to block all
 grid export, including surplus PV.
+
+**Export fee (`export_fee_per_kwh`, issue #925):** the raw market export
+price is not necessarily net revenue — retailer margin and balancing fees
+can make a positive market price a real loss. `export_fee_per_kwh`
+(default `0.0`) is subtracted from the export price everywhere export
+profitability is decided (the applier's negative-price physical block, the
+MILP objective's export-revenue and terminal-SoC terms, and the cost
+function's mirrored terms), so a positive-but-net-negative price is treated
+exactly like a negative raw price. It does **not** change the
+`export_min_price`/`battery_export_min_price` floor comparisons above,
+which stay on the raw price.
 
 ### Conversion loss compatibility field
 

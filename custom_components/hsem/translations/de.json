@@ -169,6 +169,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Stromimportpreis-Prognosesensor (optional)",
           "hsem_export_electricity_price_forecast_sensor": "Stromexportpreis-Prognosesensor (optional)",
           "hsem_export_electricity_min_price": "Erforderlicher Mindestexportpreis",
+          "hsem_export_fee_per_kwh": "Exportgebühr pro kWh",
           "hsem_electricity_price_update_interval": "Strompreis-Aktualisierungsintervall (Minuten)"
         },
         "data_description": {
@@ -177,6 +178,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Optional: Wähle einen separaten Sensor für Importpreis-Prognosen (verwendet von Amber Electric und ähnlichen Integrationen).",
           "hsem_export_electricity_price_forecast_sensor": "Optional: Wähle einen separaten Sensor für Exportpreis-Prognosen.",
           "hsem_export_electricity_min_price": "Untergrenze pro Zeitfenster für erzwungenen Batterie-zu-Netz-Export. Unterhalb dieses Preises zwingt HSEM die Batterie nicht zur Einspeisung ins Netz – die Batterie versorgt weiterhin normal den Hausverbrauch, und das Erreichen der Schwelle löst keinen automatischen Export aus. Dies blockiert nicht den PV-Export: überschüssiger Solarstrom wird bei jedem nicht-negativen Preis weiterhin exportiert. Nur ein negativer Exportpreis veranlasst HSEM, den gesamten Netzexport zu blockieren, da der Export dann Geld kosten würde.",
+          "hsem_export_fee_per_kwh": "Händlermarge und Ausgleichsgebühren, die vom rohen Exportpreis abgezogen werden, bevor HSEM entscheidet, ob sich der Export lohnt (issue #925). Wenn dein tatsächlicher Nettoerlös beim Export niedriger ist als der von deinem Preissensor gemeldete Marktpreis, gib hier deine Gesamtgebühr pro kWh an. Sinkt der Nettopreis (Marktpreis minus dieser Gebühr) unter null, begrenzt HSEM den PV-Export physisch, anstatt mit Verlust zu exportieren. Setze den Wert auf 0, wenn dein Exportpreissensor bereits den Nettoerlös widerspiegelt.",
           "hsem_electricity_price_update_interval": "Wie oft dein Preissensor neue Daten liefert (15, 30 oder 60 Minuten)."
         },
         "description": "Konfiguriere deine Strompreissensoren für Import- und Exportpreise.",
@@ -698,6 +700,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Stromimportpreis-Prognosesensor (optional)",
           "hsem_export_electricity_price_forecast_sensor": "Stromexportpreis-Prognosesensor (optional)",
           "hsem_export_electricity_min_price": "Erforderlicher Mindestexportpreis",
+          "hsem_export_fee_per_kwh": "Exportgebühr pro kWh",
           "hsem_electricity_price_update_interval": "Strompreis-Aktualisierungsintervall (Minuten)"
         },
         "data_description": {
@@ -706,6 +709,7 @@
           "hsem_import_electricity_price_forecast_sensor": "Optional: Wähle einen separaten Sensor für Importpreis-Prognosen (verwendet von Amber Electric und ähnlichen Integrationen).",
           "hsem_export_electricity_price_forecast_sensor": "Optional: Wähle einen separaten Sensor für Exportpreis-Prognosen.",
           "hsem_export_electricity_min_price": "Untergrenze pro Zeitfenster für erzwungenen Batterie-zu-Netz-Export. Unterhalb dieses Preises zwingt HSEM die Batterie nicht zur Einspeisung ins Netz – die Batterie versorgt weiterhin normal den Hausverbrauch, und das Erreichen der Schwelle löst keinen automatischen Export aus. Dies blockiert nicht den PV-Export: überschüssiger Solarstrom wird bei jedem nicht-negativen Preis weiterhin exportiert. Nur ein negativer Exportpreis veranlasst HSEM, den gesamten Netzexport zu blockieren, da der Export dann Geld kosten würde.",
+          "hsem_export_fee_per_kwh": "Händlermarge und Ausgleichsgebühren, die vom rohen Exportpreis abgezogen werden, bevor HSEM entscheidet, ob sich der Export lohnt (issue #925). Wenn dein tatsächlicher Nettoerlös beim Export niedriger ist als der von deinem Preissensor gemeldete Marktpreis, gib hier deine Gesamtgebühr pro kWh an. Sinkt der Nettopreis (Marktpreis minus dieser Gebühr) unter null, begrenzt HSEM den PV-Export physisch, anstatt mit Verlust zu exportieren. Setze den Wert auf 0, wenn dein Exportpreissensor bereits den Nettoerlös widerspiegelt.",
           "hsem_electricity_price_update_interval": "Wie oft dein Preissensor neue Daten liefert (15, 30 oder 60 Minuten)."
         },
         "description": "Konfiguriere deine Strompreissensoren für Import- und Exportpreise.",

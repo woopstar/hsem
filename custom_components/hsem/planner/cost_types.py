@@ -124,6 +124,15 @@ class CostWeights:
     # blocked slots because that export can never happen.
     battery_export_min_price: float = 0.0
 
+    # Retailer margin/balancing-fee cost per kWh exported (issue #925),
+    # netted out of the raw export price for every export-revenue term below
+    # (export revenue, deferred-export refill price, terminal-SoC charge
+    # premium) so the score matches what the MILP's own objective optimised
+    # for.  Does NOT affect ``export_min_price``/``battery_export_min_price``
+    # floor comparisons, which stay on the raw price.  Default 0.0 keeps
+    # existing callers byte-for-byte unaffected.
+    export_fee_per_kwh: float = 0.0
+
     # Battery capacity parameters used by the deferred-export correction in
     # the terminal-SoC charge premium (issue #592).  Both must be positive
     # for the correction to activate; defaults keep it disabled so existing
