@@ -149,10 +149,13 @@ class TestIsDerivedCurtailment:
         assert _is_derived_curtailment(live) is False
 
     def test_full_battery_blocked_export_unknown_register_is_curtailed(self):
+        # Issue #925 narrowed the derived-curtailment price condition to
+        # strictly negative prices only — a price of exactly 0.0 no longer
+        # qualifies (surplus PV keeps exporting at any non-negative price).
         live = LiveState()
         live.solar_production_power_w = 500.0
         live.huawei_batteries_soc_pct = 99.0
-        live.export_electricity_price = 0.0
+        live.export_electricity_price = -0.01
         live.huawei_inverter_active_power_control = None
         assert _is_derived_curtailment(live) is True
 

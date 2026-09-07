@@ -86,13 +86,13 @@ class TestDirectCurtailmentDetection:
     """Direct register reading is unaffected by this fix."""
 
     def test_unlimited_is_not_curtailed(self) -> None:
-        assert _is_directly_limited("Unlimited") is False
+        assert _is_directly_limited("Unlimited", None) is False
 
     def test_limited_percentage_is_curtailed(self) -> None:
-        assert _is_directly_limited("Limited to 80%") is True
+        assert _is_directly_limited("Limited to 80%", None) is True
 
     def test_limited_watt_is_curtailed(self) -> None:
-        assert _is_directly_limited("Limited to 100W") is True
+        assert _is_directly_limited("Limited to 100W", None) is True
 
     def test_none_is_not_curtailed(self) -> None:
-        assert _is_directly_limited(None) is False
+        assert _is_directly_limited(None, None) is False
