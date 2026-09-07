@@ -324,6 +324,19 @@ floor comparisons stay on the **raw** price — this is a separate, additive
 concept, not a replacement for those floors. Default `0.0` is fully
 backward compatible.
 
+**Merge note (issue #930, opt-in curtailment below `export_electricity_min_price`):**
+#930 landed via a separate PR branched from the same #925 discussion thread and
+rewrote the _same_ `if export_price < 0.0:` gate in `applier_power_control.py` to
+add `curtail_below_min_price = cfg.curtail_pv_below_export_min_price and
+export_price < min_price`. Git could not auto-merge the two PRs — they were
+hand-combined into `if net_export_price < 0.0 or curtail_below_min_price:`.
+`curtail_below_min_price` deliberately compares the **raw** `export_price` to
+`min_price` (not the fee-netted price) to match the "explicitly unaffected"
+rule above: the opt-in threshold is a user-chosen price floor, not a
+profitability check, so it must not double-count the fee that the negative-net
+branch already accounts for. If either gate is touched again, grep both
+conditions together in this function before changing either.
+
 ## Grid Export Power Cap — Applier Enforcement (Issue #770)
 
 `max_grid_export_power_kw` (config step `power`) is a hard cap on grid export.
