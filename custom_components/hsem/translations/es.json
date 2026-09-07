@@ -523,7 +523,7 @@
           "hsem_ml_consumption_weather_forecast_entity": "Opcional: entidad meteorológica usada para las temperaturas previstas de los intervalos futuros. Requiere que el sensor de temperatura exterior anterior también esté configurado. Recurre a la temperatura medida cuando faltan datos de previsión.",
           "hsem_ml_consumption_sequential": "Introduce cada predicción de intervalo como entrada de la siguiente. Captura la dinámica dentro de la hora (p. ej., los picos de cocina se propagan hacia adelante).",
           "hsem_ml_consumption_wind_chill_enabled": "Opcional: añade un índice de sensación térmica (velocidad del viento × pérdida de calor por debajo de la temperatura de referencia) al modelo de consumo de ML. El historial y la previsión de viento se obtienen ambos de la entidad de previsión meteorológica anterior; no se necesita un sensor de viento independiente. Requiere el sensor de temperatura exterior anterior.",
-          "hsem_ml_consumption_wind_chill_reference_temperature": "Temperatura de punto de equilibrio (°C) por encima de la cual el viento ya no aumenta la pérdida de calor. Solo se usa cuando la sensación térmica está activada."
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Temperatura de punto de equilibrio (°C) por encima de la cual el viento ya no aumenta la pérdida de calor. Solo se usa cuando la sensación térmica está activada. Punto de partida habitual: 18°C para un aislamiento medio, más bajo (~15-16°C) en viviendas bien aisladas, más alto (~19-20°C) en viviendas antiguas o con corrientes de aire."
         },
         "description": "Configura los medidores de energía y activa la predicción de consumo basada en ML.",
         "title": "Energía y ML"
@@ -1000,7 +1000,7 @@
           "hsem_ml_consumption_weather_forecast_entity": "Opcional: entidad meteorológica usada para las temperaturas previstas de los intervalos futuros. Requiere que el sensor de temperatura exterior anterior también esté configurado. Recurre a la temperatura medida cuando faltan datos de previsión.",
           "hsem_ml_consumption_sequential": "Introduce cada predicción de intervalo como entrada de la siguiente. Captura la dinámica dentro de la hora (p. ej., los picos de cocina se propagan hacia adelante).",
           "hsem_ml_consumption_wind_chill_enabled": "Opcional: añade un índice de sensación térmica (velocidad del viento × pérdida de calor por debajo de la temperatura de referencia) al modelo de consumo de ML. El historial y la previsión de viento se obtienen ambos de la entidad de previsión meteorológica anterior; no se necesita un sensor de viento independiente. Requiere el sensor de temperatura exterior anterior.",
-          "hsem_ml_consumption_wind_chill_reference_temperature": "Temperatura de punto de equilibrio (°C) por encima de la cual el viento ya no aumenta la pérdida de calor. Solo se usa cuando la sensación térmica está activada."
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Temperatura de punto de equilibrio (°C) por encima de la cual el viento ya no aumenta la pérdida de calor. Solo se usa cuando la sensación térmica está activada. Punto de partida habitual: 18°C para un aislamiento medio, más bajo (~15-16°C) en viviendas bien aisladas, más alto (~19-20°C) en viviendas antiguas o con corrientes de aire."
         },
         "description": "Configura los medidores de energía y activa la predicción de consumo basada en ML.",
         "title": "Energía y ML"

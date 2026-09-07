@@ -176,6 +176,55 @@ usage counts are exposed as `ml_forecast_wind_slots_used` and
 `ml_forecast_wind_fallback_slots` attributes on
 `sensor.hsem_plan_explanation_sensor`.
 
+#### Choosing the reference temperature
+
+`hsem_ml_consumption_wind_chill_reference_temperature` is the single most
+important tuning knob for this feature — it sets the outdoor temperature
+above which wind stops contributing to the model at all (the `max(0, …)`
+clamp). Get it roughly right and the feature captures real heat-loss
+behaviour; get it badly wrong and it either never fires (set too low) or
+fires on mild, windy-but-comfortable days (set too high).
+
+What it represents physically: your home's **balance point** — the
+outdoor temperature at which internal heat gains (occupants, appliances,
+solar gain through windows) roughly offset heat loss through the
+envelope, so no active heating is needed yet. Below it, the home is
+losing net heat, and wind-driven infiltration makes that loss worse
+proportional to wind speed. Above it, wind has no meaningful effect on
+heating-related consumption (and this model does not distinguish a
+cooling/AC-driven wind effect — the clamp assumes wind never _reduces_
+consumption).
+
+Three ways to set it, roughly in order of effort:
+
+1. **Use the default (18 °C / 65 °F)** — the standard base temperature
+   used for heating-degree-day calculations in most temperate climates.
+   A reasonable starting point for a typical, moderately insulated home.
+2. **Adjust for your home's insulation** — well-insulated modern homes
+   with good airtightness typically don't need heating until it's colder
+   outside, so a _lower_ reference (e.g. 15–16 °C) fits better; older or
+   draughtier homes usually need heating earlier, so a _higher_ reference
+   (e.g. 19–20 °C) fits better.
+3. **Use your own empirical threshold** — if you already have a personal
+   rule of thumb for "it's cold enough that wind makes a difference"
+   (for example, a heating-boost automation that only activates below a
+   certain outdoor temperature, the way the discussion in issue #943
+   describes), that threshold is a good starting point — it is exactly
+   the same quantity this setting represents, calibrated by your own
+   experience living in the house.
+
+There's no in-app way to auto-detect this today. If you want to validate
+your choice after enabling the feature, compare `avg_house_consumption_kwh`
+across a few equally-cold slots with different forecast wind speeds — a
+well-chosen reference temperature should show visibly higher predictions
+on the windier slots; if it doesn't, the reference temperature is
+probably set too low (the clamp is zeroing out most of your actual
+cold-weather range) or the temperature/wind-speed samples in your history
+haven't varied together enough for the model to learn a reliable
+coefficient. There is no live sensor exposing this diagnostic yet —
+check the entity's `avg_house_consumption_kwh` history in the recorder
+or Logbook directly.
+
 ### Fitting
 
 The normal equation is solved via Cholesky decomposition

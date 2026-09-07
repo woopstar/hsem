@@ -523,7 +523,7 @@
           "hsem_ml_consumption_weather_forecast_entity": "Optional — Wetter-Entität für Vorhersagetemperaturen zukünftiger Zeitfenster. Erfordert, dass der obige Außentemperatursensor ebenfalls konfiguriert ist. Fällt auf die gemessene Temperatur zurück, wenn Vorhersagedaten fehlen.",
           "hsem_ml_consumption_sequential": "Gibt jede Slot-Vorhersage als Eingabe für die nächste weiter. Erfasst untertägige Dynamik (z. B. wirken sich Kochspitzen weiter aus).",
           "hsem_ml_consumption_wind_chill_enabled": "Optional — fügt dem ML-Verbrauchsmodell einen Windchill-Index hinzu (Windgeschwindigkeit × Wärmeverlust unterhalb der Referenztemperatur). Windhistorie und -vorhersage werden beide von der obigen Wettervorhersage-Entität abgeleitet — kein separater Windsensor erforderlich. Erfordert den obigen Außentemperatursensor.",
-          "hsem_ml_consumption_wind_chill_reference_temperature": "Bilanzpunkt-Temperatur (°C), oberhalb derer Wind den Wärmeverlust nicht mehr erhöht. Wird nur verwendet, wenn Windchill aktiviert ist."
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Bilanzpunkt-Temperatur (°C), oberhalb derer Wind den Wärmeverlust nicht mehr erhöht. Wird nur verwendet, wenn Windchill aktiviert ist. Typischer Ausgangswert: 18°C bei durchschnittlicher Dämmung, niedriger (~15-16°C) bei gut gedämmten Häusern, höher (~19-20°C) bei älteren/undichten Häusern."
         },
         "description": "Konfiguriere Energiezähler und aktiviere die ML-basierte Verbrauchsprognose.",
         "title": "Energie & ML"
@@ -1000,7 +1000,7 @@
           "hsem_ml_consumption_weather_forecast_entity": "Optional — Wetter-Entität für Vorhersagetemperaturen zukünftiger Zeitfenster. Erfordert, dass der obige Außentemperatursensor ebenfalls konfiguriert ist. Fällt auf die gemessene Temperatur zurück, wenn Vorhersagedaten fehlen.",
           "hsem_ml_consumption_sequential": "Gibt jede Slot-Vorhersage als Eingabe für die nächste weiter. Erfasst untertägige Dynamik (z. B. wirken sich Kochspitzen weiter aus).",
           "hsem_ml_consumption_wind_chill_enabled": "Optional — fügt dem ML-Verbrauchsmodell einen Windchill-Index hinzu (Windgeschwindigkeit × Wärmeverlust unterhalb der Referenztemperatur). Windhistorie und -vorhersage werden beide von der obigen Wettervorhersage-Entität abgeleitet — kein separater Windsensor erforderlich. Erfordert den obigen Außentemperatursensor.",
-          "hsem_ml_consumption_wind_chill_reference_temperature": "Bilanzpunkt-Temperatur (°C), oberhalb derer Wind den Wärmeverlust nicht mehr erhöht. Wird nur verwendet, wenn Windchill aktiviert ist."
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Bilanzpunkt-Temperatur (°C), oberhalb derer Wind den Wärmeverlust nicht mehr erhöht. Wird nur verwendet, wenn Windchill aktiviert ist. Typischer Ausgangswert: 18°C bei durchschnittlicher Dämmung, niedriger (~15-16°C) bei gut gedämmten Häusern, höher (~19-20°C) bei älteren/undichten Häusern."
         },
         "description": "Konfiguriere Energiezähler und aktiviere die ML-basierte Verbrauchsprognose.",
         "title": "Energie & ML"
