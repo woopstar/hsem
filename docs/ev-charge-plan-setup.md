@@ -542,17 +542,25 @@ writes `ForceState=Neutral` before every remote start, gated on the charger
 actually reporting the key (so other brands never see it) and on it
 actually being `Off` (a no-op otherwise).
 
-**Stopping is a ladder, standard OCPP first.** HSEM tries the generic
-mechanisms before anything vendor-specific, so a compliant charger is
-handled entirely by steps 1–2 and never sees a vendor key:
+**Stopping is standard OCPP only — no vendor key.** HSEM sends:
 
 1. **`SetChargingProfile` with a `0 A` limit** — the idiomatic, fully
    generic way an energy-management system says "draw nothing". Same
    mechanism as any other limit, just at zero.
 2. **`RemoteStopTransaction`** — the correct protocol action for ending
    the transaction itself.
-3. **A vendor key** (`ForceState`) — only for a charger that ignores both,
-   and only when it reports the key.
+
+Nothing vendor-specific is written. An earlier version of this also wrote
+the `ForceState` vendor key on every stop, on the theory that ending the
+transaction alone wasn't enough — but isolated testing (sending _only_ the
+0 A profile, nothing else) proved it stops a go-e Charger V4 on its own,
+confirmed by the charger's own app reporting "stopped by OCPP". Writing a
+vendor key when the generic mechanism already works would leave the
+charger locally forced off after every single stop for no reason, so that
+step was removed. A charger that genuinely needs a vendor write to
+actually stop can still be reached manually via `hsem.ocpp_debug_set_configuration`
+(see [Services Reference](services-reference.md)) — nothing was removed
+from the API, only from the automatic path.
 
 Step 1 runs even when no transaction is open, because a charger can
 free-vend with power flowing and no transaction at all. It is skipped when
@@ -563,27 +571,25 @@ For the same reason HSEM clears its own charging profiles (IDs 1 and 2, by
 ID, so nothing another system installed is touched) when the OCPP server
 shuts down.
 
-**Why step 3 still exists.** Ending the OCPP transaction is not enough
-on its own: `ForceState: Neutral` means "no local override — charge if the
-car asks for it", so the charger simply free-vends after
-`RemoteStopTransaction` is accepted and its own `StopTransaction` confirms.
-It keeps delivering power with no transaction open at all. HSEM therefore
-writes `ForceState=Off` when stopping — the same thing the charger's app
-does — and clears it back to `Neutral` before the next remote start, so
-HSEM's own stop/start round-trip is self-healing.
+**The `ForceState` recovery on _start_ is unaffected and still automatic.**
+A go-e parks `ForceState` at `Off` when charging is stopped from its own
+app — a completely different scenario from HSEM's own stop above, and one
+the 0 A-profile test says nothing about. While `Off`, the charger accepts
+every OCPP command and obeys none of them. HSEM clears it back to `Neutral`
+before every remote start, gated on the charger actually reporting the key
+(so other brands never see it) and on it actually being `Off` (a no-op
+otherwise) — so if you stop a charge from the go-e app, HSEM's next
+`RemoteStartTransaction` still works without you needing to clear anything
+yourself.
 
-One consequence worth knowing: after HSEM stops a charge, the charger is
-left locally blocked. Starting it again from HSEM clears that
-automatically, but starting it from the **charger's own app** will need the
-block cleared there first.
-
-HSEM will not, however, shut down still holding that block: the OCPP
-server releases it on teardown (config-entry unload, reload, or HA
-shutdown), so a disabled or removed HSEM never leaves a charger stuck off.
-That release is **ownership-gated** — only a block HSEM imposed itself is
-lifted, so if _you_ stopped charging in the charger's app, HSEM leaves your
-choice alone. An unclean crash is the one case it cannot cover; the next
-HSEM start clears the block anyway.
+**If you request an amp value and it doesn't seem to apply, wait before
+concluding it didn't work.** HSEM's own coordinator re-solves the plan
+within a few seconds of a charger reporting `StartTransaction` (the
+debounced refresh from issue #908), and that re-solve can legitimately
+compute a _different_ target than whatever you just set — this is the
+live planner doing its job, not a stale or ignored command. Check the
+requested amperage 20–30 seconds after it settles, not immediately, or use
+`hsem.set_temporary_override` to pin a stable mode while testing manually.
 
 More generally, HSEM now **asks** rather than assumes: a `GetConfiguration`
 is issued when a charger boots, and the reply drives charge-profile stack

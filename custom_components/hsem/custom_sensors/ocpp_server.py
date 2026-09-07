@@ -206,13 +206,6 @@ class OCPPServer(
         self._stalled: bool = False
         self._stall_logged: bool = False
 
-        # CPIDs where HSEM itself parked ForceState at "Off" (issue #920).
-        # Ownership-gated so shutdown lifts only HSEM's own block and never
-        # a stop the user made in the charger's app — same rule as the
-        # grid-charge emergency stop. Server-level, so it survives the
-        # session object being replaced on reconnect.
-        self._force_state_owned: set[str] = set()
-
         # Strong references for fire-and-forget background tasks (issue
         # #920 follow-up) — e.g. the post-StartTransaction profile resend,
         # which must not be awaited inline before the StartTransaction
@@ -251,15 +244,13 @@ class OCPPServer(
     async def stop(self) -> None:
         """Stop the server and close all charger connections.
 
-        Hands the charger back first (issue #920): HSEM's own charging
-        profiles are removed and any force-state hold it is still holding
-        is released. Both matter because both **persist on the charger** —
-        an unloaded HSEM must not leave a connector throttled to 0 A or
-        locally forced off, with nothing left in HA to explain why. This
-        runs before the sockets close, since it needs them.
+        Removes HSEM's own charging profiles first (issue #920): a
+        ``TxDefaultProfile`` **persists on the charger** past HSEM's own
+        lifetime, so an unloaded HSEM must not leave a connector throttled
+        to 0 A with nothing left in HA to explain why. This runs before the
+        sockets close, since it needs them.
         """
         await self.release_charging_profiles(HSEM_PROFILE_IDS)
-        await self.release_force_state_holds()
 
         # Close all charger sessions
         for cpid, session in list(self._chargers.items()):

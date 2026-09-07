@@ -148,10 +148,9 @@ class OCPPCommandsMixin:
     profile_stack_levels: Callable[[ChargerSession], tuple[int, int]]
     station_max_current_a: Callable[[ChargerSession], int | None]
     ensure_charging_allowed: Callable[[ChargerSession], Coroutine[Any, Any, None]]
-    ensure_charging_blocked: Callable[[ChargerSession], Coroutine[Any, Any, None]]
 
     # Declared (not assigned) so mypy resolves this against
-    # OCPPProfilesMixin — the generic first rung of the stop ladder.
+    # OCPPProfilesMixin — the generic, fully standards-only stop mechanism.
     _send_zero_current_profile: Callable[[ChargerSession], Coroutine[Any, Any, bool]]
 
     async def _notify_significant_event(self) -> None:
@@ -321,14 +320,25 @@ class OCPPCommandsMixin:
         self._last_sent_target = -1.0
         self._last_sent_current_a = -1
 
-        # Stopping is a ladder, standard OCPP first (issue #920):
+        # Stopping is standard OCPP only (issue #920 follow-up):
         #
         #   1. a 0 A charging profile — the idiomatic, fully generic way an
-        #      energy-management system says "draw nothing", and all a
-        #      compliant charger needs on top of step 2;
+        #      energy-management system says "draw nothing";
         #   2. RemoteStopTransaction, below — the correct protocol action
-        #      for ending the transaction itself;
-        #   3. only then a vendor key, for a charger that ignores both.
+        #      for ending the transaction itself.
+        #
+        # No vendor key is written here. This was originally step 3 of a
+        # three-step ladder (a vendor `ForceState` write, escalated to
+        # automatically on every stop) — but user testing proved a bare 0 A
+        # profile alone (no RemoteStop, no vendor write) stops a go-e
+        # Charger V4 and is reported by the charger's own app as "stopped
+        # by OCPP". Writing a vendor key unconditionally when the generic
+        # mechanism already works contradicts the point of trying
+        # generic-first: it would leave the charger locally forced off
+        # after every single stop for no reason, so that step was removed
+        # entirely. A charger that genuinely needs a vendor write to
+        # actually stop is still reachable manually via the
+        # `ocpp_debug_set_configuration` service.
         #
         # Step 1 runs before the transaction check because a charger can
         # free-vend with no transaction open at all, so "nothing to stop"
@@ -340,7 +350,6 @@ class OCPPCommandsMixin:
         # silently stop the user charging by hand.
         if session.transaction_id is not None or session.status == "Charging":
             await self._send_zero_current_profile(session)
-        await self.ensure_charging_blocked(session)
         if session.transaction_id is None:
             _LOGGER.debug(
                 "OCPP %s has no active transaction — skipping "

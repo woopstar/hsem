@@ -473,12 +473,18 @@ class TestForceStateTakeOver:
         assert "ChangeConfiguration" not in actions
 
     @pytest.mark.asyncio
-    async def test_stop_holds_charger_off(self, ocpp_server, charger_session):
-        """Stop writes ForceState=Off — ending the transaction isn't enough.
+    async def test_stop_never_touches_force_state(self, ocpp_server, charger_session):
+        """Stop is generic-only: 0 A profile + RemoteStopTransaction, nothing vendor.
 
-        Confirmed by testing: ForceState=Neutral means "charge if the car
-        asks", so a go-e keeps free-vending after RemoteStopTransaction is
-        accepted and its own StopTransaction confirms.
+        Reversed after user testing (issue #920 follow-up): a bare 0 A
+        profile alone — no RemoteStop, no vendor write — stopped a real
+        go-e Charger V4, reported by the charger's own app as "stopped by
+        OCPP". Writing a vendor key unconditionally on every stop when the
+        generic mechanism already works would leave the charger locally
+        forced off for no reason, defeating the point of trying generic
+        first. `ensure_charging_blocked()` was removed; a charger that
+        genuinely needs a vendor write to actually stop is still reachable
+        manually via `ocpp_debug_set_configuration`.
         """
         ocpp_server._chargers["test-cpid"] = charger_session
         charger_session.transaction_id = 2
@@ -492,11 +498,9 @@ class TestForceStateTakeOver:
             json.loads(call.args[0])
             for call in charger_session.websocket.send_str.call_args_list
         ]
-        # Standard OCPP first, vendor key last (issue #920).
         assert [msg[2] for msg in sent] == [
             "SetChargingProfile",
             "SetChargingProfile",
-            "ChangeConfiguration",
             "RemoteStopTransaction",
         ]
         assert (
@@ -505,11 +509,10 @@ class TestForceStateTakeOver:
             ][0]["limit"]
             == 0
         )
-        assert sent[2][3] == {"key": "ForceState", "value": "Off"}
-        assert charger_session.configuration_keys["ForceState"] == "Off"
+        assert charger_session.configuration_keys["ForceState"] == "Neutral"
 
     @pytest.mark.asyncio
-    async def test_stop_holds_charger_off_with_no_transaction(
+    async def test_stop_with_no_transaction_still_sends_zero_profile(
         self, ocpp_server, charger_session
     ):
         """A stop still stops a charger free-vending with no transaction.
@@ -522,14 +525,10 @@ class TestForceStateTakeOver:
         ocpp_server._chargers["test-cpid"] = charger_session
         assert charger_session.transaction_id is None
         charger_session.status = "Charging"
-        ocpp_server.absorb_configuration_reply(
-            charger_session, _configuration_reply(ForceState="Neutral")
-        )
 
         await ocpp_server.send_remote_stop("test-cpid")
 
-        actions = _sent_actions(charger_session)
-        assert actions == ["SetChargingProfile", "ChangeConfiguration"]
+        assert _sent_actions(charger_session) == ["SetChargingProfile"]
 
     @pytest.mark.asyncio
     async def test_no_zero_profile_when_nothing_is_charging(
@@ -551,68 +550,35 @@ class TestForceStateTakeOver:
         assert "SetChargingProfile" not in _sent_actions(charger_session)
 
     @pytest.mark.asyncio
-    async def test_shutdown_releases_hsem_s_own_hold(
+    async def test_shutdown_clears_hsem_s_own_profiles(
         self, ocpp_server, charger_session
     ):
-        """HSEM must not shut down still holding a charger blocked.
+        """HSEM must not shut down leaving the connector throttled to 0 A.
 
-        Otherwise an unload/restart after a stop leaves the charger
-        locally forced off until cleared in its own app.
+        A 0 A TxDefaultProfile persists on the charger past HSEM's own
+        lifetime, so an unloaded/reconfigured HSEM would otherwise silently
+        prevent the user from charging at all, with nothing in HA left to
+        explain why (issue #920).
         """
         ocpp_server._chargers["test-cpid"] = charger_session
         charger_session.transaction_id = 2
-        ocpp_server.absorb_configuration_reply(
-            charger_session, _configuration_reply(ForceState="Neutral")
-        )
         await ocpp_server.send_remote_stop("test-cpid")
-        assert charger_session.configuration_keys["ForceState"] == "Off"
         charger_session.websocket.send_str.reset_mock()
 
         await ocpp_server.stop()
 
-        sent = [
-            json.loads(call.args[0])
-            for call in charger_session.websocket.send_str.call_args_list
-        ]
-        # HSEM's own profiles are cleared too, so an unloaded HSEM cannot
-        # leave the connector throttled to 0 A (issue #920).
-        assert [msg[2] for msg in sent] == [
+        assert _sent_actions(charger_session) == [
             "ClearChargingProfile",
             "ClearChargingProfile",
-            "ChangeConfiguration",
         ]
-        assert sent[-1][3] == {"key": "ForceState", "value": "Neutral"}
 
     @pytest.mark.asyncio
-    async def test_shutdown_leaves_a_user_imposed_block_alone(
-        self, ocpp_server, charger_session
-    ):
-        """A stop the *user* made in the charger's app is never overridden.
-
-        Ownership-gated, mirroring the grid-charge emergency stop: HSEM
-        only ever lifts a block it imposed itself.
-        """
-        ocpp_server._chargers["test-cpid"] = charger_session
-        ocpp_server.absorb_configuration_reply(
-            charger_session, _configuration_reply(ForceState="Off")
-        )
-
-        await ocpp_server.stop()
-
-        # Profiles are still cleaned up — only the force-state hold is
-        # ownership-gated.
-        assert "ChangeConfiguration" not in _sent_actions(charger_session)
-
-    @pytest.mark.asyncio
-    async def test_shutdown_release_survives_a_send_failure(
+    async def test_shutdown_profile_clear_survives_a_send_failure(
         self, ocpp_server, charger_session
     ):
         """A failed release must never block a clean shutdown."""
         ocpp_server._chargers["test-cpid"] = charger_session
         charger_session.transaction_id = 2
-        ocpp_server.absorb_configuration_reply(
-            charger_session, _configuration_reply(ForceState="Neutral")
-        )
         await ocpp_server.send_remote_stop("test-cpid")
         charger_session.websocket.send_str.side_effect = ConnectionResetError()
 
@@ -621,29 +587,14 @@ class TestForceStateTakeOver:
         assert ocpp_server._chargers == {}
 
     @pytest.mark.asyncio
-    async def test_start_releases_ownership_so_shutdown_is_quiet(
+    async def test_stop_start_round_trip_leaves_force_state_untouched(
         self, ocpp_server, charger_session
     ):
-        """Once HSEM has started again, it no longer holds a block."""
-        ocpp_server._chargers["test-cpid"] = charger_session
-        charger_session.transaction_id = 2
-        ocpp_server.absorb_configuration_reply(
-            charger_session, _configuration_reply(ForceState="Neutral")
-        )
-        await ocpp_server.send_remote_stop("test-cpid")
-        charger_session.transaction_id = None
-        await ocpp_server.send_remote_start("test-cpid")
-        charger_session.websocket.send_str.reset_mock()
+        """HSEM's own stop/start cycle never touches ForceState at all now.
 
-        await ocpp_server.stop()
-
-        assert "ChangeConfiguration" not in _sent_actions(charger_session)
-
-    @pytest.mark.asyncio
-    async def test_stop_start_round_trip_is_self_healing(
-        self, ocpp_server, charger_session
-    ):
-        """HSEM's own stop must not lock out HSEM's own next start."""
+        Only an externally-imposed block (e.g. the charger's own app) is
+        ever cleared, and only on the start side.
+        """
         ocpp_server._chargers["test-cpid"] = charger_session
         charger_session.transaction_id = 2
         ocpp_server.absorb_configuration_reply(
@@ -651,7 +602,7 @@ class TestForceStateTakeOver:
         )
 
         await ocpp_server.send_remote_stop("test-cpid")
-        assert charger_session.configuration_keys["ForceState"] == "Off"
+        assert charger_session.configuration_keys["ForceState"] == "Neutral"
 
         charger_session.transaction_id = None
         await ocpp_server.send_remote_start("test-cpid")
