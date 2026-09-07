@@ -283,6 +283,60 @@ in the objective) and the LP prefers curtailment (cost 0) over export
 The raw `slot.price.export_price` is **not** mutated — clamping only affects
 optimisation and scoring.
 
+## Export Fee Per kWh — Net Export Pricing (Issue #925)
+
+Real net export revenue can be negative even when the raw market price is
+positive, because retailer margin/balancing fees eat into it. Rather than
+adding a second "block PV below price X" mechanism (which is exactly what
+issue #767 reverted), `export_fee_per_kwh` (config `hsem_export_fee_per_kwh`,
+default `0.0`) is subtracted from the export price so the **existing**
+negative-price mechanics fire correctly:
+
+- **Applier** (`applier_power_control.py`): the `< 0.0` physical
+  connection-point block now checks `net_export_price = export_price -
+cfg.export_fee_per_kwh`, not the raw price.
+- **MILP objective** (`milp/_objective.py::_build_objective`): builds a
+  local `p_exp_net = p_exp - export_fee_per_kwh` and uses it for BOTH the
+  export-revenue coefficient (`c_obj[ge_off+t]`) and the
+  `compute_charge_premium(exp_price=...)` call. The
+  `deferred_export_price_by_slot()` call also receives `export_fee_per_kwh`
+  directly (that helper independently re-reads `slots[i].price.export_price`,
+  bypassing the local `p_exp` array entirely). No new LP constraint needed —
+  `curt[t]` already has zero objective cost, so the LP already prefers
+  curtailment once net price goes negative.
+- **Cost function** (`cost_function.py::score_plan`): mirrors the objective
+  exactly via `CostWeights.export_fee_per_kwh` — export-revenue term,
+  `deferred_export_price_by_slot()` call, and `compute_charge_premium` call
+  all net the same fee. Grep both files together when touching either —
+  same rule as the terminal-SoC valuation mismatch class (issues #638/#657).
+- **Reported cost** (`milp/_write_results.py` → `cost_helpers.py`):
+  `grid_cash_flow_cost()`/`slot_grid_cash_flow_cost()` net the fee into
+  `estimated_cost_currency` too, so it matches what the LP optimised for.
+
+**Ordering rule in `grid_cash_flow_cost()` and `score_plan()`:** the fee is
+subtracted only when the slot's export revenue was NOT already zeroed by the
+`export_min_price`/`battery_export_min_price` floor check. Applying the fee
+after a floor-zero would manufacture a negative revenue for export that was
+never counted — floor-zero and fee-netting are mutually exclusive per slot.
+
+**Explicitly unaffected:** `export_min_price`/`battery_export_min_price`
+floor comparisons stay on the **raw** price — this is a separate, additive
+concept, not a replacement for those floors. Default `0.0` is fully
+backward compatible.
+
+**Merge note (issue #930, opt-in curtailment below `export_electricity_min_price`):**
+#930 landed via a separate PR branched from the same #925 discussion thread and
+rewrote the _same_ `if export_price < 0.0:` gate in `applier_power_control.py` to
+add `curtail_below_min_price = cfg.curtail_pv_below_export_min_price and
+export_price < min_price`. Git could not auto-merge the two PRs — they were
+hand-combined into `if net_export_price < 0.0 or curtail_below_min_price:`.
+`curtail_below_min_price` deliberately compares the **raw** `export_price` to
+`min_price` (not the fee-netted price) to match the "explicitly unaffected"
+rule above: the opt-in threshold is a user-chosen price floor, not a
+profitability check, so it must not double-count the fee that the negative-net
+branch already accounts for. If either gate is touched again, grep both
+conditions together in this function before changing either.
+
 ## Grid Export Power Cap — Applier Enforcement (Issue #770)
 
 `max_grid_export_power_kw` (config step `power`) is a hard cap on grid export.
@@ -1039,6 +1093,31 @@ Regression tests: `tests/test_avg_sensor_partial_day.py`.
 
 ---
 
+## Avg Sensor Must Reject Negative/Non-Finite Utility-Meter Readings (issue #938)
+
+`HSEMAvgSensor._async_store_utility_meter_value` and the `async_added_to_hass`
+restore path never validated the tracked utility-meter's value before writing
+it into `self._measurements`. A misconfigured net-consumption accounting mode
+produced one negative reading; once persisted it became the sole "1d" sample
+(the "1d" window holds only 1 entry) and kept `assess_load_forecast()`
+(`coordinator_helpers.py`, ~line 436) fail-closed with
+`reason="invalid_future_values"` — engaging `safety_hold` — even after the
+source misconfiguration was corrected, because the window would not refresh
+until that specific hour block completed again on a later day.
+
+Canonical rule: **reject non-finite/negative readings before they ever reach
+`self._measurements`**, both at write time (`_async_store_utility_meter_value`
+— log a warning and skip storing, leaving any existing sample for that date
+untouched) and at restore time (`async_added_to_hass` — drop bad entries out
+of the restored `measurements` dict so a value persisted by a pre-fix version
+is never replayed). A rejected sample leaves the sensor `unavailable` (never
+a negative published average), so the very next completed block produces a
+fresh valid sample instead of waiting out a multi-day window.
+
+Regression tests: `tests/test_avg_sensor_negative_guard.py`.
+
+---
+
 ## Solar-Charge Mislabel at Zero PV (issue #720 follow-up)
 
 `apply_optimization_strategy` used `NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH`
@@ -1428,3 +1507,13 @@ _Actual fix:_ cross-checking `lbbrhzn/ocpp`'s `ocppv16.py::set_charge_rate()` sh
 **Diagnostic lesson worth keeping:** three fixes in a row (profile kind, TxProfile, resend ordering) were aimed at `SetChargingProfile` because that's where the visible symptom was ("amps don't apply"), while the actual blocker sat in an inbound message nobody was reading. The wire-level DEBUG logging from #920 is what eventually exposed it — the `'Rejected'` CALLRESULT and the `transactionId: 2` in `MeterValues` were both only visible because every inbound/outbound CALL is now logged in full. When a charger rejects a command, read what the charger is _telling you_ in its own messages before changing what HSEM sends.
 
 **Test-timing gotcha:** a task from `asyncio.create_task()` does not run merely because the creating coroutine returns — it needs the event loop to get a turn. Since the mocked `websocket.send_str` (`AsyncMock`) never performs genuine suspension, a _single_ `await asyncio.sleep(0)` after the triggering call is enough to let the entire detached task run to completion before assertions — no need to loop or explicitly gather the task.
+
+## Max-Discharge-Power Write-Then-Undo Every Cycle (issue #939)
+
+**Real bug, confirmed via the physical register toggling 5000 W → 0 W every apply cycle (reported against #932's `safety_hold`).** `async_apply_battery_settings()` had two independent, unconditional writes to the same `cfg.huawei_solar_batteries_maximum_discharging_power` entity within a single call: an early block wrote the rated max (`get_max_discharge_power()`) unless the live EV was charging, then a later, separately-gated block computed the real `primary_battery_hold` / `relevant_evs` / `solar_charge_only` cap (often `0`) and wrote that too. Whenever a hold/cap condition was active, every cycle did write-rated-max → verify → write-0 → verify on real hardware before the cycle finished — plausibly explaining the reported overnight grid import alongside SoC decrease (the battery was briefly re-authorized to discharge at full power each cycle before being clamped back).
+
+**Fix:** collapsed to a single `cap_w` computation per cycle, defaulting to the rated max and only overridden by the hold/EV/solar-charge-only/SoC-guard logic when a cap condition applies (same condition as before, `recommendation not in (ForceBatteriesDischarge, ForceExport)` still excluded) — followed by exactly one `async_write_and_verify()` call. **Note the surviving asymmetry, preserved on purpose:** if the discharge entity is unconfigured, the plain/uncapped default path still aborts the whole `async_apply_battery_settings()` call (matches the old block's stricter behavior, since normal battery-settings enforcement has nothing to fall back to), while a hold/cap path with no configured entity just skips the write and continues (matches the old block's behavior, since there is nothing to enforce the cap with either way). Discriminated by whether `cap_reason` is `None`.
+
+**Separate, out-of-scope look-alike left untouched:** the wait-mode self-consumption surplus cap (`batteries_wait_mode` + `self_consumption_with_reserve`, further down the same function) computes and writes its own lower cap to the _same_ entity _after_ the working-mode `match` statement, independently of the block fixed here. This is structurally the same write-then-lower-write shape and predates #939, but issue #939 scoped the fix to `primary_battery_hold`/`relevant_evs`/`solar_charge_only` only — flag it if a future report describes toggling specifically during `self_consumption_with_reserve` wait slots.
+
+Tests: `tests/test_safety_gates.py::TestDischargePowerSingleWritePerCycle` (5 tests: safety_hold, blocked EV, solar-charge-only, normal/uncapped, and already-at-target no-op — each asserting the exact list of writes to the entity, not just the final value, since the pre-fix bug still passed a final-value-only assertion).

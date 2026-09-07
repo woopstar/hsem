@@ -62,6 +62,7 @@ def solve_milp(
     battery_export_min_price: float = 0.0,
     battery_export_forecast_reserve_kwh: float = 0.0,
     excess_export_discharge_buffer_pct: float = 0.0,
+    export_fee_per_kwh: float = 0.0,
 ) -> tuple[list[PlannedSlot], dict] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
 
@@ -168,6 +169,13 @@ def solve_milp(
         battery_export_min_price:
             Per-slot hard floor below which intentional battery-to-grid
             discharge is forbidden (issue #752).  ``0.0`` disables it.
+        export_fee_per_kwh:
+            Retailer margin/balancing fee per kWh exported (issue #925).
+            Netted out of the export price for the objective's own economic
+            terms only (export revenue, terminal-SoC charge premium) and for
+            the reported per-slot cost — never for the battery-export floor
+            mask, which stays on the raw price.  ``0.0`` (default) is fully
+            backward compatible.
 
     Returns:
         A tuple ``(slots, diagnostics)`` where ``slots`` is a list of
@@ -486,6 +494,7 @@ def solve_milp(
         current_kwh=current_kwh,
         pv_avail=pv_avail,
         base_load=base_load,
+        export_fee_per_kwh=export_fee_per_kwh,
     )
 
     try:
@@ -676,6 +685,7 @@ def solve_milp(
         curt_sol_full,
         ev_writeback_diagnostics=ev_writeback_diagnostics,
         _min_action_kwh=_MIN_ACTION_KWH,
+        export_fee_per_kwh=export_fee_per_kwh,
     )
 
     from custom_components.hsem.planner.milp._postwrite_validation import (

@@ -50,6 +50,7 @@ def _write_milp_results_to_slots(
     *,
     ev_writeback_diagnostics: dict[str, dict[str, object]] | None = None,
     _min_action_kwh: float = 1e-4,
+    export_fee_per_kwh: float = 0.0,
 ) -> list[PlannedSlot]:
     """Write MILP solution into a deep-copied slot list.
 
@@ -78,6 +79,9 @@ def _write_milp_results_to_slots(
         usable_kwh: Maximum usable energy (kWh).
         curt_sol_full: Solved curtailment per LP slot (kWh).
         _min_action_kwh: Minimum kWh threshold for action slots.
+        export_fee_per_kwh: Retailer margin/balancing fee per kWh exported
+            (issue #925), netted into the reported ``estimated_cost_currency``
+            so it matches what the LP objective actually optimised for.
         Recommendations: The canonical Recommendations enum.
 
     Returns:
@@ -396,6 +400,7 @@ def _write_milp_results_to_slots(
             slot_grid_cash_flow_cost(
                 out_slots[i],
                 export_min_price=min_export_price,
+                export_fee_per_kwh=export_fee_per_kwh,
             ),
             4,
         )

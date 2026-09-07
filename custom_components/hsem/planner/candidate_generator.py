@@ -367,6 +367,7 @@ def generate_candidates(
             battery_export_min_price=effective_battery_export_floor,
             battery_export_forecast_reserve_kwh=forecast_export_reserve_kwh,
             excess_export_discharge_buffer_pct=(inp.excess_export_discharge_buffer_pct),
+            export_fee_per_kwh=inp.export_fee_per_kwh,
         )
         log_planner(
             "debug",

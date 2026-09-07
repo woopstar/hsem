@@ -162,32 +162,6 @@ async def async_apply_battery_settings(
         _rated_capacity if _rated_capacity is not None else 0
     )
 
-    # Set maximum discharging power unless EV is charging
-    if not live.ev.is_charging and not live.ev_second.is_charging:
-        if live.huawei_batteries_max_discharge_power_w != max_discharge_power:
-            discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
-            if discharge_entity is None:
-                _LOGGER.debug(
-                    "Max discharge power entity not configured; skipping write.",
-                    "warning",
-                )
-                return summary
-            _de: str = discharge_entity  # narrowed for closure
-            result = await async_write_and_verify(
-                entity_id=_de,
-                desired=max_discharge_power,
-                writer=lambda: async_set_number_value(sensor, _de, max_discharge_power),
-                reader=lambda: _read_number_state(sensor, _de),
-            )
-            summary.results.append(result)
-            if result.status == ApplyStatus.FAILED:
-                _LOGGER.debug(
-                    f"Max discharge power write FAILED for {discharge_entity}. "
-                    "Blocking further battery writes this cycle.",
-                    "error",
-                )
-                return summary
-
     recommendation = rec.recommendation
     primary_battery_hold = _primary_battery_hold(rec)
     held_planned_export = _held_planned_export_is_authoritative(rec)
@@ -215,112 +189,131 @@ async def async_apply_battery_settings(
     # `_primary_battery_hold()` never returns True here since a real
     # solar-charge slot has material `batteries_charged_kwh`.
     solar_charge_only = recommendation == Recommendations.BatteriesChargeSolar.value
+
+    # Compute the single intended max-discharge-power value for this cycle
+    # before issuing any write. The rated max is only the *starting* value
+    # fed into the same hold/EV/solar-charge-only cap computation below —
+    # never a value committed to hardware ahead of it — so a held/capped
+    # slot never sees a transient rated-max write immediately undone by the
+    # real (lower) cap in the same cycle (issue #939).
+    cap_w = max_discharge_power
+    cap_reason: str | None = None
     if (
         primary_battery_hold or relevant_evs or solar_charge_only
     ) and recommendation not in (
         Recommendations.ForceBatteriesDischarge.value,
         Recommendations.ForceExport.value,
     ):
-        discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
-        if discharge_entity is not None:
-            if primary_battery_hold:
-                # The solved plan explicitly wants neither charge nor
-                # discharge this slot — the cap is 0 W regardless of any EV,
-                # since a held slot's own batteries_discharged_kwh is
-                # already ~0 and would drive the same result below anyway.
+        if primary_battery_hold:
+            # The solved plan explicitly wants neither charge nor
+            # discharge this slot — the cap is 0 W regardless of any EV,
+            # since a held slot's own batteries_discharged_kwh is
+            # already ~0 and would drive the same result below anyway.
+            cap_w = 0
+            cap_reason = "planned battery hold"
+        elif relevant_evs:
+            blocked = tuple(
+                name for name, ev, _ in relevant_evs if not ev.force_max_discharge_power
+            )
+            if blocked:
                 cap_w = 0
-                cap_reason = "planned battery hold"
-            elif relevant_evs:
-                blocked = tuple(
-                    name
-                    for name, ev, _ in relevant_evs
-                    if not ev.force_max_discharge_power
+                cap_reason = (
+                    "Huawei discharge disabled while EV active/planned "
+                    f"({', '.join(blocked)})"
                 )
-                if blocked:
-                    cap_w = 0
-                    cap_reason = (
-                        "Huawei discharge disabled while EV active/planned "
-                        f"({', '.join(blocked)})"
-                    )
-                else:
-                    slot_hours = slot_duration_hours(rec.start, rec.end)
-                    cap_w = _planned_ev_discharge_cap_w(
-                        planned_discharge_kwh=float(
-                            rec.batteries_discharged_kwh or 0.0
-                        ),
-                        slot_hours=slot_hours,
-                        max_discharge_power_w=max_discharge_power,
-                        ev_max_discharge_power_ws=tuple(
-                            ev.max_discharge_power_w for _, ev, _ in relevant_evs
-                        ),
-                    )
-                    cap_reason = (
-                        "planned Huawei discharge while EV active/planned "
-                        f"(planned={rec.batteries_discharged_kwh:.3f} kWh, "
-                        f"slot={slot_hours:.3f} h)"
-                    )
-                    # Phase-headroom reservation (issue #816): when an EV is
-                    # live charging but the planned power is 0 (or lower), the
-                    # OCPP anti-flap stop window means the charger hasn't
-                    # stopped yet. Reserve headroom for the still-running EV
-                    # draw to prevent a transient phase-fuse overload.
-                    total_reservation_w = sum(
-                        _ev_phase_headroom_reservation_w(
-                            ev=ev, planned_power_w=planned_power_w
-                        )
-                        for _, ev, planned_power_w in relevant_evs
-                    )
-                    if total_reservation_w > 0 and cap_w > 0:
-                        reserved_cap_w = max(cap_w - total_reservation_w, 0)
-                        if reserved_cap_w < cap_w:
-                            _LOGGER.debug(
-                                "%s — phase-headroom reservation reduced cap "
-                                "from %d W to %d W (reservation=%d W for "
-                                "still-running EV draw)",
-                                cap_reason,
-                                cap_w,
-                                reserved_cap_w,
-                                total_reservation_w,
-                            )
-                            cap_w = reserved_cap_w
             else:
-                # solar_charge_only with no active/planned EV: the grid
-                # covers any house-load deficit this slot, never the battery.
-                cap_w = 0
-                cap_reason = "planned solar-charge-only slot"
+                slot_hours = slot_duration_hours(rec.start, rec.end)
+                cap_w = _planned_ev_discharge_cap_w(
+                    planned_discharge_kwh=float(rec.batteries_discharged_kwh or 0.0),
+                    slot_hours=slot_hours,
+                    max_discharge_power_w=max_discharge_power,
+                    ev_max_discharge_power_ws=tuple(
+                        ev.max_discharge_power_w for _, ev, _ in relevant_evs
+                    ),
+                )
+                cap_reason = (
+                    "planned Huawei discharge while EV active/planned "
+                    f"(planned={rec.batteries_discharged_kwh:.3f} kWh, "
+                    f"slot={slot_hours:.3f} h)"
+                )
+                # Phase-headroom reservation (issue #816): when an EV is
+                # live charging but the planned power is 0 (or lower), the
+                # OCPP anti-flap stop window means the charger hasn't
+                # stopped yet. Reserve headroom for the still-running EV
+                # draw to prevent a transient phase-fuse overload.
+                total_reservation_w = sum(
+                    _ev_phase_headroom_reservation_w(
+                        ev=ev, planned_power_w=planned_power_w
+                    )
+                    for _, ev, planned_power_w in relevant_evs
+                )
+                if total_reservation_w > 0 and cap_w > 0:
+                    reserved_cap_w = max(cap_w - total_reservation_w, 0)
+                    if reserved_cap_w < cap_w:
+                        _LOGGER.debug(
+                            "%s — phase-headroom reservation reduced cap "
+                            "from %d W to %d W (reservation=%d W for "
+                            "still-running EV draw)",
+                            cap_reason,
+                            cap_w,
+                            reserved_cap_w,
+                            total_reservation_w,
+                        )
+                        cap_w = reserved_cap_w
+        else:
+            # solar_charge_only with no active/planned EV: the grid
+            # covers any house-load deficit this slot, never the battery.
+            cap_w = 0
+            cap_reason = "planned solar-charge-only slot"
 
-            # SoC guard (issue #592, v6.2.0-beta1): never let the EV cap
-            # drain the battery below the energy the planner has reserved
-            # for upcoming scheduled discharge windows.  When the remaining
-            # usable energy is at or below the required reserve, force the
-            # cap to 0 — the battery is preserved for its schedule and the
-            # house load (like the EV) is served from the grid until the
-            # battery recovers above the reserve.
-            if (
-                cap_w > 0
-                and current_required_battery_kwh > 1e-9
-                and live.battery_current_capacity_kwh > 1e-9
-                and live.battery_current_capacity_kwh <= current_required_battery_kwh
-            ):
+        # SoC guard (issue #592, v6.2.0-beta1): never let the EV cap
+        # drain the battery below the energy the planner has reserved
+        # for upcoming scheduled discharge windows.  When the remaining
+        # usable energy is at or below the required reserve, force the
+        # cap to 0 — the battery is preserved for its schedule and the
+        # house load (like the EV) is served from the grid until the
+        # battery recovers above the reserve.
+        if (
+            cap_w > 0
+            and current_required_battery_kwh > 1e-9
+            and live.battery_current_capacity_kwh > 1e-9
+            and live.battery_current_capacity_kwh <= current_required_battery_kwh
+        ):
+            _LOGGER.debug(
+                "%s — battery reserve reached (%.2f kWh left, %.2f kWh "
+                "reserved for scheduled plans) — forcing EV discharge "
+                "cap to 0 W to protect the schedule",
+                cap_reason,
+                live.battery_current_capacity_kwh,
+                current_required_battery_kwh,
+            )
+            cap_w = 0
+
+    if live.huawei_batteries_max_discharge_power_w != cap_w:
+        discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
+        if discharge_entity is None:
+            # Uncapped default path (no hold/EV/solar-charge-only condition):
+            # matches the historical "rated max unless EV charging" write,
+            # which required the entity to be configured to proceed at all.
+            # A hold/cap condition with no configured entity has nothing to
+            # enforce the cap with — skip the write without aborting the
+            # rest of this cycle's battery settings.
+            if cap_reason is None:
                 _LOGGER.debug(
-                    "%s — battery reserve reached (%.2f kWh left, %.2f kWh "
-                    "reserved for scheduled plans) — forcing EV discharge "
-                    "cap to 0 W to protect the schedule",
-                    cap_reason,
-                    live.battery_current_capacity_kwh,
-                    current_required_battery_kwh,
+                    "Max discharge power entity not configured; skipping write.",
+                    "warning",
                 )
-                cap_w = 0
-
-            if live.huawei_batteries_max_discharge_power_w != cap_w:
-                _de3: str = discharge_entity  # narrowed for closure
-                ev_discharge_result = await async_write_and_verify(
-                    entity_id=_de3,
-                    desired=cap_w,
-                    writer=lambda: async_set_number_value(sensor, _de3, cap_w),
-                    reader=lambda: _read_number_state(sensor, _de3),
-                )
-                summary.results.append(ev_discharge_result)
+                return summary
+        else:
+            _de: str = discharge_entity  # narrowed for closure
+            result = await async_write_and_verify(
+                entity_id=_de,
+                desired=cap_w,
+                writer=lambda: async_set_number_value(sensor, _de, cap_w),
+                reader=lambda: _read_number_state(sensor, _de),
+            )
+            summary.results.append(result)
+            if cap_reason is not None:
                 _LOGGER.debug(
                     "%s — capped max discharge power to %d W "
                     "(planned_ev_power=%dW planned_ev2_power=%dW "
@@ -335,12 +328,13 @@ async def async_apply_battery_settings(
                     _fmt_live_power_w(live.ev_second.power_w),
                     rec.batteries_discharged_kwh,
                 )
-                if ev_discharge_result.status == ApplyStatus.FAILED:
-                    _LOGGER.debug(
-                        f"EV discharge cap write FAILED for {discharge_entity}.",
-                        "error",
-                    )
-                    return summary
+            if result.status == ApplyStatus.FAILED:
+                _LOGGER.debug(
+                    f"Max discharge power write FAILED for {discharge_entity}. "
+                    "Blocking further battery writes this cycle.",
+                    "error",
+                )
+                return summary
 
     # If we're switching away from force discharge, explicitly stop any
     # active forcible charge/discharge before applying the new mode.

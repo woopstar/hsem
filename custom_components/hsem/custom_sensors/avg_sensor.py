@@ -174,10 +174,24 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
             restored_measurements = old_state.attributes.get("measurements", None)
 
             if restored_measurements is not None:
-                self._measurements = {
-                    self.parse_date(k): round(float(v), 2)
-                    for k, v in restored_measurements.items()
-                }
+                # A non-finite/negative value persisted by a pre-fix version
+                # (e.g. a misconfigured net-consumption utility meter) must
+                # not be replayed as a valid sample after an upgrade/restart
+                # — see issue #938.
+                parsed_measurements: dict[str, float] = {}
+                for raw_date, raw_value in restored_measurements.items():
+                    value = round(float(raw_value), 2)
+                    if not math.isfinite(value) or value < 0.0:
+                        _LOGGER.warning(
+                            "Discarding restored non-finite/negative measurement "
+                            "for entity_id=%s date=%s value=%s",
+                            self._tracked_entity,
+                            raw_date,
+                            value,
+                        )
+                        continue
+                    parsed_measurements[self.parse_date(raw_date)] = value
+                self._measurements = parsed_measurements
 
             self._last_updated = old_state.attributes.get("last_updated", None)
 
@@ -297,9 +311,22 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
                 )
 
             if block_complete:
-                self._measurements[measurement_date.isoformat()] = round(
-                    float(utility_meter_value), 2
-                )
+                value = round(float(utility_meter_value), 2)
+                # A misconfigured tracked utility meter (e.g. net-consumption
+                # accounting) can report a negative or non-finite reading.
+                # Storing that as the day's sample would poison a rolling
+                # window that may not roll over for days — reject it instead
+                # (issue #938).
+                if math.isfinite(value) and value >= 0.0:
+                    self._measurements[measurement_date.isoformat()] = value
+                else:
+                    _LOGGER.warning(
+                        "Rejected non-finite/negative utility-meter reading for "
+                        "entity_id=%s on %s: %s",
+                        self._tracked_entity,
+                        measurement_date.isoformat(),
+                        value,
+                    )
 
         if self._measurements is not None and len(self._measurements) > self._average:
             await self._async_cleanup_old_measurements()

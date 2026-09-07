@@ -247,6 +247,7 @@ def score_plan(
             usable_kwh=weights.battery_usable_capacity_kwh,
             max_charge_per_slot=weights.max_charge_per_slot_kwh,
             now=now,
+            export_fee_per_kwh=weights.export_fee_per_kwh,
         )
 
     # Charge efficiency remains necessary for the terminal-inventory charge
@@ -342,15 +343,21 @@ def score_plan(
         #    ``export_min_price`` blanket clamp has been removed because the
         #    applier no longer physically blocks all grid export (issue
         #    #767); it is now a battery-export floor enforced by the MILP.
+        #    ``export_fee_per_kwh`` (issue #925) is netted out of whatever
+        #    price survives the floor check — never applied to a slot the
+        #    floor already zeroed, mirroring ``cost_helpers.grid_cash_flow_cost``.
         if slot.grid_export_kwh > 1e-9:
             effective_exp_price = exp_price
-            if (
+            blocked_by_battery_floor = (
                 weights.battery_export_min_price > 1e-9
                 and effective_exp_price < weights.battery_export_min_price
                 and slot.batteries_discharged_kwh > 1e-9
                 and slot.solcast_pv_estimate_kwh <= 1e-9
-            ):
+            )
+            if blocked_by_battery_floor:
                 effective_exp_price = 0.0
+            else:
+                effective_exp_price -= weights.export_fee_per_kwh
             rev = slot.grid_export_kwh * effective_exp_price
             export_revenue += rev
             export_revenue_disc += rev * discount
@@ -433,7 +440,7 @@ def score_plan(
             _charge_premium = compute_charge_premium(
                 replacement_price_per_kwh=replacement_price_per_kwh,
                 imp_price_obj=imp_price_obj,
-                exp_price=slot.price.export_price,
+                exp_price=exp_price - weights.export_fee_per_kwh,
                 charge_eff=charge_eff,
                 deferred_export_price=(
                     _deferred_prices[slot_idx] if _deferred_prices else None

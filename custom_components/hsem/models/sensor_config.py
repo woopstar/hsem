@@ -108,6 +108,13 @@ class SensorConfig:
         import_electricity_price_forecast_sensor: Optional entity ID for a separate import forecast sensor (e.g. Amber Electric).
         export_electricity_price_forecast_sensor: Optional entity ID for a separate export forecast sensor.
         export_electricity_min_price: Minimum export price to allow grid export.
+        curtail_pv_below_export_min_price: Opt-in physical PV curtailment
+            (issue #930). When ``True``, the applier writes a physical grid-export
+            block whenever the export price drops below
+            ``export_electricity_min_price``, even if the price is still
+            non-negative. When ``False`` (default), preserves the #767 behavior:
+            surplus PV keeps exporting for any non-negative price and only
+            battery-to-grid export is gated by the minimum price.
 
         ev: First EV charger configuration.
         ev_second_enabled: Whether the second EV charger is active.
@@ -229,6 +236,14 @@ class SensorConfig:
     import_electricity_price_forecast_sensor: str | None = None
     export_electricity_price_forecast_sensor: str | None = None
     export_electricity_min_price: float = 0.0
+    #: Retailer margin/balancing-fee cost per kWh exported (issue #925).
+    #: Netted out of the export price wherever export profitability is
+    #: decided (applier physical block, MILP objective, cost function).
+    #: 0.0 (default) is fully backward compatible.
+    export_fee_per_kwh: float = 0.0
+    #: Opt-in physical PV curtailment below export_electricity_min_price
+    #: (issue #930). ``False`` (default) preserves the #767 behavior.
+    curtail_pv_below_export_min_price: bool = False
 
     # EV chargers
     ev: EVChargerConfig = field(default_factory=EVChargerConfig)
