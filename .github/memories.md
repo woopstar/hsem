@@ -1080,6 +1080,31 @@ Regression tests: `tests/test_avg_sensor_partial_day.py`.
 
 ---
 
+## Avg Sensor Must Reject Negative/Non-Finite Utility-Meter Readings (issue #938)
+
+`HSEMAvgSensor._async_store_utility_meter_value` and the `async_added_to_hass`
+restore path never validated the tracked utility-meter's value before writing
+it into `self._measurements`. A misconfigured net-consumption accounting mode
+produced one negative reading; once persisted it became the sole "1d" sample
+(the "1d" window holds only 1 entry) and kept `assess_load_forecast()`
+(`coordinator_helpers.py`, ~line 436) fail-closed with
+`reason="invalid_future_values"` — engaging `safety_hold` — even after the
+source misconfiguration was corrected, because the window would not refresh
+until that specific hour block completed again on a later day.
+
+Canonical rule: **reject non-finite/negative readings before they ever reach
+`self._measurements`**, both at write time (`_async_store_utility_meter_value`
+— log a warning and skip storing, leaving any existing sample for that date
+untouched) and at restore time (`async_added_to_hass` — drop bad entries out
+of the restored `measurements` dict so a value persisted by a pre-fix version
+is never replayed). A rejected sample leaves the sensor `unavailable` (never
+a negative published average), so the very next completed block produces a
+fresh valid sample instead of waiting out a multi-day window.
+
+Regression tests: `tests/test_avg_sensor_negative_guard.py`.
+
+---
+
 ## Solar-Charge Mislabel at Zero PV (issue #720 follow-up)
 
 `apply_optimization_strategy` used `NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH`
@@ -1379,3 +1404,13 @@ Tests: `tests/test_phase_charge_limiter.py` (limiter core + Part 2 applier integ
 **Canonical helper:** never re-derive the "is a grid charge actually armed right now" check inline -- always call `primary_grid_charge_is_known_disarmed()`. Never gate the emergency stop on anything other than `huawei_grid_charge_emergency_needed()`; it already encodes the ownership + Error-mode + telemetry precedence correctly.
 
 Tests: `tests/test_grid_charge_emergency_stop.py` (26 tests: disarmed-telemetry detection, ownership+gating logic, `CycleApplySummary` verification helper, the write helper itself, and full mixin lifecycle including the externally-armed-is-never-touched and failed-write-retains-ownership-for-retry cases).
+
+## Max-Discharge-Power Write-Then-Undo Every Cycle (issue #939)
+
+**Real bug, confirmed via the physical register toggling 5000 W → 0 W every apply cycle (reported against #932's `safety_hold`).** `async_apply_battery_settings()` had two independent, unconditional writes to the same `cfg.huawei_solar_batteries_maximum_discharging_power` entity within a single call: an early block wrote the rated max (`get_max_discharge_power()`) unless the live EV was charging, then a later, separately-gated block computed the real `primary_battery_hold` / `relevant_evs` / `solar_charge_only` cap (often `0`) and wrote that too. Whenever a hold/cap condition was active, every cycle did write-rated-max → verify → write-0 → verify on real hardware before the cycle finished — plausibly explaining the reported overnight grid import alongside SoC decrease (the battery was briefly re-authorized to discharge at full power each cycle before being clamped back).
+
+**Fix:** collapsed to a single `cap_w` computation per cycle, defaulting to the rated max and only overridden by the hold/EV/solar-charge-only/SoC-guard logic when a cap condition applies (same condition as before, `recommendation not in (ForceBatteriesDischarge, ForceExport)` still excluded) — followed by exactly one `async_write_and_verify()` call. **Note the surviving asymmetry, preserved on purpose:** if the discharge entity is unconfigured, the plain/uncapped default path still aborts the whole `async_apply_battery_settings()` call (matches the old block's stricter behavior, since normal battery-settings enforcement has nothing to fall back to), while a hold/cap path with no configured entity just skips the write and continues (matches the old block's behavior, since there is nothing to enforce the cap with either way). Discriminated by whether `cap_reason` is `None`.
+
+**Separate, out-of-scope look-alike left untouched:** the wait-mode self-consumption surplus cap (`batteries_wait_mode` + `self_consumption_with_reserve`, further down the same function) computes and writes its own lower cap to the _same_ entity _after_ the working-mode `match` statement, independently of the block fixed here. This is structurally the same write-then-lower-write shape and predates #939, but issue #939 scoped the fix to `primary_battery_hold`/`relevant_evs`/`solar_charge_only` only — flag it if a future report describes toggling specifically during `self_consumption_with_reserve` wait slots.
+
+Tests: `tests/test_safety_gates.py::TestDischargePowerSingleWritePerCycle` (5 tests: safety_hold, blocked EV, solar-charge-only, normal/uncapped, and already-at-target no-op — each asserting the exact list of writes to the entity, not just the final value, since the pre-fix bug still passed a final-value-only assertion).

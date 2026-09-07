@@ -421,19 +421,36 @@ def assess_load_forecast(
     signature_slots: list[_LoadSlotSignature] = []
     weighted_profile_is_zero = True
     for rec in future_slots:
-        raw_values = (
-            rec.avg_house_consumption_kwh,
-            rec.avg_house_consumption_1d_kwh,
-            rec.avg_house_consumption_3d_kwh,
-            rec.avg_house_consumption_7d_kwh,
-            rec.avg_house_consumption_14d_kwh,
+        named_raw_values = (
+            ("avg_house_consumption_kwh", rec.avg_house_consumption_kwh),
+            ("avg_house_consumption_1d_kwh", rec.avg_house_consumption_1d_kwh),
+            ("avg_house_consumption_3d_kwh", rec.avg_house_consumption_3d_kwh),
+            ("avg_house_consumption_7d_kwh", rec.avg_house_consumption_7d_kwh),
+            ("avg_house_consumption_14d_kwh", rec.avg_house_consumption_14d_kwh),
         )
         canonical_values: list[float] = []
-        for raw_value in raw_values:
+        for field_name, raw_value in named_raw_values:
             if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+                async_log(
+                    "warning",
+                    "[load] Forecast slot %s has a non-numeric %s (%r, type=%s); "
+                    "holding as invalid_future_values.",
+                    utc_key(rec.start).isoformat(),
+                    field_name,
+                    raw_value,
+                    type(raw_value).__name__,
+                )
                 return LoadForecastReadiness(False, "invalid_future_values", None)
             number = float(raw_value)
             if not math.isfinite(number) or number < 0.0:
+                async_log(
+                    "warning",
+                    "[load] Forecast slot %s has an out-of-range %s (%s); "
+                    "holding as invalid_future_values.",
+                    utc_key(rec.start).isoformat(),
+                    field_name,
+                    number,
+                )
                 return LoadForecastReadiness(False, "invalid_future_values", None)
             canonical_values.append(round(number, 5))
 

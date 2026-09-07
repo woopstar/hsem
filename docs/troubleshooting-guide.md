@@ -101,6 +101,15 @@ zero-load forecast.
 - **Fix:** Wait for the next statistics cycle (usually 5 minutes), or repair an
   average sensor that remains unavailable. HSEM retries every minute and runs a
   fresh plan when the profile recovers.
+- **Misconfigured utility meter (e.g. net-consumption accounting) producing a
+  negative reading:** the rolling-average sensors
+  (`sensor.hsem_*_avg_energy_{1,3,7,14}d_*`) reject non-finite/negative
+  readings before storing them — a bad reading is logged and skipped rather
+  than persisted, so the sensor reports `unavailable` for that block instead
+  of a negative value. Once the source configuration is corrected, the next
+  completed hour block stores a valid sample and `load_forecast_ready`
+  recovers on the next cycle — it does not wait for a multi-day window to
+  age out the bad entry.
 
 ---
 
@@ -140,15 +149,22 @@ cost function.
   and _Reduktion_. Verify against your electricity bill.
 - **Fix:** Correct any mismatched values.
 
-**2c. Export minimum price blocks all export**
+**2c. Export minimum price blocks battery-to-grid export only**
 
-The `export_min_price` setting prevents grid export when the export price
-is below that threshold. If set too high, HSEM never exports — the battery
-stays full and the inverter physically blocks export.
+The `export_min_price` setting (and the dedicated `battery_export_min_price`)
+only gate **intentional battery-to-grid export** — the battery keeps serving
+house load normally below the threshold, and the optimizer still decides
+whether exporting is worthwhile above it. It does **not** block PV surplus
+export: PV keeps exporting at any non-negative price (issue #767). Only a
+**negative** export price makes HSEM physically block the whole grid
+connection point, because exporting would then cost money. If PV export
+looks blocked at a positive-but-low price, look elsewhere (grid export power
+cap, inverter fault, `no_export` setting) — it is not this setting.
 
 - **Check:** HSEM → **Configure** → **Energi Data Service** step.
   _Export Minimum Price_. Compare against current export spot prices.
-- **Fix:** Lower or set to 0 if you want to export at all positive prices.
+- **Fix:** Lower or set to 0 if you want the battery to export at all
+  positive prices too.
 
 **2d. Negative prices trigger force-export**
 
@@ -511,16 +527,17 @@ end-of-discharge threshold, no discharge is scheduled.
 - **Fix:** Lower the `end_of_discharge_soc` if safe for your battery
   chemistry. Never set below the manufacturer's recommended minimum.
 
-**7c. Export minimum price blocks all export**
+**7c. Export minimum price blocks battery-to-grid export only**
 
-See [Section 2c](#2c-export-minimum-price-blocks-all-export). If
-`export_min_price` is set above current export prices, the inverter blocks
-grid export. The battery may still discharge to serve house load, but won't
-export.
+See [Section 2c](#2c-export-minimum-price-blocks-battery-to-grid-export-only).
+If `export_min_price` is set above current export prices, HSEM won't force
+the battery to discharge to the grid. The battery still discharges to serve
+house load, and PV surplus still exports normally — neither is blocked by
+this setting.
 
 - **Check:** Current export spot price vs the `export_min_price` setting.
-- **Fix:** Lower the threshold if you want to export during low-price
-  periods.
+- **Fix:** Lower the threshold if you want the battery to export during
+  low-price periods too.
 
 **7d. Discharge efficiency configured incorrectly**
 
