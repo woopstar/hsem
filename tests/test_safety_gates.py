@@ -31,7 +31,10 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from custom_components.hsem.const import DEFAULT_HSEM_BATTERIES_WAIT_MODE
+from custom_components.hsem.const import (
+    DEFAULT_HSEM_BATTERIES_WAIT_MODE,
+    GRID_EXPORT_LIMIT_WATT,
+)
 from custom_components.hsem.custom_sensors.applier import (
     async_apply_battery_settings,
     async_apply_inverter_power_control,
@@ -360,6 +363,95 @@ class TestInverterPowerControlSafetyGate:
 
         mock_pct_write.assert_not_called()
         mock_wv.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_positive_price_net_negative_after_fee_blocks_all_export(self):
+        """A positive raw price that is net-negative after export_fee_per_kwh
+        must block export exactly like a negative raw price (issue #925).
+
+        Regression test for the "manual export limit gets overwritten back to
+        unlimited" report: retailer margin/balancing fees can make exporting
+        a real loss even when the market price is small and positive.
+        """
+        sensor = _make_sensor()
+        cfg = _make_cfg(read_only=False)
+        cfg.huawei_solar_device_id_inverter_1 = "device_abc"
+        cfg.huawei_solar_inverter_active_power_control = (
+            "sensor.inverter_active_power_control"
+        )
+        cfg.export_electricity_min_price = 0.02
+        cfg.export_fee_per_kwh = 0.015
+
+        live = _make_live(degraded_mode=DegradedMode.OK)
+        live.export_electricity_price = 0.004  # net = 0.004 - 0.015 = -0.011
+        # Inverter currently unlimited; must switch to watt limit.
+        live.huawei_inverter_active_power_control = "Unlimited"
+
+        mock_state = MagicMock()
+        mock_state.state = "Unlimited"
+        sensor.hass.states.get.return_value = mock_state
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.utils.huawei.async_set_grid_export_power_pct"
+            ) as mock_pct_write,
+            patch(
+                "custom_components.hsem.custom_sensors.applier_power_control.async_write_and_verify",
+                new_callable=AsyncMock,
+            ) as mock_wv,
+        ):
+            mock_wv.return_value = ApplyResult(
+                entity_id="sensor.inverter_active_power_control",
+                desired=GRID_EXPORT_LIMIT_WATT,
+                actual=GRID_EXPORT_LIMIT_WATT,
+                status=ApplyStatus.OK,
+                attempts=1,
+            )
+            _summary = await async_apply_inverter_power_control(sensor, cfg, live)
+
+        mock_pct_write.assert_not_called()
+        mock_wv.assert_called_once()
+        assert mock_wv.call_args.kwargs["desired"] == GRID_EXPORT_LIMIT_WATT
+
+    @pytest.mark.asyncio
+    async def test_zero_export_fee_matches_pre_925_behaviour(self):
+        """export_fee_per_kwh=0.0 (default) must not change existing behaviour."""
+        sensor = _make_sensor()
+        cfg = _make_cfg(read_only=False)
+        cfg.huawei_solar_device_id_inverter_1 = "device_abc"
+        cfg.huawei_solar_inverter_active_power_control = (
+            "sensor.inverter_active_power_control"
+        )
+        cfg.export_electricity_min_price = 0.22
+        assert cfg.export_fee_per_kwh == 0.0
+
+        live = _make_live(degraded_mode=DegradedMode.OK)
+        live.export_electricity_price = 0.10
+        live.huawei_inverter_active_power_control = "Unlimited"
+
+        mock_state = MagicMock()
+        mock_state.state = "Unlimited"
+        sensor.hass.states.get.return_value = mock_state
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.utils.huawei.async_set_grid_export_power_watt"
+            ) as mock_watt_write,
+            patch(
+                "custom_components.hsem.utils.huawei.async_set_grid_export_power_pct"
+            ) as mock_pct_write,
+            patch(
+                "custom_components.hsem.custom_sensors.applier_power_control.async_write_and_verify",
+                new_callable=AsyncMock,
+            ) as mock_wv,
+        ):
+            _summary = await async_apply_inverter_power_control(sensor, cfg, live)
+
+        mock_watt_write.assert_not_called()
+        mock_pct_write.assert_not_called()
+        mock_wv.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_grid_export_cap_writes_configured_watt_limit(self):
@@ -1515,3 +1607,150 @@ class TestForceBatteriesDischargeExcessPvRouting:
         assert any(r.status == ApplyStatus.FAILED for r in summary.results)
         # The excess PV entity must NOT have been written (early return).
         assert "select.excess_pv" not in written
+
+
+# ---------------------------------------------------------------------------
+# Single discharge-power write per cycle (issue #939)
+# ---------------------------------------------------------------------------
+
+
+class TestDischargePowerSingleWritePerCycle:
+    """The max-discharge-power entity must see at most one write per cycle.
+
+    Regression for issue #939: the "rated max unless EV charging" default
+    and the primary_battery_hold/relevant_evs/solar_charge_only cap were two
+    independent unconditional writes to the same entity within one
+    ``async_apply_battery_settings`` call. Whenever a hold/cap condition was
+    active, every cycle wrote the full rated discharge power and then
+    immediately re-wrote the lower cap in the same call — a guaranteed
+    write-then-undo visible on the physical Huawei register.
+    """
+
+    @staticmethod
+    def _cfg_and_live() -> tuple[SensorConfig, LiveState]:
+        cfg = _make_cfg(read_only=False)
+        cfg.huawei_solar_batteries_maximum_discharging_power = "number.max_discharge"
+        cfg.huawei_solar_batteries_excess_pv_energy_use_in_tou = "select.excess_pv"
+        cfg.huawei_solar_batteries_tou_charging_and_discharging_periods = (
+            "sensor.tou_periods"
+        )
+        cfg.huawei_solar_device_id_batteries = "bat1"
+        live = _make_live(degraded_mode=DegradedMode.OK)
+        # The live register starts at the rated max: a hold/cap condition
+        # must collapse straight to the final capped value in a single
+        # write, never pass through the rated max first.
+        live.huawei_batteries_max_discharge_power_w = 5000
+        live.huawei_batteries_rated_capacity_wh = 10000.0
+        live.huawei_batteries_excess_pv_use_in_tou = "charge"
+        return cfg, live
+
+    @staticmethod
+    async def _run(
+        cfg: SensorConfig, live: LiveState, rec: HourlyRecommendation
+    ) -> list[tuple[str, object]]:
+        """Return every (entity_id, desired) write attempted, in call order."""
+        writes: list[tuple[str, object]] = []
+
+        async def _record(entity_id, desired, writer, reader, **kwargs):  # type: ignore[no-untyped-def]
+            writes.append((entity_id, desired))
+            return ApplyResult(
+                entity_id=entity_id,
+                desired=desired,
+                actual=desired,
+                status=ApplyStatus.OK,
+                attempts=1,
+            )
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                side_effect=_record,
+            ),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_set_tou_periods",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await async_apply_battery_settings(_make_sensor(), cfg, live, rec, 0.0)
+        return [w for w in writes if w[0] == "number.max_discharge"]
+
+    @pytest.mark.asyncio
+    async def test_safety_hold_writes_zero_exactly_once(self):
+        """A planned battery hold (safety_hold) never sees a rated-max write first."""
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        cfg, live = self._cfg_and_live()
+        rec = _make_rec_with_energy(
+            Recommendations.BatteriesWaitMode.value,
+            batteries_charged_kwh=0.0,
+            batteries_discharged_kwh=0.0,
+        )
+
+        discharge_writes = await self._run(cfg, live, rec)
+
+        assert discharge_writes == [("number.max_discharge", 0)]
+
+    @pytest.mark.asyncio
+    async def test_blocked_ev_writes_zero_exactly_once(self):
+        """A charging EV without opt-in never sees a rated-max write first."""
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        cfg, live = self._cfg_and_live()
+        live.ev.is_charging = True
+        live.ev.force_max_discharge_power = False
+        rec = _make_rec_with_energy(
+            Recommendations.EVSmartCharging.value,
+            batteries_discharged_kwh=1.0,
+            ev_charger_calculated_power=3000.0,
+        )
+
+        discharge_writes = await self._run(cfg, live, rec)
+
+        assert discharge_writes == [("number.max_discharge", 0)]
+
+    @pytest.mark.asyncio
+    async def test_solar_charge_only_writes_zero_exactly_once(self):
+        """A solar-charge-only slot never sees a rated-max write first."""
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        cfg, live = self._cfg_and_live()
+        rec = _make_rec_with_energy(
+            Recommendations.BatteriesChargeSolar.value,
+            batteries_charged_kwh=1.0,
+        )
+
+        discharge_writes = await self._run(cfg, live, rec)
+
+        assert discharge_writes == [("number.max_discharge", 0)]
+
+    @pytest.mark.asyncio
+    async def test_normal_case_still_writes_rated_max(self):
+        """With no hold/EV/solar-charge-only condition, the rated max still applies."""
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        cfg, live = self._cfg_and_live()
+        live.huawei_batteries_max_discharge_power_w = 2500  # stale, below rated
+        rec = _make_rec_with_energy(
+            Recommendations.BatteriesDischargeMode.value,
+            batteries_discharged_kwh=1.0,
+        )
+
+        discharge_writes = await self._run(cfg, live, rec)
+
+        assert discharge_writes == [("number.max_discharge", 5000)]
+
+    @pytest.mark.asyncio
+    async def test_no_write_when_already_at_target(self):
+        """No spurious write when the live register already matches the target."""
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        cfg, live = self._cfg_and_live()
+        rec = _make_rec_with_energy(
+            Recommendations.BatteriesDischargeMode.value,
+            batteries_discharged_kwh=1.0,
+        )
+
+        discharge_writes = await self._run(cfg, live, rec)
+
+        assert discharge_writes == []

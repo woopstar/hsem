@@ -100,8 +100,22 @@ class PlannerInput:
             (``force_batteries_discharge``); does not affect normal battery
             self-consumption, PV export, or PV charging of the battery.
         export_min_price:
-            Minimum export price for grid power control (below this the
-            inverter export is throttled to zero).
+            Per-slot battery-export floor (issue #767): below this raw
+            export price, intentional battery-to-grid discharge is
+            forbidden, but PV surplus export is unrestricted. Does NOT
+            throttle the inverter connection point — only a negative export
+            price does that (see ``export_fee_per_kwh`` below).
+        export_fee_per_kwh:
+            Retailer margin/balancing-fee cost per kWh exported (issue
+            #925). Netted out of the export price everywhere export
+            profitability is decided — the applier's physical
+            connection-point block, the MILP objective, and the cost
+            function — so a raw price that is positive but net-negative
+            after fees is correctly treated like a negative price (PV
+            surplus gets curtailed instead of exported). Does NOT change
+            ``export_min_price``/``battery_export_min_price`` floor
+            comparisons, which stay on the raw price. ``0.0`` (default) is
+            fully backward compatible.
         months_winter:
             Month numbers (1-12) classified as winter.
         house_power_includes_ev:
@@ -184,6 +198,7 @@ class PlannerInput:
 
     # --- grid export control ---
     export_min_price: float = 0.0
+    export_fee_per_kwh: float = 0.0
 
     # --- main fuse / tariff protection ---
     #: Main fuse/breaker rating in amps (0 or None = disabled).  The MILP

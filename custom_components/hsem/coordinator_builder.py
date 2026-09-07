@@ -334,6 +334,7 @@ def build_planner_input(
             forecast_reserve_pct if forecast_reserve_pct is not None else 0.0
         ),
         export_min_price=convert_to_float(cfg.export_electricity_min_price) or 0.0,
+        export_fee_per_kwh=convert_to_float(cfg.export_fee_per_kwh) or 0.0,
         main_fuse_amps=(float(cfg.main_fuse_amps) if cfg.main_fuse_amps > 0 else None),
         main_fuse_phases=cfg.main_fuse_phases,
         max_grid_export_power_kw=(

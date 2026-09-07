@@ -1598,6 +1598,51 @@ Grid import and export have finite physical upper bounds. A binary
 is bounded by available PV. These constraints remove unbounded wash-flow
 directions without changing market prices.
 
+### Export fee (net export price, issue #925)
+
+The raw market export price is not necessarily the prosumer's real net
+revenue: retailer margin and balancing fees can turn a nominally-positive
+spot price into an actual loss. `export_fee_per_kwh` (default `0.0`,
+config field `hsem_export_fee_per_kwh`) is a fixed currency/kWh cost
+subtracted from the export price wherever export profitability is decided:
+
+```text
+net_export_price = raw_export_price − export_fee_per_kwh
+```
+
+This does **not** add a new hard constraint. It feeds the _existing_
+negative-export-price mechanics so a raw price that is positive but
+net-negative after fees is treated exactly like a negative raw price:
+
+- **Applier** (`custom_sensors/applier_power_control.py`): the physical
+  connection-point block (`export_price < 0.0` → `GRID_EXPORT_LIMIT_WATT`)
+  keys off `net_export_price` instead of the raw price.
+- **MILP objective** (`planner/milp/_objective.py::_build_objective`): the
+  export-revenue coefficient (`c_obj[ge_off + t]`) and the terminal-SoC
+  charge-premium's `exp_price` both use `p_exp_net[t] = p_exp[t] −
+export_fee_per_kwh`. The LP needs no new constraint — `curt[t]` already
+  has zero objective cost, so the LP already prefers curtailment over an
+  export whose net revenue is negative.
+- **Cost function** (`planner/cost_function.py::score_plan`): mirrors the
+  objective exactly — the export-revenue term, the
+  `deferred_export_price_by_slot()` call, and the `compute_charge_premium`
+  call all net the same fee, via `CostWeights.export_fee_per_kwh`.
+- **Reported cost** (`planner/milp/_write_results.py`, via
+  `cost_helpers.slot_grid_cash_flow_cost`): nets the same fee into
+  `estimated_cost_currency` so the reported per-slot cost matches what the
+  LP actually optimised for (cost-identity invariant).
+
+**Explicitly unaffected:** `export_min_price`/`battery_export_min_price`
+floor comparisons stay on the **raw** price — this fee is a separate,
+independent concept from the user-configured battery-export floors. When a
+slot's battery-destined export revenue is already zeroed by the
+`battery_export_min_price` floor, the fee is not applied on top (no
+double-penalty) — see `grid_cash_flow_cost()` and the mirrored logic in
+`score_plan()`.
+
+Invariant: with `export_fee_per_kwh = 0.0` (default), every computation
+above is byte-for-byte identical to the pre-#925 behaviour.
+
 ### Battery cycle cost
 
 Cycle cost should count physical battery throughput.

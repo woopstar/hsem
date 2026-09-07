@@ -594,6 +594,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         export_min_price=inp.export_min_price,
         battery_export_min_price=inp.battery_export_min_price,
+        export_fee_per_kwh=inp.export_fee_per_kwh,
         time_discount_rate=inp.time_discount_rate,
         battery_usable_capacity_kwh=usable_kwh,
         max_charge_per_slot_kwh=mcps,

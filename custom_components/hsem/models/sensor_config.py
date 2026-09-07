@@ -236,6 +236,11 @@ class SensorConfig:
     import_electricity_price_forecast_sensor: str | None = None
     export_electricity_price_forecast_sensor: str | None = None
     export_electricity_min_price: float = 0.0
+    #: Retailer margin/balancing-fee cost per kWh exported (issue #925).
+    #: Netted out of the export price wherever export profitability is
+    #: decided (applier physical block, MILP objective, cost function).
+    #: 0.0 (default) is fully backward compatible.
+    export_fee_per_kwh: float = 0.0
     #: Opt-in physical PV curtailment below export_electricity_min_price
     #: (issue #930). ``False`` (default) preserves the #767 behavior.
     curtail_pv_below_export_min_price: bool = False

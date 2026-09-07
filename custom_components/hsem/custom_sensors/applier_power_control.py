@@ -37,17 +37,21 @@ async def async_apply_inverter_power_control(
 ) -> CycleApplySummary:
     """Set the grid-export power limit on all inverters.
 
-    The inverter grid connection point is controlled by price and by the
+    The inverter grid connection point is controlled by *net* export price
+    (raw market price minus ``cfg.export_fee_per_kwh`` — the user's retailer
+    margin/balancing-fee cost per kWh exported, issue #925) and by the
     user-configured grid export cap:
 
-    - Negative export price → block all export with a soft watt floor
-      (``GRID_EXPORT_LIMIT_WATT``), because exporting then costs money.
-    - ``cfg.curtail_pv_below_export_min_price`` is ``True`` and the export
+    - Negative net export price → block all export with a soft watt floor
+      (``GRID_EXPORT_LIMIT_WATT``), because exporting then costs money. This
+      also fires when the raw market price is positive but fees make the
+      real net revenue negative.
+    - ``cfg.curtail_pv_below_export_min_price`` is ``True`` and the raw export
       price is below ``export_electricity_min_price`` (even if still
       non-negative) → also block all export with the same watt floor
       (issue #930). This is an opt-in, default-``False`` behavior.
-    - Otherwise (non-negative price, at/above the minimum, or the opt-in is
-      disabled) → allow export, but cap it at ``cfg.max_grid_export_power_kw``
+    - Otherwise (non-negative net price, at/above the minimum, or the opt-in
+      is disabled) → allow export, but cap it at ``cfg.max_grid_export_power_kw``
       when that value is configured.  A cap of ``0`` or unset is treated as
       unlimited/100 %.  Battery-to-grid export below
       ``export_electricity_min_price`` is gated planner-side by the MILP and
@@ -96,28 +100,41 @@ async def async_apply_inverter_power_control(
 
     export_price = live.export_electricity_price
     min_price = cfg.export_electricity_min_price
+    export_fee_per_kwh = cfg.export_fee_per_kwh
 
     if not isinstance(export_price, (int, float)):
         return summary
     if not isinstance(min_price, (int, float)):
         return summary
+    if not isinstance(export_fee_per_kwh, (int, float)):
+        export_fee_per_kwh = 0.0
 
-    # Negative export prices always physically block the whole grid
+    # Net export price (issue #925): the raw market price minus the user's
+    # retailer margin/balancing-fee cost per kWh exported.  A raw price that
+    # is positive but net-negative after fees must be treated exactly like a
+    # negative raw price below.
+    net_export_price = export_price - export_fee_per_kwh
+
+    # Negative net export prices always physically block the whole grid
     # connection point, because exporting then costs money.  For all
-    # non-negative prices we normally keep the connection point open and let
-    # the planner gate battery-to-grid export via export_electricity_min_price
-    # (issue #767) — unless the user has opted into physically curtailing
-    # surplus PV below the minimum price too (issue #930).
+    # non-negative net prices we normally keep the connection point open and
+    # let the planner gate battery-to-grid export via
+    # export_electricity_min_price (issue #767) — unless the user has opted
+    # into physically curtailing surplus PV below the minimum price too
+    # (issue #930).
     curtail_below_min_price = (
         cfg.curtail_pv_below_export_min_price and export_price < min_price
     )
-    if export_price < 0.0 or curtail_below_min_price:
+    if net_export_price < 0.0 or curtail_below_min_price:
         desired = GRID_EXPORT_LIMIT_WATT
         desired_is_watt = True
-        if export_price < 0.0:
+        if net_export_price < 0.0:
             _LOGGER.debug(
-                "Export price %.4f is negative; blocking all grid export with %d W limit.",
+                "Net export price %.4f (raw=%.4f, fee=%.4f) is negative; "
+                "blocking all grid export with %d W limit.",
+                net_export_price,
                 export_price,
+                export_fee_per_kwh,
                 desired,
             )
         else:
@@ -136,9 +153,9 @@ async def async_apply_inverter_power_control(
             desired = int(round(grid_export_cap_kw * 1000.0))
             desired_is_watt = True
             _LOGGER.debug(
-                "Export price %.4f is non-negative; allowing export up to "
+                "Net export price %.4f is non-negative; allowing export up to "
                 "configured grid limit %d W (%.3f kW).",
-                export_price,
+                net_export_price,
                 desired,
                 grid_export_cap_kw,
             )
@@ -156,11 +173,13 @@ async def async_apply_inverter_power_control(
                 )
 
     _LOGGER.debug(
-        "Determined export power limit: %s%s (export=%s, min=%s, "
-        "ev1_connected=%s, ev2_connected=%s)",
+        "Determined export power limit: %s%s (export=%s, net_export=%s, fee=%s, "
+        "min=%s, ev1_connected=%s, ev2_connected=%s)",
         desired,
         "W" if desired_is_watt else "%",
         export_price,
+        net_export_price,
+        export_fee_per_kwh,
         min_price,
         live.ev.is_connected,
         live.ev_second.is_connected,

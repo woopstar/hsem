@@ -45,6 +45,9 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_deadline_time": "07:00",
     "hsem_ev_second_deadline_time": "07:00",
     "hsem_export_electricity_min_price": -0.00,
+    # Retailer margin/balancing-fee cost per kWh exported (issue #925).
+    # 0.0 = disabled (default) — fully backward compatible.
+    "hsem_export_fee_per_kwh": 0.0,
     # Opt-in physical PV curtailment below export_electricity_min_price (issue #930).
     # False = disabled (default) — preserves the #767 behavior where surplus PV
     # export continues for any non-negative price.
