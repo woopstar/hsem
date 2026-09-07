@@ -8,6 +8,7 @@ Features (index order):
   0 .. 7*S-1    one-hot (DOW, slot)     — 672 for 15-min
   7*S, 7*S+1    sin/cos day-of-year      — seasonality
   7*S+2         temperature (optional)   — weather-driven load
+  7*S+3         wind chill (optional)    — wind-driven heat loss, requires temperature
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from typing import override
 import numpy as np
 
 type _SampleFingerprint = tuple[
-    datetime, int, int, int, float, float | None, float | None
+    datetime, int, int, int, float, float | None, float | None, float | None
 ]
 
 
@@ -43,6 +44,14 @@ class ConsumptionPredictor:
         retrain_min_new_samples: Minimum unseen or revised valid samples
             since the last fit before refitting.
         use_temperature: Whether to include temperature as a feature.
+        use_sequential: Whether to include the previous-slot lag feature.
+        use_wind_chill: Whether to include a wind-chill index feature
+            (``wind_speed_kmh * max(0, reference_temp - temperature)``).
+            Requires ``use_temperature`` — wind-driven heat loss only means
+            anything relative to how cold it already is.
+        wind_chill_reference_temperature: The balance-point temperature (°C)
+            used by the wind-chill index — the outdoor temperature above
+            which wind no longer meaningfully increases heat loss.
     """
 
     def __init__(
@@ -53,6 +62,8 @@ class ConsumptionPredictor:
         retrain_min_new_samples: int = 4,
         use_temperature: bool = False,
         use_sequential: bool = False,
+        use_wind_chill: bool = False,
+        wind_chill_reference_temperature: float = 20.0,
     ) -> None:
         self._decay_days = decay_days
         self._alpha = alpha
@@ -60,16 +71,20 @@ class ConsumptionPredictor:
         self._retrain_min_new = retrain_min_new_samples
         self._use_temperature = use_temperature
         self._use_sequential = use_sequential
+        self._use_wind_chill = use_wind_chill
+        self._wind_chill_reference_temperature = wind_chill_reference_temperature
 
         # Feature layout:
         #   0 .. 7*S-1  = one-hot DOW×slot
         #   7*S, 7*S+1  = sin/cos day-of-year
         #   7*S+2       = temperature (if use_temperature)
-        #   7*S+3       = lag feature (prev slot energy, if use_sequential)
+        #   7*S+3       = wind chill index (if use_wind_chill; requires temperature)
+        #   7*S+4       = lag feature (prev slot energy, if use_sequential)
         self._n_onehot = 7 * slots_per_day
         self._doy_offset = self._n_onehot
         self._temp_offset = self._n_onehot + 2
-        self._lag_offset = self._temp_offset + (1 if use_temperature else 0)
+        self._wind_chill_offset = self._temp_offset + (1 if use_temperature else 0)
+        self._lag_offset = self._wind_chill_offset + (1 if use_wind_chill else 0)
         self._n_features = self._lag_offset + (1 if use_sequential else 0)
 
         self._coef: np.ndarray | None = None
@@ -93,7 +108,8 @@ class ConsumptionPredictor:
         #: retrain gate cannot retain coefficients from another
         #: entity, net/gross mode, interval, or history context.
         self.training_context: (
-            tuple[str, str | None, bool, int, int, str | None] | None
+            tuple[str, str | None, bool, int, int, str | None, str | None, float | None]
+            | None
         ) = None
         #: Forecast-temperature diagnostics (issue #918) from the most
         #: recent inference pass — set by the populator, not by predict
@@ -103,6 +119,11 @@ class ConsumptionPredictor:
         self.forecast_temperature_entity_configured: bool = False
         self.forecast_temperature_slots_used: int = 0
         self.fallback_temperature_slots_used: int = 0
+        #: Forecast-wind diagnostics (issue #943) from the most recent
+        #: inference pass — set by the populator, not by predict methods.
+        self.forecast_wind_entity_configured: bool = False
+        self.forecast_wind_slots_used: int = 0
+        self.fallback_wind_slots_used: int = 0
 
     @property
     def days_of_history(self) -> float:
@@ -127,6 +148,7 @@ class ConsumptionPredictor:
         history: list[tuple[datetime, int, float]],
         reference_time: datetime | None = None,
         temperatures: dict[datetime, float] | None = None,
+        wind_speeds: dict[datetime, float] | None = None,
     ) -> None:
         """Fit ridge regression on historical per-slot data.
 
@@ -135,6 +157,8 @@ class ConsumptionPredictor:
             reference_time: The "now" time for computing sample ages.
             temperatures: Optional dict mapping slot-start timestamps to
                 temperature (°C) values.  Ignored when use_temperature=False.
+            wind_speeds: Optional dict mapping slot-start timestamps to wind
+                speed (km/h) values.  Ignored when use_wind_chill=False.
         """
         if reference_time is None:
             reference_time = datetime.now().astimezone()
@@ -162,11 +186,15 @@ class ConsumptionPredictor:
         w = np.zeros(n, dtype=np.float64)
 
         temps = temperatures or {}
+        winds = wind_speeds or {}
         # Sorted once per call so the per-sample lookup below is O(log M)
         # instead of rebuilding and linearly scanning the whole dict for
         # every one of the (potentially thousands of) history samples.
         sorted_temps = (
             self._sorted_temperature_points(temps) if self._use_temperature else []
+        )
+        sorted_winds = (
+            self._sorted_temperature_points(winds) if self._use_wind_chill else []
         )
         self._raw_groups.clear()
 
@@ -208,8 +236,10 @@ class ConsumptionPredictor:
             X[valid, self._doy_offset] = math.sin(2 * math.pi * doy / 365.0)
             X[valid, self._doy_offset + 1] = math.cos(2 * math.pi * doy / 365.0)
 
-            # Temperature feature.
+            # Temperature and wind-chill features share the same slot-start
+            # timestamp for their nearest-neighbour lookup.
             temperature_value: float | None = None
+            wind_chill_value: float | None = None
             if self._use_temperature:
                 # Match temperature by slot-start timestamp (nearest).
                 slot_start = ts_aware.replace(
@@ -220,6 +250,14 @@ class ConsumptionPredictor:
                 )
                 temperature_value = self._nearest_from_sorted(sorted_temps, slot_start)
                 X[valid, self._temp_offset] = temperature_value
+
+                if self._use_wind_chill:
+                    wind_value = self._nearest_from_sorted(sorted_winds, slot_start)
+                    wind_chill_value = wind_value * max(
+                        0.0,
+                        self._wind_chill_reference_temperature - temperature_value,
+                    )
+                    X[valid, self._wind_chill_offset] = wind_chill_value
 
             # A lag is valid only across one exact physical interval.  Reset
             # after recorder gaps, rejected readings, and accumulator resets.
@@ -243,6 +281,7 @@ class ConsumptionPredictor:
                     slot,
                     float(energy),
                     temperature_value,
+                    wind_chill_value,
                     lag_value,
                 )
             )
@@ -288,6 +327,7 @@ class ConsumptionPredictor:
         day_offset: int = 0,
         reference_time: datetime | None = None,
         temperature: float | None = None,
+        wind_speed: float | None = None,
     ) -> float:
         """Predict consumption for a specific slot."""
         if self._coef is None:
@@ -306,7 +346,11 @@ class ConsumptionPredictor:
         hour = (slot * (1440 // self._slots_per_day)) // 60
         target_dt = target_dt.replace(hour=hour)
 
-        return float(self._predict_from_features(target_dt, slot, temperature))
+        return float(
+            self._predict_from_features(
+                target_dt, slot, temperature, wind_speed=wind_speed
+            )
+        )
 
     def predict_with_std(
         self,
@@ -314,6 +358,7 @@ class ConsumptionPredictor:
         day_offset: int = 0,
         reference_time: datetime | None = None,
         temperature: float | None = None,
+        wind_speed: float | None = None,
     ) -> tuple[float, float]:
         """Predict consumption with uncertainty.
 
@@ -322,7 +367,7 @@ class ConsumptionPredictor:
             weighted standard deviation of the (DOW, slot) group.
             When the group has only 1 sample, std defaults to 20% of mean.
         """
-        mean = self.predict(slot, day_offset, reference_time, temperature)
+        mean = self.predict(slot, day_offset, reference_time, temperature, wind_speed)
         if mean <= 0:
             return 0.0, 0.0
 
@@ -343,6 +388,7 @@ class ConsumptionPredictor:
         self,
         slot_starts: list[datetime],
         temperatures: dict[datetime, float] | None = None,
+        wind_speeds: dict[datetime, float] | None = None,
     ) -> dict[datetime, float]:
         """Predict recommendation slots in physical order with a lag chain.
 
@@ -355,8 +401,10 @@ class ConsumptionPredictor:
             return {}
 
         temps = temperatures or {}
+        winds = wind_speeds or {}
         # Sorted once per call — see the identical optimization in train().
         sorted_temps = self._sorted_temperature_points(temps) if temps else None
+        sorted_winds = self._sorted_temperature_points(winds) if winds else None
         slot_minutes = 1440 // self._slots_per_day
         slot_duration = timedelta(minutes=slot_minutes)
         prev = 0.0
@@ -380,12 +428,21 @@ class ConsumptionPredictor:
                 if sorted_temps is not None
                 else None
             )
+            wind_val = (
+                self._nearest_from_sorted(sorted_winds, slot_dt)
+                if sorted_winds is not None
+                else None
+            )
             is_contiguous = (
                 prev_timestamp_utc is not None
                 and physical_start - prev_timestamp_utc == slot_duration
             )
             lag = prev if is_contiguous else 0.0
-            pred = float(self._predict_from_features(slot_dt, slot, temp_val, lag))
+            pred = float(
+                self._predict_from_features(
+                    slot_dt, slot, temp_val, lag, wind_speed=wind_val
+                )
+            )
             result[physical_start] = pred
             prev = pred
             prev_timestamp_utc = physical_start
@@ -401,6 +458,7 @@ class ConsumptionPredictor:
         slot: int,
         temperature: float | None,
         prev_energy: float = 0.0,
+        wind_speed: float | None = None,
     ) -> float:
         """Compute prediction from feature vector."""
         assert self._coef is not None, "_predict_from_features called before fit"
@@ -422,6 +480,16 @@ class ConsumptionPredictor:
             and math.isfinite(temperature)
         ):
             pred += float(self._coef[self._temp_offset]) * temperature
+
+            if (
+                self._use_wind_chill
+                and wind_speed is not None
+                and math.isfinite(wind_speed)
+            ):
+                chill = wind_speed * max(
+                    0.0, self._wind_chill_reference_temperature - temperature
+                )
+                pred += float(self._coef[self._wind_chill_offset]) * chill
 
         if self._use_sequential:
             pred += float(self._coef[self._lag_offset]) * prev_energy
@@ -627,6 +695,16 @@ class ConsumptionPredictor:
     def use_sequential(self) -> bool:
         """Return whether the fitted feature layout includes the lag feature."""
         return self._use_sequential
+
+    @property
+    def use_wind_chill(self) -> bool:
+        """Return whether the fitted feature layout includes the wind-chill index."""
+        return self._use_wind_chill
+
+    @property
+    def wind_chill_reference_temperature(self) -> float:
+        """Return the balance-point temperature (°C) used by the wind-chill index."""
+        return self._wind_chill_reference_temperature
 
     @property
     def last_fit_time(self) -> datetime | None:

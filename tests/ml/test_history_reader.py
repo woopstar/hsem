@@ -36,6 +36,10 @@ def _state(timestamp: datetime, value: float) -> SimpleNamespace:
     return SimpleNamespace(last_updated=timestamp, state=str(value))
 
 
+def _attr_state(timestamp: datetime, attributes: dict[str, object]) -> SimpleNamespace:
+    return SimpleNamespace(last_updated=timestamp, state="windy", attributes=attributes)
+
+
 def _deltas(
     readings: list[tuple[datetime, float]],
     now: datetime,
@@ -309,3 +313,103 @@ async def test_instantaneous_history_filters_nonfinite_temperature() -> None:
         )
 
     assert readings == [(finite_timestamp.astimezone(STOCKHOLM), 18.5)]
+
+
+# ---------------------------------------------------------------------------
+# Attribute-history reads (issue #943) -- wind speed off a weather entity
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_attribute_history_reads_named_attribute_not_state() -> None:
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    finite_timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
+    states = [_attr_state(finite_timestamp, {"wind_speed": 22.5})]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        readings = await HistoryReader(
+            MagicMock()
+        ).read_instantaneous_attribute_history(
+            ENTITY_ID,
+            "wind_speed",
+            days=0,
+        )
+
+    assert readings == [(finite_timestamp.astimezone(STOCKHOLM), 22.5)]
+
+
+@pytest.mark.asyncio
+async def test_attribute_history_skips_missing_attribute() -> None:
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    finite_timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
+    states = [
+        _attr_state(datetime(2026, 8, 20, 7, 30, tzinfo=UTC), {}),
+        _attr_state(finite_timestamp, {"wind_speed": 10.0}),
+    ]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        readings = await HistoryReader(
+            MagicMock()
+        ).read_instantaneous_attribute_history(
+            ENTITY_ID,
+            "wind_speed",
+            days=0,
+        )
+
+    assert readings == [(finite_timestamp.astimezone(STOCKHOLM), 10.0)]
+
+
+@pytest.mark.asyncio
+async def test_attribute_history_skips_nonfinite_attribute_value() -> None:
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    finite_timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
+    states = [
+        _attr_state(
+            datetime(2026, 8, 20, 7, 30, tzinfo=UTC), {"wind_speed": float("nan")}
+        ),
+        _attr_state(finite_timestamp, {"wind_speed": 12.0}),
+    ]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        readings = await HistoryReader(
+            MagicMock()
+        ).read_instantaneous_attribute_history(
+            ENTITY_ID,
+            "wind_speed",
+            days=0,
+        )
+
+    assert readings == [(finite_timestamp.astimezone(STOCKHOLM), 12.0)]

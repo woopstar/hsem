@@ -445,7 +445,9 @@
           "hsem_ml_consumption_net_consumption": "Brug nettoforbrug (import minus eksport)",
           "hsem_ml_consumption_temperature_entity": "Udendørs temperatur sensor",
           "hsem_ml_consumption_weather_forecast_entity": "Vejrudsigt-enhed",
-          "hsem_ml_consumption_sequential": "Sekventiel forudsigelse (lag-funktion)"
+          "hsem_ml_consumption_sequential": "Sekventiel forudsigelse (lag-funktion)",
+          "hsem_ml_consumption_wind_chill_enabled": "Aktivér vindkøling i forbrugsmodellen",
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Referencetemperatur for vindkøling"
         },
         "data_description": {
           "hsem_grid_import_energy_entity": "Valgfri - akkumuleret netimport energimåler (kWh).",
@@ -457,7 +459,9 @@
           "hsem_ml_consumption_net_consumption": "Træk neteksport fra import for netto husforbrug.",
           "hsem_ml_consumption_temperature_entity": "Valgfri - udendørs temperatur sensor i grader C. Brug en udendørs sensor, ikke en indendørs termostat.",
           "hsem_ml_consumption_weather_forecast_entity": "Valgfri - vejrudsigt-enhed til fremtidige tidsintervallers temperaturprognose. Kræver at den udendørs temperatur sensor ovenfor også er sat. Falder tilbage til den målte temperatur, hvis prognosedata mangler.",
-          "hsem_ml_consumption_sequential": "Før hver slotsforudsigelse som input til den næste. Fanger intra-time momentum."
+          "hsem_ml_consumption_sequential": "Før hver slotsforudsigelse som input til den næste. Fanger intra-time momentum.",
+          "hsem_ml_consumption_wind_chill_enabled": "Valgfri – tilføjer et vindkøling-indeks (vindhastighed × varmetab under referencetemperaturen) til ML-forbrugsmodellen. Vinddata for både historik og prognose hentes fra vejrudsigt-enheden ovenfor – ingen separat vindsensor er nødvendig. Kræver den udendørs temperatursensor ovenfor.",
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Balancepunktstemperatur (°C), hvorover vind ikke længere øger varmetabet. Bruges kun når vindkøling er aktiveret."
         },
         "description": "Konfigurer energimålere og aktiver ML-baseret forbrugsprognose.",
         "title": "Energi og ML"
@@ -956,7 +960,9 @@
           "hsem_ml_consumption_net_consumption": "Brug nettoforbrug (import minus eksport)",
           "hsem_ml_consumption_temperature_entity": "Udendørs temperatur sensor",
           "hsem_ml_consumption_weather_forecast_entity": "Vejrudsigt-enhed",
-          "hsem_ml_consumption_sequential": "Sekventiel forudsigelse (lag-funktion)"
+          "hsem_ml_consumption_sequential": "Sekventiel forudsigelse (lag-funktion)",
+          "hsem_ml_consumption_wind_chill_enabled": "Aktivér vindkøling i forbrugsmodellen",
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Referencetemperatur for vindkøling"
         },
         "data_description": {
           "hsem_grid_import_energy_entity": "Valgfri - akkumuleret netimport energimåler (kWh).",
@@ -968,7 +974,9 @@
           "hsem_ml_consumption_net_consumption": "Træk neteksport fra import for netto husforbrug.",
           "hsem_ml_consumption_temperature_entity": "Valgfri - udendørs temperatur sensor i grader C. Brug en udendørs sensor, ikke en indendørs termostat.",
           "hsem_ml_consumption_weather_forecast_entity": "Valgfri - vejrudsigt-enhed til fremtidige tidsintervallers temperaturprognose. Kræver at den udendørs temperatur sensor ovenfor også er sat. Falder tilbage til den målte temperatur, hvis prognosedata mangler.",
-          "hsem_ml_consumption_sequential": "Før hver slotsforudsigelse som input til den næste. Fanger intra-time momentum."
+          "hsem_ml_consumption_sequential": "Før hver slotsforudsigelse som input til den næste. Fanger intra-time momentum.",
+          "hsem_ml_consumption_wind_chill_enabled": "Valgfri – tilføjer et vindkøling-indeks (vindhastighed × varmetab under referencetemperaturen) til ML-forbrugsmodellen. Vinddata for både historik og prognose hentes fra vejrudsigt-enheden ovenfor – ingen separat vindsensor er nødvendig. Kræver den udendørs temperatursensor ovenfor.",
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Balancepunktstemperatur (°C), hvorover vind ikke længere øger varmetabet. Bruges kun når vindkøling er aktiveret."
         },
         "description": "Konfigurer energimålere og aktiver ML-baseret forbrugsprognose.",
         "title": "Energi og ML"

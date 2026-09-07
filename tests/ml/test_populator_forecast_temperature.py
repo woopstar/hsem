@@ -16,7 +16,8 @@ import pytest
 
 from homeassistant.core import HomeAssistant
 
-from custom_components.hsem.ml import populator
+from custom_components.hsem.ml import populator, weather_features
+from custom_components.hsem.ml.weather_forecast_reader import WeatherForecastPoints
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
 from tests.ml.test_populator_time_alignment import (
@@ -36,12 +37,14 @@ __all__ = ["_ha_local_timezone"]
 @pytest.fixture(autouse=True)
 def _clear_forecast_cache():
     populator._processed_history_cache.clear()
-    populator._temperature_history_cache.clear()
-    populator._forecast_cache.clear()
+    weather_features._temperature_history_cache.clear()
+    weather_features._wind_history_cache.clear()
+    weather_features._forecast_cache.clear()
     yield
     populator._processed_history_cache.clear()
-    populator._temperature_history_cache.clear()
-    populator._forecast_cache.clear()
+    weather_features._temperature_history_cache.clear()
+    weather_features._wind_history_cache.clear()
+    weather_features._forecast_cache.clear()
 
 
 async def _populate_with_forecast(
@@ -52,12 +55,17 @@ async def _populate_with_forecast(
     forecast_points: dict[datetime, float] | None,
     now: datetime = NOW,
 ) -> tuple[tuple[bool, _FakePredictor | None], AsyncMock]:
-    forecast_mock = AsyncMock(return_value=forecast_points)
+    forecast_result = (
+        WeatherForecastPoints(temperatures=forecast_points, wind_speeds_kmh={})
+        if forecast_points is not None
+        else None
+    )
+    forecast_mock = AsyncMock(return_value=forecast_result)
     with (
         patch.object(populator, "HistoryReader", return_value=reader),
         patch.object(populator, "ConsumptionPredictor", _FakePredictor),
         patch.object(populator, "hsem_now", return_value=now),
-        patch.object(populator, "read_weather_forecast_temperatures", forecast_mock),
+        patch.object(weather_features, "read_weather_forecast", forecast_mock),
     ):
         result = await populator.populate_ml_house_consumption(
             cast(HomeAssistant, _FakeHass()),

@@ -1,4 +1,4 @@
-"""Tests for the weather forecast reader (issue #918)."""
+"""Tests for the weather forecast reader (issues #918, #943)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.hsem.ml.weather_forecast_reader import (
-    read_weather_forecast_temperatures,
+    WeatherForecastPoints,
+    read_weather_forecast,
 )
 from custom_components.hsem.utils.datetime_utils import utc_key
 
@@ -64,6 +65,7 @@ class _FakeServices:
 class _FakeConfig:
     class _Units:
         temperature_unit = "°C"
+        wind_speed_unit = "km/h"
 
     units = _Units()
 
@@ -89,10 +91,15 @@ def _hourly_response(
 
 async def _read(
     hass: _FakeHass, entity_id: str = "weather.home"
+) -> WeatherForecastPoints | None:
+    return await read_weather_forecast(cast(HomeAssistant, hass), entity_id)
+
+
+async def _read_temps(
+    hass: _FakeHass, entity_id: str = "weather.home"
 ) -> dict[datetime, float] | None:
-    return await read_weather_forecast_temperatures(
-        cast(HomeAssistant, hass), entity_id
-    )
+    points = await _read(hass, entity_id)
+    return points.temperatures if points is not None else None
 
 
 @pytest.mark.asyncio
@@ -108,7 +115,7 @@ async def test_hourly_forecast_parsed_to_celsius_points() -> None:
         ),
     )
 
-    points = await _read(hass)
+    points = await _read_temps(hass)
 
     assert points is not None
     assert len(points) == 2
@@ -127,7 +134,7 @@ async def test_zero_celsius_forecast_point_is_valid() -> None:
         ),
     )
 
-    points = await _read(hass)
+    points = await _read_temps(hass)
 
     assert points is not None
     assert len(points) == 1
@@ -144,7 +151,7 @@ async def test_fahrenheit_unit_is_converted_to_celsius() -> None:
         ),
     )
 
-    points = await _read(hass)
+    points = await _read_temps(hass)
 
     assert points is not None
     assert next(iter(points.values())) == pytest.approx(0.0, abs=1e-6)
@@ -185,7 +192,7 @@ async def test_hourly_unsupported_falls_back_to_daily() -> None:
         raises={"hourly"},
     )
 
-    points = await _read(hass)
+    points = await _read_temps(hass)
 
     assert points is not None
     assert next(iter(points.values())) == pytest.approx(3.0)
@@ -218,8 +225,134 @@ async def test_entries_missing_temperature_or_time_are_skipped() -> None:
         ),
     )
 
-    points = await _read(hass)
+    points = await _read_temps(hass)
 
     assert points is not None
     assert len(points) == 1
     assert next(iter(points.values())) == pytest.approx(4.0)
+
+
+# ---------------------------------------------------------------------------
+# Wind speed extraction (issue #943)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_wind_speed_parsed_alongside_temperature() -> None:
+    hass = _FakeHass(
+        {
+            "weather.home": _FakeState(
+                "windy", {"temperature_unit": "°C", "wind_speed_unit": "km/h"}
+            )
+        },
+        responses=_hourly_response(
+            "weather.home",
+            [
+                {
+                    "datetime": "2026-08-20T12:00:00+00:00",
+                    "temperature": 5.0,
+                    "wind_speed": 20.0,
+                },
+            ],
+        ),
+    )
+
+    points = await _read(hass)
+
+    assert points is not None
+    assert next(iter(points.temperatures.values())) == pytest.approx(5.0)
+    assert next(iter(points.wind_speeds_kmh.values())) == pytest.approx(20.0)
+
+
+@pytest.mark.asyncio
+async def test_wind_speed_mph_is_converted_to_kmh() -> None:
+    hass = _FakeHass(
+        {
+            "weather.home": _FakeState(
+                "windy", {"temperature_unit": "°C", "wind_speed_unit": "mph"}
+            )
+        },
+        responses=_hourly_response(
+            "weather.home",
+            [
+                {
+                    "datetime": "2026-08-20T12:00:00+00:00",
+                    "temperature": 5.0,
+                    "wind_speed": 10.0,
+                },
+            ],
+        ),
+    )
+
+    points = await _read(hass)
+
+    assert points is not None
+    assert next(iter(points.wind_speeds_kmh.values())) == pytest.approx(
+        16.0934, rel=1e-3
+    )
+
+
+@pytest.mark.asyncio
+async def test_entry_missing_wind_speed_keeps_temperature() -> None:
+    hass = _FakeHass(
+        {"weather.home": _FakeState("sunny", {"temperature_unit": "°C"})},
+        responses=_hourly_response(
+            "weather.home",
+            [{"datetime": "2026-08-20T12:00:00+00:00", "temperature": 5.0}],
+        ),
+    )
+
+    points = await _read(hass)
+
+    assert points is not None
+    assert len(points.temperatures) == 1
+    assert len(points.wind_speeds_kmh) == 0
+
+
+@pytest.mark.asyncio
+async def test_entry_missing_temperature_keeps_wind_speed() -> None:
+    hass = _FakeHass(
+        {
+            "weather.home": _FakeState(
+                "windy", {"temperature_unit": "°C", "wind_speed_unit": "km/h"}
+            )
+        },
+        responses=_hourly_response(
+            "weather.home",
+            [
+                {
+                    "datetime": "2026-08-20T12:00:00+00:00",
+                    "temperature": None,
+                    "wind_speed": 15.0,
+                }
+            ],
+        ),
+    )
+
+    points = await _read(hass)
+
+    assert points is not None
+    assert len(points.temperatures) == 0
+    assert next(iter(points.wind_speeds_kmh.values())) == pytest.approx(15.0)
+
+
+@pytest.mark.asyncio
+async def test_wind_speed_unit_falls_back_to_hass_config_units() -> None:
+    hass = _FakeHass(
+        {"weather.home": _FakeState("windy", {"temperature_unit": "°C"})},
+        responses=_hourly_response(
+            "weather.home",
+            [
+                {
+                    "datetime": "2026-08-20T12:00:00+00:00",
+                    "temperature": 5.0,
+                    "wind_speed": 20.0,
+                }
+            ],
+        ),
+    )
+
+    points = await _read(hass)
+
+    assert points is not None
+    assert next(iter(points.wind_speeds_kmh.values())) == pytest.approx(20.0)

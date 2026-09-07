@@ -596,6 +596,17 @@ def build_sensor_config(
     cfg.ml_consumption_weather_forecast_entity = _optional_entity(
         get_config_value(config_entry, "hsem_ml_consumption_weather_forecast_entity")
     )
+    cfg.ml_consumption_wind_chill_enabled = bool(
+        get_config_value(config_entry, "hsem_ml_consumption_wind_chill_enabled")
+    )
+    _wind_chill_ref_temp = convert_to_float(
+        get_config_value(
+            config_entry, "hsem_ml_consumption_wind_chill_reference_temperature"
+        )
+    )
+    cfg.ml_consumption_wind_chill_reference_temperature = (
+        _wind_chill_ref_temp if _wind_chill_ref_temp is not None else 18.0
+    )
 
     # Consumption weights
     _w1d = convert_to_int(
