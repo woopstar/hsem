@@ -183,20 +183,41 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 populate_ml_house_consumption,
             )
 
-            (
-                consumption_ok,
-                self._ml_predictor,
-            ) = await populate_ml_house_consumption(
-                self.hass,
-                self._hourly_recommendations,
-                cfg,
-                self._ml_predictor,
-            )
-            async_log(
-                "debug",
-                "[ml] populate_ml_house_consumption returned %s",
-                consumption_ok,
-            )
+            # A slow or failing ML populate must never take the whole update
+            # cycle down with it: during initial setup this cycle is awaited
+            # directly by async_setup_entry (issue #926), so an uncaught
+            # exception here would fail the entire config entry and remove
+            # every HSEM entity, not just the ML-driven ones. Fall back to
+            # the legacy avg-consumption path instead, same as a clean
+            # ``consumption_ok=False`` return, and keep any previously
+            # trained predictor so the next cycle can retry without losing
+            # its cache.
+            try:
+                (
+                    consumption_ok,
+                    self._ml_predictor,
+                ) = await populate_ml_house_consumption(
+                    self.hass,
+                    self._hourly_recommendations,
+                    cfg,
+                    self._ml_predictor,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                async_log(
+                    "error",
+                    "[ml] populate_ml_house_consumption raised %s —"
+                    " falling back to legacy avg sensors for this cycle.",
+                    exc,
+                )
+                consumption_ok = False
+            else:
+                async_log(
+                    "debug",
+                    "[ml] populate_ml_house_consumption returned %s",
+                    consumption_ok,
+                )
 
             if not consumption_ok:
                 async_log(
