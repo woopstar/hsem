@@ -92,6 +92,52 @@ class TestLoadForecastAssessment:
         )
         assert result.ready is False
         assert result.reason == "invalid_future_values"
+
+    def test_invalid_value_is_logged_with_slot_and_field_name(self) -> None:
+        # Issue #925 follow-up: the generic "invalid_future_values" reason
+        # alone gives operators nothing to act on. Diagnostic logging must
+        # name the offending slot and field so a bad ML/legacy-avg output
+        # can actually be traced back to its source.
+        now = datetime(2026, 8, 21, 12, 5, tzinfo=UTC)
+        profile = _profile(now, 0.2)
+        profile[1].avg_house_consumption_7d_kwh = float("nan")
+
+        with patch("custom_components.hsem.coordinator_helpers.async_log") as mock_log:
+            result = assess_load_forecast(
+                profile,
+                now,
+                population_succeeded=True,
+                live_house_demand_w=0.0,
+            )
+
+        assert result.reason == "invalid_future_values"
+        mock_log.assert_called_once()
+        level, msg, *args = mock_log.call_args.args
+        assert level == "warning"
+        formatted = msg % tuple(args)
+        assert "avg_house_consumption_7d_kwh" in formatted
+        assert profile[1].start.isoformat() in formatted
+
+    def test_non_numeric_value_is_logged_with_type(self) -> None:
+        now = datetime(2026, 8, 21, 12, 5, tzinfo=UTC)
+        profile = _profile(now, 0.2)
+        profile[1].avg_house_consumption_1d_kwh = None  # type: ignore[assignment]
+
+        with patch("custom_components.hsem.coordinator_helpers.async_log") as mock_log:
+            result = assess_load_forecast(
+                profile,
+                now,
+                population_succeeded=True,
+                live_house_demand_w=0.0,
+            )
+
+        assert result.reason == "invalid_future_values"
+        mock_log.assert_called_once()
+        level, msg, *args = mock_log.call_args.args
+        assert level == "warning"
+        formatted = msg % tuple(args)
+        assert "avg_house_consumption_1d_kwh" in formatted
+        assert "NoneType" in formatted
         assert result.signature is None
 
     @pytest.mark.parametrize("live_w", [None, 0.0, 49.9, 50.0])
