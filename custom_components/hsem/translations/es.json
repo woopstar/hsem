@@ -170,6 +170,7 @@
           "hsem_export_electricity_price_forecast_sensor": "Sensor de previsión de precio de exportación (opcional)",
           "hsem_export_electricity_min_price": "Precio mínimo de exportación requerido",
           "hsem_export_fee_per_kwh": "Tarifa de exportación por kWh",
+          "hsem_curtail_pv_below_export_min_price": "Recortar exportación FV por debajo del precio mínimo",
           "hsem_electricity_price_update_interval": "Intervalo de actualización del precio de electricidad (minutos)"
         },
         "data_description": {
@@ -179,6 +180,7 @@
           "hsem_export_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de exportación.",
           "hsem_export_electricity_min_price": "Límite por franja horaria para la exportación forzada de batería a la red. Por debajo de este precio, HSEM no obliga a la batería a descargarse hacia la red; la batería sigue cubriendo el consumo de la casa con normalidad, y alcanzar el umbral no activa la exportación automáticamente. Esto no bloquea la exportación fotovoltaica: el excedente solar sigue exportándose a cualquier precio no negativo. Solo un precio de exportación negativo hace que HSEM bloquee toda la exportación a la red, ya que entonces exportar costaría dinero.",
           "hsem_export_fee_per_kwh": "Margen de la comercializadora y tarifas de balance que se restan del precio de exportación bruto antes de que HSEM decida si exportar es rentable (issue #925). Si tu ingreso neto real por exportar es inferior al precio de mercado que muestra tu sensor de precios, indica aquí tu tarifa total por kWh. Cuando el precio neto (precio de mercado menos esta tarifa) se vuelve negativo, HSEM limita físicamente la exportación fotovoltaica en lugar de exportar con pérdidas. Ponlo a 0 si tu sensor de precio de exportación ya refleja el ingreso neto.",
+          "hsem_curtail_pv_below_export_min_price": "Cuando está habilitado, bloquea físicamente toda la exportación a la red (el mismo límite que para precios negativos) cuando el precio de exportación cae por debajo del precio mínimo de exportación indicado arriba, incluso si sigue siendo positivo. Cuando está deshabilitado (predeterminado), el excedente de FV sigue exportándose hasta el límite de exportación a la red configurado para cualquier precio no negativo (issue #767); solo la exportación de batería a la red está controlada por el precio mínimo.",
           "hsem_electricity_price_update_interval": "Con qué frecuencia proporciona nuevos datos tu sensor de precios (15, 30 o 60 minutos)."
         },
         "description": "Configura tus sensores de precio de electricidad para los precios de importación y exportación.",
@@ -701,6 +703,7 @@
           "hsem_export_electricity_price_forecast_sensor": "Sensor de previsión de precio de exportación (opcional)",
           "hsem_export_electricity_min_price": "Precio mínimo de exportación requerido",
           "hsem_export_fee_per_kwh": "Tarifa de exportación por kWh",
+          "hsem_curtail_pv_below_export_min_price": "Recortar exportación FV por debajo del precio mínimo",
           "hsem_electricity_price_update_interval": "Intervalo de actualización del precio de electricidad (minutos)"
         },
         "data_description": {
@@ -710,6 +713,7 @@
           "hsem_export_electricity_price_forecast_sensor": "Opcional: selecciona un sensor independiente para las previsiones de precio de exportación.",
           "hsem_export_electricity_min_price": "Límite por franja horaria para la exportación forzada de batería a la red. Por debajo de este precio, HSEM no obliga a la batería a descargarse hacia la red; la batería sigue cubriendo el consumo de la casa con normalidad, y alcanzar el umbral no activa la exportación automáticamente. Esto no bloquea la exportación fotovoltaica: el excedente solar sigue exportándose a cualquier precio no negativo. Solo un precio de exportación negativo hace que HSEM bloquee toda la exportación a la red, ya que entonces exportar costaría dinero.",
           "hsem_export_fee_per_kwh": "Margen de la comercializadora y tarifas de balance que se restan del precio de exportación bruto antes de que HSEM decida si exportar es rentable (issue #925). Si tu ingreso neto real por exportar es inferior al precio de mercado que muestra tu sensor de precios, indica aquí tu tarifa total por kWh. Cuando el precio neto (precio de mercado menos esta tarifa) se vuelve negativo, HSEM limita físicamente la exportación fotovoltaica en lugar de exportar con pérdidas. Ponlo a 0 si tu sensor de precio de exportación ya refleja el ingreso neto.",
+          "hsem_curtail_pv_below_export_min_price": "Cuando está habilitado, bloquea físicamente toda la exportación a la red (el mismo límite que para precios negativos) cuando el precio de exportación cae por debajo del precio mínimo de exportación indicado arriba, incluso si sigue siendo positivo. Cuando está deshabilitado (predeterminado), el excedente de FV sigue exportándose hasta el límite de exportación a la red configurado para cualquier precio no negativo (issue #767); solo la exportación de batería a la red está controlada por el precio mínimo.",
           "hsem_electricity_price_update_interval": "Con qué frecuencia proporciona nuevos datos tu sensor de precios (15, 30 o 60 minutos)."
         },
         "description": "Configura tus sensores de precio de electricidad para los precios de importación y exportación.",

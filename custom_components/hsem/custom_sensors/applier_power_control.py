@@ -46,15 +46,23 @@ async def async_apply_inverter_power_control(
       (``GRID_EXPORT_LIMIT_WATT``), because exporting then costs money. This
       also fires when the raw market price is positive but fees make the
       real net revenue negative.
-    - Non-negative net export price → allow export, but cap it at
-      ``cfg.max_grid_export_power_kw`` when that value is configured.  A cap of
-      ``0`` or unset is treated as unlimited/100 %.  Battery-to-grid export
-      below ``export_electricity_min_price`` is gated planner-side by the
-      MILP and discharge scheduler, not by throttling the whole connection point.
+    - ``cfg.curtail_pv_below_export_min_price`` is ``True`` and the raw export
+      price is below ``export_electricity_min_price`` (even if still
+      non-negative) → also block all export with the same watt floor
+      (issue #930). This is an opt-in, default-``False`` behavior.
+    - Otherwise (non-negative net price, at/above the minimum, or the opt-in
+      is disabled) → allow export, but cap it at ``cfg.max_grid_export_power_kw``
+      when that value is configured.  A cap of ``0`` or unset is treated as
+      unlimited/100 %.  Battery-to-grid export below
+      ``export_electricity_min_price`` is gated planner-side by the MILP and
+      discharge scheduler, not by throttling the whole connection point.
 
     This avoids the issue described in #767, where a positive-but-low export
     price caused the applier to write a 100 W connection-point limit that
-    blocked surplus PV export once the battery was full.
+    blocked surplus PV export once the battery was full. Issue #930 makes
+    that same physical block available again as an explicit opt-in for
+    installations that want to curtail surplus PV export whenever the price
+    drops below their configured minimum.
 
     Only issues a hardware write when the inverter state actually needs to change.
 
@@ -107,22 +115,37 @@ async def async_apply_inverter_power_control(
     # negative raw price below.
     net_export_price = export_price - export_fee_per_kwh
 
-    # Negative net export prices are the only case where we physically block
-    # the whole grid connection point.  When exporting costs money we must
-    # not allow any export, including surplus PV.  For all non-negative net
-    # prices we keep the connection point open and let the planner gate
-    # battery-to-grid export via export_electricity_min_price (issue #767).
-    if net_export_price < 0.0:
+    # Negative net export prices always physically block the whole grid
+    # connection point, because exporting then costs money.  For all
+    # non-negative net prices we normally keep the connection point open and
+    # let the planner gate battery-to-grid export via
+    # export_electricity_min_price (issue #767) — unless the user has opted
+    # into physically curtailing surplus PV below the minimum price too
+    # (issue #930).
+    curtail_below_min_price = (
+        cfg.curtail_pv_below_export_min_price and export_price < min_price
+    )
+    if net_export_price < 0.0 or curtail_below_min_price:
         desired = GRID_EXPORT_LIMIT_WATT
         desired_is_watt = True
-        _LOGGER.debug(
-            "Net export price %.4f (raw=%.4f, fee=%.4f) is negative; "
-            "blocking all grid export with %d W limit.",
-            net_export_price,
-            export_price,
-            export_fee_per_kwh,
-            desired,
-        )
+        if net_export_price < 0.0:
+            _LOGGER.debug(
+                "Net export price %.4f (raw=%.4f, fee=%.4f) is negative; "
+                "blocking all grid export with %d W limit.",
+                net_export_price,
+                export_price,
+                export_fee_per_kwh,
+                desired,
+            )
+        else:
+            _LOGGER.debug(
+                "Export price %.4f is below export_electricity_min_price %.4f and "
+                "hsem_curtail_pv_below_export_min_price is enabled; blocking all "
+                "grid export with %d W limit.",
+                export_price,
+                min_price,
+                desired,
+            )
     else:
         grid_export_cap_kw = cfg.max_grid_export_power_kw
         if grid_export_cap_kw > 1e-9:

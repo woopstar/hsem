@@ -48,6 +48,10 @@ DEFAULT_CONFIG_VALUES = {
     # Retailer margin/balancing-fee cost per kWh exported (issue #925).
     # 0.0 = disabled (default) — fully backward compatible.
     "hsem_export_fee_per_kwh": 0.0,
+    # Opt-in physical PV curtailment below export_electricity_min_price (issue #930).
+    # False = disabled (default) — preserves the #767 behavior where surplus PV
+    # export continues for any non-negative price.
+    "hsem_curtail_pv_below_export_min_price": False,
     "hsem_electricity_price_update_interval": 15,
     "hsem_export_electricity_price_sensor": "sensor.energi_data_service_produktion",
     "hsem_import_electricity_price_sensor": "sensor.energi_data_service",
