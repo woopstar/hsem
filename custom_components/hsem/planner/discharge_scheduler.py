@@ -217,10 +217,20 @@ def calculate_required_battery_for_plan(
     :func:`~custom_components.hsem.planner.soc_simulation.simulate_soc` for
     the winning candidate) and returns how far that trajectory dips below
     ``current_capacity`` before the plan's next slot with an actual, solved
-    battery charge (grid or solar) — not just a forecast surplus. A small or
-    short-lived forecast surplus that the plan does not actually charge from
-    does not end the scan early, so the reserve still protects a later
-    planned discharge.
+    battery **action** — charge (grid or solar) or discharge — not just a
+    forecast surplus. A small or short-lived forecast surplus that the plan
+    does not actually charge from does not end the scan early, so the
+    reserve still protects the plan's very next committed discharge.
+
+    The scan stops at the first committed action rather than accumulating
+    through every future discharge slot up to the next charge (issue #942
+    follow-up): reactive replanning (interval tick, event-triggered, or the
+    10-second live-power monitor) re-derives this same reserve from the
+    then-current capacity before any later slot arrives, so protecting
+    slots beyond the very next one here would only lock up capacity for
+    house-load self-consumption hours before it's actually needed, without
+    adding real protection — the next replan supersedes this value long
+    before that later slot starts.
 
     Slots are sorted by start time before scanning, so calling code does not
     need to guarantee chronological order.
@@ -245,7 +255,7 @@ def calculate_required_battery_for_plan(
     min_capacity = current_capacity
     for slot in future_slots:
         min_capacity = min(min_capacity, slot.estimated_battery_capacity_kwh)
-        if slot.batteries_charged_kwh > 1e-9:
+        if slot.batteries_charged_kwh > 1e-9 or slot.batteries_discharged_kwh > 1e-9:
             break
 
     result = round(max(current_capacity - min_capacity, 0.0), 3)

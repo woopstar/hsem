@@ -1308,6 +1308,20 @@ instead of keeping the battery strictly idle.
   means no reliable reserve could be derived; the applier then forces strict
   TOU wait instead of enabling self-consumption. See `docs/planner-spec.md`
   §"Wait-mode self-consumption reserve (issue #914)".
+- **Scan stops at the next discharge too, not just the next charge (issue
+  #942 follow-up, fixed 2026-09-08):** the scan originally broke only on a
+  genuine planned _charge_, so it accumulated through every future discharge
+  slot up to that charge — often the plan's whole overnight total — and
+  applied that sum as an immediate floor hours before it was needed. Since
+  Wait-mode slots never discharge in the simulation (`soc_simulation.py`
+  forces `discharge = 0.0` while `recommendation == BatteriesWaitMode`),
+  this silently starved the #942 SoC-floor gate of any surplus for the
+  entire Wait span (reserve ≈ current capacity), even though the fix had
+  just landed. The loop now also breaks on `batteries_discharged_kwh > 1e-9`:
+  the reserve protects only the plan's very next committed action (charge or
+  discharge), trusting the next replan (interval tick, event-triggered, or
+  the 10-second live-power monitor) to re-derive the reserve fresh from the
+  then-current capacity before any later slot arrives.
 
 Files involved: `flows/batteries_wait_mode.py`, `config_flow.py`,
 `options_flow.py`, `translations/en.json`, `const.py`,

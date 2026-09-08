@@ -122,6 +122,77 @@ class TestReliableRechargeStopsTheScan:
         assert reserve == 0.5
 
 
+class TestReserveStopsAtFirstScheduledAction:
+    """The scan stops at the plan's next discharge, not just its next charge
+    (issue #942 follow-up).
+
+    Regression scenario reported against #949: a long run of Wait-mode slots
+    (flat ``estimated_battery_capacity_kwh``, no discharge modelled — see
+    ``soc_simulation.py``) precedes a small scheduled discharge, which is in
+    turn followed by further discharge slots before the next genuine charge.
+    Before this fix, the scan accumulated through *all* of those later
+    discharge slots, inflating the reserve computed right now to nearly the
+    full current capacity and starving the SoC-floor discharge-cap gate of
+    any surplus for the entire Wait span. The reserve must now protect only
+    the plan's very next committed action.
+    """
+
+    def test_reserve_does_not_accumulate_past_the_next_discharge(self) -> None:
+        slots = [
+            # Long Wait-mode run: capacity stays flat, nothing committed yet.
+            _slot(1, estimated_battery_capacity_kwh=9.5),
+            _slot(2, estimated_battery_capacity_kwh=9.5),
+            _slot(3, estimated_battery_capacity_kwh=9.5),
+            _slot(4, estimated_battery_capacity_kwh=9.5),
+            _slot(5, estimated_battery_capacity_kwh=9.5),
+            # First scheduled discharge — small, matches the issue's 0.139 kWh.
+            _slot(
+                5.25,
+                estimated_battery_capacity_kwh=9.361,
+                batteries_discharged_kwh=0.139,
+            ),
+            # Further overnight discharge slots before any recharge — must
+            # NOT inflate the reserve computed at hour 1 above.
+            _slot(
+                6,
+                estimated_battery_capacity_kwh=4.0,
+                batteries_discharged_kwh=5.361,
+            ),
+            _slot(
+                12,
+                estimated_battery_capacity_kwh=0.2,
+                batteries_discharged_kwh=3.8,
+            ),
+        ]
+
+        reserve = calculate_required_battery_for_plan(slots, _NOW, current_capacity=9.5)
+
+        # Only the dip through the first discharge slot (9.5 -> 9.361) is
+        # protected — not the cumulative overnight total down to 0.2 kWh.
+        assert reserve == 0.139
+
+    def test_reserve_still_stops_at_charge_when_charge_comes_first(self) -> None:
+        """A charge slot before any discharge still ends the scan (unchanged)."""
+        slots = [
+            _slot(1, estimated_battery_capacity_kwh=9.5),
+            _slot(
+                2,
+                estimated_battery_capacity_kwh=9.8,
+                batteries_charged_kwh=0.3,
+            ),
+            # Deep discharge after the recharge must not inflate "now"'s reserve.
+            _slot(
+                6,
+                estimated_battery_capacity_kwh=0.1,
+                batteries_discharged_kwh=9.7,
+            ),
+        ]
+
+        reserve = calculate_required_battery_for_plan(slots, _NOW, current_capacity=9.5)
+
+        assert reserve == 0.0
+
+
 class TestNoFutureRechargeInHorizon:
     """No planned charge anywhere in the horizon forces (near) full reserve."""
 

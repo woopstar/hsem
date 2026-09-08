@@ -2136,19 +2136,37 @@ from the **selected** plan's own already-simulated SoC trajectory instead:
 ```text
 for each future slot (chronological order, end > now):
     min_capacity = min(min_capacity, slot.estimated_battery_capacity_kwh)
-    if slot.batteries_charged_kwh > 0:  # a genuine solved charge, not a
-        break                           # forecast surplus signal
+    if slot.batteries_charged_kwh > 0 or slot.batteries_discharged_kwh > 0:
+        break  # a genuine solved battery action, not a forecast signal
 reserve = max(current_capacity - min_capacity, 0)
 ```
 
 This protects the battery down to the deepest point the **winning
-candidate's** SoC simulation actually dips to before its own next solved
-charge (grid or solar) — a small forecast surplus slot that the plan does not
-actually charge from no longer truncates the reserve early. When the plan
-has no future charge anywhere in the horizon, the scan runs to the horizon
-end and the reserve naturally covers (up to) the full current capacity,
-which forces strict Wait behaviour via the normal `surplus <= 0` path — no
-special-cased fallback is needed for that case.
+candidate's** SoC simulation dips to by the end of its own next solved
+battery action (charge — grid or solar — **or** discharge) — a small
+forecast surplus slot that the plan does not actually charge from no longer
+truncates the reserve early. When the plan has no future charge or discharge
+anywhere in the horizon, the scan runs to the horizon end and the reserve
+naturally covers (up to) the full current capacity, which forces strict Wait
+behaviour via the normal `surplus <= 0` path — no special-cased fallback is
+needed for that case.
+
+**Scan stops at the first committed action, not the next charge (issue #942
+follow-up, fixed 2026-09-08):** the scan originally only broke on a genuine
+_charge_ event, so it accumulated through every discharge slot between now
+and the plan's next charge — often the plan's entire overnight consumption,
+even though that total would not be needed for hours. Applied as an
+immediate floor, this locked up nearly the whole battery for the length of
+the Wait span, silently reopening #942 (grid import on load spikes) even
+after the SoC-floor discharge-cap gate landed, because the "surplus above
+reserve" the gate checks was already ~0. The scan now also breaks on the
+plan's next **discharge** slot: the reserve protects only that one upcoming
+commitment. Anything beyond it is re-protected by the next replan (interval
+tick, event-triggered, or the 10-second live-power monitor), which
+re-derives this same reserve from the then-current capacity before that
+later slot arrives — so scanning past the next action adds no real
+protection, only unnecessary throttling of house-load self-consumption in
+the meantime.
 
 `wait_mode_reserve_kwh` is `None` when it cannot be derived (no future slots
 in the horizon). The applier treats `None` as "fall back to strict Wait":
