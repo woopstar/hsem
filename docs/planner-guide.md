@@ -150,8 +150,9 @@ HSEM predicts house load for each slot. Two modes are available (toggled via
 - **Legacy (default):** Weighted average across four rolling windows (1d, 3d,
   7d, 14d) with IQR outlier detection. Requires HSEM custom sensor entities.
 - **ML (optional):** Ridge regression on recorder history with day-of-week,
-  day-of-year seasonality, and optional outdoor temperature. No custom
-  sensors needed.
+  day-of-year seasonality, and optional outdoor temperature (plus an
+  optional wind-chill index derived from the same weather forecast
+  entity). No custom sensors needed.
 
 Regardless of mode, the planner receives a per-hour `HourlyConsumptionAverage`:
 

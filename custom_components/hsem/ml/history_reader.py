@@ -11,6 +11,7 @@ loop responsive.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -212,6 +213,71 @@ class HistoryReader:
             List of ``(timestamp, value)`` sorted oldest-first.
             Empty list if insufficient history.
         """
+        return await self._read_instantaneous(
+            entity_id,
+            days,
+            max_days,
+            lambda state_obj: state_obj.state,
+            expected_unit=expected_unit,
+        )
+
+    async def read_instantaneous_attribute_history(
+        self,
+        entity_id: str,
+        attribute: str,
+        days: int = DEFAULT_MIN_HISTORY_DAYS,
+        max_days: int = DEFAULT_MAX_HISTORY_DAYS,
+    ) -> list[tuple[datetime, float]]:
+        """Read historical values of one *attribute* of an entity's state.
+
+        Unlike :meth:`read_instantaneous_history`, this reads a named
+        attribute (e.g. ``wind_speed`` on a ``weather`` entity) rather than
+        the entity's own state value — useful for deriving a history series
+        from an entity that doesn't expose the value as its primary state.
+
+        Args:
+            entity_id: The HA entity ID (e.g. ``weather.home``).
+            attribute: The attribute name to read off each recorded state.
+            days: Minimum days of history required.
+            max_days: Maximum days to fetch.
+
+        Returns:
+            List of ``(timestamp, value)`` sorted oldest-first.
+            Empty list if insufficient history.
+        """
+        return await self._read_instantaneous(
+            entity_id,
+            days,
+            max_days,
+            lambda state_obj: state_obj.attributes.get(attribute),
+        )
+
+    async def _read_instantaneous(
+        self,
+        entity_id: str,
+        days: int,
+        max_days: int,
+        value_getter: Callable[[Any], Any],
+        expected_unit: str | None = None,
+    ) -> list[tuple[datetime, float]]:
+        """Shared recorder query + extraction for instantaneous value history.
+
+        Args:
+            entity_id: The HA entity ID to query.
+            days: Minimum days of history required.
+            max_days: Maximum days to fetch.
+            value_getter: Extracts the raw value from each recorder ``State``
+                (e.g. ``lambda s: s.state`` or ``lambda s: s.attributes.get(...)``).
+            expected_unit: HSEM's canonical unit for this field. When given,
+                each state's declared ``unit_of_measurement`` is compared
+                against it and the value is converted via
+                :func:`custom_components.hsem.utils.unit_normalize.normalize_to_unit`
+                (issue #945). ``None`` (the default) skips normalization.
+
+        Returns:
+            List of ``(timestamp, value)`` sorted oldest-first.
+            Empty list if insufficient history.
+        """
         now = hsem_now()
         end_time = utc_key(now)
         start_time = end_time - timedelta(days=max_days)
@@ -240,7 +306,7 @@ class HistoryReader:
         for state_obj in entity_states:
             try:
                 ts = normalize_datetime(state_obj.last_updated)
-                value = float(state_obj.state)
+                value = float(value_getter(state_obj))
                 if not math.isfinite(value):
                     continue
                 if expected_unit is not None:
