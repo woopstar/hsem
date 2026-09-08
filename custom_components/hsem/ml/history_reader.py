@@ -79,6 +79,7 @@ class HistoryReader:
         days: int = DEFAULT_MIN_HISTORY_DAYS,
         max_days: int = DEFAULT_MAX_HISTORY_DAYS,
         slot_minutes: int = DEFAULT_SLOT_MINUTES,
+        expected_unit: str | None = None,
     ) -> list[tuple[datetime, int, float]]:
         """Read historical energy accumulator data and compute per-slot deltas.
 
@@ -90,6 +91,15 @@ class HistoryReader:
             max_days: Maximum days of history to fetch (performance guard).
             slot_minutes: Slot width in minutes (default 15).  Must divide
                 evenly into 60.  Supported: 15, 30, 60.
+            expected_unit: HSEM's canonical unit for this field (e.g.
+                ``UnitOfEnergy.KILO_WATT_HOUR``). When given, each state's
+                declared ``unit_of_measurement`` is compared against it and
+                the raw accumulator reading is converted via
+                :func:`custom_components.hsem.utils.unit_normalize.normalize_to_unit`
+                *before* delta computation, so a Wh-reporting (or unit-less
+                template) energy meter cannot silently corrupt the computed
+                deltas (issue #946). ``None`` (the default) skips
+                normalization entirely.
 
         Returns:
             A list of ``(datetime, slot_index, energy_kwh)`` tuples sorted
@@ -148,6 +158,18 @@ class HistoryReader:
                 value = float(state_obj.state)
                 if not math.isfinite(value):
                     continue
+                if expected_unit is not None:
+                    source_unit = state_obj.attributes.get("unit_of_measurement")
+                    normalized = normalize_to_unit(
+                        value,
+                        source_unit,
+                        expected_unit,
+                        entity_id=entity_id,
+                        label="energy history",
+                    )
+                    if normalized is None or not math.isfinite(normalized):
+                        continue
+                    value = normalized
                 readings.append((ts, value))
             except ValueError, TypeError, AttributeError:
                 continue
@@ -345,6 +367,7 @@ class HistoryReader:
         self,
         entity_id: str,
         slot_minutes: int = DEFAULT_SLOT_MINUTES,
+        expected_unit: str | None = None,
     ) -> dict[datetime, float]:
         """Read today's completed-slot actual consumption from the energy sensor.
 
@@ -355,6 +378,12 @@ class HistoryReader:
         Args:
             entity_id: The energy accumulator entity ID.
             slot_minutes: Slot width in minutes.
+            expected_unit: HSEM's canonical unit for this field (e.g.
+                ``UnitOfEnergy.KILO_WATT_HOUR``). When given, each state's
+                declared ``unit_of_measurement`` is compared against it and
+                the raw accumulator reading is normalized before delta
+                computation (issue #946). ``None`` (the default) skips
+                normalization entirely.
 
         Returns:
             Dict mapping canonical UTC slot-start datetime → ``actual_kwh``
@@ -401,6 +430,18 @@ class HistoryReader:
                 value = float(state_obj.state)
                 if not math.isfinite(value):
                     continue
+                if expected_unit is not None:
+                    source_unit = state_obj.attributes.get("unit_of_measurement")
+                    normalized = normalize_to_unit(
+                        value,
+                        source_unit,
+                        expected_unit,
+                        entity_id=entity_id,
+                        label="today actuals",
+                    )
+                    if normalized is None or not math.isfinite(normalized):
+                        continue
+                    value = normalized
                 readings.append((ts, value))
             except ValueError, TypeError, AttributeError:
                 continue

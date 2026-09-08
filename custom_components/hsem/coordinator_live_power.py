@@ -20,13 +20,18 @@ from __future__ import annotations
 import math
 from datetime import datetime, timedelta
 
+from homeassistant.const import UnitOfPower
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.datetime_utils import slot_key, utc_key
-from custom_components.hsem.utils.ha_helpers import ha_get_entity_state_and_convert
+from custom_components.hsem.utils.ha_helpers import (
+    ha_get_entity_state_and_convert,
+    normalize_entity_float,
+)
 from custom_components.hsem.utils.live_power import LivePowerEstimate, LivePowerWindow
 from custom_components.hsem.utils.logger import async_log
 
@@ -225,8 +230,15 @@ class CoordinatorLivePowerMixin(CoordinatorSharedState):
             raw_value = ha_get_entity_state_and_convert(self, resolved, "float", 3)
         except HomeAssistantError, ValueError, TypeError, AttributeError:
             return None
+        normalized = normalize_entity_float(
+            self,
+            resolved,
+            convert_to_float(raw_value),
+            UnitOfPower.WATT,
+            label="live_power",
+        )
         return self._canonical_live_power_number(
-            raw_value, allow_negative=allow_negative
+            normalized, allow_negative=allow_negative
         )
 
     def _read_live_power_boolean(self, entity_id: object) -> bool | None:
