@@ -2101,6 +2101,24 @@ unexpected solar).
 
 ### Wait-mode self-consumption reserve (issue #914)
 
+**Discharge cap is an SoC-floor stop-discharge gate, not a rate spread over
+the slot (issue #942):** `applier_caps._wait_mode_self_consumption_cap_w()`
+originally computed `surplus_kwh / slot_hours`, spreading the reserved
+surplus evenly across the whole slot. This produced low, load-averaged
+wattages (e.g. 264–380 W) with no relationship to actual instantaneous house
+load — a real load spike above that average cap pulled the extra power from
+the grid even though the battery still held usable surplus, causing
+unnecessary grid import. The fix replaces the rate formula with a floor gate:
+while `battery_current_capacity_kwh` is above `wait_mode_reserve_kwh` by any
+material amount, the cap is the full rated/configured discharge maximum, so
+normal house-load support (including spikes) is served from the battery;
+once capacity reaches the reserve floor, the cap drops to 0 W so the reserve
+is protected. The gate is re-evaluated every apply cycle (interval tick,
+event-triggered replan, or the 10-second live-power monitor's reactive
+replan), so discharge stops as soon as live capacity reaches the reserve —
+battery-to-grid export remains governed separately by export-price/
+curtailment logic, never by this cap.
+
 The **EV discharge-cap SoC guard** above and `apply_excess_export()` both use
 `current_required_battery_kwh`, derived from
 `calculate_required_battery_until_solar()` (`planner/discharge_scheduler.py`):

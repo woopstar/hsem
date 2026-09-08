@@ -1279,8 +1279,23 @@ instead of keeping the battery strictly idle.
   applier falls back to strict TOU wait mode.
 - PV surplus during wait-mode self-consumption is directed to charge the battery
   (`desired_excess = "charge"`), not exported to grid.
-- The cap is computed from the surplus energy and the slot duration so the
-  reserve is preserved even if the house load is high.
+- **Discharge cap is an SoC-floor gate, not a rate cap (issue #942, fixed
+  2026-09-08):** the original formula was `surplus_kwh / slot_hours`, spreading
+  the reserved surplus evenly across the whole slot — this produced low,
+  load-averaged wattages (e.g. 264–380 W) that ignored actual instantaneous
+  house load, so a real load spike above that average pulled the extra power
+  from the grid even though the battery still held usable surplus.
+  `applier_caps._wait_mode_self_consumption_cap_w()` now returns the full
+  rated/configured `max_discharge_power_w` whenever
+  `battery_capacity_kwh > required_capacity_kwh` (material surplus), and `0`
+  otherwise — a stop-discharge gate re-evaluated every apply cycle, not a
+  slow-drain rate. Reserve protection and house-load support are thereby
+  decoupled: the reserve stops discharge once reached, but never throttles
+  discharge power while surplus remains. The EV-active cap
+  (`_planned_ev_discharge_cap_w`) was deliberately left unchanged — it is a
+  materially different formula (the planner's own solved per-slot discharge
+  rate, clamped to per-EV ceilings) and reworking it to the same floor-gate
+  model is tracked as a separate follow-up, not bundled into #942.
 - EV-active slots keep their existing EV discharge cap logic; the wait-mode cap
   is not applied while an EV is charging.
 - **Reserve source (issue #914):** the wait-mode reserve is `wait_mode_reserve_kwh`

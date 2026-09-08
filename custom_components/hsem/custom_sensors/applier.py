@@ -480,10 +480,13 @@ async def async_apply_battery_settings(
                 )
                 return summary
 
-    # Wait mode self-consumption: cap discharge power so only surplus energy
-    # above the planner's required reserve can be used.  This preserves the
-    # reserve for future scheduled discharge windows while still allowing the
-    # house to cover normal self-consumption from the surplus.
+    # Wait mode self-consumption: an SoC-floor stop-discharge gate, not a rate
+    # spread over the slot (issue #942).  While the battery holds any surplus
+    # above the planner's required reserve, the house may draw at the full
+    # rated/configured discharge rate, so a real load spike is served from the
+    # battery instead of the grid; once capacity reaches the reserve floor,
+    # discharge stops so the reserve is protected for future scheduled
+    # discharge windows.
     wait_mode_self_consumption = (
         recommendation == Recommendations.BatteriesWaitMode.value
         and not primary_battery_hold
@@ -493,12 +496,10 @@ async def async_apply_battery_settings(
         and wait_mode_reserve_kwh is not None
     )
     if wait_mode_self_consumption and wait_mode_reserve_kwh is not None:
-        slot_hours = slot_duration_hours(rec.start, rec.end)
         surplus = max(live.battery_current_capacity_kwh - wait_mode_reserve_kwh, 0.0)
         cap_w = _wait_mode_self_consumption_cap_w(
             battery_capacity_kwh=live.battery_current_capacity_kwh,
             required_capacity_kwh=wait_mode_reserve_kwh,
-            slot_hours=slot_hours,
             max_discharge_power_w=max_discharge_power,
         )
         if live.huawei_batteries_max_discharge_power_w != cap_w:
@@ -520,13 +521,11 @@ async def async_apply_battery_settings(
             summary.results.append(wait_cap_result)
             _LOGGER.debug(
                 "Wait mode self-consumption — capped max discharge power to %d W "
-                "(capacity=%.2f kWh, required=%.2f kWh, surplus=%.2f kWh, "
-                "slot_hours=%.3f)",
+                "(capacity=%.2f kWh, required=%.2f kWh, surplus=%.2f kWh)",
                 cap_w,
                 live.battery_current_capacity_kwh,
                 wait_mode_reserve_kwh,
                 surplus,
-                slot_hours,
             )
             if wait_cap_result.status == ApplyStatus.FAILED:
                 _LOGGER.debug(
