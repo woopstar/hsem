@@ -15,6 +15,7 @@ from __future__ import annotations
 import math
 from datetime import datetime, timedelta
 
+from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
@@ -671,6 +672,7 @@ async def _read_temperature_history(
         raw_states = await reader.read_instantaneous_history(
             entity_id=entity_id,
             days=days,
+            expected_unit=UnitOfTemperature.CELSIUS,
         )
     except Exception:
         HSEM_LOGGER.warning(

@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.ml import populator
@@ -49,6 +50,7 @@ class _FakeReader:
         self.energy_calls: list[str] = []
         self.actual_calls: list[str] = []
         self.temperature_calls: list[str] = []
+        self.temperature_call_kwargs: list[dict[str, object]] = []
 
     async def read_energy_history(
         self,
@@ -69,9 +71,10 @@ class _FakeReader:
     async def read_instantaneous_history(
         self,
         entity_id: str,
-        **_kwargs: object,
+        **kwargs: object,
     ) -> list[tuple[datetime, float]]:
         self.temperature_calls.append(entity_id)
+        self.temperature_call_kwargs.append(kwargs)
         return list(self.temperatures.get(entity_id, []))
 
 
@@ -676,6 +679,31 @@ async def test_temperature_history_preserves_both_autumn_fold_keys() -> None:
         utc_key(fold_one): 20.0,
     }
     assert len(temperatures) == 2
+
+
+@pytest.mark.asyncio
+async def test_read_temperature_history_requests_celsius_normalization() -> None:
+    """The populator's temperature read must request Celsius normalization (#945).
+
+    Without this, a °F-reporting or unit-less template sensor configured as
+    ``hsem_ml_consumption_temperature_entity`` would silently corrupt the
+    temperature and wind-chill ML features.
+    """
+    reader = _FakeReader(
+        {},
+        temperatures={"sensor.temperature": [(NOW, 21.0)]},
+    )
+
+    await populator._read_temperature_history(
+        cast(HistoryReader, reader),
+        "sensor.temperature",
+        14,
+    )
+
+    assert reader.temperature_call_kwargs
+    assert reader.temperature_call_kwargs[-1].get("expected_unit") == (
+        UnitOfTemperature.CELSIUS
+    )
 
 
 @pytest.mark.asyncio

@@ -128,6 +128,18 @@ per-slot usage counts are exposed as `ml_forecast_temperature_slots_used`
 and `ml_forecast_temperature_fallback_slots` attributes on
 `sensor.hsem_plan_explanation_sensor`.
 
+### Unit safety (issue #945)
+
+`hsem_ml_consumption_temperature_entity` accepts any `sensor`-domain
+entity, including template sensors with no `device_class` (so Home
+Assistant cannot auto-convert their state). Historical reads via
+`HistoryReader.read_instantaneous_history()` normalize each state's
+declared `unit_of_measurement` to °C using Home Assistant's own
+`TemperatureConverter`, so a °F-reporting sensor is converted rather than
+silently treated as Celsius. A sensor with no declared unit is assumed to
+already report in °C (logged, not rejected) — this matches the historical
+behaviour for entities that were already correctly configured.
+
 ### Fitting
 
 The normal equation is solved via Cholesky decomposition

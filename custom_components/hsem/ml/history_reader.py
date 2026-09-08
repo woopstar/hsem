@@ -28,6 +28,7 @@ from custom_components.hsem.utils.datetime_utils import (
     utc_key,
 )
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+from custom_components.hsem.utils.unit_normalize import normalize_to_unit
 
 # ---------------------------------------------------------------------------
 # Minimum history required before ML consumption predictions are trusted.
@@ -187,6 +188,7 @@ class HistoryReader:
         entity_id: str,
         days: int = DEFAULT_MIN_HISTORY_DAYS,
         max_days: int = DEFAULT_MAX_HISTORY_DAYS,
+        expected_unit: str | None = None,
     ) -> list[tuple[datetime, float]]:
         """Read historical instantaneous sensor values (e.g. temperature).
 
@@ -197,6 +199,14 @@ class HistoryReader:
             entity_id: The HA entity ID (e.g. ``sensor.outdoor_temperature``).
             days: Minimum days of history required.
             max_days: Maximum days to fetch.
+            expected_unit: HSEM's canonical unit for this field (e.g.
+                ``UnitOfTemperature.CELSIUS``). When given, each state's
+                declared ``unit_of_measurement`` is compared against it and
+                the value is converted via
+                :func:`custom_components.hsem.utils.unit_normalize.normalize_to_unit`
+                so a °F-reporting or unit-less template sensor cannot
+                silently corrupt the reading (issue #945). ``None`` (the
+                default) skips normalization entirely.
 
         Returns:
             List of ``(timestamp, value)`` sorted oldest-first.
@@ -233,6 +243,18 @@ class HistoryReader:
                 value = float(state_obj.state)
                 if not math.isfinite(value):
                     continue
+                if expected_unit is not None:
+                    source_unit = state_obj.attributes.get("unit_of_measurement")
+                    normalized = normalize_to_unit(
+                        value,
+                        source_unit,
+                        expected_unit,
+                        entity_id=entity_id,
+                        label="instantaneous history",
+                    )
+                    if normalized is None or not math.isfinite(normalized):
+                        continue
+                    value = normalized
                 readings.append((ts, value))
             except ValueError, TypeError, AttributeError:
                 continue
