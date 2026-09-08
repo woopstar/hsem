@@ -15,6 +15,7 @@ from __future__ import annotations
 import math
 from datetime import datetime, timedelta
 
+from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
@@ -132,6 +133,7 @@ async def populate_ml_house_consumption(
             days=min_days,
             slot_minutes=slot_minutes,
             max_days=DEFAULT_MAX_HISTORY_DAYS,
+            expected_unit=UnitOfEnergy.KILO_WATT_HOUR,
         )
         if not import_history:
             HSEM_LOGGER.info(
@@ -149,6 +151,7 @@ async def populate_ml_house_consumption(
                 days=min_days,
                 slot_minutes=slot_minutes,
                 max_days=DEFAULT_MAX_HISTORY_DAYS,
+                expected_unit=UnitOfEnergy.KILO_WATT_HOUR,
             )
             if export_history:
                 history = _compute_net_consumption(import_history, export_history)
@@ -328,6 +331,7 @@ async def populate_ml_house_consumption(
     today_actuals: dict[datetime, float] = await reader.read_today_actuals(
         entity_id=energy_entity,
         slot_minutes=slot_minutes,
+        expected_unit=UnitOfEnergy.KILO_WATT_HOUR,
     )
     today_actuals = {
         key: value for key, value in today_actuals.items() if math.isfinite(value)
@@ -336,6 +340,7 @@ async def populate_ml_house_consumption(
         export_actuals = await reader.read_today_actuals(
             entity_id=cfg.grid_export_energy_entity,
             slot_minutes=slot_minutes,
+            expected_unit=UnitOfEnergy.KILO_WATT_HOUR,
         )
         # A missing channel key is unknown, not zero.  Use only physical
         # slots observed in both meters so recorder gaps cannot silently

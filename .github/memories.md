@@ -168,26 +168,49 @@ is missing, unrecognised, or mismatched with `canonical_unit`; a missing
 unit is assumed to already be canonical (matches pre-#945 behaviour) and
 is logged at debug, mismatches at info/warning.
 
-Wired into `ml/history_reader.py::read_instantaneous_history()` via its
-optional `expected_unit` kwarg (used by
-`ml/populator.py::_read_temperature_history()` with
-`UnitOfTemperature.CELSIUS`) — this closed the confirmed gap where a
-°F-reporting or unit-less `hsem_ml_consumption_temperature_entity` could
-silently corrupt both the temperature feature (#918) and wind chill (#943).
+Recorder-history reads take an optional `expected_unit` kwarg wired the
+same way on every `ml/history_reader.py` reader method —
+`read_instantaneous_history()` (used by
+`ml/weather_features.py::get_temperature_history()` with
+`UnitOfTemperature.CELSIUS`, since PR #944 moved the old
+`populator.py::_read_temperature_history()` into that shared module),
+`read_energy_history()`, and `read_today_actuals()` (both used by
+`ml/populator.py::populate_ml_house_consumption()` with
+`UnitOfEnergy.KILO_WATT_HOUR` for `hsem_ml_consumption_energy_entity` /
+`hsem_grid_import_energy_entity` fallback and `hsem_grid_export_energy_entity`,
+issue #946). This closed the confirmed gap where a °F-reporting or
+unit-less `hsem_ml_consumption_temperature_entity` could silently corrupt
+both the temperature feature (#918) and wind chill (#943), plus the same
+class of gap for Wh-reporting energy meters corrupting ML training deltas
+by 1000×.
+
+**Live HA-state reads** (not recorder history) use a second pair of
+helpers in `utils/ha_helpers.py`, next to `ha_get_entity_state_and_convert()`:
+
+```python
+# For callers that already have a converted float + hass:
+from custom_components.hsem.utils.ha_helpers import normalize_entity_float
+value = normalize_entity_float(self, entity_id, value, canonical_unit, label=label)
+
+# For callers with a read closure (mirrors state_collector.py's `_read`):
+from custom_components.hsem.utils.ha_helpers import read_normalized_float
+value = read_normalized_float(self, entity_id, _read, canonical_unit, label=label)
+```
+
+Both delegate to `normalize_to_unit()` after resolving `entity_id`'s
+`unit_of_measurement` via `self.hass.states.get(entity_id)`. Wired into
+(issue #946): `custom_sensors/state_collector.py` — house/solar/Huawei
+phase power meters (`UnitOfPower.WATT`) and grid import/export/PV energy
+meters (`UnitOfEnergy.KILO_WATT_HOUR`); and
+`coordinator_live_power.py::_read_live_power_number()` — the fast-timer
+house/solar power samples (`UnitOfPower.WATT`), independently of the
+full-cycle `state_collector.py` read.
 
 `utils/conversion.py::normalize_ev_power_w()` (issue #592) is intentionally
 **not** migrated onto this utility — its plausibility checks (implausibly
 high / suspiciously low while charging) are tied to EV charging state,
 which this generic normalizer has no concept of. The two stay separate by
 design.
-
-Other `sensor`-domain config-flow fields with the same theoretical risk
-(no unit enforcement yet, tracked as follow-up issue #946, not fixed by
-#945): `hsem_grid_import_energy_entity` / `hsem_grid_export_energy_entity` /
-`hsem_pv_energy_entity` / `hsem_ml_consumption_energy_entity` (expected
-kWh, in `flows/energy_and_ml.py`), and `hsem_house_consumption_power` /
-`hsem_solar_production_power` / the three Huawei phase power-meter
-entities (expected W, in `flows/power.py`).
 
 ---
 

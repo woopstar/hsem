@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from homeassistant.const import UnitOfTemperature
+from homeassistant.const import UnitOfEnergy, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.ml import populator, weather_features
@@ -79,7 +79,9 @@ class _FakeReader:
         self.temperatures = temperatures or {}
         self.wind_speeds = wind_speeds or {}
         self.energy_calls: list[str] = []
+        self.energy_call_kwargs: list[dict[str, object]] = []
         self.actual_calls: list[str] = []
+        self.actual_call_kwargs: list[dict[str, object]] = []
         self.temperature_calls: list[str] = []
         self.temperature_call_kwargs: list[dict[str, object]] = []
         self.wind_calls: list[tuple[str, str]] = []
@@ -87,17 +89,19 @@ class _FakeReader:
     async def read_energy_history(
         self,
         entity_id: str,
-        **_kwargs: object,
+        **kwargs: object,
     ) -> list[_HistorySample]:
         self.energy_calls.append(entity_id)
+        self.energy_call_kwargs.append(kwargs)
         return list(self.histories.get(entity_id, []))
 
     async def read_today_actuals(
         self,
         entity_id: str,
-        **_kwargs: object,
+        **kwargs: object,
     ) -> dict[datetime, float]:
         self.actual_calls.append(entity_id)
+        self.actual_call_kwargs.append(kwargs)
         return dict(self.actuals.get(entity_id, {}))
 
     async def read_instantaneous_history(
@@ -775,6 +779,45 @@ async def test_get_temperature_history_requests_celsius_normalization() -> None:
     assert reader.temperature_call_kwargs
     assert reader.temperature_call_kwargs[-1].get("expected_unit") == (
         UnitOfTemperature.CELSIUS
+    )
+
+
+@pytest.mark.asyncio
+async def test_populate_requests_kwh_normalization_for_energy_reads() -> None:
+    """Energy history/actuals reads must request kWh normalization (#946).
+
+    Without this, a Wh-reporting or unit-less template sensor configured as
+    ``hsem_grid_import_energy_entity`` / ``hsem_grid_export_energy_entity``
+    / ``hsem_ml_consumption_energy_entity`` could silently corrupt the ML
+    consumption model by a factor of 1000.
+    """
+    hass = _FakeHass()
+    reader = _FakeReader(
+        {
+            "sensor.import": [
+                *_history(NOW, 1.0),
+                (NOW - timedelta(days=1), 2, 3.0),
+            ],
+            "sensor.export": _history(NOW, 0.2),
+        },
+        actuals={
+            "sensor.import": {NOW: 1.0},
+            "sensor.export": {NOW: 0.2},
+        },
+    )
+    net_cfg = _cfg(export_entity="sensor.export", net=True)
+
+    await _populate(hass, reader, net_cfg, [])
+
+    assert reader.energy_call_kwargs
+    assert all(
+        kwargs.get("expected_unit") == UnitOfEnergy.KILO_WATT_HOUR
+        for kwargs in reader.energy_call_kwargs
+    )
+    assert reader.actual_call_kwargs
+    assert all(
+        kwargs.get("expected_unit") == UnitOfEnergy.KILO_WATT_HOUR
+        for kwargs in reader.actual_call_kwargs
     )
 
 
