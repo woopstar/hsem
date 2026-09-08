@@ -57,13 +57,18 @@ class TestWaitModeDefaults:
 
 
 class TestWaitModeSelfConsumptionCapW:
-    """Unit tests for the reserve-preserving discharge cap helper."""
+    """Unit tests for the reserve-preserving discharge cap helper (issue #942).
+
+    The cap is an SoC-floor stop-discharge gate, not a rate spread over the
+    slot: any surplus above the reserve unlocks the full rated/configured
+    discharge rate, so a real load spike is served from the battery instead
+    of the grid; at or below the reserve, discharge is 0.
+    """
 
     def test_no_surplus_returns_zero(self):
         cap = _wait_mode_self_consumption_cap_w(
             battery_capacity_kwh=2.0,
             required_capacity_kwh=2.0,
-            slot_hours=0.25,
             max_discharge_power_w=5000,
         )
         assert cap == 0
@@ -72,48 +77,26 @@ class TestWaitModeSelfConsumptionCapW:
         cap = _wait_mode_self_consumption_cap_w(
             battery_capacity_kwh=1.5,
             required_capacity_kwh=2.0,
-            slot_hours=0.25,
             max_discharge_power_w=5000,
         )
         assert cap == 0
 
-    def test_surplus_converted_to_power(self):
-        """1 kWh surplus over a 1-hour slot -> 1000 W cap."""
+    def test_small_surplus_unlocks_full_rated_max(self):
+        """A small surplus still unlocks the full rate, not a scaled-down value."""
         cap = _wait_mode_self_consumption_cap_w(
-            battery_capacity_kwh=3.0,
+            battery_capacity_kwh=2.01,
             required_capacity_kwh=2.0,
-            slot_hours=1.0,
             max_discharge_power_w=5000,
         )
-        assert cap == 1000
+        assert cap == 5000
 
-    def test_surplus_over_short_slot(self):
-        """1 kWh surplus over a 15-minute slot -> 4000 W cap."""
-        cap = _wait_mode_self_consumption_cap_w(
-            battery_capacity_kwh=3.0,
-            required_capacity_kwh=2.0,
-            slot_hours=0.25,
-            max_discharge_power_w=5000,
-        )
-        assert cap == 4000
-
-    def test_cap_limited_by_max_discharge_power(self):
+    def test_large_surplus_still_capped_at_rated_max(self):
         cap = _wait_mode_self_consumption_cap_w(
             battery_capacity_kwh=10.0,
             required_capacity_kwh=0.0,
-            slot_hours=0.25,
             max_discharge_power_w=2500,
         )
         assert cap == 2500
-
-    def test_zero_slot_hours_returns_zero(self):
-        cap = _wait_mode_self_consumption_cap_w(
-            battery_capacity_kwh=5.0,
-            required_capacity_kwh=0.0,
-            slot_hours=0.0,
-            max_discharge_power_w=5000,
-        )
-        assert cap == 0
 
 
 # ---------------------------------------------------------------------------
@@ -273,10 +256,19 @@ class TestWaitModeReserveGatesSelfConsumption:
     """A valid ``wait_mode_reserve_kwh`` gates MSC + the reserve-preserving cap."""
 
     @pytest.mark.asyncio
-    async def test_surplus_above_reserve_enables_msc_with_capped_discharge(self):
+    async def test_surplus_above_reserve_enables_msc_at_full_rate(self):
+        """Any surplus above the reserve restores the full rated rate (issue #942).
+
+        Regression guard: the old formula computed ``surplus_kwh / slot_hours``,
+        producing a low, load-averaged wattage (e.g. 1000 W here) that could not
+        track a real household load spike. Starting from a stale low cap (as the
+        old formula would have written) proves the fix actively restores the
+        full rated/configured discharge rate instead.
+        """
         sensor = _sensor()
         cfg = _cfg()
         live = _live(working_mode=WorkingModes.TimeOfUse.value)
+        live.huawei_batteries_max_discharge_power_w = 380
         rec = _wait_rec()
 
         with (
@@ -301,8 +293,9 @@ class TestWaitModeReserveGatesSelfConsumption:
         mock_select.assert_any_await(
             sensor, "select.wm", WorkingModes.MaximizeSelfConsumption.value
         )
-        # capacity=2.0, reserve=1.0 -> surplus=1.0 kWh over a 1h slot -> 1000 W.
-        mock_number.assert_any_await(sensor, "number.maxdis", 1000)
+        # capacity=2.0 kWh > reserve=1.0 kWh -> full rated max for a 5000 Wh
+        # pack (2500 W), not surplus/slot_hours (which would have been 1000 W).
+        mock_number.assert_any_await(sensor, "number.maxdis", 2500)
 
     @pytest.mark.asyncio
     async def test_capacity_at_reserve_falls_back_to_strict_wait(self):

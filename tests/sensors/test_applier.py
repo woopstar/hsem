@@ -128,7 +128,13 @@ class TestPlannedEvDischargeCapW:
 
 
 class TestWaitModeSelfConsumptionCapW:
-    """Unit tests for the wait-mode self-consumption discharge cap."""
+    """Unit tests for the wait-mode self-consumption discharge cap (issue #942).
+
+    The cap is an SoC-floor stop-discharge gate, not a rate spread over the
+    slot: any surplus above the reserve unlocks the full rated/configured
+    discharge rate, so a real load spike is served from the battery instead
+    of the grid; at or below the reserve, discharge is 0.
+    """
 
     @staticmethod
     def _cap(**kwargs):
@@ -142,7 +148,6 @@ class TestWaitModeSelfConsumptionCapW:
         cap = self._cap(
             battery_capacity_kwh=2.0,
             required_capacity_kwh=2.0,
-            slot_hours=0.25,
             max_discharge_power_w=5000,
         )
         assert cap == 0
@@ -151,48 +156,26 @@ class TestWaitModeSelfConsumptionCapW:
         cap = self._cap(
             battery_capacity_kwh=1.5,
             required_capacity_kwh=2.0,
-            slot_hours=0.25,
             max_discharge_power_w=5000,
         )
         assert cap == 0
 
-    def test_surplus_converted_to_power(self):
-        """1 kWh surplus over a 1-hour slot → 1000 W cap."""
+    def test_small_surplus_unlocks_full_rated_max(self):
+        """A small surplus still unlocks the full rate, not a scaled-down value."""
         cap = self._cap(
-            battery_capacity_kwh=3.0,
+            battery_capacity_kwh=2.01,
             required_capacity_kwh=2.0,
-            slot_hours=1.0,
             max_discharge_power_w=5000,
         )
-        assert cap == 1000
+        assert cap == 5000
 
-    def test_surplus_over_short_slot(self):
-        """1 kWh surplus over a 15-minute slot → 4000 W cap."""
-        cap = self._cap(
-            battery_capacity_kwh=3.0,
-            required_capacity_kwh=2.0,
-            slot_hours=0.25,
-            max_discharge_power_w=5000,
-        )
-        assert cap == 4000
-
-    def test_cap_limited_by_max_discharge_power(self):
+    def test_large_surplus_still_capped_at_rated_max(self):
         cap = self._cap(
             battery_capacity_kwh=10.0,
             required_capacity_kwh=0.0,
-            slot_hours=0.25,
             max_discharge_power_w=2500,
         )
         assert cap == 2500
-
-    def test_zero_slot_hours_returns_zero(self):
-        cap = self._cap(
-            battery_capacity_kwh=5.0,
-            required_capacity_kwh=0.0,
-            slot_hours=0.0,
-            max_discharge_power_w=5000,
-        )
-        assert cap == 0
 
 
 # ---------------------------------------------------------------------------
