@@ -357,6 +357,17 @@ class SensorConfig:
     #: be configured (and to have trained a temperature-aware model) —
     #: otherwise the predictor has no temperature coefficient to feed.
     ml_consumption_weather_forecast_entity: str | None = None
+    #: Enable the wind-chill index feature (issue #943): wind_speed_kmh *
+    #: max(0, reference_temp - outdoor_temp). Requires both
+    #: ml_consumption_temperature_entity and
+    #: ml_consumption_weather_forecast_entity — wind history and forecast
+    #: are both derived from the weather entity, no dedicated wind sensor
+    #: is used.
+    ml_consumption_wind_chill_enabled: bool = False
+    #: Balance-point temperature (°C) for the wind-chill index — the
+    #: outdoor temperature above which wind no longer meaningfully
+    #: increases heat loss.
+    ml_consumption_wind_chill_reference_temperature: float = 18.0
 
     # Planner hysteresis — keep the active plan unless a new plan is
     # materially better (anti-flapping, issue #372).

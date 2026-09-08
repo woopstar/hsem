@@ -507,7 +507,9 @@
           "hsem_ml_consumption_net_consumption": "Use net consumption (import - export)",
           "hsem_ml_consumption_temperature_entity": "Outdoor temperature sensor",
           "hsem_ml_consumption_weather_forecast_entity": "Weather forecast entity",
-          "hsem_ml_consumption_sequential": "Sequential prediction (lag feature)"
+          "hsem_ml_consumption_sequential": "Sequential prediction (lag feature)",
+          "hsem_ml_consumption_wind_chill_enabled": "Enable wind-chill consumption feature",
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Wind-chill reference temperature"
         },
         "data_description": {
           "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh).",
@@ -519,7 +521,9 @@
           "hsem_ml_consumption_net_consumption": "Subtract grid export from import for net house consumption.",
           "hsem_ml_consumption_temperature_entity": "Optional—outdoor temperature sensor in °C. Use an outdoor sensor, not an indoor thermostat.",
           "hsem_ml_consumption_weather_forecast_entity": "Optional—weather entity used for future-slot forecast temperatures. Requires the outdoor temperature sensor above to also be set. Falls back to the measured temperature when forecast data is missing.",
-          "hsem_ml_consumption_sequential": "Feed each slot prediction as input to the next. Captures intra-hour momentum (e.g. cooking spikes carry forward)."
+          "hsem_ml_consumption_sequential": "Feed each slot prediction as input to the next. Captures intra-hour momentum (e.g. cooking spikes carry forward).",
+          "hsem_ml_consumption_wind_chill_enabled": "Optional—adds a wind-chill index (wind speed × heat loss below the reference temperature) to the ML consumption model. Wind history and forecast are both derived from the weather forecast entity above—no separate wind sensor needed. Requires the outdoor temperature sensor above.",
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Balance-point temperature (°C) above which wind no longer increases heat loss. Only used when wind chill is enabled. Typical starting point: 18°C for average insulation, lower (~15-16°C) for well-insulated homes, higher (~19-20°C) for older/draughty homes."
         },
         "description": "Configure energy meters and enable ML-based consumption prediction.",
         "title": "Energy & ML"
@@ -980,7 +984,9 @@
           "hsem_ml_consumption_net_consumption": "Use net consumption (import - export)",
           "hsem_ml_consumption_temperature_entity": "Outdoor temperature sensor",
           "hsem_ml_consumption_weather_forecast_entity": "Weather forecast entity",
-          "hsem_ml_consumption_sequential": "Sequential prediction (lag feature)"
+          "hsem_ml_consumption_sequential": "Sequential prediction (lag feature)",
+          "hsem_ml_consumption_wind_chill_enabled": "Enable wind-chill consumption feature",
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Wind-chill reference temperature"
         },
         "data_description": {
           "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh).",
@@ -992,7 +998,9 @@
           "hsem_ml_consumption_net_consumption": "Subtract grid export from import for net house consumption.",
           "hsem_ml_consumption_temperature_entity": "Optional—outdoor temperature sensor in °C. Use an outdoor sensor, not an indoor thermostat.",
           "hsem_ml_consumption_weather_forecast_entity": "Optional—weather entity used for future-slot forecast temperatures. Requires the outdoor temperature sensor above to also be set. Falls back to the measured temperature when forecast data is missing.",
-          "hsem_ml_consumption_sequential": "Feed each slot prediction as input to the next. Captures intra-hour momentum (e.g. cooking spikes carry forward)."
+          "hsem_ml_consumption_sequential": "Feed each slot prediction as input to the next. Captures intra-hour momentum (e.g. cooking spikes carry forward).",
+          "hsem_ml_consumption_wind_chill_enabled": "Optional—adds a wind-chill index (wind speed × heat loss below the reference temperature) to the ML consumption model. Wind history and forecast are both derived from the weather forecast entity above—no separate wind sensor needed. Requires the outdoor temperature sensor above.",
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Balance-point temperature (°C) above which wind no longer increases heat loss. Only used when wind chill is enabled. Typical starting point: 18°C for average insulation, lower (~15-16°C) for well-insulated homes, higher (~19-20°C) for older/draughty homes."
         },
         "description": "Configure energy meters and enable ML-based consumption prediction.",
         "title": "Energy & ML"

@@ -228,6 +228,18 @@ class HSEMPlanExplanationSensor(
                 else 0
             )
 
+            # ML forecast-wind diagnostics (issue #943).
+            d["ml_forecast_wind_configured"] = bool(
+                cfg.ml_consumption_wind_chill_enabled
+                and cfg.ml_consumption_weather_forecast_entity
+            )
+            d["ml_forecast_wind_slots_used"] = (
+                ml_predictor.forecast_wind_slots_used if ml_predictor is not None else 0
+            )
+            d["ml_forecast_wind_fallback_slots"] = (
+                ml_predictor.fallback_wind_slots_used if ml_predictor is not None else 0
+            )
+
         return d
 
     # ------------------------------------------------------------------
