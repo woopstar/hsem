@@ -16,7 +16,7 @@ import math
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 
-from homeassistant.const import UnitOfSpeed
+from homeassistant.const import UnitOfSpeed, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.util.unit_conversion import SpeedConverter
 
@@ -53,14 +53,24 @@ async def get_temperature_history(
     min_days: int,
     now_ts: datetime,
 ) -> dict[datetime, float]:
-    """Return cached or freshly read historical temperatures for *entity_id*."""
+    """Return cached or freshly read historical temperatures for *entity_id*.
+
+    Normalizes each reading to Celsius via
+    :func:`custom_components.hsem.utils.unit_normalize.normalize_to_unit` so a
+    °F-reporting or unit-less template sensor cannot silently corrupt the
+    temperature or wind-chill ML features (issue #945).
+    """
     return await _get_cached_instantaneous_history(
         _temperature_history_cache,
         hass,
         now_ts,
         entity_id,
         min_days,
-        lambda: reader.read_instantaneous_history(entity_id=entity_id, days=min_days),
+        lambda: reader.read_instantaneous_history(
+            entity_id=entity_id,
+            days=min_days,
+            expected_unit=UnitOfTemperature.CELSIUS,
+        ),
     )
 
 

@@ -9,6 +9,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from homeassistant.const import UnitOfTemperature
+
 from custom_components.hsem.ml.history_reader import HistoryReader
 from custom_components.hsem.utils.datetime_utils import utc_key
 
@@ -32,8 +34,13 @@ def _ha_local_timezone():
         yield
 
 
-def _state(timestamp: datetime, value: float) -> SimpleNamespace:
-    return SimpleNamespace(last_updated=timestamp, state=str(value))
+def _state(
+    timestamp: datetime, value: float, unit: str | None = None
+) -> SimpleNamespace:
+    attributes = {"unit_of_measurement": unit} if unit is not None else {}
+    return SimpleNamespace(
+        last_updated=timestamp, state=str(value), attributes=attributes
+    )
 
 
 def _attr_state(timestamp: datetime, attributes: dict[str, object]) -> SimpleNamespace:
@@ -313,6 +320,122 @@ async def test_instantaneous_history_filters_nonfinite_temperature() -> None:
         )
 
     assert readings == [(finite_timestamp.astimezone(STOCKHOLM), 18.5)]
+
+
+@pytest.mark.asyncio
+async def test_instantaneous_history_normalizes_fahrenheit_to_celsius() -> None:
+    """A °F-reporting temperature sensor is converted when expected_unit is set (#945)."""
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
+    # 98.6°F == 37.0°C.
+    states = [_state(timestamp, 98.6, unit=UnitOfTemperature.FAHRENHEIT)]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        readings = await HistoryReader(MagicMock()).read_instantaneous_history(
+            ENTITY_ID,
+            days=0,
+            expected_unit=UnitOfTemperature.CELSIUS,
+        )
+
+    assert len(readings) == 1
+    _, value = readings[0]
+    assert value == pytest.approx(37.0, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_instantaneous_history_without_expected_unit_skips_normalization() -> (
+    None
+):
+    """Callers that omit expected_unit keep the pre-#945 raw-value behavior."""
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
+    states = [_state(timestamp, 98.6, unit=UnitOfTemperature.FAHRENHEIT)]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        readings = await HistoryReader(MagicMock()).read_instantaneous_history(
+            ENTITY_ID,
+            days=0,
+        )
+
+    assert readings == [(timestamp.astimezone(STOCKHOLM), 98.6)]
+
+
+@pytest.mark.asyncio
+async def test_instantaneous_history_missing_unit_assumes_expected_unit() -> None:
+    """A unit-less template sensor is assumed to already report expected_unit."""
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
+    states = [_state(timestamp, 21.5)]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        readings = await HistoryReader(MagicMock()).read_instantaneous_history(
+            ENTITY_ID,
+            days=0,
+            expected_unit=UnitOfTemperature.CELSIUS,
+        )
+
+    assert readings == [(timestamp.astimezone(STOCKHOLM), 21.5)]
+
+
+@pytest.mark.asyncio
+async def test_instantaneous_history_already_canonical_unit_is_unchanged() -> None:
+    """A sensor already reporting in Celsius is not double-converted."""
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
+    states = [_state(timestamp, 21.5, unit=UnitOfTemperature.CELSIUS)]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        readings = await HistoryReader(MagicMock()).read_instantaneous_history(
+            ENTITY_ID,
+            days=0,
+            expected_unit=UnitOfTemperature.CELSIUS,
+        )
+
+    assert readings == [(timestamp.astimezone(STOCKHOLM), 21.5)]
 
 
 # ---------------------------------------------------------------------------

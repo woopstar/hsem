@@ -74,6 +74,7 @@ cycle are durable; stale generations must not publish.
 | `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                      |
 | `weekday_profile.py`    | Weekday/weekend split house load EWMA profiles                                       |
 | `ev_mode_resolver.py`   | Auto-Full EV charging on negative electricity prices                                 |
+| `unit_normalize.py`     | Generic sensor unit normalization via HA's `unit_conversion` converters (issue #945) |
 
 ---
 
@@ -146,6 +147,47 @@ EV charger efficiency **percentage** → fraction uses the same
 Note: LP matrix _coefficients_ in `planner/milp/_constraints.py` and
 `_objective.py` intentionally stay as raw `1.0 / ev.charger_efficiency`
 (they are constraint coefficients, not energy conversions) — do not wrap those.
+
+### Sensor unit normalization (issue #945)
+
+```python
+# ALWAYS use this when reading a user-configured sensor-domain entity whose
+# unit HA cannot auto-convert (no device_class — template sensors, some
+# integrations). Never hand-roll a new per-unit multiplier.
+from custom_components.hsem.utils.unit_normalize import normalize_to_unit
+value = normalize_to_unit(
+    raw_value, source_unit, canonical_unit, entity_id=entity_id, label=label,
+)
+```
+
+Delegates to HA's own `homeassistant.util.unit_conversion` converters
+(`TemperatureConverter`, `PowerConverter`, `EnergyConverter`,
+`SpeedConverter`) — the same mechanism HA itself uses for device_class
+auto-conversion. Falls back to the raw value (never raises) when the unit
+is missing, unrecognised, or mismatched with `canonical_unit`; a missing
+unit is assumed to already be canonical (matches pre-#945 behaviour) and
+is logged at debug, mismatches at info/warning.
+
+Wired into `ml/history_reader.py::read_instantaneous_history()` via its
+optional `expected_unit` kwarg (used by
+`ml/populator.py::_read_temperature_history()` with
+`UnitOfTemperature.CELSIUS`) — this closed the confirmed gap where a
+°F-reporting or unit-less `hsem_ml_consumption_temperature_entity` could
+silently corrupt both the temperature feature (#918) and wind chill (#943).
+
+`utils/conversion.py::normalize_ev_power_w()` (issue #592) is intentionally
+**not** migrated onto this utility — its plausibility checks (implausibly
+high / suspiciously low while charging) are tied to EV charging state,
+which this generic normalizer has no concept of. The two stay separate by
+design.
+
+Other `sensor`-domain config-flow fields with the same theoretical risk
+(no unit enforcement yet, tracked as follow-up issue #946, not fixed by
+#945): `hsem_grid_import_energy_entity` / `hsem_grid_export_energy_entity` /
+`hsem_pv_energy_entity` / `hsem_ml_consumption_energy_entity` (expected
+kWh, in `flows/energy_and_ml.py`), and `hsem_house_consumption_power` /
+`hsem_solar_production_power` / the three Huawei phase power-meter
+entities (expected W, in `flows/power.py`).
 
 ---
 
