@@ -213,17 +213,27 @@ Three ways to set it, roughly in order of effort:
    the same quantity this setting represents, calibrated by your own
    experience living in the house.
 
-There's no in-app way to auto-detect this today. If you want to validate
-your choice after enabling the feature, compare `avg_house_consumption_kwh`
-across a few equally-cold slots with different forecast wind speeds — a
-well-chosen reference temperature should show visibly higher predictions
-on the windier slots; if it doesn't, the reference temperature is
-probably set too low (the clamp is zeroing out most of your actual
-cold-weather range) or the temperature/wind-speed samples in your history
-haven't varied together enough for the model to learn a reliable
-coefficient. There is no live sensor exposing this diagnostic yet —
-check the entity's `avg_house_consumption_kwh` history in the recorder
-or Logbook directly.
+There's no in-app way to auto-detect the "right" value, but there is a
+concrete way to validate a choice after the fact: `sensor.hsem_prediction_accuracy`
+exposes a `load_mae_kwh` attribute (`utils/prediction_tracker.py`) — a
+rolling mean absolute error between predicted and actual house load. To
+tune the reference temperature:
+
+1. Note the current `load_mae_kwh` before changing the setting.
+2. Leave it running through a stretch of weather that actually includes
+   both cold-and-calm and cold-and-windy slots — you can't learn anything
+   from a mild week, since the feature has nothing to correct for.
+3. Compare `load_mae_kwh` afterward. A lower value means the setting fits
+   your home's heat-loss behaviour better; a higher (or unchanged) value
+   means it isn't helping — try a different reference temperature or
+   check whether your weather entity's wind-speed history is actually
+   populated (`ml_forecast_wind_slots_used` / `ml_forecast_wind_fallback_slots`
+   on `sensor.hsem_plan_explanation_sensor`).
+
+This is directional evidence, not a controlled experiment — `load_mae_kwh`
+reflects the whole load model, not the wind-chill term in isolation, so
+other sources of noise (occupancy changes, appliance use) are mixed in
+too. Give it more than a few days before drawing a conclusion.
 
 ### Fitting
 
