@@ -36,6 +36,8 @@ class SavingsTracker:
         _switch_was_off: Whether the master switch was off this cycle.
         _last_export_rev: Snapshot of daily_tracker grid_export_rev for delta.
         _last_import_cost: Snapshot of daily_tracker grid_import_cost for delta.
+        _last_discharge_sample_at: Previous sample timestamp used to
+            integrate battery discharge power into discharge-savings energy.
     """
 
     max_history_days: int = 90
@@ -57,6 +59,9 @@ class SavingsTracker:
     _last_export_rev: float | None = field(default=None, repr=False)
     _last_import_cost: float | None = field(default=None, repr=False)
 
+    # Previous sample timestamp for discharge-savings elapsed-time integration.
+    _last_discharge_sample_at: datetime | None = field(default=None, repr=False)
+
     def __post_init__(self) -> None:
         """Set today's date if not already set."""
         if not self._today:
@@ -75,6 +80,7 @@ class SavingsTracker:
         charge_savings_delta: float,
         baseline_cost_delta: float,
         switch_on: bool,
+        discharge_savings_delta: float = 0.0,
     ) -> None:
         """Accumulate one cycle's worth of savings data.
 
@@ -87,8 +93,10 @@ class SavingsTracker:
             charge_savings_delta: Money saved by charging cheap now vs later.
             baseline_cost_delta: What passive mode would have cost this cycle.
             switch_on: ``True`` when the master switch is on (auto mode).
+            discharge_savings_delta: Money saved by battery discharge that
+                avoided grid import this cycle (currency).
         """
-        savings = export_revenue_delta + charge_savings_delta
+        savings = export_revenue_delta + charge_savings_delta + discharge_savings_delta
 
         if switch_on:
             self.actual_savings += savings
