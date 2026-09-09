@@ -2187,6 +2187,34 @@ later slot arrives — so scanning past the next action adds no real
 protection, only unnecessary throttling of house-load self-consumption in
 the meantime.
 
+**Time-decayed reserve (issue #954 follow-up, issue #956):** limiting the
+scan to the next committed action was not enough on its own — even a single
+upcoming action can be _far_ in the future and still lock up nearly the
+whole battery immediately. Confirmed by direct reproduction: a battery at
+6.4 kWh with a discharge scheduled 5 hours away that needs 5.9 kWh computed
+a reserve of `5.9 kWh` right now, leaving only `0.5 kWh` of surplus for
+self-consumption for the entire 5-hour lead time. The full reserve is now
+only protected once that action is imminent; `calculate_required_battery_for_plan()`
+tracks the `start` time of the slot that ends the scan and multiplies the
+full computed reserve by a linear decay factor:
+
+```text
+hours_until_action = max((next_action_start - now).total_seconds() / 3600, 0)
+time_factor = clamp(1 - hours_until_action / WAIT_MODE_RESERVE_DECAY_HOURS, 0, 1)
+reserve = full_reserve * time_factor
+```
+
+`WAIT_MODE_RESERVE_DECAY_HOURS = 2.0` is an internal tuning constant (not
+user-configurable, matching e.g. `LIVE_POWER_MONITOR_INTERVAL_SECONDS`). At 0
+hours away the action is fully protected; at or beyond the 2-hour window the
+reserve is 0 and self-consumption may use the full current surplus, trusting
+the next replan (interval tick, event-triggered, or the 10-second live-power
+monitor) to re-derive a tighter reserve well before the action actually
+starts. This applies uniformly whether the terminating action is a charge or
+a discharge. When no future action is found in the horizon at all (the scan
+reaches the end without a break), decay does not apply — that case already
+naturally yields the correct result from the min-tracking alone.
+
 `wait_mode_reserve_kwh` is `None` when it cannot be derived (no future slots
 in the horizon). The applier treats `None` as "fall back to strict Wait":
 `self_consumption_with_reserve` self-consumption is never enabled without a

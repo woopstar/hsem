@@ -1347,6 +1347,28 @@ wait_mode_reserve_kwh is not None`) and checking it _before_ the
   `tests/test_batteries_wait_mode.py::_wait_rec()` now builds a genuinely
   held slot by default — the realistic case — with a separate inline
   override for the rarer unheld edge case.
+- **Reserve must time-decay, not just stop at the next action (issue #956):**
+  limiting the scan to the very next committed action (#950, above) was not
+  enough — that one action can still be _far_ away and still lock up nearly
+  the whole battery immediately. Reproduced directly: battery at 6.4 kWh, a
+  discharge scheduled 5 hours away needing 5.9 kWh → reserve computed as
+  `5.9 kWh` right now, leaving only `0.5 kWh` surplus for self-consumption
+  for the entire 5-hour lead time — the exact symptom `tonnr` kept reporting
+  even after #955. Fixed in `calculate_required_battery_for_plan()`
+  (`planner/discharge_scheduler.py`) by tracking the `start` time of the
+  slot that ends the scan and multiplying the full computed reserve by
+  `max(0, min(1, 1 - hours_until_action / WAIT_MODE_RESERVE_DECAY_HOURS))`
+  (`WAIT_MODE_RESERVE_DECAY_HOURS = 2.0`, an internal tuning constant, not
+  user-configurable). At 0 hours away the action is fully protected; at or
+  beyond 2 hours the reserve is 0. Applies uniformly to charge- and
+  discharge-terminated scans; the "no action found anywhere in the horizon"
+  case is unaffected (already naturally correct from min-tracking alone).
+  `tests/planner/test_wait_mode_reserve_from_plan.py`'s existing scenarios
+  were re-timed to sit inside the decay window so their original regression
+  intent (no premature truncation at a small surplus; scan stops at the
+  next action, not the cumulative overnight total) stays visible against a
+  non-zero decayed value; `TestWaitModeReserveTimeDecay` covers the decay
+  curve itself.
 
 Files involved: `flows/batteries_wait_mode.py`, `config_flow.py`,
 `options_flow.py`, `translations/en.json`, `const.py`,

@@ -505,7 +505,12 @@ recommendation it is not changed by later rules in the same layer.
 > PV-surplus scan, so a small or short-lived forecast surplus no longer lets the
 > battery discharge energy the plan needs for a later expensive period. If no
 > reliable reserve can be derived, the applier falls back to strict Wait for that
-> slot.
+> slot. The reserve also **decays with time** (issue #956): the plan's next
+> committed charge/discharge is only protected in full once it's imminent — a
+> large discharge scheduled hours away no longer locks up nearly the whole
+> battery for self-consumption right now; the reserve ramps up linearly over
+> the last two hours before that action, trusting the next replan to
+> re-tighten it as the action approaches.
 
 **Discharge concentration** (`concentrate_discharge_on_expensive_slots`) runs after the
 seasonal fill but before candidate generation. It re-evaluates all discharge-mode
