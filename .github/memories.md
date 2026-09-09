@@ -683,10 +683,73 @@ is `sum(1 for ev in active_evs if ev.charge_past_target) * m` and is included
 in `ev_total_rows`.
 
 EV charger watts must remain coherent with the accepted slot's EV energy,
-grid flow, net load, and cost fields. Production no longer invokes the old
-per-slot power freeze because restoring stale watts after replanning can revive
-a command whose energy is no longer reserved. Runtime overrides update the
-complete current-slot accounting and respect aggregate fuse headroom.
+grid flow, net load, and cost fields. PR #783 removed the old
+`coordinator.py::_freeze_ev_charger_power_for_current_slot` mechanism because
+it restored stale watts **in isolation**, after replanning, independent of
+whatever the freshly accepted plan's energy/grid-flow/cost fields said —
+a command could get resurrected for a charge whose energy was no longer
+reserved. **Issue #957 reintroduced a current-slot hold in a different,
+narrower form that does not repeat that mistake** — see
+"Current-Slot EV Power Hold (Issue #957)" below. The key difference: the
+new hold runs **once, after candidate selection**, mutates only the
+display/command wattage field (never energy, grid-flow, or cost), and
+clears itself immediately the instant the accepted plan retracts the
+charge — it never restores a value the current plan has disowned. If
+touching either mechanism again, read both write-ups before assuming one
+supersedes or duplicates the other.
+
+## Current-Slot EV Power Hold (Issue #957)
+
+`_compute_ev_charger_power` (baseline path, `planner/engine_ev.py`) and the
+MILP write-out (`planner/milp/_ev_power_writeout.py`) both derive the
+_current_ slot's target power as allocated-energy ÷ remaining-slot-time,
+re-derived from the live clock on every solve. In the steady, capacity-bound
+case both terms shrink together and the ratio is a stable constant — but
+because the coordinator re-solves far more often than once per slot
+(sometimes under a second apart), rounding on an already-small energy
+numerator dominates as remaining time collapses toward its floor, and the
+ratio degenerates into "run at rated power to deliver a trickle in a
+fraction of a second". That degenerate value can then stay published past
+the slot's actual end, spiking to rated power then dropping straight to 0 W
+at the next boundary and stopping the charger mid-session. Confirmed against
+`logs/20260909_133056` where the **MILP write-out** (not the baseline path)
+was the winning candidate producing exactly this pattern — the bug is not
+baseline-only, so the fix must not be either.
+
+`_hold_current_slot_ev_power()` (`planner/engine_ev.py`) fixes this by
+running **once, after candidate selection**, directly on `winner.slots` —
+agnostic to which internal path produced the raw value, since it operates
+on whichever candidate actually won. It only mutates the display/command
+wattage field, never energy, grid-flow, or cost, so `winner.cost ==
+final_output.cost` is untouched. Semantics: the first time the current slot
+is seen as current, or the first time its allocation goes from zero to
+non-zero (a session starting mid-slot, or a genuine re-rank that newly
+selects it), the freshly computed rate is captured once and held; every
+subsequent solve within the same slot republishes that held rate verbatim,
+discarding whatever the fresh (potentially degenerate) recomputation
+produced. The instant the current slot's allocation is retracted to zero,
+the hold clears and zero publishes immediately — never a stale non-zero
+value.
+
+The hold state (`ev_held_slot_start` / `ev_held_power_w`, plus
+`ev_second_*`) is threaded through `PlannerInput` → `PlannerOutput` and
+persisted by the coordinator (`coordinator_planner_phase.py`) across solves,
+mirroring the existing `_last_plan_ev_*` cross-cycle state pattern — the
+engine itself stays a pure function of its input. It must also be added to
+`coordinator_cycle.py::_capture_accepted_plan_state`'s snapshot/restore list
+alongside `_ev_charging_plan`, or a stale/cancelled cycle can roll back the
+EV plan while leaving the hold pointing at energy that plan no longer
+reserves — the exact class of bug PR #783 fixed, reintroduced through a
+different door.
+
+This is orthogonal to the amp deadband / slot-tail stop suppression in
+`coordinator_ev_command_stability.py` — that layer still runs afterward as a
+defense-in-depth execution-layer smoother (see "EV charger command
+stability" in `docs/planner-spec.md`), but with the current slot's rate now
+stable by construction it typically has nothing left to damp for this class
+of churn. Do not fix this class of bug there — see that section's own
+docstring for why a deadband structurally cannot catch a spike-to-max or a
+same-cycle large drop.
 
 ## EV Pre-Deadline Target Cap (Issue #636 — Overcharge Fix)
 
