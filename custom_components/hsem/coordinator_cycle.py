@@ -609,6 +609,14 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             state=state,
             last_updated=last_updated,
             next_update=self._next_update,
+            # Carry forward the last completed apply_summary (issue #951).
+            # The working-mode sensor's hardware-write task mutates whichever
+            # CoordinatorData snapshot it was handed, which may already have
+            # been superseded by the time the write sequence finishes — this
+            # keeps the applier-status sensor from regressing to
+            # pending/total_writes:0 while a write is still legitimately in
+            # flight against an older snapshot.
+            apply_summary=self.data.apply_summary if self.data is not None else None,
             plan_explanation=self._plan_explanation,
             data_quality=self._data_quality,
             ev_charging_plan=self._ev_charging_plan,

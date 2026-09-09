@@ -62,8 +62,14 @@ class CoordinatorData:
     state: str | None = None
     last_updated: str | None = None
     next_update: str | None = None
-    #: Aggregated write-and-verify results from the most recent hardware apply cycle.
-    #: ``None`` before the first hardware-write cycle completes.
+    #: Aggregated write-and-verify results from the most recent *completed*
+    #: hardware apply cycle. Carried forward verbatim from the previous
+    #: ``CoordinatorData`` snapshot by the coordinator when a new cycle's own
+    #: write sequence hasn't finished yet (issue #951), so diagnostic
+    #: consumers such as the applier-status sensor always reflect the last
+    #: real write outcome instead of regressing to a "pending" state while a
+    #: write is legitimately still in flight. ``None`` only before the very
+    #: first hardware-write cycle of this HA session completes.
     apply_summary: CycleApplySummary | None = None
     #: Human-readable explanation of why the selected plan was chosen.
     plan_explanation: PlanExplanation = field(default_factory=PlanExplanation)
