@@ -85,9 +85,13 @@ class CoordinatorSharedState(_Base):
     _effective_discharge_floor_pct: float | None
     _ev_charging_plan: EVChargingPlan | None
     _ev_delivered_energy_tracker: EVDeliveredEnergyTracker
+    _ev_held_power_w: float
+    _ev_held_slot_start: datetime | None
     _ev_last_command_w: dict[str, float]
     _ev_second_charging_plan: EVChargingPlan | None
     _ev_second_delivered_energy_tracker: EVDeliveredEnergyTracker
+    _ev_second_held_power_w: float
+    _ev_second_held_slot_start: datetime | None
     _event_update_pending: bool
     _financial_tracker: FinancialTracker
     _force_working_mode_entity: str | None

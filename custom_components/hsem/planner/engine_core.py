@@ -42,6 +42,7 @@ from custom_components.hsem.planner.discharge_scheduler import (
 from custom_components.hsem.planner.engine_ev import (
     _build_and_inject_for_ev,
     _compute_ev_charger_power,
+    _hold_current_slot_ev_power,
 )
 from custom_components.hsem.planner.engine_ev_milp import (
     _build_ev_configs_for_milp,
@@ -662,6 +663,22 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # drift and to ensure the final score matches the selector's score.
     slots = winner.slots
 
+    # Freeze the current slot's EV charger command at its slot-entry rate
+    # (issue #957). Runs once, on the winning candidate's slots, so it is
+    # agnostic to whether the baseline EV planner or the MILP produced the
+    # raw value, and only mutates the display/command wattage field — never
+    # energy, grid-flow, or cost — so it cannot move `winner.cost`.
+    ev_held_slot_start, ev_held_power_w = _hold_current_slot_ev_power(
+        slots, now, inp.ev_held_slot_start, inp.ev_held_power_w, second=False
+    )
+    ev_second_held_slot_start, ev_second_held_power_w = _hold_current_slot_ev_power(
+        slots,
+        now,
+        inp.ev_second_held_slot_start,
+        inp.ev_second_held_power_w,
+        second=True,
+    )
+
     # Wait-mode self-consumption reserve (issue #914): derived from the
     # *selected* plan's own simulated SoC trajectory, not the raw forecast
     # scan used by ``rc``/``calculate_required_battery_until_solar`` above.
@@ -772,4 +789,8 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         winner_name=winner.name,
         ev_charging_plan=ev_cp,
         ev_second_charging_plan=ev2_cp,
+        ev_held_slot_start=ev_held_slot_start,
+        ev_held_power_w=ev_held_power_w,
+        ev_second_held_slot_start=ev_second_held_slot_start,
+        ev_second_held_power_w=ev_second_held_power_w,
     )

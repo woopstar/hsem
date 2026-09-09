@@ -2819,13 +2819,13 @@ There is no separate user-facing configuration for this field.
 
 Three per-slot fields capture EV load intent precisely:
 
-| Field                                | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ev_planned_load_kwh`                | Extra EV AC load **added to net consumption** — only the portion not already in `avg_house_consumption`. Zero when `base_load_includes_ev = True`.                                                                                                                                                                                                                                                                                                  |
-| `ev_accounted_load_kwh`              | EV AC load **already included** in the house consumption sensor. Non-zero when `base_load_includes_ev = True`. Must not be added to net consumption again.                                                                                                                                                                                                                                                                                          |
-| `ev_total_planned_load_kwh`          | Total planned EV AC load regardless of accounting mode: `ev_planned_load_kwh + ev_accounted_load_kwh`. Always non-zero when any EV charging is planned.                                                                                                                                                                                                                                                                                             |
-| `ev_charger_calculated_power`        | Target AC power (W) for the primary EV charger during this slot. Computed from the EV planner's per-slot energy target: `round((ac_load_kwh / slot_duration_hours) × 1000)`. For the **current** (partially elapsed) slot, `slot_duration_hours` is the remaining time (minimum 1 s), because the EV planner already scales `ac_load_kwh` to the remaining minutes. For future slots the full slot width is used. Zero when no charging is planned. |
-| `ev_second_charger_calculated_power` | Same as above, for the second EV.                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Field                                | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ev_planned_load_kwh`                | Extra EV AC load **added to net consumption** — only the portion not already in `avg_house_consumption`. Zero when `base_load_includes_ev = True`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `ev_accounted_load_kwh`              | EV AC load **already included** in the house consumption sensor. Non-zero when `base_load_includes_ev = True`. Must not be added to net consumption again.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `ev_total_planned_load_kwh`          | Total planned EV AC load regardless of accounting mode: `ev_planned_load_kwh + ev_accounted_load_kwh`. Always non-zero when any EV charging is planned.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `ev_charger_calculated_power`        | Target AC power (W) for the primary EV charger during this slot. For **future** slots: `round((ac_load_kwh / slot_duration_hours) × 1000)` using the full slot width, re-derived every solve. For the **current** slot: the rate is decided **once**, the first time the slot is seen as current (or the first time its allocation goes from zero to non-zero), using whatever time genuinely remains at that instant — then **held** for the rest of the slot regardless of how the live clock or a re-solve's raw energy÷time ratio would otherwise move it (issue #957; see "Current-slot EV power hold" below). Zero when no charging is planned. |
+| `ev_second_charger_calculated_power` | Same as above, for the second EV.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 When `base_load_includes_ev = False`:
 
@@ -2970,7 +2970,9 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
     and `ev_second_charger_calculated_power` (second EV) are each computed
     **per-EV** from that EV's own charging plan (`EVChargingPlan.charging_slots`)
     by `_compute_ev_charger_power()` (for non-MILP candidates) or directly by
-    the MILP's EV power computation (for MILP candidates).
+    the MILP's EV power computation (for MILP candidates). This raw,
+    per-candidate value is a plain energy÷time ratio; see invariant 14 for how
+    the **current** slot's published value is derived from it.
 
     The per-EV power fields are set **before** candidate selection and
     correctly adjusted by the main-fuse throttling block (per-field loop).
@@ -2993,10 +2995,64 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
 
 13. **Executable EV command coherence**: Charger watts, EV energy, grid flow,
     net consumption, estimated cost, and the EV plan sensor must come from the
-    same accepted snapshot. The coordinator must not restore an older frozen
-    watt command after replanning. Runtime force-charge and negative-price
-    overrides must update all related current-slot fields together, respect
-    aggregate fuse headroom, and never energize an explicitly disconnected EV.
+    same accepted snapshot. The coordinator must not restore a watt command
+    left over from a _different_ accepted plan after replanning (e.g. a value
+    computed for a slot the current plan no longer selects). Runtime
+    force-charge and negative-price overrides must update all related
+    current-slot fields together, respect aggregate fuse headroom, and never
+    energize an explicitly disconnected EV. This does not conflict with
+    invariant 14's slot-entry hold: the hold only ever republishes a rate
+    computed _for this same slot, from this same accepted plan_ — it is
+    cleared immediately, not restored, the instant the plan retracts the
+    charge (see below).
+
+14. **Current-slot EV power hold** (issue #957): the raw per-slot power from
+    invariant 12 is an energy÷time ratio re-derived on every solve. For a
+    **future** slot both terms come from the full slot width, so the ratio is
+    stable. For the **current** slot, the time term is the _remaining_ slot
+    duration (invariant 6's partial-slot scaling propagated through to the
+    power field) — a term that shrinks toward zero as the slot elapses. In
+    the steady, capacity-bound case numerator and denominator shrink together
+    and the ratio stays a constant equal to the achievable rate. But because
+    the coordinator re-solves far more often than once per slot (sometimes
+    under a second apart), rounding on an already-small energy numerator
+    dominates as the remaining time collapses toward its floor, and the
+    ratio degenerates into "run at rated power to deliver a trickle of
+    energy in a fraction of a second" — a value that can then stay published
+    past the slot's actual end.
+
+    `_hold_current_slot_ev_power()` (`planner/engine_ev.py`) fixes this by
+    running **once, after candidate selection**, on the winning candidate's
+    slots — so it is agnostic to whether the baseline EV planner or the MILP
+    produced the raw value, and it mutates only the display/command wattage
+    field, never energy, grid-flow, or cost, so it cannot move `winner.cost`
+    (invariant "Cost identity" in `docs/planner-spec.md`'s top-level
+    invariants). For the current slot:
+
+    - The first time the slot is seen as current, or the first time its
+      allocation goes from zero to non-zero (a session starting mid-slot, or
+      a genuine re-rank that newly selects the slot), the freshly computed
+      rate is captured **once** — using whatever time genuinely remains at
+      that instant — and held.
+    - On every subsequent solve within the _same_ current slot, the held
+      rate is republished verbatim; the freshly (and potentially
+      degenerate) recomputed value is discarded.
+    - The instant the current slot's allocation is retracted to zero (the
+      plan no longer wants to charge it), the held state is cleared and zero
+      is published immediately — never a stale non-zero hold.
+    - Crossing into a new current slot always re-evaluates from scratch.
+
+    The hold state (`ev_held_slot_start` / `ev_held_power_w`, and the
+    `ev_second_*` equivalents) is threaded through `PlannerInput` →
+    `PlannerOutput` and persisted by the coordinator across solves — the
+    engine itself stays a pure function of its input, including this state.
+
+    This is orthogonal to the amp deadband and slot-tail stop suppression in
+    `coordinator_ev_command_stability.py` (see "EV charger command
+    stability" below): that layer still runs afterward as a defense-in-depth
+    execution-layer smoother, but because the current slot's rate is now
+    stable by construction, it will typically see nothing to damp for the
+    class of churn this invariant addresses.
 
 ### Invariants for tests
 
@@ -3028,24 +3084,47 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
 - One EV with zero load does not clear the other EV's load.
 - `ev_smart_charging` label is applied when `ev_total_planned_load_kwh > 0`, even when
   `ev_planned_load_kwh == 0` (i.e. `base_load_includes_ev = True`).
+- Current-slot EV power hold (issue #957):
+  - A slot with only seconds remaining, re-solved after a rate is already
+    held for it, republishes the held rate — never a spike toward rated
+    power.
+  - A slot boundary where the current slot's allocation goes from positive
+    to zero clears the hold and publishes zero immediately; one where it
+    goes from zero to positive captures a fresh rate for the new slot.
+  - A session starting mid-slot (nothing held yet, partially elapsed slot)
+    captures the rate for the time that genuinely remains, not the full
+    slot width.
+  - A slot re-solved multiple times mid-duration returns the identical held
+    rate on every solve, regardless of what a fresh energy÷time
+    recomputation would have produced.
+  - `winner.cost == final_output.cost` still holds — the hold only mutates
+    the display/command wattage field.
 
 ### EV charger command stability (post-plan command layer)
 
-The planner re-solves on every cycle and re-derives the **live** slot's charger
-command from scratch:
+Before the slot-entry hold (issue #957, invariant 14 above), the planner
+re-solved on every cycle and re-derived the **live** slot's charger command
+from scratch on _every_ solve:
 
 ```text
 command_W = energy allocated to the remainder of this slot
             ÷ time remaining in this slot
 ```
 
-Both terms move every solve. The amp lattice is integer, the target-cap pins
-total pre-deadline energy to the remaining need, and the live slot's amp step
-shrinks continuously as the slot elapses — so the live slot's amps is a
-_residual_ on a lattice that is itself moving. Competing integer splits are
-routinely within a rounding error of each other on cost: on one observed
-2.5 h session the two best splits for a slot differed by **0.01 %**, yet a
-0.3 % SoC update flipped the published command by 2–3 A.
+with both terms moving every solve. The hold now pins this ratio once, the
+first time the current slot is captured, and republishes that same value on
+every subsequent solve within the slot — so the residual churn this layer
+damps is narrower than it used to be: it no longer sees the raw energy÷time
+ratio move every cycle, only the single fresh value computed when a slot is
+first captured (or re-captured after a genuine retraction). That first
+capture is still exactly the scenario described below: the amp lattice is
+integer, the target-cap pins total pre-deadline energy to the remaining
+need, and competing integer splits are routinely within a rounding error of
+each other on cost — on one observed 2.5 h session the two best splits for a
+slot differed by **0.01 %**, yet a 0.3 % SoC update flipped the published
+command by 2–3 A. This layer remains a necessary defense-in-depth smoother
+for that first-capture jitter and for any command movement introduced by
+runtime overrides (force-charge-now, auto-full-EV) applied after the hold.
 
 Two corrections are applied in
 `coordinator_ev_command_stability.py`, invoked from

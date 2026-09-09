@@ -17,7 +17,7 @@ directly.
 from __future__ import annotations
 
 import math
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.hourly_consumption_average import (
@@ -136,6 +136,10 @@ def build_planner_input(
     capacity_learner: CapacityLearner | None = None,
     dynamic_discharge_floor_pct: float | None = None,
     live_power_estimate: LivePowerEstimate | None = None,
+    ev_held_slot_start: datetime | None = None,
+    ev_held_power_w: float = 0.0,
+    ev_second_held_slot_start: datetime | None = None,
+    ev_second_held_power_w: float = 0.0,
 ) -> PlannerInput:
     """Assemble a :class:`PlannerInput` from the coordinator's current pipeline state.
 
@@ -468,6 +472,10 @@ def build_planner_input(
             ev_session_kw.get("ev_second") if ev_session_kw else None
         ),
         dynamic_discharge_floor_pct=dynamic_discharge_floor_pct,
+        ev_held_slot_start=ev_held_slot_start,
+        ev_held_power_w=ev_held_power_w,
+        ev_second_held_slot_start=ev_second_held_slot_start,
+        ev_second_held_power_w=ev_second_held_power_w,
     )
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from custom_components.hsem.models.charge_window import ChargeWindow
@@ -106,6 +107,17 @@ class PlannerOutput:
     #: ``"aggressive"``).  Used by the coordinator to persist the active plan
     #: name across cycles for hysteresis (issue #372).
     winner_name: str = ""
+    #: Current-slot EV charger power hold state (issue #957): the rate held
+    #: for the current slot after this solve, to be persisted by the
+    #: coordinator and fed back into the next solve's ``PlannerInput`` so the
+    #: engine can hold the rate for the rest of the slot instead of
+    #: re-deriving it from the live clock on every re-solve. ``None`` means
+    #: nothing is held (no charge planned for the current slot).
+    ev_held_slot_start: datetime | None = None
+    ev_held_power_w: float = 0.0
+    #: Same as ev_held_slot_start/ev_held_power_w, for the second EV.
+    ev_second_held_slot_start: datetime | None = None
+    ev_second_held_power_w: float = 0.0
 
     # ------------------------------------------------------------------
     # Convenience helpers used by tests

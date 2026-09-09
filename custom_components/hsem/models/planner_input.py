@@ -311,6 +311,17 @@ class PlannerInput:
     #: Same as ev_planned_load_deadline_safety_margin_pct, for the second EV.
     ev_second_planned_load_deadline_safety_margin_pct: float = 0.0
 
+    # --- Current-slot EV charger power hold (issue #957) — the rate held
+    # for the current slot from the previous solve's ``PlannerOutput``, fed
+    # back in so the engine can tell "still the same current slot" from "a
+    # new current slot" without recomputing the rate from the live clock.
+    # ``None`` slot_start means nothing is currently held. ---
+    ev_held_slot_start: datetime | None = None
+    ev_held_power_w: float = 0.0
+    #: Same as ev_held_slot_start/ev_held_power_w, for the second EV.
+    ev_second_held_slot_start: datetime | None = None
+    ev_second_held_power_w: float = 0.0
+
     # --- planner hysteresis — keep the active plan unless the new plan
     # is materially better (anti-flapping, issue #372). ---
     #: When True, hysteresis is active.  The previous winner's strategy
