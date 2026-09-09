@@ -190,6 +190,23 @@ async def async_apply_battery_settings(
     # solar-charge slot has material `batteries_charged_kwh`.
     solar_charge_only = recommendation == Recommendations.BatteriesChargeSolar.value
 
+    # Wait-mode self-consumption reserve floor (issue #954, follow-up to
+    # #942/#949/#950): a genuine BatteriesWaitMode slot always satisfies
+    # primary_battery_hold — soc_simulation.py forces discharge=0 for this
+    # recommendation, the same near-zero condition the hold check tests —
+    # so this decision must run *ahead of* the hold check below, not gated
+    # behind `not primary_battery_hold`. Gating it behind the hold check
+    # made the opt-in self_consumption_with_reserve behaviour effectively
+    # dead code for its primary use case. EV-active slots and a held slot
+    # with an authoritative solved export keep their existing precedence.
+    wait_mode_reserve_active = (
+        recommendation == Recommendations.BatteriesWaitMode.value
+        and not relevant_evs
+        and not held_planned_export
+        and cfg.batteries_wait_mode_behavior == "self_consumption_with_reserve"
+        and wait_mode_reserve_kwh is not None
+    )
+
     # Compute the single intended max-discharge-power value for this cycle
     # before issuing any write. The rated max is only the *starting* value
     # fed into the same hold/EV/solar-charge-only cap computation below —
@@ -198,7 +215,20 @@ async def async_apply_battery_settings(
     # real (lower) cap in the same cycle (issue #939).
     cap_w = max_discharge_power
     cap_reason: str | None = None
-    if (
+    if wait_mode_reserve_active and wait_mode_reserve_kwh is not None:
+        reserve_kwh = wait_mode_reserve_kwh
+        surplus = max(live.battery_current_capacity_kwh - reserve_kwh, 0.0)
+        cap_w = _wait_mode_self_consumption_cap_w(
+            battery_capacity_kwh=live.battery_current_capacity_kwh,
+            required_capacity_kwh=reserve_kwh,
+            max_discharge_power_w=max_discharge_power,
+        )
+        cap_reason = (
+            "wait-mode self-consumption reserve "
+            f"(capacity={live.battery_current_capacity_kwh:.2f} kWh, "
+            f"required={reserve_kwh:.2f} kWh, surplus={surplus:.2f} kWh)"
+        )
+    elif (
         primary_battery_hold or relevant_evs or solar_charge_only
     ) and recommendation not in (
         Recommendations.ForceBatteriesDischarge.value,
@@ -398,27 +428,28 @@ async def async_apply_battery_settings(
         case Recommendations.BatteriesWaitMode.value:
             # A held idle MILP slot normally uses MSC with a verified 0 W
             # discharge cap so unexpected PV may still charge the battery. A
-            # material, authoritative solved export is different: keep that
-            # slot in TOU wait so its planned PV sale is executable. An
-            # unheld strict wait remains in TOU; self-consumption with
-            # reserve switches to MSC so the house can use surplus battery
-            # energy above the planner's required reserve (issue #797).
-            if primary_battery_hold:
-                if held_planned_export:
-                    tou_modes = DEFAULT_HSEM_BATTERIES_WAIT_MODE
-                    working_mode = WorkingModes.TimeOfUse.value
-                else:
-                    working_mode = WorkingModes.MaximizeSelfConsumption.value
-            elif (
-                cfg.batteries_wait_mode_behavior == "self_consumption_with_reserve"
-                and wait_mode_reserve_kwh is not None
-            ):
+            # material, authoritative solved export takes top priority
+            # regardless of hold/reserve state: keep that slot in TOU wait
+            # so its planned PV sale is executable (issue #797).
+            # Self-consumption-with-reserve is evaluated *ahead of* the
+            # plain hold check (issue #954): a genuine Wait slot always
+            # satisfies primary_battery_hold, so checking hold first would
+            # make the opt-in reserve behaviour never take effect. It
+            # switches to MSC so the house can use surplus battery energy
+            # above the planner's required reserve, holding a genuinely
+            # unheld slot in TOU only when no reserve behaviour applies.
+            if held_planned_export:
+                tou_modes = DEFAULT_HSEM_BATTERIES_WAIT_MODE
+                working_mode = WorkingModes.TimeOfUse.value
+            elif wait_mode_reserve_active and wait_mode_reserve_kwh is not None:
                 surplus = live.battery_current_capacity_kwh - wait_mode_reserve_kwh
                 if surplus > 1e-9:
                     working_mode = WorkingModes.MaximizeSelfConsumption.value
                 else:
                     tou_modes = DEFAULT_HSEM_BATTERIES_WAIT_MODE
                     working_mode = WorkingModes.TimeOfUse.value
+            elif primary_battery_hold:
+                working_mode = WorkingModes.MaximizeSelfConsumption.value
             else:
                 tou_modes = DEFAULT_HSEM_BATTERIES_WAIT_MODE
                 working_mode = WorkingModes.TimeOfUse.value
@@ -480,61 +511,15 @@ async def async_apply_battery_settings(
                 )
                 return summary
 
-    # Wait mode self-consumption: an SoC-floor stop-discharge gate, not a rate
-    # spread over the slot (issue #942).  While the battery holds any surplus
-    # above the planner's required reserve, the house may draw at the full
-    # rated/configured discharge rate, so a real load spike is served from the
-    # battery instead of the grid; once capacity reaches the reserve floor,
-    # discharge stops so the reserve is protected for future scheduled
-    # discharge windows.
+    # Wait-mode self-consumption reserve: the discharge cap for this case was
+    # already computed and written in the single cap_w decision above
+    # (issue #954) — this is only the flag `desired_excess` below needs to
+    # know whether the reserve-floor gate actually landed us in MSC (surplus
+    # above the reserve), as opposed to falling back to strict TOU wait.
     wait_mode_self_consumption = (
-        recommendation == Recommendations.BatteriesWaitMode.value
-        and not primary_battery_hold
-        and cfg.batteries_wait_mode_behavior == "self_consumption_with_reserve"
+        wait_mode_reserve_active
         and working_mode == WorkingModes.MaximizeSelfConsumption.value
-        and not relevant_evs
-        and wait_mode_reserve_kwh is not None
     )
-    if wait_mode_self_consumption and wait_mode_reserve_kwh is not None:
-        surplus = max(live.battery_current_capacity_kwh - wait_mode_reserve_kwh, 0.0)
-        cap_w = _wait_mode_self_consumption_cap_w(
-            battery_capacity_kwh=live.battery_current_capacity_kwh,
-            required_capacity_kwh=wait_mode_reserve_kwh,
-            max_discharge_power_w=max_discharge_power,
-        )
-        if live.huawei_batteries_max_discharge_power_w != cap_w:
-            discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
-            if discharge_entity is None:
-                _LOGGER.debug(
-                    "Wait mode self-consumption discharge power entity not configured; "
-                    "skipping write.",
-                    "warning",
-                )
-                return summary
-            _de_wait: str = discharge_entity  # narrowed for closure
-            wait_cap_result = await async_write_and_verify(
-                entity_id=_de_wait,
-                desired=cap_w,
-                writer=lambda: async_set_number_value(sensor, _de_wait, cap_w),
-                reader=lambda: _read_number_state(sensor, _de_wait),
-            )
-            summary.results.append(wait_cap_result)
-            _LOGGER.debug(
-                "Wait mode self-consumption — capped max discharge power to %d W "
-                "(capacity=%.2f kWh, required=%.2f kWh, surplus=%.2f kWh)",
-                cap_w,
-                live.battery_current_capacity_kwh,
-                wait_mode_reserve_kwh,
-                surplus,
-            )
-            if wait_cap_result.status == ApplyStatus.FAILED:
-                _LOGGER.debug(
-                    "Wait mode self-consumption discharge cap write FAILED for %s. "
-                    "Blocking further battery writes this cycle.",
-                    discharge_entity,
-                    "error",
-                )
-                return summary
 
     # Excess PV use in TOU — fed_to_grid for the two explicit export modes and
     # when a held idle slot carries a material, authoritative solved export
@@ -544,7 +529,8 @@ async def async_apply_battery_settings(
     # (which already requires primary_battery_hold) grants that for
     # BatteriesWaitMode/EVSmartCharging.  Wait-mode self-consumption keeps
     # excess PV in the battery so the surplus above the reserve can be used
-    # for household self-consumption; it never overlaps with a held slot.
+    # for household self-consumption; it takes priority over a plain hold
+    # (issue #954), so it may now apply to a held slot too.
     export_is_intended = (
         recommendation
         in (

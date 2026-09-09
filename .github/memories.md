@@ -1322,6 +1322,31 @@ instead of keeping the battery strictly idle.
   discharge), trusting the next replan (interval tick, event-triggered, or
   the 10-second live-power monitor) to re-derive the reserve fresh from the
   then-current capacity before any later slot arrives.
+- **Reserve-floor decision must run ahead of the plain hold check, not
+  behind it (issue #954, fixed 2026-09-09):** a genuine `BatteriesWaitMode`
+  slot always satisfies `_primary_battery_hold()` — `soc_simulation.py`
+  forces `discharge = 0.0` for this recommendation, the same near-zero
+  condition the hold check tests for. #949's reserve-floor gate was gated
+  behind `not primary_battery_hold`, so it never actually overrode the
+  hold's unconditional `0 W` default for a real Wait slot — it only ever
+  ran in the test suite's synthetic non-held fixture (`_wait_rec()` used to
+  set a material `batteries_discharged_kwh` specifically to dodge the hold
+  check). Reproduced directly: battery at 100% SoC, reserve well below
+  capacity, genuine held Wait slot → the applier still wrote `0 W`. Fixed
+  by computing `wait_mode_reserve_active` (`recommendation ==
+BatteriesWaitMode and not relevant_evs and not held_planned_export and
+batteries_wait_mode_behavior == "self_consumption_with_reserve" and
+wait_mode_reserve_kwh is not None`) and checking it _before_ the
+  hold/EV/solar-charge-only branch in both the single cap-decision block
+  and the `BatteriesWaitMode` match-statement case — so it applies
+  regardless of hold status. `held_planned_export` and an active/planned EV
+  still take priority, unchanged. This also removed the former second,
+  independently-gated discharge-cap write block entirely (folded into the
+  single cap decision), so the entity is now written at most once per apply
+  cycle for every path, not just the hold/EV/solar-charge-only ones.
+  `tests/test_batteries_wait_mode.py::_wait_rec()` now builds a genuinely
+  held slot by default — the realistic case — with a separate inline
+  override for the rarer unheld edge case.
 
 Files involved: `flows/batteries_wait_mode.py`, `config_flow.py`,
 `options_flow.py`, `translations/en.json`, `const.py`,
