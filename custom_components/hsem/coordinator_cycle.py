@@ -442,6 +442,10 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             "_data_quality",
             "_ev_charging_plan",
             "_ev_second_charging_plan",
+            "_ev_held_slot_start",
+            "_ev_held_power_w",
+            "_ev_second_held_slot_start",
+            "_ev_second_held_power_w",
             "_hourly_recommendation",
             "_hourly_recommendations",
         )

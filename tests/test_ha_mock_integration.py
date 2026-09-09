@@ -236,6 +236,10 @@ def make_bare_coordinator(
     coord._data_quality = DataQuality()
     coord._ev_charging_plan = None
     coord._ev_second_charging_plan = None
+    coord._ev_held_slot_start = None
+    coord._ev_held_power_w = 0.0
+    coord._ev_second_held_slot_start = None
+    coord._ev_second_held_power_w = 0.0
 
     from custom_components.hsem.custom_sensors.config_reader import build_sensor_config
 
