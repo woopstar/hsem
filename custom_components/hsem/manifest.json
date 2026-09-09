@@ -22,5 +22,5 @@
         "scipy>=1.14,<2",
         "numpy>=2.0,<3"
     ],
-    "version": "6.3.0-beta2"
+    "version": "6.3.0-beta3"
 }
