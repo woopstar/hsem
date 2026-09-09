@@ -10,6 +10,7 @@ Extracted to keep :mod:`coordinator` under the 30 KB / 1000-line limit.
 from __future__ import annotations
 
 import asyncio
+import math
 from datetime import date, datetime
 from pathlib import Path
 
@@ -416,8 +417,9 @@ async def accumulate_savings(
 ) -> None:
     """Accumulate savings data for the current cycle.
 
-    Computes export revenue delta, charge savings delta, and baseline
-    cost delta from the daily tracker and planner output.
+    Computes export revenue delta, charge savings delta, discharge savings
+    delta, and baseline cost delta from the daily tracker, live battery
+    power, and planner output.
 
     Args:
         now: Current datetime (timezone-aware).
@@ -468,6 +470,28 @@ async def accumulate_savings(
         if abs(charge_kwh) > 1e-9:
             charge_savings_delta = charge_kwh * (avg_import_price - import_price)
 
+    # ---- Discharge savings: money saved by avoiding grid import now ----
+    # Battery energy discharged to serve house load avoids buying that
+    # energy from the grid at the current import price.  Without this term,
+    # installations that rely mainly on self-consumption (rather than
+    # export or below-average-price charging) are reported as saving
+    # nothing even while the battery is actively reducing grid import
+    # (issue #960).
+    discharge_savings_delta = 0.0
+    power_w = live.huawei_batteries_charge_discharge_power_w
+    if (
+        st._last_discharge_sample_at is not None
+        and power_w is not None
+        and math.isfinite(power_w)
+        and power_w < 0.0
+        and import_price > 0.0
+    ):
+        elapsed = (now - st._last_discharge_sample_at).total_seconds()
+        if elapsed > 0:
+            discharge_kwh = compute_accumulated_energy(-power_w, elapsed)
+            discharge_savings_delta = discharge_kwh * import_price
+    st._last_discharge_sample_at = now
+
     # ---- Baseline cost: what passive mode would cost this cycle ----
     baseline_cost_delta = import_cost_delta
 
@@ -479,6 +503,7 @@ async def accumulate_savings(
         charge_savings_delta=charge_savings_delta,
         baseline_cost_delta=baseline_cost_delta,
         switch_on=switch_on,
+        discharge_savings_delta=discharge_savings_delta,
     )
 
 
