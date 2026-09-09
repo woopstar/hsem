@@ -2095,9 +2095,9 @@ with the 0 W discharge cap above, so unexpected PV may still charge the
 battery.
 
 This applies to both `batteries_wait_mode` (an unheld strict wait stays in
-TOU; self-consumption-with-reserve still applies when unheld) and
-`ev_smart_charging` (which otherwise always executes as MSC to retain
-unexpected solar).
+TOU) and `ev_smart_charging` (which otherwise always executes as MSC to
+retain unexpected solar). `held_planned_export` takes priority over
+self-consumption-with-reserve too — see issue #954 below.
 
 ### Wait-mode self-consumption reserve (issue #914)
 
@@ -2118,6 +2118,25 @@ event-triggered replan, or the 10-second live-power monitor's reactive
 replan), so discharge stops as soon as live capacity reaches the reserve —
 battery-to-grid export remains governed separately by export-price/
 curtailment logic, never by this cap.
+
+**Self-consumption-with-reserve overrides the plain hold default, not the
+other way around (issue #954):** a genuine `BatteriesWaitMode` slot always
+satisfies `_primary_battery_hold()` — `soc_simulation.py` forces
+`discharge = 0.0` for this recommendation, the same near-zero condition the
+hold check tests for. #949 originally gated the reserve-floor decision
+behind `not primary_battery_hold`, which meant it never actually overrode
+the hold's `0 W` default for a real Wait slot — the reserve-floor logic only
+ever ran in a synthetic non-held test fixture. The fix evaluates
+`wait_mode_reserve_active` (`recommendation == BatteriesWaitMode and not
+relevant_evs and not held_planned_export and
+batteries_wait_mode_behavior == "self_consumption_with_reserve" and
+wait_mode_reserve_kwh is not None`) _ahead of_ the hold/EV/solar-charge-only
+branch in both the single cap-decision block and the working-mode match
+statement, so it applies regardless of hold status. `held_planned_export`
+(an authoritative solved export) and an active/planned EV both still take
+priority over it, unchanged. The former second, independently-gated
+discharge-cap write (from #949) was folded into the single cap decision and
+removed — the entity is written at most once per apply cycle.
 
 The **EV discharge-cap SoC guard** above and `apply_excess_export()` both use
 `current_required_battery_kwh`, derived from

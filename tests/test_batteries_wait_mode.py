@@ -172,7 +172,15 @@ def _live(*, working_mode: str) -> LiveState:
 
 
 def _wait_rec() -> HourlyRecommendation:
-    """A non-held BatteriesWaitMode slot (material planned discharge)."""
+    """A genuine (held) BatteriesWaitMode slot — the realistic case (issue #954).
+
+    ``batteries_charged_kwh``/``batteries_discharged_kwh`` are both near-zero,
+    matching what ``planner/soc_simulation.py`` actually produces for a "Wait"
+    slot, so ``_primary_battery_hold()`` is ``True`` here — exactly the
+    real-world case the #954 fix targets (the reserve-floor decision must run
+    regardless of hold status, not only for the synthetic non-held slot the
+    tests used to construct).
+    """
     return HourlyRecommendation(
         start=_NOW,
         end=_NOW + timedelta(hours=1),
@@ -183,9 +191,7 @@ def _wait_rec() -> HourlyRecommendation:
         avg_house_consumption_7d_kwh=0.0,
         avg_house_consumption_14d_kwh=0.0,
         batteries_charged_kwh=0.0,
-        # Material (non-near-zero) so _primary_battery_hold() is False and
-        # the self_consumption_with_reserve branch is actually reached.
-        batteries_discharged_kwh=0.05,
+        batteries_discharged_kwh=0.0,
         estimated_battery_capacity_kwh=1.0,
         estimated_battery_soc_pct=50.0,
         estimated_cost_currency=0.0,
@@ -210,21 +216,61 @@ async def _write_and_verify_ok(entity_id, desired, writer, reader, **kwargs):  #
 
 
 class TestWaitModeReserveNoneFallsBackToStrictWait:
-    """``wait_mode_reserve_kwh=None`` must force strict TOU wait (issue #914).
+    """``wait_mode_reserve_kwh=None`` must fall back to the same behaviour
+    ``batteries_wait_mode_behavior == "strict"`` would produce for this slot
+    (issue #914) — a reserve that could not be reliably derived must never be
+    treated as "no reserve needed" (which would let the battery discharge
+    freely).
 
-    Even with ``self_consumption_with_reserve`` configured, a reserve that
-    could not be reliably derived must never be treated as "no reserve
-    needed" (which would let the battery discharge freely) — the applier
-    must fall back to the same strict TOU wait behaviour as
-    ``batteries_wait_mode_behavior == "strict"``.
+    For a genuine held Wait slot, "strict" behaviour is ``MaximizeSelfConsumption``
+    with the discharge cap held at 0 W (issue #797/#922) — not literal
+    ``TimeOfUse`` wait, which only applies to the rarer unheld case (issue #954).
     """
 
     @pytest.mark.asyncio
-    async def test_none_reserve_writes_strict_tou_wait(self):
+    async def test_none_reserve_on_held_slot_falls_back_to_msc_with_zero_cap(self):
+        """Genuine held slot + reserve=None -> same as strict mode: MSC, 0 W cap."""
+        sensor = _sensor()
+        cfg = _cfg()
+        live = _live(working_mode=WorkingModes.TimeOfUse.value)
+        rec = (
+            _wait_rec()
+        )  # held: batteries_charged_kwh == batteries_discharged_kwh == 0
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                side_effect=_write_and_verify_ok,
+            ),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_set_select_option",
+                new_callable=AsyncMock,
+            ) as mock_select,
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_set_number_value",
+                new_callable=AsyncMock,
+            ) as mock_number,
+        ):
+            await async_apply_battery_settings(
+                sensor, cfg, live, rec, 5.0, wait_mode_reserve_kwh=None
+            )
+
+        mock_select.assert_any_await(
+            sensor, "select.wm", WorkingModes.MaximizeSelfConsumption.value
+        )
+        mock_number.assert_any_await(sensor, "number.maxdis", 0)
+
+    @pytest.mark.asyncio
+    async def test_none_reserve_on_unheld_slot_falls_back_to_strict_tou_wait(self):
+        """Rarer unheld slot + reserve=None -> strict TOU wait (issue #914)."""
         sensor = _sensor()
         cfg = _cfg()
         live = _live(working_mode=WorkingModes.MaximizeSelfConsumption.value)
         rec = _wait_rec()
+        # Material (non-near-zero) so _primary_battery_hold() is False —
+        # the rarer unheld-slot edge case.
+        rec.batteries_discharged_kwh = 0.05
 
         with (
             patch(_LOGGER_PATCH, new_callable=MagicMock),
@@ -264,6 +310,12 @@ class TestWaitModeReserveGatesSelfConsumption:
         track a real household load spike. Starting from a stale low cap (as the
         old formula would have written) proves the fix actively restores the
         full rated/configured discharge rate instead.
+
+        Also the issue #954 regression guard: ``rec`` here is a *genuine held*
+        Wait slot (``_primary_battery_hold()`` is ``True``) — the realistic
+        production case. Before #954, the hold check ran first and forced the
+        cap to 0 W unconditionally, so this reserve-floor branch never actually
+        overrode it for a real Wait slot at all.
         """
         sensor = _sensor()
         cfg = _cfg()
@@ -299,7 +351,12 @@ class TestWaitModeReserveGatesSelfConsumption:
 
     @pytest.mark.asyncio
     async def test_capacity_at_reserve_falls_back_to_strict_wait(self):
-        """No surplus above the reserve -> strict TOU wait, same as ``strict`` mode."""
+        """No surplus above the reserve -> strict TOU wait, same as ``strict`` mode.
+
+        Also asserts the discharge cap is explicitly written to 0 W (issue #954):
+        the reserve-floor decision now runs ahead of the hold check, so this is a
+        real hardware write, not just an implicit side effect of the mode switch.
+        """
         sensor = _sensor()
         cfg = _cfg()
         live = _live(working_mode=WorkingModes.MaximizeSelfConsumption.value)
@@ -316,9 +373,60 @@ class TestWaitModeReserveGatesSelfConsumption:
                 "custom_components.hsem.custom_sensors.applier.async_set_select_option",
                 new_callable=AsyncMock,
             ) as mock_select,
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_set_number_value",
+                new_callable=AsyncMock,
+            ) as mock_number,
         ):
             await async_apply_battery_settings(
                 sensor, cfg, live, rec, 5.0, wait_mode_reserve_kwh=1.0
             )
 
         mock_select.assert_any_await(sensor, "select.wm", WorkingModes.TimeOfUse.value)
+        mock_number.assert_any_await(sensor, "number.maxdis", 0)
+
+    @pytest.mark.asyncio
+    async def test_full_soc_held_slot_uses_full_rate_not_zero(self):
+        """Exact issue #954 reproduction: 100% SoC, held Wait slot, reserve well
+        below capacity -> full rated max, not 0 W.
+
+        Before this fix, ``_primary_battery_hold()`` was ``True`` for this
+        genuine Wait slot and forced the cap to 0 W before the
+        ``self_consumption_with_reserve`` reserve-floor logic ever ran, even
+        though the battery held 4x the reserve in usable surplus.
+        """
+        sensor = _sensor()
+        cfg = _cfg()
+        live = _live(working_mode=WorkingModes.TimeOfUse.value)
+        live.battery_current_capacity_kwh = 5.0  # 100% of a 5000 Wh pack
+        # Simulate the stale 0 W cap the pre-fix hold check would have forced.
+        live.huawei_batteries_max_discharge_power_w = 0
+        rec = (
+            _wait_rec()
+        )  # held: batteries_charged_kwh == batteries_discharged_kwh == 0
+        assert rec.batteries_charged_kwh == 0.0
+        assert rec.batteries_discharged_kwh == 0.0
+
+        with (
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                side_effect=_write_and_verify_ok,
+            ),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_set_select_option",
+                new_callable=AsyncMock,
+            ) as mock_select,
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_set_number_value",
+                new_callable=AsyncMock,
+            ) as mock_number,
+        ):
+            await async_apply_battery_settings(
+                sensor, cfg, live, rec, 0.0, wait_mode_reserve_kwh=1.0
+            )
+
+        mock_select.assert_any_await(
+            sensor, "select.wm", WorkingModes.MaximizeSelfConsumption.value
+        )
+        mock_number.assert_any_await(sensor, "number.maxdis", 2500)

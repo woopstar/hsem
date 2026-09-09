@@ -494,8 +494,12 @@ recommendation it is not changed by later rules in the same layer.
 > (issue #942): while the battery holds any surplus above the reserve, the house
 > may draw at the full rated/configured discharge rate — so a real load spike is
 > served from the battery instead of the grid — and once capacity reaches the
-> reserve floor, discharge stops. This reduces unnecessary grid import while still
-> preserving capacity for future scheduled discharge windows. The reserve is
+> reserve floor, discharge stops. This applies to the normal case where the plan
+> held the battery fully idle for this slot, not just an edge case (issue #954) —
+> a genuine "Wait" slot always meets that hold condition, so the reserve-floor
+> decision must run instead of the hold default, not only when unheld. This
+> reduces unnecessary grid import while still preserving capacity for future
+> scheduled discharge windows. The reserve is
 > derived from the **selected plan's own simulated SoC trajectory** (issue #914) —
 > how far it dips before its next actual solved charge — not from a raw forecast
 > PV-surplus scan, so a small or short-lived forecast surplus no longer lets the
