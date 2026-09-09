@@ -417,9 +417,11 @@ async def accumulate_savings(
 ) -> None:
     """Accumulate savings data for the current cycle.
 
-    Computes export revenue delta, charge savings delta, discharge savings
-    delta, and baseline cost delta from the daily tracker, live battery
-    power, and planner output.
+    Computes export revenue delta, charge savings delta, and discharge
+    savings delta from the daily tracker, live battery power, and planner
+    output.  Also computes a baseline cost delta: an independent
+    passive/no-action counterfactual integrated from live house-load and
+    PV power, not the actual (HSEM-optimised) grid-import cost.
 
     Args:
         now: Current datetime (timezone-aware).
@@ -440,17 +442,11 @@ async def accumulate_savings(
 
     # ---- Compute per-cycle deltas from the daily tracker ----
     current_export_rev = dt.actual.grid_export_rev
-    current_import_cost = dt.actual.grid_import_cost
 
     export_rev_delta = 0.0
     if st._last_export_rev is not None:
         export_rev_delta = max(0.0, current_export_rev - st._last_export_rev)
     st._last_export_rev = current_export_rev
-
-    import_cost_delta = 0.0
-    if st._last_import_cost is not None:
-        import_cost_delta = max(0.0, current_import_cost - st._last_import_cost)
-    st._last_import_cost = current_import_cost
 
     # ---- Charge savings: money saved by charging cheap now ----
     charge_savings_delta = 0.0
@@ -493,7 +489,37 @@ async def accumulate_savings(
     st._last_discharge_sample_at = now
 
     # ---- Baseline cost: what passive mode would cost this cycle ----
-    baseline_cost_delta = import_cost_delta
+    # A genuine no-battery/no-HSEM counterfactual, independent of the actual
+    # (HSEM-optimised) import cost: house load is served by live PV first,
+    # any shortfall is bought from the grid at the live import price, and
+    # any PV surplus is valued at the live export price.  Before this fix,
+    # `baseline_cost_delta` re-used the actual grid-import cost delta from
+    # the daily tracker, which already reflects HSEM's optimisation
+    # (including any avoided import from battery discharge) and is
+    # therefore not a passive-mode baseline at all (issue #962).
+    baseline_cost_delta = 0.0
+    house_power_w = live.house_consumption_power_w
+    pv_power_w = live.solar_production_power_w
+    if (
+        st._last_baseline_sample_at is not None
+        and house_power_w is not None
+        and math.isfinite(house_power_w)
+        and pv_power_w is not None
+        and math.isfinite(pv_power_w)
+    ):
+        elapsed = (now - st._last_baseline_sample_at).total_seconds()
+        if elapsed > 0:
+            baseline_load_kwh = compute_accumulated_energy(house_power_w, elapsed)
+            baseline_pv_kwh = compute_accumulated_energy(pv_power_w, elapsed)
+            baseline_import_kwh = max(baseline_load_kwh - baseline_pv_kwh, 0.0)
+            baseline_export_kwh = max(baseline_pv_kwh - baseline_load_kwh, 0.0)
+
+            export_price = live.export_electricity_price
+            if import_price is not None and math.isfinite(import_price):
+                baseline_cost_delta += baseline_import_kwh * import_price
+            if export_price is not None and math.isfinite(export_price):
+                baseline_cost_delta -= baseline_export_kwh * export_price
+    st._last_baseline_sample_at = now
 
     # ---- Determine if the master switch is on ----
     switch_on = live.force_working_mode_state == "auto"

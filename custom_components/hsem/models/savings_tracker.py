@@ -35,9 +35,11 @@ class SavingsTracker:
         _today: ISO-format date string for the current day.
         _switch_was_off: Whether the master switch was off this cycle.
         _last_export_rev: Snapshot of daily_tracker grid_export_rev for delta.
-        _last_import_cost: Snapshot of daily_tracker grid_import_cost for delta.
         _last_discharge_sample_at: Previous sample timestamp used to
             integrate battery discharge power into discharge-savings energy.
+        _last_baseline_sample_at: Previous sample timestamp used to
+            integrate live house-load and PV power into the baseline
+            (passive/no-action) counterfactual.
     """
 
     max_history_days: int = 90
@@ -55,12 +57,15 @@ class SavingsTracker:
     _today: str = ""
     _switch_was_off: bool = False
 
-    # Delta tracking snapshots from the daily plan-vs-actual tracker.
+    # Delta tracking snapshot from the daily plan-vs-actual tracker.
     _last_export_rev: float | None = field(default=None, repr=False)
-    _last_import_cost: float | None = field(default=None, repr=False)
 
     # Previous sample timestamp for discharge-savings elapsed-time integration.
     _last_discharge_sample_at: datetime | None = field(default=None, repr=False)
+
+    # Previous sample timestamp for baseline-counterfactual elapsed-time
+    # integration of live house-load and PV power (issue #962).
+    _last_baseline_sample_at: datetime | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         """Set today's date if not already set."""
