@@ -14,8 +14,8 @@ class BatterySchedule:
     """A single battery charge/discharge schedule window.
 
     Holds the enabled state, time boundaries, and economic parameters
-    (average import price, needed capacity, and associated cost) for one
-    battery schedule window.
+    (average import price and needed capacity) for one battery schedule
+    window.
     """
 
     enabled: bool
@@ -23,4 +23,3 @@ class BatterySchedule:
     end: time
     avg_import_price: float
     needed_batteries_capacity: float
-    needed_batteries_capacity_cost: float

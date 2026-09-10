@@ -668,7 +668,6 @@ def build_battery_schedules(cfg: SensorConfig) -> list[BatterySchedule]:
                 end=sc.end if sc.end is not None else _midnight,
                 avg_import_price=0.0,
                 needed_batteries_capacity=0.0,
-                needed_batteries_capacity_cost=0.0,
             )
         )
     return schedules
