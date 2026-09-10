@@ -158,7 +158,6 @@ class OCPPServer(
         self._chargers: dict[str, ChargerSession] = {}
 
         # Charge target tracking (anti-flap)
-        self._target_power_w: float = 0.0
         self._target_entered_at: datetime | None = None
         self._zero_entered_at: datetime | None = None
         self._last_sent_target: float = -1.0  # Track last sent to avoid duplicates

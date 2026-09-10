@@ -781,7 +781,6 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         wait_mode_reserve_kwh=wait_mode_reserve_kwh,
         missing_inputs=missing_inputs,
         warnings=warnings,
-        time_series_index=tsi,
         data_quality=data_quality,
         explanation=expl,
         plan_cost=pc,

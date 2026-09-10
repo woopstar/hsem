@@ -199,6 +199,9 @@ class HSEMOCPPChargerStatusSensor(
         self.entity_id = get_ocpp_charger_status_sensor_entity_id(
             charger_index=charger_index
         )
+        # Read by HA core's Entity.translation_key property to resolve the
+        # entity name from strings.json/translations — not accessed directly
+        # in this repo (vulture false positive).
         self._attr_translation_key = (
             "ocpp_charger_status"
             if charger_index == 1
@@ -350,6 +353,8 @@ class HSEMOCPPChargerPowerSensor(
         self.entity_id = get_ocpp_charger_power_sensor_entity_id(
             charger_index=charger_index
         )
+        # Read by HA core's Entity.translation_key property (vulture false
+        # positive) — see ocpp_charger_status sensor above.
         self._attr_translation_key = (
             "ocpp_charger_power" if charger_index == 1 else "ocpp_second_charger_power"
         )
@@ -450,6 +455,8 @@ class HSEMOCPPChargerInfoSensor(
         self.entity_id = get_ocpp_charger_info_sensor_entity_id(
             charger_index=charger_index
         )
+        # Read by HA core's Entity.translation_key property (vulture false
+        # positive) — see ocpp_charger_status sensor above.
         self._attr_translation_key = (
             "ocpp_charger_info" if charger_index == 1 else "ocpp_second_charger_info"
         )
@@ -560,6 +567,8 @@ class HSEMOCPPChargerSessionsSensor(
         self.entity_id = get_ocpp_charger_sessions_sensor_entity_id(
             charger_index=charger_index
         )
+        # Read by HA core's Entity.translation_key property (vulture false
+        # positive) — see ocpp_charger_status sensor above.
         self._attr_translation_key = (
             "ocpp_charger_sessions"
             if charger_index == 1

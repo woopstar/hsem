@@ -262,11 +262,9 @@ class PhaseChargeLimits:
     primary_charge_power_w: float
     """Safe grid-charge maximum-power command (W), floored to a 100 W step."""
 
-    base_phase_power_w: PhasePowers
-    """Live phase power with Huawei's own measured contribution removed."""
-
     predicted_phase_power_w: PhasePowers
-    """``base_phase_power_w`` plus the commanded charge, evenly split."""
+    """Live phase power, with Huawei's own contribution removed, plus the
+    commanded charge, evenly split."""
 
 
 def phase_powers_valid(
@@ -350,6 +348,5 @@ def compute_phase_charge_limits(
     )
     return PhaseChargeLimits(
         primary_charge_power_w=dc_target_w,
-        base_phase_power_w=tuple(base),  # type: ignore[arg-type]
         predicted_phase_power_w=predicted,  # type: ignore[arg-type]
     )

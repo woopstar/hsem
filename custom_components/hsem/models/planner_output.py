@@ -13,7 +13,6 @@ from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.models.planned_slot import PlannedSlot
 
 if TYPE_CHECKING:
-    from custom_components.hsem.models.time_series import TimeSeriesIndex
     from custom_components.hsem.planner.cost_function import PlanCostBreakdown
     from custom_components.hsem.planner.ev_planner import EVChargingPlan
 
@@ -56,11 +55,6 @@ class PlannerOutput:
             during planning.  An empty list means all inputs were present.
         warnings:
             Human-readable warning strings emitted during planning.
-        time_series_index:
-            The shared :class:`~custom_components.hsem.models.time_series.TimeSeriesIndex`
-            used during this planning run.  All slot boundaries, price, PV,
-            load, import/export and SoC series are aligned to this axis.
-            ``None`` when the planner was invoked without a valid horizon.
         data_quality:
             Structured diagnostics about the completeness of price, PV, and
             load-forecast inputs for today and tomorrow.  Exposes which hours are missing
@@ -83,7 +77,6 @@ class PlannerOutput:
     wait_mode_reserve_kwh: float | None = None
     missing_inputs: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-    time_series_index: TimeSeriesIndex | None = field(default=None, repr=False)
     #: Structured data-quality report for price, PV, and load-forecast inputs.
     data_quality: DataQuality = field(default_factory=DataQuality)
     extra: dict[str, Any] = field(default_factory=dict)

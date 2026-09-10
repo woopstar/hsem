@@ -1071,13 +1071,17 @@ unsafe or the system is in a degraded state.
 
 ### Degraded mode levels
 
+`DegradedMode` (`utils/degraded_mode.py`) has three values:
+
 | Mode       | Hardware writes         | Trigger                                                       |
 | ---------- | ----------------------- | ------------------------------------------------------------- |
-| `Normal`   | Allowed                 | All inputs present and valid                                  |
+| `OK`       | Allowed                 | All inputs present and valid                                  |
 | `Degraded` | Allowed (with warnings) | Non-critical data missing (e.g. tomorrow's prices)            |
 | `Error`    | **Blocked**             | Critical data missing (battery SoC, house load, working mode) |
-| `ReadOnly` | **Blocked**             | `is_read_only = True` in config or `PlannerInput`             |
-| `DryRun`   | **Blocked**             | Dry-run mode active                                           |
+
+Read-only mode is an independent gate, not a `DegradedMode` value: the
+applier checks `cfg.read_only` (`switch.hsem_read_only`) separately and
+blocks writes regardless of the degraded-mode result.
 
 ### Critical vs. non-critical missing data
 
@@ -1115,7 +1119,7 @@ runs from a fresh snapshot.
 The write-verify applier (`WriteVerifyApplier`) enforces these gates
 before any Huawei Solar service call:
 
-1. Checks `is_read_only` — skip writes if `True`.
+1. Checks `cfg.read_only` — skip writes if `True`.
 2. Checks degraded mode — skip writes in `Error` mode.
 3. Verifies the inverter is not unloading.
 4. After writing, reads back the entity state to confirm the change applied.

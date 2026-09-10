@@ -101,7 +101,6 @@ def _make_minimal_input(
         excess_export_price_threshold=0.10,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
         house_power_includes_ev=True,
-        is_read_only=True,
     )
 
 

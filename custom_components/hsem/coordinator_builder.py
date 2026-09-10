@@ -351,7 +351,6 @@ def build_planner_input(
         live_solar_production_w=live_solar_w,
         live_house_consumption_w=live_house_w,
         live_house_consumption_available=live_house_available,
-        is_read_only=bool(cfg.read_only),
         # EV planned load
         ev_planned_load_enabled=bool(cfg.ev_planned_load_enabled),
         ev_planned_load_connected=bool(live.ev_planned_load_connected),

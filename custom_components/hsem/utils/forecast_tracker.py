@@ -108,15 +108,6 @@ class ForecastSlotRecord:
             and self.actual_coverage_seconds >= duration_seconds - 1.0
         )
 
-    @property
-    def prediction_eligible(self) -> bool:
-        """Return whether all frozen PredictionTracker inputs are available."""
-        return (
-            self.accuracy_eligible
-            and self.forecast_soc_pct is not None
-            and self.forecast_action is not None
-        )
-
     def accumulate_pv(self, energy_kwh: float) -> None:
         """Add *energy_kwh* of measured PV to the slot accumulator.
 
@@ -423,6 +414,11 @@ class ForecastTracker:
     ) -> bool:
         """Discard an incompatible live layout while keeping finalised history.
 
+        Not currently called by ``coordinator_tracking.py`` — see issue #972
+        for the forgotten-wiring gap this leaves (a slot-layout change can
+        make ``get_or_create_record()`` silently reuse a stale record, since
+        it matches by ``start`` only).
+
         Returns ``True`` when active/future records did not match the current
         recommendation starts and ends.  Callers use that signal to reset
         instantaneous-power endpoints so no interval bridges the change.
@@ -444,6 +440,9 @@ class ForecastTracker:
 
     def finalise_record(self, start: datetime) -> bool:
         """Finalise the record at *start* if it exists and is not yet finalised.
+
+        Not called in production — ``finalise_past_records`` (below) has its
+        own loop instead of delegating here (issue #972).
 
         Args:
             start: Slot start time.
@@ -477,7 +476,13 @@ class ForecastTracker:
         return count
 
     def freeze_forecasts(self, now: datetime) -> int:
-        """Freeze baselines for slots that have physically started."""
+        """Freeze baselines for slots that have physically started.
+
+        Not called in production: the only caller of ``set_forecasts``
+        (``coordinator_tracking.py::register_forecasts_from_planner``)
+        always omits ``observed_at``, so baselines freeze immediately at
+        first sight instead of progressively via this method. See issue #972.
+        """
         count = 0
         now_key = _utc_key(now)
         for rec in self._records:
@@ -550,6 +555,11 @@ class ForecastTracker:
 
         Long gaps are rejected rather than treating a stale power sample as
         representative.  The return value is the allocated number of seconds.
+
+        Not called in production: ``coordinator_tracking.py`` attributes an
+        entire elapsed interval to whichever single slot contains ``now``
+        instead of splitting it by overlap across slot boundaries. See
+        issue #972.
         """
         start_key = _utc_key(start)
         end_key = _utc_key(end)
