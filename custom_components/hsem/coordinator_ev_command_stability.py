@@ -61,8 +61,8 @@ from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.phase_power import (
     charger_current_to_power_w,
     charger_max_power_to_current_a,
-    charger_min_power_to_current_a,
     charger_power_to_current_a,
+    ev_min_start_current_a,
 )
 from custom_components.hsem.utils.units import slot_duration_hours
 
@@ -167,7 +167,7 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
                         max(float(charger_power_kw or 0.0), 0.0) * 1000.0,
                         topology,
                     ),
-                    min_current_a=charger_min_power_to_current_a(
+                    min_current_a=ev_min_start_current_a(
                         max(float(min_power_w or 0.0), 0.0), topology
                     ),
                     managed=bool(enabled) and bool(connected) and bool(smart_charging),

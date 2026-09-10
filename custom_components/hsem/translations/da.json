@@ -25,7 +25,8 @@
       "start_time_after_end_time": "Starttidspunkt skal være før sluttidspunkt.",
       "start_time_equals_end_time": "Starttidspunkt og sluttidspunkt kan ikke være ens - dette skaber et nul-længdevindue. Deaktiver tidsplanen i stedet.",
       "invalid_wait_mode_behavior": "Ugyldig ventetilstand. Vælg Streng ventetilstand eller Selvforbrug med reserve.",
-      "port_conflict": "Den anden OCPP-port skal være forskellig fra den første OCPP-port."
+      "port_conflict": "Den anden OCPP-port skal være forskellig fra den første OCPP-port.",
+      "ev_min_power_below_start_current": "Den konfigurerede minimumseffekt er for lav til den valgte fasetopologi — en rigtig lader kan ikke starte under 6 A. Øg minimumseffekten, eller skift fasetopologi."
     },
     "step": {
       "batteries_excess_export": {
@@ -562,7 +563,8 @@
       "start_time_after_end_time": "Starttidspunkt skal være før sluttidspunkt.",
       "start_time_equals_end_time": "Starttidspunkt og sluttidspunkt kan ikke være ens - dette skaber et nul-længdevindue. Deaktiver tidsplanen i stedet.",
       "invalid_wait_mode_behavior": "Ugyldig ventetilstand. Vælg Streng ventetilstand eller Selvforbrug med reserve.",
-      "port_conflict": "Den anden OCPP-port skal være forskellig fra den første OCPP-port."
+      "port_conflict": "Den anden OCPP-port skal være forskellig fra den første OCPP-port.",
+      "ev_min_power_below_start_current": "Den konfigurerede minimumseffekt er for lav til den valgte fasetopologi — en rigtig lader kan ikke starte under 6 A. Øg minimumseffekten, eller skift fasetopologi."
     },
     "step": {
       "batteries_excess_export": {
