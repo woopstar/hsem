@@ -52,7 +52,6 @@ def accumulate_forecast_actuals(
     forecast_tracker: ForecastTracker,
     last_accumulation_ts: datetime | None,
     solar_corrector: SolarForecastCorrector,
-    solar_corrector_processed: set[datetime],
     prediction_tracker: PredictionTracker,
     last_planner_output: PlannerOutput | None,
 ) -> tuple[datetime | None, bool]:
@@ -68,9 +67,10 @@ def accumulate_forecast_actuals(
         hourly_recommendations: Current hourly recommendations.
         forecast_tracker: The forecast-vs-actual tracker instance.
         last_accumulation_ts: Timestamp of the previous accumulation.
-        solar_corrector: Solar forecast accuracy auto-corrector.
-        solar_corrector_processed: Set of slot start times already fed to the
-            solar corrector.
+        solar_corrector: Solar forecast accuracy auto-corrector. Its
+            persisted ``processed_through`` watermark (not an in-memory set)
+            is the sole guard against re-learning a finalised slot, so it
+            correctly survives Home Assistant restarts (issue #973).
         prediction_tracker: Prediction accuracy tracker.
         last_planner_output: Most recent planner output, or None.
 
@@ -126,18 +126,22 @@ def accumulate_forecast_actuals(
     # -------------------------------------------------------------------
     # Feed every newly-finalised forecast tracker record into the solar
     # corrector so it can learn per-hour accuracy factors and update the
-    # intra-hour residual buffer.
+    # intra-hour residual buffer. Gate on the corrector's own persisted
+    # ``processed_through`` watermark (not an in-memory set) so a restored
+    # corrector does not re-learn slots it already processed before a Home
+    # Assistant restart (issue #973).
     for frec in forecast_tracker.records:
         if not frec.finalised:
             continue
-        if frec.start in solar_corrector_processed:
+        processed_through = solar_corrector.processed_through
+        if processed_through is not None and frec.start <= processed_through:
             continue
 
         solar_corrector.update_hour(
             frec.start.hour, frec.forecast_pv_kwh, frec.actual_pv_kwh
         )
         solar_corrector.update_residual(frec.forecast_pv_kwh, frec.actual_pv_kwh)
-        solar_corrector_processed.add(frec.start)
+        solar_corrector.mark_processed(frec.start)
 
     # -------------------------------------------------------------------
     # Prediction accuracy scorecard (issue #601)

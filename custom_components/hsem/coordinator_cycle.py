@@ -501,9 +501,6 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 solar_corrector=getattr(
                     self, "_solar_corrector", SolarForecastCorrector()
                 ),
-                solar_corrector_processed=getattr(
-                    self, "_solar_corrector_processed", set()
-                ),
                 prediction_tracker=getattr(
                     self, "_prediction_tracker", PredictionTracker(max_records=2880)
                 ),

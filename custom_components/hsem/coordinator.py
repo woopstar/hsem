@@ -289,10 +289,10 @@ class HSEMDataUpdateCoordinator(
         self._live_power_replan_request_slot_this_cycle: datetime | None = None
         self._live_power_timer_unsub: Callable[[], None] | None = None
 
-        # Solar forecast accuracy auto-corrector (issue #602).
+        # Solar forecast accuracy auto-corrector (issue #602). Its own
+        # persisted `processed_through` watermark guards against re-learning
+        # a finalised slot across Home Assistant restarts (issue #973).
         self._solar_corrector: SolarForecastCorrector = SolarForecastCorrector()
-        # Set of slot start times already fed to the solar corrector.
-        self._solar_corrector_processed: set[datetime] = set()
 
         # Forecast-vs-actual tracker (predicted-vs-actual tracking, issue #373).
         self._forecast_tracker: ForecastTracker = ForecastTracker(max_slots=2880)
