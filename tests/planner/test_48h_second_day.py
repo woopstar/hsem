@@ -144,7 +144,6 @@ def _make_48h_input(
             months_winter if months_winter is not None else [1, 2, 3, 4, 10, 11, 12]
         ),
         house_power_includes_ev=True,
-        is_read_only=True,
     )
 
 

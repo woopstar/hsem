@@ -54,6 +54,14 @@ class ChargerSession:
             (``ChargeProfileMaxStackLevel``), the current it is physically
             capped at (``Station-MaxCurrent``), and any vendor key that
             governs whether it will charge at all (go-e's ``ForceState``).
+        gate_pending_plan: ``True`` while HSEM is holding this connector at
+            a transient 0 A block because the charger's own status just
+            left ``"Available"`` (a car connected, or free-vended locally)
+            before the planner has had its first chance to decide a
+            target for it (issue #969). Cleared the moment either the
+            planner's next decision arrives (``update_charge_target()``,
+            whatever it decides) or the car disconnects — never a
+            standing idle-time block, which would regress issue #920.
     """
 
     cpid: str = ""
@@ -72,3 +80,4 @@ class ChargerSession:
     pending_calls: dict[str, str] = field(default_factory=dict)
     last_call_status: dict[str, str] = field(default_factory=dict)
     configuration_keys: dict[str, str] = field(default_factory=dict)
+    gate_pending_plan: bool = False

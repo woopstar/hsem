@@ -110,7 +110,6 @@ def _make_two_slot_input(
         battery_schedules=[schedule],
         excess_export_enabled=False,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
-        is_read_only=True,
         weight_1d=25,
         weight_3d=30,
         weight_7d=30,
@@ -242,7 +241,6 @@ class TestOpportunisticChargeThreshold:
             battery_schedules=[],  # no discharge schedule → opportunistic path
             excess_export_enabled=False,
             months_winter=[1, 2, 3, 4, 10, 11, 12],
-            is_read_only=True,
             weight_1d=25,
             weight_3d=30,
             weight_7d=30,

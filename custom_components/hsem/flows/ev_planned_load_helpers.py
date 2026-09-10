@@ -35,6 +35,7 @@ from homeassistant.helpers.selector import selector
 from custom_components.hsem.utils.config_validator import (
     merge_errors,
     validate_energy_limits,
+    validate_ev_min_power_topology,
     validate_power_limits,
 )
 from custom_components.hsem.utils.misc import get_config_value
@@ -245,5 +246,10 @@ async def validate_ev_planned_load_schema_input(
         min_watts=0.0,
         max_watts=22_000.0,
     )
+    min_power_topology_errors = validate_ev_min_power_topology(
+        user_input,
+        f"{prefix}_charger_min_power_w",
+        f"{prefix}_charger_phase_topology",
+    )
 
-    return merge_errors(capacity_errors, min_power_errors)
+    return merge_errors(capacity_errors, min_power_errors, min_power_topology_errors)

@@ -121,9 +121,6 @@ class PlannerInput:
         house_power_includes_ev:
             Whether the house-consumption sensor already includes EV charger
             power.  Affects net-consumption calculation.
-        is_read_only:
-            When ``True`` the planner skips writing to the inverter.  Useful
-            for dry-run/test scenarios.
     """
 
     # --- temporal context ---
@@ -219,7 +216,6 @@ class PlannerInput:
     # --- seasonal / mode config ---
     months_winter: list[int] = field(default_factory=lambda: [1, 2, 3, 4, 10, 11, 12])
     house_power_includes_ev: bool = True
-    is_read_only: bool = False  # False = hardware writes enabled; set True only in dry-run/test scenarios
 
     #: Live solar production power in Watts from the inverter's input power
     #: sensor.  Injected into the current slot's solcast_pv_estimate_kwh so

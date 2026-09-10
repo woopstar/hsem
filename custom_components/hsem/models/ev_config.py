@@ -33,7 +33,11 @@ class EVConfig:
         charger_min_power_w: Minimum AC power (W) the charger needs to start.
             When the per-slot AC power falls below this threshold the
             charger will not operate — zero out those allocations.
-            Default 1380 W (230 V × 6 A single-phase).
+            Default 1380 W (230 V × 6 A single-phase). Every site that
+            converts this to an executable amp floor
+            (``utils.phase_power.ev_min_start_current_a``) enforces a hard
+            6 A minimum regardless of the computed value or phase topology,
+            since no real EVSE starts below 6 A (IEC 61851, issue #968).
         deadline_slot: Index into the LP's future-slot list (0..m-1) of the
             last slot that can be used to meet the target.  Slots beyond this
             index may still charge but the target must be met by this slot.

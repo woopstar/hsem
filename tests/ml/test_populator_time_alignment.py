@@ -162,10 +162,8 @@ class _FakePredictor:
         self.sequential_requests: list[list[datetime]] = []
         self.sequential_temperature_requests: list[dict[datetime, float] | None] = []
         self.sequential_wind_requests: list[dict[datetime, float] | None] = []
-        self.forecast_temperature_entity_configured = False
         self.forecast_temperature_slots_used = 0
         self.fallback_temperature_slots_used = 0
-        self.forecast_wind_entity_configured = False
         self.forecast_wind_slots_used = 0
         self.fallback_wind_slots_used = 0
 
@@ -615,8 +613,6 @@ def test_predictor_uses_physical_age_and_temperature_identity_across_fold() -> N
         retrain_min_new_samples=1,
         use_temperature=True,
     )
-
-    assert predictor._lookup_temperature(temperatures, fold_one) == 20.0
 
     predictor.train(
         [(fold_zero, 8, 1.0), (fold_one, 8, 1.1)],

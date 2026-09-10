@@ -129,7 +129,6 @@ def _make_arbitrage_input(
         # (month 6) means the seasonal fallback will assign
         # BatteriesDischargeMode to unassigned positive-net-consumption
         # slots — exactly the scenario described in the issue.
-        is_read_only=True,
         weight_1d=25,
         weight_3d=30,
         weight_7d=30,

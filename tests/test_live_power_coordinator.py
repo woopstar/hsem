@@ -57,8 +57,6 @@ def _estimate(house_w: float | None, solar_w: float | None) -> LivePowerEstimate
     return LivePowerEstimate(
         house_power_w=house_w,
         solar_power_w=solar_w,
-        house_sample_count=3 if house_w is not None else 0,
-        solar_sample_count=3 if solar_w is not None else 0,
     )
 
 

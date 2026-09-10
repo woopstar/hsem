@@ -23,6 +23,12 @@ only *after* the handler coroutine returns, so awaiting extra
 wire before the charger receives the response to its own still-pending
 StartTransaction request. Some charger firmware handles messages strictly
 request/response and can misbehave when that ordering is violated.
+
+:meth:`_handle_status_notification` also arms/releases the connect-time
+"pending plan" gate (issue #969, :mod:`~ocpp_anti_flap`) on a status
+transition into/out of ``"Available"`` — the earliest available signal
+that a car was plugged in or unplugged, ahead of a self-authorizing
+charger's own ``StartTransaction``.
 """
 
 from __future__ import annotations
@@ -71,6 +77,13 @@ class OCPPMessageHandlersMixin:
     # Declared (not assigned) so mypy resolves this against
     # OCPPControlMixin, which composes into the same OCPPServer.
     send_get_configuration: Callable[[str], Coroutine[Any, Any, bool]]
+
+    # Declared (not assigned) so mypy resolves these against
+    # OCPPAntiFlapMixin, which composes into the same OCPPServer — the
+    # connect-time pending-plan gate (issue #969).
+    _flap_state: str
+    _arm_connect_gate: Callable[[ChargerSession], None]
+    _schedule_release_connect_gate: Callable[[ChargerSession], None]
 
     async def _handle_boot_notification(
         self, session: ChargerSession, payload: dict
@@ -167,6 +180,7 @@ class OCPPMessageHandlersMixin:
         new_status = payload.get("status", "")
         if new_status:
             if new_status != session.status:
+                old_status = session.status
                 session.status_changed_at = datetime.now(UTC)
                 session.status = new_status
                 _LOGGER.debug(
@@ -176,6 +190,28 @@ class OCPPMessageHandlersMixin:
                 # not a repeated StatusNotification carrying the same
                 # status.
                 await self._notify_significant_event()
+
+                # Gate a fresh connection against free-vending before the
+                # planner has had a chance to decide anything for it yet
+                # (issue #969). The charger's own status leaving
+                # "Available" is the earliest signal HSEM has that a car
+                # was just plugged in — some chargers free-vend without
+                # ever sending StartTransaction through HSEM first. Only
+                # armed while HSEM's own anti-flap state is still "idle":
+                # a transition HSEM itself caused (e.g. its own remote
+                # start moving status to "Charging") is not a free-vend
+                # risk and must not re-arm the gate.
+                if (
+                    old_status == "Available"
+                    and new_status != "Available"
+                    and self._flap_state == "idle"
+                ):
+                    self._arm_connect_gate(session)
+                elif new_status == "Available" and session.gate_pending_plan:
+                    # The car was unplugged before the planner ever
+                    # decided anything for it — release the transient
+                    # block instead of leaving it stuck.
+                    self._schedule_release_connect_gate(session)
             else:
                 session.status = new_status
         return {}

@@ -804,6 +804,19 @@ opt-in for the primary battery to discharge while a specific EV charges.
 `planner/milp/_ev_amp_lattice.py::resolve_ev_amp_plan` computes each
 managed EV's:
 
+- `minimum_current_a` — the configured `charger_min_power_w` converted to
+  amps via `utils.phase_power.ev_min_start_current_a`, which applies a hard
+  floor at `EV_MIN_START_CURRENT_A` (6 A). `charger_min_power_w` is
+  documented and defaulted as a single-phase watt figure (1380 W = 230 V ×
+  6 A); dividing it across a `three_phase_balanced` charger's phases can
+  compute a current below any real EVSE's minimum start current (6 A per
+  IEC 61851), so the floor is applied regardless of the computed value or
+  topology (issue #968). Every site that converts a configured
+  `charger_min_power_w` into an executable amp floor — the amp lattice
+  here, the target-cap activation quantum below, `engine_ev_milp.py`'s
+  `effective_min_power_w`, and the command-stability layer
+  (`coordinator_ev_command_stability.py`) — goes through this same helper,
+  never the raw `charger_min_power_to_current_a` conversion.
 - `discharge_cap_kwh` — `0` unless `force_max_discharge_power` is `True`
   with a finite, positive `max_discharge_power_w` (fail-closed).
 - Whether it `needs_on`: a conditional `ev_on[t]` binary is created only
@@ -923,6 +936,11 @@ revenue the optimiser forbade.
   first redistributed forward onto a later pre-deadline slot with
   headroom (`planner/milp/_ev_power_writeout.py`, issue #845); only the
   portion that cannot be placed anywhere is discarded.
+- `resolve_ev_amp_plan`'s `minimum_current_a` is never below
+  `EV_MIN_START_CURRENT_A` (6 A), for every phase topology and every
+  configured `charger_min_power_w` value, including `0` or a value that
+  would compute below 6 A when divided across a three-phase charger's
+  phases (issue #968).
 
 ### MILP decision priority
 

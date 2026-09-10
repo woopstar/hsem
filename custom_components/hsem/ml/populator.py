@@ -558,7 +558,6 @@ async def populate_ml_house_consumption(
 
     # Forecast-vs-fallback diagnostics (issues #918, #943), exposed via
     # sensor.hsem_plan_explanation_sensor attributes.
-    predictor.forecast_temperature_entity_configured = bool(forecast_entity)
     predictor.forecast_temperature_slots_used = forecast_slots_used
     predictor.fallback_temperature_slots_used = fallback_slots_used
     if forecast_entity and use_temp:
@@ -570,9 +569,6 @@ async def populate_ml_house_consumption(
             fallback_slots_used,
         )
 
-    predictor.forecast_wind_entity_configured = (
-        bool(forecast_entity) and cfg.ml_consumption_wind_chill_enabled
-    )
     predictor.forecast_wind_slots_used = forecast_wind_slots_used
     predictor.fallback_wind_slots_used = fallback_wind_slots_used
     if forecast_entity and use_wind:

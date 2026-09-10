@@ -185,7 +185,6 @@ async def test_wind_forecast_interpolates_across_15_minute_slot() -> None:
     assert predictor.prediction_wind_speeds == [pytest.approx(15.0)]
     assert predictor.forecast_wind_slots_used == 1
     assert predictor.fallback_wind_slots_used == 0
-    assert predictor.forecast_wind_entity_configured is True
 
 
 @pytest.mark.asyncio

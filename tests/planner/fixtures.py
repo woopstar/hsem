@@ -313,7 +313,6 @@ def make_summer_day_input(
             months_winter if months_winter is not None else [1, 2, 3, 4, 10, 11, 12]
         ),
         house_power_includes_ev=True,
-        is_read_only=True,
         time_discount_rate=1.0,
     )
 
@@ -381,7 +380,6 @@ def make_winter_day_input(
             months_winter if months_winter is not None else [1, 2, 3, 4, 10, 11, 12]
         ),
         house_power_includes_ev=True,
-        is_read_only=True,
         time_discount_rate=1.0,
     )
 
@@ -438,7 +436,6 @@ def make_flat_price_input(
         battery_schedules=_default_schedules(),
         excess_export_enabled=False,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
-        is_read_only=True,
         time_discount_rate=1.0,
     )
 
@@ -497,6 +494,5 @@ def make_negative_price_input(
         battery_schedules=_default_schedules(),
         excess_export_enabled=False,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
-        is_read_only=True,
         time_discount_rate=1.0,
     )

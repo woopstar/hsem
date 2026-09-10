@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 
 from custom_components.hsem.coordinator_data import CoordinatorData
 from custom_components.hsem.custom_sensors.ocpp_sensors import (
+    HSEMOCPPChargerPowerSensor,
     HSEMOCPPChargerStatusSensor,
 )
 from custom_components.hsem.models.ocpp_session import ChargerSession
@@ -349,3 +350,58 @@ def test_second_charger_url_uses_second_cpid() -> None:
     ):
         attrs = sensor.extra_state_attributes
     assert attrs["url"] == "ws://192.168.123.9:9001/ev2"
+
+
+# ---------------------------------------------------------------------------
+# HSEMOCPPChargerPowerSensor (issue #969)
+# ---------------------------------------------------------------------------
+
+
+def test_power_sensor_reports_live_power_while_charging() -> None:
+    """The normal case: a "Charging" connector reports its live MeterValues power."""
+    data = CoordinatorData(
+        cfg=SensorConfig(ocpp_enabled=True),
+        ocpp_chargers={
+            "CP1": ChargerSession(cpid="CP1", status="Charging", current_power_w=6010.0)
+        },
+    )
+    sensor = HSEMOCPPChargerPowerSensor(_make_config_entry(), _make_coordinator(data))
+    assert sensor.state == 6.01
+
+
+def test_power_sensor_zeroed_when_suspended() -> None:
+    """A stale non-zero MeterValues reading must not survive a suspend (issue #969).
+
+    Reproduces the reported case: the connector transitions to
+    "SuspendedEVSE" with no fresh MeterValues yet, so the last reading
+    (6.01 kW) would otherwise linger and misleadingly show alongside a
+    "suspended" status elsewhere in HA.
+    """
+    data = CoordinatorData(
+        cfg=SensorConfig(ocpp_enabled=True),
+        ocpp_chargers={
+            "CP1": ChargerSession(
+                cpid="CP1", status="SuspendedEVSE", current_power_w=6010.0
+            )
+        },
+    )
+    sensor = HSEMOCPPChargerPowerSensor(_make_config_entry(), _make_coordinator(data))
+    assert sensor.state == 0.0
+
+
+def test_power_sensor_zeroed_when_available() -> None:
+    """An idle, never-charged connector reports 0, not a stale reading."""
+    data = CoordinatorData(
+        cfg=SensorConfig(ocpp_enabled=True),
+        ocpp_chargers={"CP1": ChargerSession(cpid="CP1", status="Available")},
+    )
+    sensor = HSEMOCPPChargerPowerSensor(_make_config_entry(), _make_coordinator(data))
+    assert sensor.state == 0.0
+
+
+def test_power_sensor_falls_back_to_restored_state_when_no_charger() -> None:
+    """No connected charger falls back to the restored state, unaffected by the fix."""
+    data = CoordinatorData(cfg=SensorConfig(ocpp_enabled=True), ocpp_chargers={})
+    sensor = HSEMOCPPChargerPowerSensor(_make_config_entry(), _make_coordinator(data))
+    sensor._restored_state = "3.5"
+    assert sensor.state == "3.5"
