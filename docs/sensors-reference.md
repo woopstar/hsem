@@ -529,6 +529,12 @@ Sensors providing live status and diagnostics for an OCPP-compliant EV charger c
 | **Device class** | `power`                  |
 | **Unit**         | kW                       |
 
+Reports `0` whenever the connector's status is anything other than
+`"Charging"` (issue #969) — previously it kept showing the last
+`MeterValues` reading verbatim, so e.g. a connector that had just
+transitioned to `SuspendedEVSE` could still display several kW with no
+fresh meter data to explain why.
+
 ### `sensor.hsem_ocpp_charger_info`
 
 | Property       | Value                                                  |

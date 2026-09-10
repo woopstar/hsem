@@ -672,6 +672,50 @@ has elapsed, HSEM retries `RemoteStopTransaction` roughly once a minute
 instead of assuming a single attempt worked — a charger that silently
 ignores or rejects the first stop request no longer gets stuck charging.
 
+### Preventing free-vend on fresh connect (issue #969)
+
+Some OCPP chargers (confirmed: go-e Charger V4) authorize and start a
+transaction **locally**, on cable insert, without ever waiting for HSEM's
+`RemoteStartTransaction` — the charger's own `StatusNotification`/
+`StartTransaction` arrive with no preceding command from HSEM at all. Since
+HSEM deliberately does **not** maintain a standing 0 A block while idle (see
+above — that was removed as part of the issue #920 follow-up, because it
+could silently prevent a user's manual/local charging whenever HSEM has no
+plan at all, e.g. smart charging disabled), a car plugged into a
+free-vending charger would draw power at the charger's own default rate for
+however long it takes the planner's next cycle to catch up and compute a
+real target.
+
+HSEM closes that gap with a **transient** gate, scoped to exactly this
+narrow window rather than reintroducing a general idle-time block:
+
+- **Armed** the instant a charger's own `StatusNotification` reports its
+  status leaving `"Available"` (cable/car connected) while HSEM's anti-flap
+  state is still `"idle"` — i.e. HSEM has not itself already started this
+  charge. This is the earliest signal available, ahead of a self-authorizing
+  charger's own `StartTransaction`. Arming immediately installs a 0 A
+  `SetChargingProfile`, reusing the same generic zero-current mechanism the
+  stop path uses.
+- **Released** the moment `update_charge_target()` is next called for this
+  connector — which happens on the very next coordinator cycle, itself
+  triggered promptly by the same debounced out-of-cycle refresh issue #908
+  wired for OCPP events (typically within a couple of seconds of the
+  connect, not the full ~5 minute polling interval). If the planner's first
+  decision allocates real power, the normal start path installs it,
+  replacing the transient 0 A profile. If the first decision is still zero
+  (smart charging disabled, feature off, or a legitimate zero-allocation
+  slot), HSEM actively clears its own 0 A profile via
+  `ClearChargingProfile` rather than leaving it standing — otherwise the
+  gate itself would become the exact issue #920 regression it exists to
+  prevent.
+- **Released** immediately if the car is unplugged (status returns to
+  `"Available"`) before the planner ever gets a chance to decide — nothing
+  is left gated with no connection behind it.
+
+The gate is per-connection state on `ChargerSession.gate_pending_plan`, so a
+disconnect (which recreates the session) always starts the next connection
+ungated until it is next armed.
+
 **Charger-stall diagnostics (issue #894):** an open transaction and a valid
 `SetChargingProfile` do not guarantee current is actually flowing — the
 charger can report `StatusNotification` status `"SuspendedEVSE"`,

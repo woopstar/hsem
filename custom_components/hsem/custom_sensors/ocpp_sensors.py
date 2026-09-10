@@ -364,13 +364,21 @@ class HSEMOCPPChargerPowerSensor(
     @property  # type: ignore[misc]  # HA stub declares state as @final
     @override
     def state(self) -> float | str:
-        """Return the current charging power in kW."""
+        """Return the current charging power in kW.
+
+        Zeroed once the connector status leaves ``"Charging"`` (issue
+        #969) — the last ``MeterValues`` reading otherwise lingers, e.g.
+        still reporting several kW after the connector transitions to
+        ``SuspendedEVSE``, with no fresh MeterValues to overwrite it.
+        """
         data: CoordinatorData | None = self.coordinator.data
         chargers = _chargers_for(data, self._charger_index)
         if not chargers:
             return self._restored_state or "0.0"
 
         first = next(iter(chargers.values()))
+        if first.status != "Charging":
+            return 0.0
         return float(round(first.current_power_w / 1000.0, 2))  # type: ignore[no-any-return]
 
     @property
