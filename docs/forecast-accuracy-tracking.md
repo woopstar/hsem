@@ -56,22 +56,23 @@ perfect. The forecast accuracy tracking system:
 flowchart TD
     A[async_collect_all_states]
     B[LiveState with instantaneous power readings]
+    E[accumulate_forecast_actuals now, live]
+    E1[reconcile_unfinalised_layout against hourly_recommendations]
+    E2[freeze_forecasts now — lock in the freshest pre-start baseline]
+    E3[accumulate_power_interval — split elapsed energy by physical overlap]
+    I[finalise_past_records for slots whose end time is before now]
     C[Planner runs]
     D[PlannerOutput with slot forecasts]
-    E[_accumulate_forecast_actuals now, live]
-    F[Read elapsed time and power from LiveState]
-    G[compute_accumulated_energy power, elapsed]
-    H[Accumulate kWh into current slot record]
-    I[finalise_past_records for slots whose end time is before now]
-    J[_register_forecasts_from_planner planner_output]
-    K[Copy solcast_pv_estimate_kwh and avg_house_consumption_kwh]
+    J[register_forecasts_from_planner output, now]
+    J1[reconcile_unfinalised_layout against output.slots]
+    K[get_or_create_record + set_forecasts observed_at=now, per slot]
     L[CoordinatorData packaged and pushed to subscribers]
     M[HSEMForecastAccuracySensor reads tracker]
     N[native_value is PV MAE in kWh]
     O[extra_state_attributes include error metrics and latest slot]
     P[_forecast_tracker_data serialized into attributes]
 
-    A --> B --> C --> D --> E --> F --> G --> H --> I --> J --> K --> L --> M --> N --> O --> P
+    A --> B --> E --> E1 --> E2 --> E3 --> I --> C --> D --> J --> J1 --> K --> L --> M --> N --> O --> P
 ```
 
 ### File layout
@@ -122,17 +123,20 @@ Key methods:
 
 ### ForecastTracker
 
-| Property / Method                        | Description                                                          |
-| ---------------------------------------- | -------------------------------------------------------------------- |
-| `records`                                | Copy of all slot records, oldest first                               |
-| `summary`                                | Computes and returns a `ForecastErrorSummary` from finalised records |
-| `get_or_create_record(start, end)`       | Returns existing record or creates a new one                         |
-| `find_record(start)`                     | Look up a record by slot start time                                  |
-| `finalise_record(start)`                 | Finalise a specific record                                           |
-| `finalise_past_records(now)`             | Finalise all records whose `end <= now`                              |
-| `set_forecasts(start, pv_kwh, load_kwh)` | Set forecast values (only if not finalised)                          |
-| `to_persistence_dict(now, max_records)`  | Serialize the bounded records that matter across a restart           |
-| `load_from_dict(data)`                   | Deserialize records produced by `to_persistence_dict()`              |
+| Property / Method                                                                     | Description                                                                                          |
+| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `records`                                                                             | Copy of all slot records, oldest first                                                               |
+| `summary`                                                                             | Computes and returns a `ForecastErrorSummary` from finalised records                                 |
+| `get_or_create_record(start, end)`                                                    | Returns existing record or creates a new one                                                         |
+| `find_record(start)`                                                                  | Look up a record by slot start time                                                                  |
+| `reconcile_unfinalised_layout(expected_slots, *, now)`                                | Discards unfinalised records whose `end` no longer matches the current slot layout (issue #972)      |
+| `finalise_record(start)`                                                              | Finalise a specific record (public API surface — production uses `finalise_past_records`, see below) |
+| `finalise_past_records(now)`                                                          | Finalise all records whose `end <= now`                                                              |
+| `freeze_forecasts(now)`                                                               | Lock in the baseline for every started, not-yet-frozen record (issue #972)                           |
+| `set_forecasts(start, pv_kwh, load_kwh, *, observed_at=None)`                         | Set forecast values; with `observed_at` it refines a future slot progressively until it starts       |
+| `accumulate_power_interval(start, end, *, pv_power_w, load_power_w, max_gap_seconds)` | Allocate an elapsed interval's energy across every record it physically overlaps (issue #972)        |
+| `to_persistence_dict(now, max_records)`                                               | Serialize the bounded records that matter across a restart                                           |
+| `load_from_dict(data)`                                                                | Deserialize records produced by `to_persistence_dict()`                                              |
 
 The default maximum is 2880 records, which covers approximately 30 days
 of 15-minute slots. Older records are automatically pruned.
@@ -149,6 +153,17 @@ The helper function `compute_accumulated_energy(power_w, elapsed_seconds)`
 handles this conversion. Elapsed time is computed as the difference between
 the current coordinator cycle timestamp and the previous cycle's timestamp,
 so the accuracy depends on the coordinator update interval (default 5 minutes).
+
+`ForecastTracker.accumulate_power_interval()` allocates that elapsed
+`[previous_ts, now)` interval across **every** record it physically
+overlaps in UTC, rather than crediting the whole sample to whichever single
+slot contains `now`. This matters when a coordinator cycle is delayed (HA
+restart, a long-running cycle, a missed tick) long enough for the elapsed
+interval to straddle a slot boundary — without splitting by overlap, the
+mis-attributed slot and its neighbour would both get a corrupted MAE.
+Intervals longer than `max_gap_seconds` (twice the configured update
+interval, floored at 60s — the same tolerance `accumulate_financials` uses)
+are rejected outright rather than treated as a representative sample.
 
 ---
 
@@ -208,15 +223,27 @@ The coordinator owns the single `_forecast_tracker: ForecastTracker`
 instance, created in `__init__` with `max_slots=192`. Two private methods
 are called during each update cycle:
 
-### `_accumulate_forecast_actuals(now, live)`
+### `accumulate_forecast_actuals(now, live, ...)`
 
-Called every cycle **after** state collection. Steps:
+Called every cycle **after** state collection, **before** the planner runs.
+Steps:
 
-1. Compute elapsed seconds since the last accumulation.
-2. Find the current recommendation slot (the one whose time range contains `now`).
-3. Get or create a tracker record for that slot.
-4. Convert instantaneous PV and load power to energy using `compute_accumulated_energy()`.
-5. Accumulate the energy into the tracker record.
+1. Call `reconcile_unfinalised_layout()` against the current
+   `hourly_recommendations` layout, discarding any unfinalised record whose
+   `end` no longer matches (interval reconfiguration, DST transition,
+   horizon change — issue #972). Finalised history is always kept.
+2. Compute elapsed seconds since the last accumulation; bail out if this is
+   the first cycle or there are no recommendations yet.
+3. Call `freeze_forecasts(now)` to lock in the baseline for every slot that
+   has physically started but is not yet frozen, using the freshest
+   pre-start estimate `register_forecasts_from_planner` registered on a
+   previous cycle.
+4. Ensure a tracker record exists for every recommendation slot the elapsed
+   interval could have touched (it may span more than one slot after a
+   delayed cycle).
+5. Call `accumulate_power_interval()` to convert instantaneous PV and load
+   power to energy and split it across every slot the interval physically
+   overlaps.
 6. Call `finalise_past_records(now)` to finalise any slots that have ended.
 7. Feed every newly-finalised record into the `SolarForecastCorrector` (issue #602)
    so it can learn per-hour accuracy factors from actual-vs-forecast PV ratios.
@@ -226,14 +253,26 @@ Called every cycle **after** state collection. Steps:
    this is what keeps a restored corrector from double-counting slots that
    were already learned before a Home Assistant restart (issue #973).
 
-### `_register_forecasts_from_planner(output)`
+### `register_forecasts_from_planner(output, tracker, *, now)`
 
 Called **after** the planner runs, before the current slot is resolved.
-Iterates over every slot in the `PlannerOutput` and calls
-`tracker.set_forecasts(start, pv_kwh=slot.solcast_pv_estimate_kwh, load_kwh=slot.avg_house_consumption_kwh)`.
+First calls `reconcile_unfinalised_layout()` against `output.slots` — the
+layout this cycle's planner run just produced — so a mid-cycle layout
+change cannot leave a stale unfinalised record behind. Then, for every slot
+in the `PlannerOutput`, creates the tracker record if it does not exist yet
+(`get_or_create_record`) and calls
+`tracker.set_forecasts(start, pv_kwh=slot.solcast_pv_estimate_kwh, load_kwh=slot.avg_house_consumption_kwh, observed_at=now)`.
 
-This means forecasts are only registered when the planner successfully runs.
-If the planner is skipped (missing entities, force mode, consumption data not
+Passing `observed_at=now` means a future slot's forecast is progressively
+refined by every planner cycle between when it first enters the horizon and
+when it physically starts — at which point `accumulate_forecast_actuals`'s
+`freeze_forecasts(now)` call (above) locks in whichever estimate was
+freshest at that moment, rather than whatever the planner predicted when the
+slot first entered the horizon (up to the full planning horizon ahead,
+e.g. 48h — issue #972).
+
+Forecasts are only registered when the planner successfully runs. If the
+planner is skipped (missing entities, force mode, consumption data not
 ready), forecasts are not updated but accumulation still happens.
 
 ---
@@ -326,26 +365,39 @@ any custom storage, file I/O, or database schema.
 
 ## Tests
 
-All tests are in `tests/test_forecast_tracker.py`. They use the real
-`ForecastTracker` class **without** Home Assistant — plain `pytest`
-against pure Python code.
+Tracker-level tests are in `tests/test_forecast_tracker.py`; they use the
+real `ForecastTracker` class **without** Home Assistant — plain `pytest`
+against pure Python code. Coordinator-wiring tests are in
+`tests/test_coordinator_tracking_forecast.py`, exercising
+`accumulate_forecast_actuals()` and `register_forecasts_from_planner()`
+directly (also without Home Assistant — both are free functions).
 
-### Test coverage (31 tests)
+### Tracker test coverage (`test_forecast_tracker.py`)
 
-| Category                           | Tests | What's covered                                                                                 |
-| ---------------------------------- | ----- | ---------------------------------------------------------------------------------------------- |
-| `TestComputeAccumulatedEnergy`     | 5     | 1000W/1h, 500W/30m, zero power, zero elapsed, negative power                                   |
-| `TestForecastSlotRecord`           | 5     | Finalise metrics, exact match, accumulate, idempotent finalise                                 |
-| `TestForecastTrackerLifecycle`     | 10    | Create/find records, finalise, prune, set forecasts, finalise past                             |
-| `TestForecastTrackerSummary`       | 9     | Empty, exact, over, under, mixed, MAPE div-by-zero, MAPE values, as_dict                       |
-| `TestForecastTrackerIntegration`   | 3     | Full cycle single slot, over+under pair, finalise past + summary                               |
-| `TestForecastTrackerSerialization` | 5     | Record to_dict empty, record to_dict finalised, tracker empty, round trip, unfinalised restore |
+| Category                           | What's covered                                                                                                                           |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `TestComputeAccumulatedEnergy`     | 1000W/1h, 500W/30m, zero power, zero elapsed, negative power                                                                             |
+| `TestForecastSlotRecord`           | Finalise metrics, exact match, accumulate, idempotent finalise                                                                           |
+| `TestForecastTrackerLifecycle`     | Create/find records, finalise, prune, set forecasts, finalise past                                                                       |
+| `TestForecastTrackerSummary`       | Empty, exact, over, under, mixed, MAPE div-by-zero, MAPE values, as_dict                                                                 |
+| `TestForecastTrackerIntegration`   | Full cycle single slot, over+under pair, finalise past + summary                                                                         |
+| `TestForecastTrackerSerialization` | Record to_dict empty, record to_dict finalised, tracker empty, round trip, unfinalised restore                                           |
+| `TestForecastLayoutReconciliation` | Layout change discards only unfinalised records; DST fold/spring-skip layouts don't false-trigger                                        |
+| `TestPhysicalIntervalAccumulation` | Boundary-crossing split, multi-slot gap distribution, over-long-gap rejection, progressive-refine-then-freeze, DST fold energy isolation |
+
+### Coordinator-wiring test coverage (`test_coordinator_tracking_forecast.py`, issue #972)
+
+| Category                                | What's covered                                                                                                                                                                          |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cross-slot-boundary energy accumulation | A delayed cycle whose elapsed interval spans two slots splits PV/load energy proportionally instead of dumping it all on the slot containing `now`                                      |
+| Mid-cycle slot-layout change            | An interval-length change between cycles discards the stale unfinalised record instead of `get_or_create_record()` silently reusing it                                                  |
+| Stale vs. fresh forecast baseline       | `register_forecasts_from_planner()` progressively refines a future slot's forecast across cycles; `freeze_forecasts()` locks in the freshest pre-start value, not the first-sighted one |
 
 ### Running the tests
 
 ```bash
 # Requires the venv with HA dependencies:
-pytest tests/test_forecast_tracker.py
+pytest tests/test_forecast_tracker.py tests/test_coordinator_tracking_forecast.py
 ```
 
 Or run the standalone tests that inline the tracker logic (no HA imports):

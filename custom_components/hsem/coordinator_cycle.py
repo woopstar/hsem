@@ -505,6 +505,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                     self, "_prediction_tracker", PredictionTracker(max_records=2880)
                 ),
                 last_planner_output=getattr(self, "_last_planner_output", None),
+                update_interval_minutes=cfg.update_interval,
             )
             if prediction_record_added:
                 await persist_all_trackers(self, only=["_prediction_tracker"])

@@ -54,12 +54,16 @@ def accumulate_forecast_actuals(
     solar_corrector: SolarForecastCorrector,
     prediction_tracker: PredictionTracker,
     last_planner_output: PlannerOutput | None,
+    update_interval_minutes: int,
 ) -> tuple[datetime | None, bool]:
-    """Accumulate actual PV and load energy into the current slot.
+    """Accumulate actual PV and load energy into the current slot(s).
 
     Called every coordinator cycle to accumulate energy from instantaneous
     power readings.  Uses the elapsed time since the last accumulation to
-    convert power (W) to energy (kWh).
+    convert power (W) to energy (kWh), splitting it by physical overlap
+    across slot boundaries so a delayed cycle does not attribute an entire
+    elapsed interval to whichever single slot merely contains ``now``
+    (issue #972).
 
     Args:
         now: Current time (timezone-aware).
@@ -73,10 +77,22 @@ def accumulate_forecast_actuals(
             correctly survives Home Assistant restarts (issue #973).
         prediction_tracker: Prediction accuracy tracker.
         last_planner_output: Most recent planner output, or None.
+        update_interval_minutes: Configured coordinator polling interval, used
+            to size the gap tolerance for the physical-overlap accumulation.
 
     Returns:
         The new ``last_accumulation_ts`` value (``now``).
     """
+    # Discard unfinalised records that no longer match the layout the
+    # previous cycle committed (interval reconfiguration, DST transition,
+    # horizon change) before accumulating anything into them (issue #972).
+    if hourly_recommendations:
+        expected_slots = [
+            (as_tz(rec.start, now.tzinfo), as_tz(rec.end, now.tzinfo))
+            for rec in hourly_recommendations
+        ]
+        forecast_tracker.reconcile_unfinalised_layout(expected_slots, now=now)
+
     # Compute elapsed seconds since last accumulation.
     if last_accumulation_ts is not None:
         elapsed = (now - last_accumulation_ts).total_seconds()
@@ -86,37 +102,36 @@ def accumulate_forecast_actuals(
     new_last_ts = now
     prediction_record_added = False
 
-    if elapsed <= 0:
+    if elapsed <= 0 or not hourly_recommendations:
         return new_last_ts, prediction_record_added
 
-    # Find the current slot's record.
-    if not hourly_recommendations:
-        return new_last_ts, prediction_record_added
+    interval_start = last_accumulation_ts
+    assert interval_start is not None  # elapsed > 0 implies a prior timestamp
 
-    # Find the slot whose time range contains 'now'.
-    current_slot = None
+    # Freeze pre-slot-start baselines for slots that have physically started
+    # so accumulate_power_interval below has a stable target to attribute
+    # actual energy into (issue #972).
+    forecast_tracker.freeze_forecasts(now)
+
+    # Ensure a record exists for every slot the elapsed interval could have
+    # touched — it may span more than one slot after a delayed cycle.
     for rec in hourly_recommendations:
-        if as_tz(rec.start, now.tzinfo) <= now < as_tz(rec.end, now.tzinfo):
-            current_slot = rec
-            break
+        slot_start = as_tz(rec.start, now.tzinfo)
+        slot_end = as_tz(rec.end, now.tzinfo)
+        if slot_end > interval_start and slot_start < now:
+            forecast_tracker.get_or_create_record(slot_start, slot_end)
 
-    if current_slot is None:
-        return new_last_ts, prediction_record_added
-
-    # Get or create the tracker record for this slot.
-    tracker_rec = forecast_tracker.get_or_create_record(
-        current_slot.start, current_slot.end
-    )
-
-    # Accumulate PV energy.
+    # Attribute the elapsed interval's PV/load energy by physical overlap.
     pv_power_w = live.solar_production_power_w or 0.0
-    pv_energy = compute_accumulated_energy(pv_power_w, elapsed)
-    tracker_rec.accumulate_pv(pv_energy)
-
-    # Accumulate load energy.
     load_power_w = live.house_consumption_power_w or 0.0
-    load_energy = compute_accumulated_energy(load_power_w, elapsed)
-    tracker_rec.accumulate_load(load_energy)
+    max_gap_seconds = 2.0 * max(float(update_interval_minutes) * 60.0, 60.0)
+    forecast_tracker.accumulate_power_interval(
+        interval_start,
+        now,
+        pv_power_w=pv_power_w,
+        load_power_w=load_power_w,
+        max_gap_seconds=max_gap_seconds,
+    )
 
     # Finalise any slots whose end time has passed.
     forecast_tracker.finalise_past_records(now)
@@ -190,25 +205,41 @@ async def init_prediction_tracker(
 def register_forecasts_from_planner(
     output: PlannerOutput,
     forecast_tracker: ForecastTracker,
+    *,
+    now: datetime,
 ) -> None:
     """Register PV and load forecasts from planner output into the tracker.
 
-    This is called after the planner runs successfully.  Forecast values
-    are only set if the tracker record exists and is not yet finalised.
+    Called after the planner runs successfully.  Creates a tracker record
+    for every slot in the horizon (if one does not already exist yet) and
+    progressively refines its forecast baseline via ``observed_at=now`` on
+    every subsequent cycle until the slot physically starts, at which point
+    ``accumulate_forecast_actuals``'s call to
+    :meth:`~custom_components.hsem.utils.forecast_tracker.ForecastTracker.freeze_forecasts`
+    locks in the freshest pre-start estimate — rather than whatever was known
+    up to the full planning horizon (e.g. 48h) ahead of the slot (issue #972).
 
     Args:
         output: The :class:`~planner.engine.PlannerOutput` returned by the
             planner engine.
         forecast_tracker: The forecast-vs-actual tracker instance.
+        now: Current time — the observation timestamp for this planner run.
     """
+    # Discard unfinalised records that no longer match the layout this
+    # cycle's planner run just produced (issue #972).
+    expected_slots = [(slot.start, slot.end) for slot in output.slots]
+    forecast_tracker.reconcile_unfinalised_layout(expected_slots, now=now)
+
     for slot in output.slots:
         pv_forecast = getattr(slot, "solcast_pv_estimate_kwh", 0.0)
         load_forecast = getattr(slot, "avg_house_consumption_kwh", 0.0)
 
+        forecast_tracker.get_or_create_record(slot.start, slot.end)
         forecast_tracker.set_forecasts(
             start=slot.start,
             pv_kwh=pv_forecast,
             load_kwh=load_forecast,
+            observed_at=now,
         )
 
 
