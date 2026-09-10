@@ -136,7 +136,6 @@ class OCPPCommandsMixin:
     _flap_state: str
     _target_entered_at: datetime | None
     _zero_entered_at: datetime | None
-    _target_power_w: float
     _stalled: bool
     _stall_logged: bool
     _chargers: dict[str, ChargerSession]
@@ -420,7 +419,6 @@ class OCPPCommandsMixin:
         self._flap_state = "idle"
         self._target_entered_at = None
         self._zero_entered_at = None
-        self._target_power_w = 0.0
         self._last_sent_target = -1.0
         self._last_sent_current_a = -1
         self._last_remote_start_attempt = None

@@ -2038,7 +2038,6 @@ class TestResetAntiFlapStateOnDisconnect:
         ocpp_server._flap_state = "charging"
         ocpp_server._target_entered_at = datetime.now(UTC)
         ocpp_server._zero_entered_at = datetime.now(UTC)
-        ocpp_server._target_power_w = 7200.0
         ocpp_server._last_sent_target = 7200.0
         ocpp_server._last_sent_current_a = 32
         ocpp_server._last_remote_start_attempt = datetime.now(UTC)
@@ -2052,7 +2051,6 @@ class TestResetAntiFlapStateOnDisconnect:
         assert ocpp_server._flap_state == "idle"
         assert ocpp_server._target_entered_at is None
         assert ocpp_server._zero_entered_at is None
-        assert ocpp_server._target_power_w == 0.0
         assert ocpp_server.last_requested_current_a is None
         assert ocpp_server._last_remote_start_attempt is None
         assert ocpp_server._last_remote_stop_attempt is None

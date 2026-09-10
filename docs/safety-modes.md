@@ -70,16 +70,11 @@ Two independent mechanisms block all hardware writes:
 
 ### Read-only mode
 
-- Set via the `switch.hsem_read_only` entity
+- Set via the `switch.hsem_read_only` entity (`cfg.read_only`)
 - When `on`, the applier bypasses all hardware writes
 - Useful for: monitoring the planner without taking control of the inverter
 - Configurable in the options flow or via the switch entity
-
-### Dry-run mode
-
-- Set programmatically via `PlannerInput.is_read_only`
-- Same effect as read-only — blocks writes
-- Used internally during testing and diagnostics
+- Also used internally during testing and diagnostics
 
 ---
 
@@ -89,7 +84,7 @@ The `WriteVerifyApplier` (`utils/inverter_verify.py`) wraps every hardware write
 with a read-back verification loop:
 
 ```
-1. Check: is_read_only?     → skip if True
+1. Check: cfg.read_only?    → skip if True
 2. Check: degraded mode?    → skip if Error
 3. Check: inverter unloading? → skip if True
 4. Write the desired value via Huawei Solar service call

@@ -45,7 +45,6 @@ class OCPPAntiFlapMixin:
     _flap_state: str
     _target_entered_at: datetime | None
     _zero_entered_at: datetime | None
-    _target_power_w: float
     _last_sent_target: float
     _last_profile_retry_attempt: datetime | None
     _stalled: bool
@@ -221,7 +220,6 @@ class OCPPAntiFlapMixin:
                         self._stop_window_s,
                     )
             self._target_entered_at = None
-            self._target_power_w = 0.0
 
 
 __all__ = ["OCPPAntiFlapMixin"]

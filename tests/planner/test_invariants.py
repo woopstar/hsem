@@ -126,7 +126,6 @@ def _make_uniform_input(
         excess_export_enabled=excess_export_enabled,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
         house_power_includes_ev=house_power_includes_ev,
-        is_read_only=True,
     )
 
 
@@ -1254,7 +1253,6 @@ class TestMissingDataSentinel:
             solcast_slots=solar,
             battery_schedules=[],
             months_winter=[1, 2, 3, 4, 10, 11, 12],
-            is_read_only=True,
         )
         result = run_planner(inp)
         # At least one of hours 0-5 must be in missing_inputs

@@ -42,6 +42,18 @@ from custom_components.hsem.entity import HSEMEntity as _Entity  # noqa: F401
 # Properties consumed by HA entity registry
 _ = _Entity.device_info  # noqa: S905
 
+from custom_components.hsem.custom_selectors.solcast_likelihood import (  # noqa: F401
+    HSEMSolcastLikelihoodSelector as _SolcastLikelihoodSelector,
+)
+from custom_components.hsem.custom_selectors.working_mode import (  # noqa: F401
+    HSEMWorkingModeSelector as _WorkingModeSelector,
+)
+
+# SelectEntity platform method called by HA core when the user changes the
+# select in the UI (issue #967).
+_ = _SolcastLikelihoodSelector.async_select_option  # noqa: S905
+_ = _WorkingModeSelector.async_select_option  # noqa: S905
+
 from custom_components.hsem.const import DOMAIN  # noqa: F401
 from custom_components.hsem.time import async_setup_entry as _time_setup  # noqa: F401
 

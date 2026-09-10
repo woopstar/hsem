@@ -114,7 +114,6 @@ async def test_forecast_interpolates_across_15_minute_slot() -> None:
     assert predictor.prediction_temperatures == [pytest.approx(11.0)]
     assert predictor.forecast_temperature_slots_used == 1
     assert predictor.fallback_temperature_slots_used == 0
-    assert predictor.forecast_temperature_entity_configured is True
     forecast_mock.assert_awaited_once()
     assert forecast_mock.await_args is not None
     assert forecast_mock.await_args.args[1] == "weather.home"
@@ -236,7 +235,6 @@ async def test_no_forecast_entity_configured_is_unchanged_behaviour() -> None:
     assert predictor.prediction_temperatures == [pytest.approx(11.5)]
     assert predictor.forecast_temperature_slots_used == 0
     assert predictor.fallback_temperature_slots_used == 1
-    assert predictor.forecast_temperature_entity_configured is False
     forecast_mock.assert_not_awaited()
 
 
@@ -259,7 +257,6 @@ async def test_forecast_entity_without_measured_temperature_is_inactive() -> Non
     assert predictor.use_temperature is False
     assert predictor.forecast_temperature_slots_used == 0
     assert predictor.fallback_temperature_slots_used == 0
-    assert predictor.forecast_temperature_entity_configured is True
     forecast_mock.assert_not_awaited()
 
 

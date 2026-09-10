@@ -314,7 +314,6 @@ class TestPlannerRunsDstDays:
             battery_schedules=schedules,
             excess_export_enabled=False,
             months_winter=[1, 2, 3, 4, 10, 11, 12],
-            is_read_only=True,
         )
 
     def test_spring_forward_midnight_completes(self):

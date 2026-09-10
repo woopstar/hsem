@@ -23,8 +23,6 @@ class LivePowerEstimate:
 
     house_power_w: float | None
     solar_power_w: float | None
-    house_sample_count: int
-    solar_sample_count: int
 
     @property
     def house_available(self) -> bool:
@@ -35,11 +33,6 @@ class LivePowerEstimate:
     def solar_available(self) -> bool:
         """Return whether PV power has enough fresh valid samples."""
         return self.solar_power_w is not None
-
-    @property
-    def complete(self) -> bool:
-        """Return whether both channels have robust estimates."""
-        return self.house_available and self.solar_available
 
 
 class LivePowerWindow:
@@ -111,8 +104,6 @@ class LivePowerWindow:
         return LivePowerEstimate(
             house_power_w=house,
             solar_power_w=solar,
-            house_sample_count=len(self._house),
-            solar_sample_count=len(self._solar),
         )
 
     @staticmethod

@@ -90,6 +90,12 @@ class ConsumptionPredictor:
         self._coef: np.ndarray | None = None
         self._intercept: float = 0.0
 
+        # Raw arrays from the most recent fit, retained for introspection.
+        # ``_X`` has a real reader (``group_count`` below); ``_y``/``_w``
+        # currently don't, but are kept alongside it as the same fitted-data
+        # triple and are exercised by a white-box regression test for
+        # physical-time row ordering / lag-reset
+        # (test_sequential_training_resets_lag_across_recorder_gap, issue #967).
         self._X: np.ndarray | None = None
         self._y: np.ndarray | None = None
         self._w: np.ndarray | None = None
@@ -113,15 +119,16 @@ class ConsumptionPredictor:
         ) = None
         #: Forecast-temperature diagnostics (issue #918) from the most
         #: recent inference pass — set by the populator, not by predict
-        #: methods.  ``forecast_temperature_entity_configured`` reflects
-        #: whether a weather forecast entity was configured for that pass;
-        #: the two slot counters only count FUTURE prediction slots.
-        self.forecast_temperature_entity_configured: bool = False
+        #: methods.  The slot counters only count FUTURE prediction slots.
+        #: (``sensor.hsem_plan_explanation_sensor`` computes its own
+        #: "configured" flag directly from
+        #: ``cfg.ml_consumption_weather_forecast_entity``/
+        #: ``cfg.ml_consumption_wind_chill_enabled`` instead of reading a
+        #: mirrored flag off the predictor, issue #967.)
         self.forecast_temperature_slots_used: int = 0
         self.fallback_temperature_slots_used: int = 0
         #: Forecast-wind diagnostics (issue #943) from the most recent
         #: inference pass — set by the populator, not by predict methods.
-        self.forecast_wind_entity_configured: bool = False
         self.forecast_wind_slots_used: int = 0
         self.fallback_wind_slots_used: int = 0
 
@@ -593,23 +600,6 @@ class ConsumptionPredictor:
         w_mean = np.average(values, weights=weights)
         w_var = np.average((values - w_mean) ** 2, weights=weights)
         return float(np.sqrt(w_var))
-
-    @staticmethod
-    def _lookup_temperature(
-        temperatures: dict[datetime, float],
-        target: datetime,
-    ) -> float:
-        """Find the temperature closest to the target physical timestamp.
-
-        Convenience wrapper for a single ad-hoc lookup.  Callers that need
-        many lookups against the same *temperatures* dict (``train()``,
-        ``predict_sequential()``) should sort once with
-        ``_sorted_temperature_points`` and reuse ``_nearest_from_sorted`` —
-        rebuilding and linearly scanning the whole dict per call turns an
-        O(n) training pass into O(n * m).
-        """
-        sorted_points = ConsumptionPredictor._sorted_temperature_points(temperatures)
-        return ConsumptionPredictor._nearest_from_sorted(sorted_points, target)
 
     @staticmethod
     def _sorted_temperature_points(

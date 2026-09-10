@@ -33,7 +33,6 @@ class SavingsTracker:
         baseline_cost: Cumulative baseline cost since integration start.
         daily: Per-day snapshots keyed by ISO date string.
         _today: ISO-format date string for the current day.
-        _switch_was_off: Whether the master switch was off this cycle.
         _last_export_rev: Snapshot of daily_tracker grid_export_rev for delta.
         _last_discharge_sample_at: Previous sample timestamp used to
             integrate battery discharge power into discharge-savings energy.
@@ -55,7 +54,6 @@ class SavingsTracker:
 
     # Per-cycle state.
     _today: str = ""
-    _switch_was_off: bool = False
 
     # Delta tracking snapshot from the daily plan-vs-actual tracker.
     _last_export_rev: float | None = field(default=None, repr=False)
@@ -109,7 +107,6 @@ class SavingsTracker:
             self.missed_savings += savings
 
         self.baseline_cost += baseline_cost_delta
-        self._switch_was_off = not switch_on
 
         # Accumulate into today's daily entry.
         today_entry = self.daily.setdefault(self._today, SavingsDay(date=self._today))
