@@ -220,6 +220,11 @@ Called every cycle **after** state collection. Steps:
 6. Call `finalise_past_records(now)` to finalise any slots that have ended.
 7. Feed every newly-finalised record into the `SolarForecastCorrector` (issue #602)
    so it can learn per-hour accuracy factors from actual-vs-forecast PV ratios.
+   The guard against re-learning an already-processed record is the
+   corrector's own persisted `processed_through` watermark
+   (`solar_corrector.mark_processed(frec.start)`), not an in-memory set —
+   this is what keeps a restored corrector from double-counting slots that
+   were already learned before a Home Assistant restart (issue #973).
 
 ### `_register_forecasts_from_planner(output)`
 
@@ -302,6 +307,17 @@ The forecast tracker data survives HA restarts using the standard
    accumulation continues from the current slot, any slots that ended
    during the restart window are finalised on the next cycle, and the
    summary reflects all historical data.
+
+The `SolarForecastCorrector` (issue #602) persists separately, via
+`HSEMSolarConfidenceSensor` (`custom_sensors/solar_confidence_sensor.py`)
+using the same `RestoreEntity` pattern: its `extra_state_attributes` include
+`_solar_corrector_data` (`corrector.to_dict()`), and `async_added_to_hass`
+restores it with `corrector.load_from_dict(data, restored_at=hsem_now())`.
+That payload includes the `processed_through` watermark — the newest
+forecast-tracker slot start the corrector has already learned from — so
+`coordinator_tracking.py::accumulate_forecast_actuals` can skip records at
+or before it and never double-learn a slot that survived the restart in the
+restored forecast tracker (issue #973).
 
 This means forecast accuracy trends are preserved across reboots without
 any custom storage, file I/O, or database schema.

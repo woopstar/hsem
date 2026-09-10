@@ -118,12 +118,13 @@ class SolarForecastCorrector:
     def mark_processed(self, slot_start: datetime) -> None:
         """Advance the replay watermark to an aware physical slot start.
 
-        Not called in production: ``coordinator_tracking.py`` guards against
-        re-learning a record with an in-memory-only set
-        (``coordinator.py``'s ``_solar_corrector_processed``) instead of this
-        persisted watermark, so the guard resets on every Home Assistant
-        restart and already-learned records get double-counted. See
-        issue #973.
+        Called from ``coordinator_tracking.py::accumulate_forecast_actuals``
+        after a finalised forecast slot record has been fed into
+        :meth:`update_hour` / :meth:`update_residual`. Because
+        ``_processed_through`` is persisted (see :meth:`to_dict` /
+        :meth:`load_from_dict`) and restored before the next Home Assistant
+        update cycle runs, a restored corrector will not re-learn slots it
+        already processed before the restart (issue #973).
         """
         if slot_start.tzinfo is None or slot_start.utcoffset() is None:
             raise ValueError("processed slot start must be timezone-aware")

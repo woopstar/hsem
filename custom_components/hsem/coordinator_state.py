@@ -155,7 +155,6 @@ class CoordinatorSharedState(_Base):
     _savings_tracker: SavingsTracker
     _snapshot: StateSnapshot | None
     _solar_corrector: SolarForecastCorrector
-    _solar_corrector_processed: set[datetime]
     _timer_interval: timedelta | None
     _tracked_entities: set[str]
     _update_generation: int
