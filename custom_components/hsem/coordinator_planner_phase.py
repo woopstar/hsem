@@ -371,7 +371,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             state = hourly_rec.recommendation
 
         # Register forecasts in the forecast tracker.
-        register_forecasts_from_planner(planner_output, self._forecast_tracker)
+        register_forecasts_from_planner(planner_output, self._forecast_tracker, now=now)
 
         # Daily plan-vs-actual accumulation.
         try:
