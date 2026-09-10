@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING
 from custom_components.hsem.utils.phase_power import (
     charger_current_to_power_w,
     charger_max_power_to_current_a,
-    charger_min_power_to_current_a,
     charger_power_to_current_a,
+    ev_min_start_current_a,
 )
 from custom_components.hsem.utils.units import ev_dc_to_ac_kwh
 
@@ -129,11 +129,10 @@ def _quantize_ev_allocation_to_whole_amps(
         rated_ac_power_w,
         charger_phase_topology,
     )
-    configured_min_current_a = charger_min_power_to_current_a(
+    activation_min_current_a = ev_min_start_current_a(
         charger_min_power_w,
         charger_phase_topology,
     )
-    activation_min_current_a = max(configured_min_current_a, 1)
     if rated_current_a < activation_min_current_a:
         return {}, target_dc
 
@@ -280,9 +279,7 @@ def _quantize_one_ev_allocation(
         ev.charger_phase_topology,
     )
     effective_min_power_w = charger_current_to_power_w(
-        charger_min_power_to_current_a(
-            ev.charger_min_power_w, ev.charger_phase_topology
-        ),
+        ev_min_start_current_a(ev.charger_min_power_w, ev.charger_phase_topology),
         ev.charger_phase_topology,
     )
 
@@ -291,11 +288,8 @@ def _quantize_one_ev_allocation(
     # whole-amp command that will be published; the fractional residue is
     # handed to the flexible slots below to recover.
     session_quantization_residue_dc = 0.0
-    min_current_a = max(
-        charger_min_power_to_current_a(
-            effective_min_power_w, ev.charger_phase_topology
-        ),
-        1,
+    min_current_a = ev_min_start_current_a(
+        effective_min_power_w, ev.charger_phase_topology
     )
     for t in range(m):
         if t not in ev_session_slots:

@@ -25,7 +25,8 @@
       "start_time_after_end_time": "La hora de inicio debe ser anterior a la hora de fin.",
       "start_time_equals_end_time": "La hora de inicio y la hora de fin no pueden ser iguales, ya que esto crea una ventana de duración cero. Desactiva la programación en su lugar.",
       "invalid_wait_mode_behavior": "Comportamiento de modo de espera no válido. Elige Espera estricta o Autoconsumo con reserva.",
-      "port_conflict": "El segundo puerto OCPP debe ser diferente del primer puerto OCPP."
+      "port_conflict": "El segundo puerto OCPP debe ser diferente del primer puerto OCPP.",
+      "ev_min_power_below_start_current": "La potencia mínima configurada es demasiado baja para la topología de fases seleccionada — un cargador real no puede arrancar por debajo de 6 A. Aumenta la potencia mínima o cambia la topología de fases."
     },
     "step": {
       "batteries_excess_export": {
@@ -562,7 +563,8 @@
       "start_time_after_end_time": "La hora de inicio debe ser anterior a la hora de fin.",
       "start_time_equals_end_time": "La hora de inicio y la hora de fin no pueden ser iguales, ya que esto crea una ventana de duración cero. Desactiva la programación en su lugar.",
       "invalid_wait_mode_behavior": "Comportamiento de modo de espera no válido. Elige Espera estricta o Autoconsumo con reserva.",
-      "port_conflict": "El segundo puerto OCPP debe ser diferente del primer puerto OCPP."
+      "port_conflict": "El segundo puerto OCPP debe ser diferente del primer puerto OCPP.",
+      "ev_min_power_below_start_current": "La potencia mínima configurada es demasiado baja para la topología de fases seleccionada — un cargador real no puede arrancar por debajo de 6 A. Aumenta la potencia mínima o cambia la topología de fases."
     },
     "step": {
       "batteries_excess_export": {

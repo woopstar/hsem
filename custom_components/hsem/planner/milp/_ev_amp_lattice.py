@@ -24,8 +24,8 @@ import numpy as np
 from custom_components.hsem.planner.milp._layout import Bound, MilpBoundsBuilder
 from custom_components.hsem.utils.phase_power import (
     charger_current_to_power_w,
-    charger_min_power_to_current_a,
     charger_power_to_current_a,
+    ev_min_start_current_a,
 )
 
 if TYPE_CHECKING:
@@ -131,11 +131,8 @@ def resolve_ev_amp_plan(
         rated_current_a = charger_power_to_current_a(
             ev_bound_ac_power_w, ev.charger_phase_topology
         )
-        minimum_current_a = max(
-            charger_min_power_to_current_a(
-                ev.charger_min_power_w, ev.charger_phase_topology
-            ),
-            1,
+        minimum_current_a = ev_min_start_current_a(
+            ev.charger_min_power_w, ev.charger_phase_topology
         )
         runnable = rated_current_a >= minimum_current_a
         # A conditional discharge-permission binary is only useful when this
@@ -322,11 +319,8 @@ def target_cap_activation_quantum_dc(
     point exactly at the remaining need, and a strict cap would report an
     avoidable deadline miss (issue #797).
     """
-    activation_current_a = max(
-        charger_min_power_to_current_a(
-            ev.charger_min_power_w, ev.charger_phase_topology
-        ),
-        1,
+    activation_current_a = ev_min_start_current_a(
+        ev.charger_min_power_w, ev.charger_phase_topology
     )
     activation_power_w = charger_current_to_power_w(
         activation_current_a, ev.charger_phase_topology

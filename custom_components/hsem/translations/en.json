@@ -25,7 +25,8 @@
       "start_time_after_end_time": "Start time must be before end time.",
       "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead.",
       "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve.",
-      "port_conflict": "The second OCPP port must differ from the first OCPP port."
+      "port_conflict": "The second OCPP port must differ from the first OCPP port.",
+      "ev_min_power_below_start_current": "The configured minimum power is too low for the selected phase topology — a real charger cannot start below 6 A. Increase the minimum power or switch phase topology."
     },
     "step": {
       "batteries_excess_export": {
@@ -562,7 +563,8 @@
       "start_time_after_end_time": "Start time must be before end time.",
       "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead.",
       "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve.",
-      "port_conflict": "The second OCPP port must differ from the first OCPP port."
+      "port_conflict": "The second OCPP port must differ from the first OCPP port.",
+      "ev_min_power_below_start_current": "The configured minimum power is too low for the selected phase topology — a real charger cannot start below 6 A. Increase the minimum power or switch phase topology."
     },
     "step": {
       "batteries_excess_export": {

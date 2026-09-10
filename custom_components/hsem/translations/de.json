@@ -25,7 +25,8 @@
       "start_time_after_end_time": "Die Startzeit muss vor der Endzeit liegen.",
       "start_time_equals_end_time": "Start- und Endzeit dürfen nicht identisch sein — das ergibt ein Zeitfenster der Länge null. Deaktiviere stattdessen den Zeitplan.",
       "invalid_wait_mode_behavior": "Ungültiges Wartemodus-Verhalten. Wähle Strenges Warten oder Eigenverbrauch mit Reserve.",
-      "port_conflict": "Der zweite OCPP-Port muss sich vom ersten OCPP-Port unterscheiden."
+      "port_conflict": "Der zweite OCPP-Port muss sich vom ersten OCPP-Port unterscheiden.",
+      "ev_min_power_below_start_current": "Die konfigurierte Mindestleistung ist für die gewählte Phasentopologie zu niedrig — ein echtes Ladegerät kann nicht unter 6 A starten. Erhöhe die Mindestleistung oder ändere die Phasentopologie."
     },
     "step": {
       "batteries_excess_export": {
@@ -562,7 +563,8 @@
       "start_time_after_end_time": "Die Startzeit muss vor der Endzeit liegen.",
       "start_time_equals_end_time": "Start- und Endzeit dürfen nicht identisch sein — das ergibt ein Zeitfenster der Länge null. Deaktiviere stattdessen den Zeitplan.",
       "invalid_wait_mode_behavior": "Ungültiges Wartemodus-Verhalten. Wähle Strenges Warten oder Eigenverbrauch mit Reserve.",
-      "port_conflict": "Der zweite OCPP-Port muss sich vom ersten OCPP-Port unterscheiden."
+      "port_conflict": "Der zweite OCPP-Port muss sich vom ersten OCPP-Port unterscheiden.",
+      "ev_min_power_below_start_current": "Die konfigurierte Mindestleistung ist für die gewählte Phasentopologie zu niedrig — ein echtes Ladegerät kann nicht unter 6 A starten. Erhöhe die Mindestleistung oder ändere die Phasentopologie."
     },
     "step": {
       "batteries_excess_export": {
