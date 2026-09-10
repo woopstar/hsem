@@ -28,6 +28,7 @@ import aiohttp
 import pytest
 from aiohttp import web
 
+from custom_components.hsem.custom_sensors.ocpp_profiles import HSEM_PROFILE_IDS
 from custom_components.hsem.custom_sensors.ocpp_server import (
     _WS_HEARTBEAT_INTERVAL_S,
     CHARGER_STALL_THRESHOLD_S,
@@ -1520,6 +1521,154 @@ class TestAntiFlap:
             "test-cpid", target_power_kw=7.2, now=now + timedelta(seconds=60)
         )
         assert server._flap_state == "charging"
+
+
+# ---------------------------------------------------------------------------
+# Connect-time "pending plan" gate (issue #969)
+# ---------------------------------------------------------------------------
+
+
+class TestConnectPendingPlanGate:
+    """Tests for the transient gate against free-vending on fresh connect.
+
+    Covers: a car connecting before the planner has decided anything for
+    it gets an immediate 0 A block; the block lifts (and, if the plan's
+    first decision is still zero, is actively released) the moment the
+    planner has had its first real chance to look at the connection; and
+    a disconnect before that ever happens also releases it. Must never
+    become a general idle-time block — that's the issue #920 regression
+    this gate is explicitly designed not to reintroduce.
+    """
+
+    @pytest.mark.asyncio
+    async def test_fresh_connect_sends_immediate_zero_profile(
+        self, ocpp_server, charger_session
+    ):
+        """Status leaving 'Available' with no plan yet gates at 0 A right away."""
+        assert charger_session.status == "Available"
+        assert ocpp_server._flap_state == "idle"
+
+        await ocpp_server._handle_status_notification(
+            charger_session, {"status": "Preparing"}
+        )
+        await asyncio.sleep(0)  # let the detached gate task run
+
+        assert charger_session.gate_pending_plan is True
+        msg = _sent_message(charger_session, "SetChargingProfile")
+        assert msg is not None
+        schedule = msg[3]["csChargingProfiles"]["chargingSchedule"]
+        assert schedule["chargingSchedulePeriod"][0]["limit"] == 0
+
+    @pytest.mark.asyncio
+    async def test_gate_not_armed_when_hsem_already_controls_charger(
+        self, ocpp_server, charger_session
+    ):
+        """An HSEM-driven status change (already starting/charging) is not gated.
+
+        Only a transition HSEM did not itself cause is a free-vend risk.
+        """
+        ocpp_server._flap_state = "charging"
+
+        await ocpp_server._handle_status_notification(
+            charger_session, {"status": "Charging"}
+        )
+        await asyncio.sleep(0)
+
+        assert charger_session.gate_pending_plan is False
+        charger_session.websocket.send_str.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_gate_lifts_and_starts_on_real_allocation(
+        self, ocpp_server, charger_session
+    ):
+        """The planner allocating real power lifts the gate via the normal start path."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.gate_pending_plan = True
+        now = datetime.now(UTC)
+
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=7.2, now=now
+        )
+
+        assert charger_session.gate_pending_plan is False
+        assert ocpp_server._flap_state == "charging"
+        assert "ClearChargingProfile" not in _sent_actions(charger_session)
+        msg = _sent_message(charger_session, "SetChargingProfile")
+        assert msg is not None
+        schedule = msg[3]["csChargingProfiles"]["chargingSchedule"]
+        assert schedule["chargingSchedulePeriod"][0]["limit"] == 16
+
+    @pytest.mark.asyncio
+    async def test_gate_releases_profile_on_zero_plan_decision(
+        self, ocpp_server, charger_session
+    ):
+        """A first decision of zero actively releases the gate, not just clears it.
+
+        Otherwise the transient 0 A block installed on connect would
+        linger as a standing limit with nothing to replace it — exactly
+        the issue #920 regression this gate must not reintroduce.
+        """
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.gate_pending_plan = True
+        now = datetime.now(UTC)
+
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=now
+        )
+
+        assert charger_session.gate_pending_plan is False
+        assert ocpp_server._flap_state == "idle"
+        cleared_ids = {
+            json.loads(call.args[0])[3]["id"]
+            for call in charger_session.websocket.send_str.call_args_list
+            if json.loads(call.args[0])[2] == "ClearChargingProfile"
+        }
+        assert cleared_ids == set(HSEM_PROFILE_IDS)
+
+    @pytest.mark.asyncio
+    async def test_gate_releases_on_disconnect_before_plan_decides(
+        self, ocpp_server, charger_session
+    ):
+        """The car unplugging before the planner ever ran also releases the gate."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+
+        await ocpp_server._handle_status_notification(
+            charger_session, {"status": "Preparing"}
+        )
+        await asyncio.sleep(0)
+        assert charger_session.gate_pending_plan is True
+
+        await ocpp_server._handle_status_notification(
+            charger_session, {"status": "Available"}
+        )
+        await asyncio.sleep(0)
+
+        assert charger_session.gate_pending_plan is False
+        cleared_ids = {
+            json.loads(call.args[0])[3]["id"]
+            for call in charger_session.websocket.send_str.call_args_list
+            if json.loads(call.args[0])[2] == "ClearChargingProfile"
+        }
+        assert cleared_ids == set(HSEM_PROFILE_IDS)
+
+    @pytest.mark.asyncio
+    async def test_no_gate_when_charger_never_leaves_available(
+        self, ocpp_server, charger_session
+    ):
+        """Issue #920 invariant preserved: no status change, no profile ever sent.
+
+        A charger that never reports leaving "Available" (e.g. no car ever
+        connects) must never see a 0 A profile from a repeatedly-zero
+        target — the standing idle-time block issue #920 removed.
+        """
+        ocpp_server._chargers["test-cpid"] = charger_session
+        now = datetime.now(UTC)
+        for _ in range(3):
+            await ocpp_server.update_charge_target(
+                "test-cpid", target_power_kw=0.0, now=now
+            )
+        assert charger_session.gate_pending_plan is False
+        charger_session.websocket.send_str.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

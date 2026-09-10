@@ -17,6 +17,7 @@ the sibling mixins resolve there.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
@@ -26,6 +27,7 @@ from custom_components.hsem.custom_sensors.ocpp_commands import (
     CHARGER_STALL_THRESHOLD_S,
     charger_appears_stalled,
 )
+from custom_components.hsem.custom_sensors.ocpp_profiles import HSEM_PROFILE_IDS
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,6 +61,13 @@ class OCPPAntiFlapMixin:
     _remote_stop_due: Callable[[datetime], bool]
     _profile_retry_due: Callable[[datetime], bool]
 
+    # Declared (not assigned) so mypy resolves these against
+    # OCPPProfilesMixin / OCPPControlMixin, which compose into the same
+    # OCPPServer — used by the connect-time pending-plan gate (issue #969).
+    _send_zero_current_profile: Callable[[ChargerSession], Coroutine[Any, Any, bool]]
+    send_clear_charging_profile: Callable[[str, int], Coroutine[Any, Any, bool]]
+    _background_tasks: set[asyncio.Task[Any]]
+
     async def update_charge_target(
         self,
         cpid: str,
@@ -88,6 +97,27 @@ class OCPPAntiFlapMixin:
             now = datetime.now(UTC)
 
         target_w = target_power_kw * 1000.0
+
+        if session.gate_pending_plan:
+            # This call is itself the signal that the planner has now had
+            # its first real look at this connection — update_charge_target()
+            # runs once per full coordinator cycle, and the connect-time
+            # gate (issue #969) exists only to bridge the gap before that
+            # first cycle. It must not outlive this one decision either
+            # way, or a legitimate long-term zero allocation (smart
+            # charging disabled, feature off, ...) would land right back
+            # in the standing-block regression issue #920 fixed.
+            session.gate_pending_plan = False
+            if target_w <= _SLOT_EPSILON:
+                _LOGGER.info(
+                    "OCPP %s: planner's first cycle since connect allocated "
+                    "no charge — releasing the transient pending-plan gate",
+                    session.cpid,
+                )
+                await self._release_connect_gate(session)
+            # target_w > 0 needs no special handling here — the normal
+            # "starting" branch below installs the real profile, replacing
+            # the transient 0 A one.
 
         # Anti-flap state machine
         if target_w > _SLOT_EPSILON:
@@ -222,6 +252,97 @@ class OCPPAntiFlapMixin:
                     )
             self._target_entered_at = None
             self._target_power_w = 0.0
+
+    # ------------------------------------------------------------------
+    # Connect-time "pending plan" gate (issue #969)
+    # ------------------------------------------------------------------
+
+    def _spawn_gate_task(self, coro: Coroutine[Any, Any, Any]) -> None:
+        """Fire-and-forget a gate-related OCPP call.
+
+        Mirrors the detached-task pattern already used for the
+        post-``StartTransaction`` profile resend (issue #920 follow-up):
+        never awaited inline, so a caller invoked synchronously from a
+        message handler (e.g. :meth:`~ocpp_message_handlers.
+        OCPPMessageHandlersMixin._handle_status_notification`) doesn't risk
+        putting an extra unsolicited ``CALL`` on the wire before that
+        handler's own CALLRESULT is returned.
+
+        Args:
+            coro: The coroutine to run detached.
+        """
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    def _arm_connect_gate(self, session: ChargerSession) -> None:
+        """Arm the transient pending-plan gate for a freshly connected EV.
+
+        Called from :meth:`~ocpp_message_handlers.OCPPMessageHandlersMixin.
+        _handle_status_notification` the moment a charger's own status
+        leaves ``"Available"`` while HSEM's anti-flap state is still
+        ``"idle"`` — the earliest signal available that a car has just been
+        plugged in, ahead of some chargers' own ``StartTransaction``, which
+        they send without ever asking HSEM (issue #969). Installs a 0 A
+        block immediately so the charger cannot free-vend at its default
+        rate before the planner's next cycle decides a real target.
+
+        Reuses :meth:`~ocpp_profiles.OCPPProfilesMixin._send_zero_current_profile`
+        — the same generic mechanism :meth:`~ocpp_commands.OCPPCommandsMixin.
+        _send_remote_stop` uses — rather than a second code path. Unlike
+        that stop path, this fires unconditionally on the transition since
+        the whole point is to get ahead of a charger that hasn't opened a
+        transaction yet.
+
+        Args:
+            session: The charger session that just left ``"Available"``.
+        """
+        session.gate_pending_plan = True
+        _LOGGER.info(
+            "OCPP %s: status left 'Available' with no plan yet — gating at "
+            "0 A pending the planner's next decision",
+            session.cpid,
+        )
+        self._spawn_gate_task(self._send_zero_current_profile(session))
+
+    def _schedule_release_connect_gate(self, session: ChargerSession) -> None:
+        """Release the pending-plan gate from a message-handler context.
+
+        Called when the car disconnects (status returns to ``"Available"``)
+        while the gate is still armed — the planner never got a chance to
+        decide anything for this connection, so there is nothing left to
+        gate (issue #969). Scheduled as a detached task for the same
+        ordering reason as :meth:`_arm_connect_gate`.
+
+        Args:
+            session: The charger session that returned to ``"Available"``.
+        """
+        session.gate_pending_plan = False
+        _LOGGER.info(
+            "OCPP %s: disconnected before the planner decided — releasing "
+            "the transient pending-plan gate",
+            session.cpid,
+        )
+        self._spawn_gate_task(self._release_connect_gate(session))
+
+    async def _release_connect_gate(self, session: ChargerSession) -> None:
+        """Clear HSEM's own charging profiles, giving control back.
+
+        Removes exactly the two profile IDs HSEM owns
+        (:data:`~ocpp_profiles.HSEM_PROFILE_IDS`) via ``ClearChargingProfile``
+        — never a blanket clear — so a profile another system installed is
+        never touched (same scoping as :meth:`~ocpp_control.
+        OCPPControlMixin.release_charging_profiles`, but for one charger
+        instead of every connected one). Without this, the transient 0 A
+        block installed by :meth:`_arm_connect_gate` would linger as a
+        standing limit once the gate lifts with nothing to replace it —
+        exactly the issue #920 regression this gate must not reintroduce.
+
+        Args:
+            session: The charger session to release.
+        """
+        for profile_id in HSEM_PROFILE_IDS:
+            await self.send_clear_charging_profile(session.cpid, profile_id)
 
 
 __all__ = ["OCPPAntiFlapMixin"]
