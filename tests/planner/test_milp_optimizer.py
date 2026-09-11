@@ -1,4 +1,4 @@
-"""Tests for the MILP-based optimizer and associated Bug 3 fix (issue #416).
+"""Tests for the MILP-based optimizer and the associated Bug 3 fix (issue #416).
 
 Coverage
 --------
@@ -8,6 +8,11 @@ Coverage
 - MILP candidate is present in the output candidates list after a planner run.
 - Bug 3: ``replacement_price_per_kwh`` uses the minimum future price, not average.
 - Performance: MILP solves a 96-slot (48 h × 30 min) horizon within 320 ms.
+
+Former Bug 2 (aggressive-strategy dynamic slot count) and Bug 5 (aggressive
+strategy multi-discharge-window guard) coverage was removed in issue #967
+along with ``_apply_aggressive_strategy`` itself — MILP-only mode (#483)
+made the aggressive heuristic candidate permanently unreachable.
 """
 
 from __future__ import annotations
@@ -446,6 +451,130 @@ def test_milp_cycle_cost_matches_score_plan():
         f"score_plan cycle_cost {cost_breakdown.cycle_cost:.6f} does not match "
         f"MILP-implied cycle cost {actual_cycle_cost:.6f}"
     )
+
+
+@_scipy_skip()
+def test_milp_curtails_pv_when_net_export_price_is_negative():
+    """Issue #925: a positive raw export price that is net-negative after
+    export_fee_per_kwh must be curtailed by the LP's own objective — not
+    merely blocked after the fact by the applier.
+
+    Battery starts full (no charge headroom) with PV surplus beyond house
+    load, so the only choices for that surplus are export or curtailment.
+    With a fee larger than the raw export price, exporting has positive
+    (bad) objective cost while curtailment is free — the LP must curtail.
+    """
+    raw_export_price = 0.004
+    fee = 0.015  # net = 0.004 - 0.015 = -0.011
+    usable_kwh = 5.0
+    slots = [
+        _make_slot(
+            hour=0,
+            import_price=0.20,
+            export_price=raw_export_price,
+            pv_kwh=3.0,
+            consumption_kwh=0.5,
+        ),
+    ]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=usable_kwh,  # battery already full
+        usable_kwh=usable_kwh,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        export_fee_per_kwh=fee,
+    )
+    assert milp_result is not None
+    result, diag = milp_result
+
+    assert result[0].grid_export_kwh == pytest.approx(0.0, abs=1e-6)
+    assert diag["total_curtailment_kwh"] == pytest.approx(2.5, abs=1e-6)
+
+
+@_scipy_skip()
+def test_milp_zero_export_fee_still_exports_pv_surplus():
+    """Backward compatibility: export_fee_per_kwh=0.0 (default) must not
+    curtail PV that was previously exported at a small positive price."""
+    usable_kwh = 5.0
+    slots = [
+        _make_slot(
+            hour=0,
+            import_price=0.20,
+            export_price=0.004,
+            pv_kwh=3.0,
+            consumption_kwh=0.5,
+        ),
+    ]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=usable_kwh,
+        usable_kwh=usable_kwh,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+    )
+    assert milp_result is not None
+    result, diag = milp_result
+
+    # PV surplus (2.5 kWh) must be exported, not curtailed. The battery may
+    # additionally discharge for extra (zero-cycle-cost) profit at this tiny
+    # positive price, so only assert a floor rather than an exact total.
+    assert result[0].grid_export_kwh >= 2.5 - 1e-6
+    assert diag["total_curtailment_kwh"] == pytest.approx(0.0, abs=1e-6)
+
+
+@_scipy_skip()
+def test_milp_reported_cost_matches_score_plan_with_export_fee():
+    """The reported estimated_cost_currency must net the same export fee
+    that score_plan() uses, mirroring test_milp_cycle_cost_matches_score_plan.
+    """
+    export_fee = 0.02
+    slots = [
+        _make_slot(
+            hour=0,
+            import_price=0.20,
+            export_price=0.10,
+            pv_kwh=3.0,
+            consumption_kwh=0.5,
+        ),
+    ]
+
+    milp_result = solve_milp(
+        slots,
+        _NOW,
+        current_kwh=5.0,
+        usable_kwh=5.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        export_fee_per_kwh=export_fee,
+    )
+    assert milp_result is not None
+    result, _diag = milp_result
+
+    simulate_soc(
+        result,
+        _NOW,
+        current_kwh=5.0,
+        usable_kwh=5.0,
+        max_capacity_kwh=5.0,
+        max_charge_per_slot=5.0,
+        max_discharge_per_slot=5.0,
+        rated_kwh=10.0,
+        end_of_discharge_soc_pct=10.0,
+        milp_prepopulated=True,
+    )
+
+    cost_breakdown = score_plan(
+        result,
+        CostWeights(export_fee_per_kwh=export_fee, min_soc_pct=10.0, max_soc_pct=100.0),
+        slot_duration_hours=1.0,
+        now=_NOW,
+    )
+    reported_total = sum(s.estimated_cost_currency for s in result)
+    assert reported_total == pytest.approx(cost_breakdown.total_cost, abs=1e-6)
 
 
 @_scipy_skip()

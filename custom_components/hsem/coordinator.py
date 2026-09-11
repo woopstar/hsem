@@ -188,6 +188,7 @@ class HSEMDataUpdateCoordinator(
         self._batteries_schedules: list = []
         self._batteries_schedules_remaining_capacity_needed: float = 0.0
         self._current_required_battery: float = 0.0
+        self._current_wait_mode_reserve: float | None = None
         self._next_update: str | None = None
 
         # Entity resolution cache (persisted across cycles).
@@ -204,6 +205,15 @@ class HSEMDataUpdateCoordinator(
         # Most recent EV charging plans from the planner engine.
         self._ev_charging_plan: EVChargingPlan | None = None
         self._ev_second_charging_plan: EVChargingPlan | None = None
+
+        # Current-slot EV charger power hold (issue #957). The rate the
+        # planner froze for the current slot at slot-entry, fed back into the
+        # next solve's PlannerInput so it can hold the rate for the rest of
+        # the slot instead of re-deriving it from the live clock.
+        self._ev_held_slot_start: datetime | None = None
+        self._ev_held_power_w: float = 0.0
+        self._ev_second_held_slot_start: datetime | None = None
+        self._ev_second_held_power_w: float = 0.0
         # Most recent planner input/output retained for diagnostics dumps.
         self._last_planner_input: PlannerInput | None = None
         self._last_planner_output: PlannerOutput | None = None
@@ -279,10 +289,10 @@ class HSEMDataUpdateCoordinator(
         self._live_power_replan_request_slot_this_cycle: datetime | None = None
         self._live_power_timer_unsub: Callable[[], None] | None = None
 
-        # Solar forecast accuracy auto-corrector (issue #602).
+        # Solar forecast accuracy auto-corrector (issue #602). Its own
+        # persisted `processed_through` watermark guards against re-learning
+        # a finalised slot across Home Assistant restarts (issue #973).
         self._solar_corrector: SolarForecastCorrector = SolarForecastCorrector()
-        # Set of slot start times already fed to the solar corrector.
-        self._solar_corrector_processed: set[datetime] = set()
 
         # Forecast-vs-actual tracker (predicted-vs-actual tracking, issue #373).
         self._forecast_tracker: ForecastTracker = ForecastTracker(max_slots=2880)
@@ -340,6 +350,13 @@ class HSEMDataUpdateCoordinator(
         # Debounce task for option changes.  Rapid toggles restart this timer
         # so the planner only runs once after the user stops clicking.
         self._options_update_debounce_task: asyncio.Task | None = None
+
+        # Same pattern for significant OCPP protocol events (issue #908) —
+        # a connect/disconnect/status-change/start-stop triggers a refresh
+        # a short debounce window later, instead of waiting for the next
+        # scheduled cycle (up to hsem_update_interval minutes away).
+        self._ocpp_event_task: asyncio.Task | None = None
+        self._ocpp_event_debounce_task: asyncio.Task | None = None
 
     # ------------------------------------------------------------------
     # HA lifecycle

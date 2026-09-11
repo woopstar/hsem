@@ -5,6 +5,15 @@ price-per-unit transformations, duration conversions, and battery economics
 explicit and auditable.  Every function is a pure one-liner — the value is
 in the *name*, not the arithmetic.
 
+``watthours_to_kilowatthours``, ``kilowatthours_to_watthours``, and
+``energy_to_power_kw`` currently have no production caller (issue #967) —
+all of HSEM's actual Wh/kWh and energy/duration math happens to already be
+in kWh or to need a different combined formula.  They are kept as part of
+this module's deliberately complete, symmetric, one-liner-per-conversion
+toolkit (matching ``watt_to_kilowatt``'s W↔kW pair) rather than deleted,
+since a caller reaching for a Wh/kWh or energy-to-power conversion should
+find a named helper here instead of reinventing one inline.
+
 All functions accept ``int`` or ``float`` and return ``float``.
 
 Usage

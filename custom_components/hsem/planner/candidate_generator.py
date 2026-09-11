@@ -28,6 +28,14 @@ Only the three required production candidates from
                    candidate passes SoC validation.
 3. ``milp``      — globally-optimal LP solution (when scipy is available);
                    skipped gracefully if the solver fails.
+
+MILP-only mode (issue #483) retired the older heuristic candidates
+(``baseline``, ``grid_charge``, ``solar_only``, ``discharge_only``,
+``aggressive``, and the partial-SoC ``soc_plan_*`` family): the MILP finds
+the globally optimal solution directly, making them permanently redundant.
+Their implementations were removed as dead code in issue #967, and their
+``CANDIDATE_*`` name constants (and ``_SOC_FRACTIONS``) were removed as
+unused in issue #897.
 """
 
 from __future__ import annotations
@@ -236,6 +244,16 @@ def generate_candidates(
     _apply_passive_solar(passive, now)
     candidates.append(CandidatePlan(name=CANDIDATE_PASSIVE, slots=passive))
 
+    # Baseline / grid-charge-only / solar-only / discharge-only / aggressive /
+    # partial-SoC heuristic candidates were retired when MILP-only mode
+    # shipped (#483) — the MILP finds the globally optimal solution directly,
+    # making the heuristics permanently redundant. Their implementations
+    # (`_apply_aggressive_strategy`, `_remove_solar_charge`,
+    # `_remove_grid_charge`, `_remove_all_charge`, `_apply_soc_plan`) were
+    # removed as dead code in issue #967; the leftover `CANDIDATE_*` name
+    # constants and `_SOC_FRACTIONS` (never referenced after #967) were
+    # removed as unused in issue #897.
+
     # 3. MILP — globally-optimal LP solution (requires scipy, falls back gracefully)
     if is_scipy_available():
         # Use the canonical resolve_cycle_cost() — same as engine_core and
@@ -281,6 +299,7 @@ def generate_candidates(
             battery_export_min_price=effective_battery_export_floor,
             battery_export_forecast_reserve_kwh=forecast_export_reserve_kwh,
             excess_export_discharge_buffer_pct=(inp.excess_export_discharge_buffer_pct),
+            export_fee_per_kwh=inp.export_fee_per_kwh,
         )
         log_planner(
             "debug",

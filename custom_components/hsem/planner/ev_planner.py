@@ -32,7 +32,7 @@ from custom_components.hsem.planner.ev_planner_models import (  # noqa: F401
 from custom_components.hsem.utils.datetime_utils import utc_key
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
-from custom_components.hsem.utils.units import ev_dc_to_ac_kwh
+from custom_components.hsem.utils.units import ev_ac_to_dc_kwh, ev_dc_to_ac_kwh
 
 # ---------------------------------------------------------------------------
 # Core computation
@@ -88,7 +88,9 @@ def max_charge_energy_for_slot(
         kWh delivered to the EV battery (battery-side, post-efficiency).
     """
     hours = slot_duration_min / 60.0
-    return charger_power_kw * hours * clamp_efficiency(charger_efficiency_pct)
+    return ev_ac_to_dc_kwh(
+        charger_power_kw * hours, clamp_efficiency(charger_efficiency_pct)
+    )
 
 
 def remaining_minutes_in_slot(now: datetime, slot_end: datetime) -> float:

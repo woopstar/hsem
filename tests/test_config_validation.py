@@ -955,6 +955,7 @@ class TestFlowValidatorsUseConfigValidator:
                 "hsem_import_electricity_price_sensor": "sensor.import",
                 "hsem_export_electricity_price_sensor": "sensor.export",
                 "hsem_export_electricity_min_price": -0.05,
+                "hsem_export_fee_per_kwh": 0.0,
                 "hsem_electricity_price_update_interval": "15",
             },
         )

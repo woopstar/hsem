@@ -10,6 +10,7 @@ from custom_components.hsem.planner.ev_planner import (
     apply_ev_planned_load_to_slots,
     build_ev_charging_plan,
 )
+from custom_components.hsem.utils.datetime_utils import as_tz, utc_key
 from custom_components.hsem.utils.logger import log_planner
 
 
@@ -97,6 +98,101 @@ def _compute_ev_charger_power(
             else "ev_charger_calculated_power"
         )
         setattr(slots[idx], attr, ac_power_w)
+
+
+def _hold_current_slot_ev_power(
+    slots: list,
+    now: datetime,
+    held_slot_start: datetime | None,
+    held_power_w: float,
+    *,
+    second: bool = False,
+) -> tuple[datetime | None, float]:
+    """Freeze the current slot's EV charger command at its slot-entry rate.
+
+    Both the baseline EV planner path (:func:`_compute_ev_charger_power`) and
+    the MILP write-out (``milp/_ev_power_writeout.py``) derive the *current*
+    slot's target power as allocated energy ÷ remaining slot time, re-derived
+    from the live clock on every solve. Numerator and denominator shrink
+    together, so in the steady case the ratio is a stable constant — but as
+    the remaining time collapses toward its floor, rounding on the
+    (already-small) energy numerator dominates and the ratio degenerates
+    into "run at rated power to deliver a trickle in a fraction of a
+    second". Because the coordinator re-solves far more often than once per
+    slot, that degenerate value can stay published past the slot's actual
+    end (issue #957).
+
+    This runs once, on the *winning* candidate's slots, after candidate
+    selection — so it is agnostic to which internal path (baseline or MILP)
+    produced the raw value, and it never affects ``winner.cost`` since it
+    only touches the display/command wattage field, not energy, grid-flow,
+    or cost fields.
+
+    The fix: capture the rate the first time this slot is seen as current —
+    using whatever time genuinely remains at that instant, full width for a
+    freshly entered slot, less for a session starting mid-slot — and hold
+    it for the rest of the slot. Only a genuine plan change (a new current
+    slot, or this slot's allocation being retracted to zero) moves the
+    published value; the wall clock ticking down within the same slot does
+    not.
+
+    Args:
+        slots: The winning candidate's slot list, mutated in place.
+        now: Timezone-aware current datetime.
+        held_slot_start: Start of the slot the previous solve held a rate
+            for, or ``None`` if nothing is currently held.
+        held_power_w: The rate held for ``held_slot_start``, in watts.
+        second: If ``True``, operate on
+            ``ev_second_charger_calculated_power``; otherwise
+            ``ev_charger_calculated_power``.
+
+    Returns:
+        The ``(slot_start, power_w)`` to persist and pass back in on the
+        next solve.
+    """
+    attr = (
+        "ev_second_charger_calculated_power"
+        if second
+        else "ev_charger_calculated_power"
+    )
+    current = next(
+        (
+            s
+            for s in slots
+            if as_tz(s.start, now.tzinfo) <= now < as_tz(s.end, now.tzinfo)
+        ),
+        None,
+    )
+    if current is None:
+        return None, 0.0
+
+    fresh_w = max(float(getattr(current, attr)), 0.0)
+    if fresh_w < 1e-9:
+        # The plan has no (or no longer has) a charge for this slot — publish
+        # zero immediately.  A stale non-zero hold must never be resurrected
+        # once the plan has retracted the charge (see PR #783's lesson on
+        # coherent EV command accounting).
+        return None, 0.0
+
+    same_held_slot = held_slot_start is not None and utc_key(
+        held_slot_start
+    ) == utc_key(current.start)
+    if same_held_slot:
+        setattr(current, attr, held_power_w)
+        return held_slot_start, held_power_w
+
+    # New current slot, or this slot just transitioned from zero to
+    # non-zero (a session starting mid-slot, or a genuine re-rank that
+    # newly selects this slot) — capture the freshly computed rate once,
+    # using the actual remaining time right now, and hold it going forward.
+    log_planner(
+        "debug",
+        "[core] ev_power_hold  attr=%s  slot=%s  rate_w=%.0f  (new hold)",
+        attr,
+        current.start.isoformat(),
+        fresh_w,
+    )
+    return current.start, fresh_w
 
 
 def _build_and_inject_for_ev(

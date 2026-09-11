@@ -39,7 +39,6 @@ from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
 )
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_daily_plan_vs_actual_sensor_entity_id,
-    get_daily_plan_vs_actual_sensor_name,
     get_daily_plan_vs_actual_sensor_unique_id,
 )
 
@@ -58,6 +57,7 @@ class HSEMDailyPlanVsActualSensor(
 
     _attr_icon = "mdi:scale-balance"
     _attr_has_entity_name = True
+    _attr_translation_key = "daily_plan_vs_actual"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
@@ -76,7 +76,6 @@ class HSEMDailyPlanVsActualSensor(
         self._attr_unique_id = get_daily_plan_vs_actual_sensor_unique_id(
             config_entry.entry_id
         )
-        self._attr_name = get_daily_plan_vs_actual_sensor_name()
         self.entity_id = get_daily_plan_vs_actual_sensor_entity_id()
         self._restored_state: str | None = None
 

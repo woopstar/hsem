@@ -39,7 +39,6 @@ from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_savings_tracker_sensor_entity_id,
-    get_savings_tracker_sensor_name,
     get_savings_tracker_sensor_unique_id,
 )
 
@@ -58,6 +57,7 @@ class HSEMSavingsSensor(
 
     _attr_icon = "mdi:cash-plus"
     _attr_has_entity_name = True
+    _attr_translation_key = "savings_tracker"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.TOTAL
@@ -78,7 +78,6 @@ class HSEMSavingsSensor(
         self._attr_unique_id = get_savings_tracker_sensor_unique_id(
             config_entry.entry_id
         )
-        self._attr_name = get_savings_tracker_sensor_name()
         self.entity_id = get_savings_tracker_sensor_entity_id()
 
         self._restored_state: str | None = None

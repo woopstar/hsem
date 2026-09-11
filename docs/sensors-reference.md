@@ -213,6 +213,9 @@ Displays the planner's strategy rationale and per-candidate cost breakdown.
 | `rejected_plans`                              | Alternatives with name, reason, and full cost breakdown          |
 | `hysteresis_active`                           | Whether plan-level hysteresis was applied                        |
 | `hysteresis_reason`                           | Explanation of hysteresis decision                               |
+| `ml_forecast_wind_configured`                 | Whether wind chill is enabled and a weather entity is configured |
+| `ml_forecast_wind_slots_used`                 | Future slots using per-slot forecast wind speed                  |
+| `ml_forecast_wind_fallback_slots`             | Future slots that fell back to the nearest measured wind reading |
 
 ---
 
@@ -525,6 +528,12 @@ Sensors providing live status and diagnostics for an OCPP-compliant EV charger c
 | **State**        | Live charging power (kW) |
 | **Device class** | `power`                  |
 | **Unit**         | kW                       |
+
+Reports `0` whenever the connector's status is anything other than
+`"Charging"` (issue #969) — previously it kept showing the last
+`MeterValues` reading verbatim, so e.g. a connector that had just
+transitioned to `SuspendedEVSE` could still display several kW with no
+fresh meter data to explain why.
 
 ### `sensor.hsem_ocpp_charger_info`
 

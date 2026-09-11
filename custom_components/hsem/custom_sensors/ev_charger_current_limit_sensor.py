@@ -52,10 +52,8 @@ from custom_components.hsem.utils.phase_power import (
 )
 from custom_components.hsem.utils.sensornames.ev import (
     get_ev_charger_current_limit_sensor_entity_id,
-    get_ev_charger_current_limit_sensor_name,
     get_ev_charger_current_limit_sensor_unique_id,
     get_ev_second_charger_current_limit_sensor_entity_id,
-    get_ev_second_charger_current_limit_sensor_name,
     get_ev_second_charger_current_limit_sensor_unique_id,
 )
 
@@ -85,8 +83,6 @@ class HSEMEVChargerCurrentLimitSensorBase(
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _is_second: bool = False
-    # Set by concrete subclasses in __init__.
-    _name: str
 
     def __init__(
         self,
@@ -146,12 +142,6 @@ class HSEMEVChargerCurrentLimitSensorBase(
     # ------------------------------------------------------------------
     # HA entity properties
     # ------------------------------------------------------------------
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override
@@ -241,7 +231,6 @@ class HSEMEVChargerCurrentLimitSensor(HSEMEVChargerCurrentLimitSensorBase):
             config_entry.entry_id
         )
         self.entity_id = get_ev_charger_current_limit_sensor_entity_id()
-        self._name = get_ev_charger_current_limit_sensor_name()
 
 
 class HSEMEVSecondChargerCurrentLimitSensor(HSEMEVChargerCurrentLimitSensorBase):
@@ -261,4 +250,3 @@ class HSEMEVSecondChargerCurrentLimitSensor(HSEMEVChargerCurrentLimitSensorBase)
             config_entry.entry_id
         )
         self.entity_id = get_ev_second_charger_current_limit_sensor_entity_id()
-        self._name = get_ev_second_charger_current_limit_sensor_name()

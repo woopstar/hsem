@@ -804,6 +804,19 @@ opt-in for the primary battery to discharge while a specific EV charges.
 `planner/milp/_ev_amp_lattice.py::resolve_ev_amp_plan` computes each
 managed EV's:
 
+- `minimum_current_a` — the configured `charger_min_power_w` converted to
+  amps via `utils.phase_power.ev_min_start_current_a`, which applies a hard
+  floor at `EV_MIN_START_CURRENT_A` (6 A). `charger_min_power_w` is
+  documented and defaulted as a single-phase watt figure (1380 W = 230 V ×
+  6 A); dividing it across a `three_phase_balanced` charger's phases can
+  compute a current below any real EVSE's minimum start current (6 A per
+  IEC 61851), so the floor is applied regardless of the computed value or
+  topology (issue #968). Every site that converts a configured
+  `charger_min_power_w` into an executable amp floor — the amp lattice
+  here, the target-cap activation quantum below, `engine_ev_milp.py`'s
+  `effective_min_power_w`, and the command-stability layer
+  (`coordinator_ev_command_stability.py`) — goes through this same helper,
+  never the raw `charger_min_power_to_current_a` conversion.
 - `discharge_cap_kwh` — `0` unless `force_max_discharge_power` is `True`
   with a finite, positive `max_discharge_power_w` (fail-closed).
 - Whether it `needs_on`: a conditional `ev_on[t]` binary is created only
@@ -923,6 +936,11 @@ revenue the optimiser forbade.
   first redistributed forward onto a later pre-deadline slot with
   headroom (`planner/milp/_ev_power_writeout.py`, issue #845); only the
   portion that cannot be placed anywhere is discarded.
+- `resolve_ev_amp_plan`'s `minimum_current_a` is never below
+  `EV_MIN_START_CURRENT_A` (6 A), for every phase topology and every
+  configured `charger_min_power_w` value, including `0` or a value that
+  would compute below 6 A when divided across a three-phase charger's
+  phases (issue #968).
 
 ### MILP decision priority
 
@@ -953,6 +971,40 @@ has zero cost. The LP always uses available PV to cover house load first.
 | 2c       | Charge EV (post-deadline, past target) | **−future_value/η_charger** (benefit, capped at battery charge credit while battery has headroom — issue #775) | `t > D`, `charge_past_target=True`. Surplus-only + battery-first constraints: `ev_c/eff ≤ pv − base_load` and `ec + Σ ev_c/eff ≤ pv − base_load`. House battery fills first, then EV gets the remainder, then export |
 | 2d       | Export to grid                         | **−p_exp[t]** (revenue)                                                                                        | Battery full, EV doesn't want surplus, export price > 0                                                                                                                                                              |
 | 2e       | Curtail PV                             | `0` (free)                                                                                                     | Battery full, EV doesn't want surplus, `p_exp ≤ 0` (export costs money or is blocked)                                                                                                                                |
+
+#### Charge recommendation label: solar vs. grid (write-out, issue #913)
+
+The LP's `ec[t]` variable does not track _which_ energy source funds the
+charge — PV surplus and grid import both flow through the same slot's
+energy balance. `planner/milp/_write_results.py` derives the
+`batteries_charge_solar` vs. `batteries_charge_grid` **label** after
+solving by comparing the slot's resolved charge (`ec[t]`, after
+degenerate-vertex resolution) against forecast PV surplus (`pv_avail[t]`):
+
+- `pv_avail[t] ≥ ec[t] − _min_action_kwh` (forecast PV surplus can cover
+  the **entire** planned charge) → `batteries_charge_solar`. The applier
+  configures PV-only self-consumption charging (`MaximizeSelfConsumption`)
+  for this label — it never enables grid import.
+- Otherwise (PV covers none or only part of the planned charge) →
+  `batteries_charge_grid`. The applier opens a TOU grid-charge window for
+  this label, which still draws PV first and only imports the shortfall.
+
+A slot mostly funded by grid import must never be labelled
+`batteries_charge_solar` — the applier's self-consumption mode never
+enables grid import, so the grid-funded portion of the plan would be
+silently dropped and the real battery SoC would diverge from the planned
+trajectory (issue #913).
+
+Two guards take priority over this PV-coverage comparison:
+
+- **EV-charging-slot guard**: when an EV is also charging in the same
+  slot, always `batteries_charge_grid` — the EV consumes the solar
+  surplus, so the battery must draw from grid to actually receive the
+  energy the MILP allocated, regardless of PV coverage.
+- **Session-slot guard** (issue #615): a slot with active EV session
+  demand is never assigned `batteries_charge_grid`, even when PV covers
+  only part of the planned charge — this is a defensive fallback since the
+  LP constraints already prevent `ec[t] > 0` in session slots in practice.
 
 #### 3. Cover house-load deficit
 
@@ -1564,6 +1616,51 @@ Grid import and export have finite physical upper bounds. A binary
 is bounded by available PV. These constraints remove unbounded wash-flow
 directions without changing market prices.
 
+### Export fee (net export price, issue #925)
+
+The raw market export price is not necessarily the prosumer's real net
+revenue: retailer margin and balancing fees can turn a nominally-positive
+spot price into an actual loss. `export_fee_per_kwh` (default `0.0`,
+config field `hsem_export_fee_per_kwh`) is a fixed currency/kWh cost
+subtracted from the export price wherever export profitability is decided:
+
+```text
+net_export_price = raw_export_price − export_fee_per_kwh
+```
+
+This does **not** add a new hard constraint. It feeds the _existing_
+negative-export-price mechanics so a raw price that is positive but
+net-negative after fees is treated exactly like a negative raw price:
+
+- **Applier** (`custom_sensors/applier_power_control.py`): the physical
+  connection-point block (`export_price < 0.0` → `GRID_EXPORT_LIMIT_WATT`)
+  keys off `net_export_price` instead of the raw price.
+- **MILP objective** (`planner/milp/_objective.py::_build_objective`): the
+  export-revenue coefficient (`c_obj[ge_off + t]`) and the terminal-SoC
+  charge-premium's `exp_price` both use `p_exp_net[t] = p_exp[t] −
+export_fee_per_kwh`. The LP needs no new constraint — `curt[t]` already
+  has zero objective cost, so the LP already prefers curtailment over an
+  export whose net revenue is negative.
+- **Cost function** (`planner/cost_function.py::score_plan`): mirrors the
+  objective exactly — the export-revenue term, the
+  `deferred_export_price_by_slot()` call, and the `compute_charge_premium`
+  call all net the same fee, via `CostWeights.export_fee_per_kwh`.
+- **Reported cost** (`planner/milp/_write_results.py`, via
+  `cost_helpers.slot_grid_cash_flow_cost`): nets the same fee into
+  `estimated_cost_currency` so the reported per-slot cost matches what the
+  LP actually optimised for (cost-identity invariant).
+
+**Explicitly unaffected:** `export_min_price`/`battery_export_min_price`
+floor comparisons stay on the **raw** price — this fee is a separate,
+independent concept from the user-configured battery-export floors. When a
+slot's battery-destined export revenue is already zeroed by the
+`battery_export_min_price` floor, the fee is not applied on top (no
+double-penalty) — see `grid_cash_flow_cost()` and the mirrored logic in
+`score_plan()`.
+
+Invariant: with `export_fee_per_kwh = 0.0` (default), every computation
+above is byte-for-byte identical to the pre-#925 behaviour.
+
 ### Battery cycle cost
 
 Cycle cost should count physical battery throughput.
@@ -1982,6 +2079,19 @@ applier (`applier._planned_ev_discharge_cap_w()` +
 scheduled neither charge nor discharge for the primary battery this slot
 (`primary_battery_hold` — see below), the cap is unconditionally 0 W.
 
+**Solar-charge-only slot (issue #922)**: when the recommendation is
+`batteries_charge_solar` and no EV is active/planned, the cap is
+unconditionally 0 W, mirroring the primary-battery-hold cap. A genuine
+solar-charge slot has a material `batteries_charged_kwh`, so
+`primary_battery_hold` is always `False` for it and would otherwise leave
+the discharge cap at its normal value. Huawei's `MaximizeSelfConsumption`
+firmware follows **live** house load vs. **live** PV, not the MILP's solved
+per-slot flow — without this cap the inverter discharges the battery
+whenever live load exceeds live PV, even though the MILP planned this slot
+as solar-charge-only with the grid covering any deficit. An active/planned
+EV takes precedence: when `relevant_evs` is non-empty the normal EV
+permission/rate-cap logic above governs instead of the blanket 0 W.
+
 **SoC guard:** when the battery's remaining usable energy is at or below
 the planner's required reserve (`current_required_battery_kwh` — energy
 needed until the next solar surplus), the cap is forced to 0 W so the
@@ -2008,9 +2118,134 @@ with the 0 W discharge cap above, so unexpected PV may still charge the
 battery.
 
 This applies to both `batteries_wait_mode` (an unheld strict wait stays in
-TOU; self-consumption-with-reserve still applies when unheld) and
-`ev_smart_charging` (which otherwise always executes as MSC to retain
-unexpected solar).
+TOU) and `ev_smart_charging` (which otherwise always executes as MSC to
+retain unexpected solar). `held_planned_export` takes priority over
+self-consumption-with-reserve too — see issue #954 below.
+
+### Wait-mode self-consumption reserve (issue #914)
+
+**Discharge cap is an SoC-floor stop-discharge gate, not a rate spread over
+the slot (issue #942):** `applier_caps._wait_mode_self_consumption_cap_w()`
+originally computed `surplus_kwh / slot_hours`, spreading the reserved
+surplus evenly across the whole slot. This produced low, load-averaged
+wattages (e.g. 264–380 W) with no relationship to actual instantaneous house
+load — a real load spike above that average cap pulled the extra power from
+the grid even though the battery still held usable surplus, causing
+unnecessary grid import. The fix replaces the rate formula with a floor gate:
+while `battery_current_capacity_kwh` is above `wait_mode_reserve_kwh` by any
+material amount, the cap is the full rated/configured discharge maximum, so
+normal house-load support (including spikes) is served from the battery;
+once capacity reaches the reserve floor, the cap drops to 0 W so the reserve
+is protected. The gate is re-evaluated every apply cycle (interval tick,
+event-triggered replan, or the 10-second live-power monitor's reactive
+replan), so discharge stops as soon as live capacity reaches the reserve —
+battery-to-grid export remains governed separately by export-price/
+curtailment logic, never by this cap.
+
+**Self-consumption-with-reserve overrides the plain hold default, not the
+other way around (issue #954):** a genuine `BatteriesWaitMode` slot always
+satisfies `_primary_battery_hold()` — `soc_simulation.py` forces
+`discharge = 0.0` for this recommendation, the same near-zero condition the
+hold check tests for. #949 originally gated the reserve-floor decision
+behind `not primary_battery_hold`, which meant it never actually overrode
+the hold's `0 W` default for a real Wait slot — the reserve-floor logic only
+ever ran in a synthetic non-held test fixture. The fix evaluates
+`wait_mode_reserve_active` (`recommendation == BatteriesWaitMode and not
+relevant_evs and not held_planned_export and
+batteries_wait_mode_behavior == "self_consumption_with_reserve" and
+wait_mode_reserve_kwh is not None`) _ahead of_ the hold/EV/solar-charge-only
+branch in both the single cap-decision block and the working-mode match
+statement, so it applies regardless of hold status. `held_planned_export`
+(an authoritative solved export) and an active/planned EV both still take
+priority over it, unchanged. The former second, independently-gated
+discharge-cap write (from #949) was folded into the single cap decision and
+removed — the entity is written at most once per apply cycle.
+
+The **EV discharge-cap SoC guard** above and `apply_excess_export()` both use
+`current_required_battery_kwh`, derived from
+`calculate_required_battery_until_solar()` (`planner/discharge_scheduler.py`):
+it scans forward from `now` and accumulates positive net consumption **until
+the first slot with any forecast PV surplus** (`estimated_net_consumption_kwh
+< 0`), regardless of how small or short-lived that surplus is, or whether the
+selected plan can actually rely on it.
+
+The `batteries_wait_mode` self-consumption gate (the two usages described
+under "Wait Mode Self-Consumption with Reserve" — the MSC-vs-TOU decision and
+the discharge-cap computation) uses a **separate** reserve,
+`wait_mode_reserve_kwh`, computed by `calculate_required_battery_for_plan()`
+from the **selected** plan's own already-simulated SoC trajectory instead:
+
+```text
+for each future slot (chronological order, end > now):
+    min_capacity = min(min_capacity, slot.estimated_battery_capacity_kwh)
+    if slot.batteries_charged_kwh > 0 or slot.batteries_discharged_kwh > 0:
+        break  # a genuine solved battery action, not a forecast signal
+reserve = max(current_capacity - min_capacity, 0)
+```
+
+This protects the battery down to the deepest point the **winning
+candidate's** SoC simulation dips to by the end of its own next solved
+battery action (charge — grid or solar — **or** discharge) — a small
+forecast surplus slot that the plan does not actually charge from no longer
+truncates the reserve early. When the plan has no future charge or discharge
+anywhere in the horizon, the scan runs to the horizon end and the reserve
+naturally covers (up to) the full current capacity, which forces strict Wait
+behaviour via the normal `surplus <= 0` path — no special-cased fallback is
+needed for that case.
+
+**Scan stops at the first committed action, not the next charge (issue #942
+follow-up, fixed 2026-09-08):** the scan originally only broke on a genuine
+_charge_ event, so it accumulated through every discharge slot between now
+and the plan's next charge — often the plan's entire overnight consumption,
+even though that total would not be needed for hours. Applied as an
+immediate floor, this locked up nearly the whole battery for the length of
+the Wait span, silently reopening #942 (grid import on load spikes) even
+after the SoC-floor discharge-cap gate landed, because the "surplus above
+reserve" the gate checks was already ~0. The scan now also breaks on the
+plan's next **discharge** slot: the reserve protects only that one upcoming
+commitment. Anything beyond it is re-protected by the next replan (interval
+tick, event-triggered, or the 10-second live-power monitor), which
+re-derives this same reserve from the then-current capacity before that
+later slot arrives — so scanning past the next action adds no real
+protection, only unnecessary throttling of house-load self-consumption in
+the meantime.
+
+**Time-decayed reserve (issue #954 follow-up, issue #956):** limiting the
+scan to the next committed action was not enough on its own — even a single
+upcoming action can be _far_ in the future and still lock up nearly the
+whole battery immediately. Confirmed by direct reproduction: a battery at
+6.4 kWh with a discharge scheduled 5 hours away that needs 5.9 kWh computed
+a reserve of `5.9 kWh` right now, leaving only `0.5 kWh` of surplus for
+self-consumption for the entire 5-hour lead time. The full reserve is now
+only protected once that action is imminent; `calculate_required_battery_for_plan()`
+tracks the `start` time of the slot that ends the scan and multiplies the
+full computed reserve by a linear decay factor:
+
+```text
+hours_until_action = max((next_action_start - now).total_seconds() / 3600, 0)
+time_factor = clamp(1 - hours_until_action / WAIT_MODE_RESERVE_DECAY_HOURS, 0, 1)
+reserve = full_reserve * time_factor
+```
+
+`WAIT_MODE_RESERVE_DECAY_HOURS = 2.0` is an internal tuning constant (not
+user-configurable, matching e.g. `LIVE_POWER_MONITOR_INTERVAL_SECONDS`). At 0
+hours away the action is fully protected; at or beyond the 2-hour window the
+reserve is 0 and self-consumption may use the full current surplus, trusting
+the next replan (interval tick, event-triggered, or the 10-second live-power
+monitor) to re-derive a tighter reserve well before the action actually
+starts. This applies uniformly whether the terminating action is a charge or
+a discharge. When no future action is found in the horizon at all (the scan
+reaches the end without a break), decay does not apply — that case already
+naturally yields the correct result from the min-tracking alone.
+
+`wait_mode_reserve_kwh` is `None` when it cannot be derived (no future slots
+in the horizon). The applier treats `None` as "fall back to strict Wait":
+`self_consumption_with_reserve` self-consumption is never enabled without a
+reliable reserve value.
+
+`calculate_required_battery_until_solar()` and `current_required_battery_kwh`
+are otherwise **unchanged** — they continue to gate the EV discharge-cap SoC
+guard and `apply_excess_export()` exactly as before.
 
 ### Live phase-aware grid-charge safety limiter (issue #831)
 
@@ -2607,13 +2842,13 @@ There is no separate user-facing configuration for this field.
 
 Three per-slot fields capture EV load intent precisely:
 
-| Field                                | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ev_planned_load_kwh`                | Extra EV AC load **added to net consumption** — only the portion not already in `avg_house_consumption`. Zero when `base_load_includes_ev = True`.                                                                                                                                                                                                                                                                                                  |
-| `ev_accounted_load_kwh`              | EV AC load **already included** in the house consumption sensor. Non-zero when `base_load_includes_ev = True`. Must not be added to net consumption again.                                                                                                                                                                                                                                                                                          |
-| `ev_total_planned_load_kwh`          | Total planned EV AC load regardless of accounting mode: `ev_planned_load_kwh + ev_accounted_load_kwh`. Always non-zero when any EV charging is planned.                                                                                                                                                                                                                                                                                             |
-| `ev_charger_calculated_power`        | Target AC power (W) for the primary EV charger during this slot. Computed from the EV planner's per-slot energy target: `round((ac_load_kwh / slot_duration_hours) × 1000)`. For the **current** (partially elapsed) slot, `slot_duration_hours` is the remaining time (minimum 1 s), because the EV planner already scales `ac_load_kwh` to the remaining minutes. For future slots the full slot width is used. Zero when no charging is planned. |
-| `ev_second_charger_calculated_power` | Same as above, for the second EV.                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Field                                | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ev_planned_load_kwh`                | Extra EV AC load **added to net consumption** — only the portion not already in `avg_house_consumption`. Zero when `base_load_includes_ev = True`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `ev_accounted_load_kwh`              | EV AC load **already included** in the house consumption sensor. Non-zero when `base_load_includes_ev = True`. Must not be added to net consumption again.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `ev_total_planned_load_kwh`          | Total planned EV AC load regardless of accounting mode: `ev_planned_load_kwh + ev_accounted_load_kwh`. Always non-zero when any EV charging is planned.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `ev_charger_calculated_power`        | Target AC power (W) for the primary EV charger during this slot. For **future** slots: `round((ac_load_kwh / slot_duration_hours) × 1000)` using the full slot width, re-derived every solve. For the **current** slot: the rate is decided **once**, the first time the slot is seen as current (or the first time its allocation goes from zero to non-zero), using whatever time genuinely remains at that instant — then **held** for the rest of the slot regardless of how the live clock or a re-solve's raw energy÷time ratio would otherwise move it (issue #957; see "Current-slot EV power hold" below). Zero when no charging is planned. |
+| `ev_second_charger_calculated_power` | Same as above, for the second EV.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 When `base_load_includes_ev = False`:
 
@@ -2758,7 +2993,9 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
     and `ev_second_charger_calculated_power` (second EV) are each computed
     **per-EV** from that EV's own charging plan (`EVChargingPlan.charging_slots`)
     by `_compute_ev_charger_power()` (for non-MILP candidates) or directly by
-    the MILP's EV power computation (for MILP candidates).
+    the MILP's EV power computation (for MILP candidates). This raw,
+    per-candidate value is a plain energy÷time ratio; see invariant 14 for how
+    the **current** slot's published value is derived from it.
 
     The per-EV power fields are set **before** candidate selection and
     correctly adjusted by the main-fuse throttling block (per-field loop).
@@ -2781,10 +3018,64 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
 
 13. **Executable EV command coherence**: Charger watts, EV energy, grid flow,
     net consumption, estimated cost, and the EV plan sensor must come from the
-    same accepted snapshot. The coordinator must not restore an older frozen
-    watt command after replanning. Runtime force-charge and negative-price
-    overrides must update all related current-slot fields together, respect
-    aggregate fuse headroom, and never energize an explicitly disconnected EV.
+    same accepted snapshot. The coordinator must not restore a watt command
+    left over from a _different_ accepted plan after replanning (e.g. a value
+    computed for a slot the current plan no longer selects). Runtime
+    force-charge and negative-price overrides must update all related
+    current-slot fields together, respect aggregate fuse headroom, and never
+    energize an explicitly disconnected EV. This does not conflict with
+    invariant 14's slot-entry hold: the hold only ever republishes a rate
+    computed _for this same slot, from this same accepted plan_ — it is
+    cleared immediately, not restored, the instant the plan retracts the
+    charge (see below).
+
+14. **Current-slot EV power hold** (issue #957): the raw per-slot power from
+    invariant 12 is an energy÷time ratio re-derived on every solve. For a
+    **future** slot both terms come from the full slot width, so the ratio is
+    stable. For the **current** slot, the time term is the _remaining_ slot
+    duration (invariant 6's partial-slot scaling propagated through to the
+    power field) — a term that shrinks toward zero as the slot elapses. In
+    the steady, capacity-bound case numerator and denominator shrink together
+    and the ratio stays a constant equal to the achievable rate. But because
+    the coordinator re-solves far more often than once per slot (sometimes
+    under a second apart), rounding on an already-small energy numerator
+    dominates as the remaining time collapses toward its floor, and the
+    ratio degenerates into "run at rated power to deliver a trickle of
+    energy in a fraction of a second" — a value that can then stay published
+    past the slot's actual end.
+
+    `_hold_current_slot_ev_power()` (`planner/engine_ev.py`) fixes this by
+    running **once, after candidate selection**, on the winning candidate's
+    slots — so it is agnostic to whether the baseline EV planner or the MILP
+    produced the raw value, and it mutates only the display/command wattage
+    field, never energy, grid-flow, or cost, so it cannot move `winner.cost`
+    (invariant "Cost identity" in `docs/planner-spec.md`'s top-level
+    invariants). For the current slot:
+
+    - The first time the slot is seen as current, or the first time its
+      allocation goes from zero to non-zero (a session starting mid-slot, or
+      a genuine re-rank that newly selects the slot), the freshly computed
+      rate is captured **once** — using whatever time genuinely remains at
+      that instant — and held.
+    - On every subsequent solve within the _same_ current slot, the held
+      rate is republished verbatim; the freshly (and potentially
+      degenerate) recomputed value is discarded.
+    - The instant the current slot's allocation is retracted to zero (the
+      plan no longer wants to charge it), the held state is cleared and zero
+      is published immediately — never a stale non-zero hold.
+    - Crossing into a new current slot always re-evaluates from scratch.
+
+    The hold state (`ev_held_slot_start` / `ev_held_power_w`, and the
+    `ev_second_*` equivalents) is threaded through `PlannerInput` →
+    `PlannerOutput` and persisted by the coordinator across solves — the
+    engine itself stays a pure function of its input, including this state.
+
+    This is orthogonal to the amp deadband and slot-tail stop suppression in
+    `coordinator_ev_command_stability.py` (see "EV charger command
+    stability" below): that layer still runs afterward as a defense-in-depth
+    execution-layer smoother, but because the current slot's rate is now
+    stable by construction, it will typically see nothing to damp for the
+    class of churn this invariant addresses.
 
 ### Invariants for tests
 
@@ -2816,24 +3107,47 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
 - One EV with zero load does not clear the other EV's load.
 - `ev_smart_charging` label is applied when `ev_total_planned_load_kwh > 0`, even when
   `ev_planned_load_kwh == 0` (i.e. `base_load_includes_ev = True`).
+- Current-slot EV power hold (issue #957):
+  - A slot with only seconds remaining, re-solved after a rate is already
+    held for it, republishes the held rate — never a spike toward rated
+    power.
+  - A slot boundary where the current slot's allocation goes from positive
+    to zero clears the hold and publishes zero immediately; one where it
+    goes from zero to positive captures a fresh rate for the new slot.
+  - A session starting mid-slot (nothing held yet, partially elapsed slot)
+    captures the rate for the time that genuinely remains, not the full
+    slot width.
+  - A slot re-solved multiple times mid-duration returns the identical held
+    rate on every solve, regardless of what a fresh energy÷time
+    recomputation would have produced.
+  - `winner.cost == final_output.cost` still holds — the hold only mutates
+    the display/command wattage field.
 
 ### EV charger command stability (post-plan command layer)
 
-The planner re-solves on every cycle and re-derives the **live** slot's charger
-command from scratch:
+Before the slot-entry hold (issue #957, invariant 14 above), the planner
+re-solved on every cycle and re-derived the **live** slot's charger command
+from scratch on _every_ solve:
 
 ```text
 command_W = energy allocated to the remainder of this slot
             ÷ time remaining in this slot
 ```
 
-Both terms move every solve. The amp lattice is integer, the target-cap pins
-total pre-deadline energy to the remaining need, and the live slot's amp step
-shrinks continuously as the slot elapses — so the live slot's amps is a
-_residual_ on a lattice that is itself moving. Competing integer splits are
-routinely within a rounding error of each other on cost: on one observed
-2.5 h session the two best splits for a slot differed by **0.01 %**, yet a
-0.3 % SoC update flipped the published command by 2–3 A.
+with both terms moving every solve. The hold now pins this ratio once, the
+first time the current slot is captured, and republishes that same value on
+every subsequent solve within the slot — so the residual churn this layer
+damps is narrower than it used to be: it no longer sees the raw energy÷time
+ratio move every cycle, only the single fresh value computed when a slot is
+first captured (or re-captured after a genuine retraction). That first
+capture is still exactly the scenario described below: the amp lattice is
+integer, the target-cap pins total pre-deadline energy to the remaining
+need, and competing integer splits are routinely within a rounding error of
+each other on cost — on one observed 2.5 h session the two best splits for a
+slot differed by **0.01 %**, yet a 0.3 % SoC update flipped the published
+command by 2–3 A. This layer remains a necessary defense-in-depth smoother
+for that first-capture jitter and for any command movement introduced by
+runtime overrides (force-charge-now, auto-full-EV) applied after the hold.
 
 Two corrections are applied in
 `coordinator_ev_command_stability.py`, invoked from

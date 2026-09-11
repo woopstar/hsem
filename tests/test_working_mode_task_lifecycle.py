@@ -15,13 +15,20 @@ Acceptance criteria (issue #369)
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from custom_components.hsem.coordinator_data import CoordinatorData
 from custom_components.hsem.custom_sensors.working_mode_sensor import (
     HSEMWorkingModeSensor,
 )
+from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
+from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.utils.degraded_mode import DegradedMode
+from custom_components.hsem.utils.inverter_verify import CycleApplySummary
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -63,6 +70,35 @@ def _make_sensor() -> HSEMWorkingModeSensor:
     hass.async_create_task = MagicMock(side_effect=_fake_create_task)
     sensor.hass = hass
     return sensor
+
+
+def _make_minimal_coordinator_data(
+    recommendation: str = "batteries_wait_mode",
+) -> CoordinatorData:
+    """Return a minimal real ``CoordinatorData`` that reaches the write path.
+
+    ``cfg.read_only=False`` and ``DegradedMode.OK`` so
+    ``_async_apply_hardware_writes`` proceeds past its safety gates and into
+    the (patched) applier calls, exercising the real ``_write_phase_active``
+    bookkeeping around them.
+    """
+    cfg = SensorConfig()
+    cfg.read_only = False
+
+    live = LiveState()
+    live._degraded_mode = DegradedMode.OK
+    live.export_electricity_price = 0.20
+
+    now = datetime.now(UTC)
+    rec = HourlyRecommendation.__new__(HourlyRecommendation)
+    object.__setattr__(rec, "start", now)
+    object.__setattr__(rec, "end", now + timedelta(minutes=15))
+    object.__setattr__(rec, "recommendation", recommendation)
+    object.__setattr__(rec, "batteries_charged_kwh", 0.0)
+    object.__setattr__(rec, "batteries_discharged_kwh", 0.0)
+    object.__setattr__(rec, "grid_export_kwh", 0.0)
+
+    return CoordinatorData(cfg=cfg, live=live, hourly_recommendation=rec)
 
 
 # ---------------------------------------------------------------------------
@@ -331,3 +367,197 @@ class TestSingleTaskInFlight:
         if sensor._update_task and not sensor._update_task.done():
             sensor._update_task.cancel()
         await asyncio.gather(sensor._update_task, return_exceptions=True)
+
+
+class TestWritePhaseCoalescing:
+    """A routine coordinator push must not cancel an in-flight write sequence
+    once it has entered its write phase (issue #951).
+
+    Acceptance criteria (issue #951)
+    ---------------------------------
+    1. ``_write_phase_active`` is True only while
+       ``_async_apply_hardware_writes`` is running.
+    2. A coordinator push arriving while ``_write_phase_active`` is True does
+       not cancel or replace ``_update_task`` — it is coalesced instead.
+    3. Once the in-flight write sequence completes, a coalesced push starts
+       exactly one follow-up task so the newer state is applied rather than
+       dropped.
+    4. Entity unload (``async_will_remove_from_hass``) still cancels
+       immediately, even mid-write-phase — that safety path is unweakened.
+    """
+
+    @staticmethod
+    def _patch_battery_settings(side_effect):
+        """Patch the battery-settings applier call at its working_mode_sensor import site."""
+        return patch(
+            "custom_components.hsem.custom_sensors.working_mode_sensor."
+            "async_apply_battery_settings",
+            new_callable=AsyncMock,
+            side_effect=side_effect,
+        )
+
+    @staticmethod
+    def _patch_inverter_power_control():
+        """Patch the inverter power-control applier call to return instantly."""
+        return patch(
+            "custom_components.hsem.custom_sensors.working_mode_sensor."
+            "async_apply_inverter_power_control",
+            new_callable=AsyncMock,
+            return_value=CycleApplySummary(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_write_phase_active_during_hardware_writes(self) -> None:
+        """``_write_phase_active`` is True only while writes are in flight."""
+        sensor = _make_sensor()
+        sensor.async_write_ha_state = MagicMock()  # type: ignore[method-assign,misc]  # avoid unrelated HA state-write plumbing
+        sensor.coordinator.data = _make_minimal_coordinator_data()
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def _slow_battery_write(*args, **kwargs):
+            entered.set()
+            await release.wait()
+            return CycleApplySummary()
+
+        assert sensor._write_phase_active is False
+
+        with (
+            self._patch_inverter_power_control(),
+            self._patch_battery_settings(_slow_battery_write),
+        ):
+            sensor._handle_coordinator_update()
+            await asyncio.wait_for(entered.wait(), timeout=1.0)
+            assert sensor._write_phase_active is True
+            task = sensor._update_task
+            assert task is not None
+
+            release.set()
+            await asyncio.wait_for(task, timeout=1.0)
+
+        assert sensor._write_phase_active is False
+
+    @pytest.mark.asyncio
+    async def test_coordinator_push_mid_write_does_not_cancel_task(self) -> None:
+        """A push arriving mid-write-phase must not cancel the running task."""
+        sensor = _make_sensor()
+        sensor.async_write_ha_state = MagicMock()  # type: ignore[method-assign,misc]  # avoid unrelated HA state-write plumbing
+        sensor.coordinator.data = _make_minimal_coordinator_data()
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def _slow_battery_write(*args, **kwargs):
+            entered.set()
+            await release.wait()
+            return CycleApplySummary()
+
+        with (
+            self._patch_inverter_power_control(),
+            self._patch_battery_settings(_slow_battery_write),
+        ):
+            sensor._handle_coordinator_update()
+            await asyncio.wait_for(entered.wait(), timeout=1.0)
+            first_task = sensor._update_task
+            assert first_task is not None
+
+            # Simulate a routine replan push (e.g. the 10s live-power tick)
+            # arriving while the write sequence is still in flight.
+            sensor._handle_coordinator_update()
+
+            assert not first_task.cancelled()
+            assert not first_task.done()
+            assert sensor._coordinator_update_pending is True
+            # No replacement task was created — the push was coalesced.
+            assert sensor._update_task is first_task
+
+            release.set()
+            await asyncio.wait_for(first_task, timeout=1.0)
+            assert not first_task.cancelled()
+
+            # Let the coalesced follow-up task (scheduled from the done
+            # callback) finish so it doesn't leak into the next test.
+            await asyncio.sleep(0)
+            if (
+                sensor._update_task is not first_task
+                and sensor._update_task is not None
+            ):
+                await asyncio.wait_for(sensor._update_task, timeout=1.0)
+
+    @pytest.mark.asyncio
+    async def test_pending_push_starts_follow_up_task_after_completion(self) -> None:
+        """A coalesced push starts exactly one follow-up task once writes finish."""
+        sensor = _make_sensor()
+        sensor.async_write_ha_state = MagicMock()  # type: ignore[method-assign,misc]  # avoid unrelated HA state-write plumbing
+        sensor.coordinator.data = _make_minimal_coordinator_data()
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        call_count = 0
+
+        async def _battery_write(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                entered.set()
+                await release.wait()
+            # The follow-up (second) call returns immediately.
+            return CycleApplySummary()
+
+        with (
+            self._patch_inverter_power_control(),
+            self._patch_battery_settings(_battery_write),
+        ):
+            sensor._handle_coordinator_update()
+            await asyncio.wait_for(entered.wait(), timeout=1.0)
+            first_task = sensor._update_task
+            assert first_task is not None
+
+            # Coalesced — no new task yet.
+            sensor._handle_coordinator_update()
+            assert sensor._update_task is first_task
+
+            release.set()
+            await asyncio.wait_for(first_task, timeout=1.0)
+            # Let the done callback run and schedule the follow-up task.
+            await asyncio.sleep(0)
+
+            follow_up_task = sensor._update_task
+            assert follow_up_task is not first_task
+            assert follow_up_task is not None
+            await asyncio.wait_for(follow_up_task, timeout=1.0)
+
+        assert call_count == 2
+        assert sensor._coordinator_update_pending is False
+
+    @pytest.mark.asyncio
+    async def test_unload_still_cancels_immediately_mid_write_phase(self) -> None:
+        """Entity unload must still hard-cancel even while writing (issue #951).
+
+        The fix must not weaken ``async_will_remove_from_hass`` — that path
+        calls ``_cancel_update_task()`` directly and unconditionally,
+        regardless of ``_write_phase_active``.
+        """
+        sensor = _make_sensor()
+        sensor.async_write_ha_state = MagicMock()  # type: ignore[method-assign,misc]  # avoid unrelated HA state-write plumbing
+        sensor.coordinator.data = _make_minimal_coordinator_data()
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def _slow_battery_write(*args, **kwargs):
+            entered.set()
+            await release.wait()
+            return CycleApplySummary()
+
+        with (
+            self._patch_inverter_power_control(),
+            self._patch_battery_settings(_slow_battery_write),
+        ):
+            sensor._handle_coordinator_update()
+            await asyncio.wait_for(entered.wait(), timeout=1.0)
+            assert sensor._write_phase_active is True
+
+            await sensor.async_will_remove_from_hass()
+            await asyncio.sleep(0)
+
+            task = sensor._update_task
+            assert task is not None
+            assert task.cancelled()

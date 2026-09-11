@@ -30,7 +30,6 @@ from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_prediction_accuracy_sensor_entity_id,
-    get_prediction_accuracy_sensor_name,
     get_prediction_accuracy_sensor_unique_id,
 )
 
@@ -50,6 +49,7 @@ class HSEMPredictionAccuracySensor(
 
     _attr_icon = "mdi:target"
     _attr_has_entity_name = True
+    _attr_translation_key = "prediction_accuracy"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
@@ -68,7 +68,6 @@ class HSEMPredictionAccuracySensor(
         self._attr_unique_id = get_prediction_accuracy_sensor_unique_id(
             config_entry.entry_id
         )
-        self._attr_name = get_prediction_accuracy_sensor_name()
         self.entity_id = get_prediction_accuracy_sensor_entity_id()
         self._restored_state: str | None = None
 

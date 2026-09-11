@@ -176,6 +176,12 @@ class TestSlotMutationHelpers:
         assert abs(slot.batteries_charged_kwh) < 1e-9
 
 
+# Section 3 (_apply_soc_plan — threshold correctness, issue #445) removed:
+# _apply_soc_plan and the sibling _remove_solar_charge/_remove_grid_charge/
+# _remove_all_charge helpers formerly tested above were deleted as dead code
+# in issue #967. MILP-only mode (#483) made the partial-SoC and
+# grid/solar/discharge-only heuristic candidates permanently unreachable.
+
 # ===========================================================================
 # 4. generate_candidates — structural contract
 # ===========================================================================
@@ -224,7 +230,7 @@ class TestGenerateCandidates:
 
 
 # ===========================================================================
-# 4. _validate_candidate
+# 5. _validate_candidate
 # ===========================================================================
 
 
@@ -274,7 +280,7 @@ class TestValidateCandidate:
 
 
 # ===========================================================================
-# 5. select_best_candidate — integration
+# 6. select_best_candidate — integration
 # ===========================================================================
 
 
@@ -427,7 +433,7 @@ class TestSelectBestCandidate:
 
 
 # ===========================================================================
-# 6. Full planner integration — candidates on PlannerOutput
+# 7. Full planner integration — candidates on PlannerOutput
 # ===========================================================================
 
 
@@ -488,7 +494,7 @@ class TestPlannerOutputCandidates:
 
 
 # ===========================================================================
-# 7. Passive candidate tests (issue #420)
+# 8. Passive candidate tests (issue #420)
 # ===========================================================================
 
 
@@ -598,7 +604,7 @@ class TestPassiveCandidate:
 
 
 # ===========================================================================
-# 8. Degenerate "no eligible candidates" fallback (issue #897)
+# 9. Degenerate "no eligible candidates" fallback (issue #897)
 # ===========================================================================
 
 

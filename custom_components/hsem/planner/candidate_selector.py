@@ -80,8 +80,13 @@ class HysteresisResult:
             Name of the plan from the previous run, or ``""``.
         previous_score:
             Score of the previous plan re-evaluated with current data, or 0.
+            Not surfaced onto ``PlanExplanation`` — ``reason`` already states
+            the computed improvement/thresholds in human-readable form; this
+            field exists for precise numeric assertions in
+            tests/planner/test_hysteresis.py (issue #967).
         new_score:
-            Score of the best new candidate, or 0.
+            Score of the best new candidate, or 0. Same rationale as
+            ``previous_score``.
     """
 
     applied: bool = False

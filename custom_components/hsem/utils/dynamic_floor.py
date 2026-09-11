@@ -67,7 +67,6 @@ class DynamicDischargeFloor:
     max_margin: float = _MAX_SAFETY_MARGIN
 
     # Margin correction tracking (non-dataclass, mutable)
-    _last_floor_pct: float | None = field(default=None, init=False, repr=False)
     _days_below_floor: int = field(default=0, init=False, repr=False)
     _days_above_floor: int = field(default=0, init=False, repr=False)
 
@@ -236,9 +235,6 @@ class DynamicDischargeFloor:
             configured_min_soc_pct,
             usable_kwh,
         )
-
-        # Store the computed floor for later margin correction.
-        self._last_floor_pct = effective_floor_pct
 
         return effective_floor_pct, diag
 

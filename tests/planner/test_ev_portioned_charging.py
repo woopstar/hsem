@@ -12,10 +12,9 @@ lattice (``planner/milp/_ev_amp_lattice.py``) links every managed EV's
 charge energy to an executable amp command by equality during the solve
 itself, so the published schedule is already whole-amp-exact and needs no
 post-solve concentration or quantization.  ``_redistribute_below_minimum_power``
-and ``_quantize_one_ev_allocation`` (``planner/milp/_ev_quantize.py``) remain
-as standalone pure functions for direct/compatibility callers.  These tests
-exercise the re-portioning tail directly, with ``values`` representing a
-supplied per-slot EV allocation.
+(``planner/milp/_ev_quantize.py``) remains as a standalone pure function for
+direct/compatibility callers.  These tests exercise the re-portioning tail
+directly, with ``values`` representing a supplied per-slot EV allocation.
 """
 
 from __future__ import annotations

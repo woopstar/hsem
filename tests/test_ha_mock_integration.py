@@ -223,6 +223,7 @@ def make_bare_coordinator(
     coord._batteries_schedules = []
     coord._batteries_schedules_remaining_capacity_needed = 0.0
     coord._current_required_battery = 0.0
+    coord._current_wait_mode_reserve = None
     coord._live = None
     coord._snapshot = None
     coord._net_consumption_ema = None
@@ -235,6 +236,10 @@ def make_bare_coordinator(
     coord._data_quality = DataQuality()
     coord._ev_charging_plan = None
     coord._ev_second_charging_plan = None
+    coord._ev_held_slot_start = None
+    coord._ev_held_power_w = 0.0
+    coord._ev_second_held_slot_start = None
+    coord._ev_second_held_power_w = 0.0
 
     from custom_components.hsem.custom_sensors.config_reader import build_sensor_config
 
@@ -752,6 +757,49 @@ class TestDryRunCycle:
         data = captured[0]
         assert isinstance(data, CoordinatorData)
         assert data.last_updated is not None
+
+    @pytest.mark.asyncio
+    async def test_ml_populate_exception_falls_back_without_failing_cycle(self) -> None:
+        """A raising ML populate must not fail the whole update cycle.
+
+        ``async_setup_entry`` awaits this exact cycle directly during initial
+        setup (issue #926); an uncaught exception here would propagate into
+        ``ConfigEntryNotReady``/``ConfigEntryError`` and take every HSEM
+        entity down with it, not just the ML-driven ones. It must instead
+        degrade to the legacy avg-consumption path, same as a clean
+        ``consumption_ok=False`` return.
+        """
+        config_entry = make_fake_config_entry(
+            {"hsem_read_only": True, "hsem_ml_consumption_enabled": True}
+        )
+        hass = make_fake_hass(_BASE_ENTITY_STATES)
+        coord = make_bare_coordinator(hass=hass, config_entry=config_entry)
+        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]  # test monkey-patch
+        sentinel_predictor = object()
+        coord._ml_predictor = sentinel_predictor  # type: ignore[assignment]  # preserved-on-failure sentinel
+
+        captured: list[CoordinatorData] = []
+        coord.async_set_updated_data = lambda d: captured.append(d)  # type: ignore[assignment,method-assign]  # test monkey-patch
+
+        with (
+            _patch_all_ha_helpers() as entered,
+            patch(
+                "custom_components.hsem.ml.populator.populate_ml_house_consumption",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
+        ):
+            avg_fallback_mock = entered[
+                2
+            ]  # populate_avg_house_consumption_from_snapshot
+            await coord._async_run_update_cycle()
+            avg_fallback_mock.assert_called()
+
+        assert len(captured) == 1
+        assert isinstance(captured[0], CoordinatorData)
+        # The previously trained predictor must survive a failed populate so
+        # the next cycle can retry against its cache instead of restarting cold.
+        assert coord._ml_predictor is sentinel_predictor
 
     @pytest.mark.asyncio
     async def test_state_event_during_solve_discards_stale_cycle(self) -> None:

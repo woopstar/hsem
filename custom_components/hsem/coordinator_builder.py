@@ -17,7 +17,7 @@ directly.
 from __future__ import annotations
 
 import math
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.hourly_consumption_average import (
@@ -136,6 +136,10 @@ def build_planner_input(
     capacity_learner: CapacityLearner | None = None,
     dynamic_discharge_floor_pct: float | None = None,
     live_power_estimate: LivePowerEstimate | None = None,
+    ev_held_slot_start: datetime | None = None,
+    ev_held_power_w: float = 0.0,
+    ev_second_held_slot_start: datetime | None = None,
+    ev_second_held_power_w: float = 0.0,
 ) -> PlannerInput:
     """Assemble a :class:`PlannerInput` from the coordinator's current pipeline state.
 
@@ -334,6 +338,7 @@ def build_planner_input(
             forecast_reserve_pct if forecast_reserve_pct is not None else 0.0
         ),
         export_min_price=convert_to_float(cfg.export_electricity_min_price) or 0.0,
+        export_fee_per_kwh=convert_to_float(cfg.export_fee_per_kwh) or 0.0,
         main_fuse_amps=(float(cfg.main_fuse_amps) if cfg.main_fuse_amps > 0 else None),
         main_fuse_phases=cfg.main_fuse_phases,
         max_grid_export_power_kw=(
@@ -346,7 +351,6 @@ def build_planner_input(
         live_solar_production_w=live_solar_w,
         live_house_consumption_w=live_house_w,
         live_house_consumption_available=live_house_available,
-        is_read_only=bool(cfg.read_only),
         # EV planned load
         ev_planned_load_enabled=bool(cfg.ev_planned_load_enabled),
         ev_planned_load_connected=bool(live.ev_planned_load_connected),
@@ -467,6 +471,10 @@ def build_planner_input(
             ev_session_kw.get("ev_second") if ev_session_kw else None
         ),
         dynamic_discharge_floor_pct=dynamic_discharge_floor_pct,
+        ev_held_slot_start=ev_held_slot_start,
+        ev_held_power_w=ev_held_power_w,
+        ev_second_held_slot_start=ev_second_held_slot_start,
+        ev_second_held_power_w=ev_second_held_power_w,
     )
 
 

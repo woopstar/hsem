@@ -6,6 +6,7 @@ calls behind safe async interfaces that handle caching, error reporting,
 and type conversion consistently across the HSEM integration.
 """
 
+from collections.abc import Callable
 from typing import Any, cast
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
@@ -23,6 +24,7 @@ from custom_components.hsem.utils.conversion import (
     convert_to_int,
 )
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+from custom_components.hsem.utils.unit_normalize import normalize_to_unit
 
 _entity_id_from_unique_id_cache: dict[tuple[str, str, str], str] = {}
 
@@ -232,6 +234,82 @@ def ha_get_entity_state_and_convert(
         raise HomeAssistantError(
             f"Error converting state of entity '{entity_id}' to type '{output_type}': {e}"
         )
+
+
+def normalize_entity_float(
+    self: Any,
+    entity_id: str | None,
+    value: float | None,
+    canonical_unit: str,
+    *,
+    label: str = "",
+) -> float | None:
+    """Normalize an already-read float to *canonical_unit* using its entity's unit.
+
+    Thin convenience wrapper for callers that already have a converted
+    float (e.g. from :func:`ha_get_entity_state_and_convert`) and just need
+    the ``unit_of_measurement`` lookup + conversion step. Delegates to
+    :func:`custom_components.hsem.utils.unit_normalize.normalize_to_unit` so
+    a sensor reporting in an unexpected unit (Wh instead of kWh, kW instead
+    of W, etc.) is corrected rather than silently misread (issue #946).
+
+    Args:
+        self: The calling coordinator or component instance (must expose
+            ``.hass``).
+        entity_id: The entity the value was read from, or ``None``.
+        value: The already-converted float reading, or ``None``.
+        canonical_unit: HSEM's expected unit for this field (e.g.
+            ``UnitOfPower.WATT``, ``UnitOfEnergy.KILO_WATT_HOUR``).
+        label: Human-readable label used in log messages.
+
+    Returns:
+        The normalized float, or *value* unchanged when *entity_id* or
+        *value* is ``None``.
+    """
+    if value is None or entity_id is None:
+        return value
+    hass = getattr(self, "hass", None)
+    state_obj = hass.states.get(entity_id) if hass is not None else None
+    unit = (
+        state_obj.attributes.get("unit_of_measurement")
+        if state_obj is not None
+        else None
+    )
+    return normalize_to_unit(
+        value, unit, canonical_unit, entity_id=entity_id, label=label
+    )
+
+
+def read_normalized_float(
+    self: Any,
+    entity_id: str | None,
+    reader: Callable[..., Any],
+    canonical_unit: str,
+    *,
+    label: str,
+) -> float | None:
+    """Read one entity as a float, normalized to *canonical_unit* (issue #946).
+
+    Combines a caller-supplied read closure with :func:`normalize_entity_float`
+    for grid/PV energy meters and house/solar/phase power meters — the same
+    class of unit-mismatch risk that ``state_collector.py``'s
+    ``_read_ev_power_w`` already handles for EV charger power, but without
+    EV-specific plausibility checks.
+
+    Args:
+        self: The calling coordinator or component instance (must expose
+            ``.hass``).
+        entity_id: The entity to read, or ``None``.
+        reader: Callable of ``(entity_id, "float", label=label) -> Any``
+            (e.g. the ``_read`` closure in ``state_collector.py``).
+        canonical_unit: HSEM's expected unit for this field.
+        label: Human-readable label used in log messages.
+
+    Returns:
+        The normalized float, or ``None`` when unavailable.
+    """
+    value = convert_to_float(reader(entity_id, "float", label=label))
+    return normalize_entity_float(self, entity_id, value, canonical_unit, label=label)
 
 
 async def async_entity_exists(hass: Any, entity_id: str) -> bool:  # NOSONAR
