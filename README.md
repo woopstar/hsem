@@ -76,10 +76,9 @@
 
 1. **Remove any previous Huawei Solar Battery Optimization Project integrations.**
 2. **Install HSEM** via Home Assistant's custom integrations or manually.
-3. **Configure your sensors** for solar battery, inverter, grid, and EV charger (if present).
-4. **Set up battery schedules** in HSEM (do not use Fusion Solar app for scheduling).
-5. **Let HSEM run for at least 14 days** to collect historical data for optimal performance.
-6. **Monitor the Working Mode Sensor** for system status and recommendations.
+3. **Configure your sensors** for solar battery, inverter, grid, and EV charger (if present) — do not use the Fusion Solar app for scheduling; HSEM's planner drives charge/discharge decisions automatically.
+4. **Let HSEM run for at least 14 days** to collect historical data for optimal performance.
+5. **Monitor the Working Mode Sensor** for system status and recommendations.
 
 **Tip:**
 If you are a new user and want to safely observe how HSEM would control your battery system without making any changes, enable the **Read-Only** mode. This acts as a "dry run" and allows you to review all proposed configuration changes before they are applied.
@@ -154,7 +153,7 @@ After removal, verify that no HSEM entities remain in **Settings** -> **Devices 
 
 Full documentation is available on the **[HSEM Wiki](https://github.com/woopstar/hsem/wiki)** and in the [`docs/`](docs/) directory:
 
-- **[Home](https://github.com/woopstar/hsem/wiki/Home)** — User-facing overview: features, FAQ, working modes, battery schedules, excess export, and more
+- **[Home](https://github.com/woopstar/hsem/wiki/Home)** — User-facing overview: features, FAQ, working modes, excess export, and more
 - **[Architecture Overview](https://github.com/woopstar/hsem/wiki/architecture-overview)** — System context, layered architecture, module map
 - **[Planner Specification](docs/planner-spec.md)** — Normative planner invariants, solar correction, dynamic floor, session EV
 - **[Planner Technical Guide](docs/planner-guide.md)** — How the planner works with worked examples, solar correction, dynamic floor

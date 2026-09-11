@@ -331,8 +331,9 @@ not accept the value.
   2. Check that the working mode or settings being written are valid for
      your inverter model.
   3. Restart the Huawei Solar integration.
-  4. If the failure is on `set_tou_periods`, check your battery schedule
-     configuration for invalid values.
+  4. If the failure is on `set_tou_periods`, check that the planner's
+     current recommendation maps to a valid TOU mode for your inverter
+     model.
 
 **4e. Force working mode override active**
 
@@ -381,17 +382,7 @@ established.
 - **Fix:** Set to 0 to disable window hysteresis, or lower it if slots are
   staying locked too long.
 
-**5c. Only one schedule active**
-
-If you only have one battery schedule configured and it covers only part of
-the day, the battery will be in `batteries_wait_mode` outside that window.
-
-- **Check:** HSEM → **Configure** → **Batteries Schedule** steps (1, 2, 3).
-  Are schedules enabled? Do they cover the hours you expect?
-- **Fix:** Enable additional schedules or widen the hours. Each schedule
-  defines when a specific working mode is permitted.
-
-**5d. Planner in winter wait mode**
+**5c. Planner in winter wait mode**
 
 In winter months, the planner uses `batteries_wait_mode` by default — it
 doesn't actively charge or discharge. This is intentional, but you can enable
@@ -404,7 +395,7 @@ planner reserve.
 - **Fix:** If this is unexpected, check the _Winter Months_ setting in the
   Months config step. Adjust if your climate has different seasonal patterns.
 
-**5e. Consumption weights prevent plan selection**
+**5d. Consumption weights prevent plan selection**
 
 If the consumption prediction weights don't sum to 100 %, the planner logs a
 warning and may produce suboptimal plans.
@@ -426,16 +417,19 @@ warning and may produce suboptimal plans.
 
 ### Checks & likely causes
 
-**6a. No charge schedule configured or active**
+**6a. Planner never assigns a charge recommendation**
 
-HSEM only commands charging when a schedule permits it and the planner
-assigns charge recommendations to slots.
+HSEM only commands charging when the planner's optimal candidate assigns a
+charge recommendation to a slot — driven by price, solar, and consumption
+forecasts, not a manual schedule.
 
 - **Check:** `sensor.hsem_plan_explanation` → `selected_strategy`. Does it
   include "charge"? Look at the `planned_slots` attribute — are any marked
   with a charge recommendation?
-- **Fix:** Enable a battery schedule in the config flow and ensure it
-  covers the hours when you want charging to happen.
+- **Fix:** Review your electricity price sensor and battery economics
+  settings (purchase price, cycle cost, capacity loss) — an unrealistic
+  cycle cost can make every charge opportunity look unprofitable. See
+  [Battery Charging Economics](battery-charging-economics.md).
 
 **6b. SoC already at or above charge cutoff**
 
@@ -507,15 +501,18 @@ the planner may determine there's no surplus to charge the battery.
 
 ### Checks & likely causes
 
-**7a. No discharge schedule configured or active**
+**7a. Planner never assigns a discharge recommendation**
 
-Discharge requires a battery schedule with a discharge-compatible mode
-enabled.
+Discharge only happens when the planner's optimal candidate determines it's
+economically worthwhile — driven by the price spread, the discharge floor,
+and battery cycle-cost economics, not a manual schedule.
 
 - **Check:** `sensor.hsem_plan_explanation` → `selected_strategy`. Does it
   include "discharge"?
-- **Fix:** Enable a battery schedule that permits discharge during the hours
-  when you want to discharge.
+- **Fix:** Review your electricity export/import price spread and battery
+  economics settings — see
+  [Battery Charging Economics](battery-charging-economics.md) for how the
+  minimum profitable price difference is calculated.
 
 **7b. SoC at or below end-of-discharge floor**
 

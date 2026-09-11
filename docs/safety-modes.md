@@ -114,7 +114,7 @@ The applier verifies these hardware writes:
 2. **Grid export power** — `set_maximum_feed_grid_power_percent` adjusted
    to zero when export should be blocked, or restored to 100 % when allowed
 3. **TOU periods** — `set_tou_periods` applied according to the current
-   battery schedule
+   planner recommendation
 
 ---
 
