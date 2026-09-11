@@ -32,7 +32,6 @@ from custom_components.hsem.coordinator_tracking import (
 from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
     async_collect_all_states,
-    build_battery_schedules,
     build_sensor_config,
 )
 from custom_components.hsem.models.live_state import LiveState
@@ -50,10 +49,16 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
     """Setup, teardown, options handling, timers, and plan persistence."""
 
     async def async_setup(self) -> None:
-        """Register timers and run the first update cycle.
+        """Initialise trackers, start the OCPP server(s), and register timers.
 
         Call this once after the coordinator is created (from
-        :func:`~custom_components.hsem.__init__.async_setup_entry`).
+        :func:`~custom_components.hsem.__init__.async_setup_entry`), **before**
+        platform setups are forwarded. This method must not read any
+        HSEM-owned entity (select/number/switch/time) via ``hass.states`` —
+        those platforms have not been set up yet at this point, so any such
+        read would race the entity registry (issue #926). Call
+        :meth:`async_run_first_refresh` once platform setups have been
+        forwarded instead.
         """
         # Restore prediction diagnostics before the first cycle so an options
         # reload does not restart the scorecard warm-up window.
@@ -111,9 +116,6 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
                 async_log("error", "Failed to start second OCPP server: %s", e)
                 self._ocpp_second_server = None
 
-        # Run an immediate first cycle so entities have data before first render.
-        await self._async_handle_update(None)
-
         # Hourly tick — guarantees a refresh at the top of every hour.
         self._hourly_timer_unsub = async_track_time_change(
             self.hass,
@@ -135,6 +137,17 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
             self.async_monitor_live_power,  # type: ignore[arg-type]  # HA stub expects Callable[[datetime], ...]
             timedelta(seconds=LIVE_POWER_MONITOR_INTERVAL_SECONDS),
         )
+
+    async def async_run_first_refresh(self) -> None:
+        """Run an immediate first cycle so entities have data before first render.
+
+        Call this once after platform setups have been forwarded (from
+        :func:`~custom_components.hsem.__init__.async_setup_entry`), so that
+        HSEM's own select/number/switch/time entities already exist in the
+        state machine before the cycle reads them back via
+        ``async_collect_live_state`` (issue #926).
+        """
+        await self._async_handle_update(None)
 
     async def async_teardown(self) -> None:
         """Cancel all registered timers and state-change listeners.
@@ -493,9 +506,6 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
                 unmatched[0],
             )
 
-        self._batteries_schedules_remaining_capacity_needed = sum(
-            s.needed_batteries_capacity for s in self._batteries_schedules if s.enabled
-        )
         # Preserve the plan explanation and data quality for the next CoordinatorData snapshot.
         self._plan_explanation = output.explanation
         self._data_quality = output.data_quality

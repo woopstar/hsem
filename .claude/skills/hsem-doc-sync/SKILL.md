@@ -11,16 +11,16 @@ Activate this skill **after making code changes** and **before opening a PR**. S
 
 When behaviour changes, check **every** file below. If it describes something you changed, update it:
 
-| File                            | When to check                                                                   |
-| ------------------------------- | ------------------------------------------------------------------------------- |
-| `docs/planner-guide.md`         | Planner inputs, outputs, cost function, or scenarios changed                    |
-| `docs/planner-spec.md`          | Planner semantics, invariants, formulas, or safety gates changed                |
-| `docs/config-flow-reference.md` | Config/options flow steps changed                                               |
-| `docs/ev-charge-plan-setup.md`  | EV planned load setup changed                                                   |
-| `docs/huawei_entities.md`       | New Huawei entities wired or existing ones changed                              |
-| `.github/memories.md`           | Canonical patterns, module map, open issues, or architectural decisions changed |
-| `README.md`                     | User-facing features, descriptions, or links changed                            |
-| `translations/en.json`          | Any user-facing string added, changed, or removed                               |
+| File                              | When to check                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------------- |
+| `docs/planner-guide.md`           | Planner inputs, outputs, cost function, or scenarios changed                    |
+| `docs/planner-spec.md`            | Planner semantics, invariants, formulas, or safety gates changed                |
+| `docs/config-flow-reference.md`   | Config/options flow steps changed                                               |
+| `docs/ev-charge-plan-setup.md`    | EV planned load setup changed                                                   |
+| `docs/huawei_entities.md`         | New Huawei entities wired or existing ones changed                              |
+| `.github/memories.md`             | Canonical patterns, module map, open issues, or architectural decisions changed |
+| `README.md`                       | User-facing features, descriptions, or links changed                            |
+| `translations/{en,da,de,es}.json` | Any user-facing string added, changed, or removed — see `hsem-translation-sync` |
 
 ## Documentation Rules
 
@@ -42,6 +42,9 @@ When behaviour changes, check **every** file below. If it describes something yo
 - Every user-facing string (field labels, errors, aborts) must have a key in `translations/en.json`
 - Boolean/switch fields must have translation entries
 - For `huawei_solar` fields: update **both** `config.step.huawei_solar` and `options.step.huawei_solar`
+- `en.json` is the source of truth, but `da.json`, `de.json`, and `es.json` must be
+  kept in sync with it too — run the `hsem-translation-sync` skill (backed by
+  `scripts/validate_translations.py`) before opening the PR
 
 ### README.md
 

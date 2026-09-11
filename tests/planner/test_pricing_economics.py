@@ -14,7 +14,10 @@ import numpy as np
 import pytest
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
-from custom_components.hsem.planner.cost_helpers import grid_cash_flow_cost
+from custom_components.hsem.planner.cost_helpers import (
+    deferred_export_price_by_slot,
+    grid_cash_flow_cost,
+)
 from custom_components.hsem.planner.milp._price_sanitise import sanitize_prices
 from custom_components.hsem.planner.milp_optimizer import is_scipy_available, solve_milp
 from custom_components.hsem.utils.prices import SlotPrice
@@ -101,6 +104,70 @@ def test_cash_flow_helper_zeroes_export_below_floor() -> None:
     assert grid_cash_flow_cost(
         0.0, 3.0, 0.20, 0.12, export_min_price=0.10
     ) == pytest.approx(-0.36)
+
+
+# ---------------------------------------------------------------------------
+# Export fee per kWh (issue #925)
+# ---------------------------------------------------------------------------
+
+
+def test_cash_flow_helper_nets_export_fee() -> None:
+    """3 kWh @ raw 0.10 with a 0.02 fee nets 0.08/kWh -> -0.24 revenue."""
+    assert grid_cash_flow_cost(
+        0.0, 3.0, 0.20, 0.10, export_fee_per_kwh=0.02
+    ) == pytest.approx(-0.24)
+
+
+def test_cash_flow_helper_fee_can_make_export_a_net_cost() -> None:
+    """A fee larger than the raw price flips revenue into a real cost.
+
+    ``grid_cash_flow_cost`` returns signed cost (positive = net cost), so a
+    negative net export price (0.004 - 0.015 = -0.011/kWh) shows up as a
+    *positive* return value here — exporting now costs money.
+    """
+    assert grid_cash_flow_cost(
+        0.0, 2.0, 0.0, 0.004, export_fee_per_kwh=0.015
+    ) == pytest.approx(-(0.004 - 0.015) * 2.0)
+
+
+def test_cash_flow_helper_fee_not_applied_when_zeroed_by_floor() -> None:
+    """A slot already zeroed by export_min_price stays exactly 0 — the fee
+    must not manufacture a negative revenue on top of the floor block."""
+    assert grid_cash_flow_cost(
+        0.0, 3.0, 0.20, 0.04, export_min_price=0.10, export_fee_per_kwh=0.02
+    ) == pytest.approx(0.0)
+
+
+def test_cash_flow_helper_zero_fee_matches_pre_925_behaviour() -> None:
+    """Default export_fee_per_kwh=0.0 leaves existing revenue unchanged."""
+    without_fee = grid_cash_flow_cost(0.0, 3.0, 0.20, 0.12)
+    with_zero_fee = grid_cash_flow_cost(0.0, 3.0, 0.20, 0.12, export_fee_per_kwh=0.0)
+    assert without_fee == pytest.approx(with_zero_fee)
+    assert without_fee == pytest.approx(-0.36)
+
+
+def test_deferred_export_price_nets_the_fee() -> None:
+    """The refill/deferred price used by the terminal-SoC premium must be
+    net of the export fee — it feeds the same economic decision as the
+    export-revenue term above (both the MILP objective and score_plan mirror
+    this helper, so a mismatch here would desync the two, issue #638/#657
+    style)."""
+    # Slot 0 has no qualifying deferral opportunity; slot 1's PV surplus
+    # (5.0 kWh) exceeds what the battery can absorb (2.0 kWh), so it becomes
+    # the deferred refill price for slot 0.
+    slots = [
+        _slot(0, export_price=0.20, load_kwh=0.5, pv_kwh=0.5),
+        _slot(1, export_price=0.10, load_kwh=0.0, pv_kwh=5.0),
+    ]
+    result = deferred_export_price_by_slot(
+        slots,
+        usable_kwh=2.0,
+        max_charge_per_slot=2.0,
+        now=_NOW,
+        export_fee_per_kwh=0.03,
+    )
+    assert result[0] == pytest.approx(0.10 - 0.03)
+    assert result[1] is None
 
 
 # ---------------------------------------------------------------------------

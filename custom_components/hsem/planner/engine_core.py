@@ -24,23 +24,20 @@ from custom_components.hsem.planner.candidate_selector import (
     replacement_price_from_next_discharge,
     select_best_candidate,
 )
-from custom_components.hsem.planner.charging.arbitrage_charge import (
-    apply_arbitrage_grid_charge,
-)
 from custom_components.hsem.planner.charging.opportunistic_charge import (
     apply_opportunistic_charge,
 )
-from custom_components.hsem.planner.charging.pre_charge import apply_charge_schedules
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.discharge_scheduler import (
-    apply_discharge_schedules,
     apply_excess_export,
     apply_optimization_strategy,
+    calculate_required_battery_for_plan,
     calculate_required_battery_until_solar,
 )
 from custom_components.hsem.planner.engine_ev import (
     _build_and_inject_for_ev,
     _compute_ev_charger_power,
+    _hold_current_slot_ev_power,
 )
 from custom_components.hsem.planner.engine_ev_milp import (
     _build_ev_configs_for_milp,
@@ -77,7 +74,6 @@ from custom_components.hsem.utils.misc import (
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import (
     max_energy_per_slot_kwh,
-    roundtrip_loss_pct,
     slot_duration_hours,
 )
 
@@ -131,31 +127,11 @@ def _schedule_slots(
             the caller so heuristic and MILP paths use the same value.
     """
     mark_time_passed(slots, now)
-    apply_discharge_schedules(slots, inp.battery_schedules, now)
-    log_planner(
-        "debug",
-        "[core] _schedule_slots  pass=discharge_schedules  slots=%d",
-        len(slots),
-    )
     cd = clamp_efficiency(inp.battery_charge_efficiency_pct)
-    rlp = roundtrip_loss_pct(
-        inp.battery_charge_efficiency_pct,
-        inp.battery_discharge_efficiency_pct,
-    )
     mcphi = max_energy_per_slot_kwh(
         inp.battery_max_charge_power_w,
         inp.interval_minutes,
         efficiency_fraction=cd,
-    )
-    apply_charge_schedules(
-        slots,
-        inp.battery_schedules,
-        now,
-        mcphi,
-        current_kwh=current_kwh,
-        usable_kwh=usable_kwh,
-        cycle_cost_per_kwh=effective_cycle_cost,
-        recommended_threshold=rt,
     )
     apply_opportunistic_charge(
         slots,
@@ -165,17 +141,6 @@ def _schedule_slots(
         mcphi,
         rt,
         cycle_cost_per_kwh=effective_cycle_cost,
-    )
-    apply_arbitrage_grid_charge(
-        slots,
-        inp.battery_schedules,
-        now,
-        current_kwh,
-        usable_kwh,
-        mcphi,
-        conversion_loss_pct=rlp,
-        cycle_cost_per_kwh=effective_cycle_cost,
-        recommended_threshold=rt,
     )
     mcps = mcphi  # same formula — max charge energy per slot
     mdps: float | None = None
@@ -593,6 +558,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         discharge_efficiency_pct=inp.battery_discharge_efficiency_pct,
         export_min_price=inp.export_min_price,
         battery_export_min_price=inp.battery_export_min_price,
+        export_fee_per_kwh=inp.export_fee_per_kwh,
         time_discount_rate=inp.time_discount_rate,
         battery_usable_capacity_kwh=usable_kwh,
         max_charge_per_slot_kwh=mcps,
@@ -660,6 +626,27 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # drift and to ensure the final score matches the selector's score.
     slots = winner.slots
 
+    # Freeze the current slot's EV charger command at its slot-entry rate
+    # (issue #957). Runs once, on the winning candidate's slots, so it is
+    # agnostic to whether the baseline EV planner or the MILP produced the
+    # raw value, and only mutates the display/command wattage field — never
+    # energy, grid-flow, or cost — so it cannot move `winner.cost`.
+    ev_held_slot_start, ev_held_power_w = _hold_current_slot_ev_power(
+        slots, now, inp.ev_held_slot_start, inp.ev_held_power_w, second=False
+    )
+    ev_second_held_slot_start, ev_second_held_power_w = _hold_current_slot_ev_power(
+        slots,
+        now,
+        inp.ev_second_held_slot_start,
+        inp.ev_second_held_power_w,
+        second=True,
+    )
+
+    # Wait-mode self-consumption reserve (issue #914): derived from the
+    # *selected* plan's own simulated SoC trajectory, not the raw forecast
+    # scan used by ``rc``/``calculate_required_battery_until_solar`` above.
+    wait_mode_reserve_kwh = calculate_required_battery_for_plan(slots, now, current_kwh)
+
     _label_commanded_ev_slots(slots)
     cur_rec: str | None = None
     for s in slots:
@@ -688,14 +675,15 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     log_planner(
         "debug",
         "[core] run_planner DONE  winner=%s  cost=%.4f  score=%.4f  "
-        "cur_rec=%s  bsoc_end=%.1f%%  rc=%.3f  warnings=%d  missing=%d  "
-        "cw=%d  dw=%d",
+        "cur_rec=%s  bsoc_end=%.1f%%  rc=%.3f  wait_reserve=%s  warnings=%d  "
+        "missing=%d  cw=%d  dw=%d",
         winner.name,
         pc.total_cost,
         pc.score,
         cur_rec if cur_rec is not None else "(none)",
         bsoc_end,
         rc,
+        f"{wait_mode_reserve_kwh:.3f}" if wait_mode_reserve_kwh is not None else "None",
         len(warnings),
         len(missing_inputs),
         len(cw_out),
@@ -753,9 +741,9 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         current_recommendation=cur_rec,
         battery_soc_at_end=bsoc_end,
         required_capacity_kwh=rc,
+        wait_mode_reserve_kwh=wait_mode_reserve_kwh,
         missing_inputs=missing_inputs,
         warnings=warnings,
-        time_series_index=tsi,
         data_quality=data_quality,
         explanation=expl,
         plan_cost=pc,
@@ -763,4 +751,8 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         winner_name=winner.name,
         ev_charging_plan=ev_cp,
         ev_second_charging_plan=ev2_cp,
+        ev_held_slot_start=ev_held_slot_start,
+        ev_held_power_w=ev_held_power_w,
+        ev_second_held_slot_start=ev_second_held_slot_start,
+        ev_second_held_power_w=ev_second_held_power_w,
     )

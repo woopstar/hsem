@@ -5,30 +5,11 @@ Defines :class:`HSEMTimeEntityDescription` and the
 (unique_id, entity_id) tuples.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from homeassistant.components.time import TimeEntityDescription
 
-from custom_components.hsem.utils.sensornames.controls import (
-    get_schedule_1_end_time_entity_id,
-    get_schedule_1_end_time_key,
-    get_schedule_1_end_time_unique_id,
-    get_schedule_1_start_time_entity_id,
-    get_schedule_1_start_time_key,
-    get_schedule_1_start_time_unique_id,
-    get_schedule_2_end_time_entity_id,
-    get_schedule_2_end_time_key,
-    get_schedule_2_end_time_unique_id,
-    get_schedule_2_start_time_entity_id,
-    get_schedule_2_start_time_key,
-    get_schedule_2_start_time_unique_id,
-    get_schedule_3_end_time_entity_id,
-    get_schedule_3_end_time_key,
-    get_schedule_3_end_time_unique_id,
-    get_schedule_3_start_time_entity_id,
-    get_schedule_3_start_time_key,
-    get_schedule_3_start_time_unique_id,
-)
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.utils.sensornames.ev import (
     get_ev_deadline_time_entity_id,
     get_ev_deadline_time_key,
@@ -49,30 +30,6 @@ def build_time_id_map(entry_id: str) -> dict[str, tuple[str, str]]:
         A dict mapping config-entry keys to (unique_id, entity_id) tuples.
     """
     return {
-        get_schedule_1_start_time_key(): (
-            get_schedule_1_start_time_unique_id(entry_id),
-            get_schedule_1_start_time_entity_id(),
-        ),
-        get_schedule_1_end_time_key(): (
-            get_schedule_1_end_time_unique_id(entry_id),
-            get_schedule_1_end_time_entity_id(),
-        ),
-        get_schedule_2_start_time_key(): (
-            get_schedule_2_start_time_unique_id(entry_id),
-            get_schedule_2_start_time_entity_id(),
-        ),
-        get_schedule_2_end_time_key(): (
-            get_schedule_2_end_time_unique_id(entry_id),
-            get_schedule_2_end_time_entity_id(),
-        ),
-        get_schedule_3_start_time_key(): (
-            get_schedule_3_start_time_unique_id(entry_id),
-            get_schedule_3_start_time_entity_id(),
-        ),
-        get_schedule_3_end_time_key(): (
-            get_schedule_3_end_time_unique_id(entry_id),
-            get_schedule_3_end_time_entity_id(),
-        ),
         get_ev_deadline_time_key(): (
             get_ev_deadline_time_unique_id(entry_id),
             get_ev_deadline_time_entity_id(),
@@ -95,7 +52,11 @@ class HSEMTimeEntityDescription(TimeEntityDescription):
         as an entity attribute for dashboard display.
     default_value:
         Initial time value as an ``"HH:MM:SS"`` string.
+    hsem_device:
+        The HSEM device (issue #875) this time entity's ``device_info``
+        resolves to. Defaults to ``CONTROLLER``.
     """
 
     description: str = ""
     default_value: str = "00:00:00"
+    hsem_device: HSEMDevice = field(default=HSEMDevice.CONTROLLER)

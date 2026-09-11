@@ -28,7 +28,6 @@ def _fmt_live_w(power_w: float | None) -> str:
 def resolve_current_recommendation(
     rec: HourlyRecommendation,
     live: LiveState,
-    batteries_schedules_remaining_capacity_needed: float,
     cfg: SensorConfig,
 ) -> None:
     """Adjust the current-interval recommendation based on live runtime state.
@@ -41,15 +40,12 @@ def resolve_current_recommendation(
        itself economically viable and permitted by the user's configuration.
     2. **Grid charge active** → grid charging takes priority over EV smart charge.
     3. **EV actively charging** → switch to EV smart charging mode.
-    4. **Battery above remaining schedule need** → switch to discharge mode.
 
     The recommendation is modified **in-place** on ``rec``.
 
     Args:
         rec: The :class:`HourlyRecommendation` for the current time slot.
         live: Live state snapshot at call time.
-        batteries_schedules_remaining_capacity_needed: Total kWh still needed
-            by all upcoming discharge-window schedules.
         cfg: Current sensor configuration (excess-export toggle and export
             price floors).
     """
@@ -152,20 +148,5 @@ def resolve_current_recommendation(
             rec.ev_total_planned_load_kwh,
             _fmt_live_w(live.ev.power_w),
             _fmt_live_w(live.ev_second.power_w),
-            original_recommendation,
-        )
-
-    # 4. Battery has enough energy to cover remaining scheduled discharge needs
-    if (
-        batteries_schedules_remaining_capacity_needed > 0
-        and live.battery_current_capacity_kwh
-        > batteries_schedules_remaining_capacity_needed
-    ):
-        rec.recommendation = Recommendations.BatteriesDischargeMode.value
-        HSEM_LOGGER.debug(
-            "[resolver] battery above schedule need (%.2f > %.2f kWh) "
-            "→ overriding %s to batteries_discharge_mode",
-            live.battery_current_capacity_kwh,
-            batteries_schedules_remaining_capacity_needed,
             original_recommendation,
         )

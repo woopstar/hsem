@@ -9,13 +9,48 @@ attributes, states, and dashboard examples.
 
 HSEM exposes these entity types:
 
-| Type       | Count | Description                                                          |
-| ---------- | ----- | -------------------------------------------------------------------- |
-| **Sensor** | ~40   | Read-only state, plan, diagnostic, financial, and EV entities        |
-| **Select** | 2     | Force working mode override and Solcast likelihood selector          |
-| **Switch** | ~15   | Toggle entities for schedules, EV settings, features, and ML options |
-| **Time**   | 8     | Start/end time inputs for battery schedules and EV deadlines         |
-| **Number** | 4     | Charge/discharge efficiency and EV target SoC controls               |
+| Type       | Count | Description                                                   |
+| ---------- | ----- | ------------------------------------------------------------- |
+| **Sensor** | ~40   | Read-only state, plan, diagnostic, financial, and EV entities |
+| **Select** | 2     | Force working mode override and Solcast likelihood selector   |
+| **Switch** | ~12   | Toggle entities for EV settings, features, and ML options     |
+| **Time**   | 2     | EV charge deadlines                                           |
+| **Number** | 4     | Charge/discharge efficiency and EV target SoC controls        |
+
+---
+
+## Devices (issue #875)
+
+Entities are split across 7 Home Assistant devices instead of one, so each
+subsystem gets its own device page and can be scoped independently in
+dashboards, automations, and Areas.
+
+| Device                         | Identifier suffix     | Entities                                                                                                                                                                                                                                                                                 |
+| ------------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Controller**                 | _(none — legacy)_     | Working mode, degraded mode, read-only, hardware-writes, missing-entities, force-mode, last/next-updated, update-interval, applier-status, plan-explanation, daily-plan-vs-actual, recommendation-interval, force-working-mode selector, extended-attributes/verbose-logging/ML switches |
+| **Battery & Energy**           | `_battery_energy`     | Battery SoC, effective discharge floor, net consumption, PV curtailment, charge/discharge efficiency numbers, battery schedule 1/2/3 switches and start/end times, dynamic discharge floor switch                                                                                        |
+| **Hourly Consumption Profile** | `_hourly_consumption` | All 168 per-hour-block entities (`HSEMHouseConsumptionPowerSensor` + integral + utility-meter + 1/3/7/14-day averages × 24 hour blocks)                                                                                                                                                  |
+| **Financial**                  | `_financial`          | Export income, import cost, net grid balance, savings                                                                                                                                                                                                                                    |
+| **Forecast**                   | `_forecast`           | Forecast accuracy, prediction accuracy, solar confidence, Solcast likelihood selector                                                                                                                                                                                                    |
+| **EV Primary**                 | `_ev_primary`         | EV charging/plan sensors, calculated power, current limit, target SoC number, deadline time, smart-charging/force-charge-now/force-discharge/auto-full switches, OCPP charger sensors for `charger_index=1`                                                                              |
+| **EV Secondary**               | `_ev_secondary`       | The same set as EV Primary for `charger_index=2` / the second EV (only present when the second EV is configured)                                                                                                                                                                         |
+
+The Controller device keeps the original `(DOMAIN, entry_id)` identifier that
+predates the split — no migration is needed for its entities. Every other
+device is identified as `(DOMAIN, f"{entry_id}_<suffix>")`.
+
+**Naming:** EV Secondary and OCPP entity _names_ no longer carry a redundant
+`"Second"`/`"2"` marker (e.g. `"Charger Status"`, not `"OCPP Charger Second
+Status"`) — the device name (e.g. "HSEM EV Secondary") already disambiguates
+via `_attr_has_entity_name = True`. `unique_id` and `entity_id` are
+unchanged.
+
+**Migration:** on first startup after upgrading, a one-time migration
+(`custom_components/hsem/device_migration.py`) reassigns `device_id` for
+every pre-existing entity to its new device, gated by a migration-version
+flag stored on the config entry so it runs exactly once. `unique_id` is
+never touched. This is a **breaking change** for dashboards/automations that
+reference the old single `device_id`.
 
 ---
 
@@ -79,12 +114,10 @@ all planner output as attributes.
 
 ### Plan output attributes
 
-| Attribute                                       | Type         | Description                                   |
-| ----------------------------------------------- | ------------ | --------------------------------------------- |
-| `hourly_recommendation`                         | dict \| null | The recommendation slot active **right now**  |
-| `hourly_recommendations`                        | list[dict]   | Full list of planner slots for the horizon    |
-| `batteries_schedules`                           | list         | Active battery discharge schedule definitions |
-| `batteries_schedules_remaining_capacity_needed` | float (kWh)  | Remaining discharge budget across schedules   |
+| Attribute                | Type         | Description                                  |
+| ------------------------ | ------------ | -------------------------------------------- |
+| `hourly_recommendation`  | dict \| null | The recommendation slot active **right now** |
+| `hourly_recommendations` | list[dict]   | Full list of planner slots for the horizon   |
 
 ### `hourly_recommendations` slot structure
 
@@ -213,6 +246,9 @@ Displays the planner's strategy rationale and per-candidate cost breakdown.
 | `rejected_plans`                              | Alternatives with name, reason, and full cost breakdown          |
 | `hysteresis_active`                           | Whether plan-level hysteresis was applied                        |
 | `hysteresis_reason`                           | Explanation of hysteresis decision                               |
+| `ml_forecast_wind_configured`                 | Whether wind chill is enabled and a weather entity is configured |
+| `ml_forecast_wind_slots_used`                 | Future slots using per-slot forecast wind speed                  |
+| `ml_forecast_wind_fallback_slots`             | Future slots that fell back to the nearest measured wind reading |
 
 ---
 
@@ -578,6 +614,12 @@ Sensors providing live status and diagnostics for an OCPP-compliant EV charger c
 | **Device class** | `power`                  |
 | **Unit**         | kW                       |
 
+Reports `0` whenever the connector's status is anything other than
+`"Charging"` (issue #969) — previously it kept showing the last
+`MeterValues` reading verbatim, so e.g. a connector that had just
+transitioned to `SuspendedEVSE` could still display several kW with no
+fresh meter data to explain why.
+
 ### `sensor.hsem_ocpp_charger_info`
 
 | Property       | Value                                                  |
@@ -734,23 +776,20 @@ EV switches are only created when the corresponding EV's planned load
 primary EV, `hsem_ev_second_planned_load_enabled` for the second EV
 (issue #859). All other switches are always created.
 
-| Entity                                              | Purpose                                        |
-| --------------------------------------------------- | ---------------------------------------------- |
-| `switch.hsem_read_only`                             | Block all hardware writes                      |
-| `switch.hsem_extended_attributes`                   | Enable extended diagnostic attributes          |
-| `switch.hsem_verbose_logging`                       | Enable verbose logging                         |
-| `switch.hsem_batteries_enable_batteries_schedule_1` | Toggle battery schedule 1                      |
-| `switch.hsem_batteries_enable_batteries_schedule_2` | Toggle battery schedule 2                      |
-| `switch.hsem_batteries_enable_batteries_schedule_3` | Toggle battery schedule 3                      |
-| `switch.hsem_ev_force_discharge`                    | Force EV maximum discharge power               |
-| `switch.hsem_ev_smart_charging`                     | Enable smart EV charging scheduling            |
-| `switch.hsem_ev_force_charge_now`                   | Force immediate EV charging                    |
-| `switch.hsem_ev_second_smart_charging`              | Enable smart charging for second EV            |
-| `switch.hsem_ev_second_force_charge_now`            | Force immediate second EV charging             |
-| `switch.hsem_ml_consumption`                        | Enable ML-based consumption prediction         |
-| `switch.hsem_ml_sequential`                         | Enable sequential (intra-day momentum) ML mode |
-| `switch.hsem_dynamic_discharge_floor`               | Enable dynamic discharge floor                 |
-| `switch.hsem_ev_auto_full_negative_price`           | Auto-Full EV on negative price                 |
+| Entity                                    | Purpose                                        |
+| ----------------------------------------- | ---------------------------------------------- |
+| `switch.hsem_read_only`                   | Block all hardware writes                      |
+| `switch.hsem_extended_attributes`         | Enable extended diagnostic attributes          |
+| `switch.hsem_verbose_logging`             | Enable verbose logging                         |
+| `switch.hsem_ev_force_discharge`          | Force EV maximum discharge power               |
+| `switch.hsem_ev_smart_charging`           | Enable smart EV charging scheduling            |
+| `switch.hsem_ev_force_charge_now`         | Force immediate EV charging                    |
+| `switch.hsem_ev_second_smart_charging`    | Enable smart charging for second EV            |
+| `switch.hsem_ev_second_force_charge_now`  | Force immediate second EV charging             |
+| `switch.hsem_ml_consumption`              | Enable ML-based consumption prediction         |
+| `switch.hsem_ml_sequential`               | Enable sequential (intra-day momentum) ML mode |
+| `switch.hsem_dynamic_discharge_floor`     | Enable dynamic discharge floor                 |
+| `switch.hsem_ev_auto_full_negative_price` | Auto-Full EV on negative price                 |
 
 ---
 
@@ -774,19 +813,12 @@ efficiency numbers are always created.
 
 `time.hsem_ev_deadline` is only created when `hsem_ev_planned_load_enabled`
 is set; `time.hsem_ev_second_deadline` only when
-`hsem_ev_second_planned_load_enabled` is set (issue #859). The battery
-schedule time entities are always created (tracked separately in #860).
+`hsem_ev_second_planned_load_enabled` is set (issue #859).
 
-| Entity                                 | Purpose                    |
-| -------------------------------------- | -------------------------- |
-| `time.hsem_batteries_schedule_1_start` | Schedule 1 start time      |
-| `time.hsem_batteries_schedule_1_end`   | Schedule 1 end time        |
-| `time.hsem_batteries_schedule_2_start` | Schedule 2 start time      |
-| `time.hsem_batteries_schedule_2_end`   | Schedule 2 end time        |
-| `time.hsem_batteries_schedule_3_start` | Schedule 3 start time      |
-| `time.hsem_batteries_schedule_3_end`   | Schedule 3 end time        |
-| `time.hsem_ev_deadline`                | Primary EV charge deadline |
-| `time.hsem_ev_second_deadline`         | Second EV charge deadline  |
+| Entity                         | Purpose                    |
+| ------------------------------ | -------------------------- |
+| `time.hsem_ev_deadline`        | Primary EV charge deadline |
+| `time.hsem_ev_second_deadline` | Second EV charge deadline  |
 
 ---
 

@@ -18,13 +18,17 @@ Design principles
 """
 
 import re
-from datetime import datetime as _datetime
 from typing import Any
 
 from custom_components.hsem.utils.conversion import convert_months_to_int
 from custom_components.hsem.utils.ha_helpers import (
     async_device_exists,
     async_entity_exists,
+)
+from custom_components.hsem.utils.phase_power import (
+    EV_MIN_START_CURRENT_A,
+    charger_min_power_to_current_a,
+    normalize_ev_phase_topology,
 )
 
 # ---------------------------------------------------------------------------
@@ -34,9 +38,6 @@ from custom_components.hsem.utils.ha_helpers import (
 # Home Assistant entity IDs must match <domain>.<object_id> where both parts
 # contain only lowercase letters, digits, and underscores.
 _ENTITY_ID_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
-
-# HA time strings from the "time" selector always arrive as "HH:MM:SS".
-_TIME_FORMAT = "%H:%M:%S"
 
 
 # ---------------------------------------------------------------------------
@@ -231,69 +232,6 @@ def validate_months(
 
 
 # ---------------------------------------------------------------------------
-# Time window validation
-# ---------------------------------------------------------------------------
-
-
-def _parse_time_str(value: str) -> _datetime | None:
-    """Parse a ``HH:MM:SS`` string into a :class:`datetime` or return ``None``."""
-    try:
-        return _datetime.strptime(value, _TIME_FORMAT)
-    except ValueError, TypeError:
-        return None
-
-
-def validate_time_window(
-    user_input: dict,
-    enabled_field: str,
-    start_field: str,
-    end_field: str,
-) -> dict[str, str]:
-    """Validate a single battery-schedule time window.
-
-    Rules:
-
-    * When the schedule is disabled (``enabled_field`` is ``False``), the time
-      values are not checked.
-    * Start and end must parse as ``HH:MM:SS``.
-    * Start and end must not be identical (zero-length window).
-    * Cross-midnight windows (start > end) are explicitly **allowed**.
-
-    Args:
-        user_input: Dict from the config/options form.
-        enabled_field: Field name whose boolean value gates further checks.
-        start_field: Field name for the window start time string.
-        end_field: Field name for the window end time string.
-
-    Returns:
-        Dict mapping field names to translation error keys.
-    """
-    errors: dict[str, str] = {}
-
-    enabled = user_input.get(enabled_field, False)
-    if not enabled:
-        return errors
-
-    start_raw = user_input.get(start_field)
-    end_raw = user_input.get(end_field)
-
-    start_dt = _parse_time_str(start_raw) if start_raw else None
-    end_dt = _parse_time_str(end_raw) if end_raw else None
-
-    if start_dt is None:
-        errors[start_field] = "invalid_time_format"
-        return errors
-    if end_dt is None:
-        errors[end_field] = "invalid_time_format"
-        return errors
-
-    if start_dt == end_dt:
-        errors["base"] = "start_time_equals_end_time"
-
-    return errors
-
-
-# ---------------------------------------------------------------------------
 # Power and energy limit validation
 # ---------------------------------------------------------------------------
 
@@ -362,6 +300,56 @@ def validate_energy_limits(
 
     if kwh < min_kwh or kwh > max_kwh:
         errors[field] = "energy_out_of_range"
+
+    return errors
+
+
+# ---------------------------------------------------------------------------
+# EV charger minimum-power / phase-topology cross-field validation
+# ---------------------------------------------------------------------------
+
+
+def validate_ev_min_power_topology(
+    user_input: dict,
+    min_power_field: str,
+    topology_field: str,
+) -> dict[str, str]:
+    """Validate that a charger's minimum power clears the real EVSE floor.
+
+    ``charger_min_power_w`` is documented and defaulted as a single-phase
+    watt figure, but the conversion to an executable current is
+    phase-topology-aware: the same watt value spread across a
+    ``three_phase_balanced`` charger's phases can compute a current below
+    any real EVSE's minimum start current (6 A per IEC 61851). Saving such a
+    value lets the planner command an unusable sub-6A charge that the
+    charger will refuse (issue #968), so this is rejected at the config
+    flow rather than left to fail at runtime.
+
+    Args:
+        user_input: Dict from the config/options form.
+        min_power_field: Field name of the minimum-power (W) value, e.g.
+            ``"hsem_ev_planned_load_charger_min_power_w"``.
+        topology_field: Field name of the phase-topology selector, e.g.
+            ``"hsem_ev_planned_load_charger_phase_topology"``.
+
+    Returns:
+        Dict mapping ``min_power_field`` to ``"ev_min_power_below_start_current"``
+        when the configured value computes below the real-world EVSE
+        minimum for the selected topology, otherwise empty.
+    """
+    errors: dict[str, str] = {}
+    value = user_input.get(min_power_field)
+    if value is None:
+        return errors
+
+    try:
+        power_w = float(value)
+    except ValueError, TypeError:
+        return errors  # invalid_power_value is reported by validate_power_limits
+
+    topology = normalize_ev_phase_topology(user_input.get(topology_field))
+    if charger_min_power_to_current_a(power_w, topology) < EV_MIN_START_CURRENT_A:
+        errors[min_power_field] = "ev_min_power_below_start_current"
 
     return errors
 

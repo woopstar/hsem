@@ -5,20 +5,12 @@ Defines :class:`HSEMSwitchEntityDescription` and the
 (unique_id, entity_id) tuples.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from homeassistant.components.switch import SwitchEntityDescription
 
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.utils.sensornames.controls import (
-    get_batteries_schedule_1_switch_entity_id,
-    get_batteries_schedule_1_switch_key,
-    get_batteries_schedule_1_switch_unique_id,
-    get_batteries_schedule_2_switch_entity_id,
-    get_batteries_schedule_2_switch_key,
-    get_batteries_schedule_2_switch_unique_id,
-    get_batteries_schedule_3_switch_entity_id,
-    get_batteries_schedule_3_switch_key,
-    get_batteries_schedule_3_switch_unique_id,
     get_dynamic_discharge_floor_switch_entity_id,
     get_dynamic_discharge_floor_switch_key,
     get_dynamic_discharge_floor_switch_unique_id,
@@ -84,18 +76,6 @@ def build_switch_id_map(entry_id: str) -> dict[str, tuple[str, str]]:
             get_verbose_logging_switch_unique_id(entry_id),
             get_verbose_logging_switch_entity_id(),
         ),
-        get_batteries_schedule_1_switch_key(): (
-            get_batteries_schedule_1_switch_unique_id(entry_id),
-            get_batteries_schedule_1_switch_entity_id(),
-        ),
-        get_batteries_schedule_2_switch_key(): (
-            get_batteries_schedule_2_switch_unique_id(entry_id),
-            get_batteries_schedule_2_switch_entity_id(),
-        ),
-        get_batteries_schedule_3_switch_key(): (
-            get_batteries_schedule_3_switch_unique_id(entry_id),
-            get_batteries_schedule_3_switch_entity_id(),
-        ),
         get_ev_force_discharge_switch_key(): (
             get_ev_force_discharge_switch_unique_id(entry_id),
             get_ev_force_discharge_switch_entity_id(),
@@ -144,6 +124,10 @@ class HSEMSwitchEntityDescription(SwitchEntityDescription):
     description:
         Short human-readable description of the switch's purpose, exposed as
         an entity attribute for dashboard display.
+    hsem_device:
+        The HSEM device (issue #875) this switch's ``device_info`` resolves
+        to. Defaults to ``CONTROLLER``.
     """
 
     description: str = ""
+    hsem_device: HSEMDevice = field(default=HSEMDevice.CONTROLLER)

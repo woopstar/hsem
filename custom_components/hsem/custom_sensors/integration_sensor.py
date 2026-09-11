@@ -13,6 +13,7 @@ from homeassistant.components.integration.sensor import IntegrationSensor
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMEntity
 
 
@@ -56,6 +57,7 @@ class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
             "config_entry is required for HSEMIntegrationSensor"
         )
         HSEMEntity.__init__(self, config_entry)
+        self._hsem_device = HSEMDevice.HOURLY_CONSUMPTION
         self._attr_unique_id = id
         self.entity_id = e_id
 

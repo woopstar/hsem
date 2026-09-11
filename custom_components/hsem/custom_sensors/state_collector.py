@@ -4,8 +4,8 @@ Single responsibility: read live HA entity states and return a typed
 :class:`~custom_components.hsem.models.live_state.LiveState` snapshot.
 
 Config-entry reading has moved to :mod:`config_reader`.
-Both :func:`build_sensor_config` and :func:`build_battery_schedules` are
-re-exported here so existing callers continue to work without changes.
+:func:`build_sensor_config` is re-exported here so existing callers
+continue to work without changes.
 
 This module also collects ALL HA states into an immutable
 :class:`~custom_components.hsem.models.state_snapshot.StateSnapshot`
@@ -21,12 +21,12 @@ from collections.abc import Callable
 from datetime import datetime, time, timedelta
 from typing import Any
 
+from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 
 # Re-export from config_reader so existing callers continue to work.
 from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401 — re-exported for backward compat in coordinator.py
-    build_battery_schedules,
     build_sensor_config,
 )
 from custom_components.hsem.custom_sensors.state_collector_compute import (  # noqa: F401 — re-exported for callers
@@ -49,6 +49,7 @@ from custom_components.hsem.utils.ha_helpers import (
     EntityNotFoundError,
     async_resolve_entity_id_from_unique_id,
     ha_get_entity_state_and_convert,
+    read_normalized_float,
 )
 from custom_components.hsem.utils.huawei import extract_tou_periods
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
@@ -214,14 +215,22 @@ async def async_collect_live_state(
 
     # --- Power meters ---
     state.house_consumption_power_w = (
-        convert_to_float(
-            _read(cfg.house_consumption_power, "float", label="house_consumption_power")
+        read_normalized_float(
+            sensor,
+            cfg.house_consumption_power,
+            _read,
+            UnitOfPower.WATT,
+            label="house_consumption_power",
         )
         or 0.0
     )
     state.solar_production_power_w = (
-        convert_to_float(
-            _read(cfg.solar_production_power, "float", label="solar_production_power")
+        read_normalized_float(
+            sensor,
+            cfg.solar_production_power,
+            _read,
+            UnitOfPower.WATT,
+            label="solar_production_power",
         )
         or 0.0
     )
@@ -331,26 +340,26 @@ async def async_collect_live_state(
             )
         )
         state.grid_phase_power_w = (
-            convert_to_float(
-                _read(
-                    cfg.huawei_solar_power_meter_phase_a_active_power,
-                    "float",
-                    label="power_meter_phase_a_active_power",
-                )
+            read_normalized_float(
+                sensor,
+                cfg.huawei_solar_power_meter_phase_a_active_power,
+                _read,
+                UnitOfPower.WATT,
+                label="power_meter_phase_a_active_power",
             ),
-            convert_to_float(
-                _read(
-                    cfg.huawei_solar_power_meter_phase_b_active_power,
-                    "float",
-                    label="power_meter_phase_b_active_power",
-                )
+            read_normalized_float(
+                sensor,
+                cfg.huawei_solar_power_meter_phase_b_active_power,
+                _read,
+                UnitOfPower.WATT,
+                label="power_meter_phase_b_active_power",
             ),
-            convert_to_float(
-                _read(
-                    cfg.huawei_solar_power_meter_phase_c_active_power,
-                    "float",
-                    label="power_meter_phase_c_active_power",
-                )
+            read_normalized_float(
+                sensor,
+                cfg.huawei_solar_power_meter_phase_c_active_power,
+                _read,
+                UnitOfPower.WATT,
+                label="power_meter_phase_c_active_power",
             ),
         )
         state.huawei_batteries_charge_discharge_power_w = convert_to_float(
@@ -442,24 +451,28 @@ async def async_collect_live_state(
     # --- Daily plan-vs-actual — cumulative energy meter readings ---
     # These are optional; the sensor falls back to Riemann sums if not configured.
     if cfg.grid_import_energy_entity:
-        state.grid_import_energy_kwh = convert_to_float(
-            _read(
-                cfg.grid_import_energy_entity,
-                "float",
-                label="grid_import_energy",
-            )
+        state.grid_import_energy_kwh = read_normalized_float(
+            sensor,
+            cfg.grid_import_energy_entity,
+            _read,
+            UnitOfEnergy.KILO_WATT_HOUR,
+            label="grid_import_energy",
         )
     if cfg.grid_export_energy_entity:
-        state.grid_export_energy_kwh = convert_to_float(
-            _read(
-                cfg.grid_export_energy_entity,
-                "float",
-                label="grid_export_energy",
-            )
+        state.grid_export_energy_kwh = read_normalized_float(
+            sensor,
+            cfg.grid_export_energy_entity,
+            _read,
+            UnitOfEnergy.KILO_WATT_HOUR,
+            label="grid_export_energy",
         )
     if cfg.pv_energy_entity:
-        state.pv_energy_kwh = convert_to_float(
-            _read(cfg.pv_energy_entity, "float", label="pv_energy")
+        state.pv_energy_kwh = read_normalized_float(
+            sensor,
+            cfg.pv_energy_entity,
+            _read,
+            UnitOfEnergy.KILO_WATT_HOUR,
+            label="pv_energy",
         )
 
     # --- Derived battery capacities ---

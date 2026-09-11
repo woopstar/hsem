@@ -261,104 +261,6 @@ class TestP003NextDayCharging:
 
 
 # ===========================================================================
-# P0-04  Schedule_3 default  (issue #268)
-# ===========================================================================
-
-
-class TestP004Schedule3Default:
-    """OLD BUG: ``schedule_3`` defaulted to ``enabled=True`` with a
-    ``00:00:00 → 00:00:00`` window, which is a zero-length window that cannot
-    be distinguished from midnight-to-midnight (a 24-hour window).  This caused
-    spurious grid-charge commands on any night where schedule_3 fired.
-
-    FIX: ``schedule_3`` is now ``enabled=False`` by default and uses explicit
-    non-midnight placeholder times so the window is unambiguously non-zero
-    when re-enabled by the user.
-    """
-
-    def test_schedule_3_disabled_by_default(self) -> None:
-        """schedule_3 must ship disabled so it never fires unintentionally."""
-        from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
-
-        assert (
-            DEFAULT_CONFIG_VALUES["hsem_batteries_enable_batteries_schedule_3"] is False
-        ), "schedule_3 must default to disabled"
-
-    def test_schedule_3_default_start_is_not_midnight(self) -> None:
-        """Default start must not be '00:00:00' to avoid ambiguous zero-length window."""
-        from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
-
-        start = DEFAULT_CONFIG_VALUES[
-            "hsem_batteries_enable_batteries_schedule_3_start"
-        ]
-        assert start != "00:00:00", (
-            "schedule_3 default start '00:00:00' + end '00:00:00' is ambiguous"
-        )
-
-    def test_schedule_3_default_end_is_not_midnight(self) -> None:
-        """Default end must not be '00:00:00'."""
-        from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
-
-        end = DEFAULT_CONFIG_VALUES["hsem_batteries_enable_batteries_schedule_3_end"]
-        assert end != "00:00:00"
-
-    def test_schedule_3_default_start_and_end_differ(self) -> None:
-        """Default start ≠ default end — window is non-zero when enabled."""
-        from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
-
-        start = DEFAULT_CONFIG_VALUES[
-            "hsem_batteries_enable_batteries_schedule_3_start"
-        ]
-        end = DEFAULT_CONFIG_VALUES["hsem_batteries_enable_batteries_schedule_3_end"]
-        assert start != end, "Default schedule_3 must not be a zero-length window"
-
-    def test_schedules_1_and_2_remain_enabled(self) -> None:
-        """Schedules 1 and 2 should remain enabled by default."""
-        from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
-
-        assert (
-            DEFAULT_CONFIG_VALUES["hsem_batteries_enable_batteries_schedule_1"] is True
-        )
-        assert (
-            DEFAULT_CONFIG_VALUES["hsem_batteries_enable_batteries_schedule_2"] is True
-        )
-
-    @pytest.mark.asyncio
-    async def test_zero_length_window_rejected_by_validator(self) -> None:
-        """The schedule validator must reject a 00:00:00 → 00:00:00 window when enabled."""
-        from custom_components.hsem.flows.schedule_helpers import (
-            validate_batteries_schedule_input,
-        )
-
-        user_input = {
-            "hsem_batteries_enable_batteries_schedule_3": True,
-            "hsem_batteries_enable_batteries_schedule_3_start": "00:00:00",
-            "hsem_batteries_enable_batteries_schedule_3_end": "00:00:00",
-            "hsem_batteries_enable_batteries_schedule_3_min_price_difference": 0.0,
-        }
-        errors = await validate_batteries_schedule_input(3, user_input)
-        assert "base" in errors, (
-            "00:00→00:00 with enabled=True must produce a validation error"
-        )
-
-    @pytest.mark.asyncio
-    async def test_disabled_schedule_3_accepts_any_times(self) -> None:
-        """A disabled schedule_3 must never fail validation (times are irrelevant)."""
-        from custom_components.hsem.flows.schedule_helpers import (
-            validate_batteries_schedule_input,
-        )
-
-        user_input = {
-            "hsem_batteries_enable_batteries_schedule_3": False,
-            "hsem_batteries_enable_batteries_schedule_3_start": "00:00:00",
-            "hsem_batteries_enable_batteries_schedule_3_end": "00:00:00",
-            "hsem_batteries_enable_batteries_schedule_3_min_price_difference": 0.0,
-        }
-        errors = await validate_batteries_schedule_input(3, user_input)
-        assert errors == {}, "Disabled schedule must not fail validation"
-
-
-# ===========================================================================
 # P0-05  Invalid sensor values  (issue #269)
 # ===========================================================================
 
@@ -679,37 +581,18 @@ class TestP008MagicThresholds:
 
         assert pytest.approx(0.1) == NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
 
-    def test_scheduler_modules_import_constants_not_literals(self) -> None:
-        """charge_scheduler.py and discharge_scheduler.py must import and reference
-        the named constants instead of bare literals."""
+    def test_discharge_scheduler_does_not_import_near_zero_constant(self) -> None:
+        """discharge_scheduler.py must not import the removed near-zero constant
+        (issue #720 removed the misapplied threshold)."""
         import ast
         import pathlib
 
-        # charge_scheduler.py is now a thin re-export; the actual import lives
-        # in the implementation module under planner/charging/.
-        source = pathlib.Path(
-            "custom_components/hsem/planner/charging/pre_charge.py"
-        ).read_text(encoding="utf-8")
-        tree = ast.parse(source)
-
-        imported_names: set[str] = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                for alias in node.names:
-                    imported_names.add(alias.asname or alias.name)
-
-        assert "SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH" in imported_names, (
-            "charging/pre_charge.py must import SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH"
-        )
-
-        # Also verify discharge_scheduler.py does not import the removed
-        # near-zero constant (issue #720 removed the misapplied threshold).
         source = pathlib.Path(
             "custom_components/hsem/planner/discharge_scheduler.py"
         ).read_text(encoding="utf-8")
         tree = ast.parse(source)
 
-        imported_names = set()
+        imported_names: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
                 for alias in node.names:

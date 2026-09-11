@@ -35,20 +35,17 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.sensornames.ocpp import (
     get_ocpp_charger_info_sensor_entity_id,
-    get_ocpp_charger_info_sensor_name,
     get_ocpp_charger_info_sensor_unique_id,
     get_ocpp_charger_power_sensor_entity_id,
-    get_ocpp_charger_power_sensor_name,
     get_ocpp_charger_power_sensor_unique_id,
     get_ocpp_charger_sessions_sensor_entity_id,
-    get_ocpp_charger_sessions_sensor_name,
     get_ocpp_charger_sessions_sensor_unique_id,
     get_ocpp_charger_status_sensor_entity_id,
-    get_ocpp_charger_status_sensor_name,
     get_ocpp_charger_status_sensor_unique_id,
 )
 
@@ -197,20 +194,24 @@ class HSEMOCPPChargerStatusSensor(
 
         self._config_entry = config_entry
         self._charger_index = charger_index
+        self._hsem_device = (
+            HSEMDevice.EV_SECONDARY if charger_index == 2 else HSEMDevice.EV_PRIMARY
+        )
         self._attr_unique_id = get_ocpp_charger_status_sensor_unique_id(
             config_entry.entry_id, charger_index=charger_index
         )
         self.entity_id = get_ocpp_charger_status_sensor_entity_id(
             charger_index=charger_index
         )
-        self._name = get_ocpp_charger_status_sensor_name(charger_index)
+        # Read by HA core's Entity.translation_key property to resolve the
+        # entity name from strings.json/translations — not accessed directly
+        # in this repo (vulture false positive).
+        self._attr_translation_key = (
+            "ocpp_charger_status"
+            if charger_index == 1
+            else "ocpp_second_charger_status"
+        )
         self._restored_state: str | None = None
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override
@@ -272,6 +273,7 @@ class HSEMOCPPChargerStatusSensor(
                     "power_w": round(session.current_power_w, 1),
                     "transaction_id": session.transaction_id,
                     "last_call_status": dict(session.last_call_status),
+                    "pending_calls": dict(session.pending_calls),
                     "connected_at": (
                         session.connected_at.isoformat()
                         if session.connected_at
@@ -349,20 +351,21 @@ class HSEMOCPPChargerPowerSensor(
 
         self._config_entry = config_entry
         self._charger_index = charger_index
+        self._hsem_device = (
+            HSEMDevice.EV_SECONDARY if charger_index == 2 else HSEMDevice.EV_PRIMARY
+        )
         self._attr_unique_id = get_ocpp_charger_power_sensor_unique_id(
             config_entry.entry_id, charger_index=charger_index
         )
         self.entity_id = get_ocpp_charger_power_sensor_entity_id(
             charger_index=charger_index
         )
-        self._name = get_ocpp_charger_power_sensor_name(charger_index)
+        # Read by HA core's Entity.translation_key property (vulture false
+        # positive) — see ocpp_charger_status sensor above.
+        self._attr_translation_key = (
+            "ocpp_charger_power" if charger_index == 1 else "ocpp_second_charger_power"
+        )
         self._restored_state: str | None = None
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override
@@ -373,13 +376,21 @@ class HSEMOCPPChargerPowerSensor(
     @property  # type: ignore[misc]  # HA stub declares state as @final
     @override
     def state(self) -> float | str:
-        """Return the current charging power in kW."""
+        """Return the current charging power in kW.
+
+        Zeroed once the connector status leaves ``"Charging"`` (issue
+        #969) — the last ``MeterValues`` reading otherwise lingers, e.g.
+        still reporting several kW after the connector transitions to
+        ``SuspendedEVSE``, with no fresh MeterValues to overwrite it.
+        """
         data: CoordinatorData | None = self.coordinator.data
         chargers = _chargers_for(data, self._charger_index)
         if not chargers:
             return self._restored_state or "0.0"
 
         first = next(iter(chargers.values()))
+        if first.status != "Charging":
+            return 0.0
         return float(round(first.current_power_w / 1000.0, 2))  # type: ignore[no-any-return]
 
     @property
@@ -445,20 +456,21 @@ class HSEMOCPPChargerInfoSensor(
 
         self._config_entry = config_entry
         self._charger_index = charger_index
+        self._hsem_device = (
+            HSEMDevice.EV_SECONDARY if charger_index == 2 else HSEMDevice.EV_PRIMARY
+        )
         self._attr_unique_id = get_ocpp_charger_info_sensor_unique_id(
             config_entry.entry_id, charger_index=charger_index
         )
         self.entity_id = get_ocpp_charger_info_sensor_entity_id(
             charger_index=charger_index
         )
-        self._name = get_ocpp_charger_info_sensor_name(charger_index)
+        # Read by HA core's Entity.translation_key property (vulture false
+        # positive) — see ocpp_charger_status sensor above.
+        self._attr_translation_key = (
+            "ocpp_charger_info" if charger_index == 1 else "ocpp_second_charger_info"
+        )
         self._restored_state: str | None = None
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override
@@ -559,20 +571,23 @@ class HSEMOCPPChargerSessionsSensor(
 
         self._config_entry = config_entry
         self._charger_index = charger_index
+        self._hsem_device = (
+            HSEMDevice.EV_SECONDARY if charger_index == 2 else HSEMDevice.EV_PRIMARY
+        )
         self._attr_unique_id = get_ocpp_charger_sessions_sensor_unique_id(
             config_entry.entry_id, charger_index=charger_index
         )
         self.entity_id = get_ocpp_charger_sessions_sensor_entity_id(
             charger_index=charger_index
         )
-        self._name = get_ocpp_charger_sessions_sensor_name(charger_index)
+        # Read by HA core's Entity.translation_key property (vulture false
+        # positive) — see ocpp_charger_status sensor above.
+        self._attr_translation_key = (
+            "ocpp_charger_sessions"
+            if charger_index == 1
+            else "ocpp_second_charger_sessions"
+        )
         self._restored_state: str | None = None
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override

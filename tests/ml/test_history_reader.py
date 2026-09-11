@@ -9,6 +9,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from homeassistant.const import UnitOfEnergy, UnitOfTemperature
+
 from custom_components.hsem.ml.history_reader import HistoryReader
 from custom_components.hsem.utils.datetime_utils import utc_key
 
@@ -32,8 +34,17 @@ def _ha_local_timezone():
         yield
 
 
-def _state(timestamp: datetime, value: float) -> SimpleNamespace:
-    return SimpleNamespace(last_updated=timestamp, state=str(value))
+def _state(
+    timestamp: datetime, value: float, unit: str | None = None
+) -> SimpleNamespace:
+    attributes = {"unit_of_measurement": unit} if unit is not None else {}
+    return SimpleNamespace(
+        last_updated=timestamp, state=str(value), attributes=attributes
+    )
+
+
+def _attr_state(timestamp: datetime, attributes: dict[str, object]) -> SimpleNamespace:
+    return SimpleNamespace(last_updated=timestamp, state="windy", attributes=attributes)
 
 
 def _deltas(
@@ -268,6 +279,74 @@ async def test_energy_history_with_nonfinite_states_falls_back() -> None:
 
 
 @pytest.mark.asyncio
+async def test_energy_history_normalizes_wh_to_kwh() -> None:
+    """A Wh-reporting energy meter is converted when expected_unit is set (#946)."""
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    states = [
+        _state(datetime(2026, 8, 20, 7, 44, 50, tzinfo=UTC), 100_000.0, unit="Wh"),
+        _state(datetime(2026, 8, 20, 7, 59, 50, tzinfo=UTC), 101_000.0, unit="Wh"),
+    ]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        history = await HistoryReader(MagicMock()).read_energy_history(
+            ENTITY_ID,
+            days=0,
+            expected_unit=UnitOfEnergy.KILO_WATT_HOUR,
+        )
+
+    assert len(history) == 1
+    _slot_start, _slot_idx, energy_kwh = history[0]
+    assert energy_kwh == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
+async def test_energy_history_without_expected_unit_skips_normalization() -> None:
+    """Callers that omit expected_unit keep the pre-#946 raw-value behavior.
+
+    The declared ``unit_of_measurement="Wh"`` is present but must be
+    ignored — the raw reading passes through as if it were already in the
+    canonical unit, exactly like the pre-#946 code path.
+    """
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    states = [
+        _state(datetime(2026, 8, 20, 7, 44, 50, tzinfo=UTC), 100.0, unit="Wh"),
+        _state(datetime(2026, 8, 20, 7, 59, 50, tzinfo=UTC), 101.0, unit="Wh"),
+    ]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        history = await HistoryReader(MagicMock()).read_energy_history(
+            ENTITY_ID,
+            days=0,
+        )
+
+    assert len(history) == 1
+    _slot_start, _slot_idx, energy_raw = history[0]
+    assert energy_raw == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
 async def test_today_actuals_do_not_publish_nonfinite_boundary() -> None:
     now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
     states = [
@@ -309,3 +388,289 @@ async def test_instantaneous_history_filters_nonfinite_temperature() -> None:
         )
 
     assert readings == [(finite_timestamp.astimezone(STOCKHOLM), 18.5)]
+
+
+@pytest.mark.asyncio
+async def test_instantaneous_history_normalizes_fahrenheit_to_celsius() -> None:
+    """A °F-reporting temperature sensor is converted when expected_unit is set (#945)."""
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
+    # 98.6°F == 37.0°C.
+    states = [_state(timestamp, 98.6, unit=UnitOfTemperature.FAHRENHEIT)]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        readings = await HistoryReader(MagicMock()).read_instantaneous_history(
+            ENTITY_ID,
+            days=0,
+            expected_unit=UnitOfTemperature.CELSIUS,
+        )
+
+    assert len(readings) == 1
+    _, value = readings[0]
+    assert value == pytest.approx(37.0, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_instantaneous_history_without_expected_unit_skips_normalization() -> (
+    None
+):
+    """Callers that omit expected_unit keep the pre-#945 raw-value behavior."""
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
+    states = [_state(timestamp, 98.6, unit=UnitOfTemperature.FAHRENHEIT)]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        readings = await HistoryReader(MagicMock()).read_instantaneous_history(
+            ENTITY_ID,
+            days=0,
+        )
+
+    assert readings == [(timestamp.astimezone(STOCKHOLM), 98.6)]
+
+
+@pytest.mark.asyncio
+async def test_instantaneous_history_missing_unit_assumes_expected_unit() -> None:
+    """A unit-less template sensor is assumed to already report expected_unit."""
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
+    states = [_state(timestamp, 21.5)]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        readings = await HistoryReader(MagicMock()).read_instantaneous_history(
+            ENTITY_ID,
+            days=0,
+            expected_unit=UnitOfTemperature.CELSIUS,
+        )
+
+    assert readings == [(timestamp.astimezone(STOCKHOLM), 21.5)]
+
+
+@pytest.mark.asyncio
+async def test_instantaneous_history_already_canonical_unit_is_unchanged() -> None:
+    """A sensor already reporting in Celsius is not double-converted."""
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
+    states = [_state(timestamp, 21.5, unit=UnitOfTemperature.CELSIUS)]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        readings = await HistoryReader(MagicMock()).read_instantaneous_history(
+            ENTITY_ID,
+            days=0,
+            expected_unit=UnitOfTemperature.CELSIUS,
+        )
+
+    assert readings == [(timestamp.astimezone(STOCKHOLM), 21.5)]
+
+
+# ---------------------------------------------------------------------------
+# Attribute-history reads (issue #943) -- wind speed off a weather entity
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_attribute_history_reads_named_attribute_not_state() -> None:
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    finite_timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
+    states = [_attr_state(finite_timestamp, {"wind_speed": 22.5})]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        readings = await HistoryReader(
+            MagicMock()
+        ).read_instantaneous_attribute_history(
+            ENTITY_ID,
+            "wind_speed",
+            days=0,
+        )
+
+    assert readings == [(finite_timestamp.astimezone(STOCKHOLM), 22.5)]
+
+
+@pytest.mark.asyncio
+async def test_attribute_history_skips_missing_attribute() -> None:
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    finite_timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
+    states = [
+        _attr_state(datetime(2026, 8, 20, 7, 30, tzinfo=UTC), {}),
+        _attr_state(finite_timestamp, {"wind_speed": 10.0}),
+    ]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        readings = await HistoryReader(
+            MagicMock()
+        ).read_instantaneous_attribute_history(
+            ENTITY_ID,
+            "wind_speed",
+            days=0,
+        )
+
+    assert readings == [(finite_timestamp.astimezone(STOCKHOLM), 10.0)]
+
+
+@pytest.mark.asyncio
+async def test_attribute_history_skips_nonfinite_attribute_value() -> None:
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    finite_timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
+    states = [
+        _attr_state(
+            datetime(2026, 8, 20, 7, 30, tzinfo=UTC), {"wind_speed": float("nan")}
+        ),
+        _attr_state(finite_timestamp, {"wind_speed": 12.0}),
+    ]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        readings = await HistoryReader(
+            MagicMock()
+        ).read_instantaneous_attribute_history(
+            ENTITY_ID,
+            "wind_speed",
+            days=0,
+        )
+
+    assert readings == [(finite_timestamp.astimezone(STOCKHOLM), 12.0)]
+
+
+# ---------------------------------------------------------------------------
+# Energy-field unit normalisation (issue #946)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_today_actuals_normalizes_wh_to_kwh() -> None:
+    """A Wh-reporting energy meter is converted for today's actuals (#946)."""
+    now = datetime(2026, 8, 20, 0, 40, tzinfo=STOCKHOLM)
+    states = [
+        _state(datetime(2026, 8, 19, 21, 44, 50, tzinfo=UTC), 99_900.0, unit="Wh"),
+        _state(datetime(2026, 8, 19, 21, 59, 50, tzinfo=UTC), 100_000.0, unit="Wh"),
+        _state(datetime(2026, 8, 19, 22, 14, 50, tzinfo=UTC), 100_200.0, unit="Wh"),
+    ]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        actuals = await HistoryReader(MagicMock()).read_today_actuals(
+            ENTITY_ID,
+            expected_unit=UnitOfEnergy.KILO_WATT_HOUR,
+        )
+
+    assert actuals == {
+        datetime(2026, 8, 19, 22, 0, tzinfo=UTC): pytest.approx(0.2),
+    }
+
+
+@pytest.mark.asyncio
+async def test_today_actuals_without_expected_unit_skips_normalization() -> None:
+    """Callers that omit expected_unit keep the pre-#946 raw-value behavior.
+
+    The declared ``unit_of_measurement="Wh"`` is present but must be
+    ignored — the raw readings pass through unmodified.
+    """
+    now = datetime(2026, 8, 20, 0, 40, tzinfo=STOCKHOLM)
+    states = [
+        _state(datetime(2026, 8, 19, 21, 44, 50, tzinfo=UTC), 99.9, unit="Wh"),
+        _state(datetime(2026, 8, 19, 21, 59, 50, tzinfo=UTC), 100.0, unit="Wh"),
+        _state(datetime(2026, 8, 19, 22, 14, 50, tzinfo=UTC), 100.2, unit="Wh"),
+    ]
+    executor = AsyncMock(return_value={ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        actuals = await HistoryReader(MagicMock()).read_today_actuals(ENTITY_ID)
+
+    assert actuals == {
+        datetime(2026, 8, 19, 22, 0, tzinfo=UTC): pytest.approx(0.2),
+    }

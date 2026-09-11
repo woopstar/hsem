@@ -34,10 +34,10 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_net_consumption_sensor_entity_id,
-    get_net_consumption_sensor_name,
     get_net_consumption_sensor_unique_id,
 )
 
@@ -60,6 +60,7 @@ class HSEMNetConsumptionSensor(
 
     _attr_icon = "mdi:home-lightning-bolt-outline"
     _attr_has_entity_name = True
+    _attr_translation_key = "net_consumption"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_device_class = SensorDeviceClass.POWER
     _attr_native_unit_of_measurement = UnitOfPower.WATT
@@ -78,6 +79,7 @@ class HSEMNetConsumptionSensor(
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
+        self._hsem_device = HSEMDevice.BATTERY_ENERGY
 
         self._config_entry = config_entry
 
@@ -85,19 +87,12 @@ class HSEMNetConsumptionSensor(
             config_entry.entry_id
         )
         self.entity_id = get_net_consumption_sensor_entity_id()
-        self._name = get_net_consumption_sensor_name()
 
         self._restored_state: str | None = None
 
     # ------------------------------------------------------------------
     # HA entity properties
     # ------------------------------------------------------------------
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override

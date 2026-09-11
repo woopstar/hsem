@@ -11,7 +11,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from custom_components.hsem.const import DOMAIN, NAME
+from custom_components.hsem.devices import HSEMDevice, get_device_info
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 if TYPE_CHECKING:
@@ -28,6 +28,13 @@ class HSEMEntity(Entity):
     _attr_icon = "mdi:flash"
     _attr_has_entity_name = True
 
+    #: Which of the 7 HSEM devices (issue #875) this entity attaches to.
+    #: Defaults to ``CONTROLLER`` (the original single-device identifier);
+    #: subclasses that belong elsewhere set this in ``__init__`` (either as
+    #: a fixed value, or dynamically for entities that come in
+    #: primary/secondary EV pairs).
+    _hsem_device: HSEMDevice = HSEMDevice.CONTROLLER
+
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize the HSEM entity."""
         super().__init__()
@@ -36,13 +43,8 @@ class HSEMEntity(Entity):
     @property
     @override
     def device_info(self) -> DeviceInfo:
-        """Return the device information."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._config.entry_id)},
-            name=NAME,
-            manufacturer=DOMAIN.upper(),
-            model="Custom Integration",
-        )
+        """Return the device information for this entity's target device."""
+        return get_device_info(self._config.entry_id, self._hsem_device)
 
     @override
     async def async_will_remove_from_hass(self) -> None:

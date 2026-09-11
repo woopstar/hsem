@@ -12,8 +12,11 @@ minutes-scale coordinator interval cannot provide).
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 import pytest
+
+from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.coordinator_live_power import (
@@ -54,8 +57,6 @@ def _estimate(house_w: float | None, solar_w: float | None) -> LivePowerEstimate
     return LivePowerEstimate(
         house_power_w=house_w,
         solar_power_w=solar_w,
-        house_sample_count=3 if house_w is not None else 0,
-        solar_sample_count=3 if solar_w is not None else 0,
     )
 
 
@@ -83,6 +84,62 @@ class TestCanonicalLivePowerNumber:
 
     def test_accepts_zero(self) -> None:
         assert HSEMDataUpdateCoordinator._canonical_live_power_number(0.0) == 0.0
+
+
+class _FakeState:
+    def __init__(self, state: str, unit: str | None = None) -> None:
+        self.state = state
+        self.attributes = {"unit_of_measurement": unit} if unit is not None else {}
+
+
+class _FakeStates:
+    def __init__(self, states: dict[str, _FakeState]) -> None:
+        self._states = states
+
+    def get(self, entity_id: str) -> _FakeState | None:
+        return self._states.get(entity_id)
+
+
+class _FakeHass:
+    def __init__(self, states: dict[str, _FakeState]) -> None:
+        self.states = _FakeStates(states)
+
+
+def _hass(states: dict[str, _FakeState]) -> HomeAssistant:
+    return cast(HomeAssistant, _FakeHass(states))
+
+
+class TestReadLivePowerNumber:
+    """The fast-timer power sample must be normalised to Watts (issue #946).
+
+    Without this, a house/solar power sensor reporting kW (a template
+    sensor with no device_class) would be read as if it were Watts,
+    corrupting the rolling live-power window and its bounded replan
+    decisions.
+    """
+
+    def test_normalizes_kw_to_watts(self) -> None:
+        coord = _make_coordinator()
+        coord.hass = _hass({"sensor.house": _FakeState("3.6", unit="kW")})
+        result = coord._read_live_power_number("sensor.house")
+        assert result == pytest.approx(3600.0)
+
+    def test_watts_passthrough(self) -> None:
+        coord = _make_coordinator()
+        coord.hass = _hass({"sensor.house": _FakeState("500", unit="W")})
+        result = coord._read_live_power_number("sensor.house")
+        assert result == pytest.approx(500.0)
+
+    def test_missing_unit_assumes_watts(self) -> None:
+        coord = _make_coordinator()
+        coord.hass = _hass({"sensor.house": _FakeState("500")})
+        result = coord._read_live_power_number("sensor.house")
+        assert result == pytest.approx(500.0)
+
+    def test_none_entity_id_returns_none(self) -> None:
+        coord = _make_coordinator()
+        coord.hass = _hass({})
+        assert coord._read_live_power_number(None) is None
 
 
 class TestLivePowerChannelChangedMaterially:

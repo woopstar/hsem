@@ -10,9 +10,10 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from homeassistant.const import UnitOfEnergy, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 
-from custom_components.hsem.ml import populator
+from custom_components.hsem.ml import populator, weather_features
 from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
 from custom_components.hsem.ml.history_reader import HistoryReader
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
@@ -23,10 +24,39 @@ STOCKHOLM = ZoneInfo("Europe/Stockholm")
 NOW = datetime(2026, 8, 20, 12, 0, tzinfo=STOCKHOLM)
 
 type _HistorySample = tuple[datetime, int, float]
-type _TrainingContext = tuple[str, str | None, bool, int, int, str | None]
+type _TrainingContext = tuple[
+    str, str | None, bool, int, int, str | None, str | None, float | None
+]
+
+
+class _FakeUnits:
+    def __init__(self, wind_speed_unit: str) -> None:
+        self.wind_speed_unit = wind_speed_unit
+
+
+class _FakeConfig:
+    def __init__(self, wind_speed_unit: str) -> None:
+        self.units = _FakeUnits(wind_speed_unit)
+
+
+class _FakeStates:
+    def __init__(self, states: dict[str, Any]) -> None:
+        self._states = states
+
+    def get(self, entity_id: str) -> Any | None:
+        return self._states.get(entity_id)
 
 
 class _FakeHass:
+    def __init__(
+        self,
+        *,
+        states: dict[str, Any] | None = None,
+        wind_speed_unit: str = "km/h",
+    ) -> None:
+        self.states = _FakeStates(states or {})
+        self.config = _FakeConfig(wind_speed_unit)
+
     async def async_add_executor_job(
         self,
         target: Callable[..., Any],
@@ -42,37 +72,55 @@ class _FakeReader:
         *,
         actuals: dict[str, dict[datetime, float]] | None = None,
         temperatures: dict[str, list[tuple[datetime, float]]] | None = None,
+        wind_speeds: dict[str, list[tuple[datetime, float]]] | None = None,
     ) -> None:
         self.histories = histories
         self.actuals = actuals or {}
         self.temperatures = temperatures or {}
+        self.wind_speeds = wind_speeds or {}
         self.energy_calls: list[str] = []
+        self.energy_call_kwargs: list[dict[str, object]] = []
         self.actual_calls: list[str] = []
+        self.actual_call_kwargs: list[dict[str, object]] = []
         self.temperature_calls: list[str] = []
+        self.temperature_call_kwargs: list[dict[str, object]] = []
+        self.wind_calls: list[tuple[str, str]] = []
 
     async def read_energy_history(
         self,
         entity_id: str,
-        **_kwargs: object,
+        **kwargs: object,
     ) -> list[_HistorySample]:
         self.energy_calls.append(entity_id)
+        self.energy_call_kwargs.append(kwargs)
         return list(self.histories.get(entity_id, []))
 
     async def read_today_actuals(
         self,
         entity_id: str,
-        **_kwargs: object,
+        **kwargs: object,
     ) -> dict[datetime, float]:
         self.actual_calls.append(entity_id)
+        self.actual_call_kwargs.append(kwargs)
         return dict(self.actuals.get(entity_id, {}))
 
     async def read_instantaneous_history(
         self,
         entity_id: str,
-        **_kwargs: object,
+        **kwargs: object,
     ) -> list[tuple[datetime, float]]:
         self.temperature_calls.append(entity_id)
+        self.temperature_call_kwargs.append(kwargs)
         return list(self.temperatures.get(entity_id, []))
+
+    async def read_instantaneous_attribute_history(
+        self,
+        entity_id: str,
+        attribute: str,
+        **_kwargs: object,
+    ) -> list[tuple[datetime, float]]:
+        self.wind_calls.append((entity_id, attribute))
+        return list(self.wind_speeds.get(entity_id, []))
 
 
 class _FakePredictor:
@@ -84,6 +132,8 @@ class _FakePredictor:
         retrain_min_new_samples: int = 4,
         use_temperature: bool = False,
         use_sequential: bool = False,
+        use_wind_chill: bool = False,
+        wind_chill_reference_temperature: float = 18.0,
         *,
         trained: bool = False,
         remain_untrained: bool = False,
@@ -93,6 +143,8 @@ class _FakePredictor:
         self.slots_per_day = slots_per_day
         self.use_temperature = use_temperature
         self.use_sequential = use_sequential
+        self.use_wind_chill = use_wind_chill
+        self.wind_chill_reference_temperature = wind_chill_reference_temperature
         self.trained = trained
         self.remain_untrained = remain_untrained
         self.training_context: _TrainingContext | None = None
@@ -103,20 +155,31 @@ class _FakePredictor:
         self._raw_groups: dict[tuple[int, int], list[tuple[float, float]]] = {}
         self.training_histories: list[list[_HistorySample]] = []
         self.training_temperatures: list[dict[datetime, float] | None] = []
+        self.training_wind_speeds: list[dict[datetime, float] | None] = []
         self.prediction_temperatures: list[float | None] = []
+        self.prediction_wind_speeds: list[float | None] = []
         self.prediction_requests: list[tuple[int, int]] = []
         self.sequential_requests: list[list[datetime]] = []
         self.sequential_temperature_requests: list[dict[datetime, float] | None] = []
+        self.sequential_wind_requests: list[dict[datetime, float] | None] = []
+        self.forecast_temperature_slots_used = 0
+        self.fallback_temperature_slots_used = 0
+        self.forecast_wind_slots_used = 0
+        self.fallback_wind_slots_used = 0
 
     def train(
         self,
         history: list[_HistorySample],
         reference_time: datetime,
         temperatures: dict[datetime, float] | None,
+        wind_speeds: dict[datetime, float] | None = None,
     ) -> None:
         self.training_histories.append(list(history))
         self.training_temperatures.append(
             dict(temperatures) if temperatures is not None else None
+        )
+        self.training_wind_speeds.append(
+            dict(wind_speeds) if wind_speeds is not None else None
         )
         if self.remain_untrained:
             return
@@ -133,8 +196,10 @@ class _FakePredictor:
         _day_offset: int,
         _reference_time: datetime,
         temperature: float | None,
+        wind_speed: float | None = None,
     ) -> tuple[float, float]:
         self.prediction_temperatures.append(temperature)
+        self.prediction_wind_speeds.append(wind_speed)
         self.prediction_requests.append((_slot, _day_offset))
         return 0.5, 0.0
 
@@ -142,10 +207,14 @@ class _FakePredictor:
         self,
         slot_starts: list[datetime],
         temperatures: dict[datetime, float] | None,
+        wind_speeds: dict[datetime, float] | None = None,
     ) -> dict[datetime, float]:
         self.sequential_requests.append(list(slot_starts))
         self.sequential_temperature_requests.append(
             dict(temperatures) if temperatures is not None else None
+        )
+        self.sequential_wind_requests.append(
+            dict(wind_speeds) if wind_speeds is not None else None
         )
         return {
             utc_key(start): (index + 1) / 10 for index, start in enumerate(slot_starts)
@@ -173,10 +242,14 @@ def _ha_local_timezone():
 @pytest.fixture(autouse=True)
 def _clear_ml_caches():
     populator._processed_history_cache.clear()
-    populator._temperature_history_cache.clear()
+    weather_features._temperature_history_cache.clear()
+    weather_features._wind_history_cache.clear()
+    weather_features._forecast_cache.clear()
     yield
     populator._processed_history_cache.clear()
-    populator._temperature_history_cache.clear()
+    weather_features._temperature_history_cache.clear()
+    weather_features._wind_history_cache.clear()
+    weather_features._forecast_cache.clear()
 
 
 def _history(now: datetime, base: float = 1.0) -> list[_HistorySample]:
@@ -210,6 +283,7 @@ def _training_context(
     cfg: SensorConfig,
     *,
     use_temperature: bool,
+    use_wind: bool = False,
 ) -> _TrainingContext:
     energy_entity = cfg.ml_consumption_energy_entity or cfg.grid_import_energy_entity
     assert energy_entity is not None
@@ -220,6 +294,8 @@ def _training_context(
         cfg.recommendation_interval_minutes,
         cfg.ml_consumption_history_days,
         cfg.ml_consumption_temperature_entity if use_temperature else None,
+        cfg.ml_consumption_weather_forecast_entity if use_wind else None,
+        cfg.ml_consumption_wind_chill_reference_temperature if use_wind else None,
     )
 
 
@@ -538,8 +614,6 @@ def test_predictor_uses_physical_age_and_temperature_identity_across_fold() -> N
         use_temperature=True,
     )
 
-    assert predictor._lookup_temperature(temperatures, fold_one) == 20.0
-
     predictor.train(
         [(fold_zero, 8, 1.0), (fold_one, 8, 1.1)],
         reference,
@@ -662,10 +736,12 @@ async def test_temperature_history_preserves_both_autumn_fold_keys() -> None:
         temperatures={"sensor.temperature": [(fold_zero, 10.0), (fold_one, 20.0)]},
     )
 
-    temperatures = await populator._read_temperature_history(
+    temperatures = await weather_features.get_temperature_history(
+        cast(HomeAssistant, _FakeHass()),
         cast(HistoryReader, reader),
         "sensor.temperature",
         14,
+        NOW,
     )
 
     assert temperatures == {
@@ -673,6 +749,72 @@ async def test_temperature_history_preserves_both_autumn_fold_keys() -> None:
         utc_key(fold_one): 20.0,
     }
     assert len(temperatures) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_temperature_history_requests_celsius_normalization() -> None:
+    """The temperature read must request Celsius normalization (#945).
+
+    Without this, a °F-reporting or unit-less template sensor configured as
+    ``hsem_ml_consumption_temperature_entity`` would silently corrupt the
+    temperature and wind-chill ML features.
+    """
+    reader = _FakeReader(
+        {},
+        temperatures={"sensor.temperature": [(NOW, 21.0)]},
+    )
+
+    await weather_features.get_temperature_history(
+        cast(HomeAssistant, _FakeHass()),
+        cast(HistoryReader, reader),
+        "sensor.temperature",
+        14,
+        NOW,
+    )
+
+    assert reader.temperature_call_kwargs
+    assert reader.temperature_call_kwargs[-1].get("expected_unit") == (
+        UnitOfTemperature.CELSIUS
+    )
+
+
+@pytest.mark.asyncio
+async def test_populate_requests_kwh_normalization_for_energy_reads() -> None:
+    """Energy history/actuals reads must request kWh normalization (#946).
+
+    Without this, a Wh-reporting or unit-less template sensor configured as
+    ``hsem_grid_import_energy_entity`` / ``hsem_grid_export_energy_entity``
+    / ``hsem_ml_consumption_energy_entity`` could silently corrupt the ML
+    consumption model by a factor of 1000.
+    """
+    hass = _FakeHass()
+    reader = _FakeReader(
+        {
+            "sensor.import": [
+                *_history(NOW, 1.0),
+                (NOW - timedelta(days=1), 2, 3.0),
+            ],
+            "sensor.export": _history(NOW, 0.2),
+        },
+        actuals={
+            "sensor.import": {NOW: 1.0},
+            "sensor.export": {NOW: 0.2},
+        },
+    )
+    net_cfg = _cfg(export_entity="sensor.export", net=True)
+
+    await _populate(hass, reader, net_cfg, [])
+
+    assert reader.energy_call_kwargs
+    assert all(
+        kwargs.get("expected_unit") == UnitOfEnergy.KILO_WATT_HOUR
+        for kwargs in reader.energy_call_kwargs
+    )
+    assert reader.actual_call_kwargs
+    assert all(
+        kwargs.get("expected_unit") == UnitOfEnergy.KILO_WATT_HOUR
+        for kwargs in reader.actual_call_kwargs
+    )
 
 
 @pytest.mark.asyncio

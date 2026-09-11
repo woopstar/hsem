@@ -22,10 +22,10 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_effective_discharge_floor_sensor_entity_id,
-    get_effective_discharge_floor_sensor_name,
     get_effective_discharge_floor_sensor_unique_id,
 )
 
@@ -44,6 +44,7 @@ class HSEMEffectiveDischargeFloorSensor(
 
     _attr_icon = "mdi:battery-arrow-down"
     _attr_has_entity_name = True
+    _attr_translation_key = "effective_discharge_floor"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
@@ -59,6 +60,7 @@ class HSEMEffectiveDischargeFloorSensor(
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
+        self._hsem_device = HSEMDevice.BATTERY_ENERGY
 
         self._config_entry = config_entry
 
@@ -66,19 +68,12 @@ class HSEMEffectiveDischargeFloorSensor(
             config_entry.entry_id
         )
         self.entity_id = get_effective_discharge_floor_sensor_entity_id()
-        self._name = get_effective_discharge_floor_sensor_name()
 
         self._restored_state: str | None = None
 
     # ------------------------------------------------------------------
     # HA entity properties
     # ------------------------------------------------------------------
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override

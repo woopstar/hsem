@@ -19,7 +19,7 @@ from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.phase_power import (
     charger_current_to_power_w,
     charger_max_power_to_current_a,
-    charger_min_power_to_current_a,
+    ev_min_start_current_a,
     normalize_ev_phase_topology,
 )
 
@@ -180,7 +180,7 @@ def _build_ev_configs_for_milp(
             phase_topology,
         )
         effective_min_power_w = charger_current_to_power_w(
-            charger_min_power_to_current_a(min_pwr_w, phase_topology),
+            ev_min_start_current_a(min_pwr_w, phase_topology),
             phase_topology,
         )
         effective_capacity = float(cap)

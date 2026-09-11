@@ -1,7 +1,7 @@
 """Switch platform for the HSEM integration.
 
 Exposes :class:`SwitchEntity` instances that let users toggle integration
-settings (read-only mode, verbose logging, discharge schedules, etc.) without
+settings (read-only mode, verbose logging, EV charging, etc.) without
 leaving the entity page.
 """
 
@@ -13,11 +13,9 @@ from custom_components.hsem.custom_switches.description import (
     HSEMSwitchEntityDescription,
 )
 from custom_components.hsem.custom_switches.switch import HSEMSwitch
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.sensornames.controls import (
-    get_batteries_schedule_1_switch_key,
-    get_batteries_schedule_2_switch_key,
-    get_batteries_schedule_3_switch_key,
     get_dynamic_discharge_floor_switch_key,
     get_extended_attributes_switch_key,
     get_read_only_switch_key,
@@ -59,49 +57,40 @@ SWITCH_DESCRIPTIONS: tuple[HSEMSwitchEntityDescription, ...] = (
         translation_key="verbose_logging",
     ),
     HSEMSwitchEntityDescription(
-        key=get_batteries_schedule_1_switch_key(),
-        icon=_ICON_TOGGLE,
-        translation_key="batteries_schedule_1",
-    ),
-    HSEMSwitchEntityDescription(
-        key=get_batteries_schedule_2_switch_key(),
-        icon=_ICON_TOGGLE,
-        translation_key="batteries_schedule_2",
-    ),
-    HSEMSwitchEntityDescription(
-        key=get_batteries_schedule_3_switch_key(),
-        icon=_ICON_TOGGLE,
-        translation_key="batteries_schedule_3",
-    ),
-    HSEMSwitchEntityDescription(
         key=get_ev_force_discharge_switch_key(),
         icon=_ICON_TOGGLE,
         translation_key="ev_force_discharge",
+        hsem_device=HSEMDevice.EV_PRIMARY,
     ),
     HSEMSwitchEntityDescription(
         key=get_ev_smart_charging_switch_key(),
         icon=_ICON_EV,
         translation_key="ev_smart_charging",
+        hsem_device=HSEMDevice.EV_PRIMARY,
     ),
     HSEMSwitchEntityDescription(
         key=get_ev_force_charge_now_switch_key(),
         icon=_ICON_EV,
         translation_key="ev_force_charge_now",
+        hsem_device=HSEMDevice.EV_PRIMARY,
     ),
     HSEMSwitchEntityDescription(
         key=get_ev_auto_full_negative_price_switch_key(),
         icon=_ICON_EV,
         translation_key="ev_auto_full_negative_price",
+        hsem_device=HSEMDevice.EV_PRIMARY,
     ),
     HSEMSwitchEntityDescription(
         key=get_ev_second_smart_charging_switch_key(),
         icon=_ICON_EV,
         translation_key="ev_second_smart_charging",
+        hsem_device=HSEMDevice.EV_SECONDARY,
     ),
     HSEMSwitchEntityDescription(
         key=get_ev_second_force_charge_now_switch_key(),
         icon=_ICON_EV,
         translation_key="ev_second_force_charge_now",
+        hsem_device=HSEMDevice.EV_SECONDARY,
     ),
     HSEMSwitchEntityDescription(
         key=get_ml_consumption_switch_key(),
@@ -117,6 +106,7 @@ SWITCH_DESCRIPTIONS: tuple[HSEMSwitchEntityDescription, ...] = (
         key=get_dynamic_discharge_floor_switch_key(),
         icon=_ICON_TOGGLE,
         translation_key="dynamic_discharge_floor",
+        hsem_device=HSEMDevice.BATTERY_ENERGY,
     ),
 )
 

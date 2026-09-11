@@ -42,7 +42,6 @@ from custom_components.hsem.custom_sensors.hourly_data_populator.prices_solcast 
 )
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
     async_collect_all_states,
-    build_battery_schedules,
     build_sensor_config,
 )
 from custom_components.hsem.models.live_state import EVLiveState, LiveState
@@ -171,11 +170,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             cfg.recommendation_interval_length,
         )
 
-        # 4. Build battery-schedule objects from config.
-        self._batteries_schedules = build_battery_schedules(cfg)
-        self._batteries_schedules.sort(key=lambda x: x.start)
-
-        # 5. Populate weighted house-consumption averages.
+        # 4. Populate weighted house-consumption averages.
         set_hsem_verbose(cfg.verbose_logging)
 
         if cfg.ml_consumption_enabled:
@@ -183,20 +178,41 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 populate_ml_house_consumption,
             )
 
-            (
-                consumption_ok,
-                self._ml_predictor,
-            ) = await populate_ml_house_consumption(
-                self.hass,
-                self._hourly_recommendations,
-                cfg,
-                self._ml_predictor,
-            )
-            async_log(
-                "debug",
-                "[ml] populate_ml_house_consumption returned %s",
-                consumption_ok,
-            )
+            # A slow or failing ML populate must never take the whole update
+            # cycle down with it: during initial setup this cycle is awaited
+            # directly by async_setup_entry (issue #926), so an uncaught
+            # exception here would fail the entire config entry and remove
+            # every HSEM entity, not just the ML-driven ones. Fall back to
+            # the legacy avg-consumption path instead, same as a clean
+            # ``consumption_ok=False`` return, and keep any previously
+            # trained predictor so the next cycle can retry without losing
+            # its cache.
+            try:
+                (
+                    consumption_ok,
+                    self._ml_predictor,
+                ) = await populate_ml_house_consumption(
+                    self.hass,
+                    self._hourly_recommendations,
+                    cfg,
+                    self._ml_predictor,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                async_log(
+                    "error",
+                    "[ml] populate_ml_house_consumption raised %s —"
+                    " falling back to legacy avg sensors for this cycle.",
+                    exc,
+                )
+                consumption_ok = False
+            else:
+                async_log(
+                    "debug",
+                    "[ml] populate_ml_house_consumption returned %s",
+                    consumption_ok,
+                )
 
             if not consumption_ok:
                 async_log(
@@ -277,7 +293,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         else:
             await self._set_update_interval()
 
-        # 6. Determine working state: forced, missing, or full pipeline.
+        # 5. Determine working state: forced, missing, or full pipeline.
         state: str | None = None
 
         if live.missing_entities and live.force_working_mode_state == "auto":
@@ -293,7 +309,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 live.force_working_mode_state,
             )
 
-        # 7. Populate electricity prices and Solcast PV estimates.
+        # 6. Populate electricity prices and Solcast PV estimates.
         populate_price_and_solcast_from_snapshot(
             self._hourly_recommendations,
             self._snapshot,
@@ -416,6 +432,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             "_window_hys_previous_rec",
             "_window_hys_previous_slot_start",
             "_current_required_battery",
+            "_current_wait_mode_reserve",
             "_plan_explanation",
             "_data_quality",
             "_ev_charging_plan",
@@ -423,6 +440,10 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             "_ev_soc_economics",
             "_ev_second_soc_economics",
             "_ev_soc_economics_last_computed",
+            "_ev_held_slot_start",
+            "_ev_held_power_w",
+            "_ev_second_held_slot_start",
+            "_ev_second_held_power_w",
             "_hourly_recommendation",
             "_hourly_recommendations",
         )
@@ -478,13 +499,11 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 solar_corrector=getattr(
                     self, "_solar_corrector", SolarForecastCorrector()
                 ),
-                solar_corrector_processed=getattr(
-                    self, "_solar_corrector_processed", set()
-                ),
                 prediction_tracker=getattr(
                     self, "_prediction_tracker", PredictionTracker(max_records=2880)
                 ),
                 last_planner_output=getattr(self, "_last_planner_output", None),
+                update_interval_minutes=cfg.update_interval,
             )
             if prediction_record_added:
                 await persist_all_trackers(self, only=["_prediction_tracker"])
@@ -582,14 +601,19 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             live=self._live,
             hourly_recommendations=list(self._hourly_recommendations),
             hourly_recommendation=self._hourly_recommendation,
-            batteries_schedules=list(self._batteries_schedules),
-            batteries_schedules_remaining_capacity_needed=(
-                self._batteries_schedules_remaining_capacity_needed
-            ),
             current_required_battery=self._current_required_battery,
+            current_wait_mode_reserve=self._current_wait_mode_reserve,
             state=state,
             last_updated=last_updated,
             next_update=self._next_update,
+            # Carry forward the last completed apply_summary (issue #951).
+            # The working-mode sensor's hardware-write task mutates whichever
+            # CoordinatorData snapshot it was handed, which may already have
+            # been superseded by the time the write sequence finishes — this
+            # keeps the applier-status sensor from regressing to
+            # pending/total_writes:0 while a write is still legitimately in
+            # flight against an older snapshot.
+            apply_summary=self.data.apply_summary if self.data is not None else None,
             plan_explanation=self._plan_explanation,
             data_quality=self._data_quality,
             ev_charging_plan=self._ev_charging_plan,

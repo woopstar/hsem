@@ -16,16 +16,14 @@
       "invalid_power_value": "Invalid power value — please enter a number.",
       "invalid_price_value": "Invalid price value — please enter a number.",
       "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
-      "invalid_time_format": "Invalid time format — expected HH:MM:SS.",
       "months_winter_empty": "Winter season must have at least one month.",
       "only_one_entry_allowed": "Only one configuration of HSEM is allowed.",
       "power_out_of_range": "Power value is outside the allowed range.",
       "price_out_of_range": "Price value is outside the allowed range.",
       "required": "This field is required.",
-      "start_time_after_end_time": "Start time must be before end time.",
-      "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead.",
       "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve.",
-      "port_conflict": "The second OCPP port must differ from the first OCPP port."
+      "port_conflict": "The second OCPP port must differ from the first OCPP port.",
+      "ev_min_power_below_start_current": "The configured minimum power is too low for the selected phase topology — a real charger cannot start below 6 A. Increase the minimum power or switch phase topology."
     },
     "step": {
       "batteries_excess_export": {
@@ -120,48 +118,6 @@
         "description": "Configure the embedded OCPP 1.6 server for LAN-only EV charger control. When enabled, HSEM sends SetChargingProfile commands directly to your EV charger based on the charging plan.",
         "title": "OCPP Server"
       },
-      "batteries_schedule_1": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule."
-        },
-        "description": "Configure battery discharge schedule 1, including its activation time.",
-        "title": "Battery Discharge Schedule 1"
-      },
-      "batteries_schedule_2": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule."
-        },
-        "description": "Configure battery discharge schedule 2, including its activation time.",
-        "title": "Battery Discharge Schedule 2"
-      },
-      "batteries_schedule_3": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
-        },
-        "description": "Configure battery discharge schedule 3, including its activation time.",
-        "title": "Battery Discharge Schedule 3"
-      },
       "prices": {
         "data": {
           "hsem_import_electricity_price_sensor": "Import Electricity Price Sensor",
@@ -169,6 +125,8 @@
           "hsem_import_electricity_price_forecast_sensor": "Import Electricity Price Forecast Sensor (optional)",
           "hsem_export_electricity_price_forecast_sensor": "Export Electricity Price Forecast Sensor (optional)",
           "hsem_export_electricity_min_price": "Export Minimum Price Required",
+          "hsem_export_fee_per_kwh": "Export Fee Per kWh",
+          "hsem_curtail_pv_below_export_min_price": "Curtail PV Export Below Minimum Price",
           "hsem_electricity_price_update_interval": "Electricity Price Update Interval (minutes)"
         },
         "data_description": {
@@ -176,7 +134,9 @@
           "hsem_export_electricity_price_sensor": "Select the sensor that provides export electricity prices.",
           "hsem_import_electricity_price_forecast_sensor": "Optional: select a separate sensor for import price forecasts (used by Amber Electric and similar integrations).",
           "hsem_export_electricity_price_forecast_sensor": "Optional: select a separate sensor for export price forecasts.",
-          "hsem_export_electricity_min_price": "Set the minimum export price. Exports below this price will be blocked.",
+          "hsem_export_electricity_min_price": "Per-slot floor for intentional battery-to-grid export. Below this price HSEM will not force the battery to discharge into the grid — the battery still serves house load normally, and reaching the threshold does not auto-trigger export. This does not block PV export: surplus solar continues to export at any non-negative price. Only a negative export price causes HSEM to block all grid export, since exporting would then cost money.",
+          "hsem_export_fee_per_kwh": "Retailer margin and balancing fees subtracted from the raw export price before HSEM decides whether exporting is profitable (issue #925). If your net export revenue is lower than the market price shown by your price sensor, set this to your total per-kWh fee. When the net price (market price minus this fee) goes negative, HSEM physically curtails PV export instead of exporting at a loss. Set to 0 if your export price sensor already reflects net revenue.",
+          "hsem_curtail_pv_below_export_min_price": "When enabled, physically blocks all grid export (the same limit used for negative prices) whenever the export price drops below the minimum export price above, even if it is still non-negative. When disabled (default), surplus PV keeps exporting up to the configured grid export limit for any non-negative price (issue #767); only battery-to-grid export is gated by the minimum price.",
           "hsem_electricity_price_update_interval": "How often your price sensor provides new data (15, 30, or 60 minutes)."
         },
         "description": "Configure your electricity price sensors for import and export pricing.",
@@ -339,32 +299,6 @@
         },
         "description": "Update the settings for HSEM",
         "title": "Update Huawei Solar Energy Management"
-      },
-      "batteries_schedules": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time",
-          "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time",
-          "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
-        },
-        "description": "Configure up to three battery discharge schedule windows, each with enable/disable toggle, start time, and end time. Schedules define when the battery may discharge to cover peak consumption or export to the grid.",
-        "title": "Battery Discharge Schedules"
       },
       "months": {
         "data": {
@@ -502,7 +436,10 @@
           "hsem_ml_consumption_history_days": "ML history days",
           "hsem_ml_consumption_net_consumption": "Use net consumption (import - export)",
           "hsem_ml_consumption_temperature_entity": "Outdoor temperature sensor",
-          "hsem_ml_consumption_sequential": "Sequential prediction (lag feature)"
+          "hsem_ml_consumption_weather_forecast_entity": "Weather forecast entity",
+          "hsem_ml_consumption_sequential": "Sequential prediction (lag feature)",
+          "hsem_ml_consumption_wind_chill_enabled": "Enable wind-chill consumption feature",
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Wind-chill reference temperature"
         },
         "data_description": {
           "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh).",
@@ -513,7 +450,10 @@
           "hsem_ml_consumption_history_days": "Days of recorder history for ML training (7–90).",
           "hsem_ml_consumption_net_consumption": "Subtract grid export from import for net house consumption.",
           "hsem_ml_consumption_temperature_entity": "Optional—outdoor temperature sensor in °C. Use an outdoor sensor, not an indoor thermostat.",
-          "hsem_ml_consumption_sequential": "Feed each slot prediction as input to the next. Captures intra-hour momentum (e.g. cooking spikes carry forward)."
+          "hsem_ml_consumption_weather_forecast_entity": "Optional—weather entity used for future-slot forecast temperatures. Requires the outdoor temperature sensor above to also be set. Falls back to the measured temperature when forecast data is missing.",
+          "hsem_ml_consumption_sequential": "Feed each slot prediction as input to the next. Captures intra-hour momentum (e.g. cooking spikes carry forward).",
+          "hsem_ml_consumption_wind_chill_enabled": "Optional—adds a wind-chill index (wind speed × heat loss below the reference temperature) to the ML consumption model. Wind history and forecast are both derived from the weather forecast entity above—no separate wind sensor needed. Requires the outdoor temperature sensor above.",
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Balance-point temperature (°C) above which wind no longer increases heat loss. Only used when wind chill is enabled. Typical starting point: 18°C for average insulation, lower (~15-16°C) for well-insulated homes, higher (~19-20°C) for older/draughty homes."
         },
         "description": "Configure energy meters and enable ML-based consumption prediction.",
         "title": "Energy & ML"
@@ -543,16 +483,14 @@
       "invalid_power_value": "Invalid power value — please enter a number.",
       "invalid_price_value": "Invalid price value — please enter a number.",
       "invalid_sensor": "Invalid input sensor. Please choose a valid sensor.",
-      "invalid_time_format": "Invalid time format — expected HH:MM:SS.",
       "months_winter_empty": "Winter season must have at least one month.",
       "only_one_entry_allowed": "Only one configuration of HSEM is allowed.",
       "power_out_of_range": "Power value is outside the allowed range.",
       "price_out_of_range": "Price value is outside the allowed range.",
       "required": "This field is required.",
-      "start_time_after_end_time": "Start time must be before end time.",
-      "start_time_equals_end_time": "Start time and end time cannot be the same — this creates a zero-length window. Disable the schedule instead.",
       "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve.",
-      "port_conflict": "The second OCPP port must differ from the first OCPP port."
+      "port_conflict": "The second OCPP port must differ from the first OCPP port.",
+      "ev_min_power_below_start_current": "The configured minimum power is too low for the selected phase topology — a real charger cannot start below 6 A. Increase the minimum power or switch phase topology."
     },
     "step": {
       "batteries_excess_export": {
@@ -647,48 +585,6 @@
         "description": "Configure the embedded OCPP 1.6 server for LAN-only EV charger control. When enabled, HSEM sends SetChargingProfile commands directly to your EV charger based on the charging plan.",
         "title": "OCPP Server"
       },
-      "batteries_schedule_1": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule."
-        },
-        "description": "Configure battery discharge schedule 1, including its activation time.",
-        "title": "Battery Discharge Schedule 1"
-      },
-      "batteries_schedule_2": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule."
-        },
-        "description": "Configure battery discharge schedule 2, including its activation time.",
-        "title": "Battery Discharge Schedule 2"
-      },
-      "batteries_schedule_3": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
-        },
-        "description": "Configure battery discharge schedule 3, including its activation time.",
-        "title": "Battery Discharge Schedule 3"
-      },
       "prices": {
         "data": {
           "hsem_import_electricity_price_sensor": "Import Electricity Price Sensor",
@@ -696,6 +592,8 @@
           "hsem_import_electricity_price_forecast_sensor": "Import Electricity Price Forecast Sensor (optional)",
           "hsem_export_electricity_price_forecast_sensor": "Export Electricity Price Forecast Sensor (optional)",
           "hsem_export_electricity_min_price": "Export Minimum Price Required",
+          "hsem_export_fee_per_kwh": "Export Fee Per kWh",
+          "hsem_curtail_pv_below_export_min_price": "Curtail PV Export Below Minimum Price",
           "hsem_electricity_price_update_interval": "Electricity Price Update Interval (minutes)"
         },
         "data_description": {
@@ -703,7 +601,9 @@
           "hsem_export_electricity_price_sensor": "Select the sensor that provides export electricity prices.",
           "hsem_import_electricity_price_forecast_sensor": "Optional: select a separate sensor for import price forecasts (used by Amber Electric and similar integrations).",
           "hsem_export_electricity_price_forecast_sensor": "Optional: select a separate sensor for export price forecasts.",
-          "hsem_export_electricity_min_price": "Set the minimum export price. Exports below this price will be blocked.",
+          "hsem_export_electricity_min_price": "Per-slot floor for intentional battery-to-grid export. Below this price HSEM will not force the battery to discharge into the grid — the battery still serves house load normally, and reaching the threshold does not auto-trigger export. This does not block PV export: surplus solar continues to export at any non-negative price. Only a negative export price causes HSEM to block all grid export, since exporting would then cost money.",
+          "hsem_export_fee_per_kwh": "Retailer margin and balancing fees subtracted from the raw export price before HSEM decides whether exporting is profitable (issue #925). If your net export revenue is lower than the market price shown by your price sensor, set this to your total per-kWh fee. When the net price (market price minus this fee) goes negative, HSEM physically curtails PV export instead of exporting at a loss. Set to 0 if your export price sensor already reflects net revenue.",
+          "hsem_curtail_pv_below_export_min_price": "When enabled, physically blocks all grid export (the same limit used for negative prices) whenever the export price drops below the minimum export price above, even if it is still non-negative. When disabled (default), surplus PV keeps exporting up to the configured grid export limit for any non-negative price (issue #767); only battery-to-grid export is gated by the minimum price.",
           "hsem_electricity_price_update_interval": "How often your price sensor provides new data (15, 30, or 60 minutes)."
         },
         "description": "Configure your electricity price sensors for import and export pricing.",
@@ -867,32 +767,6 @@
         "description": "Update the settings for HSEM",
         "title": "Update Huawei Solar Energy Management"
       },
-      "batteries_schedules": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable Battery Schedule 1",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Battery Schedule 1 End Time",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Battery Schedule 1 Start Time",
-          "hsem_batteries_enable_batteries_schedule_2": "Enable Battery Schedule 2",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Battery Schedule 2 End Time",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Battery Schedule 2 Start Time",
-          "hsem_batteries_enable_batteries_schedule_3": "Enable Battery Schedule 3",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Battery Schedule 3 End Time",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Battery Schedule 3 Start Time"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Enable or disable the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Specify the end time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Specify the start time for the first battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2": "Enable or disable the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Specify the end time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Specify the start time for the second battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3": "Enable or disable the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Specify the end time for the third battery discharge schedule.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Specify the start time for the third battery discharge schedule."
-        },
-        "description": "Configure up to three battery discharge schedule windows, each with enable/disable toggle, start time, and end time. Schedules define when the battery may discharge to cover peak consumption or export to the grid.",
-        "title": "Battery Discharge Schedules"
-      },
       "months": {
         "data": {
           "hsem_months_winter": "Months considered as Winter/Spring"
@@ -969,7 +843,10 @@
           "hsem_ml_consumption_history_days": "ML history days",
           "hsem_ml_consumption_net_consumption": "Use net consumption (import - export)",
           "hsem_ml_consumption_temperature_entity": "Outdoor temperature sensor",
-          "hsem_ml_consumption_sequential": "Sequential prediction (lag feature)"
+          "hsem_ml_consumption_weather_forecast_entity": "Weather forecast entity",
+          "hsem_ml_consumption_sequential": "Sequential prediction (lag feature)",
+          "hsem_ml_consumption_wind_chill_enabled": "Enable wind-chill consumption feature",
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Wind-chill reference temperature"
         },
         "data_description": {
           "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh).",
@@ -980,7 +857,10 @@
           "hsem_ml_consumption_history_days": "Days of recorder history for ML training (7–90).",
           "hsem_ml_consumption_net_consumption": "Subtract grid export from import for net house consumption.",
           "hsem_ml_consumption_temperature_entity": "Optional—outdoor temperature sensor in °C. Use an outdoor sensor, not an indoor thermostat.",
-          "hsem_ml_consumption_sequential": "Feed each slot prediction as input to the next. Captures intra-hour momentum (e.g. cooking spikes carry forward)."
+          "hsem_ml_consumption_weather_forecast_entity": "Optional—weather entity used for future-slot forecast temperatures. Requires the outdoor temperature sensor above to also be set. Falls back to the measured temperature when forecast data is missing.",
+          "hsem_ml_consumption_sequential": "Feed each slot prediction as input to the next. Captures intra-hour momentum (e.g. cooking spikes carry forward).",
+          "hsem_ml_consumption_wind_chill_enabled": "Optional—adds a wind-chill index (wind speed × heat loss below the reference temperature) to the ML consumption model. Wind history and forecast are both derived from the weather forecast entity above—no separate wind sensor needed. Requires the outdoor temperature sensor above.",
+          "hsem_ml_consumption_wind_chill_reference_temperature": "Balance-point temperature (°C) above which wind no longer increases heat loss. Only used when wind chill is enabled. Typical starting point: 18°C for average insulation, lower (~15-16°C) for well-insulated homes, higher (~19-20°C) for older/draughty homes."
         },
         "description": "Configure energy meters and enable ML-based consumption prediction.",
         "title": "Energy & ML"
@@ -1057,7 +937,7 @@
   "entity": {
     "sensor": {
       "applier_status": {
-        "name": "Applier Status",
+        "name": "Inverter Apply Status",
         "state": {
           "ok": "OK",
           "unverified": "Unverified",
@@ -1105,13 +985,13 @@
         }
       },
       "ev_second_charger_calculated_power": {
-        "name": "EV 2 Charger Calculated Power"
+        "name": "EV Charger Calculated Power"
       },
       "ev_second_charger_current_limit": {
-        "name": "EV 2 Charger Current Limit"
+        "name": "EV Charger Current Limit"
       },
       "ev_second_optimal_charging_plan": {
-        "name": "EV 2 Optimal Charging Plan",
+        "name": "EV Optimal Charging Plan",
         "state": {
           "charging": "Charging",
           "fully_charged": "Fully Charged",
@@ -1131,7 +1011,7 @@
         }
       },
       "ev_second_soc_economics": {
-        "name": "EV 2 SoC Economics",
+        "name": "EV SoC Economics",
         "state": {
           "ready": "Ready",
           "not_connected": "Not Connected",
@@ -1208,16 +1088,49 @@
         "name": "Effective Discharge Floor"
       },
       "ocpp_charger_status": {
-        "name": "OCPP Charger Status"
+        "name": "Charger Status"
       },
       "ocpp_charger_power": {
-        "name": "OCPP Charger Power"
+        "name": "Charger Power"
       },
       "ocpp_charger_info": {
-        "name": "OCPP Charger Info"
+        "name": "Charger Info"
       },
       "ocpp_charger_sessions": {
-        "name": "OCPP Charger Sessions"
+        "name": "Charger Sessions"
+      },
+      "export_income": {
+        "name": "Export Income"
+      },
+      "import_cost": {
+        "name": "Grid Import Cost"
+      },
+      "net_grid_balance": {
+        "name": "Net Grid Balance"
+      },
+      "prediction_accuracy": {
+        "name": "Prediction Accuracy"
+      },
+      "pv_curtailment": {
+        "name": "PV Curtailment"
+      },
+      "savings_tracker": {
+        "name": "Savings Tracker"
+      },
+      "solar_confidence": {
+        "name": "Solar Forecast Confidence"
+      },
+      "ocpp_second_charger_status": {
+        "name": "Charger Status"
+      },
+      "ocpp_second_charger_power": {
+        "name": "Charger Power"
+      },
+      "ocpp_second_charger_info": {
+        "name": "Charger Info"
+      },
+      "ocpp_second_charger_sessions": {
+        "name": "Charger Sessions"
       }
     },
     "switch": {
@@ -1230,15 +1143,6 @@
       "verbose_logging": {
         "name": "Verbose Logging"
       },
-      "batteries_schedule_1": {
-        "name": "Batteries Schedule 1"
-      },
-      "batteries_schedule_2": {
-        "name": "Batteries Schedule 2"
-      },
-      "batteries_schedule_3": {
-        "name": "Batteries Schedule 3"
-      },
       "ev_force_discharge": {
         "name": "EV Force Max Discharge Power"
       },
@@ -1249,10 +1153,10 @@
         "name": "EV Force Charge Now"
       },
       "ev_second_smart_charging": {
-        "name": "EV 2 Smart Charging"
+        "name": "EV Smart Charging"
       },
       "ev_second_force_charge_now": {
-        "name": "EV 2 Force Charge Now"
+        "name": "EV Force Charge Now"
       },
       "ml_consumption": {
         "name": "ML consumption prediction"
@@ -1286,33 +1190,15 @@
         "name": "EV Target SoC"
       },
       "ev_second_target_soc": {
-        "name": "EV 2 Target SoC"
+        "name": "EV Target SoC"
       }
     },
     "time": {
-      "schedule_1_start": {
-        "name": "Batteries Discharge Schedule 1 Start"
-      },
-      "schedule_1_end": {
-        "name": "Batteries Discharge Schedule 1 End"
-      },
-      "schedule_2_start": {
-        "name": "Batteries Discharge Schedule 2 Start"
-      },
-      "schedule_2_end": {
-        "name": "Batteries Discharge Schedule 2 End"
-      },
-      "schedule_3_start": {
-        "name": "Batteries Discharge Schedule 3 Start"
-      },
-      "schedule_3_end": {
-        "name": "Batteries Discharge Schedule 3 End"
-      },
       "ev_deadline": {
         "name": "EV Charge Deadline"
       },
       "ev_second_deadline": {
-        "name": "EV 2 Charge Deadline"
+        "name": "EV Charge Deadline"
       }
     }
   },
@@ -1342,6 +1228,90 @@
     "create_dashboard": {
       "name": "Create dashboard",
       "description": "Create or update the HSEM Lovelace dashboard. Set force to true to overwrite."
+    },
+    "ocpp_debug_start_charging": {
+      "name": "OCPP debug start charging",
+      "description": "Diagnostics-only: manually send RemoteStartTransaction and SetChargingProfile to the connected OCPP charger, bypassing the anti-flap start window.",
+      "fields": {
+        "charger": {
+          "name": "Charger",
+          "description": "Which EV's embedded OCPP server to target."
+        },
+        "max_current_a": {
+          "name": "Max current",
+          "description": "Maximum charging current to request, in amperes."
+        }
+      }
+    },
+    "ocpp_debug_stop_charging": {
+      "name": "OCPP debug stop charging",
+      "description": "Diagnostics-only: manually send RemoteStopTransaction to the connected OCPP charger, bypassing the anti-flap stop window.",
+      "fields": {
+        "charger": {
+          "name": "Charger",
+          "description": "Which EV's embedded OCPP server to target."
+        }
+      }
+    },
+    "ocpp_debug_diagnostics": {
+      "name": "OCPP debug diagnostics",
+      "description": "Diagnostics-only: ask the connected OCPP charger for its own configuration and for the charging limit it has actually computed, and log the replies.",
+      "fields": {
+        "charger": {
+          "name": "Charger",
+          "description": "Which EV's embedded OCPP server to target."
+        }
+      }
+    },
+    "ocpp_debug_set_availability": {
+      "name": "OCPP debug set availability",
+      "description": "Diagnostics-only: set the charger's connector Operative or Inoperative (OCPP ChangeAvailability).",
+      "fields": {
+        "charger": {
+          "name": "Charger",
+          "description": "Which EV's embedded OCPP server to target."
+        },
+        "operative": {
+          "name": "Operative",
+          "description": "True for Operative (in service), false for Inoperative."
+        },
+        "connector_id": {
+          "name": "Connector",
+          "description": "Connector to change. 0 addresses the whole charge point."
+        }
+      }
+    },
+    "ocpp_debug_set_configuration": {
+      "name": "OCPP debug set configuration",
+      "description": "Diagnostics-only: write a single OCPP configuration key on the charger (OCPP ChangeConfiguration).",
+      "fields": {
+        "charger": {
+          "name": "Charger",
+          "description": "Which EV's embedded OCPP server to target."
+        },
+        "key": {
+          "name": "Key",
+          "description": "Configuration key name, exactly as the charger reports it."
+        },
+        "value": {
+          "name": "Value",
+          "description": "New value. OCPP 1.6 carries all configuration values as strings."
+        }
+      }
+    },
+    "ocpp_debug_set_current": {
+      "name": "OCPP debug set current",
+      "description": "Diagnostics-only: send a charging profile at the given current and nothing else, to isolate whether the charger honours profiles. Use 0 for the generic stop.",
+      "fields": {
+        "charger": {
+          "name": "Charger",
+          "description": "Which EV's embedded OCPP server to target."
+        },
+        "current_a": {
+          "name": "Current",
+          "description": "Current limit to request. 0 means draw nothing; otherwise 6-32 A."
+        }
+      }
     }
   }
 }

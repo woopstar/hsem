@@ -53,6 +53,7 @@ class HSEMTimeEntity(HSEMEntity, TimeEntity):
             and ``default_value``.
         """
         super().__init__(config_entry)
+        self._hsem_device = description.hsem_device
 
         self.hass = hass
         self._config_entry = config_entry

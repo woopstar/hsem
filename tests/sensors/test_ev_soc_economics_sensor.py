@@ -29,6 +29,7 @@ from custom_components.hsem.custom_sensors.ev_second_soc_economics_sensor import
 from custom_components.hsem.custom_sensors.ev_soc_economics_sensor import (
     HSEMEVSoCEconomicsSensor,
 )
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity
 from custom_components.hsem.planner.ev_soc_economics import (
     EVSoCEconomicsPoint,
@@ -87,9 +88,9 @@ def _make_primary_sensor(
     sensor = object.__new__(HSEMEVSoCEconomicsSensor)
     sensor.coordinator = coordinator
     sensor._config_entry = MagicMock()
+    sensor._hsem_device = HSEMDevice.EV_PRIMARY
     sensor._attr_unique_id = "hsem_ev_soc_economics"
     sensor.entity_id = "sensor.hsem_ev_soc_economics"
-    sensor._name = "EV SoC Economics"
     sensor._restored_state = None
     return sensor
 
@@ -104,9 +105,9 @@ def _make_second_sensor(
     sensor = object.__new__(HSEMEVSecondSoCEconomicsSensor)
     sensor.coordinator = coordinator
     sensor._config_entry = MagicMock()
+    sensor._hsem_device = HSEMDevice.EV_SECONDARY
     sensor._attr_unique_id = "hsem_ev_second_soc_economics"
     sensor.entity_id = "sensor.hsem_ev_second_soc_economics"
-    sensor._name = "EV 2 SoC Economics"
     sensor._restored_state = None
     return sensor
 

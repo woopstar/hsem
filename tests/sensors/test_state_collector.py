@@ -17,7 +17,6 @@ from custom_components.hsem.custom_sensors.state_collector import (
     _compute_battery_capacities,
     _compute_net_consumption,
     _register_listeners,
-    build_battery_schedules,
     build_sensor_config,
 )
 from custom_components.hsem.models.live_state import LiveState
@@ -84,18 +83,6 @@ def _make_config_entry(**overrides: Any) -> MagicMock:
         "hsem_batteries_conversion_loss": 5.0,
         "hsem_batteries_purchase_price": 8000.0,
         "hsem_batteries_expected_cycles": 6000,
-        "hsem_batteries_enable_batteries_schedule_1": False,
-        "hsem_batteries_enable_batteries_schedule_1_start": "07:00:00",
-        "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
-        "hsem_batteries_enable_batteries_schedule_1_min_price_difference": 0.0,
-        "hsem_batteries_enable_batteries_schedule_2": False,
-        "hsem_batteries_enable_batteries_schedule_2_start": "17:00:00",
-        "hsem_batteries_enable_batteries_schedule_2_end": "21:00:00",
-        "hsem_batteries_enable_batteries_schedule_2_min_price_difference": 0.0,
-        "hsem_batteries_enable_batteries_schedule_3": False,
-        "hsem_batteries_enable_batteries_schedule_3_start": "07:00:00",
-        "hsem_batteries_enable_batteries_schedule_3_end": "09:00:00",
-        "hsem_batteries_enable_batteries_schedule_3_min_price_difference": 0.0,
         "hsem_batteries_enable_excess_export": False,
         "hsem_batteries_excess_export_discharge_buffer": 10.0,
         "hsem_house_consumption_energy_weight_1d": 50,
@@ -190,16 +177,6 @@ class TestBuildSensorConfig:
             + cfg.house_consumption_energy_weight_7d
             + cfg.house_consumption_energy_weight_14d
         ) == 100
-
-    def test_schedule_1_propagates(self):
-        cfg = build_sensor_config(
-            _make_config_entry(
-                hsem_batteries_enable_batteries_schedule_1=True,
-                hsem_batteries_enable_batteries_schedule_1_start="06:00:00",
-                hsem_batteries_enable_batteries_schedule_1_end="09:00:00",
-            )
-        )
-        assert cfg.batteries_schedule_1.enabled is True
 
     def test_months_winter_list_converted(self):
         # convert_months_to_int accepts numeric strings like '1', '2'
@@ -408,35 +385,6 @@ class TestComputeNetConsumption:
         live.solar_production_power_w = 500.0
         _compute_net_consumption(live, self._cfg())
         assert live.net_consumption_w == pytest.approx(0.0)
-
-
-# ---------------------------------------------------------------------------
-# build_battery_schedules
-# ---------------------------------------------------------------------------
-
-
-class TestBuildBatterySchedules:
-    def test_returns_three_schedules(self):
-        cfg = build_sensor_config(_make_config_entry())
-        schedules = build_battery_schedules(cfg)
-        assert len(schedules) == 3
-
-    def test_disabled_schedules_have_enabled_false(self):
-        cfg = build_sensor_config(_make_config_entry())
-        schedules = build_battery_schedules(cfg)
-        assert all(not s.enabled for s in schedules)
-
-    def test_enabled_schedule_propagates(self):
-        cfg = build_sensor_config(
-            _make_config_entry(hsem_batteries_enable_batteries_schedule_1=True)
-        )
-        schedules = build_battery_schedules(cfg)
-        assert schedules[0].enabled is True
-
-    def test_initial_avg_import_price_zero(self):
-        cfg = build_sensor_config(_make_config_entry())
-        for s in build_battery_schedules(cfg):
-            assert s.avg_import_price == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------

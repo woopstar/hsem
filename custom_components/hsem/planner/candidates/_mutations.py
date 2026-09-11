@@ -78,27 +78,3 @@ def _apply_passive_solar(slots: list[PlannedSlot], now: datetime) -> None:
         ):
             slot.recommendation = Recommendations.BatteriesChargeSolar.value
             slot.batteries_charged_kwh = round(-slot.estimated_net_consumption_kwh, 3)
-
-
-def _remove_solar_charge(slots: list[PlannedSlot]) -> None:
-    """Clear solar-charge slots, leaving grid-charge and discharge intact."""
-    for slot in slots:
-        if slot.recommendation == Recommendations.BatteriesChargeSolar.value:
-            slot.recommendation = None
-            slot.batteries_charged_kwh = 0.0
-
-
-def _remove_grid_charge(slots: list[PlannedSlot]) -> None:
-    """Clear grid-charge slots, leaving solar-charge and discharge intact."""
-    for slot in slots:
-        if slot.recommendation == Recommendations.BatteriesChargeGrid.value:
-            slot.recommendation = None
-            slot.batteries_charged_kwh = 0.0
-
-
-def _remove_all_charge(slots: list[PlannedSlot]) -> None:
-    """Clear all charge slots, leaving discharge slots intact."""
-    for slot in slots:
-        if slot.recommendation in _CHARGE_RECS:
-            slot.recommendation = None
-            slot.batteries_charged_kwh = 0.0

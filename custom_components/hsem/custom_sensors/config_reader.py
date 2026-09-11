@@ -11,14 +11,11 @@ called synchronously and tested without a running HA instance.
 
 from __future__ import annotations
 
-from datetime import time
 from typing import Any, cast
 
 import voluptuous as vol
 
-from custom_components.hsem.models.battery_schedule import BatterySchedule
 from custom_components.hsem.models.sensor_config import (
-    BatteryScheduleConfig,
     EVChargerConfig,
     SensorConfig,
 )
@@ -27,7 +24,6 @@ from custom_components.hsem.utils.conversion import (
     convert_to_boolean,
     convert_to_float,
     convert_to_int,
-    convert_to_time,
 )
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.phase_power import (
@@ -263,6 +259,13 @@ def build_sensor_config(
         )
         or 0.0
     )
+    cfg.export_fee_per_kwh = (
+        convert_to_float(get_config_value(config_entry, "hsem_export_fee_per_kwh"))
+        or 0.0
+    )
+    cfg.curtail_pv_below_export_min_price = convert_to_boolean(
+        get_config_value(config_entry, "hsem_curtail_pv_below_export_min_price")
+    )
 
     # First EV charger
     ev = EVChargerConfig()
@@ -366,47 +369,6 @@ def build_sensor_config(
             get_config_value(config_entry, "hsem_batteries_capacity_loss_pct")
         )
         or 30.0
-    )
-
-    # Battery schedules
-    _s1_start = get_config_value(
-        config_entry, "hsem_batteries_enable_batteries_schedule_1_start"
-    )
-    _s1_end = get_config_value(
-        config_entry, "hsem_batteries_enable_batteries_schedule_1_end"
-    )
-    _s2_start = get_config_value(
-        config_entry, "hsem_batteries_enable_batteries_schedule_2_start"
-    )
-    _s2_end = get_config_value(
-        config_entry, "hsem_batteries_enable_batteries_schedule_2_end"
-    )
-    _s3_start = get_config_value(
-        config_entry, "hsem_batteries_enable_batteries_schedule_3_start"
-    )
-    _s3_end = get_config_value(
-        config_entry, "hsem_batteries_enable_batteries_schedule_3_end"
-    )
-    cfg.batteries_schedule_1 = BatteryScheduleConfig(
-        enabled=convert_to_boolean(
-            get_config_value(config_entry, "hsem_batteries_enable_batteries_schedule_1")
-        ),
-        start=convert_to_time(_s1_start) if _s1_start is not None else None,
-        end=convert_to_time(_s1_end) if _s1_end is not None else None,
-    )
-    cfg.batteries_schedule_2 = BatteryScheduleConfig(
-        enabled=convert_to_boolean(
-            get_config_value(config_entry, "hsem_batteries_enable_batteries_schedule_2")
-        ),
-        start=convert_to_time(_s2_start) if _s2_start is not None else None,
-        end=convert_to_time(_s2_end) if _s2_end is not None else None,
-    )
-    cfg.batteries_schedule_3 = BatteryScheduleConfig(
-        enabled=convert_to_boolean(
-            get_config_value(config_entry, "hsem_batteries_enable_batteries_schedule_3")
-        ),
-        start=convert_to_time(_s3_start) if _s3_start is not None else None,
-        end=convert_to_time(_s3_end) if _s3_end is not None else None,
     )
 
     # Excess export
@@ -550,11 +512,6 @@ def build_sensor_config(
         _s2_stub_min if _s2_stub_min is not None else 2.0
     )
 
-    # EV auto-Full on negative price (issue #609)
-    cfg.ev_auto_full_negative_price = convert_to_boolean(
-        get_config_value(config_entry, "hsem_ev_auto_full_negative_price")
-    )
-
     # Daily plan-vs-actual tracking — optional cumulative energy meter entities.
     cfg.grid_import_energy_entity = _optional_entity(
         get_config_value(config_entry, "hsem_grid_import_energy_entity")
@@ -585,6 +542,20 @@ def build_sensor_config(
     )
     cfg.ml_consumption_temperature_entity = _optional_entity(
         get_config_value(config_entry, "hsem_ml_consumption_temperature_entity")
+    )
+    cfg.ml_consumption_weather_forecast_entity = _optional_entity(
+        get_config_value(config_entry, "hsem_ml_consumption_weather_forecast_entity")
+    )
+    cfg.ml_consumption_wind_chill_enabled = bool(
+        get_config_value(config_entry, "hsem_ml_consumption_wind_chill_enabled")
+    )
+    _wind_chill_ref_temp = convert_to_float(
+        get_config_value(
+            config_entry, "hsem_ml_consumption_wind_chill_reference_temperature"
+        )
+    )
+    cfg.ml_consumption_wind_chill_reference_temperature = (
+        _wind_chill_ref_temp if _wind_chill_ref_temp is not None else 18.0
     )
 
     # Consumption weights
@@ -628,34 +599,6 @@ def build_sensor_config(
     cfg.ocpp_second_cpid = get_config_value(config_entry, "hsem_ocpp_second_cpid") or ""
 
     return cfg
-
-
-def build_battery_schedules(cfg: SensorConfig) -> list[BatterySchedule]:
-    """Convert the three :class:`BatteryScheduleConfig` objects into :class:`BatterySchedule` instances.
-
-    Args:
-        cfg: Populated sensor configuration.
-
-    Returns:
-        A list of three :class:`BatterySchedule` objects (always three, regardless
-        of whether they are enabled).
-    """
-    _midnight = time(0, 0)  # safe fallback for unconfigured schedules
-    schedules = []
-    for sc in cfg.schedule_configs():
-        schedules.append(
-            BatterySchedule(
-                enabled=sc.enabled,
-                # start/end are time|None in BatteryScheduleConfig (optional schedule);
-                # BatterySchedule requires time, so fall back to midnight when not set.
-                start=sc.start if sc.start is not None else _midnight,
-                end=sc.end if sc.end is not None else _midnight,
-                avg_import_price=0.0,
-                needed_batteries_capacity=0.0,
-                needed_batteries_capacity_cost=0.0,
-            )
-        )
-    return schedules
 
 
 # ---------------------------------------------------------------------------

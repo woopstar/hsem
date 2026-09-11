@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from custom_components.hsem.models.charge_window import ChargeWindow
@@ -12,7 +13,6 @@ from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.models.planned_slot import PlannedSlot
 
 if TYPE_CHECKING:
-    from custom_components.hsem.models.time_series import TimeSeriesIndex
     from custom_components.hsem.planner.cost_function import PlanCostBreakdown
     from custom_components.hsem.planner.ev_planner import EVChargingPlan
 
@@ -35,16 +35,26 @@ class PlannerOutput:
             slot is found.
         battery_soc_at_end:
             Estimated battery SoC (%) at the end of the planning horizon.
+        required_capacity_kwh:
+            Energy required until the first forecast solar-surplus slot
+            (``calculate_required_battery_until_solar``).  Used by the
+            excess-export scheduling pass and the applier's EV discharge-cap
+            SoC guard.  Not used to gate wait-mode self-consumption — see
+            ``wait_mode_reserve_kwh``.
+        wait_mode_reserve_kwh:
+            Reserve derived from the *selected* plan's own simulated SoC
+            trajectory (``calculate_required_battery_for_plan``): how far the
+            plan's battery capacity dips below its current level before the
+            plan's next slot with an actual solved charge.  Gates whether the
+            battery may discharge during a ``batteries_wait_mode`` slot under
+            ``self_consumption_with_reserve`` (issue #914).  ``None`` when no
+            reliable reserve could be derived — callers must fall back to
+            strict Wait behaviour in that case.
         missing_inputs:
             Names / identifiers of any inputs that were absent or invalid
             during planning.  An empty list means all inputs were present.
         warnings:
             Human-readable warning strings emitted during planning.
-        time_series_index:
-            The shared :class:`~custom_components.hsem.models.time_series.TimeSeriesIndex`
-            used during this planning run.  All slot boundaries, price, PV,
-            load, import/export and SoC series are aligned to this axis.
-            ``None`` when the planner was invoked without a valid horizon.
         data_quality:
             Structured diagnostics about the completeness of price, PV, and
             load-forecast inputs for today and tomorrow.  Exposes which hours are missing
@@ -64,9 +74,9 @@ class PlannerOutput:
     current_recommendation: str | None = None
     battery_soc_at_end: float = 0.0
     required_capacity_kwh: float = 0.0
+    wait_mode_reserve_kwh: float | None = None
     missing_inputs: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-    time_series_index: TimeSeriesIndex | None = field(default=None, repr=False)
     #: Structured data-quality report for price, PV, and load-forecast inputs.
     data_quality: DataQuality = field(default_factory=DataQuality)
     extra: dict[str, Any] = field(default_factory=dict)
@@ -90,6 +100,17 @@ class PlannerOutput:
     #: ``"aggressive"``).  Used by the coordinator to persist the active plan
     #: name across cycles for hysteresis (issue #372).
     winner_name: str = ""
+    #: Current-slot EV charger power hold state (issue #957): the rate held
+    #: for the current slot after this solve, to be persisted by the
+    #: coordinator and fed back into the next solve's ``PlannerInput`` so the
+    #: engine can hold the rate for the rest of the slot instead of
+    #: re-deriving it from the live clock on every re-solve. ``None`` means
+    #: nothing is held (no charge planned for the current slot).
+    ev_held_slot_start: datetime | None = None
+    ev_held_power_w: float = 0.0
+    #: Same as ev_held_slot_start/ev_held_power_w, for the second EV.
+    ev_second_held_slot_start: datetime | None = None
+    ev_second_held_power_w: float = 0.0
 
     # ------------------------------------------------------------------
     # Convenience helpers used by tests

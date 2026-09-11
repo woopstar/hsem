@@ -30,7 +30,6 @@ from custom_components.hsem.coordinator_helpers import (
 from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
     async_collect_all_states,
-    build_battery_schedules,
     build_sensor_config,
 )
 from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
@@ -70,13 +69,12 @@ class CoordinatorSharedState(_Base):
     """Type-only declaration of state shared across the coordinator mixins."""
 
     _avg_house_consumption_entity_id_cache: dict[str, str]
-    _batteries_schedules: list
-    _batteries_schedules_remaining_capacity_needed: float
     _capacity_learner: CapacityLearner
     _cfg: SensorConfig
     _config_entry: ConfigEntry
     _current_load_forecast_signature: LoadForecastSignature | None
     _current_required_battery: float
+    _current_wait_mode_reserve: float | None
     _daily_plan_last_accumulated: datetime | None
     _daily_tracker: DailyPlanVsActualTracker
     _data_quality: DataQuality
@@ -85,11 +83,15 @@ class CoordinatorSharedState(_Base):
     _effective_discharge_floor_pct: float | None
     _ev_charging_plan: EVChargingPlan | None
     _ev_delivered_energy_tracker: EVDeliveredEnergyTracker
+    _ev_held_power_w: float
+    _ev_held_slot_start: datetime | None
     _ev_last_command_w: dict[str, float]
     _ev_second_charging_plan: EVChargingPlan | None
     _ev_second_delivered_energy_tracker: EVDeliveredEnergyTracker
-    _ev_soc_economics: EVSoCEconomicsResult | None
+    _ev_second_held_power_w: float
+    _ev_second_held_slot_start: datetime | None
     _ev_second_soc_economics: EVSoCEconomicsResult | None
+    _ev_soc_economics: EVSoCEconomicsResult | None
     _ev_soc_economics_last_computed: datetime | None
     _event_update_pending: bool
     _financial_tracker: FinancialTracker
@@ -154,7 +156,6 @@ class CoordinatorSharedState(_Base):
     _savings_tracker: SavingsTracker
     _snapshot: StateSnapshot | None
     _solar_corrector: SolarForecastCorrector
-    _solar_corrector_processed: set[datetime]
     _timer_interval: timedelta | None
     _tracked_entities: set[str]
     _update_generation: int

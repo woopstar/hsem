@@ -82,7 +82,7 @@ init → prices → months → solcast
      → ev (force-discharge charger) → [ev_second]
      → ev_planned_load               ← you are here
      → [ev_second_planned_load]
-     → batteries_schedule_1/2/3 → batteries_excess_export
+     → ocpp → batteries_wait_mode → batteries_excess_export
      → weighted_values
 ```
 
@@ -450,6 +450,186 @@ rejection is now visible instead of silently assumed successful. A rejected
 `SetChargingProfile` is retried on the same roughly-once-a-minute cadence as
 a rejected start, without waiting for the target to change materially.
 
+**`SetChargingProfile` accepted but the amp limit may never actually apply
+(issue #920 follow-up).** Found on a go-e Charger V4 (firmware 60.6, OCPP
+1.6) via `hsem.ocpp_debug_start_charging` plus the new wire-level DEBUG
+logging: `RemoteStartTransaction` and `SetChargingProfile` were both
+accepted (`"status": "Accepted"`) and `StartTransaction` confirmed, but the
+requested amperage was not enforced. An initial attempt at the root cause —
+switching `chargingProfileKind` from `"Relative"` to `"Absolute"` on the
+theory that OCPP 1.6 §3.11 restricts `"Relative"` to `TxProfile`-purpose
+profiles only — turned out to be unsupported by real-world evidence: the
+mature [`lbbrhzn/ocpp`](https://github.com/lbbrhzn/ocpp) Home Assistant
+integration uses `"Relative"` universally, across `ChargePointMaxProfile`,
+`TxProfile`, and `TxDefaultProfile` alike, tested against a very wide range
+of real charger models. That change was reverted.
+
+The more likely real cause, found by cross-checking `lbbrhzn/ocpp`'s
+`ocppv16.py::set_charge_rate()`: HSEM only ever sent a `TxDefaultProfile`
+(transaction-agnostic — necessary because it's sent immediately after
+`RemoteStartTransaction`, before the transaction ID is even confirmed).
+Some chargers only actually throttle an _ongoing_ session via a
+transaction-scoped `TxProfile`, treating a bare `TxDefaultProfile` as a
+lower-priority default that doesn't override a session already running
+under the charger's own local decision. HSEM now also sends a `TxProfile`
+carrying the confirmed `transactionId` once
+`ChargerSession.transaction_id` is known (at a higher `stackLevel` than the
+`TxDefaultProfile`) — matching `lbbrhzn/ocpp`'s dual-profile strategy.
+Note the initial `SetChargingProfile` sent alongside `RemoteStartTransaction`
+is necessarily `TxDefaultProfile`-only, since the transaction ID isn't known
+until the charger's own `StartTransaction` arrives — HSEM now re-sends the
+profile from `_handle_start_transaction()` at that point specifically so the
+`TxProfile` companion gets a chance to bind to the now-known transaction.
+That resend runs as a **detached background task**, not awaited inline —
+`OCPPServer._dispatch()` only sends the `StartTransaction` CALLRESULT after
+the handler returns, so awaiting two more `SetChargingProfile` CALLs first
+would put unsolicited messages on the wire before the charger gets the
+response to its own still-pending request. Some charger firmware handles
+messages strictly request/response and can stop responding altogether if
+that ordering is violated.
+
+**A transaction the charger opened before HSEM restarted used to be
+invisible to HSEM, deadlocking start _and_ stop (issue #920 follow-up).**
+`ChargerSession` is recreated with `transaction_id = None` on every
+WebSocket connect, and only `StartTransaction` ever set it — so if the
+charger still had a transaction open from before an HSEM restart (or a
+reconnect), HSEM never learned about it. That deadlocks both directions at
+once:
+
+- **Stop did nothing at all.** `_send_remote_stop()` sees
+  `transaction_id is None`, logs "no active transaction — skipping
+  RemoteStopTransaction (nothing to stop)", and never puts anything on the
+  wire. The charger's transaction stays open forever.
+- **Start was rejected.** A charger rejects `RemoteStartTransaction` when
+  that connector already has a transaction in progress — so the stale
+  transaction blocks every new one.
+
+Observed exactly this way against a go-e Charger V4, which reported
+`transactionId: 2` on every `MeterValues` for 45 minutes while HSEM
+believed nothing was running, rejecting each `RemoteStartTransaction` and
+silently skipping each stop.
+
+`MeterValues` is the only inbound message that routinely carries the live
+`transactionId`, which makes it the natural recovery point. HSEM now adopts
+it whenever it has none recorded — the same "self-heal after restart"
+approach [`lbbrhzn/ocpp`](https://github.com/lbbrhzn/ocpp) uses. Adoption
+is guarded against reviving a transaction that has just ended (a charger's
+closing meter values arrive _after_ its `StopTransaction`): both an
+explicit `Transaction.End` reading context and the last transaction ID seen
+stopping on that CPID are checked, and that per-CPID marker is stored on
+the server so it survives the reconnect that replaces the session object.
+`send_remote_start()` also now skips re-authorizing an already-open
+transaction rather than sending a request the charger will only reject.
+
+**A charger-local "don't charge" state overrides every OCPP command
+(issue #920).** Confirmed against a go-e Charger V4 (firmware 60.6) by
+dumping `GetConfiguration` before and after pressing "stop charge" in the
+go-e app:
+
+| Key                                       | Value                        | Why it matters                                                                                                                      |
+| ----------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `ForceState`                              | `Neutral` → `Off` after stop | Vendor-specific and **writable**. While `Off`, the charger accepts every OCPP command and obeys none, sitting in `SuspendedEVSE`.   |
+| `Station-MaxCurrent`                      | `12` (read-only)             | The charger's own physical cap. Requesting more (HSEM defaulted to 16 A) is valid but cannot raise it — so nothing visibly changes. |
+| `ChargeProfileMaxStackLevel`              | `20`                         | Higher stack levels win. HSEM used to install at 0/1 — the bottom — so any pre-existing profile outranked it.                       |
+| `ChargingScheduleAllowedChargingRateUnit` | `Current`                    | Amps are the right unit for this charger.                                                                                           |
+| `GetCompositeSchedule`                    | CALLERROR `NotImplemented`   | Advertised under `SmartCharging`, but not actually implemented.                                                                     |
+
+`ChangeAvailability` does **not** address this: it toggles
+Operative/Inoperative (connector status `Unavailable`), a different axis
+from `SuspendedEVSE`. Nothing in the OCPP core profile clears a vendor
+force-off — it has to be written back through the vendor key. HSEM now
+writes `ForceState=Neutral` before every remote start, gated on the charger
+actually reporting the key (so other brands never see it) and on it
+actually being `Off` (a no-op otherwise).
+
+**Stopping is standard OCPP only — no vendor key.** HSEM sends:
+
+1. **`SetChargingProfile` with a `0 A` limit** — the idiomatic, fully
+   generic way an energy-management system says "draw nothing". Same
+   mechanism as any other limit, just at zero.
+2. **`RemoteStopTransaction`** — the correct protocol action for ending
+   the transaction itself.
+
+Nothing vendor-specific is written. An earlier version of this also wrote
+the `ForceState` vendor key on every stop, on the theory that ending the
+transaction alone wasn't enough — but isolated testing (sending _only_ the
+0 A profile, nothing else) proved it stops a go-e Charger V4 on its own,
+confirmed by the charger's own app reporting "stopped by OCPP". Writing a
+vendor key when the generic mechanism already works would leave the
+charger locally forced off after every single stop for no reason, so that
+step was removed. A charger that genuinely needs a vendor write to
+actually stop can still be reached manually via `hsem.ocpp_debug_set_configuration`
+(see [Services Reference](services-reference.md)) — nothing was removed
+from the API, only from the automatic path.
+
+Step 1 runs even when no transaction is open, because a charger can
+free-vend with power flowing and no transaction at all. It is skipped when
+nothing looks like it is charging, though: a `TxDefaultProfile` **persists
+on the charger**, so writing 0 A at an idle connector HSEM never commanded
+would leave a lasting block — and could silently stop you charging by hand.
+For the same reason HSEM clears its own charging profiles (IDs 1 and 2, by
+ID, so nothing another system installed is touched) when the OCPP server
+shuts down.
+
+**The `ForceState` recovery on _start_ is unaffected and still automatic.**
+A go-e parks `ForceState` at `Off` when charging is stopped from its own
+app — a completely different scenario from HSEM's own stop above, and one
+the 0 A-profile test says nothing about. While `Off`, the charger accepts
+every OCPP command and obeys none of them. HSEM clears it back to `Neutral`
+before every remote start, gated on the charger actually reporting the key
+(so other brands never see it) and on it actually being `Off` (a no-op
+otherwise) — so if you stop a charge from the go-e app, HSEM's next
+`RemoteStartTransaction` still works without you needing to clear anything
+yourself.
+
+**If you request an amp value and it doesn't seem to apply, wait before
+concluding it didn't work.** HSEM's own coordinator re-solves the plan
+within a few seconds of a charger reporting `StartTransaction` (the
+debounced refresh from issue #908), and that re-solve can legitimately
+compute a _different_ target than whatever you just set — this is the
+live planner doing its job, not a stale or ignored command. Check the
+requested amperage 20–30 seconds after it settles, not immediately, or use
+`hsem.set_temporary_override` to pin a stable mode while testing manually.
+
+More generally, HSEM now **asks** rather than assumes: a `GetConfiguration`
+is issued when a charger boots, and the reply drives charge-profile stack
+levels, the station current cap, and both take-over steps. Use
+`hsem.ocpp_debug_diagnostics` to see the same dump yourself.
+
+**If the requested amps never seem to apply,** check `Station-MaxCurrent`
+in that dump first. Requesting _above_ the station's own cap is accepted
+but cannot raise it, so nothing changes — HSEM logs a warning naming both
+numbers when this happens. To verify amp control is working at all, request
+a value comfortably below the cap (and at or above `MinChargingCurrent`).
+
+**A charger's connector status can change independently of any OCPP command
+HSEM sent — this is not necessarily a bug.** In one test session against the
+same go-e Charger V4, `StatusNotification` reported `"Charging"` roughly 36
+seconds _after_ a `RemoteStopTransaction` had already been accepted and
+`StopTransaction` confirmed the transaction closed, with no `MeterValues`
+reporting non-zero power at any point. A charger's connector status reflects
+what's physically happening at the plug, which is driven by the charger's
+own local logic (cable/car presence, its own charge-mode setting, PV-surplus
+automation, etc.) as much as by the OCPP central system's authorization.
+If a charger doesn't track HSEM's `RemoteStartTransaction`/
+`RemoteStopTransaction`/`SetChargingProfile` at all — starting or stopping on
+its own schedule regardless of what HSEM sent — check the charger's own
+local configuration for whatever setting hands charging-decision authority to
+the OCPP central system (often labelled something like "remote"/"neutral"/
+"OCPP-controlled" mode, as opposed to the charger's own automatic/PV-surplus/
+scheduled modes). This is a charger-configuration issue, not something
+fixable from the CS side of the OCPP link.
+
+**A `RemoteStopTransaction` that completes at the protocol level does not
+guarantee the charger actually stopped delivering power.** Testing against
+the same go-e Charger V4, `RemoteStopTransaction` was accepted and the
+charger's own subsequent `StopTransaction` confirmed the transaction closed
+(`transaction_id` cleared) — the OCPP exchange itself completed exactly as
+specced. If a charger still appears to keep charging after that, it points
+to charger-side firmware behavior (the relay/output not actually being cut
+on remote stop) rather than an HSEM-side protocol bug, and is worth
+reporting to the charger vendor with the DEBUG log excerpt as evidence.
+
 The charge point ID (`hsem_ocpp_cpid`) must match the path segment your
 charger connects with — HSEM derives it from the WebSocket connection path
 (`ws://host:port/` → `"default"`, `ws://host:port/222819` → `"222819"`),
@@ -492,6 +672,50 @@ has elapsed, HSEM retries `RemoteStopTransaction` roughly once a minute
 instead of assuming a single attempt worked — a charger that silently
 ignores or rejects the first stop request no longer gets stuck charging.
 
+### Preventing free-vend on fresh connect (issue #969)
+
+Some OCPP chargers (confirmed: go-e Charger V4) authorize and start a
+transaction **locally**, on cable insert, without ever waiting for HSEM's
+`RemoteStartTransaction` — the charger's own `StatusNotification`/
+`StartTransaction` arrive with no preceding command from HSEM at all. Since
+HSEM deliberately does **not** maintain a standing 0 A block while idle (see
+above — that was removed as part of the issue #920 follow-up, because it
+could silently prevent a user's manual/local charging whenever HSEM has no
+plan at all, e.g. smart charging disabled), a car plugged into a
+free-vending charger would draw power at the charger's own default rate for
+however long it takes the planner's next cycle to catch up and compute a
+real target.
+
+HSEM closes that gap with a **transient** gate, scoped to exactly this
+narrow window rather than reintroducing a general idle-time block:
+
+- **Armed** the instant a charger's own `StatusNotification` reports its
+  status leaving `"Available"` (cable/car connected) while HSEM's anti-flap
+  state is still `"idle"` — i.e. HSEM has not itself already started this
+  charge. This is the earliest signal available, ahead of a self-authorizing
+  charger's own `StartTransaction`. Arming immediately installs a 0 A
+  `SetChargingProfile`, reusing the same generic zero-current mechanism the
+  stop path uses.
+- **Released** the moment `update_charge_target()` is next called for this
+  connector — which happens on the very next coordinator cycle, itself
+  triggered promptly by the same debounced out-of-cycle refresh issue #908
+  wired for OCPP events (typically within a couple of seconds of the
+  connect, not the full ~5 minute polling interval). If the planner's first
+  decision allocates real power, the normal start path installs it,
+  replacing the transient 0 A profile. If the first decision is still zero
+  (smart charging disabled, feature off, or a legitimate zero-allocation
+  slot), HSEM actively clears its own 0 A profile via
+  `ClearChargingProfile` rather than leaving it standing — otherwise the
+  gate itself would become the exact issue #920 regression it exists to
+  prevent.
+- **Released** immediately if the car is unplugged (status returns to
+  `"Available"`) before the planner ever gets a chance to decide — nothing
+  is left gated with no connection behind it.
+
+The gate is per-connection state on `ChargerSession.gate_pending_plan`, so a
+disconnect (which recreates the session) always starts the next connection
+ungated until it is next armed.
+
 **Charger-stall diagnostics (issue #894):** an open transaction and a valid
 `SetChargingProfile` do not guarantee current is actually flowing — the
 charger can report `StatusNotification` status `"SuspendedEVSE"`,
@@ -530,6 +754,30 @@ into a single refresh instead of one per message. `MeterValues` and
 `Heartbeat` deliberately do **not** trigger a refresh — they arrive far more
 often and carry no state-transition information worth an out-of-band
 planner cycle.
+
+**Manually debugging a charger that won't start/stop (issue #920).** Two
+diagnostics-only services bypass the anti-flap state machine entirely and
+talk directly to whichever charger is currently connected:
+`hsem.ocpp_debug_start_charging` (optional `charger`: `"primary"`/`"second"`,
+default `"primary"`; optional `max_current_a`, default 16) sends
+`RemoteStartTransaction` + `SetChargingProfile`, and
+`hsem.ocpp_debug_stop_charging` (same `charger` field) sends
+`RemoteStopTransaction`. Both raise an error if OCPP isn't enabled for the
+selected EV or nothing is currently connected. Because these bypass the
+anti-flap window, the planner's own target still applies on the next
+coordinator cycle and can immediately countermand a manual start/stop — use
+them to isolate whether the charger itself accepts a bare OCPP command, not
+as a substitute for normal operation.
+
+For full wire-level visibility, every incoming and outgoing OCPP `CALL` is
+logged at `DEBUG` with its action and full payload (`custom_components.hsem.custom_sensors.ocpp_server`
+for inbound, `custom_components.hsem.custom_sensors.ocpp_commands` for
+outbound) — enable debug logging for those loggers in
+`configuration.yaml` to see the exact conversation between HSEM and the
+charger. `pending_calls` (outbound commands still awaiting a CALLRESULT) is
+also exposed per CPID on `sensor.hsem_ocpp_charger_status`, alongside the
+existing `last_call_status`, so a command that never got acknowledged is
+visible without reading the log.
 
 **go-e Charger.** The V2 API exposes `ama` (max ampere) for dynamic load balancing.
 go-e have confirmed setting it frequently is safe, but the community convention is

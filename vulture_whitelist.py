@@ -42,9 +42,34 @@ from custom_components.hsem.entity import HSEMEntity as _Entity  # noqa: F401
 # Properties consumed by HA entity registry
 _ = _Entity.device_info  # noqa: S905
 
+from custom_components.hsem.custom_selectors.solcast_likelihood import (  # noqa: F401
+    HSEMSolcastLikelihoodSelector as _SolcastLikelihoodSelector,
+)
+from custom_components.hsem.custom_selectors.working_mode import (  # noqa: F401
+    HSEMWorkingModeSelector as _WorkingModeSelector,
+)
+
+# SelectEntity platform method called by HA core when the user changes the
+# select in the UI (issue #967).
+_ = _SolcastLikelihoodSelector.async_select_option  # noqa: S905
+_ = _WorkingModeSelector.async_select_option  # noqa: S905
+
 from custom_components.hsem.const import DOMAIN  # noqa: F401
 from custom_components.hsem.time import async_setup_entry as _time_setup  # noqa: F401
 
 # async_setup is referenced here so vulture knows the function is live (called by HA).
 # This suppresses any false-positive "unused" warnings on its parameters.
 _ = async_setup  # noqa: S905
+
+from custom_components.hsem.utils.forecast_tracker import (  # noqa: F401
+    ForecastTracker as _ForecastTracker,
+)
+
+# finalise_record() is an intentionally-kept single-record convenience API
+# alongside the bulk-oriented finalise_past_records() that production
+# actually calls each cycle (coordinator_tracking.py). Decided as part of
+# issue #972's ForecastTracker gap triage: Gaps 1-3
+# (reconcile_unfinalised_layout, accumulate_power_interval, freeze_forecasts)
+# were wired into coordinator_tracking.py; this one (Gap 4) was not, since
+# finalise_past_records already covers production's bulk-finalise need.
+_ = _ForecastTracker.finalise_record  # noqa: S905

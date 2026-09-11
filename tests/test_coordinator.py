@@ -31,7 +31,7 @@ import asyncio
 import inspect
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -111,7 +111,6 @@ class TestCoordinatorData:
     def test_numeric_fields_default_to_zero(self) -> None:
         """Numeric accumulator fields must default to 0.0."""
         data = CoordinatorData()
-        assert data.batteries_schedules_remaining_capacity_needed == pytest.approx(0.0)
         assert data.current_required_battery == pytest.approx(0.0)
 
 
@@ -206,6 +205,75 @@ class TestCoordinatorUpdateLock:
         await coord._async_handle_update()
         await coord._async_handle_update()
         assert coord._cycle_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Coordinator async_setup / async_run_first_refresh ordering (issue #926)
+# ---------------------------------------------------------------------------
+
+
+class TestCoordinatorFirstRefreshOrdering:
+    """async_setup must not read live entity state; only async_run_first_refresh may.
+
+    Regression for issue #926: HSEM's own select/number/switch/time entities
+    are not yet registered in ``hass.states`` while ``__init__.py`` is still
+    inside ``coordinator.async_setup()`` (platform setups are forwarded only
+    after that call returns). The mandatory first cycle — which reads those
+    entities back via ``async_collect_live_state`` — must therefore live in a
+    separate method that ``__init__.py`` calls *after* forwarding platform
+    setups, never inside ``async_setup()`` itself.
+    """
+
+    @pytest.mark.asyncio
+    async def test_async_setup_does_not_run_first_cycle(self) -> None:
+        """async_setup must not call _async_handle_update (the live-state read)."""
+        coord = _make_bare_coordinator()
+        coord.hass = MagicMock()
+        coord._config_entry = MagicMock()
+        coord._prediction_tracker = MagicMock()
+        coord._financial_tracker = MagicMock()
+        coord.async_monitor_live_power = MagicMock()  # type: ignore[method-assign]
+        coord._async_handle_update = AsyncMock()  # type: ignore[method-assign]
+
+        cfg = MagicMock()
+        cfg.ocpp_enabled = False
+        cfg.ev_second_planned_load_enabled = False
+
+        with (
+            patch(
+                "custom_components.hsem.coordinator_lifecycle.init_prediction_tracker",
+                new=AsyncMock(),
+            ),
+            patch(
+                "custom_components.hsem.coordinator_lifecycle.init_financial_tracker",
+                new=AsyncMock(),
+            ),
+            patch(
+                "custom_components.hsem.coordinator_lifecycle.build_sensor_config",
+                return_value=cfg,
+            ),
+            patch(
+                "custom_components.hsem.coordinator_lifecycle.async_track_time_change",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "custom_components.hsem.coordinator_lifecycle.async_track_time_interval",
+                return_value=MagicMock(),
+            ),
+        ):
+            await coord.async_setup()
+
+        coord._async_handle_update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_async_run_first_refresh_runs_first_cycle(self) -> None:
+        """async_run_first_refresh must call _async_handle_update(None)."""
+        coord = _make_bare_coordinator()
+        coord._async_handle_update = AsyncMock()  # type: ignore[method-assign]
+
+        await coord.async_run_first_refresh()
+
+        coord._async_handle_update.assert_awaited_once_with(None)
 
 
 # ---------------------------------------------------------------------------

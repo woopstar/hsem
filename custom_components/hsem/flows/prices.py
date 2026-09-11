@@ -86,6 +86,25 @@ async def get_prices_step_schema(
                     }
                 }
             ),
+            vol.Optional(
+                "hsem_curtail_pv_below_export_min_price",
+                default=get_config_value(
+                    config_entry, "hsem_curtail_pv_below_export_min_price"
+                ),
+            ): selector({"boolean": {}}),
+            vol.Required(
+                "hsem_export_fee_per_kwh",
+                default=get_config_value(config_entry, "hsem_export_fee_per_kwh"),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0.00,
+                        "max": 1.00,
+                        "step": 0.001,
+                        "mode": "slider",
+                    }
+                }
+            ),
             vol.Required(
                 "hsem_electricity_price_update_interval",
                 default=str(
@@ -138,11 +157,19 @@ async def validate_prices_input(
         max_price=2.0,
         allow_negative=True,
     )
+    fee_errors = validate_price(
+        user_input,
+        "hsem_export_fee_per_kwh",
+        min_price=0.0,
+        max_price=1.0,
+        allow_negative=False,
+    )
     required_errors: dict[str, str] = {}
     for field in (
         "hsem_export_electricity_min_price",
+        "hsem_export_fee_per_kwh",
         "hsem_electricity_price_update_interval",
     ):
         if field not in user_input:
             required_errors[field] = "required"
-    return merge_errors(entity_errors, price_errors, required_errors)
+    return merge_errors(entity_errors, price_errors, fee_errors, required_errors)

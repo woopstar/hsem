@@ -47,6 +47,21 @@ class ChargerSession:
             ``{"SetChargingProfile": "Rejected"}`` (issue #906). Lets the
             anti-flap state machine and diagnostics distinguish "message
             written to the socket" from "charger actually accepted it".
+        configuration_keys: The charger's own OCPP configuration, as
+            reported by ``GetConfiguration`` (issue #920). Empty until the
+            reply arrives. HSEM reads capabilities from here instead of
+            assuming them — the charge-profile stack level it accepts
+            (``ChargeProfileMaxStackLevel``), the current it is physically
+            capped at (``Station-MaxCurrent``), and any vendor key that
+            governs whether it will charge at all (go-e's ``ForceState``).
+        gate_pending_plan: ``True`` while HSEM is holding this connector at
+            a transient 0 A block because the charger's own status just
+            left ``"Available"`` (a car connected, or free-vended locally)
+            before the planner has had its first chance to decide a
+            target for it (issue #969). Cleared the moment either the
+            planner's next decision arrives (``update_charge_target()``,
+            whatever it decides) or the car disconnects — never a
+            standing idle-time block, which would regress issue #920.
     """
 
     cpid: str = ""
@@ -64,3 +79,5 @@ class ChargerSession:
     status_changed_at: datetime | None = None
     pending_calls: dict[str, str] = field(default_factory=dict)
     last_call_status: dict[str, str] = field(default_factory=dict)
+    configuration_keys: dict[str, str] = field(default_factory=dict)
+    gate_pending_plan: bool = False

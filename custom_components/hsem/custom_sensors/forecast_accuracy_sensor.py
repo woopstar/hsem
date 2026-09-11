@@ -37,6 +37,7 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.forecast_tracker import ForecastTracker
@@ -44,7 +45,6 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.persistence import finite_float
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_forecast_accuracy_sensor_entity_id,
-    get_forecast_accuracy_sensor_name,
     get_forecast_accuracy_sensor_unique_id,
 )
 
@@ -63,6 +63,7 @@ class HSEMForecastAccuracySensor(
 
     _attr_icon = "mdi:chart-line"
     _attr_has_entity_name = True
+    _attr_translation_key = "forecast_accuracy"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
@@ -78,10 +79,10 @@ class HSEMForecastAccuracySensor(
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
+        self._hsem_device = HSEMDevice.FORECAST
         self._attr_unique_id = get_forecast_accuracy_sensor_unique_id(
             config_entry.entry_id
         )
-        self._attr_name = get_forecast_accuracy_sensor_name()
         self.entity_id = get_forecast_accuracy_sensor_entity_id()
         self._restored_state: str | None = None
 

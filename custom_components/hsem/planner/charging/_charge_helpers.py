@@ -15,9 +15,9 @@ from custom_components.hsem.utils.recommendations import (
 def _already_planned_charge_kwh(slots: list[PlannedSlot]) -> float:
     """Return the sum of ``batteries_charged_kwh`` across all charge-type slots.
 
-    Used by downstream charge passes (opportunistic, arbitrage) to avoid
-    exceeding the battery's remaining capacity when ``apply_charge_schedules``
-    has already assigned energy.
+    Used by downstream charge passes (e.g. opportunistic charge) to avoid
+    exceeding the battery's remaining capacity when an earlier pass has
+    already assigned charge energy.
 
     Args:
         slots: The mutable slot list to scan.

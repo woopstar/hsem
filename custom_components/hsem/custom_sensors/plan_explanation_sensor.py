@@ -56,7 +56,6 @@ from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_plan_explanation_sensor_entity_id,
-    get_plan_explanation_sensor_name,
     get_plan_explanation_sensor_unique_id,
 )
 
@@ -91,6 +90,7 @@ class HSEMPlanExplanationSensor(
 
     _attr_icon = "mdi:chart-gantt"
     _attr_has_entity_name = True
+    _attr_translation_key = "plan_explanation"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
@@ -112,7 +112,6 @@ class HSEMPlanExplanationSensor(
             config_entry.entry_id
         )
         self.entity_id = get_plan_explanation_sensor_entity_id()
-        self._name = get_plan_explanation_sensor_name()
 
         # Restored state used before the first coordinator cycle completes.
         self._restored_state: str | None = None
@@ -120,12 +119,6 @@ class HSEMPlanExplanationSensor(
     # ------------------------------------------------------------------
     # HA entity properties
     # ------------------------------------------------------------------
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override
@@ -218,6 +211,33 @@ class HSEMPlanExplanationSensor(
             ml_predictor = getattr(self.coordinator, "_ml_predictor", None)
             d["ml_available_history_days"] = (
                 ml_predictor.actual_history_days if ml_predictor is not None else 0.0
+            )
+
+            # ML forecast-temperature diagnostics (issue #918).
+            d["ml_forecast_temperature_configured"] = bool(
+                cfg.ml_consumption_weather_forecast_entity
+            )
+            d["ml_forecast_temperature_slots_used"] = (
+                ml_predictor.forecast_temperature_slots_used
+                if ml_predictor is not None
+                else 0
+            )
+            d["ml_forecast_temperature_fallback_slots"] = (
+                ml_predictor.fallback_temperature_slots_used
+                if ml_predictor is not None
+                else 0
+            )
+
+            # ML forecast-wind diagnostics (issue #943).
+            d["ml_forecast_wind_configured"] = bool(
+                cfg.ml_consumption_wind_chill_enabled
+                and cfg.ml_consumption_weather_forecast_entity
+            )
+            d["ml_forecast_wind_slots_used"] = (
+                ml_predictor.forecast_wind_slots_used if ml_predictor is not None else 0
+            )
+            d["ml_forecast_wind_fallback_slots"] = (
+                ml_predictor.fallback_wind_slots_used if ml_predictor is not None else 0
             )
 
         return d

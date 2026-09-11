@@ -13,7 +13,6 @@ The :func:`build_sensor_config` factory function (in
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import time
 from typing import cast
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
@@ -39,20 +38,6 @@ class EVChargerConfig:
     past_target_confidence_factor: float = 0.9
     force_max_discharge_power: bool = False
     max_discharge_power: int = 0
-
-
-@dataclass
-class BatteryScheduleConfig:
-    """Configuration for one charge/discharge battery schedule window.
-
-    Defines whether the schedule window is enabled and its start/end times.
-    Used as a nested config block within :class:`SensorConfig` for up to
-    three independent battery schedule windows.
-    """
-
-    enabled: bool = False
-    start: time | None = None
-    end: time | None = None
 
 
 @dataclass
@@ -108,6 +93,13 @@ class SensorConfig:
         import_electricity_price_forecast_sensor: Optional entity ID for a separate import forecast sensor (e.g. Amber Electric).
         export_electricity_price_forecast_sensor: Optional entity ID for a separate export forecast sensor.
         export_electricity_min_price: Minimum export price to allow grid export.
+        curtail_pv_below_export_min_price: Opt-in physical PV curtailment
+            (issue #930). When ``True``, the applier writes a physical grid-export
+            block whenever the export price drops below
+            ``export_electricity_min_price``, even if the price is still
+            non-negative. When ``False`` (default), preserves the #767 behavior:
+            surplus PV keeps exporting for any non-negative price and only
+            battery-to-grid export is gated by the minimum price.
 
         ev: First EV charger configuration.
         ev_second_enabled: Whether the second EV charger is active.
@@ -123,10 +115,6 @@ class SensorConfig:
         batteries_expected_cycles: Expected total cycle life of the battery.
         batteries_cycle_cost: User-configured extra per-kWh cycle cost.
             Added to the auto-derived depreciation threshold.  0.0 = disabled.
-
-        batteries_schedule_1: First discharge-window schedule config.
-        batteries_schedule_2: Second discharge-window schedule config.
-        batteries_schedule_3: Third discharge-window schedule config.
 
         batteries_enable_excess_export: Enable opportunistic forced-discharge export.
         batteries_excess_export_discharge_buffer: Safety buffer percentage to keep.
@@ -229,13 +217,19 @@ class SensorConfig:
     import_electricity_price_forecast_sensor: str | None = None
     export_electricity_price_forecast_sensor: str | None = None
     export_electricity_min_price: float = 0.0
+    #: Retailer margin/balancing-fee cost per kWh exported (issue #925).
+    #: Netted out of the export price wherever export profitability is
+    #: decided (applier physical block, MILP objective, cost function).
+    #: 0.0 (default) is fully backward compatible.
+    export_fee_per_kwh: float = 0.0
+    #: Opt-in physical PV curtailment below export_electricity_min_price
+    #: (issue #930). ``False`` (default) preserves the #767 behavior.
+    curtail_pv_below_export_min_price: bool = False
 
     # EV chargers
     ev: EVChargerConfig = field(default_factory=EVChargerConfig)
     ev_second_enabled: bool = False
     ev_second: EVChargerConfig = field(default_factory=EVChargerConfig)
-    #: Auto-Full on negative electricity price (issue #609)
-    ev_auto_full_negative_price: bool = False
 
     # Battery economics
     batteries_charge_efficiency: float = 98.0
@@ -254,17 +248,6 @@ class SensorConfig:
         default_factory=lambda: cast(
             float, DEFAULT_CONFIG_VALUES["hsem_batteries_capacity_loss_pct"]
         )
-    )
-
-    # Battery discharge schedules
-    batteries_schedule_1: BatteryScheduleConfig = field(
-        default_factory=BatteryScheduleConfig
-    )
-    batteries_schedule_2: BatteryScheduleConfig = field(
-        default_factory=BatteryScheduleConfig
-    )
-    batteries_schedule_3: BatteryScheduleConfig = field(
-        default_factory=BatteryScheduleConfig
     )
 
     # Excess export
@@ -337,6 +320,22 @@ class SensorConfig:
     ml_consumption_net_consumption: bool = False
     ml_consumption_sequential: bool = False
     ml_consumption_temperature_entity: str | None = None
+    #: Optional weather entity supplying forecast temperatures for FUTURE
+    #: inference slots.  Requires ml_consumption_temperature_entity to also
+    #: be configured (and to have trained a temperature-aware model) —
+    #: otherwise the predictor has no temperature coefficient to feed.
+    ml_consumption_weather_forecast_entity: str | None = None
+    #: Enable the wind-chill index feature (issue #943): wind_speed_kmh *
+    #: max(0, reference_temp - outdoor_temp). Requires both
+    #: ml_consumption_temperature_entity and
+    #: ml_consumption_weather_forecast_entity — wind history and forecast
+    #: are both derived from the weather entity, no dedicated wind sensor
+    #: is used.
+    ml_consumption_wind_chill_enabled: bool = False
+    #: Balance-point temperature (°C) for the wind-chill index — the
+    #: outdoor temperature above which wind no longer meaningfully
+    #: increases heat loss.
+    ml_consumption_wind_chill_reference_temperature: float = 18.0
 
     # Planner hysteresis — keep the active plan unless a new plan is
     # materially better (anti-flapping, issue #372).
@@ -363,14 +362,6 @@ class SensorConfig:
     house_consumption_energy_weight_3d: int = 20
     house_consumption_energy_weight_7d: int = 15
     house_consumption_energy_weight_14d: int = 10
-
-    def schedule_configs(self) -> list[BatteryScheduleConfig]:
-        """Return all three schedule configs as a list."""
-        return [
-            self.batteries_schedule_1,
-            self.batteries_schedule_2,
-            self.batteries_schedule_3,
-        ]
 
     def __repr__(self) -> str:
         return (

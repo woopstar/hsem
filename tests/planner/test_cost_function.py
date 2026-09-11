@@ -231,6 +231,48 @@ class TestExportRevenue:
         assert bd.score == pytest.approx(0.10)
 
 
+class TestExportFee:
+    """Issue #925: export_fee_per_kwh nets retailer margin out of revenue."""
+
+    def test_fee_reduces_export_revenue(self):
+        """2 kWh @ raw 0.05 with a 0.015 fee → net 0.035 → revenue = 0.07."""
+        slot = _make_slot(export_price=0.05, grid_export_kwh=2.0)
+        bd = score_plan([slot], CostWeights(export_fee_per_kwh=0.015))
+        assert bd.export_revenue == pytest.approx(0.07)
+
+    def test_fee_can_flip_positive_price_to_a_net_cost(self):
+        """Raw price below the fee → export_revenue goes negative (a real loss)."""
+        slot = _make_slot(export_price=0.004, grid_export_kwh=2.0)
+        bd = score_plan([slot], CostWeights(export_fee_per_kwh=0.015))
+        assert bd.export_revenue == pytest.approx((0.004 - 0.015) * 2.0)
+        assert bd.export_revenue < 0.0
+
+    def test_zero_fee_matches_pre_925_behaviour(self):
+        """Default export_fee_per_kwh=0.0 must not change existing scores."""
+        slot = _make_slot(export_price=0.05, grid_export_kwh=2.0)
+        bd_default = score_plan([slot], CostWeights())
+        bd_explicit_zero = score_plan([slot], CostWeights(export_fee_per_kwh=0.0))
+        assert bd_default.export_revenue == pytest.approx(
+            bd_explicit_zero.export_revenue
+        )
+        assert bd_default.export_revenue == pytest.approx(0.10)
+
+    def test_fee_not_applied_on_top_of_battery_floor_zeroing(self):
+        """A slot already zeroed by battery_export_min_price stays exactly 0,
+        not a manufactured negative fee-only revenue."""
+        slot = _make_slot(
+            export_price=0.01,
+            grid_export_kwh=1.0,
+            batteries_discharged_kwh=1.0,
+        )
+        slot.solcast_pv_estimate_kwh = 0.0
+        bd = score_plan(
+            [slot],
+            CostWeights(battery_export_min_price=0.05, export_fee_per_kwh=0.015),
+        )
+        assert bd.export_revenue == pytest.approx(0.0)
+
+
 class TestConversionLoss:
     """Verify efficiency is priced through physical grid flows exactly once."""
 

@@ -31,20 +31,18 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_batteries_expected_cycles": 6000,
     "hsem_batteries_cycle_cost": 0.0,
     "hsem_batteries_capacity_loss_pct": 30,
-    "hsem_batteries_enable_batteries_schedule_1_end": "09:00:00",
-    "hsem_batteries_enable_batteries_schedule_1_start": "07:00:00",
-    "hsem_batteries_enable_batteries_schedule_1": True,
-    "hsem_batteries_enable_batteries_schedule_2_end": "21:00:00",
-    "hsem_batteries_enable_batteries_schedule_2_start": "17:00:00",
-    "hsem_batteries_enable_batteries_schedule_2": True,
-    "hsem_batteries_enable_batteries_schedule_3_end": "02:00:00",
-    "hsem_batteries_enable_batteries_schedule_3_start": "23:00:00",
-    "hsem_batteries_enable_batteries_schedule_3": False,
     "hsem_ev_target_soc": 80,
     "hsem_ev_second_target_soc": 80,
     "hsem_ev_deadline_time": "07:00",
     "hsem_ev_second_deadline_time": "07:00",
     "hsem_export_electricity_min_price": -0.00,
+    # Retailer margin/balancing-fee cost per kWh exported (issue #925).
+    # 0.0 = disabled (default) — fully backward compatible.
+    "hsem_export_fee_per_kwh": 0.0,
+    # Opt-in physical PV curtailment below export_electricity_min_price (issue #930).
+    # False = disabled (default) — preserves the #767 behavior where surplus PV
+    # export continues for any non-negative price.
+    "hsem_curtail_pv_below_export_min_price": False,
     "hsem_electricity_price_update_interval": 15,
     "hsem_export_electricity_price_sensor": "sensor.energi_data_service_produktion",
     "hsem_import_electricity_price_sensor": "sensor.energi_data_service",
@@ -171,6 +169,9 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ml_consumption_net_consumption": False,
     "hsem_ml_consumption_sequential": False,
     "hsem_ml_consumption_temperature_entity": vol.UNDEFINED,
+    "hsem_ml_consumption_weather_forecast_entity": vol.UNDEFINED,
+    "hsem_ml_consumption_wind_chill_enabled": False,
+    "hsem_ml_consumption_wind_chill_reference_temperature": 18.0,
     # EV charging — auto-Full on negative price (issue #609)
     "hsem_ev_auto_full_negative_price": False,
 }
@@ -227,9 +228,19 @@ GRID_EXPORT_LIMIT_WATT = 100
 # "solar surplus" charging opportunity.  Default matches v5.1.0 behaviour.
 SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH = -0.2
 
-# Maximum net consumption for a slot to be treated as "near-zero" or solar-
-# charged during seasonal optimisation.  Slots at or below this level are
-# charged from solar rather than from the grid.  Default matches v5.1.0.
+# Historical "near-zero" tolerance for solar-charge classification. Issue
+# #720 found that using this threshold (a slot qualified for
+# BatteriesChargeSolar whenever net consumption was <= this value) mislabeled
+# slots with a small positive load and zero PV as solar-charged; the fix
+# replaced the check with an exact `estimated_net_consumption_kwh < 0.0`
+# PV-surplus test and removed this constant's only import
+# (planner/discharge_scheduler.py). Deliberately kept, unused, as a pinned,
+# named value: tests/test_p0_regression_suite.py and
+# tests/test_power_thresholds.py assert it still exists at 0.1 and that
+# discharge_scheduler.py does not import it, so a future near-zero-tolerance
+# feature reaches for a named constant (per the P0-08/#272 fix) instead of
+# reintroducing a bare magic-number literal, and so it can't silently regress
+# back into the buggy comparison it originally caused (issue #967).
 NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH = 0.1
 
 # EMA smoothing factor for live net consumption used in EV charger power

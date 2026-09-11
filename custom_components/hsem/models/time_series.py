@@ -391,6 +391,13 @@ class TimeSeriesIndex:
     ) -> tuple[list[float], list[float]]:
         """Align hourly grid import and export energy dicts onto the slot grid.
 
+        Part of the general alignment API this module's docstring commits to
+        (prices, PV, load, import/export, SoC) — no current planner caller
+        needs import/export or SoC on the slot grid the way it needs price/
+        PV/load, but the method stays as designed, general-purpose
+        infrastructure exercised by tests/test_time_series_model.py
+        (issue #967).
+
         Values are divided proportionally across sub-hour slots.
 
         Missing hours are filled with :data:`MISSING_SENTINEL`.
@@ -433,6 +440,9 @@ class TimeSeriesIndex:
         soc_by_hour: dict[int, float],
     ) -> list[float]:
         """Align a battery state-of-charge (SoC) series onto the slot grid.
+
+        See :meth:`align_net_import_export` — same "designed but not yet
+        consumed by the planner" status (issue #967).
 
         SoC is a *state* (%), not an energy flux, so no scaling is applied —
         every slot in the same hour receives the same SoC value.
@@ -482,7 +492,13 @@ class TimeSeriesIndex:
         return None
 
     def has_missing(self) -> bool:
-        """Return ``True`` if any series alignment found a missing slot."""
+        """Return ``True`` if any series alignment found a missing slot.
+
+        No production caller currently needs this — ``missing_hours()`` (used
+        by ``engine_population.py``) already gives the more detailed per-hour
+        view. Kept as a cheap boolean convenience exercised throughout
+        tests/test_time_series_model.py (issue #967).
+        """
         return bool(self.missing_slots)
 
     def missing_hours(self) -> set[int]:
@@ -496,6 +512,10 @@ class TimeSeriesIndex:
         Returns an empty set when the planning horizon does not include tomorrow
         (i.e. ``horizon_hours`` ≤ 24) or when all tomorrow price hours are present.
 
+        Production code (``engine_population.py``) calls the generalised
+        ``missing_future_day_price_hours(1)`` directly instead of this named
+        wrapper; kept as a readable, directly-tested alias (issue #967).
+
         Returns:
             Set of integer hours (0-23) from tomorrow that have no price data.
         """
@@ -506,6 +526,8 @@ class TimeSeriesIndex:
 
         Returns an empty set when the planning horizon does not include tomorrow
         (i.e. ``horizon_hours`` ≤ 24) or when all tomorrow PV hours are present.
+
+        See :meth:`missing_tomorrow_price_hours` — same rationale (issue #967).
 
         Returns:
             Set of integer hours (0-23) from tomorrow that have no PV forecast data.

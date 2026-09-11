@@ -34,17 +34,15 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.utils.sensornames.financial import (
     get_export_income_entity_id,
-    get_export_income_name,
     get_export_income_unique_id,
     get_import_cost_entity_id,
-    get_import_cost_name,
     get_import_cost_unique_id,
     get_net_grid_balance_entity_id,
-    get_net_grid_balance_name,
     get_net_grid_balance_unique_id,
 )
 
@@ -82,6 +80,7 @@ class _FinancialSensorMixin(
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
+        self._hsem_device = HSEMDevice.FINANCIAL
         self._config_entry = config_entry
         self._restored_state: str | None = None
 
@@ -148,6 +147,7 @@ class HSEMExportIncomeSensor(_FinancialSensorMixin):
 
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.TOTAL
+    _attr_translation_key = "export_income"
 
     def __init__(
         self,
@@ -162,7 +162,6 @@ class HSEMExportIncomeSensor(_FinancialSensorMixin):
         """
         super().__init__(config_entry, coordinator)
         self._attr_unique_id = get_export_income_unique_id(config_entry.entry_id)
-        self._attr_name = get_export_income_name()
         self.entity_id = get_export_income_entity_id()
 
     @property
@@ -193,6 +192,7 @@ class HSEMImportCostSensor(_FinancialSensorMixin):
 
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.TOTAL
+    _attr_translation_key = "import_cost"
 
     def __init__(
         self,
@@ -207,7 +207,6 @@ class HSEMImportCostSensor(_FinancialSensorMixin):
         """
         super().__init__(config_entry, coordinator)
         self._attr_unique_id = get_import_cost_unique_id(config_entry.entry_id)
-        self._attr_name = get_import_cost_name()
         self.entity_id = get_import_cost_entity_id()
 
     @property
@@ -238,6 +237,7 @@ class HSEMNetGridBalanceSensor(_FinancialSensorMixin):
 
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.TOTAL
+    _attr_translation_key = "net_grid_balance"
 
     def __init__(
         self,
@@ -252,7 +252,6 @@ class HSEMNetGridBalanceSensor(_FinancialSensorMixin):
         """
         super().__init__(config_entry, coordinator)
         self._attr_unique_id = get_net_grid_balance_unique_id(config_entry.entry_id)
-        self._attr_name = get_net_grid_balance_name()
         self.entity_id = get_net_grid_balance_entity_id()
 
     @property

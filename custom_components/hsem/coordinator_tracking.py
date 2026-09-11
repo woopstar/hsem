@@ -10,6 +10,7 @@ Extracted to keep :mod:`coordinator` under the 30 KB / 1000-line limit.
 from __future__ import annotations
 
 import asyncio
+import math
 from datetime import date, datetime
 from pathlib import Path
 
@@ -51,15 +52,18 @@ def accumulate_forecast_actuals(
     forecast_tracker: ForecastTracker,
     last_accumulation_ts: datetime | None,
     solar_corrector: SolarForecastCorrector,
-    solar_corrector_processed: set[datetime],
     prediction_tracker: PredictionTracker,
     last_planner_output: PlannerOutput | None,
+    update_interval_minutes: int,
 ) -> tuple[datetime | None, bool]:
-    """Accumulate actual PV and load energy into the current slot.
+    """Accumulate actual PV and load energy into the current slot(s).
 
     Called every coordinator cycle to accumulate energy from instantaneous
     power readings.  Uses the elapsed time since the last accumulation to
-    convert power (W) to energy (kWh).
+    convert power (W) to energy (kWh), splitting it by physical overlap
+    across slot boundaries so a delayed cycle does not attribute an entire
+    elapsed interval to whichever single slot merely contains ``now``
+    (issue #972).
 
     Args:
         now: Current time (timezone-aware).
@@ -67,15 +71,28 @@ def accumulate_forecast_actuals(
         hourly_recommendations: Current hourly recommendations.
         forecast_tracker: The forecast-vs-actual tracker instance.
         last_accumulation_ts: Timestamp of the previous accumulation.
-        solar_corrector: Solar forecast accuracy auto-corrector.
-        solar_corrector_processed: Set of slot start times already fed to the
-            solar corrector.
+        solar_corrector: Solar forecast accuracy auto-corrector. Its
+            persisted ``processed_through`` watermark (not an in-memory set)
+            is the sole guard against re-learning a finalised slot, so it
+            correctly survives Home Assistant restarts (issue #973).
         prediction_tracker: Prediction accuracy tracker.
         last_planner_output: Most recent planner output, or None.
+        update_interval_minutes: Configured coordinator polling interval, used
+            to size the gap tolerance for the physical-overlap accumulation.
 
     Returns:
         The new ``last_accumulation_ts`` value (``now``).
     """
+    # Discard unfinalised records that no longer match the layout the
+    # previous cycle committed (interval reconfiguration, DST transition,
+    # horizon change) before accumulating anything into them (issue #972).
+    if hourly_recommendations:
+        expected_slots = [
+            (as_tz(rec.start, now.tzinfo), as_tz(rec.end, now.tzinfo))
+            for rec in hourly_recommendations
+        ]
+        forecast_tracker.reconcile_unfinalised_layout(expected_slots, now=now)
+
     # Compute elapsed seconds since last accumulation.
     if last_accumulation_ts is not None:
         elapsed = (now - last_accumulation_ts).total_seconds()
@@ -85,37 +102,36 @@ def accumulate_forecast_actuals(
     new_last_ts = now
     prediction_record_added = False
 
-    if elapsed <= 0:
+    if elapsed <= 0 or not hourly_recommendations:
         return new_last_ts, prediction_record_added
 
-    # Find the current slot's record.
-    if not hourly_recommendations:
-        return new_last_ts, prediction_record_added
+    interval_start = last_accumulation_ts
+    assert interval_start is not None  # elapsed > 0 implies a prior timestamp
 
-    # Find the slot whose time range contains 'now'.
-    current_slot = None
+    # Freeze pre-slot-start baselines for slots that have physically started
+    # so accumulate_power_interval below has a stable target to attribute
+    # actual energy into (issue #972).
+    forecast_tracker.freeze_forecasts(now)
+
+    # Ensure a record exists for every slot the elapsed interval could have
+    # touched — it may span more than one slot after a delayed cycle.
     for rec in hourly_recommendations:
-        if as_tz(rec.start, now.tzinfo) <= now < as_tz(rec.end, now.tzinfo):
-            current_slot = rec
-            break
+        slot_start = as_tz(rec.start, now.tzinfo)
+        slot_end = as_tz(rec.end, now.tzinfo)
+        if slot_end > interval_start and slot_start < now:
+            forecast_tracker.get_or_create_record(slot_start, slot_end)
 
-    if current_slot is None:
-        return new_last_ts, prediction_record_added
-
-    # Get or create the tracker record for this slot.
-    tracker_rec = forecast_tracker.get_or_create_record(
-        current_slot.start, current_slot.end
-    )
-
-    # Accumulate PV energy.
+    # Attribute the elapsed interval's PV/load energy by physical overlap.
     pv_power_w = live.solar_production_power_w or 0.0
-    pv_energy = compute_accumulated_energy(pv_power_w, elapsed)
-    tracker_rec.accumulate_pv(pv_energy)
-
-    # Accumulate load energy.
     load_power_w = live.house_consumption_power_w or 0.0
-    load_energy = compute_accumulated_energy(load_power_w, elapsed)
-    tracker_rec.accumulate_load(load_energy)
+    max_gap_seconds = 2.0 * max(float(update_interval_minutes) * 60.0, 60.0)
+    forecast_tracker.accumulate_power_interval(
+        interval_start,
+        now,
+        pv_power_w=pv_power_w,
+        load_power_w=load_power_w,
+        max_gap_seconds=max_gap_seconds,
+    )
 
     # Finalise any slots whose end time has passed.
     forecast_tracker.finalise_past_records(now)
@@ -125,18 +141,22 @@ def accumulate_forecast_actuals(
     # -------------------------------------------------------------------
     # Feed every newly-finalised forecast tracker record into the solar
     # corrector so it can learn per-hour accuracy factors and update the
-    # intra-hour residual buffer.
+    # intra-hour residual buffer. Gate on the corrector's own persisted
+    # ``processed_through`` watermark (not an in-memory set) so a restored
+    # corrector does not re-learn slots it already processed before a Home
+    # Assistant restart (issue #973).
     for frec in forecast_tracker.records:
         if not frec.finalised:
             continue
-        if frec.start in solar_corrector_processed:
+        processed_through = solar_corrector.processed_through
+        if processed_through is not None and frec.start <= processed_through:
             continue
 
         solar_corrector.update_hour(
             frec.start.hour, frec.forecast_pv_kwh, frec.actual_pv_kwh
         )
         solar_corrector.update_residual(frec.forecast_pv_kwh, frec.actual_pv_kwh)
-        solar_corrector_processed.add(frec.start)
+        solar_corrector.mark_processed(frec.start)
 
     # -------------------------------------------------------------------
     # Prediction accuracy scorecard (issue #601)
@@ -185,25 +205,41 @@ async def init_prediction_tracker(
 def register_forecasts_from_planner(
     output: PlannerOutput,
     forecast_tracker: ForecastTracker,
+    *,
+    now: datetime,
 ) -> None:
     """Register PV and load forecasts from planner output into the tracker.
 
-    This is called after the planner runs successfully.  Forecast values
-    are only set if the tracker record exists and is not yet finalised.
+    Called after the planner runs successfully.  Creates a tracker record
+    for every slot in the horizon (if one does not already exist yet) and
+    progressively refines its forecast baseline via ``observed_at=now`` on
+    every subsequent cycle until the slot physically starts, at which point
+    ``accumulate_forecast_actuals``'s call to
+    :meth:`~custom_components.hsem.utils.forecast_tracker.ForecastTracker.freeze_forecasts`
+    locks in the freshest pre-start estimate — rather than whatever was known
+    up to the full planning horizon (e.g. 48h) ahead of the slot (issue #972).
 
     Args:
         output: The :class:`~planner.engine.PlannerOutput` returned by the
             planner engine.
         forecast_tracker: The forecast-vs-actual tracker instance.
+        now: Current time — the observation timestamp for this planner run.
     """
+    # Discard unfinalised records that no longer match the layout this
+    # cycle's planner run just produced (issue #972).
+    expected_slots = [(slot.start, slot.end) for slot in output.slots]
+    forecast_tracker.reconcile_unfinalised_layout(expected_slots, now=now)
+
     for slot in output.slots:
         pv_forecast = getattr(slot, "solcast_pv_estimate_kwh", 0.0)
         load_forecast = getattr(slot, "avg_house_consumption_kwh", 0.0)
 
+        forecast_tracker.get_or_create_record(slot.start, slot.end)
         forecast_tracker.set_forecasts(
             start=slot.start,
             pv_kwh=pv_forecast,
             load_kwh=load_forecast,
+            observed_at=now,
         )
 
 
@@ -416,8 +452,11 @@ async def accumulate_savings(
 ) -> None:
     """Accumulate savings data for the current cycle.
 
-    Computes export revenue delta, charge savings delta, and baseline
-    cost delta from the daily tracker and planner output.
+    Computes export revenue delta, charge savings delta, and discharge
+    savings delta from the daily tracker, live battery power, and planner
+    output.  Also computes a baseline cost delta: an independent
+    passive/no-action counterfactual integrated from live house-load and
+    PV power, not the actual (HSEM-optimised) grid-import cost.
 
     Args:
         now: Current datetime (timezone-aware).
@@ -438,17 +477,11 @@ async def accumulate_savings(
 
     # ---- Compute per-cycle deltas from the daily tracker ----
     current_export_rev = dt.actual.grid_export_rev
-    current_import_cost = dt.actual.grid_import_cost
 
     export_rev_delta = 0.0
     if st._last_export_rev is not None:
         export_rev_delta = max(0.0, current_export_rev - st._last_export_rev)
     st._last_export_rev = current_export_rev
-
-    import_cost_delta = 0.0
-    if st._last_import_cost is not None:
-        import_cost_delta = max(0.0, current_import_cost - st._last_import_cost)
-    st._last_import_cost = current_import_cost
 
     # ---- Charge savings: money saved by charging cheap now ----
     charge_savings_delta = 0.0
@@ -468,8 +501,60 @@ async def accumulate_savings(
         if abs(charge_kwh) > 1e-9:
             charge_savings_delta = charge_kwh * (avg_import_price - import_price)
 
+    # ---- Discharge savings: money saved by avoiding grid import now ----
+    # Battery energy discharged to serve house load avoids buying that
+    # energy from the grid at the current import price.  Without this term,
+    # installations that rely mainly on self-consumption (rather than
+    # export or below-average-price charging) are reported as saving
+    # nothing even while the battery is actively reducing grid import
+    # (issue #960).
+    discharge_savings_delta = 0.0
+    power_w = live.huawei_batteries_charge_discharge_power_w
+    if (
+        st._last_discharge_sample_at is not None
+        and power_w is not None
+        and math.isfinite(power_w)
+        and power_w < 0.0
+        and import_price > 0.0
+    ):
+        elapsed = (now - st._last_discharge_sample_at).total_seconds()
+        if elapsed > 0:
+            discharge_kwh = compute_accumulated_energy(-power_w, elapsed)
+            discharge_savings_delta = discharge_kwh * import_price
+    st._last_discharge_sample_at = now
+
     # ---- Baseline cost: what passive mode would cost this cycle ----
-    baseline_cost_delta = import_cost_delta
+    # A genuine no-battery/no-HSEM counterfactual, independent of the actual
+    # (HSEM-optimised) import cost: house load is served by live PV first,
+    # any shortfall is bought from the grid at the live import price, and
+    # any PV surplus is valued at the live export price.  Before this fix,
+    # `baseline_cost_delta` re-used the actual grid-import cost delta from
+    # the daily tracker, which already reflects HSEM's optimisation
+    # (including any avoided import from battery discharge) and is
+    # therefore not a passive-mode baseline at all (issue #962).
+    baseline_cost_delta = 0.0
+    house_power_w = live.house_consumption_power_w
+    pv_power_w = live.solar_production_power_w
+    if (
+        st._last_baseline_sample_at is not None
+        and house_power_w is not None
+        and math.isfinite(house_power_w)
+        and pv_power_w is not None
+        and math.isfinite(pv_power_w)
+    ):
+        elapsed = (now - st._last_baseline_sample_at).total_seconds()
+        if elapsed > 0:
+            baseline_load_kwh = compute_accumulated_energy(house_power_w, elapsed)
+            baseline_pv_kwh = compute_accumulated_energy(pv_power_w, elapsed)
+            baseline_import_kwh = max(baseline_load_kwh - baseline_pv_kwh, 0.0)
+            baseline_export_kwh = max(baseline_pv_kwh - baseline_load_kwh, 0.0)
+
+            export_price = live.export_electricity_price
+            if import_price is not None and math.isfinite(import_price):
+                baseline_cost_delta += baseline_import_kwh * import_price
+            if export_price is not None and math.isfinite(export_price):
+                baseline_cost_delta -= baseline_export_kwh * export_price
+    st._last_baseline_sample_at = now
 
     # ---- Determine if the master switch is on ----
     switch_on = live.force_working_mode_state == "auto"
@@ -479,6 +564,7 @@ async def accumulate_savings(
         charge_savings_delta=charge_savings_delta,
         baseline_cost_delta=baseline_cost_delta,
         switch_on=switch_on,
+        discharge_savings_delta=discharge_savings_delta,
     )
 
 

@@ -1,23 +1,14 @@
-"""Financial sensor name generators.
+"""Financial sensor unique-ID and entity-ID generators.
 
-Provides getter functions for export income, import cost, and net grid
-balance sensor names, unique IDs, and entity IDs.
+Display names for these sensors come from Home Assistant's translation
+system (``_attr_translation_key`` + ``translations/*.json``), not from
+functions in this module. Provides getter functions for export income,
+import cost, and net grid balance sensor unique IDs and entity IDs.
 """
 
 from homeassistant.util import slugify as s
 
 from custom_components.hsem.const import DOMAIN
-
-
-# Export Income Sensor
-def get_export_income_name() -> str:
-    """Generate the display name for the export income sensor.
-
-    Returns:
-        str: Display name of the export income sensor.
-
-    """
-    return "Export Income"
 
 
 def get_export_income_unique_id(entry_id: str) -> str:
@@ -43,17 +34,6 @@ def get_export_income_entity_id() -> str:
     return f"sensor.{s(f'{DOMAIN}_export_income')}"
 
 
-# Import Cost Sensor
-def get_import_cost_name() -> str:
-    """Generate the display name for the import cost sensor.
-
-    Returns:
-        str: Display name of the import cost sensor.
-
-    """
-    return "Grid Import Cost"
-
-
 def get_import_cost_unique_id(entry_id: str) -> str:
     """Generate a unique ID for the import cost sensor.
 
@@ -75,17 +55,6 @@ def get_import_cost_entity_id() -> str:
 
     """
     return f"sensor.{s(f'{DOMAIN}_import_cost')}"
-
-
-# Net Grid Balance Sensor
-def get_net_grid_balance_name() -> str:
-    """Generate the display name for the net grid balance sensor.
-
-    Returns:
-        str: Display name of the net grid balance sensor.
-
-    """
-    return "Net Grid Balance"
 
 
 def get_net_grid_balance_unique_id(entry_id: str) -> str:
