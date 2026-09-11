@@ -15,10 +15,8 @@ All tests are pure-Python; no Home Assistant runtime is required.
 
 from __future__ import annotations
 
-from datetime import time
 from typing import Any, cast
 
-from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
@@ -127,22 +125,9 @@ def _make_input(
     now_iso: str = "2024-06-15T00:00:00+02:00",
     prices: list[PricePoint] | None = None,
     solcast: list[SolcastSlot] | None = None,
-    schedules: list[BatteryScheduleInput] | None = None,
     battery_soc_pct: float = 50.0,
 ) -> PlannerInput:
     """Build a minimal PlannerInput for the given horizon."""
-    default_schedules = [
-        BatteryScheduleInput(
-            enabled=True,
-            start=time(7, 0),
-            end=time(9, 0),
-        ),
-        BatteryScheduleInput(
-            enabled=True,
-            start=time(17, 0),
-            end=time(21, 0),
-        ),
-    ]
     return PlannerInput(
         now_iso=now_iso,
         interval_minutes=interval_minutes,
@@ -161,7 +146,6 @@ def _make_input(
         consumption_averages=_make_consumption(),
         price_points=prices if prices is not None else _make_prices(),
         solcast_slots=solcast if solcast is not None else _make_solcast(),
-        battery_schedules=(schedules if schedules is not None else default_schedules),
         excess_export_enabled=False,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
         house_power_includes_ev=True,

@@ -12,10 +12,9 @@ respected mid-horizon.
 
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
@@ -52,8 +51,8 @@ def _make_slot(start: datetime, net_consumption: float = 0.5) -> PlannedSlot:
 def _make_boundary_input() -> PlannerInput:
     """48-hour plan starting Aug 31 (summer) crossing into Sep 1 (winter).
 
-    Flat prices (import > export), no PV, disabled schedules — the seasonal
-    fill is the only recommendation source.
+    Flat prices (import > export), no PV — the seasonal fill is the only
+    recommendation source.
     """
     prices = [
         PricePoint(hour=h, import_price=0.20, export_price=0.05) for h in range(24)
@@ -64,10 +63,6 @@ def _make_boundary_input() -> PlannerInput:
             hour=h, avg_1d=0.5, avg_3d=0.5, avg_7d=0.5, avg_14d=0.5
         )
         for h in range(24)
-    ]
-    disabled_schedules = [
-        BatteryScheduleInput(enabled=False, start=time(7, 0), end=time(9, 0)),
-        BatteryScheduleInput(enabled=False, start=time(17, 0), end=time(21, 0)),
     ]
 
     return PlannerInput(
@@ -87,7 +82,6 @@ def _make_boundary_input() -> PlannerInput:
         consumption_averages=consumption,
         price_points=prices,
         solcast_slots=solar,
-        battery_schedules=disabled_schedules,
         excess_export_enabled=False,
         excess_export_discharge_buffer_pct=10.0,
         excess_export_price_threshold=0.10,

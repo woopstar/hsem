@@ -42,7 +42,6 @@ from custom_components.hsem.coordinator_tracking import (
 )
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
     async_collect_all_states,
-    build_battery_schedules,
     build_sensor_config,
 )
 from custom_components.hsem.models.live_state import LiveState
@@ -161,7 +160,6 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                 cfg=cfg,
                 live=live,
                 hourly_recommendations=self._hourly_recommendations,
-                batteries_schedules=self._batteries_schedules,
                 previous_winner_name=self._previous_planner_winner_name,
                 previous_winner_score=self._previous_planner_winner_score,
                 ev_session_kw=ev_session_kw if ev_session_kw else None,

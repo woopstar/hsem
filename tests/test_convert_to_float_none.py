@@ -215,7 +215,7 @@ class TestRecommendationResolverNullSafety:
         cfg = SensorConfig()
         cfg.batteries_enable_excess_export = True
 
-        resolve_current_recommendation(rec, live, 0.0, cfg)
+        resolve_current_recommendation(rec, live, cfg)
         # Should NOT override to ForceExport with a zero (non-negative) price
         assert rec.recommendation != Recommendations.ForceExport.value
 
@@ -236,7 +236,7 @@ class TestRecommendationResolverNullSafety:
         cfg = SensorConfig()
         cfg.batteries_enable_excess_export = True
 
-        resolve_current_recommendation(rec, live, 0.0, cfg)
+        resolve_current_recommendation(rec, live, cfg)
         assert rec.recommendation == Recommendations.ForceExport.value
 
 

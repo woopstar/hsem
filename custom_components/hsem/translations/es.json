@@ -16,14 +16,11 @@
       "invalid_power_value": "Valor de potencia no válido: introduce un número.",
       "invalid_price_value": "Valor de precio no válido: introduce un número.",
       "invalid_sensor": "Sensor de entrada no válido. Elige un sensor válido.",
-      "invalid_time_format": "Formato de hora no válido: se espera HH:MM:SS.",
       "months_winter_empty": "La temporada de invierno debe tener al menos un mes.",
       "only_one_entry_allowed": "Solo se permite una configuración de HSEM.",
       "power_out_of_range": "El valor de potencia está fuera del rango permitido.",
       "price_out_of_range": "El valor de precio está fuera del rango permitido.",
       "required": "Este campo es obligatorio.",
-      "start_time_after_end_time": "La hora de inicio debe ser anterior a la hora de fin.",
-      "start_time_equals_end_time": "La hora de inicio y la hora de fin no pueden ser iguales, ya que esto crea una ventana de duración cero. Desactiva la programación en su lugar.",
       "invalid_wait_mode_behavior": "Comportamiento de modo de espera no válido. Elige Espera estricta o Autoconsumo con reserva.",
       "port_conflict": "El segundo puerto OCPP debe ser diferente del primer puerto OCPP.",
       "ev_min_power_below_start_current": "La potencia mínima configurada es demasiado baja para la topología de fases seleccionada — un cargador real no puede arrancar por debajo de 6 A. Aumenta la potencia mínima o cambia la topología de fases."
@@ -120,48 +117,6 @@
         },
         "description": "Configura el servidor OCPP 1.6 integrado para el control del cargador de VE únicamente en red local. Cuando está activado, HSEM envía órdenes SetChargingProfile directamente a tu cargador de VE según el plan de carga.",
         "title": "Servidor OCPP"
-      },
-      "batteries_schedule_1": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Activar programación de batería 1",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Hora de fin de la programación de batería 1",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Hora de inicio de la programación de batería 1"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Activa o desactiva la primera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Especifica la hora de fin de la primera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Especifica la hora de inicio de la primera programación de descarga de batería."
-        },
-        "description": "Configura la programación de descarga de batería 1, incluida su hora de activación.",
-        "title": "Programación de descarga de batería 1"
-      },
-      "batteries_schedule_2": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_2": "Activar programación de batería 2",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Hora de fin de la programación de batería 2",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Hora de inicio de la programación de batería 2"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_2": "Activa o desactiva la segunda programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Especifica la hora de fin de la segunda programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Especifica la hora de inicio de la segunda programación de descarga de batería."
-        },
-        "description": "Configura la programación de descarga de batería 2, incluida su hora de activación.",
-        "title": "Programación de descarga de batería 2"
-      },
-      "batteries_schedule_3": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_3": "Activar programación de batería 3",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Hora de fin de la programación de batería 3",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Hora de inicio de la programación de batería 3"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_3": "Activa o desactiva la tercera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Especifica la hora de fin de la tercera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Especifica la hora de inicio de la tercera programación de descarga de batería."
-        },
-        "description": "Configura la programación de descarga de batería 3, incluida su hora de activación.",
-        "title": "Programación de descarga de batería 3"
       },
       "prices": {
         "data": {
@@ -344,32 +299,6 @@
         },
         "description": "Actualiza los ajustes de HSEM",
         "title": "Actualizar Huawei Solar Energy Management"
-      },
-      "batteries_schedules": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Activar programación de batería 1",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Hora de fin de la programación de batería 1",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Hora de inicio de la programación de batería 1",
-          "hsem_batteries_enable_batteries_schedule_2": "Activar programación de batería 2",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Hora de fin de la programación de batería 2",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Hora de inicio de la programación de batería 2",
-          "hsem_batteries_enable_batteries_schedule_3": "Activar programación de batería 3",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Hora de fin de la programación de batería 3",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Hora de inicio de la programación de batería 3"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Activa o desactiva la primera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Especifica la hora de fin de la primera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Especifica la hora de inicio de la primera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_2": "Activa o desactiva la segunda programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Especifica la hora de fin de la segunda programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Especifica la hora de inicio de la segunda programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_3": "Activa o desactiva la tercera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Especifica la hora de fin de la tercera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Especifica la hora de inicio de la tercera programación de descarga de batería."
-        },
-        "description": "Configura hasta tres ventanas de programación de descarga de batería, cada una con un interruptor de activación/desactivación, hora de inicio y hora de fin. Las programaciones definen cuándo puede descargarse la batería para cubrir picos de consumo o exportar a la red.",
-        "title": "Programaciones de descarga de batería"
       },
       "months": {
         "data": {
@@ -554,14 +483,11 @@
       "invalid_power_value": "Valor de potencia no válido: introduce un número.",
       "invalid_price_value": "Valor de precio no válido: introduce un número.",
       "invalid_sensor": "Sensor de entrada no válido. Elige un sensor válido.",
-      "invalid_time_format": "Formato de hora no válido: se espera HH:MM:SS.",
       "months_winter_empty": "La temporada de invierno debe tener al menos un mes.",
       "only_one_entry_allowed": "Solo se permite una configuración de HSEM.",
       "power_out_of_range": "El valor de potencia está fuera del rango permitido.",
       "price_out_of_range": "El valor de precio está fuera del rango permitido.",
       "required": "Este campo es obligatorio.",
-      "start_time_after_end_time": "La hora de inicio debe ser anterior a la hora de fin.",
-      "start_time_equals_end_time": "La hora de inicio y la hora de fin no pueden ser iguales, ya que esto crea una ventana de duración cero. Desactiva la programación en su lugar.",
       "invalid_wait_mode_behavior": "Comportamiento de modo de espera no válido. Elige Espera estricta o Autoconsumo con reserva.",
       "port_conflict": "El segundo puerto OCPP debe ser diferente del primer puerto OCPP.",
       "ev_min_power_below_start_current": "La potencia mínima configurada es demasiado baja para la topología de fases seleccionada — un cargador real no puede arrancar por debajo de 6 A. Aumenta la potencia mínima o cambia la topología de fases."
@@ -658,48 +584,6 @@
         },
         "description": "Configura el servidor OCPP 1.6 integrado para el control del cargador de VE únicamente en red local. Cuando está activado, HSEM envía órdenes SetChargingProfile directamente a tu cargador de VE según el plan de carga.",
         "title": "Servidor OCPP"
-      },
-      "batteries_schedule_1": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Activar programación de batería 1",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Hora de fin de la programación de batería 1",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Hora de inicio de la programación de batería 1"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Activa o desactiva la primera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Especifica la hora de fin de la primera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Especifica la hora de inicio de la primera programación de descarga de batería."
-        },
-        "description": "Configura la programación de descarga de batería 1, incluida su hora de activación.",
-        "title": "Programación de descarga de batería 1"
-      },
-      "batteries_schedule_2": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_2": "Activar programación de batería 2",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Hora de fin de la programación de batería 2",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Hora de inicio de la programación de batería 2"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_2": "Activa o desactiva la segunda programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Especifica la hora de fin de la segunda programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Especifica la hora de inicio de la segunda programación de descarga de batería."
-        },
-        "description": "Configura la programación de descarga de batería 2, incluida su hora de activación.",
-        "title": "Programación de descarga de batería 2"
-      },
-      "batteries_schedule_3": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_3": "Activar programación de batería 3",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Hora de fin de la programación de batería 3",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Hora de inicio de la programación de batería 3"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_3": "Activa o desactiva la tercera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Especifica la hora de fin de la tercera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Especifica la hora de inicio de la tercera programación de descarga de batería."
-        },
-        "description": "Configura la programación de descarga de batería 3, incluida su hora de activación.",
-        "title": "Programación de descarga de batería 3"
       },
       "prices": {
         "data": {
@@ -882,32 +766,6 @@
         },
         "description": "Actualiza los ajustes de HSEM",
         "title": "Actualizar Huawei Solar Energy Management"
-      },
-      "batteries_schedules": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Activar programación de batería 1",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Hora de fin de la programación de batería 1",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Hora de inicio de la programación de batería 1",
-          "hsem_batteries_enable_batteries_schedule_2": "Activar programación de batería 2",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Hora de fin de la programación de batería 2",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Hora de inicio de la programación de batería 2",
-          "hsem_batteries_enable_batteries_schedule_3": "Activar programación de batería 3",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Hora de fin de la programación de batería 3",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Hora de inicio de la programación de batería 3"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Activa o desactiva la primera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Especifica la hora de fin de la primera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Especifica la hora de inicio de la primera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_2": "Activa o desactiva la segunda programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Especifica la hora de fin de la segunda programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Especifica la hora de inicio de la segunda programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_3": "Activa o desactiva la tercera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Especifica la hora de fin de la tercera programación de descarga de batería.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Especifica la hora de inicio de la tercera programación de descarga de batería."
-        },
-        "description": "Configura hasta tres ventanas de programación de descarga de batería, cada una con un interruptor de activación/desactivación, hora de inicio y hora de fin. Las programaciones definen cuándo puede descargarse la batería para cubrir picos de consumo o exportar a la red.",
-        "title": "Programaciones de descarga de batería"
       },
       "months": {
         "data": {
@@ -1267,15 +1125,6 @@
       "verbose_logging": {
         "name": "Registro detallado"
       },
-      "batteries_schedule_1": {
-        "name": "Programación de baterías 1"
-      },
-      "batteries_schedule_2": {
-        "name": "Programación de baterías 2"
-      },
-      "batteries_schedule_3": {
-        "name": "Programación de baterías 3"
-      },
       "ev_force_discharge": {
         "name": "Forzar potencia máxima de descarga del VE"
       },
@@ -1327,24 +1176,6 @@
       }
     },
     "time": {
-      "schedule_1_start": {
-        "name": "Inicio de la programación de descarga de baterías 1"
-      },
-      "schedule_1_end": {
-        "name": "Fin de la programación de descarga de baterías 1"
-      },
-      "schedule_2_start": {
-        "name": "Inicio de la programación de descarga de baterías 2"
-      },
-      "schedule_2_end": {
-        "name": "Fin de la programación de descarga de baterías 2"
-      },
-      "schedule_3_start": {
-        "name": "Inicio de la programación de descarga de baterías 3"
-      },
-      "schedule_3_end": {
-        "name": "Fin de la programación de descarga de baterías 3"
-      },
       "ev_deadline": {
         "name": "Fecha límite de carga del VE"
       },
