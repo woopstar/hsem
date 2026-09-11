@@ -984,6 +984,15 @@
           "unavailable": "No disponible"
         }
       },
+      "ev_soc_economics": {
+        "name": "Economía de SoC del VE",
+        "state": {
+          "ready": "Listo",
+          "not_connected": "No conectado",
+          "smart_charging_disabled": "Carga inteligente desactivada",
+          "unavailable": "No disponible"
+        }
+      },
       "ev_second_charger_calculated_power": {
         "name": "Potencia calculada del cargador de VE"
       },
@@ -998,6 +1007,15 @@
           "not_connected": "No conectado",
           "smart_charging_disabled": "Carga inteligente desactivada",
           "waiting": "En espera",
+          "unavailable": "No disponible"
+        }
+      },
+      "ev_second_soc_economics": {
+        "name": "Economía de SoC del VE",
+        "state": {
+          "ready": "Listo",
+          "not_connected": "No conectado",
+          "smart_charging_disabled": "Carga inteligente desactivada",
           "unavailable": "No disponible"
         }
       },

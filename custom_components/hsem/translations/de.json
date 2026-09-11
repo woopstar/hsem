@@ -984,6 +984,15 @@
           "unavailable": "Nicht verfügbar"
         }
       },
+      "ev_soc_economics": {
+        "name": "EV SoC-Wirtschaftlichkeit",
+        "state": {
+          "ready": "Bereit",
+          "not_connected": "Nicht verbunden",
+          "smart_charging_disabled": "Smart-Charging deaktiviert",
+          "unavailable": "Nicht verfügbar"
+        }
+      },
       "ev_second_charger_calculated_power": {
         "name": "EV-Ladegerät berechnete Leistung"
       },
@@ -998,6 +1007,15 @@
           "not_connected": "Nicht verbunden",
           "smart_charging_disabled": "Smart-Charging deaktiviert",
           "waiting": "Wartet",
+          "unavailable": "Nicht verfügbar"
+        }
+      },
+      "ev_second_soc_economics": {
+        "name": "EV SoC-Wirtschaftlichkeit",
+        "state": {
+          "ready": "Bereit",
+          "not_connected": "Nicht verbunden",
+          "smart_charging_disabled": "Smart-Charging deaktiviert",
           "unavailable": "Nicht verfügbar"
         }
       },

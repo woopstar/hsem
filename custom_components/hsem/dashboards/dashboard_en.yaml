@@ -231,6 +231,27 @@ views:
               color: state
           - type: conditional
             conditions:
+              - entity: sensor.hsem_ev_soc_economics
+                state_not: unavailable
+            grid_options:
+              columns: full
+            card:
+              type: markdown
+              title: EV Charging Economics
+              content: >
+                {% set pts = state_attr('sensor.hsem_ev_soc_economics', 'points') or [] %}
+                {% for label, rows in pts | groupby('deadline_label') %}
+                **{{ label }}**
+
+                | Target SoC | Cost | +Δ vs previous | Feasible |
+                | --- | --- | --- | --- |
+                {% for p in rows %}
+                | {{ p.target_soc_pct }}% | {{ p.total_cost }} | {{ p.delta_from_previous if p.delta_from_previous is not none else '—' }} | {{ '✅' if p.feasible else '⚠️' }} |
+                {% endfor %}
+
+                {% endfor %}
+          - type: conditional
+            conditions:
               - entity: sensor.hsem_ev_second_optimal_charging_plan
                 state_not: unavailable
             grid_options:
@@ -293,6 +314,27 @@ views:
               name: EV 2 Deadline
               icon: mdi:clock-end
               color: state
+          - type: conditional
+            conditions:
+              - entity: sensor.hsem_ev_second_soc_economics
+                state_not: unavailable
+            grid_options:
+              columns: full
+            card:
+              type: markdown
+              title: EV 2 Charging Economics
+              content: >
+                {% set pts = state_attr('sensor.hsem_ev_second_soc_economics', 'points') or [] %}
+                {% for label, rows in pts | groupby('deadline_label') %}
+                **{{ label }}**
+
+                | Target SoC | Cost | +Δ vs previous | Feasible |
+                | --- | --- | --- | --- |
+                {% for p in rows %}
+                | {{ p.target_soc_pct }}% | {{ p.total_cost }} | {{ p.delta_from_previous if p.delta_from_previous is not none else '—' }} | {{ '✅' if p.feasible else '⚠️' }} |
+                {% endfor %}
+
+                {% endfor %}
       - type: grid
         cards:
           - type: heading

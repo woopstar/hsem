@@ -288,6 +288,27 @@ views:
               color: state
           - type: conditional
             conditions:
+              - entity: sensor.hsem_ev_soc_economics
+                state_not: unavailable
+            grid_options:
+              columns: full
+            card:
+              type: markdown
+              title: EV Charging Economics
+              content: >
+                {% set pts = state_attr('sensor.hsem_ev_soc_economics', 'points') or [] %}
+                {% for label, rows in pts | groupby('deadline_label') %}
+                **{{ label }}**
+
+                | Target SoC | Cost | +Δ vs previous | Feasible |
+                | --- | --- | --- | --- |
+                {% for p in rows %}
+                | {{ p.target_soc_pct }}% | {{ p.total_cost }} | {{ p.delta_from_previous if p.delta_from_previous is not none else '—' }} | {{ '✅' if p.feasible else '⚠️' }} |
+                {% endfor %}
+
+                {% endfor %}
+          - type: conditional
+            conditions:
               - entity: sensor.hsem_ev_second_optimal_charging_plan
                 state_not: unavailable
             grid_options:
@@ -350,6 +371,27 @@ views:
               name: EV 2 Deadline
               icon: mdi:clock-end
               color: state
+          - type: conditional
+            conditions:
+              - entity: sensor.hsem_ev_second_soc_economics
+                state_not: unavailable
+            grid_options:
+              columns: full
+            card:
+              type: markdown
+              title: EV 2 Charging Economics
+              content: >
+                {% set pts = state_attr('sensor.hsem_ev_second_soc_economics', 'points') or [] %}
+                {% for label, rows in pts | groupby('deadline_label') %}
+                **{{ label }}**
+
+                | Target SoC | Cost | +Δ vs previous | Feasible |
+                | --- | --- | --- | --- |
+                {% for p in rows %}
+                | {{ p.target_soc_pct }}% | {{ p.total_cost }} | {{ p.delta_from_previous if p.delta_from_previous is not none else '—' }} | {{ '✅' if p.feasible else '⚠️' }} |
+                {% endfor %}
+
+                {% endfor %}
       - type: grid
         cards:
           - type: heading
@@ -1219,7 +1261,7 @@ The dashboard uses a seven-section layout within one view:
 | **Status & Control**            | 1 column    | 10    | Working mode, system health, read-only toggle, plan strategy, force mode, next update, inverter apply, hardware writes, PV curtailment |
 | **Financial Insights**          | 1 column    | 5     | Export income, import cost, net grid balance, savings tracker                                                                          |
 | **Forecast Quality**            | 1 column    | 4     | Forecast accuracy, prediction accuracy, solar confidence                                                                               |
-| **EV Charging**                 | 1 column    | 12    | EV plan, active status, smart charging, force charge, target SoC, deadline (primary + secondary, conditional)                          |
+| **EV Charging**                 | 1 column    | 14    | EV plan, active status, smart charging, force charge, target SoC, deadline, SoC economics table (primary + secondary, conditional)     |
 | **Working Mode Recommendation** | 2 columns   | 7     | Recommendation timeline, battery status, charged kWh, consumption breakdown                                                            |
 | **Planner Output (left)**       | 1 column    | 4     | Net consumption, estimated cost, consumption, export price                                                                             |
 | **Planner Output (right)**      | 1 column    | 4     | Battery capacity, simulated SoC, PV forecast, import price                                                                             |
@@ -1272,19 +1314,21 @@ All EV cards are wrapped in `conditional` cards so they only appear when the
 corresponding EV entity is available. The section covers the primary EV and a
 secondary EV when configured:
 
-| Card                | Entity                                        | Purpose                                        |
-| ------------------- | --------------------------------------------- | ---------------------------------------------- |
-| EV Plan             | `sensor.hsem_ev_optimal_charging_plan`        | Current EV charging plan state                 |
-| EV Charging Active  | `sensor.hsem_ev_charging_sensor`              | Whether an EV is currently charging            |
-| EV Smart Charging   | `switch.hsem_ev_smart_charging`               | Enable/disable smart EV charging               |
-| EV Force Charge     | `switch.hsem_ev_force_charge_now`             | Override and start charging now                |
-| EV Target SoC       | `number.hsem_ev_target_soc`                   | Target state of charge for smart charging      |
-| EV Deadline         | `time.hsem_ev_deadline_time`                  | Deadline by which the EV must reach target SoC |
-| EV 2 Plan           | `sensor.hsem_ev_second_optimal_charging_plan` | Second EV charging plan state                  |
-| EV 2 Smart Charging | `switch.hsem_ev_second_smart_charging`        | Enable/disable smart charging for second EV    |
-| EV 2 Force Charge   | `switch.hsem_ev_second_force_charge_now`      | Override and start second EV charging now      |
-| EV 2 Target SoC     | `number.hsem_ev_second_target_soc`            | Target SoC for second EV                       |
-| EV 2 Deadline       | `time.hsem_ev_second_deadline_time`           | Deadline for second EV                         |
+| Card                    | Entity                                        | Purpose                                                    |
+| ----------------------- | --------------------------------------------- | ---------------------------------------------------------- |
+| EV Plan                 | `sensor.hsem_ev_optimal_charging_plan`        | Current EV charging plan state                             |
+| EV Charging Active      | `sensor.hsem_ev_charging_sensor`              | Whether an EV is currently charging                        |
+| EV Smart Charging       | `switch.hsem_ev_smart_charging`               | Enable/disable smart EV charging                           |
+| EV Force Charge         | `switch.hsem_ev_force_charge_now`             | Override and start charging now                            |
+| EV Target SoC           | `number.hsem_ev_target_soc`                   | Target state of charge for smart charging                  |
+| EV Deadline             | `time.hsem_ev_deadline_time`                  | Deadline by which the EV must reach target SoC             |
+| EV Charging Economics   | `sensor.hsem_ev_soc_economics`                | Markdown table: cost per target SoC × deadline             |
+| EV 2 Plan               | `sensor.hsem_ev_second_optimal_charging_plan` | Second EV charging plan state                              |
+| EV 2 Smart Charging     | `switch.hsem_ev_second_smart_charging`        | Enable/disable smart charging for second EV                |
+| EV 2 Force Charge       | `switch.hsem_ev_second_force_charge_now`      | Override and start second EV charging now                  |
+| EV 2 Target SoC         | `number.hsem_ev_second_target_soc`            | Target SoC for second EV                                   |
+| EV 2 Deadline           | `time.hsem_ev_second_deadline_time`           | Deadline for second EV                                     |
+| EV 2 Charging Economics | `sensor.hsem_ev_second_soc_economics`         | Markdown table: cost per target SoC × deadline (second EV) |
 
 ### Recommendation timeline chart
 

@@ -39,6 +39,12 @@ from custom_components.hsem.custom_sensors.ev_charger_calculated_power_sensor im
     HSEMEVChargerCalculatedPowerSensor,
     HSEMEVSecondChargerCalculatedPowerSensor,
 )
+from custom_components.hsem.custom_sensors.ev_second_soc_economics_sensor import (
+    HSEMEVSecondSoCEconomicsSensor,
+)
+from custom_components.hsem.custom_sensors.ev_soc_economics_sensor import (
+    HSEMEVSoCEconomicsSensor,
+)
 from custom_components.hsem.custom_sensors.financial_sensors import (
     HSEMExportIncomeSensor,
 )
@@ -245,6 +251,20 @@ class TestPerEntityDeviceInfo:
 
     def test_ev_secondary_calculated_power_sensor(self) -> None:
         sensor = HSEMEVSecondChargerCalculatedPowerSensor(
+            _mock_config_entry(), _mock_coordinator()
+        )
+        assert self._identifiers(sensor) == {
+            (DOMAIN, f"{_ENTRY_ID}_{HSEMDevice.EV_SECONDARY.value}")
+        }
+
+    def test_ev_primary_soc_economics_sensor(self) -> None:
+        sensor = HSEMEVSoCEconomicsSensor(_mock_config_entry(), _mock_coordinator())
+        assert self._identifiers(sensor) == {
+            (DOMAIN, f"{_ENTRY_ID}_{HSEMDevice.EV_PRIMARY.value}")
+        }
+
+    def test_ev_secondary_soc_economics_sensor(self) -> None:
+        sensor = HSEMEVSecondSoCEconomicsSensor(
             _mock_config_entry(), _mock_coordinator()
         )
         assert self._identifiers(sensor) == {

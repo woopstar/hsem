@@ -437,6 +437,9 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             "_data_quality",
             "_ev_charging_plan",
             "_ev_second_charging_plan",
+            "_ev_soc_economics",
+            "_ev_second_soc_economics",
+            "_ev_soc_economics_last_computed",
             "_ev_held_slot_start",
             "_ev_held_power_w",
             "_ev_second_held_slot_start",
@@ -545,6 +548,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                     consumption_ok,
                     captured_generation,
                 )
+                await self._maybe_compute_ev_soc_economics(now, captured_generation)
 
         except _StaleUpdateCycle:
             self._restore_accepted_plan_state(accepted_plan_state)
@@ -614,6 +618,8 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             data_quality=self._data_quality,
             ev_charging_plan=self._ev_charging_plan,
             ev_second_charging_plan=self._ev_second_charging_plan,
+            ev_soc_economics=self._ev_soc_economics,
+            ev_second_soc_economics=self._ev_second_soc_economics,
             override_expiry=(
                 self._override_expiry.isoformat()
                 if self._override_expiry is not None
