@@ -115,6 +115,39 @@ class TestSavingsTracker:
         assert st.missed_savings == pytest.approx(0.20)
         assert st.baseline_cost == pytest.approx(1.00 + 0.50 + 0.30)  # 1.80
 
+    def test_accumulate_with_discharge_savings(self) -> None:
+        """discharge_savings_delta should be included in the savings sum."""
+        st = SavingsTracker()
+        st.accumulate(
+            export_revenue_delta=0.50,
+            charge_savings_delta=0.30,
+            baseline_cost_delta=2.00,
+            switch_on=True,
+            discharge_savings_delta=0.40,
+        )
+        assert st.actual_savings == pytest.approx(1.20)  # 0.50 + 0.30 + 0.40
+        assert st.missed_savings == 0.0
+        assert st.today_actual == pytest.approx(1.20)
+
+    def test_accumulate_discharge_savings_when_switch_off(self) -> None:
+        """discharge_savings_delta should accumulate as missed when switch is off."""
+        st = SavingsTracker()
+        st.accumulate(
+            export_revenue_delta=0.0,
+            charge_savings_delta=0.0,
+            baseline_cost_delta=1.00,
+            switch_on=False,
+            discharge_savings_delta=0.40,
+        )
+        assert st.actual_savings == 0.0
+        assert st.missed_savings == pytest.approx(0.40)
+
+    def test_accumulate_discharge_savings_defaults_to_zero(self) -> None:
+        """Omitting discharge_savings_delta must not change prior behaviour."""
+        st = SavingsTracker()
+        st.accumulate(0.50, 0.30, 2.00, True)
+        assert st.actual_savings == pytest.approx(0.80)  # 0.50 + 0.30
+
     def test_zero_savings(self) -> None:
         """Zero deltas should not affect totals."""
         st = SavingsTracker()

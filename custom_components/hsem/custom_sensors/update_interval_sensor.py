@@ -34,7 +34,6 @@ from custom_components.hsem.coordinator import (
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_update_interval_sensor_entity_id,
-    get_update_interval_sensor_name,
     get_update_interval_sensor_unique_id,
 )
 
@@ -57,6 +56,7 @@ class HSEMUpdateIntervalSensor(
 
     _attr_icon = "mdi:timer-outline"
     _attr_has_entity_name = True
+    _attr_translation_key = "update_interval"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
     _attr_suggested_display_precision = 0
@@ -81,19 +81,12 @@ class HSEMUpdateIntervalSensor(
             config_entry.entry_id
         )
         self.entity_id = get_update_interval_sensor_entity_id()
-        self._name = get_update_interval_sensor_name()
 
         self._restored_state: str | None = None
 
     # ------------------------------------------------------------------
     # HA entity properties
     # ------------------------------------------------------------------
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override

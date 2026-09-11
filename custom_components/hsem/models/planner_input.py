@@ -100,16 +100,27 @@ class PlannerInput:
             (``force_batteries_discharge``); does not affect normal battery
             self-consumption, PV export, or PV charging of the battery.
         export_min_price:
-            Minimum export price for grid power control (below this the
-            inverter export is throttled to zero).
+            Per-slot battery-export floor (issue #767): below this raw
+            export price, intentional battery-to-grid discharge is
+            forbidden, but PV surplus export is unrestricted. Does NOT
+            throttle the inverter connection point — only a negative export
+            price does that (see ``export_fee_per_kwh`` below).
+        export_fee_per_kwh:
+            Retailer margin/balancing-fee cost per kWh exported (issue
+            #925). Netted out of the export price everywhere export
+            profitability is decided — the applier's physical
+            connection-point block, the MILP objective, and the cost
+            function — so a raw price that is positive but net-negative
+            after fees is correctly treated like a negative price (PV
+            surplus gets curtailed instead of exported). Does NOT change
+            ``export_min_price``/``battery_export_min_price`` floor
+            comparisons, which stay on the raw price. ``0.0`` (default) is
+            fully backward compatible.
         months_winter:
             Month numbers (1-12) classified as winter.
         house_power_includes_ev:
             Whether the house-consumption sensor already includes EV charger
             power.  Affects net-consumption calculation.
-        is_read_only:
-            When ``True`` the planner skips writing to the inverter.  Useful
-            for dry-run/test scenarios.
     """
 
     # --- temporal context ---
@@ -184,6 +195,7 @@ class PlannerInput:
 
     # --- grid export control ---
     export_min_price: float = 0.0
+    export_fee_per_kwh: float = 0.0
 
     # --- main fuse / tariff protection ---
     #: Main fuse/breaker rating in amps (0 or None = disabled).  The MILP
@@ -204,7 +216,6 @@ class PlannerInput:
     # --- seasonal / mode config ---
     months_winter: list[int] = field(default_factory=lambda: [1, 2, 3, 4, 10, 11, 12])
     house_power_includes_ev: bool = True
-    is_read_only: bool = False  # False = hardware writes enabled; set True only in dry-run/test scenarios
 
     #: Live solar production power in Watts from the inverter's input power
     #: sensor.  Injected into the current slot's solcast_pv_estimate_kwh so
@@ -295,6 +306,17 @@ class PlannerInput:
     ev_second_planned_load_max_discharge_power_w: float = 0.0
     #: Same as ev_planned_load_deadline_safety_margin_pct, for the second EV.
     ev_second_planned_load_deadline_safety_margin_pct: float = 0.0
+
+    # --- Current-slot EV charger power hold (issue #957) — the rate held
+    # for the current slot from the previous solve's ``PlannerOutput``, fed
+    # back in so the engine can tell "still the same current slot" from "a
+    # new current slot" without recomputing the rate from the live clock.
+    # ``None`` slot_start means nothing is currently held. ---
+    ev_held_slot_start: datetime | None = None
+    ev_held_power_w: float = 0.0
+    #: Same as ev_held_slot_start/ev_held_power_w, for the second EV.
+    ev_second_held_slot_start: datetime | None = None
+    ev_second_held_power_w: float = 0.0
 
     # --- planner hysteresis — keep the active plan unless the new plan
     # is materially better (anti-flapping, issue #372). ---

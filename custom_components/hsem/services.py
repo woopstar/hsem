@@ -1,12 +1,22 @@
 """Service handlers for the HSEM integration.
 
-This module implements the five HSEM services:
+This module implements the HSEM services:
 
 - ``force_recalculation`` — Re-run the full planning pipeline immediately.
 - ``set_temporary_override`` — Force a specific working mode on the select entity.
 - ``clear_override`` — Reset the force-mode select to ``"auto"``.
 - ``export_diagnostics`` — Return a structured diagnostics dump as service response.
 - ``create_dashboard`` — Log the path to the bundled dashboard YAML.
+- ``ocpp_debug_start_charging`` — Manually send RemoteStartTransaction +
+  SetChargingProfile, bypassing the anti-flap state machine (issue #920).
+- ``ocpp_debug_stop_charging`` — Manually send RemoteStopTransaction, bypassing
+  the anti-flap state machine (issue #920).
+- ``ocpp_debug_diagnostics`` — Query the charger's own configuration and the
+  charging limit it has actually computed (issue #920).
+- ``ocpp_debug_set_availability`` — Set a connector Operative/Inoperative.
+- ``ocpp_debug_set_configuration`` — Write one OCPP configuration key.
+- ``ocpp_debug_set_current`` — Send only a charging profile, at a given current
+  (``0`` = draw nothing), to isolate whether profiles are honoured at all.
 
 All services are integration-level actions; the coordinator is looked up from
 the only configured HSEM entry.  Service schemas are defined in ``services.yaml``.
@@ -24,6 +34,26 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
+from custom_components.hsem.services_ocpp import (
+    SCHEMA_OCPP_DEBUG_DIAGNOSTICS,
+    SCHEMA_OCPP_DEBUG_SET_AVAILABILITY,
+    SCHEMA_OCPP_DEBUG_SET_CONFIGURATION,
+    SCHEMA_OCPP_DEBUG_SET_CURRENT,
+    SCHEMA_OCPP_DEBUG_START_CHARGING,
+    SCHEMA_OCPP_DEBUG_STOP_CHARGING,
+    SERVICE_OCPP_DEBUG_DIAGNOSTICS,
+    SERVICE_OCPP_DEBUG_SET_AVAILABILITY,
+    SERVICE_OCPP_DEBUG_SET_CONFIGURATION,
+    SERVICE_OCPP_DEBUG_SET_CURRENT,
+    SERVICE_OCPP_DEBUG_START_CHARGING,
+    SERVICE_OCPP_DEBUG_STOP_CHARGING,
+    async_handle_ocpp_debug_diagnostics,
+    async_handle_ocpp_debug_set_availability,
+    async_handle_ocpp_debug_set_configuration,
+    async_handle_ocpp_debug_set_current,
+    async_handle_ocpp_debug_start_charging,
+    async_handle_ocpp_debug_stop_charging,
+)
 from custom_components.hsem.utils.dashboard import async_ensure_hsem_dashboard
 from custom_components.hsem.utils.diagnostics import build_diagnostics_dump
 from custom_components.hsem.utils.integration_version import (
@@ -353,6 +383,36 @@ SERVICE_HANDLER_MAP: dict[str, tuple[vol.Schema, Any, SupportsResponse]] = {
     SERVICE_FORCE_RECALCULATION: (
         SCHEMA_FORCE_RECALCULATION,
         async_handle_force_recalculation,
+        SupportsResponse.NONE,
+    ),
+    SERVICE_OCPP_DEBUG_DIAGNOSTICS: (
+        SCHEMA_OCPP_DEBUG_DIAGNOSTICS,
+        async_handle_ocpp_debug_diagnostics,
+        SupportsResponse.NONE,
+    ),
+    SERVICE_OCPP_DEBUG_SET_CURRENT: (
+        SCHEMA_OCPP_DEBUG_SET_CURRENT,
+        async_handle_ocpp_debug_set_current,
+        SupportsResponse.NONE,
+    ),
+    SERVICE_OCPP_DEBUG_SET_AVAILABILITY: (
+        SCHEMA_OCPP_DEBUG_SET_AVAILABILITY,
+        async_handle_ocpp_debug_set_availability,
+        SupportsResponse.NONE,
+    ),
+    SERVICE_OCPP_DEBUG_SET_CONFIGURATION: (
+        SCHEMA_OCPP_DEBUG_SET_CONFIGURATION,
+        async_handle_ocpp_debug_set_configuration,
+        SupportsResponse.NONE,
+    ),
+    SERVICE_OCPP_DEBUG_START_CHARGING: (
+        SCHEMA_OCPP_DEBUG_START_CHARGING,
+        async_handle_ocpp_debug_start_charging,
+        SupportsResponse.NONE,
+    ),
+    SERVICE_OCPP_DEBUG_STOP_CHARGING: (
+        SCHEMA_OCPP_DEBUG_STOP_CHARGING,
+        async_handle_ocpp_debug_stop_charging,
         SupportsResponse.NONE,
     ),
     SERVICE_SET_TEMPORARY_OVERRIDE: (

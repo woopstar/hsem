@@ -48,7 +48,6 @@ from custom_components.hsem.utils.degraded_mode import (
 )
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_degraded_mode_sensor_entity_id,
-    get_degraded_mode_sensor_name,
     get_degraded_mode_sensor_unique_id,
 )
 
@@ -97,7 +96,6 @@ class HSEMDegradedModeSensor(
 
         self._attr_unique_id = get_degraded_mode_sensor_unique_id(config_entry.entry_id)
         self.entity_id = get_degraded_mode_sensor_entity_id()
-        self._name = get_degraded_mode_sensor_name()
 
         # Restored state used before the first coordinator cycle completes.
         self._restored_state: str | None = None
@@ -105,12 +103,6 @@ class HSEMDegradedModeSensor(
     # ------------------------------------------------------------------
     # HA entity properties
     # ------------------------------------------------------------------
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override

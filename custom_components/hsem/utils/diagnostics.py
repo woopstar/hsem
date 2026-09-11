@@ -456,6 +456,11 @@ def build_diagnostics_dump(
 def dump_to_json(dump: dict[str, Any], *, indent: int = 2) -> str:
     """Serialise a diagnostics dump to a pretty-printed JSON string.
 
+    No production caller: this is offline developer tooling for writing a
+    dump to disk (e.g. to attach to a bug report) and replaying it via
+    :func:`load_planner_input_from_dump`, per this module's docstring.
+    Exercised by tests/test_diagnostics_dump.py (issue #967).
+
     Args:
         dump: A dict previously produced by :func:`build_diagnostics_dump`.
         indent: JSON indentation level.

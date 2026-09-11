@@ -31,7 +31,7 @@ so that all timezone normalisation is routed through this module.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, tzinfo
+from datetime import UTC, datetime, timedelta, tzinfo
 
 import homeassistant.util.dt as dt_util
 
@@ -172,6 +172,48 @@ def utc_now_iso() -> str:
         ISO-8601 string of the current HA-local time without microseconds.
     """
     return now().isoformat()
+
+
+def physical_elapsed(later: datetime, earlier: datetime) -> timedelta:
+    """Return elapsed time between two datetimes by physical UTC instant.
+
+    A naive *earlier* is assumed to share *later*'s timezone before
+    conversion, so pairing a HA-local "now" with an older naive calendar
+    timestamp still yields a correct physical duration.
+
+    Args:
+        later: The more recent datetime, timezone-aware or naive.
+        earlier: The older datetime, timezone-aware or naive.
+
+    Returns:
+        The physical duration between the two instants.
+    """
+    later_aware = later if later.tzinfo is not None else later.astimezone()
+    earlier_aware = (
+        earlier
+        if earlier.tzinfo is not None
+        else earlier.replace(tzinfo=later_aware.tzinfo)
+    )
+    return utc_key(later_aware) - utc_key(earlier_aware)
+
+
+def cache_is_fresh(cached_at: datetime, current: datetime, window: timedelta) -> bool:
+    """Return whether *cached_at* is within *window* of *current*.
+
+    Used by short-lived in-memory caches (recorder history, weather
+    forecasts) to decide whether a cached value can be reused without
+    re-querying its source.
+
+    Args:
+        cached_at: When the cached value was fetched.
+        current: The current reference time.
+        window: The maximum age before the cache is considered stale.
+
+    Returns:
+        ``True`` when ``0 <= age < window``.
+    """
+    age = physical_elapsed(current, cached_at)
+    return timedelta(0) <= age < window
 
 
 def utc_key(dt: datetime) -> datetime:

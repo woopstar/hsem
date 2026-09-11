@@ -188,14 +188,15 @@ If any step fails, fix the issues before committing.
 
 The following checks run on every PR:
 
-| Check         | Tool          | Command                       | Purpose                        |
-| ------------- | ------------- | ----------------------------- | ------------------------------ |
-| Formatting    | `ruff format` | `./scripts/quality.sh lint`   | Consistent Python code style   |
-| Doc format    | `prettier`    | `./scripts/quality.sh lint`   | Markdown / YAML / JSON style   |
-| Linting       | `ruff check`  | `./scripts/quality.sh lint`   | Bugs, style issues, complexity |
-| Type Checking | `mypy`        | `./scripts/quality.sh typing` | Type errors and unsafe code    |
-| Tests         | `pytest`      | `./scripts/quality.sh test`   | Verifies functionality         |
-| Coverage      | `coverage`    | `--cov` flag                  | Ensures new code is tested     |
+| Check         | Tool                       | Command                             | Purpose                        |
+| ------------- | -------------------------- | ----------------------------------- | ------------------------------ |
+| Formatting    | `ruff format`              | `./scripts/quality.sh lint`         | Consistent Python code style   |
+| Doc format    | `prettier`                 | `./scripts/quality.sh lint`         | Markdown / YAML / JSON style   |
+| Linting       | `ruff check`               | `./scripts/quality.sh lint`         | Bugs, style issues, complexity |
+| Type Checking | `mypy`                     | `./scripts/quality.sh typing`       | Type errors and unsafe code    |
+| Translations  | `validate_translations.py` | `./scripts/quality.sh translations` | en/da/de/es keys stay in sync  |
+| Tests         | `pytest`                   | `./scripts/quality.sh test`         | Verifies functionality         |
+| Coverage      | `coverage`                 | `--cov` flag                        | Ensures new code is tested     |
 
 **All checks must pass before merge.**
 

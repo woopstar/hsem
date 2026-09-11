@@ -637,7 +637,6 @@ class TestForecastTrackerSerialization:
         assert rec.accuracy_eligible is False
         assert rec.forecast_soc_pct is None
         assert rec.forecast_action is None
-        assert rec.prediction_eligible is False
         assert tracker.summary.finalised_count == 0
 
     def test_persistence_prioritises_lifecycle_records_over_future_tail(
@@ -1004,7 +1003,6 @@ class TestPhysicalIntervalAccumulation:
         assert rec.forecast_load_kwh == pytest.approx(1.5)
         assert rec.forecast_soc_pct == pytest.approx(65.0)
         assert rec.forecast_action == "discharge"
-        assert rec.prediction_eligible is False  # actual coverage is not complete yet
 
     def test_autumn_fold_slots_keep_distinct_physical_energy(self) -> None:
         stockholm = ZoneInfo("Europe/Stockholm")

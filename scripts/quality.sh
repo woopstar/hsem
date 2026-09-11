@@ -67,9 +67,10 @@ Commands:
   typing    Type check with mypy
   quality   Static quality checks (pyright + vulture)
   format-check  Verify prettier formatting without writing (used by CI)
+  translations  Validate en/da/de/es translation files stay in sync
   skylos    Run Skylos static analysis (experimental, not in 'all')
   test      Run tests with pytest and coverage
-  all       Run lint, typing, quality, and test in sequence
+  all       Run lint, typing, quality, translations, and test in sequence
 EOF
     exit 1
 }
@@ -94,6 +95,9 @@ case "${1:-}" in
         ;;
     format-check)
         prettier_run --check
+        ;;
+    translations)
+        run python3 scripts/validate_translations.py
         ;;
     skylos)
         SKYLOS_GREP_BUDGET=120 run skylos custom_components -a
@@ -123,6 +127,9 @@ case "${1:-}" in
         echo "[info] excluded, --min-confidence 0). Informational only -- same-named"
         echo "[info] methods across classes still won't be flagged (issue #890)."
         run python -m vulture custom_components/hsem vulture_whitelist.py --min-confidence 0 || true
+        echo ""
+        echo "=== Translations ==="
+        run python3 scripts/validate_translations.py
         echo ""
         echo "=== Tests ==="
         run python -m pytest tests/ \

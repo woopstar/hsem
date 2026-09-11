@@ -12,7 +12,7 @@ run -- these tests exercise that combined flow rather than
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -99,18 +99,28 @@ async def test_accumulate_savings_survives_simulated_restart(tmp_path: Path) -> 
     This mirrors what happens on a real Home Assistant restart: the
     coordinator (and its in-memory SavingsTracker) is thrown away and a
     brand-new tracker is constructed and initialised from disk.
+
+    The baseline-cost counterfactual (issue #962) is time-integrated from
+    live house-load/PV power, so ``now`` must actually advance between
+    cycles for a baseline delta to accrue -- unlike the pre-#962
+    implementation, which derived it from the daily tracker's grid-import
+    cost regardless of elapsed time.
     """
     hass = _make_hass(tmp_path)
     daily_tracker = DailyPlanVsActualTracker()
     live = LiveState()
+    live.house_consumption_power_w = 1000.0
+    live.solar_production_power_w = 0.0
+    live.import_electricity_price = 2.0
     output = PlannerOutput()
 
     tracker_before_restart = SavingsTracker()
+    now = datetime(2026, 6, 26, 12, 0, tzinfo=UTC)
     for _ in range(3):
         daily_tracker.actual.grid_export_rev += 0.1
         daily_tracker.actual.grid_import_cost += 0.2
         await accumulate_savings(
-            now=datetime(2026, 6, 26, 12, 0, tzinfo=UTC),
+            now=now,
             live=live,
             output=output,
             savings_tracker=tracker_before_restart,
@@ -121,13 +131,14 @@ async def test_accumulate_savings_survives_simulated_restart(tmp_path: Path) -> 
         await persist_all_trackers(
             _make_coordinator(tracker_before_restart), only=["_savings_tracker"]
         )
+        now += timedelta(minutes=15)
 
     assert tracker_before_restart.baseline_cost > 0.0
 
     # Simulate a restart: a brand-new tracker, re-initialised from disk.
     tracker_after_restart = SavingsTracker()
     await accumulate_savings(
-        now=datetime(2026, 6, 26, 12, 5, tzinfo=UTC),
+        now=now,
         live=live,
         output=output,
         savings_tracker=tracker_after_restart,

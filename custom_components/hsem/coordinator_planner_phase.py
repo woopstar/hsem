@@ -168,6 +168,10 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                 dynamic_discharge_floor_pct=_dynamic_floor_pct,
                 capacity_learner=getattr(self, "_capacity_learner", CapacityLearner()),
                 live_power_estimate=live_power_estimate,
+                ev_held_slot_start=self._ev_held_slot_start,
+                ev_held_power_w=self._ev_held_power_w,
+                ev_second_held_slot_start=self._ev_second_held_slot_start,
+                ev_second_held_power_w=self._ev_second_held_power_w,
             )
             planner_input.solar_corrector = self._solar_corrector
             self._last_planner_input = planner_input
@@ -194,6 +198,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                 async_log("debug", "[planner] %s", warning)
 
             self._current_required_battery = planner_output.required_capacity_kwh
+            self._current_wait_mode_reserve = planner_output.wait_mode_reserve_kwh
             self._data_quality = replace(
                 planner_output.data_quality,
                 load_forecast_ready=True,
@@ -201,6 +206,10 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             )
             self._ev_charging_plan = planner_output.ev_charging_plan
             self._ev_second_charging_plan = planner_output.ev_second_charging_plan
+            self._ev_held_slot_start = planner_output.ev_held_slot_start
+            self._ev_held_power_w = planner_output.ev_held_power_w
+            self._ev_second_held_slot_start = planner_output.ev_second_held_slot_start
+            self._ev_second_held_power_w = planner_output.ev_second_held_power_w
 
             if live.any_ev_charging:
                 has_planned = any(
@@ -223,6 +232,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
 
             planner_output = deepcopy(self._last_planner_output)
             self._current_required_battery = planner_output.required_capacity_kwh
+            self._current_wait_mode_reserve = planner_output.wait_mode_reserve_kwh
             self._data_quality = replace(
                 planner_output.data_quality,
                 load_forecast_ready=True,
@@ -230,6 +240,10 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             )
             self._ev_charging_plan = planner_output.ev_charging_plan
             self._ev_second_charging_plan = planner_output.ev_second_charging_plan
+            self._ev_held_slot_start = planner_output.ev_held_slot_start
+            self._ev_held_power_w = planner_output.ev_held_power_w
+            self._ev_second_held_slot_start = planner_output.ev_second_held_slot_start
+            self._ev_second_held_power_w = planner_output.ev_second_held_power_w
             async_log(
                 "debug",
                 "[replan] Skipping planner — no material changes detected."
@@ -357,7 +371,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             state = hourly_rec.recommendation
 
         # Register forecasts in the forecast tracker.
-        register_forecasts_from_planner(planner_output, self._forecast_tracker)
+        register_forecasts_from_planner(planner_output, self._forecast_tracker, now=now)
 
         # Daily plan-vs-actual accumulation.
         try:

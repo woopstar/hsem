@@ -587,15 +587,16 @@ def test_managed_session_reaches_target_with_bounded_amp_overshoot() -> None:
 
     assert result is not None
     out, diagnostics = result
-    # One executable single-phase amp is 0.23 kWh in an hourly slot. The
-    # target-cap constraint now permits one activation quantum (the
-    # charger's startup minimum) above the exact 1.0 kWh target, so the
-    # nearest reachable whole-amp point (5 A / 1.15 kWh) is used instead of
-    # rounding down to an avoidable shortfall (issue #797).
+    # The amp lattice is zero-or-an-integer-in-[min_amp, rated_amp], never a
+    # fractional amp below the real-world EVSE minimum of 6 A (issue #968).
+    # A configured charger_min_power_w of 0.0 no longer relaxes that floor,
+    # so the smallest command that clears the 1.0 kWh target is exactly
+    # 6 A / 1.38 kWh, not a partial amp rounded up from the old (incorrect)
+    # 1 A floor.
     total_dc = sum(slot.ev_total_planned_load_kwh for slot in out)
-    assert 1.0 <= total_dc <= 1.23 + 1e-9
+    assert total_dc == pytest.approx(1.38)
     assert max(slot.ev_charger_calculated_power for slot in out) == pytest.approx(
-        1_150.0
+        1_380.0
     )
     assert diagnostics["ev"]["ev0"]["deadline_penalty_kwh"] == pytest.approx(0.0)
     assert diagnostics["ev"]["ev0"]["deadline_met"] is True
@@ -679,12 +680,14 @@ def test_mixed_managed_and_unmanaged_sessions_keep_distinct_windows() -> None:
 
     assert result is not None
     out, _diagnostics = result
-    # The unmanaged EV remains fixed in slot 1. At most one executable amp of
-    # managed energy may supplement it to close the target lattice; the live
-    # 6 kW observation never freezes the managed slot (issue #797).
+    # The unmanaged EV remains fixed in slot 1. The managed EV's amp lattice
+    # floors at the real-world EVSE minimum of 6 A (issue #968), so it
+    # either contributes nothing or exactly one 6 A / 1.38 kWh command to
+    # supplement it; the live 6 kW observation never freezes the managed
+    # slot (issue #797).
     managed_slot_1_kwh = out[1].ev_charger_calculated_power / 1000.0
     assert out[1].ev_total_planned_load_kwh == pytest.approx(3.0 + managed_slot_1_kwh)
-    assert managed_slot_1_kwh <= 0.23 + 1e-9
+    assert managed_slot_1_kwh == pytest.approx(1.38)
     assert out[1].ev_second_charger_calculated_power == pytest.approx(0.0)
     assert out[2].ev_charger_calculated_power == pytest.approx(5980.0)
 

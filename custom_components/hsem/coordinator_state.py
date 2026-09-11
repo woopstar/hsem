@@ -76,6 +76,7 @@ class CoordinatorSharedState(_Base):
     _config_entry: ConfigEntry
     _current_load_forecast_signature: LoadForecastSignature | None
     _current_required_battery: float
+    _current_wait_mode_reserve: float | None
     _daily_plan_last_accumulated: datetime | None
     _daily_tracker: DailyPlanVsActualTracker
     _data_quality: DataQuality
@@ -84,9 +85,13 @@ class CoordinatorSharedState(_Base):
     _effective_discharge_floor_pct: float | None
     _ev_charging_plan: EVChargingPlan | None
     _ev_delivered_energy_tracker: EVDeliveredEnergyTracker
+    _ev_held_power_w: float
+    _ev_held_slot_start: datetime | None
     _ev_last_command_w: dict[str, float]
     _ev_second_charging_plan: EVChargingPlan | None
     _ev_second_delivered_energy_tracker: EVDeliveredEnergyTracker
+    _ev_second_held_power_w: float
+    _ev_second_held_slot_start: datetime | None
     _event_update_pending: bool
     _financial_tracker: FinancialTracker
     _force_working_mode_entity: str | None
@@ -150,7 +155,6 @@ class CoordinatorSharedState(_Base):
     _savings_tracker: SavingsTracker
     _snapshot: StateSnapshot | None
     _solar_corrector: SolarForecastCorrector
-    _solar_corrector_processed: set[datetime]
     _timer_interval: timedelta | None
     _tracked_entities: set[str]
     _update_generation: int
