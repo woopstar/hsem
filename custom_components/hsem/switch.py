@@ -1,7 +1,7 @@
 """Switch platform for the HSEM integration.
 
 Exposes :class:`SwitchEntity` instances that let users toggle integration
-settings (read-only mode, verbose logging, discharge schedules, etc.) without
+settings (read-only mode, verbose logging, EV charging, etc.) without
 leaving the entity page.
 """
 
@@ -16,9 +16,6 @@ from custom_components.hsem.custom_switches.switch import HSEMSwitch
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.sensornames.controls import (
-    get_batteries_schedule_1_switch_key,
-    get_batteries_schedule_2_switch_key,
-    get_batteries_schedule_3_switch_key,
     get_dynamic_discharge_floor_switch_key,
     get_extended_attributes_switch_key,
     get_read_only_switch_key,
@@ -58,24 +55,6 @@ SWITCH_DESCRIPTIONS: tuple[HSEMSwitchEntityDescription, ...] = (
         key=get_verbose_logging_switch_key(),
         icon=_ICON_TOGGLE,
         translation_key="verbose_logging",
-    ),
-    HSEMSwitchEntityDescription(
-        key=get_batteries_schedule_1_switch_key(),
-        icon=_ICON_TOGGLE,
-        translation_key="batteries_schedule_1",
-        hsem_device=HSEMDevice.BATTERY_ENERGY,
-    ),
-    HSEMSwitchEntityDescription(
-        key=get_batteries_schedule_2_switch_key(),
-        icon=_ICON_TOGGLE,
-        translation_key="batteries_schedule_2",
-        hsem_device=HSEMDevice.BATTERY_ENERGY,
-    ),
-    HSEMSwitchEntityDescription(
-        key=get_batteries_schedule_3_switch_key(),
-        icon=_ICON_TOGGLE,
-        translation_key="batteries_schedule_3",
-        hsem_device=HSEMDevice.BATTERY_ENERGY,
     ),
     HSEMSwitchEntityDescription(
         key=get_ev_force_discharge_switch_key(),

@@ -195,7 +195,6 @@ class TestBuildPlannerInputSlotInDay:
                 cfg=cfg,
                 live=LiveState(),
                 hourly_recommendations=recs,
-                batteries_schedules=[],
                 previous_winner_name=None,
                 previous_winner_score=0.0,
             )
@@ -260,7 +259,6 @@ class TestBuildPlannerInputSlotInDay:
                 cfg=cfg,
                 live=LiveState(),
                 hourly_recommendations=recs,
-                batteries_schedules=[],
                 previous_winner_name=None,
                 previous_winner_score=0.0,
             )

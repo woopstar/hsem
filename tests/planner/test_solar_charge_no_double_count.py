@@ -20,9 +20,6 @@ Acceptance criteria
 
 from __future__ import annotations
 
-from datetime import time
-
-from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
@@ -48,7 +45,6 @@ def _make_solar_only_input(
     solar_per_hour: float = 3.0,
     consumption_per_hour: float = 0.3,
     now_iso: str = "2024-06-15T00:00:00+02:00",
-    schedules: list[BatteryScheduleInput] | None = None,
 ) -> PlannerInput:
     """Return a 24-hour summer input where solar > consumption in most mid-day hours.
 
@@ -63,7 +59,6 @@ def _make_solar_only_input(
         solar_per_hour: PV production per hour in kWh.
         consumption_per_hour: House consumption per hour in kWh.
         now_iso: Planning timestamp (timezone-aware ISO-8601).
-        schedules: Battery charge/discharge schedule overrides.
     """
     prices = [
         PricePoint(hour=h, import_price=0.20, export_price=0.18) for h in range(24)
@@ -83,11 +78,6 @@ def _make_solar_only_input(
         )
         for h in range(24)
     ]
-    # Default: no discharge schedules so only solar-strategy charging runs
-    if schedules is None:
-        schedules = [
-            BatteryScheduleInput(enabled=False, start=time(7, 0), end=time(9, 0)),
-        ]
     return PlannerInput(
         now_iso=now_iso,
         interval_minutes=60,
@@ -105,7 +95,6 @@ def _make_solar_only_input(
         consumption_averages=consumption,
         price_points=prices,
         solcast_slots=solar,
-        battery_schedules=schedules,
         excess_export_enabled=False,
         excess_export_discharge_buffer_pct=10.0,
         excess_export_price_threshold=0.10,

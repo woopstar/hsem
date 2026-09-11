@@ -82,7 +82,7 @@ init → prices → months → solcast
      → ev (force-discharge charger) → [ev_second]
      → ev_planned_load               ← you are here
      → [ev_second_planned_load]
-     → batteries_schedule_1/2/3 → batteries_excess_export
+     → ocpp → batteries_wait_mode → batteries_excess_export
      → weighted_values
 ```
 

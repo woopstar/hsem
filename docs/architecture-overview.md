@@ -141,16 +141,15 @@ HA-dependent sensor entities that consume coordinator data.
 
 ### Models layer (pure-Python dataclasses)
 
-| Module                            | Responsibility                                             |
-| --------------------------------- | ---------------------------------------------------------- |
-| `models/planner_inputs.py`        | `PlannerInput`, `PricePoint`, `SolcastSlot`, etc.          |
-| `models/planner_outputs.py`       | `PlannerOutput`, `PlannedSlot`, `DataQuality`, etc.        |
-| `models/live_state.py`            | `LiveState`, `EVLiveState` — HA entity snapshots           |
-| `models/sensor_config.py`         | `SensorConfig`, `EVChargerConfig`, `BatteryScheduleConfig` |
-| `models/state_snapshot.py`        | `StateSnapshot` — frozen immutable HA state collection     |
-| `models/time_series.py`           | `TimeSeriesIndex`, `SlotKey` — shared slot alignment       |
-| `models/hourly_recommendation.py` | `HourlyRecommendation` — per-slot planner output           |
-| `models/battery_schedule.py`      | `BatterySchedule` dataclass                                |
+| Module                            | Responsibility                                         |
+| --------------------------------- | ------------------------------------------------------ |
+| `models/planner_inputs.py`        | `PlannerInput`, `PricePoint`, `SolcastSlot`, etc.      |
+| `models/planner_outputs.py`       | `PlannerOutput`, `PlannedSlot`, `DataQuality`, etc.    |
+| `models/live_state.py`            | `LiveState`, `EVLiveState` — HA entity snapshots       |
+| `models/sensor_config.py`         | `SensorConfig`, `EVChargerConfig`                      |
+| `models/state_snapshot.py`        | `StateSnapshot` — frozen immutable HA state collection |
+| `models/time_series.py`           | `TimeSeriesIndex`, `SlotKey` — shared slot alignment   |
+| `models/hourly_recommendation.py` | `HourlyRecommendation` — per-slot planner output       |
 
 ---
 

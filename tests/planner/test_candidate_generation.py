@@ -3,7 +3,6 @@
 Acceptance criteria verified here
 -----------------------------------
 - Planner can compare multiple valid plans.
-- Current (baseline) behaviour is represented as one candidate.
 - Tests cover choosing no-action when all other plans are bad.
 - All candidate names are present in the output.
 - The winning plan has the lowest cost among valid candidates.
@@ -183,7 +182,6 @@ class TestSlotMutationHelpers:
 # in issue #967. MILP-only mode (#483) made the partial-SoC and
 # grid/solar/discharge-only heuristic candidates permanently unreachable.
 
-
 # ===========================================================================
 # 4. generate_candidates — structural contract
 # ===========================================================================
@@ -232,7 +230,7 @@ class TestGenerateCandidates:
 
 
 # ===========================================================================
-# 4. _validate_candidate
+# 5. _validate_candidate
 # ===========================================================================
 
 
@@ -282,7 +280,7 @@ class TestValidateCandidate:
 
 
 # ===========================================================================
-# 5. select_best_candidate — integration
+# 6. select_best_candidate — integration
 # ===========================================================================
 
 
@@ -435,7 +433,7 @@ class TestSelectBestCandidate:
 
 
 # ===========================================================================
-# 6. Full planner integration — candidates on PlannerOutput
+# 7. Full planner integration — candidates on PlannerOutput
 # ===========================================================================
 
 
@@ -496,7 +494,7 @@ class TestPlannerOutputCandidates:
 
 
 # ===========================================================================
-# 7. Passive candidate tests (issue #420)
+# 8. Passive candidate tests (issue #420)
 # ===========================================================================
 
 
@@ -603,3 +601,71 @@ class TestPassiveCandidate:
                 f"_apply_passive_solar must never assign BatteriesChargeGrid "
                 f"(found at slot starting {slot.start})"
             )
+
+
+# ===========================================================================
+# 9. Degenerate "no eligible candidates" fallback (issue #897)
+# ===========================================================================
+
+
+class TestDegenerateFallback:
+    """The selector's degenerate fallback must never return ``no_action``
+    with ``is_valid=True``.
+
+    Unlike the hand-built candidate lists in ``test_hysteresis.py``, this
+    test calls the real :func:`generate_candidates` so it exercises the
+    actual production candidate names and ordering — this is what the
+    original bug report (#897) found untested: the degenerate branch was
+    silently falling through to ``candidates[0]`` (``no_action``) because
+    ``_find_by_name(candidates, CANDIDATE_BASELINE)`` always returned
+    ``None`` in production (``generate_candidates`` never emitted a
+    ``"baseline"`` candidate).
+    """
+
+    def test_degenerate_fallback_never_selects_no_action(self):
+        """An unreachable discharge floor forces every real candidate
+        (no_action, passive, milp) to fail SoC validation on the very
+        first future slot, triggering the selector's "no eligible
+        candidates" branch.  The winner must be ``passive`` — the spec's
+        designated executable fail-closed fallback — never ``no_action``.
+        """
+        inp = make_summer_day_input()
+        now = datetime.fromisoformat(inp.now_iso)
+        slots = _populated_slots_for_input(inp)
+        candidates = generate_candidates(slots, inp, now, max_charge_per_slot=1.25)
+
+        cost_weights = CostWeights(
+            min_soc_pct=10.0,
+            max_soc_pct=100.0,
+            battery_purchase_price=10_000.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_expected_cycles=6000,
+        )
+
+        # current_kwh=0.5 of usable_kwh=9.0 is ~5.5% SoC.  With
+        # end_of_discharge_soc_pct=99.9, no candidate can charge enough in
+        # a single slot to clear the floor, so every candidate is invalid
+        # from the first future slot onward.
+        winner, _, _ = select_best_candidate(
+            candidates,
+            now=now,
+            current_kwh=0.5,
+            usable_kwh=9.0,
+            max_soc_capacity_kwh=9.0,
+            max_charge_per_slot=1.25,
+            max_discharge_per_slot=None,
+            rated_kwh=10.0,
+            end_of_discharge_soc_pct=99.9,
+            cost_weights=cost_weights,
+            slot_duration_hours=1.0,
+        )
+
+        assert winner.name != CANDIDATE_NO_ACTION, (
+            "no_action must never become executable "
+            "(docs/planner-spec.md 'Candidate plans')"
+        )
+        assert winner.name == CANDIDATE_PASSIVE, (
+            f"Degenerate fallback must select the spec's fail-closed "
+            f"fallback (passive), got {winner.name!r}"
+        )
+        assert winner.is_valid is True

@@ -35,13 +35,12 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import asdict
-from datetime import date, datetime, time
+from datetime import date, datetime
 from typing import Any, cast
 
 import homeassistant.util.dt as dt_util
 from homeassistant.const import STATE_UNKNOWN
 
-from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
@@ -168,11 +167,9 @@ def _serialise_value(value: Any) -> Any:
 def _planner_input_to_dict(inp: PlannerInput) -> dict[str, Any]:
     """Convert a :class:`PlannerInput` to a JSON-safe dictionary.
 
-    :class:`datetime.time` values inside ``battery_schedules`` are serialised
-    to ``"HH:MM:SS"`` strings.  All other datetime/date fields are serialised
-    to ISO-8601 strings.  The ``solar_corrector`` object is replaced with a
-    placeholder because it is not serialisable and is not needed to reproduce
-    planner logic offline.
+    Datetime/date fields are serialised to ISO-8601 strings.  The
+    ``solar_corrector`` object is replaced with a placeholder because it is
+    not serialisable and is not needed to reproduce planner logic offline.
 
     Args:
         inp: The planner input to serialise.
@@ -186,19 +183,6 @@ def _planner_input_to_dict(inp: PlannerInput) -> dict[str, Any]:
     # not needed to reproduce planner logic offline, so replace it with None.
     raw["solar_corrector"] = None
 
-    # Patch datetime.time objects that asdict() cannot serialise to JSON.
-    for sched in raw.get("battery_schedules", []):
-        sched["start"] = (
-            sched["start"].strftime("%H:%M:%S")
-            if isinstance(sched["start"], time)
-            else sched["start"]
-        )
-        sched["end"] = (
-            sched["end"].strftime("%H:%M:%S")
-            if isinstance(sched["end"], time)
-            else sched["end"]
-        )
-
     # Redact any stray entity-id strings that found their way into ``extra``.
     if "extra" in raw:
         raw["extra"] = redact_dict(raw["extra"])
@@ -209,8 +193,7 @@ def _planner_input_to_dict(inp: PlannerInput) -> dict[str, Any]:
 def _planner_input_from_dict(data: dict[str, Any]) -> PlannerInput:
     """Reconstruct a :class:`PlannerInput` from a serialised dictionary.
 
-    Inverse of :func:`_planner_input_to_dict`.  Handles the ``HH:MM:SS`` →
-    :class:`datetime.time` conversion for battery schedules.
+    Inverse of :func:`_planner_input_to_dict`.
 
     Args:
         data: A dictionary previously produced by :func:`_planner_input_to_dict`.
@@ -232,15 +215,9 @@ def _planner_input_from_dict(data: dict[str, Any]) -> PlannerInput:
         SolcastSlot(**item) for item in inp_data.get("solcast_slots", [])
     ]
 
-    schedules = []
-    for raw_sched in inp_data.get("battery_schedules", []):
-        raw_sched = dict(raw_sched)
-        for field_name in ("start", "end"):
-            val = raw_sched.get(field_name)
-            if isinstance(val, str):
-                raw_sched[field_name] = datetime.strptime(val, "%H:%M:%S").time()
-        schedules.append(BatteryScheduleInput(**raw_sched))
-    inp_data["battery_schedules"] = schedules
+    # Discard the removed battery-schedule field from any pre-#860 dump so
+    # older diagnostics dumps can still be replayed.
+    inp_data.pop("battery_schedules", None)
 
     # ``battery_max_discharge_power_w`` may be None (nullable float).
     if (

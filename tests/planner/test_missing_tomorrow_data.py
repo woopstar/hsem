@@ -196,7 +196,6 @@ def _make_48h_input(
             price_points if price_points is not None else _today_price_points()
         ),
         solcast_slots=solcast_slots if solcast_slots is not None else _pv_slots(),
-        battery_schedules=[],
         excess_export_enabled=False,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
         house_power_includes_ev=True,

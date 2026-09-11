@@ -316,7 +316,7 @@ class TestPerEntityDeviceInfo:
 
     def test_switch_uses_description_hsem_device(self) -> None:
         description = HSEMSwitchEntityDescription(
-            key="hsem_batteries_enable_batteries_schedule_1",
+            key="hsem_dynamic_discharge_floor",
             hsem_device=HSEMDevice.BATTERY_ENERGY,
         )
         switch = HSEMSwitch(_mock_hass(), _mock_config_entry(), description)

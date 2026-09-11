@@ -13,24 +13,29 @@ Design principles
   full SoC simulation (``simulate_soc``) must be called by the caller after
   receiving the slots in order to populate ``grid_import_kwh``,
   ``grid_export_kwh``, and ``estimated_battery_soc``.
-- The **baseline** candidate re-uses slots that have already been processed by
-  the normal scheduling pipeline (discharge → charge → excess export →
-  optimisation), so it captures the current HSEM behaviour exactly.
 
 Candidates produced
 -------------------
-1. ``no_action``      — all recommendations cleared; battery is completely idle.
-                        Diagnostic floor only — never eligible to win selection.
-2. ``passive``        — solar charging where PV surplus exists; no grid charge or
-                        forced discharge. Models the inverter default behaviour.
-3. ``milp``           — globally-optimal LP solution (when scipy is available);
-                        falls back gracefully if the solver fails.
+A validated MILP is the sole active optimisation authority (issue #897).
+Only the three required production candidates from
+``docs/planner-spec.md`` "Candidate plans" are generated:
+
+1. ``no_action`` — all recommendations cleared; battery is completely idle.
+                   Diagnostic floor only — never eligible to win selection.
+2. ``passive``   — solar charging where PV surplus exists; no grid charge or
+                   forced discharge. Models the inverter default behaviour.
+                   Also the selector's fail-closed fallback when no
+                   candidate passes SoC validation.
+3. ``milp``      — globally-optimal LP solution (when scipy is available);
+                   skipped gracefully if the solver fails.
 
 MILP-only mode (issue #483) retired the older heuristic candidates
 (``baseline``, ``grid_charge``, ``solar_only``, ``discharge_only``,
 ``aggressive``, and the partial-SoC ``soc_plan_*`` family): the MILP finds
 the globally optimal solution directly, making them permanently redundant.
-Their implementations were removed as dead code in issue #967.
+Their implementations were removed as dead code in issue #967, and their
+``CANDIDATE_*`` name constants (and ``_SOC_FRACTIONS``) were removed as
+unused in issue #897.
 """
 
 from __future__ import annotations
@@ -68,53 +73,13 @@ from custom_components.hsem.utils.recommendations import (
 # same identifiers without re-defining strings.
 # ---------------------------------------------------------------------------
 
-CANDIDATE_BASELINE = "baseline"
 CANDIDATE_NO_ACTION = "no_action"
 CANDIDATE_PASSIVE = "passive"
-CANDIDATE_GRID_CHARGE = "grid_charge"
-CANDIDATE_SOLAR_ONLY = "solar_only"
-CANDIDATE_DISCHARGE_ONLY = "discharge_only"
-CANDIDATE_AGGRESSIVE = "aggressive"
-
-# Partial-SoC candidates (BatPred-inspired) — each charges a different
-# fraction of the energy needed for the upcoming discharge windows so
-# the selector can find the optimal charge level.
-CANDIDATE_SOC_PLAN = "soc_plan"
-CANDIDATE_SOC_25 = "soc_plan_25"
-CANDIDATE_SOC_50 = "soc_plan_50"
-CANDIDATE_SOC_75 = "soc_plan_75"
-CANDIDATE_SOC_100 = "soc_plan_100"
-CANDIDATE_SOC_125 = "soc_plan_125"
-CANDIDATE_SOC_FULL = "soc_plan_full"
-
-# Charge fractions for partial-SoC candidates — each is a multiplier
-# applied to the calculated energy needed for the discharge windows.
-# A fraction of 1.0 means "charge exactly what's needed."
-_SOC_FRACTIONS: dict[str, float] = {
-    CANDIDATE_SOC_25: 0.25,
-    CANDIDATE_SOC_50: 0.50,
-    CANDIDATE_SOC_75: 0.75,
-    CANDIDATE_SOC_100: 1.00,
-    CANDIDATE_SOC_125: 1.25,
-    CANDIDATE_SOC_FULL: 2.00,  # fill to max usable capacity
-}
 
 # Re-export MILP candidate name so callers only need to import from here
 __all__ = [
-    "CANDIDATE_BASELINE",
     "CANDIDATE_NO_ACTION",
     "CANDIDATE_PASSIVE",
-    "CANDIDATE_GRID_CHARGE",
-    "CANDIDATE_SOLAR_ONLY",
-    "CANDIDATE_DISCHARGE_ONLY",
-    "CANDIDATE_AGGRESSIVE",
-    "CANDIDATE_SOC_PLAN",
-    "CANDIDATE_SOC_25",
-    "CANDIDATE_SOC_50",
-    "CANDIDATE_SOC_75",
-    "CANDIDATE_SOC_100",
-    "CANDIDATE_SOC_125",
-    "CANDIDATE_SOC_FULL",
     "CANDIDATE_MILP",
     "CandidatePlan",
     "generate_candidates",
@@ -232,20 +197,19 @@ def generate_candidates(
             current HSEM planning output.  This list is **not** mutated; each
             candidate receives its own deep copy.
         inp:
-            The planner input for this run.  Used to derive per-slot power
-            limits and price thresholds for the aggressive strategy.
+            The planner input for this run.  Used to derive MILP price
+            thresholds and export floors.
         now:
             Timezone-aware current datetime.
         max_charge_per_slot:
             Maximum energy (kWh) storable per slot after conversion losses.
-            Used when the aggressive strategy forces charging.
+            Passed through to the MILP optimizer.
         current_kwh:
-            Current battery energy above the discharge floor (kWh).  Used to
-            derive the number of charge slots needed to fill the battery for
-            the aggressive candidate (Bug 2 fix in issue #416).
+            Current battery energy above the discharge floor (kWh).  Passed
+            through to the MILP optimizer.
         usable_kwh:
-            Maximum usable battery capacity (kWh).  Used alongside
-            ``current_kwh`` for the aggressive slot count.
+            Maximum usable battery capacity (kWh).  Passed through to the
+            MILP optimizer.
         max_discharge_per_slot:
             Maximum energy dischargeable per slot (kWh) passed through to the
             MILP optimizer.  ``None`` means unlimited.
@@ -260,13 +224,15 @@ def generate_candidates(
             (backward-compatible behaviour).
 
     Returns:
-        Ordered list of :class:`CandidatePlan` objects.  The baseline is
-        always first so tie-breaking always prefers the current behaviour.
+        Ordered list of :class:`CandidatePlan` objects: ``no_action``,
+        ``passive``, and (when scipy is available and the solve succeeds)
+        ``milp``.
     """
     candidates: list[CandidatePlan] = []
 
-    # MILP-only mode: only MILP + diagnostic baselines.
-    # The MILP finds the globally optimal solution; heuristics are disabled.
+    # MILP-only mode (issue #897): a validated MILP is the sole active
+    # optimisation authority; only the diagnostic/fallback candidates and
+    # the MILP itself are generated.
 
     # 1. No-action — battery completely idle (diagnostic floor).
     no_action = _copy_slots(baseline_slots)
@@ -284,9 +250,9 @@ def generate_candidates(
     # making the heuristics permanently redundant. Their implementations
     # (`_apply_aggressive_strategy`, `_remove_solar_charge`,
     # `_remove_grid_charge`, `_remove_all_charge`, `_apply_soc_plan`) were
-    # removed as dead code in issue #967; the `CANDIDATE_*` name constants
-    # and `_SOC_FRACTIONS` above are kept for now (still exported via
-    # `__all__`) but are otherwise unused.
+    # removed as dead code in issue #967; the leftover `CANDIDATE_*` name
+    # constants and `_SOC_FRACTIONS` (never referenced after #967) were
+    # removed as unused in issue #897.
 
     # 3. MILP — globally-optimal LP solution (requires scipy, falls back gracefully)
     if is_scipy_available():

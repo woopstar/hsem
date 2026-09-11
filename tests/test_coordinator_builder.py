@@ -77,7 +77,6 @@ def test_builder_prefers_bounded_effective_ev_soc() -> None:
         cfg=cfg,
         live=live,
         hourly_recommendations=[],
-        batteries_schedules=[],
         previous_winner_name=None,
         previous_winner_score=0.0,
     )
@@ -100,7 +99,6 @@ class TestFalsyZeroPreservation:
             cfg=cfg,
             live=live,
             hourly_recommendations=[],
-            batteries_schedules=[],
             previous_winner_name=None,
             previous_winner_score=0.0,
         )

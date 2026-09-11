@@ -16,14 +16,11 @@
       "invalid_power_value": "Ungültiger Leistungswert — bitte eine Zahl eingeben.",
       "invalid_price_value": "Ungültiger Preiswert — bitte eine Zahl eingeben.",
       "invalid_sensor": "Ungültiger Eingabesensor. Bitte wähle einen gültigen Sensor.",
-      "invalid_time_format": "Ungültiges Zeitformat — erwartet wird HH:MM:SS.",
       "months_winter_empty": "Die Wintersaison muss mindestens einen Monat enthalten.",
       "only_one_entry_allowed": "Nur eine Konfiguration von HSEM ist zulässig.",
       "power_out_of_range": "Der Leistungswert liegt außerhalb des zulässigen Bereichs.",
       "price_out_of_range": "Der Preiswert liegt außerhalb des zulässigen Bereichs.",
       "required": "Dieses Feld ist erforderlich.",
-      "start_time_after_end_time": "Die Startzeit muss vor der Endzeit liegen.",
-      "start_time_equals_end_time": "Start- und Endzeit dürfen nicht identisch sein — das ergibt ein Zeitfenster der Länge null. Deaktiviere stattdessen den Zeitplan.",
       "invalid_wait_mode_behavior": "Ungültiges Wartemodus-Verhalten. Wähle Strenges Warten oder Eigenverbrauch mit Reserve.",
       "port_conflict": "Der zweite OCPP-Port muss sich vom ersten OCPP-Port unterscheiden.",
       "ev_min_power_below_start_current": "Die konfigurierte Mindestleistung ist für die gewählte Phasentopologie zu niedrig — ein echtes Ladegerät kann nicht unter 6 A starten. Erhöhe die Mindestleistung oder ändere die Phasentopologie."
@@ -120,48 +117,6 @@
         },
         "description": "Konfiguriere den eingebetteten OCPP-1.6-Server für die reine LAN-Steuerung von EV-Ladegeräten. Wenn aktiviert, sendet HSEM SetChargingProfile-Befehle direkt an dein EV-Ladegerät auf Basis des Ladeplans.",
         "title": "OCPP-Server"
-      },
-      "batteries_schedule_1": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Batterie-Zeitplan 1 aktivieren",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Batterie-Zeitplan 1 Endzeit",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Batterie-Zeitplan 1 Startzeit"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Aktiviere oder deaktiviere den ersten Batterie-Entladezeitplan.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Lege die Endzeit für den ersten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Lege die Startzeit für den ersten Batterie-Entladezeitplan fest."
-        },
-        "description": "Konfiguriere Batterie-Entladezeitplan 1, einschließlich seiner Aktivierungszeit.",
-        "title": "Batterie-Entladezeitplan 1"
-      },
-      "batteries_schedule_2": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_2": "Batterie-Zeitplan 2 aktivieren",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Batterie-Zeitplan 2 Endzeit",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Batterie-Zeitplan 2 Startzeit"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_2": "Aktiviere oder deaktiviere den zweiten Batterie-Entladezeitplan.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Lege die Endzeit für den zweiten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Lege die Startzeit für den zweiten Batterie-Entladezeitplan fest."
-        },
-        "description": "Konfiguriere Batterie-Entladezeitplan 2, einschließlich seiner Aktivierungszeit.",
-        "title": "Batterie-Entladezeitplan 2"
-      },
-      "batteries_schedule_3": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_3": "Batterie-Zeitplan 3 aktivieren",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Batterie-Zeitplan 3 Endzeit",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Batterie-Zeitplan 3 Startzeit"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_3": "Aktiviere oder deaktiviere den dritten Batterie-Entladezeitplan.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Lege die Endzeit für den dritten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Lege die Startzeit für den dritten Batterie-Entladezeitplan fest."
-        },
-        "description": "Konfiguriere Batterie-Entladezeitplan 3, einschließlich seiner Aktivierungszeit.",
-        "title": "Batterie-Entladezeitplan 3"
       },
       "prices": {
         "data": {
@@ -344,32 +299,6 @@
         },
         "description": "Aktualisiere die Einstellungen für HSEM",
         "title": "Huawei Solar Energy Management aktualisieren"
-      },
-      "batteries_schedules": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Batterie-Zeitplan 1 aktivieren",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Batterie-Zeitplan 1 Endzeit",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Batterie-Zeitplan 1 Startzeit",
-          "hsem_batteries_enable_batteries_schedule_2": "Batterie-Zeitplan 2 aktivieren",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Batterie-Zeitplan 2 Endzeit",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Batterie-Zeitplan 2 Startzeit",
-          "hsem_batteries_enable_batteries_schedule_3": "Batterie-Zeitplan 3 aktivieren",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Batterie-Zeitplan 3 Endzeit",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Batterie-Zeitplan 3 Startzeit"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Aktiviere oder deaktiviere den ersten Batterie-Entladezeitplan.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Lege die Endzeit für den ersten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Lege die Startzeit für den ersten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_2": "Aktiviere oder deaktiviere den zweiten Batterie-Entladezeitplan.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Lege die Endzeit für den zweiten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Lege die Startzeit für den zweiten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_3": "Aktiviere oder deaktiviere den dritten Batterie-Entladezeitplan.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Lege die Endzeit für den dritten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Lege die Startzeit für den dritten Batterie-Entladezeitplan fest."
-        },
-        "description": "Konfiguriere bis zu drei Batterie-Entladezeitplan-Fenster, jeweils mit Ein-/Aus-Schalter, Startzeit und Endzeit. Zeitpläne legen fest, wann die Batterie entladen darf, um Verbrauchsspitzen zu decken oder ins Netz einzuspeisen.",
-        "title": "Batterie-Entladezeitpläne"
       },
       "months": {
         "data": {
@@ -554,14 +483,11 @@
       "invalid_power_value": "Ungültiger Leistungswert — bitte eine Zahl eingeben.",
       "invalid_price_value": "Ungültiger Preiswert — bitte eine Zahl eingeben.",
       "invalid_sensor": "Ungültiger Eingabesensor. Bitte wähle einen gültigen Sensor.",
-      "invalid_time_format": "Ungültiges Zeitformat — erwartet wird HH:MM:SS.",
       "months_winter_empty": "Die Wintersaison muss mindestens einen Monat enthalten.",
       "only_one_entry_allowed": "Nur eine Konfiguration von HSEM ist zulässig.",
       "power_out_of_range": "Der Leistungswert liegt außerhalb des zulässigen Bereichs.",
       "price_out_of_range": "Der Preiswert liegt außerhalb des zulässigen Bereichs.",
       "required": "Dieses Feld ist erforderlich.",
-      "start_time_after_end_time": "Die Startzeit muss vor der Endzeit liegen.",
-      "start_time_equals_end_time": "Start- und Endzeit dürfen nicht identisch sein — das ergibt ein Zeitfenster der Länge null. Deaktiviere stattdessen den Zeitplan.",
       "invalid_wait_mode_behavior": "Ungültiges Wartemodus-Verhalten. Wähle Strenges Warten oder Eigenverbrauch mit Reserve.",
       "port_conflict": "Der zweite OCPP-Port muss sich vom ersten OCPP-Port unterscheiden.",
       "ev_min_power_below_start_current": "Die konfigurierte Mindestleistung ist für die gewählte Phasentopologie zu niedrig — ein echtes Ladegerät kann nicht unter 6 A starten. Erhöhe die Mindestleistung oder ändere die Phasentopologie."
@@ -658,48 +584,6 @@
         },
         "description": "Konfiguriere den eingebetteten OCPP-1.6-Server für die reine LAN-Steuerung von EV-Ladegeräten. Wenn aktiviert, sendet HSEM SetChargingProfile-Befehle direkt an dein EV-Ladegerät auf Basis des Ladeplans.",
         "title": "OCPP-Server"
-      },
-      "batteries_schedule_1": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Batterie-Zeitplan 1 aktivieren",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Batterie-Zeitplan 1 Endzeit",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Batterie-Zeitplan 1 Startzeit"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Aktiviere oder deaktiviere den ersten Batterie-Entladezeitplan.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Lege die Endzeit für den ersten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Lege die Startzeit für den ersten Batterie-Entladezeitplan fest."
-        },
-        "description": "Konfiguriere Batterie-Entladezeitplan 1, einschließlich seiner Aktivierungszeit.",
-        "title": "Batterie-Entladezeitplan 1"
-      },
-      "batteries_schedule_2": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_2": "Batterie-Zeitplan 2 aktivieren",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Batterie-Zeitplan 2 Endzeit",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Batterie-Zeitplan 2 Startzeit"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_2": "Aktiviere oder deaktiviere den zweiten Batterie-Entladezeitplan.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Lege die Endzeit für den zweiten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Lege die Startzeit für den zweiten Batterie-Entladezeitplan fest."
-        },
-        "description": "Konfiguriere Batterie-Entladezeitplan 2, einschließlich seiner Aktivierungszeit.",
-        "title": "Batterie-Entladezeitplan 2"
-      },
-      "batteries_schedule_3": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_3": "Batterie-Zeitplan 3 aktivieren",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Batterie-Zeitplan 3 Endzeit",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Batterie-Zeitplan 3 Startzeit"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_3": "Aktiviere oder deaktiviere den dritten Batterie-Entladezeitplan.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Lege die Endzeit für den dritten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Lege die Startzeit für den dritten Batterie-Entladezeitplan fest."
-        },
-        "description": "Konfiguriere Batterie-Entladezeitplan 3, einschließlich seiner Aktivierungszeit.",
-        "title": "Batterie-Entladezeitplan 3"
       },
       "prices": {
         "data": {
@@ -882,32 +766,6 @@
         },
         "description": "Aktualisiere die Einstellungen für HSEM",
         "title": "Huawei Solar Energy Management aktualisieren"
-      },
-      "batteries_schedules": {
-        "data": {
-          "hsem_batteries_enable_batteries_schedule_1": "Batterie-Zeitplan 1 aktivieren",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Batterie-Zeitplan 1 Endzeit",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Batterie-Zeitplan 1 Startzeit",
-          "hsem_batteries_enable_batteries_schedule_2": "Batterie-Zeitplan 2 aktivieren",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Batterie-Zeitplan 2 Endzeit",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Batterie-Zeitplan 2 Startzeit",
-          "hsem_batteries_enable_batteries_schedule_3": "Batterie-Zeitplan 3 aktivieren",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Batterie-Zeitplan 3 Endzeit",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Batterie-Zeitplan 3 Startzeit"
-        },
-        "data_description": {
-          "hsem_batteries_enable_batteries_schedule_1": "Aktiviere oder deaktiviere den ersten Batterie-Entladezeitplan.",
-          "hsem_batteries_enable_batteries_schedule_1_end": "Lege die Endzeit für den ersten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_1_start": "Lege die Startzeit für den ersten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_2": "Aktiviere oder deaktiviere den zweiten Batterie-Entladezeitplan.",
-          "hsem_batteries_enable_batteries_schedule_2_end": "Lege die Endzeit für den zweiten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_2_start": "Lege die Startzeit für den zweiten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_3": "Aktiviere oder deaktiviere den dritten Batterie-Entladezeitplan.",
-          "hsem_batteries_enable_batteries_schedule_3_end": "Lege die Endzeit für den dritten Batterie-Entladezeitplan fest.",
-          "hsem_batteries_enable_batteries_schedule_3_start": "Lege die Startzeit für den dritten Batterie-Entladezeitplan fest."
-        },
-        "description": "Konfiguriere bis zu drei Batterie-Entladezeitplan-Fenster, jeweils mit Ein-/Aus-Schalter, Startzeit und Endzeit. Zeitpläne legen fest, wann die Batterie entladen darf, um Verbrauchsspitzen zu decken oder ins Netz einzuspeisen.",
-        "title": "Batterie-Entladezeitpläne"
       },
       "months": {
         "data": {
@@ -1267,15 +1125,6 @@
       "verbose_logging": {
         "name": "Ausführliche Protokollierung"
       },
-      "batteries_schedule_1": {
-        "name": "Batterie-Zeitplan 1"
-      },
-      "batteries_schedule_2": {
-        "name": "Batterie-Zeitplan 2"
-      },
-      "batteries_schedule_3": {
-        "name": "Batterie-Zeitplan 3"
-      },
       "ev_force_discharge": {
         "name": "EV maximale Entladeleistung erzwingen"
       },
@@ -1327,24 +1176,6 @@
       }
     },
     "time": {
-      "schedule_1_start": {
-        "name": "Batterie-Entladezeitplan 1 Start"
-      },
-      "schedule_1_end": {
-        "name": "Batterie-Entladezeitplan 1 Ende"
-      },
-      "schedule_2_start": {
-        "name": "Batterie-Entladezeitplan 2 Start"
-      },
-      "schedule_2_end": {
-        "name": "Batterie-Entladezeitplan 2 Ende"
-      },
-      "schedule_3_start": {
-        "name": "Batterie-Entladezeitplan 3 Start"
-      },
-      "schedule_3_end": {
-        "name": "Batterie-Entladezeitplan 3 Ende"
-      },
       "ev_deadline": {
         "name": "EV Ladefrist"
       },

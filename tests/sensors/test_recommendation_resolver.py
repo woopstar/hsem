@@ -1,6 +1,6 @@
 """Tests for custom_sensors/recommendation_resolver.py.
 
-All four priority branches of :func:`resolve_current_recommendation` are
+All priority branches of :func:`resolve_current_recommendation` are
 tested with plain dataclasses — no Home Assistant required.
 """
 
@@ -89,30 +89,24 @@ def _make_cfg(
 class TestNegativeImportPrice:
     def test_negative_price_overrides_any_recommendation(self):
         rec = _make_rec(recommendation=Recommendations.BatteriesDischargeMode.value)
-        resolve_current_recommendation(
-            rec, _make_live(import_price=-0.01), 0.0, _make_cfg()
-        )
+        resolve_current_recommendation(rec, _make_live(import_price=-0.01), _make_cfg())
         assert rec.recommendation == Recommendations.ForceExport.value
 
     def test_zero_price_does_not_force_export(self):
         rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
-        resolve_current_recommendation(
-            rec, _make_live(import_price=0.0), 0.0, _make_cfg()
-        )
+        resolve_current_recommendation(rec, _make_live(import_price=0.0), _make_cfg())
         assert rec.recommendation == Recommendations.BatteriesWaitMode.value
 
     def test_positive_price_does_not_force_export(self):
         rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
-        resolve_current_recommendation(
-            rec, _make_live(import_price=0.5), 0.0, _make_cfg()
-        )
+        resolve_current_recommendation(rec, _make_live(import_price=0.5), _make_cfg())
         assert rec.recommendation == Recommendations.BatteriesWaitMode.value
 
     def test_negative_import_and_export_price_does_not_force_export(self):
         """Issue #732: negative export price must not be forced to export."""
         rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
         live = _make_live(import_price=-0.7254, export_price=-0.708)
-        resolve_current_recommendation(rec, live, 0.0, _make_cfg())
+        resolve_current_recommendation(rec, live, _make_cfg())
         assert rec.recommendation == Recommendations.BatteriesWaitMode.value
 
     def test_negative_import_price_with_excess_export_disabled_no_override(self):
@@ -120,14 +114,14 @@ class TestNegativeImportPrice:
         rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
         live = _make_live(import_price=-0.05, export_price=0.5)
         cfg = _make_cfg(batteries_enable_excess_export=False)
-        resolve_current_recommendation(rec, live, 0.0, cfg)
+        resolve_current_recommendation(rec, live, cfg)
         assert rec.recommendation == Recommendations.BatteriesWaitMode.value
 
     def test_negative_import_price_export_below_floor_no_override(self):
         rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
         live = _make_live(import_price=-0.05, export_price=0.1)
         cfg = _make_cfg(export_electricity_min_price=0.2)
-        resolve_current_recommendation(rec, live, 0.0, cfg)
+        resolve_current_recommendation(rec, live, cfg)
         assert rec.recommendation == Recommendations.BatteriesWaitMode.value
 
     def test_negative_import_price_export_unavailable_no_override(self):
@@ -135,14 +129,14 @@ class TestNegativeImportPrice:
         live = _make_live(
             import_price=-0.05, export_price=0.5, export_price_available=False
         )
-        resolve_current_recommendation(rec, live, 0.0, _make_cfg())
+        resolve_current_recommendation(rec, live, _make_cfg())
         assert rec.recommendation == Recommendations.BatteriesWaitMode.value
 
     def test_negative_import_price_profitable_export_overrides(self):
         rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
         live = _make_live(import_price=-0.05, export_price=0.3)
         cfg = _make_cfg(export_electricity_min_price=0.2)
-        resolve_current_recommendation(rec, live, 0.0, cfg)
+        resolve_current_recommendation(rec, live, cfg)
         assert rec.recommendation == Recommendations.ForceExport.value
 
 
@@ -155,7 +149,7 @@ class TestGridChargePreserved:
     def test_grid_charge_not_overridden_by_ev(self):
         rec = _make_rec(recommendation=Recommendations.BatteriesChargeGrid.value)
         live = _make_live(import_price=0.5, ev_charging=True)
-        resolve_current_recommendation(rec, live, 0.0, _make_cfg())
+        resolve_current_recommendation(rec, live, _make_cfg())
         assert rec.recommendation == Recommendations.BatteriesChargeGrid.value
 
     def test_grid_charge_not_overridden_by_negative_price(self):
@@ -163,13 +157,13 @@ class TestGridChargePreserved:
         live = _make_live(import_price=-0.05, export_price=0.5)
         # Negative price with profitable export is priority 1, so it DOES
         # override grid charge.
-        resolve_current_recommendation(rec, live, 0.0, _make_cfg())
+        resolve_current_recommendation(rec, live, _make_cfg())
         assert rec.recommendation == Recommendations.ForceExport.value
 
     def test_grid_charge_not_overridden_by_negative_price_unprofitable_export(self):
         rec = _make_rec(recommendation=Recommendations.BatteriesChargeGrid.value)
         live = _make_live(import_price=-0.05, export_price=-0.03)
-        resolve_current_recommendation(rec, live, 0.0, _make_cfg())
+        resolve_current_recommendation(rec, live, _make_cfg())
         assert rec.recommendation == Recommendations.BatteriesChargeGrid.value
 
 
@@ -183,20 +177,20 @@ class TestEVSmartCharging:
         rec = _make_rec(recommendation=Recommendations.BatteriesDischargeMode.value)
         rec.ev_charger_calculated_power = 7500.0  # Planner allocated power
         live = _make_live(import_price=0.5, ev_charging=True)
-        resolve_current_recommendation(rec, live, 0.0, _make_cfg())
+        resolve_current_recommendation(rec, live, _make_cfg())
         assert rec.recommendation == Recommendations.EVSmartCharging.value
 
     def test_ev2_charging_triggers_ev_mode(self):
         rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
         rec.ev_second_charger_calculated_power = 11000.0  # Planner allocated power
         live = _make_live(import_price=0.5, ev2_charging=True)
-        resolve_current_recommendation(rec, live, 0.0, _make_cfg())
+        resolve_current_recommendation(rec, live, _make_cfg())
         assert rec.recommendation == Recommendations.EVSmartCharging.value
 
     def test_no_ev_charging_no_override(self):
         rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
         live = _make_live(ev_charging=False, ev2_charging=False)
-        resolve_current_recommendation(rec, live, 0.0, _make_cfg())
+        resolve_current_recommendation(rec, live, _make_cfg())
         assert rec.recommendation == Recommendations.BatteriesWaitMode.value
 
     def test_ev1_charging_but_planner_zero_power_no_override(self):
@@ -206,7 +200,7 @@ class TestEVSmartCharging:
         rec.ev_charger_calculated_power = 0.0
         rec.ev_total_planned_load_kwh = 0.0
         live = _make_live(ev_charging=True)
-        resolve_current_recommendation(rec, live, 0.0, _make_cfg())
+        resolve_current_recommendation(rec, live, _make_cfg())
         # Should keep original WaitMode because planner said stop
         assert rec.recommendation == Recommendations.BatteriesWaitMode.value
 
@@ -215,7 +209,7 @@ class TestEVSmartCharging:
         rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
         rec.ev_charger_calculated_power = 7500.0  # Planner allocated power
         live = _make_live(ev_charging=True)
-        resolve_current_recommendation(rec, live, 0.0, _make_cfg())
+        resolve_current_recommendation(rec, live, _make_cfg())
         assert rec.recommendation == Recommendations.EVSmartCharging.value
 
     def test_ev2_charging_with_positive_power_overrides(self):
@@ -223,50 +217,8 @@ class TestEVSmartCharging:
         rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
         rec.ev_second_charger_calculated_power = 11000.0  # Planner allocated power
         live = _make_live(ev2_charging=True)
-        resolve_current_recommendation(rec, live, 0.0, _make_cfg())
+        resolve_current_recommendation(rec, live, _make_cfg())
         assert rec.recommendation == Recommendations.EVSmartCharging.value
-
-
-# ---------------------------------------------------------------------------
-# Priority 4: Battery above remaining schedule need → BatteriesDischargeMode
-# ---------------------------------------------------------------------------
-
-
-class TestBatteryAboveScheduleNeed:
-    def test_battery_above_need_sets_discharge_mode(self):
-        rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
-        live = _make_live(battery_kwh=8.0)
-        # remaining need = 5 kWh, battery = 8 kWh → discharge mode
-        resolve_current_recommendation(
-            rec,
-            live,
-            batteries_schedules_remaining_capacity_needed=5.0,
-            cfg=_make_cfg(),
-        )
-        assert rec.recommendation == Recommendations.BatteriesDischargeMode.value
-
-    def test_battery_exactly_at_need_no_override(self):
-        rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
-        live = _make_live(battery_kwh=5.0)
-        resolve_current_recommendation(
-            rec,
-            live,
-            batteries_schedules_remaining_capacity_needed=5.0,
-            cfg=_make_cfg(),
-        )
-        # Not strictly greater, so no override
-        assert rec.recommendation == Recommendations.BatteriesWaitMode.value
-
-    def test_zero_remaining_need_no_discharge_override(self):
-        rec = _make_rec(recommendation=Recommendations.BatteriesWaitMode.value)
-        live = _make_live(battery_kwh=10.0)
-        resolve_current_recommendation(
-            rec,
-            live,
-            batteries_schedules_remaining_capacity_needed=0.0,
-            cfg=_make_cfg(),
-        )
-        assert rec.recommendation == Recommendations.BatteriesWaitMode.value
 
 
 # ---------------------------------------------------------------------------
@@ -277,5 +229,5 @@ class TestBatteryAboveScheduleNeed:
 class TestNoneRec:
     def test_none_rec_does_not_raise(self):
         live = _make_live()
-        resolve_current_recommendation(None, live, 0.0, _make_cfg())  # type: ignore[arg-type]
+        resolve_current_recommendation(None, live, _make_cfg())  # type: ignore[arg-type]
         # No exception = pass
