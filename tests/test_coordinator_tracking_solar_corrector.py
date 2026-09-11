@@ -95,6 +95,7 @@ def test_restored_solar_corrector_does_not_relearn_finalised_slot() -> None:
         solar_corrector=solar_corrector,
         prediction_tracker=prediction_tracker,
         last_planner_output=None,
+        update_interval_minutes=5,
     )
 
     assert solar_corrector.hour_factors.get(9) == pytest.approx(0.75)
@@ -124,6 +125,7 @@ def test_restored_solar_corrector_does_not_relearn_finalised_slot() -> None:
         solar_corrector=restored_corrector,
         prediction_tracker=prediction_tracker,
         last_planner_output=None,
+        update_interval_minutes=5,
     )
 
     # Still exactly one sample -- the restored corrector did not re-learn

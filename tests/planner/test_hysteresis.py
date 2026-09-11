@@ -36,7 +36,6 @@ import pytest
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.planner.candidate_generator import (
-    CANDIDATE_BASELINE,
     CANDIDATE_PASSIVE,
     CandidatePlan,
 )
@@ -114,6 +113,11 @@ def _make_candidate(
 # Ensure no_action is last alphabetically for test determinism
 _CW = _cost_weights()
 
+# Synthetic candidate name for these hand-built test plans only — NOT a
+# production candidate name.  generate_candidates() only ever emits
+# "no_action", "passive", and "milp" (issue #897).
+_CANDIDATE_OTHER = "other"
+
 
 class TestHysteresis:
     """Plan-level hysteresis acceptance tests."""
@@ -121,7 +125,7 @@ class TestHysteresis:
     def test_no_previous_plan_first_run(self):
         """When there is no previous plan, hysteresis is inactive."""
         slots = [_make_slot(h) for h in range(12, 15)]
-        baseline = _make_candidate(CANDIDATE_BASELINE, slots)
+        baseline = _make_candidate(_CANDIDATE_OTHER, slots)
         passive = _make_candidate(
             CANDIDATE_PASSIVE, [_make_slot(h) for h in range(12, 15)]
         )
@@ -154,7 +158,7 @@ class TestHysteresis:
         # Hysteresis should not be applied — no previous plan to keep
         assert hysteresis.applied is False, "Hysteresis must not be active on first run"
         # Winner should be the candidate with the lowest score
-        assert winner.name == CANDIDATE_BASELINE, (
+        assert winner.name == _CANDIDATE_OTHER, (
             f"Expected baseline to win, got {winner.name}"
         )
 
@@ -163,7 +167,7 @@ class TestHysteresis:
         slots = [_make_slot(h) for h in range(12, 15)]
         # Baseline has lower score (better) — by 0.05
         # With absolute = 1.0, improvement of 0.05 is below threshold
-        baseline = _make_candidate(CANDIDATE_BASELINE, slots)
+        baseline = _make_candidate(_CANDIDATE_OTHER, slots)
         passive = _make_candidate(
             CANDIDATE_PASSIVE, [_make_slot(h) for h in range(12, 15)]
         )
@@ -207,7 +211,7 @@ class TestHysteresis:
     def test_tiny_improvement_below_percentage_threshold(self):
         """A tiny improvement below the percentage threshold keeps the previous plan."""
         slots = [_make_slot(h) for h in range(12, 15)]
-        baseline = _make_candidate(CANDIDATE_BASELINE, slots)
+        baseline = _make_candidate(_CANDIDATE_OTHER, slots)
         passive = _make_candidate(
             CANDIDATE_PASSIVE, [_make_slot(h) for h in range(12, 15)]
         )
@@ -249,7 +253,7 @@ class TestHysteresis:
     def test_meaningful_improvement_above_absolute_threshold(self):
         """A meaningful improvement above the absolute threshold switches plans."""
         slots = [_make_slot(h) for h in range(12, 15)]
-        baseline = _make_candidate(CANDIDATE_BASELINE, slots)
+        baseline = _make_candidate(_CANDIDATE_OTHER, slots)
         passive = _make_candidate(
             CANDIDATE_PASSIVE, [_make_slot(h) for h in range(12, 15)]
         )
@@ -284,7 +288,7 @@ class TestHysteresis:
         passive_score = getattr(passive._cost, "score", float("-inf"))
 
         if baseline_score < passive_score and (passive_score - baseline_score) > 0.001:
-            assert winner.name == CANDIDATE_BASELINE, (
+            assert winner.name == _CANDIDATE_OTHER, (
                 "Better candidate should win when improvement exceeds absolute threshold"
             )
             assert not hysteresis.applied, (
@@ -294,7 +298,7 @@ class TestHysteresis:
     def test_meaningful_improvement_above_percentage_threshold(self):
         """A meaningful improvement above the percentage threshold switches plans."""
         slots = [_make_slot(h) for h in range(12, 15)]
-        baseline = _make_candidate(CANDIDATE_BASELINE, slots)
+        baseline = _make_candidate(_CANDIDATE_OTHER, slots)
         passive = _make_candidate(
             CANDIDATE_PASSIVE, [_make_slot(h) for h in range(12, 15)]
         )
@@ -331,7 +335,7 @@ class TestHysteresis:
                 (passive_score - baseline_score) / abs(passive_score)
             ) * 100.0
             if pct_improvement > 0.01:
-                assert winner.name == CANDIDATE_BASELINE, (
+                assert winner.name == _CANDIDATE_OTHER, (
                     "Better candidate should win when improvement exceeds % threshold"
                 )
                 assert not hysteresis.applied, (
@@ -341,7 +345,7 @@ class TestHysteresis:
     def test_previous_plan_not_found_in_current_set(self):
         """When the previous plan name is not found, fall back to normal selection."""
         slots = [_make_slot(h) for h in range(12, 15)]
-        baseline = _make_candidate(CANDIDATE_BASELINE, slots)
+        baseline = _make_candidate(_CANDIDATE_OTHER, slots)
 
         _run_soc_and_score(baseline, _CW)
         candidates = [baseline]
@@ -366,7 +370,7 @@ class TestHysteresis:
         )
 
         # Should fall back to normal selection
-        assert winner.name == CANDIDATE_BASELINE, (
+        assert winner.name == _CANDIDATE_OTHER, (
             "Should fall back to normal selection when previous plan not found"
         )
         assert not hysteresis.applied, (
@@ -380,7 +384,7 @@ class TestHysteresis:
     def test_previous_plan_is_still_the_best(self):
         """When the previous plan is still the best candidate, no hysteresis log needed."""
         slots = [_make_slot(h) for h in range(12, 15)]
-        baseline = _make_candidate(CANDIDATE_BASELINE, slots)
+        baseline = _make_candidate(_CANDIDATE_OTHER, slots)
 
         _run_soc_and_score(baseline, _CW)
         candidates = [baseline]
@@ -400,12 +404,12 @@ class TestHysteresis:
             hysteresis_enabled=True,
             hysteresis_absolute=1.0,
             hysteresis_percentage=5.0,
-            previous_winner_name=CANDIDATE_BASELINE,
+            previous_winner_name=_CANDIDATE_OTHER,
             previous_winner_score=0.0,
         )
 
         # Baseline is the only candidate and also the previous winner
-        assert winner.name == CANDIDATE_BASELINE
+        assert winner.name == _CANDIDATE_OTHER
         # Hysteresis should note it's still the best
         assert (
             "still the best" in hysteresis.reason.lower()
@@ -415,7 +419,7 @@ class TestHysteresis:
     def test_hysteresis_disabled(self):
         """When hysteresis is disabled, plain selection always happens."""
         slots = [_make_slot(h) for h in range(12, 15)]
-        baseline = _make_candidate(CANDIDATE_BASELINE, slots)
+        baseline = _make_candidate(_CANDIDATE_OTHER, slots)
         passive = _make_candidate(
             CANDIDATE_PASSIVE, [_make_slot(h) for h in range(12, 15)]
         )
@@ -447,7 +451,7 @@ class TestHysteresis:
         # Hysteresis should never be applied when disabled
         assert hysteresis.applied is False
         # Winner should be the lowest-scoring candidate
-        assert winner.name == CANDIDATE_BASELINE
+        assert winner.name == _CANDIDATE_OTHER
 
     def test_hysteresis_reason_appears_in_explanation(self):
         """The hysteresis result must flow through to PlanExplanation."""
