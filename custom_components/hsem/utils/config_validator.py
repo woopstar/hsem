@@ -25,6 +25,11 @@ from custom_components.hsem.utils.ha_helpers import (
     async_device_exists,
     async_entity_exists,
 )
+from custom_components.hsem.utils.phase_power import (
+    EV_MIN_START_CURRENT_A,
+    charger_min_power_to_current_a,
+    normalize_ev_phase_topology,
+)
 
 # ---------------------------------------------------------------------------
 # Compiled patterns
@@ -295,6 +300,56 @@ def validate_energy_limits(
 
     if kwh < min_kwh or kwh > max_kwh:
         errors[field] = "energy_out_of_range"
+
+    return errors
+
+
+# ---------------------------------------------------------------------------
+# EV charger minimum-power / phase-topology cross-field validation
+# ---------------------------------------------------------------------------
+
+
+def validate_ev_min_power_topology(
+    user_input: dict,
+    min_power_field: str,
+    topology_field: str,
+) -> dict[str, str]:
+    """Validate that a charger's minimum power clears the real EVSE floor.
+
+    ``charger_min_power_w`` is documented and defaulted as a single-phase
+    watt figure, but the conversion to an executable current is
+    phase-topology-aware: the same watt value spread across a
+    ``three_phase_balanced`` charger's phases can compute a current below
+    any real EVSE's minimum start current (6 A per IEC 61851). Saving such a
+    value lets the planner command an unusable sub-6A charge that the
+    charger will refuse (issue #968), so this is rejected at the config
+    flow rather than left to fail at runtime.
+
+    Args:
+        user_input: Dict from the config/options form.
+        min_power_field: Field name of the minimum-power (W) value, e.g.
+            ``"hsem_ev_planned_load_charger_min_power_w"``.
+        topology_field: Field name of the phase-topology selector, e.g.
+            ``"hsem_ev_planned_load_charger_phase_topology"``.
+
+    Returns:
+        Dict mapping ``min_power_field`` to ``"ev_min_power_below_start_current"``
+        when the configured value computes below the real-world EVSE
+        minimum for the selected topology, otherwise empty.
+    """
+    errors: dict[str, str] = {}
+    value = user_input.get(min_power_field)
+    if value is None:
+        return errors
+
+    try:
+        power_w = float(value)
+    except ValueError, TypeError:
+        return errors  # invalid_power_value is reported by validate_power_limits
+
+    topology = normalize_ev_phase_topology(user_input.get(topology_field))
+    if charger_min_power_to_current_a(power_w, topology) < EV_MIN_START_CURRENT_A:
+        errors[min_power_field] = "ev_min_power_below_start_current"
 
     return errors
 

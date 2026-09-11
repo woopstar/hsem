@@ -19,21 +19,18 @@ Design principles
 
 Candidates produced
 -------------------
-1. ``baseline``       — current HSEM scheduling output (slots already processed).
-2. ``no_action``      — all recommendations cleared; battery is completely idle.
+1. ``no_action``      — all recommendations cleared; battery is completely idle.
                         Diagnostic floor only — never eligible to win selection.
-3. ``passive``        — solar charging where PV surplus exists; no grid charge or
+2. ``passive``        — solar charging where PV surplus exists; no grid charge or
                         forced discharge. Models the inverter default behaviour.
-4. ``grid_charge``    — grid-charge slots are kept; solar charging is removed.
-5. ``solar_only``     — only solar-charge slots are kept; grid charging cleared.
-6. ``discharge_only`` — discharge slots are kept; all charge slots cleared.
-7. ``aggressive``     — cheapest N slots forced to grid-charge regardless of
-                        schedule; most expensive M slots forced to discharge.
-                        N is derived dynamically from battery headroom and
-                        max charge per slot so it scales with the horizon and
-                        battery size (fix for issue #416 Bug 2).
-8. ``milp``           — globally-optimal LP solution (when scipy is available);
+3. ``milp``           — globally-optimal LP solution (when scipy is available);
                         falls back gracefully if the solver fails.
+
+MILP-only mode (issue #483) retired the older heuristic candidates
+(``baseline``, ``grid_charge``, ``solar_only``, ``discharge_only``,
+``aggressive``, and the partial-SoC ``soc_plan_*`` family): the MILP finds
+the globally optimal solution directly, making them permanently redundant.
+Their implementations were removed as dead code in issue #967.
 """
 
 from __future__ import annotations
@@ -168,10 +165,6 @@ def _forecast_export_reserve_kwh(inp: PlannerInput, usable_kwh: float) -> float:
     return min(reserve_kwh, model_usable_kwh)
 
 
-# The charge and discharge slot counts are derived dynamically from battery
-# capacity (see _apply_aggressive_strategy).
-
-
 # ---------------------------------------------------------------------------
 # Public dataclass
 # ---------------------------------------------------------------------------
@@ -285,44 +278,17 @@ def generate_candidates(
     _apply_passive_solar(passive, now)
     candidates.append(CandidatePlan(name=CANDIDATE_PASSIVE, slots=passive))
 
-    # # 3. Baseline — current scheduling pipeline output
-    # candidates.append(
-    #     CandidatePlan(
-    #         name=CANDIDATE_BASELINE,
-    #         slots=_copy_slots(baseline_slots),
-    #     )
-    # )
-    #
-    # # 4. Grid-charge only
-    # grid_charge = _copy_slots(baseline_slots)
-    # _remove_solar_charge(grid_charge)
-    # candidates.append(CandidatePlan(name=CANDIDATE_GRID_CHARGE, slots=grid_charge))
-    #
-    # # 5. Solar-only
-    # solar_only = _copy_slots(baseline_slots)
-    # _remove_grid_charge(solar_only)
-    # candidates.append(CandidatePlan(name=CANDIDATE_SOLAR_ONLY, slots=solar_only))
-    #
-    # # 6. Discharge-only
-    # discharge_only = _copy_slots(baseline_slots)
-    # _remove_all_charge(discharge_only)
-    # candidates.append(
-    #     CandidatePlan(name=CANDIDATE_DISCHARGE_ONLY, slots=discharge_only)
-    # )
-    #
-    # # 7. Aggressive
-    # aggressive = _copy_slots(baseline_slots)
-    # _apply_aggressive_strategy(aggressive, now, max_charge_per_slot,
-    #     current_kwh=current_kwh, usable_kwh=usable_kwh,
-    #     max_discharge_per_slot=max_discharge_per_slot)
-    # candidates.append(CandidatePlan(name=CANDIDATE_AGGRESSIVE, slots=aggressive))
-    #
-    # # 8-13. Partial-SoC plans
-    # prev_charge_target: float | None = None
-    # for soc_candidate_name, charge_fraction in _SOC_FRACTIONS.items():
-    #     ...
+    # Baseline / grid-charge-only / solar-only / discharge-only / aggressive /
+    # partial-SoC heuristic candidates were retired when MILP-only mode
+    # shipped (#483) — the MILP finds the globally optimal solution directly,
+    # making the heuristics permanently redundant. Their implementations
+    # (`_apply_aggressive_strategy`, `_remove_solar_charge`,
+    # `_remove_grid_charge`, `_remove_all_charge`, `_apply_soc_plan`) were
+    # removed as dead code in issue #967; the `CANDIDATE_*` name constants
+    # and `_SOC_FRACTIONS` above are kept for now (still exported via
+    # `__all__`) but are otherwise unused.
 
-    # 9. MILP — globally-optimal LP solution (requires scipy, falls back gracefully)
+    # 3. MILP — globally-optimal LP solution (requires scipy, falls back gracefully)
     if is_scipy_available():
         # Use the canonical resolve_cycle_cost() — same as engine_core and
         # cost_helpers.py — so the MILP optimises against the same value.
@@ -367,6 +333,7 @@ def generate_candidates(
             battery_export_min_price=effective_battery_export_floor,
             battery_export_forecast_reserve_kwh=forecast_export_reserve_kwh,
             excess_export_discharge_buffer_pct=(inp.excess_export_discharge_buffer_pct),
+            export_fee_per_kwh=inp.export_fee_per_kwh,
         )
         log_planner(
             "debug",

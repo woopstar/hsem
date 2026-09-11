@@ -34,7 +34,14 @@ class CoordinatorData:
         hourly_recommendations: Full list of planner recommendation slots.
         hourly_recommendation: The recommendation slot active *right now*, or
             ``None`` when no matching slot exists.
-        current_required_battery: Required battery capacity from the planner (kWh).
+        current_required_battery: Required battery capacity from the planner (kWh),
+            derived from ``calculate_required_battery_until_solar``. Used for
+            excess-export scheduling and the EV discharge-cap SoC guard.
+        current_wait_mode_reserve: Wait-mode self-consumption reserve (kWh),
+            derived from the selected plan's own SoC trajectory
+            (``calculate_required_battery_for_plan``, issue #914). ``None``
+            when no reliable reserve could be derived — the applier falls
+            back to strict Wait behaviour in that case.
         state: Working-mode recommendation string for the current slot, or one
             of the :class:`~utils.recommendations.Recommendations` sentinel values.
         last_updated: ISO-format timestamp of the cycle that produced this data.
@@ -46,11 +53,18 @@ class CoordinatorData:
     hourly_recommendations: list[HourlyRecommendation] = field(default_factory=list)
     hourly_recommendation: HourlyRecommendation | None = None
     current_required_battery: float = 0.0
+    current_wait_mode_reserve: float | None = None
     state: str | None = None
     last_updated: str | None = None
     next_update: str | None = None
-    #: Aggregated write-and-verify results from the most recent hardware apply cycle.
-    #: ``None`` before the first hardware-write cycle completes.
+    #: Aggregated write-and-verify results from the most recent *completed*
+    #: hardware apply cycle. Carried forward verbatim from the previous
+    #: ``CoordinatorData`` snapshot by the coordinator when a new cycle's own
+    #: write sequence hasn't finished yet (issue #951), so diagnostic
+    #: consumers such as the applier-status sensor always reflect the last
+    #: real write outcome instead of regressing to a "pending" state while a
+    #: write is legitimately still in flight. ``None`` only before the very
+    #: first hardware-write cycle of this HA session completes.
     apply_summary: CycleApplySummary | None = None
     #: Human-readable explanation of why the selected plan was chosen.
     plan_explanation: PlanExplanation = field(default_factory=PlanExplanation)

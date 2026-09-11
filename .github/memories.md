@@ -74,6 +74,7 @@ cycle are durable; stale generations must not publish.
 | `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                      |
 | `weekday_profile.py`    | Weekday/weekend split house load EWMA profiles                                       |
 | `ev_mode_resolver.py`   | Auto-Full EV charging on negative electricity prices                                 |
+| `unit_normalize.py`     | Generic sensor unit normalization via HA's `unit_conversion` converters (issue #945) |
 
 ---
 
@@ -146,6 +147,70 @@ EV charger efficiency **percentage** → fraction uses the same
 Note: LP matrix _coefficients_ in `planner/milp/_constraints.py` and
 `_objective.py` intentionally stay as raw `1.0 / ev.charger_efficiency`
 (they are constraint coefficients, not energy conversions) — do not wrap those.
+
+### Sensor unit normalization (issue #945)
+
+```python
+# ALWAYS use this when reading a user-configured sensor-domain entity whose
+# unit HA cannot auto-convert (no device_class — template sensors, some
+# integrations). Never hand-roll a new per-unit multiplier.
+from custom_components.hsem.utils.unit_normalize import normalize_to_unit
+value = normalize_to_unit(
+    raw_value, source_unit, canonical_unit, entity_id=entity_id, label=label,
+)
+```
+
+Delegates to HA's own `homeassistant.util.unit_conversion` converters
+(`TemperatureConverter`, `PowerConverter`, `EnergyConverter`,
+`SpeedConverter`) — the same mechanism HA itself uses for device_class
+auto-conversion. Falls back to the raw value (never raises) when the unit
+is missing, unrecognised, or mismatched with `canonical_unit`; a missing
+unit is assumed to already be canonical (matches pre-#945 behaviour) and
+is logged at debug, mismatches at info/warning.
+
+Recorder-history reads take an optional `expected_unit` kwarg wired the
+same way on every `ml/history_reader.py` reader method —
+`read_instantaneous_history()` (used by
+`ml/weather_features.py::get_temperature_history()` with
+`UnitOfTemperature.CELSIUS`, since PR #944 moved the old
+`populator.py::_read_temperature_history()` into that shared module),
+`read_energy_history()`, and `read_today_actuals()` (both used by
+`ml/populator.py::populate_ml_house_consumption()` with
+`UnitOfEnergy.KILO_WATT_HOUR` for `hsem_ml_consumption_energy_entity` /
+`hsem_grid_import_energy_entity` fallback and `hsem_grid_export_energy_entity`,
+issue #946). This closed the confirmed gap where a °F-reporting or
+unit-less `hsem_ml_consumption_temperature_entity` could silently corrupt
+both the temperature feature (#918) and wind chill (#943), plus the same
+class of gap for Wh-reporting energy meters corrupting ML training deltas
+by 1000×.
+
+**Live HA-state reads** (not recorder history) use a second pair of
+helpers in `utils/ha_helpers.py`, next to `ha_get_entity_state_and_convert()`:
+
+```python
+# For callers that already have a converted float + hass:
+from custom_components.hsem.utils.ha_helpers import normalize_entity_float
+value = normalize_entity_float(self, entity_id, value, canonical_unit, label=label)
+
+# For callers with a read closure (mirrors state_collector.py's `_read`):
+from custom_components.hsem.utils.ha_helpers import read_normalized_float
+value = read_normalized_float(self, entity_id, _read, canonical_unit, label=label)
+```
+
+Both delegate to `normalize_to_unit()` after resolving `entity_id`'s
+`unit_of_measurement` via `self.hass.states.get(entity_id)`. Wired into
+(issue #946): `custom_sensors/state_collector.py` — house/solar/Huawei
+phase power meters (`UnitOfPower.WATT`) and grid import/export/PV energy
+meters (`UnitOfEnergy.KILO_WATT_HOUR`); and
+`coordinator_live_power.py::_read_live_power_number()` — the fast-timer
+house/solar power samples (`UnitOfPower.WATT`), independently of the
+full-cycle `state_collector.py` read.
+
+`utils/conversion.py::normalize_ev_power_w()` (issue #592) is intentionally
+**not** migrated onto this utility — its plausibility checks (implausibly
+high / suspiciously low while charging) are tied to EV charging state,
+which this generic normalizer has no concept of. The two stay separate by
+design.
 
 ---
 
@@ -282,6 +347,60 @@ in the objective) and the LP prefers curtailment (cost 0) over export
 
 The raw `slot.price.export_price` is **not** mutated — clamping only affects
 optimisation and scoring.
+
+## Export Fee Per kWh — Net Export Pricing (Issue #925)
+
+Real net export revenue can be negative even when the raw market price is
+positive, because retailer margin/balancing fees eat into it. Rather than
+adding a second "block PV below price X" mechanism (which is exactly what
+issue #767 reverted), `export_fee_per_kwh` (config `hsem_export_fee_per_kwh`,
+default `0.0`) is subtracted from the export price so the **existing**
+negative-price mechanics fire correctly:
+
+- **Applier** (`applier_power_control.py`): the `< 0.0` physical
+  connection-point block now checks `net_export_price = export_price -
+cfg.export_fee_per_kwh`, not the raw price.
+- **MILP objective** (`milp/_objective.py::_build_objective`): builds a
+  local `p_exp_net = p_exp - export_fee_per_kwh` and uses it for BOTH the
+  export-revenue coefficient (`c_obj[ge_off+t]`) and the
+  `compute_charge_premium(exp_price=...)` call. The
+  `deferred_export_price_by_slot()` call also receives `export_fee_per_kwh`
+  directly (that helper independently re-reads `slots[i].price.export_price`,
+  bypassing the local `p_exp` array entirely). No new LP constraint needed —
+  `curt[t]` already has zero objective cost, so the LP already prefers
+  curtailment once net price goes negative.
+- **Cost function** (`cost_function.py::score_plan`): mirrors the objective
+  exactly via `CostWeights.export_fee_per_kwh` — export-revenue term,
+  `deferred_export_price_by_slot()` call, and `compute_charge_premium` call
+  all net the same fee. Grep both files together when touching either —
+  same rule as the terminal-SoC valuation mismatch class (issues #638/#657).
+- **Reported cost** (`milp/_write_results.py` → `cost_helpers.py`):
+  `grid_cash_flow_cost()`/`slot_grid_cash_flow_cost()` net the fee into
+  `estimated_cost_currency` too, so it matches what the LP optimised for.
+
+**Ordering rule in `grid_cash_flow_cost()` and `score_plan()`:** the fee is
+subtracted only when the slot's export revenue was NOT already zeroed by the
+`export_min_price`/`battery_export_min_price` floor check. Applying the fee
+after a floor-zero would manufacture a negative revenue for export that was
+never counted — floor-zero and fee-netting are mutually exclusive per slot.
+
+**Explicitly unaffected:** `export_min_price`/`battery_export_min_price`
+floor comparisons stay on the **raw** price — this is a separate, additive
+concept, not a replacement for those floors. Default `0.0` is fully
+backward compatible.
+
+**Merge note (issue #930, opt-in curtailment below `export_electricity_min_price`):**
+#930 landed via a separate PR branched from the same #925 discussion thread and
+rewrote the _same_ `if export_price < 0.0:` gate in `applier_power_control.py` to
+add `curtail_below_min_price = cfg.curtail_pv_below_export_min_price and
+export_price < min_price`. Git could not auto-merge the two PRs — they were
+hand-combined into `if net_export_price < 0.0 or curtail_below_min_price:`.
+`curtail_below_min_price` deliberately compares the **raw** `export_price` to
+`min_price` (not the fee-netted price) to match the "explicitly unaffected"
+rule above: the opt-in threshold is a user-chosen price floor, not a
+profitability check, so it must not double-count the fee that the negative-net
+branch already accounts for. If either gate is touched again, grep both
+conditions together in this function before changing either.
 
 ## Grid Export Power Cap — Applier Enforcement (Issue #770)
 
@@ -564,10 +683,73 @@ is `sum(1 for ev in active_evs if ev.charge_past_target) * m` and is included
 in `ev_total_rows`.
 
 EV charger watts must remain coherent with the accepted slot's EV energy,
-grid flow, net load, and cost fields. Production no longer invokes the old
-per-slot power freeze because restoring stale watts after replanning can revive
-a command whose energy is no longer reserved. Runtime overrides update the
-complete current-slot accounting and respect aggregate fuse headroom.
+grid flow, net load, and cost fields. PR #783 removed the old
+`coordinator.py::_freeze_ev_charger_power_for_current_slot` mechanism because
+it restored stale watts **in isolation**, after replanning, independent of
+whatever the freshly accepted plan's energy/grid-flow/cost fields said —
+a command could get resurrected for a charge whose energy was no longer
+reserved. **Issue #957 reintroduced a current-slot hold in a different,
+narrower form that does not repeat that mistake** — see
+"Current-Slot EV Power Hold (Issue #957)" below. The key difference: the
+new hold runs **once, after candidate selection**, mutates only the
+display/command wattage field (never energy, grid-flow, or cost), and
+clears itself immediately the instant the accepted plan retracts the
+charge — it never restores a value the current plan has disowned. If
+touching either mechanism again, read both write-ups before assuming one
+supersedes or duplicates the other.
+
+## Current-Slot EV Power Hold (Issue #957)
+
+`_compute_ev_charger_power` (baseline path, `planner/engine_ev.py`) and the
+MILP write-out (`planner/milp/_ev_power_writeout.py`) both derive the
+_current_ slot's target power as allocated-energy ÷ remaining-slot-time,
+re-derived from the live clock on every solve. In the steady, capacity-bound
+case both terms shrink together and the ratio is a stable constant — but
+because the coordinator re-solves far more often than once per slot
+(sometimes under a second apart), rounding on an already-small energy
+numerator dominates as remaining time collapses toward its floor, and the
+ratio degenerates into "run at rated power to deliver a trickle in a
+fraction of a second". That degenerate value can then stay published past
+the slot's actual end, spiking to rated power then dropping straight to 0 W
+at the next boundary and stopping the charger mid-session. Confirmed against
+`logs/20260909_133056` where the **MILP write-out** (not the baseline path)
+was the winning candidate producing exactly this pattern — the bug is not
+baseline-only, so the fix must not be either.
+
+`_hold_current_slot_ev_power()` (`planner/engine_ev.py`) fixes this by
+running **once, after candidate selection**, directly on `winner.slots` —
+agnostic to which internal path produced the raw value, since it operates
+on whichever candidate actually won. It only mutates the display/command
+wattage field, never energy, grid-flow, or cost, so `winner.cost ==
+final_output.cost` is untouched. Semantics: the first time the current slot
+is seen as current, or the first time its allocation goes from zero to
+non-zero (a session starting mid-slot, or a genuine re-rank that newly
+selects it), the freshly computed rate is captured once and held; every
+subsequent solve within the same slot republishes that held rate verbatim,
+discarding whatever the fresh (potentially degenerate) recomputation
+produced. The instant the current slot's allocation is retracted to zero,
+the hold clears and zero publishes immediately — never a stale non-zero
+value.
+
+The hold state (`ev_held_slot_start` / `ev_held_power_w`, plus
+`ev_second_*`) is threaded through `PlannerInput` → `PlannerOutput` and
+persisted by the coordinator (`coordinator_planner_phase.py`) across solves,
+mirroring the existing `_last_plan_ev_*` cross-cycle state pattern — the
+engine itself stays a pure function of its input. It must also be added to
+`coordinator_cycle.py::_capture_accepted_plan_state`'s snapshot/restore list
+alongside `_ev_charging_plan`, or a stale/cancelled cycle can roll back the
+EV plan while leaving the hold pointing at energy that plan no longer
+reserves — the exact class of bug PR #783 fixed, reintroduced through a
+different door.
+
+This is orthogonal to the amp deadband / slot-tail stop suppression in
+`coordinator_ev_command_stability.py` — that layer still runs afterward as a
+defense-in-depth execution-layer smoother (see "EV charger command
+stability" in `docs/planner-spec.md`), but with the current slot's rate now
+stable by construction it typically has nothing left to damp for this class
+of churn. Do not fix this class of bug there — see that section's own
+docstring for why a deadband structurally cannot catch a spike-to-max or a
+same-cycle large drop.
 
 ## EV Pre-Deadline Target Cap (Issue #636 — Overcharge Fix)
 
@@ -1039,6 +1221,31 @@ Regression tests: `tests/test_avg_sensor_partial_day.py`.
 
 ---
 
+## Avg Sensor Must Reject Negative/Non-Finite Utility-Meter Readings (issue #938)
+
+`HSEMAvgSensor._async_store_utility_meter_value` and the `async_added_to_hass`
+restore path never validated the tracked utility-meter's value before writing
+it into `self._measurements`. A misconfigured net-consumption accounting mode
+produced one negative reading; once persisted it became the sole "1d" sample
+(the "1d" window holds only 1 entry) and kept `assess_load_forecast()`
+(`coordinator_helpers.py`, ~line 436) fail-closed with
+`reason="invalid_future_values"` — engaging `safety_hold` — even after the
+source misconfiguration was corrected, because the window would not refresh
+until that specific hour block completed again on a later day.
+
+Canonical rule: **reject non-finite/negative readings before they ever reach
+`self._measurements`**, both at write time (`_async_store_utility_meter_value`
+— log a warning and skip storing, leaving any existing sample for that date
+untouched) and at restore time (`async_added_to_hass` — drop bad entries out
+of the restored `measurements` dict so a value persisted by a pre-fix version
+is never replayed). A rejected sample leaves the sensor `unavailable` (never
+a negative published average), so the very next completed block produces a
+fresh valid sample instead of waiting out a multi-day window.
+
+Regression tests: `tests/test_avg_sensor_negative_guard.py`.
+
+---
+
 ## Solar-Charge Mislabel at Zero PV (issue #720 follow-up)
 
 `apply_optimization_strategy` used `NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH`
@@ -1131,20 +1338,107 @@ instead of keeping the battery strictly idle.
 - When set to `"self_consumption_with_reserve"`, the applier
   (`custom_components/hsem/custom_sensors/applier.py`) switches the inverter to
   `MaximizeSelfConsumption` and caps the discharge power so only surplus energy
-  above the planner's required reserve (`current_required_battery_kwh`) can be
-  used. Once the battery reaches the reserve, the applier falls back to strict
-  TOU wait mode.
+  above the reserve can be used. Once the battery reaches the reserve, the
+  applier falls back to strict TOU wait mode.
 - PV surplus during wait-mode self-consumption is directed to charge the battery
   (`desired_excess = "charge"`), not exported to grid.
-- The cap is computed from the surplus energy and the slot duration so the
-  reserve is preserved even if the house load is high.
+- **Discharge cap is an SoC-floor gate, not a rate cap (issue #942, fixed
+  2026-09-08):** the original formula was `surplus_kwh / slot_hours`, spreading
+  the reserved surplus evenly across the whole slot — this produced low,
+  load-averaged wattages (e.g. 264–380 W) that ignored actual instantaneous
+  house load, so a real load spike above that average pulled the extra power
+  from the grid even though the battery still held usable surplus.
+  `applier_caps._wait_mode_self_consumption_cap_w()` now returns the full
+  rated/configured `max_discharge_power_w` whenever
+  `battery_capacity_kwh > required_capacity_kwh` (material surplus), and `0`
+  otherwise — a stop-discharge gate re-evaluated every apply cycle, not a
+  slow-drain rate. Reserve protection and house-load support are thereby
+  decoupled: the reserve stops discharge once reached, but never throttles
+  discharge power while surplus remains. The EV-active cap
+  (`_planned_ev_discharge_cap_w`) was deliberately left unchanged — it is a
+  materially different formula (the planner's own solved per-slot discharge
+  rate, clamped to per-EV ceilings) and reworking it to the same floor-gate
+  model is tracked as a separate follow-up, not bundled into #942.
 - EV-active slots keep their existing EV discharge cap logic; the wait-mode cap
   is not applied while an EV is charging.
+- **Reserve source (issue #914):** the wait-mode reserve is `wait_mode_reserve_kwh`
+  (`PlannerOutput`/`CoordinatorData.current_wait_mode_reserve`), computed by
+  `calculate_required_battery_for_plan()` in `discharge_scheduler.py` from the
+  _selected_ plan's own simulated SoC trajectory — how far it dips before its
+  next actual solved charge — **not** `current_required_battery_kwh` (which
+  is `calculate_required_battery_until_solar()`, unchanged, and still used
+  for `apply_excess_export()` and the EV discharge-cap SoC guard). `None`
+  means no reliable reserve could be derived; the applier then forces strict
+  TOU wait instead of enabling self-consumption. See `docs/planner-spec.md`
+  §"Wait-mode self-consumption reserve (issue #914)".
+- **Scan stops at the next discharge too, not just the next charge (issue
+  #942 follow-up, fixed 2026-09-08):** the scan originally broke only on a
+  genuine planned _charge_, so it accumulated through every future discharge
+  slot up to that charge — often the plan's whole overnight total — and
+  applied that sum as an immediate floor hours before it was needed. Since
+  Wait-mode slots never discharge in the simulation (`soc_simulation.py`
+  forces `discharge = 0.0` while `recommendation == BatteriesWaitMode`),
+  this silently starved the #942 SoC-floor gate of any surplus for the
+  entire Wait span (reserve ≈ current capacity), even though the fix had
+  just landed. The loop now also breaks on `batteries_discharged_kwh > 1e-9`:
+  the reserve protects only the plan's very next committed action (charge or
+  discharge), trusting the next replan (interval tick, event-triggered, or
+  the 10-second live-power monitor) to re-derive the reserve fresh from the
+  then-current capacity before any later slot arrives.
+- **Reserve-floor decision must run ahead of the plain hold check, not
+  behind it (issue #954, fixed 2026-09-09):** a genuine `BatteriesWaitMode`
+  slot always satisfies `_primary_battery_hold()` — `soc_simulation.py`
+  forces `discharge = 0.0` for this recommendation, the same near-zero
+  condition the hold check tests for. #949's reserve-floor gate was gated
+  behind `not primary_battery_hold`, so it never actually overrode the
+  hold's unconditional `0 W` default for a real Wait slot — it only ever
+  ran in the test suite's synthetic non-held fixture (`_wait_rec()` used to
+  set a material `batteries_discharged_kwh` specifically to dodge the hold
+  check). Reproduced directly: battery at 100% SoC, reserve well below
+  capacity, genuine held Wait slot → the applier still wrote `0 W`. Fixed
+  by computing `wait_mode_reserve_active` (`recommendation ==
+BatteriesWaitMode and not relevant_evs and not held_planned_export and
+batteries_wait_mode_behavior == "self_consumption_with_reserve" and
+wait_mode_reserve_kwh is not None`) and checking it _before_ the
+  hold/EV/solar-charge-only branch in both the single cap-decision block
+  and the `BatteriesWaitMode` match-statement case — so it applies
+  regardless of hold status. `held_planned_export` and an active/planned EV
+  still take priority, unchanged. This also removed the former second,
+  independently-gated discharge-cap write block entirely (folded into the
+  single cap decision), so the entity is now written at most once per apply
+  cycle for every path, not just the hold/EV/solar-charge-only ones.
+  `tests/test_batteries_wait_mode.py::_wait_rec()` now builds a genuinely
+  held slot by default — the realistic case — with a separate inline
+  override for the rarer unheld edge case.
+- **Reserve must time-decay, not just stop at the next action (issue #956):**
+  limiting the scan to the very next committed action (#950, above) was not
+  enough — that one action can still be _far_ away and still lock up nearly
+  the whole battery immediately. Reproduced directly: battery at 6.4 kWh, a
+  discharge scheduled 5 hours away needing 5.9 kWh → reserve computed as
+  `5.9 kWh` right now, leaving only `0.5 kWh` surplus for self-consumption
+  for the entire 5-hour lead time — the exact symptom `tonnr` kept reporting
+  even after #955. Fixed in `calculate_required_battery_for_plan()`
+  (`planner/discharge_scheduler.py`) by tracking the `start` time of the
+  slot that ends the scan and multiplying the full computed reserve by
+  `max(0, min(1, 1 - hours_until_action / WAIT_MODE_RESERVE_DECAY_HOURS))`
+  (`WAIT_MODE_RESERVE_DECAY_HOURS = 2.0`, an internal tuning constant, not
+  user-configurable). At 0 hours away the action is fully protected; at or
+  beyond 2 hours the reserve is 0. Applies uniformly to charge- and
+  discharge-terminated scans; the "no action found anywhere in the horizon"
+  case is unaffected (already naturally correct from min-tracking alone).
+  `tests/planner/test_wait_mode_reserve_from_plan.py`'s existing scenarios
+  were re-timed to sit inside the decay window so their original regression
+  intent (no premature truncation at a small surplus; scan stops at the
+  next action, not the cumulative overnight total) stays visible against a
+  non-zero decayed value; `TestWaitModeReserveTimeDecay` covers the decay
+  curve itself.
 
 Files involved: `flows/batteries_wait_mode.py`, `config_flow.py`,
 `options_flow.py`, `translations/en.json`, `const.py`,
 `models/sensor_config.py`, `custom_sensors/config_reader.py`,
-`custom_sensors/applier.py`.
+`custom_sensors/applier.py`, `planner/discharge_scheduler.py`,
+`planner/engine_core.py`, `models/planner_output.py`,
+`coordinator_planner_phase.py`, `coordinator_data.py`.
 
 ## GitHub Operations — `gh` CLI Is Available (Corrected 2026-08-30)
 
@@ -1286,6 +1580,22 @@ fraction inline.
 
 **Key insight:** The MILP planner's per-phase fuse constraint already allocates headroom correctly, but the **hardware writes** don't happen instantaneously. The reservation bridges the gap between the planner's solved state and the live hardware state during transitions.
 
+## OCPP Transaction ID Allocation + Stop-Retry Symmetry (issue #906)
+
+**Real bug, not speculation — confirmed 2026-09-02.** `_handle_start_transaction()` echoed `payload.get("transactionId", 0)`. Per OCPP 1.6 §5.14, `StartTransaction.req` (charger → CS) has no `transactionId` field at all — allocating one is the CS's job, returned in `.conf`. Real chargers never send it, so every session silently got id `0`. A charger firmware treating `0` as an unset/sentinel value can then reject or ignore `RemoteStopTransaction` naming it — a plausible root cause for "the charger won't stop" reports. Fix: `OCPPServer._next_transaction_id` is a monotonic counter allocated in `_handle_start_transaction()`, never trusting the inbound field.
+
+**Separately, the anti-flap stop-window guard was asymmetric with the start path.** The stop branch's outer condition was `if flap_state == "charging" or flap_state == "starting":` — missing `"stopping"` itself. Once the state machine entered `"stopping"`, the block became unreachable on every later cycle, so a failed-to-send or charger-ignored `RemoteStopTransaction` was attempted exactly once and never retried, despite a comment claiming otherwise. The start path's equivalent guard correctly includes its own in-progress state (`flap_state in ("idle", "stopping", "starting")`), which is why start retries always worked. Fixed to mirror start: guard now includes `"stopping"`, and the `"stopping" → "idle"` transition is gated on `session.transaction_id is None` (ground truth via the charger's own `StopTransaction` call) rather than on `_send_remote_stop()`'s return value, with a `_remote_stop_due()` cooldown mirroring `_remote_start_due()`.
+
+**Also added:** `ChargerSession.pending_calls`/`last_call_status` — outbound `RemoteStartTransaction`/`SetChargingProfile`/`RemoteStopTransaction` CALLRESULTs were previously logged at debug level with their `status` field never read, so a charger silently rejecting a command was indistinguishable from acceptance in diagnostics. Now tracked and surfaced via `sensor.hsem_ocpp_charger_status`'s per-CPID `last_call_status` attribute; a rejected `SetChargingProfile` is retried on a cooldown without waiting for a material target change.
+
+## OCPP Event-Driven Coordinator Refresh (issue #908)
+
+**Gap confirmed 2026-09-02/03.** `sensor.hsem_ocpp_charger_status` and the other OCPP diagnostic sensors are `CoordinatorEntity` subclasses with `should_poll = False` and no override of `_handle_coordinator_update()` — the only path that pushes their state into HA (`async_write_ha_state()`) is the coordinator calling `async_set_updated_data()` from its own cycle. The embedded OCPP server mutates the live `ChargerSession` the instant a WebSocket message arrives (`_handle_status_notification`, `_handle_start_transaction`, `_handle_stop_transaction`, connect/disconnect in `_handle_charger`), but nothing in `ocpp_server.py`/`ocpp_message_handlers.py`/`ocpp_commands.py` ever told the coordinator to refresh. The coordinator has no HA-managed poll interval (`update_interval=None`, "Bronze rule: appropriate-polling") — it runs its own `async_track_time_interval` timer at `hsem_update_interval` minutes (default 5). Net effect: a car plugging in/out or a charge starting/stopping was invisible in the frontend for up to 5 minutes despite being recorded internally instantly.
+
+**Fix:** mirrors the existing `async_options_updated()`/`_async_options_update_debounced()`/`_async_options_update_background()` debounce trio in `coordinator_lifecycle.py` (cancel-and-reschedule `asyncio.Task`, not HA's `Debouncer` helper — not used elsewhere in this codebase) — a new `async_ocpp_event()` trio with its own `OCPP_EVENT_DEBOUNCE_SECONDS` (2.0s, `coordinator_helpers.py`). `OCPPServer.__init__()` takes an optional `on_significant_event` async callback, wired to `coordinator.async_ocpp_event` for both the primary and second server in `async_setup()`. `OCPPServer._notify_significant_event()` awaits it directly from the WebSocket message loop (cheap — the callback only does task bookkeeping, doesn't block on the actual refresh) — called from connect/disconnect in `_handle_charger()`, and from `_handle_status_notification` (only on an actual status _change_, not a repeat), `_handle_start_transaction`, and `_handle_stop_transaction`. Deliberately **not** called from `MeterValues`/`Heartbeat`/`Authorize` — those arrive far more often and carry no transition information worth an out-of-band planner cycle. A burst of related messages around one connect/start (BootNotification + StatusNotification + StartTransaction, typically within ~1s of each other) coalesces into one refresh via the debounce window, not one per message.
+
+**Pattern reuse note:** `_make_bare_coordinator()` in `tests/test_coordinator.py` needs `_ocpp_event_task`/`_ocpp_event_debounce_task` initialised alongside the existing `_options_update_task`/`_options_update_debounce_task`, or `async_ocpp_event()` raises `AttributeError` in tests that bypass `__init__`.
+
 ## Live Phase-Aware Grid-Charge Safety Limiter (issue #831, complete — 3 of 3 PRs merged)
 
 **Built from scratch, Huawei-only — not a straight fork port.** Fork PR `Ambilights/hsem-ambilights#35`'s phase-limit feedback stabilization was originally judged "not applicable" (no `phase_charge_limiter.py`, no live per-phase read path, no write path for `hsem_huawei_solar_batteries_grid_charge_maximum_power` existed at all). On reflection this was the wrong call: the fork author hit a real hardware safety gap (an appliance load change between MILP solve time and the hardware write can push a phase over the fuse rating), and this repo's Huawei-only control path can benefit from the same protection without PowMr. Decision reversed 2026-08-27 — build the feature properly instead of declining it.
@@ -1326,3 +1636,139 @@ Tests: `tests/test_phase_charge_limiter.py` (limiter core + Part 2 applier integ
 **Canonical helper:** never re-derive the "is a grid charge actually armed right now" check inline -- always call `primary_grid_charge_is_known_disarmed()`. Never gate the emergency stop on anything other than `huawei_grid_charge_emergency_needed()`; it already encodes the ownership + Error-mode + telemetry precedence correctly.
 
 Tests: `tests/test_grid_charge_emergency_stop.py` (26 tests: disarmed-telemetry detection, ownership+gating logic, `CycleApplySummary` verification helper, the write helper itself, and full mixin lifecycle including the externally-armed-is-never-touched and failed-write-retains-ownership-for-retry cases).
+
+## OCPP Manual Start/Stop Debug Services + Wire-Level Logging (issue #920)
+
+**Reverses the deliberate #843 non-wiring, for diagnostics only.** `OCPPCommandsMixin.send_set_charging_profile()`/`send_remote_stop()` (`ocpp_commands.py`) existed as public anti-flap-bypassing methods since #843/#892 but were intentionally never wired to an HA service. With reports that OCPP still won't reliably start/stop a charger, #920 adds two services — `hsem.ocpp_debug_start_charging` and `hsem.ocpp_debug_stop_charging` (`services.py`) — that bypass the anti-flap state machine entirely to isolate a charger/protocol problem from a planner-timing problem. A new `OCPPCommandsMixin.send_remote_start(cpid)` public method was added (there was previously no bare, non-anti-flap-gated `RemoteStartTransaction` sender — only the internal `_send_remote_start()`). Both services resolve `coordinator._ocpp_server`/`_ocpp_second_server` via a `charger: "primary"/"second"` field, look up the sole entry in `OCPPServer.active_chargers`, and raise `ServiceValidationError` if OCPP isn't enabled or nothing is connected. These are explicitly not a substitute for normal operation — the planner's own anti-flap-gated target still applies next cycle and can immediately countermand a manual command.
+
+**Wire-level visibility gap closed.** Neither `OCPPServer._handle_message()` (inbound) nor `OCPPCommandsMixin._send_call()` (outbound, the single chokepoint for every outbound CALL) logged the raw action+payload — only some individual handlers logged a short summary. Both now log at DEBUG from their single chokepoint, so enabling DEBUG logging for `custom_components.hsem.custom_sensors.ocpp_server`/`ocpp_commands` shows the exact wire conversation. `ChargerSession.pending_calls` (tracked since #906 but never surfaced) is now also exposed per-CPID on `sensor.hsem_ocpp_charger_status`, next to the existing `last_call_status`.
+
+**Test gotcha: `caplog.at_level(logging.DEBUG)` with no `logger=` argument does not work for these loggers.** `HSEM_LOGGER` (`utils/logger.py`) calls `logging.getLogger("custom_components.hsem").setLevel(logging.WARNING)` at import time — an ancestor of `custom_components.hsem.custom_sensors.ocpp_server`/`ocpp_commands` with an explicit (non-`NOTSET`) level. Python's effective-level walk stops at the nearest ancestor with an explicit level, so raising only the _root_ logger's level (what bare `caplog.at_level(logging.DEBUG)` does) never reaches these modules — the ancestor's `WARNING` wins regardless of root. Tests must pass `logger="custom_components.hsem.custom_sensors.ocpp_server"` (or `ocpp_commands`) explicitly to `caplog.at_level()`/`caplog.set_level()` to actually capture DEBUG records from them.
+
+**Follow-up finding, the same day: the wire-level logging immediately surfaced a real bug — and a wrong first fix, corrected by cross-checking a mature reference implementation.** Testing against a real go-e Charger V4 (firmware 60.6) with `hsem.ocpp_debug_start_charging`, the log showed `RemoteStartTransaction` and `SetChargingProfile` both `"Accepted"`, and the charger's own `StartTransaction` confirmed — yet the requested amperage was reportedly not actually enforced.
+
+_First attempt (reverted):_ hypothesized that `chargingProfileKind: "Relative"` on `OCPPCommandsMixin._send_set_charging_profile()`'s `TxDefaultProfile` was OCPP 1.6 §3.11-invalid (claimed `"Relative"` is only valid with purpose `"TxProfile"`) and switched it to `"Absolute"`. **This was not supported by real-world evidence and was reverted.** Cloning [`lbbrhzn/ocpp`](https://github.com/lbbrhzn/ocpp) (a mature HA Central System integration tested against dozens of real charger models) showed it uses `ChargingProfileKindType.relative` universally — for `ChargePointMaxProfile`, `TxProfile`, and `TxDefaultProfile` alike — with zero uses of `"Absolute"` anywhere in its codebase. Don't trust a from-memory OCPP spec citation over a working reference implementation; verify against one before shipping a protocol "fix".
+
+_Actual fix:_ cross-checking `lbbrhzn/ocpp`'s `ocppv16.py::set_charge_rate()` showed it sends **two** profiles: always a `TxDefaultProfile`, and — only once a transaction is confirmed active on that connector (`self._active_tx[cid] > 0`) — _also_ a `TxProfile` carrying `transactionId`, at an equal-or-higher `stackLevel`. HSEM's `_send_set_charging_profile()` only ever sent `TxDefaultProfile` (unavoidably so at the moment it's sent alongside `RemoteStartTransaction`, before the transaction ID is known — but never revisited once the ID _is_ known on later cycles). Some chargers (plausibly go-e) only actually throttle an _ongoing_ session via a transaction-scoped `TxProfile`, treating a bare `TxDefaultProfile` as a lower-priority default that doesn't override a session already running under the charger's own local decision. Fixed by also sending a `TxProfile` (kind `"Relative"`, `stackLevel: 1` vs. the default's `0`, carrying `transactionId`) whenever `ChargerSession.transaction_id is not None`, mirroring `lbbrhzn/ocpp`'s dual-profile strategy exactly.
+
+**Logic-bug gotcha caught by tests, not by review:** the first draft of the dual-send used `tx_sent = True` as a "TxProfile wasn't attempted" sentinel (no active transaction), then computed `sent = default_sent or tx_sent`. Since `True` is `True` regardless of _why_, this made `sent` always `True` even when the sole actual attempt (`default_sent`) failed — `test_failed_profile_send_not_remembered_as_sent` caught it immediately. Fixed by using `tx_sent: bool | None = None` for "not attempted" and `sent = default_sent or bool(tx_sent)`. Lesson: a boolean sentinel for "nothing to do here" must be falsy, never `True`, when it's later combined with `or`.
+
+**Separately, `RemoteStopTransaction` completed correctly at the protocol level in the same test session** — accepted, and the charger's own subsequent `StopTransaction` confirmed `transaction_id` cleared. If a charger still appears to keep delivering power after that, per this test session's evidence it is not an HSEM-side protocol bug — it points at charger firmware not actually cutting output on a confirmed remote stop, worth reporting to the charger vendor with the DEBUG log excerpt.
+
+**Gap in the TxProfile fix, found on the very next retest: the new code path never actually fired.** `_send_set_charging_profile()` only attaches a `TxProfile` when `session.transaction_id is not None` at the moment it's called — but the debug service (and `update_charge_target()`'s own initial send) calls it in the same breath as `RemoteStartTransaction`, before the charger's own `StartTransaction` has confirmed the ID. The retest log showed exactly this: only one `SetChargingProfile` (TxDefaultProfile) was ever sent, no `TxProfile` followed, because nothing re-invoked `_send_set_charging_profile()` after the transaction confirmed. Fixed by having `OCPPMessageHandlersMixin._handle_start_transaction()` re-send the profile (reusing `_last_sent_current_a`/`_last_sent_target`, guarded on `_last_sent_current_a >= 0` so there's nothing to reapply when no profile was ever requested) immediately after assigning `session.transaction_id` — the first point at which a `TxProfile` can actually bind. This is the natural trigger point regardless of which caller (debug service or planner-driven `update_charge_target()`) initiated the start.
+
+**Bigger finding from that same retest: the charger's connector status changed on its own timeline, disconnected from any OCPP command HSEM sent.** `StatusNotification` reported `"Charging"` ~36 seconds _after_ `RemoteStopTransaction` had already been accepted and `StopTransaction` confirmed the transaction closed — with zero `MeterValues` ever reporting non-zero power. This points at the go-e unit's own local charge-mode logic (cable/car presence, PV-surplus automation, etc.) driving the connector, largely independent of what HSEM's OCPP server told it. If future reports say a charger doesn't track Start/Stop/SetChargingProfile at all, check the charger's own local setting that hands charge-decision authority to the OCPP central system — this is charger-side configuration, not something fixable from HSEM's end of the protocol.
+
+**Third follow-up: the StartTransaction-resend fix introduced a message-ordering hazard, found on self-review (no confirming log yet — flagged proactively after the user reported "nothing happens at all" post-deploy).** `OCPPServer._dispatch()` only sends a handler's returned dict to the charger as the CALLRESULT for that handler's request _after_ the handler coroutine fully returns. The original resend fix `await`ed `_send_set_charging_profile()` (two more `SetChargingProfile` CALLs) _inside_ `_handle_start_transaction()`, before it returned its response dict — meaning two unsolicited CALLs went out on the wire before the charger ever received the CALLRESULT answering its own still-pending `StartTransaction` request. Constrained embedded OCPP-J clients (plausibly go-e) can implement strict request/response expectations and may stop responding entirely — or never actually complete authorizing the session — if that ordering is violated, which would present as "nothing happens" (a worse regression than the previous test, where at least Accepted/StartTransaction confirmations were visible).
+
+**Fix:** the profile resend now runs as a genuinely detached background task (`asyncio.create_task()`, referenced from a new `OCPPServer._background_tasks: set[asyncio.Task]` to prevent premature GC, self-removing via `add_done_callback`) instead of being awaited inline — mirrors `lbbrhzn/ocpp`'s own pattern of `hass.async_create_task(self.update(...))` scheduled _after_ computing the response in `on_start_transaction`, never blocking the response itself. Wrapped in `_resend_profile_after_start()` with its own try/except, since nothing else awaits or retrieves a detached task's result — an uncaught exception there would otherwise only surface via asyncio's default "exception was never retrieved" handler.
+
+**ACTUAL ROOT CAUSE, found on the fourth log (2026-09-05): HSEM never learned about a transaction the charger already had open.** `ChargerSession` is recreated with `transaction_id = None` on every WebSocket connect, and only `_handle_start_transaction()` ever set it. `_handle_meter_values()` parsed power/energy out of the payload but **ignored the `transactionId` field entirely** — the one place a charger routinely tells the CS which transaction is live. So a transaction opened before an HSEM restart was invisible forever, and that deadlocks both directions at once: `_send_remote_stop()` sees `transaction_id is None`, logs "nothing to stop" and **never puts anything on the wire**, while the charger rejects every `RemoteStartTransaction` because that connector already has a transaction in progress. The go-e Charger V4 log showed `transactionId: 2` on every `MeterValues` from 08:42 to 09:29 while HSEM believed nothing was running — `'Rejected'` on each start, "no active transaction — skipping" on each stop. **This, not profile purpose/kind, was why start and stop "did nothing" the whole time.** The user's own instinct ("we need to fetch the current transaction id first") was right.
+
+**Fix:** `_adopt_transaction_from_meter_values()` adopts the inbound `transactionId` whenever HSEM has none recorded — the same "Self-heal after restart: adopt incoming txId" branch `lbbrhzn/ocpp` has in its `on_meter_values`. Guarded against reviving a just-ended transaction (closing meter values arrive _after_ `StopTransaction`, so naive adoption would make every successful stop instantly undo itself) via both signals the reference uses: an explicit `Transaction.End` reading context, and the last transaction ID seen stopping. That marker lives in `OCPPServer._ended_transactions: dict[str, int]` keyed by **CPID, not on the session** — a session object is replaced on reconnect, so per-session storage would lose it exactly when a reconnect is what triggers re-adoption. `_handle_start_transaction()` pops the marker (a real new transaction supersedes it). `send_remote_start()` now also skips an already-open transaction instead of sending a request the charger will only reject.
+
+**Confirmed working on the next retest (2026-09-05 09:46), and it exposed the _next_ layer.** The log shows adoption firing ("adopted charger's already-open transaction 2"), then `RemoteStopTransaction {transactionId: 2}` → charger's own `StopTransaction tx=2` → `Accepted`, then a clean `RemoteStartTransaction` → `StartTransaction` → tx=1 → `Accepted`, with both profiles accepted. **The entire OCPP conversation is now correct end to end** — and the charger _still_ delivers 0 W, going straight to `SuspendedEVSE` after every successful start. Note it was already in `SuspendedEVSE` at BootNotification, before HSEM sent anything, so that state is not caused by HSEM's profiles.
+
+**Two further fixes from that same log:** (1) `_next_transaction_id` restarts at 1 on every HSEM restart, so right after adopting the charger's live tx=2 HSEM assigned tx=**1** to the next transaction — an ID going backwards, which leaves `RemoteStopTransaction` targeting an ambiguous value. Adoption now bumps the allocator past any ID the charger is already using. (2) `_send_call()` purged `pending_calls` entries by _action name_, which erased the TxDefaultProfile half of the TxDefault/TxProfile pair the instant the TxProfile was sent — its CALLRESULT then logged as `action=None`, unmatched to anything. Now every outbound action is tracked and the map is bounded by count (`_MAX_PENDING_CALLS = 8`) instead, so both halves stay resolvable; `last_call_status` stays restricted to the three command actions so retry logic is unchanged.
+
+**New diagnostic service `hsem.ocpp_debug_diagnostics`** (issue #920), because at this point the remaining question is one only the charger can answer. Sends `GetConfiguration` (→ `SupportedFeatureProfiles`: does it implement SmartCharging at all? `ChargingScheduleAllowedChargingRateUnit`: amps or watts? HSEM hardcodes `"A"` where `lbbrhzn/ocpp` _queries_ this key first, and a watt-only charger can accept an amp profile as schema-valid then apply it as nothing) and `GetCompositeSchedule` (→ the limit the charger has actually computed from all installed profiles — the one question `"status": "Accepted"` cannot answer, distinguishing "accepted and applied" from "accepted and silently ignored/clamped to 0"). Replies are logged at warning level via `DIAGNOSTIC_ACTIONS` so they're readable without enabling DEBUG. Relevant because OCPP 1.6 defines `SuspendedEVSE` as the _EVSE_ withholding energy and explicitly lists "a smart charging restriction" as a cause.
+
+**User's decisive observation (2026-09-05): pressing "stop charge" in the go-e app produces the _same_ `SuspendedEVSE` HSEM had been staring at all along.** So the charger has been sitting in a **locally-forced stop** the entire time, and that local state overrides everything OCPP says — which is why it "did not start, did not stop, did not change amps" in the app regardless of a now provably-correct OCPP conversation. Checking `lbbrhzn/ocpp`'s charge-control switch settles that this is not a missing HSEM command: its switch does exactly what HSEM now does (`RemoteStartTransaction`/`RemoteStopTransaction`, nothing more), so the reference integration would hit the same wall against a locally-stopped charger. What it _does_ have that HSEM lacked is a separate **Availability** switch (`ChangeAvailability`).
+
+**Response — hand over the control surface instead of guessing again.** New `custom_sensors/ocpp_control.py` (`OCPPControlMixin`, split out because `ocpp_commands.py`/`ocpp_server.py` were both at ~29 KB against the 30 KB limit; the split is cohesive — `ocpp_commands` drives a charge, `ocpp_control` interrogates/administers the charger) with `GetConfiguration`, `GetCompositeSchedule`, `ChangeAvailability`, `ChangeConfiguration`, plus services `ocpp_debug_diagnostics`, `ocpp_debug_set_availability`, `ocpp_debug_set_configuration`. `ChangeConfiguration` is deliberately **generic (key/value)** so a vendor-specific key discovered via `GetConfiguration` can be flipped without a code change per charger model — the alternative was a fifth round of HSEM guessing which key a go-e wants.
+
+**Do not spend more effort making HSEM send something new until `GetCompositeSchedule`/`GetConfiguration` have been read.** Four consecutive fixes (profile kind, TxProfile, resend ordering, transaction adoption) were aimed at what HSEM _sends_; only the last was the real blocker, and the remaining gap is charger-local state no central system can override.
+
+**RESOLVED — the `GetConfiguration` reply (2026-09-05 15:41) named the actual blocker.** Two dumps taken minutes apart, before and after the user pressed "stop charge" in the go-e app:
+
+| Key                                       | Value                                    | Meaning                                                                                                                                                                 |
+| ----------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ForceState`                              | `Neutral` → **`Off`** after the app stop | **The lever.** Vendor-specific, **writable**. While `Off`, the charger accepts RemoteStart/RemoteStop/SetChargingProfile and obeys none of them.                        |
+| `Station-MaxCurrent`                      | `12` (readonly)                          | HSEM was requesting **16 A** — above the station's own cap, so a no-op. This is why "it did not set the amps".                                                          |
+| `ChargeProfileMaxStackLevel`              | `20`                                     | HSEM installed profiles at stack level **0/1** — the bottom. Higher wins, so anything already installed outranked HSEM. `lbbrhzn/ocpp` reads this key and uses the top. |
+| `ChargingScheduleAllowedChargingRateUnit` | `Current`                                | Amps are correct — the earlier watt-only hypothesis is dead.                                                                                                            |
+| `SupportedFeatureProfiles`                | includes `SmartCharging`                 | Profiles are supported in principle.                                                                                                                                    |
+| `GetCompositeSchedule`                    | **CALLERROR `NotImplemented`**           | go-e advertises SmartCharging but doesn't implement this query.                                                                                                         |
+
+**`ForceState` is the answer to "you need to take over the charger".** `ChangeAvailability` does not address it — that toggles Operative/Inoperative (connector status `Unavailable`), a different axis from `SuspendedEVSE`. Nothing in the OCPP core profile clears a vendor force-off; it has to be written back through the vendor key. `OCPPControlMixin.ensure_charging_allowed()` writes `ForceState=Neutral` before every remote start, gated on the charger actually reporting the key (so non-go-e chargers never see it) and on it actually being `Off` (so it is a no-op otherwise).
+
+**Capability discovery replaces assumption (issue #920).** `_handle_boot_notification()` now schedules a `GetConfiguration` (detached background task — same ordering rule as the profile resend), and `absorb_configuration_reply()` caches the result on `ChargerSession.configuration_keys`. Charge-profile stack levels come from `ChargeProfileMaxStackLevel` (top of range, `TxProfile` one above `TxDefaultProfile`), and a request above `Station-MaxCurrent` is logged as the no-op it is. Do not hardcode charger capabilities here again — read them from the session.
+
+**Confirmed working, and the stop half then needed the same key (2026-09-05 15:59).** With `ensure_charging_allowed()` in place the log shows `ForceState=Off` → `ChangeConfiguration(Neutral)` → `Accepted`, and 13 s later the charger went `SuspendedEV` → **`Charging`** — the first time it ever physically responded to HSEM. Profiles also now install at stack 19/20 and are accepted. **But stop still did not stop**: `RemoteStopTransaction` accepted, `StopTransaction` confirmed, charger kept charging. Cause: `Neutral` means "no local override — charge if the car asks", so the charger free-vends once the transaction ends, with no transaction open at all. `ensure_charging_blocked()` now writes `ForceState=Off` on stop (what the go-e app's own stop button does), called from `_send_remote_stop()` _before_ the transaction check so a stop still stops when there is nothing to close. Start clears it again, so the round-trip is self-healing — the objection to hard-stopping (leaving the charger blocked) only applies to starting from the charger's own app afterwards.
+
+**Both take-over calls sit in the private senders** (`_send_remote_start`/`_send_remote_stop`), not only the public bypass API, so the planner's anti-flap path gets them too. They are idempotent no-ops when the key is absent or already at the target value, so calling them from both layers is harmless.
+
+**Shutdown must not leave the charger held off (2026-09-05).** `ensure_charging_blocked()` parks the charger at `ForceState=Off` so a stop actually stops, and the next start lifts it — but only while HSEM is running. An HSEM that stopped a charge and was then unloaded/reconfigured/shut down would leave the charger locally blocked until cleared in its own app. `OCPPServer.stop()` now calls `release_force_state_holds()` first (before the sockets close, since it needs them). **Ownership-gated via `OCPPServer._force_state_owned: set[str]`** keyed by CPID — the same "never touch what HSEM did not itself arm" rule as the grid-charge emergency stop (issue #840): a user who stopped charging in the charger's own app is never silently overridden on shutdown. Failures are swallowed; teardown must not be blockable. An unclean crash is uncovered by design — the next start clears it regardless.
+
+**Stop restructured as a generic-first ladder (2026-09-05).** The vendor key had been reached for _before_ the standard options were exhausted — a fair criticism, since two generic levers were implemented but never tried. `_send_remote_stop()` now runs: (1) `SetChargingProfile` at **0 A** — the idiomatic, fully generic way an EMS says "draw nothing", and all a compliant charger needs on top of (2) `RemoteStopTransaction`; (3) the `ForceState` vendor key last, only for a charger that ignores both. A compliant charger never sees a vendor key. `_charging_profiles()` is the shared builder behind both the real limit and the 0 A stop, so the two can never drift in stack level, profile ID or kind — the only difference is the number in the schedule.
+
+**Two persistence hazards the 0 A profile introduces, both handled.** A `TxDefaultProfile` outlives its transaction, so: (a) the 0 A profile is only sent when `transaction_id is not None or status == "Charging"` — writing it at an idle connector HSEM never commanded would leave a lasting block and could silently stop the user charging by hand (a test asserting "nothing sent when nothing started" caught exactly this, and was right to); (b) `OCPPServer.stop()` calls `release_charging_profiles(HSEM_PROFILE_IDS)` alongside the force-state release, clearing **by `chargingProfileId`** (1 and 2) so only HSEM's own profiles go and nothing another system installed is disturbed.
+
+**Test gotcha:** `_sent_actions()` reads `send_str.call_args_list`, which records a call even when the mock _raises_ — so it measures send **attempts**, not deliveries. Asserting `== []` after a failed write is wrong; count the action instead.
+
+**OCPP subprotocol was never negotiated (found by the user, 2026-09-05).** `_handle_charger()` built `web.WebSocketResponse(heartbeat=...)` with no `protocols=`, so the server never selected the `ocpp1.6` subprotocol the charger offered. `home-assistant.log` carried `Client protocols ['ocpp1.6'] don't overlap server-known ones ()` on almost every connect from the very first log in this investigation — **it was visible the whole time and went unread**. OCPP-J 1.6 §3.1.2 requires the central system to select the offered subprotocol; a client that gets none back may close the connection outright. This go-e firmware tolerated it, so it never presented as a symptom. Fixed with `protocols=("ocpp1.6",)` plus a warning when negotiation yields anything else. The regression test drives a **real WebSocket** (`aiohttp.ClientSession().ws_connect(..., protocols=("ocpp1.6",))`) and asserts `ws.protocol` — the bug lives entirely in the handshake, so a unit test against the handler cannot see it. Verified by reverting the fix and watching it fail with the exact log line from production.
+
+**Lesson: read the warnings already in the log before adding new ones.** Four fixes were built on top of a connection whose handshake was quietly non-conformant, and the evidence was in the first file read.
+
+**OCPP module layout after the #920 size rebalance** (30 KB hard limit; `ocpp_server.py` and `ocpp_commands.py` were both pushed over during this work and had to be split):
+
+| Module                     | Responsibility                                                           |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `ocpp_server.py`           | Lifecycle, handshake, message routing/dispatch                           |
+| `ocpp_anti_flap.py`        | `update_charge_target()` — continuous target → discrete start/stop       |
+| `ocpp_commands.py`         | Transaction-level commands + raw CALL/CALLRESULT plumbing                |
+| `ocpp_profiles.py`         | Charging-profile construction/dispatch (real limit _and_ the 0 A stop)   |
+| `ocpp_control.py`          | Interrogation and administration (Get/ChangeConfiguration, availability) |
+| `ocpp_message_handlers.py` | Charger-initiated message handlers                                       |
+
+**MRO gotcha:** mixins that _define_ a sender must precede those carrying a `Callable` forward declaration of it, or mypy reports "Definition in base class X is incompatible with definition in base class Y". `ocpp_server.py` also re-exports `charger_appears_stalled`/`CHARGER_STALL_THRESHOLD_S` via `__all__`, because `ocpp_sensors.py` and `coordinator_data.py` document them at that path.
+
+**`ForceState`-on-stop removed entirely, on the user's own test evidence (2026-09-07).** Isolated proof via `ocpp_debug_set_current(current_a=0)` — which sends _only_ the two `SetChargingProfile` CALLs at 0 A, no `RemoteStopTransaction`, no `ChangeConfiguration` at all — stopped a real go-e Charger V4, and the charger's own app reported "stopped by OCPP". This is more decisive than the 2026-09-05 finding: that test never isolated the 0 A profile alone (it always paired `RemoteStop` + `ForceState=Neutral`, no profile). `ensure_charging_blocked()`, `OCPPServer._force_state_owned`, and `release_force_state_holds()` are all deleted — `_send_remote_stop()` is now generic-only (0 A profile, then `RemoteStopTransaction`). `ensure_charging_allowed()` on the **start** side is unaffected and still called automatically — it solves a different, still-real problem (recovering from a block the _charger's own app_ set), which this test says nothing about. A charger that genuinely needs a vendor write to stop is still reachable manually via `ocpp_debug_set_configuration` — nothing was removed from the API, only from the automatic path.
+
+**Root cause of "amp not set on start, but a second start sets it correctly" (2026-09-07): not an OCPP bug — the live planner races the very first profile.** Timeline from the log: `update_charge_target()` sends 6 A immediately on start; ~15-25 seconds later a fresh `SetChargingProfile` for **16 A** appears, with no user action in between. That 16 A is the coordinator's own debounced-refresh replan (issue #908) recalculating `ev_charger_calculated_power` for the slot now that `StartTransaction` confirmed a real session — legitimate planner behavior, not a stale resend. Confirmed the OCPP layer itself is correct: 9 A → measured 6014 W (9×230×3=6210 W theoretical) and 12 A → measured 8050 W (8280 W theoretical) both match to ~97% efficiency when nothing raced them. **Lesson: when debug-testing an amp value, the live planner is still running and can overwrite it within seconds of any charger event (StatusNotification, StartTransaction) via the significant-event debounced refresh — check the value 20-30s after settling, not immediately, or pin a stable mode via `hsem.set_temporary_override` first.** Planner recalculation logic itself was not touched (out of scope, and not requested).
+
+**Diagnostic lesson worth keeping:** three fixes in a row (profile kind, TxProfile, resend ordering) were aimed at `SetChargingProfile` because that's where the visible symptom was ("amps don't apply"), while the actual blocker sat in an inbound message nobody was reading. The wire-level DEBUG logging from #920 is what eventually exposed it — the `'Rejected'` CALLRESULT and the `transactionId: 2` in `MeterValues` were both only visible because every inbound/outbound CALL is now logged in full. When a charger rejects a command, read what the charger is _telling you_ in its own messages before changing what HSEM sends.
+
+**Test-timing gotcha:** a task from `asyncio.create_task()` does not run merely because the creating coroutine returns — it needs the event loop to get a turn. Since the mocked `websocket.send_str` (`AsyncMock`) never performs genuine suspension, a _single_ `await asyncio.sleep(0)` after the triggering call is enough to let the entire detached task run to completion before assertions — no need to loop or explicitly gather the task.
+
+## Max-Discharge-Power Write-Then-Undo Every Cycle (issue #939)
+
+**Real bug, confirmed via the physical register toggling 5000 W → 0 W every apply cycle (reported against #932's `safety_hold`).** `async_apply_battery_settings()` had two independent, unconditional writes to the same `cfg.huawei_solar_batteries_maximum_discharging_power` entity within a single call: an early block wrote the rated max (`get_max_discharge_power()`) unless the live EV was charging, then a later, separately-gated block computed the real `primary_battery_hold` / `relevant_evs` / `solar_charge_only` cap (often `0`) and wrote that too. Whenever a hold/cap condition was active, every cycle did write-rated-max → verify → write-0 → verify on real hardware before the cycle finished — plausibly explaining the reported overnight grid import alongside SoC decrease (the battery was briefly re-authorized to discharge at full power each cycle before being clamped back).
+
+**Fix:** collapsed to a single `cap_w` computation per cycle, defaulting to the rated max and only overridden by the hold/EV/solar-charge-only/SoC-guard logic when a cap condition applies (same condition as before, `recommendation not in (ForceBatteriesDischarge, ForceExport)` still excluded) — followed by exactly one `async_write_and_verify()` call. **Note the surviving asymmetry, preserved on purpose:** if the discharge entity is unconfigured, the plain/uncapped default path still aborts the whole `async_apply_battery_settings()` call (matches the old block's stricter behavior, since normal battery-settings enforcement has nothing to fall back to), while a hold/cap path with no configured entity just skips the write and continues (matches the old block's behavior, since there is nothing to enforce the cap with either way). Discriminated by whether `cap_reason` is `None`.
+
+**Separate, out-of-scope look-alike left untouched:** the wait-mode self-consumption surplus cap (`batteries_wait_mode` + `self_consumption_with_reserve`, further down the same function) computes and writes its own lower cap to the _same_ entity _after_ the working-mode `match` statement, independently of the block fixed here. This is structurally the same write-then-lower-write shape and predates #939, but issue #939 scoped the fix to `primary_battery_hold`/`relevant_evs`/`solar_charge_only` only — flag it if a future report describes toggling specifically during `self_consumption_with_reserve` wait slots.
+
+Tests: `tests/test_safety_gates.py::TestDischargePowerSingleWritePerCycle` (5 tests: safety_hold, blocked EV, solar-charge-only, normal/uncapped, and already-at-target no-op — each asserting the exact list of writes to the entity, not just the final value, since the pre-fix bug still passed a final-value-only assertion).
+
+## Hardware-Write Task Cancellation Race Could Strand a Working-Mode Transition (issue #951)
+
+**Real bug, confirmed via a production log (2026-09-08, HSEM v6.2.4) showing the inverter stuck in `maximise_self_consumption` for a full 15-minute slot after the recommendation had already changed to `batteries_charge_grid`.** `HSEMWorkingModeSensor._handle_coordinator_update()` unconditionally cancelled the in-flight `_async_on_coordinator_update()` task on every coordinator push, including the ones the dedicated 10s live-power tick (`coordinator_live_power.py::async_monitor_live_power`) fires as bounded corrective replans. `async_apply_battery_settings()` issues up to ~5 sequential hardware writes per cycle, each gated by a `DEFAULT_SETTLE_SECONDS = 10.0` wait inside `async_write_and_verify` (with up to 3 retries) — so a full write sequence can easily outlast the 10s tick interval. The working-mode select write is last in the chain (`applier.py`), making it the most exposed: earlier writes (e.g. max discharge power) had already landed on real hardware while the cancelled task never reached the working-mode write. Cancellation is deliberately silent (`_on_update_task_done` ignores `task.cancelled()` with no log line), which is why no HSEM warning/error appeared for the incident.
+
+**Fix:** mirrors the `_event_update_pending` coalescing pattern already used in `coordinator.py::_async_handle_update`, but applied one layer up, in the entity's task lifecycle rather than the coordinator's own cycle lock. `HSEMWorkingModeSensor._write_phase_active` is set for the full duration of `_async_apply_hardware_writes()` (via `try`/`finally`, so it clears on every exit path including cancellation). While set, `_handle_coordinator_update()` no longer calls `_cancel_update_task()` — it sets `_coordinator_update_pending = True` and returns, leaving the in-flight task alone. `_on_update_task_done()` checks that flag and starts exactly one follow-up task (against whatever is newest on `self.coordinator.data` by then) once the current sequence finishes, so the newer state is deferred, never dropped. Entity unload (`async_will_remove_from_hass`) is untouched — it still calls `_cancel_update_task()` directly and unconditionally, since that hard-cancel is a legitimate teardown safety path, not a routine replan.
+
+**Secondary bug, same report: `sensor.hsem_applier_status_sensor` showed `pending`/`total_writes: 0` moments after a confirmed real write.** `data.apply_summary = combined_summary` is the last line of `_async_apply_hardware_writes()`, mutating whichever `CoordinatorData` object the task captured at start — but the coordinator replaces `coordinator.data` wholesale every cycle, including the bounded live-power-tick replans that fire independently of how long the entity's write task takes. Even with the cancellation race fixed, a newer `CoordinatorData` can still be published (and read by `HSEMApplierStatusSensor`) before the entity's own write task for _that_ cycle has run — its `apply_summary` field starts at the dataclass default of `None` until something writes to it. **Fix:** `coordinator_cycle.py::_async_run_update_cycle` now seeds each new `CoordinatorData`'s `apply_summary` from `self.data.apply_summary` (the previous, still-live snapshot) instead of leaving it implicitly `None`. This makes the field carry forward by reference until a write task actually completes against a live snapshot and overwrites it — the status sensor always reflects the last _real_ write outcome, never a spurious "nothing happened yet" during a window where a write is legitimately still in flight against an older object. No change to `HSEMApplierStatusSensor` itself was needed; it already treats `apply_summary is None` as the correct "never written yet" case, which after this fix is only ever true before the very first hardware-write cycle of an HA session.
+
+**Test-design gotcha discovered while writing the e2e regression:** letting a coalesced follow-up task run to completion against the _same_ `CoordinatorData` object (unchanged `coordinator.data`) makes it a legitimate idempotent no-op pass — everything already matches, so it re-populates `data.apply_summary` with `SKIPPED` results and overwrites the original run's `OK` results (since the field is reassigned wholesale, not merged). A regression test asserting on `data.apply_summary` after also waiting for the follow-up task must capture the summary reference immediately after the _first_ task completes (synchronously, before the next `await` yields to the follow-up task) — see `tests/test_hardware_write_race_regression.py`.
+
+Tests: `tests/test_working_mode_task_lifecycle.py::TestWritePhaseCoalescing` (4 tests: flag lifecycle, mid-write push does not cancel, coalesced push starts exactly one follow-up task, unload still hard-cancels mid-write-phase), `tests/sensors/test_applier_status_carry_forward.py` (4 tests: carry-forward at the `CoordinatorData` level and at the sensor's `state`/`extra_state_attributes` level), `tests/test_hardware_write_race_regression.py` (1 end-to-end test: `batteries_charge_grid` survives a mid-sequence coordinator push and still lands `time_of_use_luna2000` + the force-charge TOU schedule, with only the true HA service-call/state-read boundary faked — every applier function runs for real).
+
+## Savings-Tracker Baseline Cost Is Now a Real Counterfactual, Not a Copy of Actual Import Cost (issue #962)
+
+**`baseline_cost_delta` in `accumulate_savings()` (`coordinator_tracking.py`) used to be `import_cost_delta` — the actual grid-import cost delta from `daily_tracker.actual.grid_import_cost`, which already reflects HSEM's own optimisation (including any avoided import from battery discharge, issue #960).** That made `today_baseline`/`total_baseline` on `sensor.hsem_savings_tracker_sensor` collapse toward the actual cost instead of representing "what a passive, battery-less installation would have paid" — the meaning the docstring already claimed. Flagged in #732, explicitly deferred out of #960/#961's scope.
+
+**Fix:** `baseline_cost_delta` is now computed independently, mirroring the exact elapsed-time-integration pattern used for `discharge_savings_delta` (#960) and `accumulate_forecast_actuals()` (`coordinator_tracking.py:111-118`): live `house_consumption_power_w` / `solar_production_power_w` integrated into kWh via `compute_accumulated_energy()` over the elapsed cycle time (own `SavingsTracker._last_baseline_sample_at` timestamp field, guarded with `math.isfinite` — first cycle after startup credits zero, matching the discharge pattern). `baseline_import_kwh = max(load_kwh − pv_kwh, 0)`, `baseline_export_kwh = max(pv_kwh − load_kwh, 0)`, `baseline_cost_delta = baseline_import_kwh × import_price − baseline_export_kwh × export_price` — unlike the old formula this **can go negative** (net PV-surplus revenue in the counterfactual), which is intentional per the issue's spec, not a clamp regression.
+
+**Dead code removed as a consequence:** `import_cost_delta` and the `SavingsTracker._last_import_cost` field it fed existed _only_ to compute the old (wrong) baseline formula — nothing else read either, so both were deleted rather than left dangling (would otherwise trip `ruff`/`vulture`). `actual_savings`/`missed_savings` (export revenue + charge savings + discharge savings, in `models/savings_tracker.py::accumulate()`) are unrelated and untouched — this issue is scoped to `baseline_cost_delta` only.
+
+**Test gotcha:** an existing persistence test (`tests/test_coordinator_tracking_savings.py::test_accumulate_savings_survives_simulated_restart`) called `accumulate_savings()` three times with an **identical** `now` timestamp and asserted `baseline_cost > 0.0` — that only worked under the old formula (driven by the daily tracker's cost delta, elapsed-time-independent). Under the real counterfactual, zero elapsed time between samples means zero baseline delta by construction, so the test had to start advancing `now` between cycles.
+
+Tests: `tests/test_coordinator_tracking_savings_baseline.py` (baseline exceeds the discharge-discounted actual cost, baseline matches actual with no PV/battery activity, PV surplus goes negative at the export price, first-cycle no-op, missing/NaN house-load or solar-production readings credit zero).
+
+## Solar-Corrector Cross-Restart Double-Counting Fixed by Gating on Its Own Persisted Watermark (issue #973)
+
+**`accumulate_forecast_actuals()` (`coordinator_tracking.py`) used to guard re-learning a finalised forecast-tracker record with a plain in-memory `set[datetime]` (`coordinator.py`'s `_solar_corrector_processed`).** That set was created empty in `__init__` and never seeded from persisted state, so it reset on every Home Assistant restart. Meanwhile `SolarForecastCorrector.mark_processed()` — the only method that advances the corrector's own persisted `_processed_through` watermark — was never called from production code at all, despite the watermark already being fully wired into `to_dict()`/`load_from_dict()` and restored by `HSEMSolarConfidenceSensor.async_added_to_hass()` (`custom_sensors/solar_confidence_sensor.py`). Net effect: every restart re-fed every already-learned, still-finalised `ForecastSlotRecord` that survived in the restored `forecast_tracker` into `update_hour()`/`update_residual()` a second time, double-counting those samples in the per-hour PV correction factors.
+
+**Fix (the "cleaner" option from the issue, not the minimal one):** dropped `_solar_corrector_processed` entirely — from `coordinator.py.__init__`, the `CoordinatorSharedState` protocol (`coordinator_state.py`), the `accumulate_forecast_actuals()` signature, and its `coordinator_cycle.py` call site. The loop in `accumulate_forecast_actuals()` now gates purely on `solar_corrector.processed_through` (`frec.start <= processed_through` → skip) and calls `solar_corrector.mark_processed(frec.start)` immediately after the `update_hour`/`update_residual` pair. Since `processed_through` is restored before the next update cycle runs, a restored corrector correctly skips every slot it already learned pre-restart — see `docs/forecast-accuracy-tracking.md` → "Reboot persistence" for the full restore chain.
+
+Test: `tests/test_coordinator_tracking_solar_corrector.py::test_restored_solar_corrector_does_not_relearn_finalised_slot` — learns one finalised slot, persists+restores the corrector into a brand-new instance (simulating a restart) against the _same_ forecast tracker still holding that finalised record, then asserts the per-hour history length stays at 1 (not 2) after a second `accumulate_forecast_actuals()` call.

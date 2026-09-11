@@ -77,6 +77,110 @@ def calculate_required_battery_until_solar(
     return result
 
 
+WAIT_MODE_RESERVE_DECAY_HOURS = 2.0
+"""Time window (hours) over which the wait-mode reserve ramps up to full
+strength as the plan's next committed battery action approaches.
+
+See :func:`calculate_required_battery_for_plan` (issue #954 follow-up).
+"""
+
+
+def calculate_required_battery_for_plan(
+    slots: list[PlannedSlot],
+    now: datetime,
+    current_capacity: float,
+) -> float | None:
+    """Derive the wait-mode reserve from the selected plan's SoC trajectory.
+
+    Unlike :func:`calculate_required_battery_until_solar`, which stops at the
+    first slot with *any* forecast PV surplus regardless of size, this reads
+    the already-simulated SoC trajectory of the *selected* plan
+    (``slot.estimated_battery_capacity_kwh``, populated by
+    :func:`~custom_components.hsem.planner.soc_simulation.simulate_soc` for
+    the winning candidate) and returns how far that trajectory dips below
+    ``current_capacity`` before the plan's next slot with an actual, solved
+    battery **action** — charge (grid or solar) or discharge — not just a
+    forecast surplus. A small or short-lived forecast surplus that the plan
+    does not actually charge from does not end the scan early, so the
+    reserve still protects the plan's very next committed discharge.
+
+    The scan stops at the first committed action rather than accumulating
+    through every future discharge slot up to the next charge (issue #942
+    follow-up): reactive replanning (interval tick, event-triggered, or the
+    10-second live-power monitor) re-derives this same reserve from the
+    then-current capacity before any later slot arrives, so protecting
+    slots beyond the very next one here would only lock up capacity for
+    house-load self-consumption hours before it's actually needed, without
+    adding real protection — the next replan supersedes this value long
+    before that later slot starts.
+
+    **Time-decayed reserve (issue #954 follow-up):** the full energy needed
+    for that next action is only protected in full once it's imminent. When
+    the next committed action is more than :data:`WAIT_MODE_RESERVE_DECAY_HOURS`
+    away, the reserve is 0 — self-consumption may use the entire current
+    surplus, trusting that one of the next several replans will re-derive a
+    tighter reserve long before the action actually starts. Inside that
+    window the reserve ramps up linearly to its full value exactly when the
+    action begins. Without this decay, a large discharge scheduled hours
+    away (e.g. an evening peak) would lock up nearly the whole battery for
+    self-consumption immediately, defeating the purpose of
+    ``self_consumption_with_reserve`` for the entire time in between.
+
+    Slots are sorted by start time before scanning, so calling code does not
+    need to guarantee chronological order.
+
+    Args:
+        slots: The selected plan's slots (already SoC-simulated).
+        now: Timezone-aware current datetime.
+        current_capacity: Currently available battery energy in kWh.
+
+    Returns:
+        Required reserve in kWh, or ``None`` when no future slots exist and
+        the reserve cannot be derived — callers should fall back to strict
+        Wait behaviour in that case.
+    """
+    future_slots = sorted(
+        (s for s in slots if as_tz(s.end, now.tzinfo) > now),
+        key=lambda s: s.start,
+    )
+    if not future_slots:
+        return None
+
+    min_capacity = current_capacity
+    next_action_start: datetime | None = None
+    for slot in future_slots:
+        min_capacity = min(min_capacity, slot.estimated_battery_capacity_kwh)
+        if slot.batteries_charged_kwh > 1e-9 or slot.batteries_discharged_kwh > 1e-9:
+            next_action_start = as_tz(slot.start, now.tzinfo)
+            break
+
+    full_reserve = max(current_capacity - min_capacity, 0.0)
+    time_factor = 1.0
+    hours_until_action = 0.0
+    if next_action_start is not None and full_reserve > 1e-9:
+        hours_until_action = max(
+            (next_action_start - now).total_seconds() / 3600.0, 0.0
+        )
+        time_factor = max(
+            0.0, min(1.0, 1.0 - hours_until_action / WAIT_MODE_RESERVE_DECAY_HOURS)
+        )
+
+    result = round(max(full_reserve * time_factor, 0.0), 3)
+    log_planner(
+        "debug",
+        "[disch] calculate_required_battery_for_plan  current=%.3f  "
+        "min_planned=%.3f  full_reserve=%.3f  hours_until_action=%.3f  "
+        "time_factor=%.3f  result=%.3f",
+        current_capacity,
+        min_capacity,
+        full_reserve,
+        hours_until_action,
+        time_factor,
+        result,
+    )
+    return result
+
+
 def apply_excess_export(
     slots: list[PlannedSlot],
     now: datetime,

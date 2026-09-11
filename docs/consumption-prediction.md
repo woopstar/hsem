@@ -61,10 +61,12 @@ For 15-minute slots ($S = 96$):
 | $0 \ldots 6S-1$ | 672   | one-hot $(\text{DOW}, \text{slot})$  | Day-of-week × 15-min slot                   |
 | $6S$, $6S+1$    | 2     | $\sin(\text{DOY}), \cos(\text{DOY})$ | Day-of-year seasonality                     |
 | $6S+2$          | 1     | $T$                                  | Outdoor temperature (°C), optional          |
-| $6S+3$          | 1     | $E_{t-1}$                            | Previous slot energy (sequential mode only) |
+| $6S+3$          | 1     | $W$                                  | Wind-chill index, optional (requires $T$)   |
+| $6S+4$          | 1     | $E_{t-1}$                            | Previous slot energy (sequential mode only) |
 
-Total: 674 (without temperature + sequential), 675 (with temperature),
-676 (with both).
+Total: 674 (none of the optional features), up to 677 when temperature,
+wind chill, and sequential are all enabled. Wind chill cannot be enabled
+without temperature — see "Forecast wind" below.
 
 ### Prediction (independent mode)
 
@@ -73,11 +75,14 @@ For a target slot $(\text{DOW} = d, \text{slot} = s)$ on day-of-year $\delta$:
 $$
 \hat{E}_{d,s} = \beta_{d,s} + \beta_{\sin} \cdot \sin\left(\frac{2\pi\delta}{365}\right)
 + \beta_{\cos} \cdot \cos\left(\frac{2\pi\delta}{365}\right)
-+ \beta_T \cdot T + \beta_{\text{lag}} \cdot E_{t-1}
++ \beta_T \cdot T + \beta_W \cdot W + \beta_{\text{lag}} \cdot E_{t-1}
 $$
 
-where $\beta_{d,s}$ is the fitted coefficient for that (DOW, slot) pair.
-The intercept term is zero (absorbed by the one-hot encoding).
+where $\beta_{d,s}$ is the fitted coefficient for that (DOW, slot) pair,
+and $W = w \cdot \max(0, T_{\text{ref}} - T)$ is the wind-chill index
+(wind speed $w$ in km/h, reference temperature $T_{\text{ref}}$ — see
+"Forecast wind" below). The intercept term is zero (absorbed by the
+one-hot encoding).
 
 ### Prediction (sequential mode)
 
@@ -96,6 +101,154 @@ $$
 where $f(\cdot)$ is the prediction function above and $E_{-1} = 0$.
 This captures intra-day momentum — a cooking spike at 08:00 naturally
 elevates 08:15's prediction.
+
+### Forecast temperature (optional, issue #918)
+
+By default, $T$ for every future slot is the single measured reading
+nearest to "now" (`hsem_ml_consumption_temperature_entity`), broadcast
+across the whole prediction horizon — the configured sensor supplies
+history, not a future weather forecast, so persisting the newest nearby
+reading is the safe default.
+
+When an optional `hsem_ml_consumption_weather_forecast_entity` (a HA
+`weather` entity) is also configured, each future slot instead uses a
+per-slot forecast temperature, linearly interpolated from the entity's
+hourly (or daily, as a fallback) forecast points to the planning slot's
+exact start time — including 15-minute slots. A genuine forecast value of
+$0\,^\circ\text{C}$ is valid data, never treated as missing. A slot falls
+back to the broadcast measured reading above when:
+
+- no weather forecast entity is configured, or the measured-temperature
+  feature itself is inactive (no `hsem_ml_consumption_temperature_entity`
+  or insufficient history) — forecast $T$ has no coefficient to feed in
+  that case;
+- the slot's start time falls outside the forecast's covered range (before
+  the earliest or after the latest forecast point — no extrapolation); or
+- the two forecast points bracketing the slot are more than 3 hours apart
+  (sparse/stale forecast data).
+
+This is purely an inference-time enhancement — historical training always
+uses the measured-temperature entity, unchanged. Forecast-vs-fallback
+per-slot usage counts are exposed as `ml_forecast_temperature_slots_used`
+and `ml_forecast_temperature_fallback_slots` attributes on
+`sensor.hsem_plan_explanation_sensor`.
+
+### Forecast wind (optional, issue #943)
+
+Wind speed independently drives heat loss through the building envelope,
+but only relative to how cold it already is — a warm windy day does not
+increase heating load. Enabling `hsem_ml_consumption_wind_chill_enabled`
+adds a single wind-chill index feature to the model:
+
+$$
+W = w \cdot \max(0, T_{\text{ref}} - T)
+$$
+
+where $T_{\text{ref}}$ (`hsem_ml_consumption_wind_chill_reference_temperature`,
+default 18 °C) is the balance-point temperature above which wind no longer
+matters. The $\max(0, \ldots)$ clamp means a warm+windy slot contributes
+exactly zero, regardless of wind speed.
+
+Wind chill requires the temperature feature to be active — the index
+cannot be computed without $T$ — and is deliberately **not** configured
+via a separate wind sensor. Both wind history (for training) and wind
+forecast (for future slots) are derived from the _same_
+`hsem_ml_consumption_weather_forecast_entity` already used for forecast
+temperature:
+
+- **History**: read from the weather entity's `wind_speed` attribute via
+  the recorder (most HA weather integrations update this attribute on
+  every poll, giving an ordinary attribute-history time series — no
+  dedicated anemometer sensor is required).
+- **Forecast**: the `wind_speed` field already present in each
+  `weather.get_forecasts` point, fetched in the same service call as
+  forecast temperature (no extra request), linearly interpolated to each
+  future slot's exact start time using the identical interpolation and
+  3-hour max-gap rules as forecast temperature above.
+- **Fallback**: a slot outside forecast coverage falls back to the nearest
+  historical wind reading, exactly mirroring the temperature fallback.
+
+Wind chill silently stays inactive (no error, coefficients simply never
+fit) whenever a dependency is missing: the flag is off, the temperature
+feature is inactive, no weather entity is configured, or the weather
+entity's wind-speed history is unavailable. Forecast-vs-fallback per-slot
+usage counts are exposed as `ml_forecast_wind_slots_used` and
+`ml_forecast_wind_fallback_slots` attributes on
+`sensor.hsem_plan_explanation_sensor`.
+
+#### Choosing the reference temperature
+
+`hsem_ml_consumption_wind_chill_reference_temperature` is the single most
+important tuning knob for this feature — it sets the outdoor temperature
+above which wind stops contributing to the model at all (the `max(0, …)`
+clamp). Get it roughly right and the feature captures real heat-loss
+behaviour; get it badly wrong and it either never fires (set too low) or
+fires on mild, windy-but-comfortable days (set too high).
+
+What it represents physically: your home's **balance point** — the
+outdoor temperature at which internal heat gains (occupants, appliances,
+solar gain through windows) roughly offset heat loss through the
+envelope, so no active heating is needed yet. Below it, the home is
+losing net heat, and wind-driven infiltration makes that loss worse
+proportional to wind speed. Above it, wind has no meaningful effect on
+heating-related consumption (and this model does not distinguish a
+cooling/AC-driven wind effect — the clamp assumes wind never _reduces_
+consumption).
+
+Three ways to set it, roughly in order of effort:
+
+1. **Use the default (18 °C / 65 °F)** — the standard base temperature
+   used for heating-degree-day calculations in most temperate climates.
+   A reasonable starting point for a typical, moderately insulated home.
+2. **Adjust for your home's insulation** — well-insulated modern homes
+   with good airtightness typically don't need heating until it's colder
+   outside, so a _lower_ reference (e.g. 15–16 °C) fits better; older or
+   draughtier homes usually need heating earlier, so a _higher_ reference
+   (e.g. 19–20 °C) fits better.
+3. **Use your own empirical threshold** — if you already have a personal
+   rule of thumb for "it's cold enough that wind makes a difference"
+   (for example, a heating-boost automation that only activates below a
+   certain outdoor temperature, the way the discussion in issue #943
+   describes), that threshold is a good starting point — it is exactly
+   the same quantity this setting represents, calibrated by your own
+   experience living in the house.
+
+There's no in-app way to auto-detect the "right" value, but there is a
+concrete way to validate a choice after the fact: `sensor.hsem_prediction_accuracy`
+exposes a `load_mae_kwh` attribute (`utils/prediction_tracker.py`) — a
+rolling mean absolute error between predicted and actual house load. To
+tune the reference temperature:
+
+1. Note the current `load_mae_kwh` before changing the setting.
+2. Leave it running through a stretch of weather that actually includes
+   both cold-and-calm and cold-and-windy slots — you can't learn anything
+   from a mild week, since the feature has nothing to correct for.
+3. Compare `load_mae_kwh` afterward. A lower value means the setting fits
+   your home's heat-loss behaviour better; a higher (or unchanged) value
+   means it isn't helping — try a different reference temperature or
+   check whether your weather entity's wind-speed history is actually
+   populated (`ml_forecast_wind_slots_used` / `ml_forecast_wind_fallback_slots`
+   on `sensor.hsem_plan_explanation_sensor`).
+
+This is directional evidence, not a controlled experiment — `load_mae_kwh`
+reflects the whole load model, not the wind-chill term in isolation, so
+other sources of noise (occupancy changes, appliance use) are mixed in
+too. Give it more than a few days before drawing a conclusion.
+
+### Unit safety (issue #945)
+
+`hsem_ml_consumption_temperature_entity` accepts any `sensor`-domain
+entity, including template sensors with no `device_class` (so Home
+Assistant cannot auto-convert their state). Historical reads via
+`HistoryReader.read_instantaneous_history()` normalize each state's
+declared `unit_of_measurement` to °C using Home Assistant's own
+`TemperatureConverter`, so a °F-reporting sensor is converted rather than
+silently treated as Celsius. A sensor with no declared unit is assumed to
+already report in °C (logged, not rejected) — this matches the historical
+behaviour for entities that were already correctly configured. Since the
+wind-chill index above multiplies wind speed by a temperature difference,
+this also protects wind-chill predictions from a mis-unit temperature
+sensor, not just the plain temperature feature.
 
 ### Fitting
 
@@ -141,6 +294,8 @@ the battery SoC simulation to reality.
 - **Day-of-week awareness**: Monday ≠ Saturday
 - **Seasonality**: winter mornings get higher predictions than summer
 - **Temperature**: cold/hot outdoor temps → higher heating/cooling load
+- **Wind chill (optional)**: cold _and_ windy slots predict higher than
+  equally cold but calm ones
 - **No custom sensors**: reads directly from recorder database
 
 ---

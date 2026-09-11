@@ -29,6 +29,41 @@ def _predictor(**kwargs):
         pytest.skip(f"numpy/HA not available in test environment: {exc}")
 
 
+def _wind_chill_predictor():
+    """Predictor trained where wind is the only signal at a fixed cold
+    temperature: calm days average 1.0 kWh, windy days 3.0 kWh. All samples
+    share one (DOW, slot) group (day offsets are multiples of 7) so stage-2
+    fits the wind-chill coefficient on the residual after the group mean.
+    """
+    p = _predictor(
+        decay_days=60.0,
+        alpha=0.01,
+        slots_per_day=96,
+        use_temperature=True,
+        use_wind_chill=True,
+        wind_chill_reference_temperature=18.0,
+    )
+    history: list[tuple[datetime, int, float]] = []
+    temps: dict[datetime, float] = {}
+    winds: dict[datetime, float] = {}
+    for d, energy, wind in [
+        (7, 1.0, 0.0),
+        (14, 3.0, 40.0),
+        (21, 1.0, 0.0),
+        (28, 3.0, 40.0),
+        (35, 1.0, 0.0),
+        (42, 3.0, 40.0),
+        (49, 1.0, 0.0),
+        (56, 3.0, 40.0),
+    ]:
+        ts, slot, _ = _mk(d, 0, energy)
+        history.append((ts, slot, energy))
+        temps[ts] = 0.0
+        winds[ts] = wind
+    p.train(history, NOW, temps, winds)
+    return p
+
+
 class TestConsumptionPredictor:
     """Tests for NumPy ridge-regression ConsumptionPredictor."""
 
@@ -260,7 +295,9 @@ class TestConsumptionPredictor:
             _slot: int,
             _temperature: float | None,
             prev_energy: float,
+            wind_speed: float | None = None,
         ) -> float:
+            del wind_speed
             seen.append((timestamp.hour, timestamp.minute, timestamp.fold, prev_energy))
             return prev_energy + 1.0
 
@@ -299,7 +336,9 @@ class TestConsumptionPredictor:
             _slot: int,
             _temperature: float | None,
             prev_energy: float,
+            wind_speed: float | None = None,
         ) -> float:
+            del wind_speed
             return prev_energy + 1.0
 
         monkeypatch.setattr(predictor, "_predict_from_features", fake_predict)
@@ -344,3 +383,66 @@ class TestConsumptionPredictor:
         assert predictor.trained is True
         assert predictor.last_fit_samples == 2
         assert math.isfinite(predictor.predict(0, 0, NOW, float("nan")))
+
+    # ------------------------------------------------------------------
+    # Wind-chill feature (issue #943)
+    # ------------------------------------------------------------------
+
+    def test_wind_chill_disabled_by_default_ignores_wind_speed(self) -> None:
+        p = _predictor(
+            decay_days=14.0, alpha=0.1, slots_per_day=96, use_temperature=True
+        )
+        history = [_mk(d, 0, 1.0) for d in range(1, 15)]
+        temps = {ts: 5.0 for ts, _slot, _energy in history}
+        p.train(history, NOW, temps)
+
+        assert p.use_wind_chill is False
+        without_wind = p.predict(0, 0, NOW, temperature=5.0)
+        with_wind = p.predict(0, 0, NOW, temperature=5.0, wind_speed=999.0)
+        assert without_wind == pytest.approx(with_wind)
+
+    def test_wind_chill_increases_prediction_for_windy_cold_slots(self) -> None:
+        """The whole point of the feature: at a fixed cold temperature,
+        higher wind must raise the predicted load."""
+        p = _wind_chill_predictor()
+        assert p.trained
+
+        calm_prediction = p.predict(0, 0, NOW, temperature=0.0, wind_speed=0.0)
+        windy_prediction = p.predict(0, 0, NOW, temperature=0.0, wind_speed=40.0)
+        assert windy_prediction > calm_prediction
+
+    def test_wind_chill_clamped_to_zero_above_reference_temperature(self) -> None:
+        """Above the balance-point temperature, wind must not matter --
+        max(0, reference - temperature) clamps the index to zero."""
+        p = _wind_chill_predictor()
+
+        warm_calm = p.predict(0, 0, NOW, temperature=25.0, wind_speed=0.0)
+        warm_windy = p.predict(0, 0, NOW, temperature=25.0, wind_speed=100.0)
+        assert warm_calm == pytest.approx(warm_windy)
+
+    def test_wind_change_at_same_physical_slot_triggers_refit(self) -> None:
+        """A revised wind reading at an existing sample counts as a changed
+        fingerprint, mirroring the existing temperature/lag revision gate."""
+        p = _predictor(
+            decay_days=60.0,
+            alpha=0.1,
+            slots_per_day=96,
+            retrain_min_new_samples=1,
+            use_temperature=True,
+            use_wind_chill=True,
+        )
+        history = [_mk(2, 0, 1.0), _mk(1, 1, 2.0)]
+        temps = {ts: 0.0 for ts, _slot, _energy in history}
+        winds = {ts: 10.0 for ts, _slot, _energy in history}
+        p.train(history, NOW, temps, winds)
+        first_fit_time = p.last_fit_time
+
+        # Unchanged inputs: the cheap gate keeps the same fit.
+        p.train(history, NOW + timedelta(minutes=1), temps, winds)
+        assert p.last_fit_time == first_fit_time
+
+        # Only the wind reading changes at the same physical slot/energy.
+        revised_winds = dict(winds)
+        revised_winds[history[0][0]] = 80.0
+        p.train(history, NOW + timedelta(minutes=2), temps, revised_winds)
+        assert p.last_fit_time == NOW + timedelta(minutes=2)

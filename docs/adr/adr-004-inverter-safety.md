@@ -67,20 +67,17 @@ Every update cycle, the system classifies overall health into one of three state
 
 **Rationale:** The battery SoC is the single most critical value for safe operation. Without it, the planner cannot know whether to charge or discharge, and the applier cannot verify that battery limits are respected. House load is equally critical because the planner must know whether the house is importing or exporting to decide battery action.
 
-### Layer 2: Read-Only / Dry-Run Gates
+### Layer 2: Read-Only Gate
 
-Two independent mechanisms block all hardware writes at the user's discretion:
+- **Read-only mode** — toggled via `switch.hsem_read_only` (`cfg.read_only`). When active, the applier bypasses all hardware writes. Intended for monitoring the planner without taking operational control, and used internally during testing.
 
-- **Read-only mode** — toggled via `switch.hsem_read_only`. When active, the applier bypasses all hardware writes. Intended for monitoring the planner without taking operational control.
-- **Dry-run mode** — set programmatically via `PlannerInput.is_read_only`. Same effect, used internally during testing.
-
-These override all other layers — even if the system is healthy and the recommendation is correct, writes are blocked.
+This overrides all other layers — even if the system is healthy and the recommendation is correct, writes are blocked.
 
 ### Layer 3: Write-Verify Applier
 
 The `WriteVerifyApplier` wraps every hardware write with a read-back confirmation loop:
 
-1. Check `is_read_only` → skip if True
+1. Check `cfg.read_only` → skip if True
 2. Check degraded mode → skip if Error
 3. Check inverter unloading → skip if True
 4. Write the desired value via the Huawei Solar service call

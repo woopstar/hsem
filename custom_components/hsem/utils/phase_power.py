@@ -25,6 +25,17 @@ if TYPE_CHECKING:
 #: Nominal number of mains phases used by the per-phase fuse model.
 PHASE_COUNT = 3
 
+#: No real EVSE starts a charging session below this current, per IEC 61851
+#: (also the practical floor for go-e and most other charger vendors).  A
+#: configured ``charger_min_power_w`` is a single-phase watt figure by
+#: convention (see ``EVConfig.charger_min_power_w``); dividing it across a
+#: ``three_phase_balanced`` charger's phases can compute a lower current that
+#: no EVSE will actually accept, so every site that turns a configured
+#: minimum-power threshold into an executable amp floor must go through
+#: :func:`ev_min_start_current_a`, never :func:`charger_min_power_to_current_a`
+#: directly (issue #968).
+EV_MIN_START_CURRENT_A = 6
+
 #: Signed live per-phase grid power in Watts, ``(phase_a, phase_b, phase_c)``.
 PhasePowers = tuple[float, float, float]
 
@@ -134,6 +145,23 @@ def charger_min_power_to_current_a(
     return int(math.ceil((power_w - 1e-9) / step_power_w))
 
 
+def ev_min_start_current_a(power_w: float, topology: str | None) -> int:
+    """Return the executable minimum start current for a configured threshold.
+
+    Wraps :func:`charger_min_power_to_current_a` with a hard floor at
+    :data:`EV_MIN_START_CURRENT_A`: no real EVSE starts below 6 A, so a
+    low, zero, or phase-naive configured ``charger_min_power_w`` can never
+    compute an unusable sub-6A minimum, regardless of the charger's phase
+    topology (issue #968). Every site that turns a configured minimum-power
+    threshold into an executable amp floor must call this, not
+    :func:`charger_min_power_to_current_a` directly.
+    """
+    return max(
+        charger_min_power_to_current_a(power_w, topology),
+        EV_MIN_START_CURRENT_A,
+    )
+
+
 def normalize_ev_phase_topology(value: object) -> str:
     """Return a supported EV phase topology for any stored config value.
 
@@ -234,11 +262,9 @@ class PhaseChargeLimits:
     primary_charge_power_w: float
     """Safe grid-charge maximum-power command (W), floored to a 100 W step."""
 
-    base_phase_power_w: PhasePowers
-    """Live phase power with Huawei's own measured contribution removed."""
-
     predicted_phase_power_w: PhasePowers
-    """``base_phase_power_w`` plus the commanded charge, evenly split."""
+    """Live phase power, with Huawei's own contribution removed, plus the
+    commanded charge, evenly split."""
 
 
 def phase_powers_valid(
@@ -322,6 +348,5 @@ def compute_phase_charge_limits(
     )
     return PhaseChargeLimits(
         primary_charge_power_w=dc_target_w,
-        base_phase_power_w=tuple(base),  # type: ignore[arg-type]
         predicted_phase_power_w=predicted,  # type: ignore[arg-type]
     )

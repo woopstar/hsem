@@ -259,6 +259,13 @@ def build_sensor_config(
         )
         or 0.0
     )
+    cfg.export_fee_per_kwh = (
+        convert_to_float(get_config_value(config_entry, "hsem_export_fee_per_kwh"))
+        or 0.0
+    )
+    cfg.curtail_pv_below_export_min_price = convert_to_boolean(
+        get_config_value(config_entry, "hsem_curtail_pv_below_export_min_price")
+    )
 
     # First EV charger
     ev = EVChargerConfig()
@@ -505,11 +512,6 @@ def build_sensor_config(
         _s2_stub_min if _s2_stub_min is not None else 2.0
     )
 
-    # EV auto-Full on negative price (issue #609)
-    cfg.ev_auto_full_negative_price = convert_to_boolean(
-        get_config_value(config_entry, "hsem_ev_auto_full_negative_price")
-    )
-
     # Daily plan-vs-actual tracking — optional cumulative energy meter entities.
     cfg.grid_import_energy_entity = _optional_entity(
         get_config_value(config_entry, "hsem_grid_import_energy_entity")
@@ -540,6 +542,20 @@ def build_sensor_config(
     )
     cfg.ml_consumption_temperature_entity = _optional_entity(
         get_config_value(config_entry, "hsem_ml_consumption_temperature_entity")
+    )
+    cfg.ml_consumption_weather_forecast_entity = _optional_entity(
+        get_config_value(config_entry, "hsem_ml_consumption_weather_forecast_entity")
+    )
+    cfg.ml_consumption_wind_chill_enabled = bool(
+        get_config_value(config_entry, "hsem_ml_consumption_wind_chill_enabled")
+    )
+    _wind_chill_ref_temp = convert_to_float(
+        get_config_value(
+            config_entry, "hsem_ml_consumption_wind_chill_reference_temperature"
+        )
+    )
+    cfg.ml_consumption_wind_chill_reference_temperature = (
+        _wind_chill_ref_temp if _wind_chill_ref_temp is not None else 18.0
     )
 
     # Consumption weights

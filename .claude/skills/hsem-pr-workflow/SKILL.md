@@ -30,6 +30,20 @@ Or run all at once:
 
 Verify: `git --no-optional-locks status` shows only intended changes.
 
+## Translation Sync
+
+Before opening a PR, run the `hsem-translation-sync` skill if any user-facing
+string changed (entity name, config/options flow label, selector, error,
+service):
+
+```bash
+python3 scripts/validate_translations.py
+```
+
+Must report 0 missing keys, 0 stale keys, 0 placeholder mismatches across
+`da.json`, `de.json`, and `es.json`. See `hsem-translation-sync` for the fix
+workflow and terminology glossary.
+
 ## Documentation Update
 
 Before opening a PR, check and update ALL documentation that describes changed behavior:
@@ -41,7 +55,8 @@ Before opening a PR, check and update ALL documentation that describes changed b
 - [ ] `.github/memories.md` — if canonical patterns or module map changed
 - [ ] `README.md` — if user-facing features changed
 - [ ] `docs/huawei_entities.md` — if new Huawei entities wired
-- [ ] `translations/en.json` — if user-facing strings changed
+- [ ] `translations/{en,da,de,es}.json` — if user-facing strings changed (see
+      `hsem-translation-sync`)
 
 **A PR is not done until all affected docs are consistent with the implementation.**
 

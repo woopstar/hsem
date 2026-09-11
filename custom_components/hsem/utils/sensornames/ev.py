@@ -1,21 +1,17 @@
-"""EV-related sensor, switch, number, and time name generators.
+"""EV-related sensor, switch, number, and time unique-ID and entity-ID generators.
 
-Provides getter functions for EV charging, EV optimal charging plan
-(primary and second), EV target SoC (primary and second), EV force discharge,
-EV smart charging switches (primary and second), EV force charge now switches
-(primary and second), and EV deadline time entities (primary and second)
-names, unique IDs, and entity IDs.
+Display names for these entities come from Home Assistant's translation
+system (``_attr_translation_key`` + ``translations/*.json``), not from
+functions in this module. Provides getter functions for EV charging, EV
+optimal charging plan (primary and second), EV target SoC (primary and
+second), EV force discharge, EV smart charging switches (primary and
+second), EV force charge now switches (primary and second), and EV
+deadline time entities (primary and second) unique IDs and entity IDs.
 """
 
 from homeassistant.util import slugify as s
 
 from custom_components.hsem.const import DOMAIN
-
-
-# EV Charging Active Sensor
-def get_ev_charging_sensor_name() -> str:
-    """Return the display name for the EV-charging-active diagnostic sensor."""
-    return "EV Charging Active"
 
 
 def get_ev_charging_sensor_unique_id(entry_id: str) -> str:
@@ -32,12 +28,6 @@ def get_ev_charging_sensor_entity_id() -> str:
     return f"sensor.{s(f'{DOMAIN}_ev_charging_sensor')}"
 
 
-# EV Optimal Charging Plan Sensor
-def get_ev_optimal_charging_plan_sensor_name() -> str:
-    """Return the display name for the EV optimal charging plan sensor."""
-    return "EV Optimal Charging Plan"
-
-
 def get_ev_optimal_charging_plan_sensor_unique_id(entry_id: str) -> str:
     """Return a unique ID for the EV optimal charging plan sensor.
 
@@ -50,12 +40,6 @@ def get_ev_optimal_charging_plan_sensor_unique_id(entry_id: str) -> str:
 def get_ev_optimal_charging_plan_sensor_entity_id() -> str:
     """Return the entity_id for the EV optimal charging plan sensor."""
     return f"sensor.{s(f'{DOMAIN}_ev_optimal_charging_plan')}"
-
-
-# EV Second Optimal Charging Plan Sensor
-def get_ev_second_optimal_charging_plan_sensor_name() -> str:
-    """Return the display name for the second EV optimal charging plan sensor."""
-    return "EV 2 Optimal Charging Plan"
 
 
 def get_ev_second_optimal_charging_plan_sensor_unique_id(entry_id: str) -> str:
@@ -72,12 +56,6 @@ def get_ev_second_optimal_charging_plan_sensor_entity_id() -> str:
     return f"sensor.{s(f'{DOMAIN}_ev_second_optimal_charging_plan')}"
 
 
-# EV Charger Calculated Power Sensor
-def get_ev_charger_calculated_power_sensor_name() -> str:
-    """Return the display name for the EV charger calculated power sensor."""
-    return "EV Charger Calculated Power"
-
-
 def get_ev_charger_calculated_power_sensor_unique_id(entry_id: str) -> str:
     """Return a unique ID for the EV charger calculated power sensor.
 
@@ -90,12 +68,6 @@ def get_ev_charger_calculated_power_sensor_unique_id(entry_id: str) -> str:
 def get_ev_charger_calculated_power_sensor_entity_id() -> str:
     """Return the entity_id for the EV charger calculated power sensor."""
     return f"sensor.{s(f'{DOMAIN}_ev_charger_calculated_power')}"
-
-
-# EV Charger Current Limit Sensor
-def get_ev_charger_current_limit_sensor_name() -> str:
-    """Return the display name for the EV charger current limit sensor."""
-    return "EV Charger Current Limit"
 
 
 def get_ev_charger_current_limit_sensor_unique_id(entry_id: str) -> str:
@@ -112,12 +84,6 @@ def get_ev_charger_current_limit_sensor_entity_id() -> str:
     return f"sensor.{s(f'{DOMAIN}_ev_charger_current_limit')}"
 
 
-# EV Second Charger Current Limit Sensor
-def get_ev_second_charger_current_limit_sensor_name() -> str:
-    """Return the display name for the second EV charger current limit sensor."""
-    return "EV 2 Charger Current Limit"
-
-
 def get_ev_second_charger_current_limit_sensor_unique_id(entry_id: str) -> str:
     """Return a unique ID for the second EV charger current limit sensor.
 
@@ -130,12 +96,6 @@ def get_ev_second_charger_current_limit_sensor_unique_id(entry_id: str) -> str:
 def get_ev_second_charger_current_limit_sensor_entity_id() -> str:
     """Return the entity_id for the second EV charger current limit sensor."""
     return f"sensor.{s(f'{DOMAIN}_ev_second_charger_current_limit')}"
-
-
-# EV Second Charger Calculated Power Sensor
-def get_ev_second_charger_calculated_power_sensor_name() -> str:
-    """Return the display name for the second EV charger calculated power sensor."""
-    return "EV 2 Charger Calculated Power"
 
 
 def get_ev_second_charger_calculated_power_sensor_unique_id(entry_id: str) -> str:

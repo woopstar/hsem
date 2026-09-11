@@ -123,7 +123,6 @@ def _make_uniform_input(
         excess_export_enabled=excess_export_enabled,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
         house_power_includes_ev=house_power_includes_ev,
-        is_read_only=True,
     )
 
 
@@ -631,7 +630,6 @@ class TestGridChargeAccounting:
             price_points=prices,
             solcast_slots=solar,
             months_winter=[1, 2, 3, 4, 10, 11, 12],
-            is_read_only=True,
         )
         result = run_planner(inp)
         charge_slots = [
@@ -1258,7 +1256,6 @@ class TestMissingDataSentinel:
             price_points=partial_prices,
             solcast_slots=solar,
             months_winter=[1, 2, 3, 4, 10, 11, 12],
-            is_read_only=True,
         )
         result = run_planner(inp)
         # At least one of hours 0-5 must be in missing_inputs

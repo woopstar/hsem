@@ -165,12 +165,12 @@ class TestEntityDescriptions:
 
     def test_time_description_has_description_field(self) -> None:
         desc = HSEMTimeEntityDescription(
-            key="hsem_batteries_enable_batteries_schedule_1_start",
-            name="S1 Start",
-            description="Start time for schedule 1.",
+            key="hsem_ev_deadline_time",
+            name="EV Deadline",
+            description="Deadline time for EV charging.",
             default_value="07:00:00",
         )
-        assert desc.description == "Start time for schedule 1."
+        assert desc.description == "Deadline time for EV charging."
         assert desc.default_value == "07:00:00"
 
     def test_time_description_default_value_defaults_to_zero(self) -> None:

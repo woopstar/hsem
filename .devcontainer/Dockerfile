@@ -32,7 +32,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/in
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /root/.bashrc
 
 # croc installation
-RUN curl https://getcroc.com | bash
+RUN curl https://getcroc.com | bash || true
 
 # Copy devcontainer helper scripts
 COPY scripts/devcontainer-agent-bridge.sh /usr/local/bin/devcontainer-agent-bridge.sh

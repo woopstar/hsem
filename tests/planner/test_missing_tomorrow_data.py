@@ -199,7 +199,6 @@ def _make_48h_input(
         excess_export_enabled=False,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
         house_power_includes_ev=True,
-        is_read_only=True,
     )
 
 
@@ -356,7 +355,6 @@ class TestCompleteTomorrowData:
             consumption_averages=_consumption_averages(),
             price_points=_today_price_points(),
             solcast_slots=_pv_slots(),
-            is_read_only=True,
         )
         result = run_planner(inp)
         # 24h horizon: no tomorrow slots, so tomorrow missing lists must be empty
@@ -683,7 +681,6 @@ class TestDataQualityAsDict:
             consumption_averages=_consumption_averages(),
             price_points=_today_price_points(),
             solcast_slots=_pv_slots(),
-            is_read_only=True,
         )
         result = run_planner(inp)
         d = result.data_quality.as_dict()

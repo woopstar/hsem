@@ -20,17 +20,24 @@ def grid_cash_flow_cost(
     export_price: float,
     *,
     export_min_price: float = 0.0,
+    export_fee_per_kwh: float = 0.0,
 ) -> float:
     """Return auditable signed meter cash flow; positive is net cost.
 
     Non-finite rates carry no economic authority and are treated as ``0.0``.
     An export price below *export_min_price* earns nothing, mirroring the
-    MILP's battery-origin export block.
+    MILP's battery-origin export block. *export_fee_per_kwh* (retailer
+    margin/balancing fees, issue #925) is subtracted from whatever export
+    price survives the floor check — never applied to a slot the floor
+    already zeroed, or a zeroed slot would report a manufactured negative
+    revenue for export that was never counted in the first place.
     """
     effective_import = import_price if math.isfinite(import_price) else 0.0
     effective_export = export_price if math.isfinite(export_price) else 0.0
     if export_min_price > 1e-9 and effective_export < export_min_price:
         effective_export = 0.0
+    else:
+        effective_export -= export_fee_per_kwh
     return (
         max(grid_import_kwh, 0.0) * effective_import
         - max(grid_export_kwh, 0.0) * effective_export
@@ -41,6 +48,7 @@ def slot_grid_cash_flow_cost(
     slot: PlannedSlot,
     *,
     export_min_price: float = 0.0,
+    export_fee_per_kwh: float = 0.0,
 ) -> float:
     """Return one slot's signed meter cash flow from final grid fields."""
     return grid_cash_flow_cost(
@@ -49,6 +57,7 @@ def slot_grid_cash_flow_cost(
         slot.price.import_price,
         slot.price.export_price,
         export_min_price=export_min_price,
+        export_fee_per_kwh=export_fee_per_kwh,
     )
 
 
@@ -200,6 +209,7 @@ def deferred_export_price_by_slot(
     usable_kwh: float,
     max_charge_per_slot: float,
     now: datetime | None = None,
+    export_fee_per_kwh: float = 0.0,
 ) -> list[float | None]:
     """Compute the deferred-export price for every slot index.
 
@@ -218,6 +228,10 @@ def deferred_export_price_by_slot(
         usable_kwh: Battery usable capacity (kWh) — the maximum headroom.
         max_charge_per_slot: Per-slot charge power limit (kWh/slot).
         now: Optional clock used to skip past slots.
+        export_fee_per_kwh: Retailer margin/balancing fee per kWh exported
+            (issue #925), netted out of the raw export price before it is
+            tracked as a refill price — must match whatever fee the caller
+            applies to its own export-revenue term.
 
     Returns:
         A list parallel to *slots* with ``float | None`` entries.
@@ -245,6 +259,8 @@ def deferred_export_price_by_slot(
             continue
         if surplus[i] > absorbable + 1e-9:
             p = slots[i].price.export_price
-            if not math.isnan(p) and (best is None or p < best):
-                best = p
+            if not math.isnan(p):
+                p -= export_fee_per_kwh
+                if best is None or p < best:
+                    best = p
     return result

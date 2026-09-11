@@ -108,15 +108,6 @@ class ForecastSlotRecord:
             and self.actual_coverage_seconds >= duration_seconds - 1.0
         )
 
-    @property
-    def prediction_eligible(self) -> bool:
-        """Return whether all frozen PredictionTracker inputs are available."""
-        return (
-            self.accuracy_eligible
-            and self.forecast_soc_pct is not None
-            and self.forecast_action is not None
-        )
-
     def accumulate_pv(self, energy_kwh: float) -> None:
         """Add *energy_kwh* of measured PV to the slot accumulator.
 
@@ -275,12 +266,19 @@ class ForecastTracker:
 
     Usage
     -----
-    1. Each coordinator cycle, call :meth:`get_or_create_record` for the
-       current slot, then :meth:`accumulate_actuals` with the instantaneous
-       power readings and elapsed time since the last cycle.
-    2. After a slot's end time has passed, call :meth:`finalise_record` to
-       lock the comparison and compute error metrics.
-    3. Read :attr:`summary` for the aggregated error snapshot.
+    1. Each planner cycle, call :meth:`get_or_create_record` for every slot
+       in the horizon, then :meth:`set_forecasts` with ``observed_at=now``
+       to progressively refine each slot's forecast baseline until it
+       physically starts.
+    2. Each coordinator cycle, call :meth:`reconcile_unfinalised_layout` to
+       discard any unfinalised record the current slot layout no longer
+       matches, then :meth:`freeze_forecasts` to lock in the freshest
+       pre-start baseline, then :meth:`accumulate_power_interval` to
+       attribute the elapsed interval's actual PV/load energy by physical
+       overlap.
+    3. Call :meth:`finalise_past_records` once a slot's end time has passed
+       to lock the comparison and compute error metrics.
+    4. Read :attr:`summary` for the aggregated error snapshot.
     """
 
     def __init__(self, max_slots: int = 96) -> None:
@@ -423,6 +421,16 @@ class ForecastTracker:
     ) -> bool:
         """Discard an incompatible live layout while keeping finalised history.
 
+        Called by ``coordinator_tracking.py`` in both
+        ``accumulate_forecast_actuals`` (guarding elapsed-interval
+        accumulation against the layout the previous cycle committed) and
+        ``register_forecasts_from_planner`` (guarding forecast registration
+        against the layout this cycle's planner run just produced) — see
+        issue #972.  Without this, a slot-layout change (interval
+        reconfiguration, DST transition, horizon change) would let
+        ``get_or_create_record()`` silently reuse a stale record, since it
+        matches by ``start`` only.
+
         Returns ``True`` when active/future records did not match the current
         recommendation starts and ends.  Callers use that signal to reset
         instantaneous-power endpoints so no interval bridges the change.
@@ -444,6 +452,12 @@ class ForecastTracker:
 
     def finalise_record(self, start: datetime) -> bool:
         """Finalise the record at *start* if it exists and is not yet finalised.
+
+        Intentionally not called in production: ``finalise_past_records``
+        (below) bulk-finalises every due record per cycle, which is what the
+        coordinator needs.  This single-record variant is kept as public API
+        surface for direct/test callers (issue #972 Gap 4 — see the note in
+        ``vulture_whitelist.py``).
 
         Args:
             start: Slot start time.
@@ -477,7 +491,17 @@ class ForecastTracker:
         return count
 
     def freeze_forecasts(self, now: datetime) -> int:
-        """Freeze baselines for slots that have physically started."""
+        """Freeze baselines for slots that have physically started.
+
+        Called every cycle by
+        ``coordinator_tracking.py::accumulate_forecast_actuals``, right
+        before it attributes elapsed-interval energy via
+        :meth:`accumulate_power_interval`.  ``register_forecasts_from_planner``
+        passes ``observed_at=now``, so a slot's baseline is progressively
+        refined by every planner cycle until this method locks in the
+        freshest pre-start estimate, instead of whatever was known when the
+        record was first created (issue #972).
+        """
         count = 0
         now_key = _utc_key(now)
         for rec in self._records:
@@ -550,6 +574,13 @@ class ForecastTracker:
 
         Long gaps are rejected rather than treating a stale power sample as
         representative.  The return value is the allocated number of seconds.
+
+        Called every cycle by
+        ``coordinator_tracking.py::accumulate_forecast_actuals`` so a
+        delayed cycle (HA restart, long-running cycle, missed tick) that
+        spans a slot boundary splits its energy proportionally instead of
+        crediting 100% of it to whichever slot merely contains ``now``
+        (issue #972).
         """
         start_key = _utc_key(start)
         end_key = _utc_key(end)

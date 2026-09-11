@@ -41,36 +41,39 @@ def _configured_battery_device_ids(cfg: SensorConfig) -> list[str]:
 def _wait_mode_self_consumption_cap_w(
     battery_capacity_kwh: float,
     required_capacity_kwh: float,
-    slot_hours: float,
     max_discharge_power_w: int,
 ) -> int:
     """Return the discharge power cap for wait-mode self-consumption.
 
-    When the battery holds more energy than the planner has reserved for future
-    expensive periods, the surplus may be used for normal household
-    self-consumption.  The cap is the power required to consume exactly that
-    surplus over the slot duration; the inverter will only draw what the house
-    actually needs, so the battery will not discharge faster than the surplus
-    allows.
+    This is an SoC-floor stop-discharge gate, not a rate spread over the slot
+    (issue #942): while the battery holds more energy than the planner has
+    reserved for future expensive periods, the house may draw at the full
+    rated/configured discharge rate, so a real load spike is served from the
+    battery instead of the grid. Once capacity reaches the reserve floor,
+    discharge is stopped so the reserve is protected.
+
+    The previous formula (``surplus_kwh / slot_hours``) spread the surplus
+    evenly across the whole slot, producing low average wattages that could
+    not track actual instantaneous load — a stove switching on above that
+    average cap pulled the extra power from the grid even though the battery
+    still had usable surplus. This gate is re-evaluated every apply cycle, so
+    the discharge stops as soon as live capacity reaches the reserve.
 
     Args:
         battery_capacity_kwh: Current usable battery energy above the discharge
             floor (kWh).
         required_capacity_kwh: Energy the planner has reserved for future use
             (kWh).
-        slot_hours: Duration of the current recommendation slot in hours.
         max_discharge_power_w: Maximum discharge power supported by the battery
             pack (W).
 
     Returns:
-        Discharge power cap in watts.  ``0`` when there is no surplus above the
-        reserve or the slot duration is invalid.
+        ``max_discharge_power_w`` when there is any surplus above the reserve,
+        ``0`` otherwise.
     """
-    surplus_kwh = max(battery_capacity_kwh - required_capacity_kwh, 0.0)
-    if surplus_kwh <= 1e-9 or slot_hours <= 1e-9:
+    if battery_capacity_kwh - required_capacity_kwh <= 1e-9:
         return 0
-    cap_w = int(surplus_kwh / slot_hours * 1000.0)
-    return min(cap_w, max_discharge_power_w)
+    return max_discharge_power_w
 
 
 def _is_positive_finite_number(value: object) -> bool:

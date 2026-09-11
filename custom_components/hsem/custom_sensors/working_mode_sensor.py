@@ -51,7 +51,6 @@ from custom_components.hsem.utils.misc import (
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_working_mode_sensor_entity_id,
-    get_working_mode_sensor_name,
     get_working_mode_sensor_unique_id,
 )
 
@@ -105,12 +104,25 @@ class HSEMWorkingModeSensor(
 
         self._attr_unique_id = get_working_mode_sensor_unique_id(config_entry.entry_id)
         self.entity_id = get_working_mode_sensor_entity_id()
-        self._name = get_working_mode_sensor_name()
 
         # Tracks the latest background update task so it can be cancelled on
         # unload.  Only the most-recent task is retained; prior tasks will
         # have already completed or been replaced.
         self._update_task: asyncio.Task | None = None
+
+        # True while ``_update_task`` is inside ``_async_apply_hardware_writes``
+        # actively issuing hardware writes (issue #951). While set, a routine
+        # coordinator push must not cancel the task — a full write sequence
+        # can outlast the 10s live-power tick, and cancelling mid-sequence can
+        # strand the inverter after only the earlier writes landed. The push
+        # is coalesced into ``_coordinator_update_pending`` instead.
+        self._write_phase_active: bool = False
+        # Set when a coordinator push arrives while ``_write_phase_active`` is
+        # True. Consumed by ``_on_update_task_done`` to start exactly one
+        # follow-up task against the latest coordinator data once the
+        # in-flight write sequence finishes, so the newer state is deferred
+        # rather than lost.
+        self._coordinator_update_pending: bool = False
 
         # Live phase-aware grid-charge transition tracking (issue #831).
         # Cleared/rearmed per-slot; see _primary_grid_charge_transition_status()
@@ -126,12 +138,6 @@ class HSEMWorkingModeSensor(
     # ------------------------------------------------------------------
     # HA entity properties
     # ------------------------------------------------------------------
-
-    @property
-    @override
-    def name(self) -> str:
-        """Return the display name."""
-        return self._name
 
     @property
     @override
@@ -427,8 +433,14 @@ class HSEMWorkingModeSensor(
         uncaught exceptions inside ``_async_on_coordinator_update()`` are
         recorded without breaking the task lifecycle.
 
-        Cancelled tasks are ignored because cancellation is expected when a
-        newer coordinator push arrives or the entity is unloaded.
+        Cancelled tasks are ignored because cancellation is expected when the
+        entity is unloaded (a routine coordinator push no longer cancels a
+        task once it has entered its write phase — see
+        ``_handle_coordinator_update``).
+
+        If a coordinator push was coalesced into ``_coordinator_update_pending``
+        while this task was writing, start exactly one follow-up task now so
+        the deferred state is applied instead of dropped (issue #951).
         """
         if task.cancelled():
             return
@@ -436,6 +448,10 @@ class HSEMWorkingModeSensor(
         exc = task.exception()
         if exc is not None:
             _LOGGER.error("Unhandled exception in working-mode update task: %s", exc)
+
+        if self._coordinator_update_pending:
+            self._coordinator_update_pending = False
+            self._start_update_task()
 
     # ------------------------------------------------------------------
     # Coordinator callback
@@ -446,11 +462,29 @@ class HSEMWorkingModeSensor(
         """Receive a coordinator push and schedule hardware writes + state flush.
 
         Cancels any still-pending previous task before creating the new one so
-        that only one update is in-flight at a time.  The task reference is
-        stored on ``_update_task`` so it can be cancelled on unload.
+        that only one update is in-flight at a time — but only while that task
+        has not yet started issuing hardware writes. Once ``_update_task`` has
+        entered its write phase (``_write_phase_active``), a routine replan
+        push (e.g. the 10s live-power tick) must not cancel it mid-command —
+        earlier writes in the sequence may have already landed on real
+        hardware, and cancelling before the working-mode write can strand the
+        inverter in the wrong mode (issue #951). The push is coalesced instead
+        via ``_coordinator_update_pending`` and applied by a follow-up task
+        once the in-flight sequence completes.
+
+        This does not weaken entity unload: ``async_will_remove_from_hass``
+        calls ``_cancel_update_task()`` directly and unconditionally.
         """
+        if self._write_phase_active:
+            self._coordinator_update_pending = True
+            return
+
         # Cancel any still-running task from the previous coordinator cycle.
         self._cancel_update_task()
+        self._start_update_task()
+
+    def _start_update_task(self) -> None:
+        """Create ``_update_task`` and register its completion callback."""
         task = self.hass.async_create_task(
             self._async_on_coordinator_update(),
             name="hsem_working_mode_update",
@@ -491,6 +525,13 @@ class HSEMWorkingModeSensor(
         A real-time slot override is applied via :func:`resolve_current_recommendation`
         before issuing the hardware commands.
 
+        ``_write_phase_active`` is set for the duration of this call (issue
+        #951) so ``_handle_coordinator_update`` knows a routine coordinator
+        push must not cancel the enclosing task once it reaches here — doing
+        so mid-sequence can strand the inverter after only the earlier writes
+        landed. The flag is cleared via ``finally`` on every exit path,
+        including cancellation (e.g. entity unload).
+
         Args:
             data: The latest :class:`CoordinatorData` snapshot from the coordinator,
                 or ``None`` when the coordinator has no data yet.
@@ -498,88 +539,95 @@ class HSEMWorkingModeSensor(
         if data is None:
             return
 
-        cfg = data.cfg
-        live = data.live
+        self._write_phase_active = True
+        try:
+            cfg = data.cfg
+            live = data.live
 
-        if cfg is None or live is None:
-            self._clear_primary_grid_charge_transition()
-            return
+            if cfg is None or live is None:
+                self._clear_primary_grid_charge_transition()
+                return
 
-        hourly_rec = data.hourly_recommendation
+            hourly_rec = data.hourly_recommendation
 
-        if hourly_rec is None:
-            self._clear_primary_grid_charge_transition()
+            if hourly_rec is None:
+                self._clear_primary_grid_charge_transition()
 
-        # Error-mode emergency-stop ownership release (issue #840).
-        self._release_primary_grid_charge_ownership_if_safe(cfg, live)
+            # Error-mode emergency-stop ownership release (issue #840).
+            self._release_primary_grid_charge_ownership_if_safe(cfg, live)
 
-        # Apply real-time override to the active slot.
-        if hourly_rec is not None:
-            resolve_current_recommendation(
-                hourly_rec,
-                live,
-                cfg,
-            )
-            # Sync data.state so the sensor's state property reflects the
-            # resolved recommendation (e.g. ev_smart_charging) rather than
-            # the raw planner output (e.g. batteries_charge_solar).
-            data.state = hourly_rec.recommendation
-            _LOGGER.debug(
-                "Current hourly recommendation: state=%s  "
-                "ev_charger_calculated_power=%dW  "
-                "ev_second_charger_calculated_power=%dW  "
-                "ev_total_planned_load_kwh=%.3f  "
-                "ev_planned_load_kwh=%.3f  ev_accounted_load_kwh=%.3f",
-                hourly_rec.recommendation,
-                hourly_rec.ev_charger_calculated_power,
-                hourly_rec.ev_second_charger_calculated_power,
-                hourly_rec.ev_total_planned_load_kwh,
-                hourly_rec.ev_planned_load_kwh,
-                hourly_rec.ev_accounted_load_kwh,
-            )
-
-        # Gate hardware writes on read_only and degraded mode.
-        writes_safe = hardware_writes_allowed(live.degraded_mode)
-        combined_summary = CycleApplySummary()
-        if cfg.read_only:
-            _LOGGER.debug("Hardware writes SKIPPED — read_only=True", "warning")
-        elif not writes_safe:
-            _LOGGER.debug(
-                f"Hardware writes BLOCKED — degraded mode: {live.degraded_mode.value}. Missing: {live.missing_entities_list}",
-                "warning",
-            )
-            # Narrow downward-only exception (issue #840) — see
-            # GridChargeEmergencyStopMixin for the ownership/retry contract.
-            emergency_summary = await self._async_run_error_mode_emergency_stop(
-                self, cfg, live, hourly_rec
-            )
-            combined_summary.results.extend(emergency_summary.results)
-        else:
-            inv_summary = await async_apply_inverter_power_control(self, cfg, live)
-            combined_summary.results.extend(inv_summary.results)
-
-            # Block battery writes if the inverter write already failed.
-            if (
-                inv_summary.overall_status != ApplyStatus.FAILED
-                and hourly_rec is not None
-            ):
-                transition_reference_w, transition_timed_out = (
-                    self._primary_grid_charge_transition_status(cfg, live, hourly_rec)
-                )
-                bat_summary = await async_apply_battery_settings(
-                    self,
-                    cfg,
-                    live,
+            # Apply real-time override to the active slot.
+            if hourly_rec is not None:
+                resolve_current_recommendation(
                     hourly_rec,
-                    data.current_required_battery,
-                    primary_grid_charge_transition_reference_w=transition_reference_w,
-                    primary_grid_charge_transition_timed_out=transition_timed_out,
+                    live,
+                    cfg,
                 )
-                combined_summary.results.extend(bat_summary.results)
+                # Sync data.state so the sensor's state property reflects the
+                # resolved recommendation (e.g. ev_smart_charging) rather than
+                # the raw planner output (e.g. batteries_charge_solar).
+                data.state = hourly_rec.recommendation
+                _LOGGER.debug(
+                    "Current hourly recommendation: state=%s  "
+                    "ev_charger_calculated_power=%dW  "
+                    "ev_second_charger_calculated_power=%dW  "
+                    "ev_total_planned_load_kwh=%.3f  "
+                    "ev_planned_load_kwh=%.3f  ev_accounted_load_kwh=%.3f",
+                    hourly_rec.recommendation,
+                    hourly_rec.ev_charger_calculated_power,
+                    hourly_rec.ev_second_charger_calculated_power,
+                    hourly_rec.ev_total_planned_load_kwh,
+                    hourly_rec.ev_planned_load_kwh,
+                    hourly_rec.ev_accounted_load_kwh,
+                )
 
-        # Persist the apply summary onto the coordinator data so the status
-        # sensor and extra_state_attributes can surface it to HA.
-        data.apply_summary = combined_summary
+            # Gate hardware writes on read_only and degraded mode.
+            writes_safe = hardware_writes_allowed(live.degraded_mode)
+            combined_summary = CycleApplySummary()
+            if cfg.read_only:
+                _LOGGER.debug("Hardware writes SKIPPED — read_only=True", "warning")
+            elif not writes_safe:
+                _LOGGER.debug(
+                    f"Hardware writes BLOCKED — degraded mode: {live.degraded_mode.value}. Missing: {live.missing_entities_list}",
+                    "warning",
+                )
+                # Narrow downward-only exception (issue #840) — see
+                # GridChargeEmergencyStopMixin for the ownership/retry contract.
+                emergency_summary = await self._async_run_error_mode_emergency_stop(
+                    self, cfg, live, hourly_rec
+                )
+                combined_summary.results.extend(emergency_summary.results)
+            else:
+                inv_summary = await async_apply_inverter_power_control(self, cfg, live)
+                combined_summary.results.extend(inv_summary.results)
+
+                # Block battery writes if the inverter write already failed.
+                if (
+                    inv_summary.overall_status != ApplyStatus.FAILED
+                    and hourly_rec is not None
+                ):
+                    transition_reference_w, transition_timed_out = (
+                        self._primary_grid_charge_transition_status(
+                            cfg, live, hourly_rec
+                        )
+                    )
+                    bat_summary = await async_apply_battery_settings(
+                        self,
+                        cfg,
+                        live,
+                        hourly_rec,
+                        data.current_required_battery,
+                        wait_mode_reserve_kwh=data.current_wait_mode_reserve,
+                        primary_grid_charge_transition_reference_w=transition_reference_w,
+                        primary_grid_charge_transition_timed_out=transition_timed_out,
+                    )
+                    combined_summary.results.extend(bat_summary.results)
+
+            # Persist the apply summary onto the coordinator data so the status
+            # sensor and extra_state_attributes can surface it to HA.
+            data.apply_summary = combined_summary
+        finally:
+            self._write_phase_active = False
 
     # ------------------------------------------------------------------
     # Legacy compatibility

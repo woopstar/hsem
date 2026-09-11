@@ -129,7 +129,6 @@ def _make_48h_input_with_day_offsets(
         excess_export_price_threshold=0.10,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
         house_power_includes_ev=True,
-        is_read_only=True,
     )
 
 
@@ -386,7 +385,6 @@ class TestPlannerMultiDayPriceIsolation:
             excess_export_price_threshold=0.10,
             months_winter=[1, 2, 3, 4, 10, 11, 12],
             house_power_includes_ev=True,
-            is_read_only=True,
         )
 
         result = run_planner(inp)

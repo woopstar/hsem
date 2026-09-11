@@ -150,8 +150,9 @@ HSEM predicts house load for each slot. Two modes are available (toggled via
 - **Legacy (default):** Weighted average across four rolling windows (1d, 3d,
   7d, 14d) with IQR outlier detection. Requires HSEM custom sensor entities.
 - **ML (optional):** Ridge regression on recorder history with day-of-week,
-  day-of-year seasonality, and optional outdoor temperature. No custom
-  sensors needed.
+  day-of-year seasonality, and optional outdoor temperature (plus an
+  optional wind-chill index derived from the same weather forecast
+  entity). No custom sensors needed.
 
 Regardless of mode, the planner receives a per-hour `HourlyConsumptionAverage`:
 
@@ -276,6 +277,7 @@ cycle — today's live values are still the latest single reading per cycle.
 | `excess_export_price_threshold`      | Auto-calculated | Computed at runtime from battery depreciation settings (purchase price, expected cycles, usable capacity) via `calculate_recommended_threshold()`.                                                                                                                                                                                                                                                                                                                                                                                 |
 | `export_min_price`                   | `0.0`           | Minimum export price for intentional battery-to-grid discharge. The inverter no longer throttles the grid feed-in limit for positive prices; surplus PV export is always allowed (issue #767). Negative export prices still trigger a physical block because exporting then costs money.                                                                                                                                                                                                                                           |
 | `battery_export_min_price`           | `0.0`           | Per-slot hard floor for intentional battery-to-grid export (issue #752). When > 0 and a slot's raw `export_price` is strictly below this value, the MILP caps `ed[t]` so the battery can only serve house load (no grid export) for that slot — `force_batteries_discharge` is never labelled there. Reaching the threshold does NOT auto-trigger export; the optimizer still decides. Applies only to intentional battery-to-grid export, not to normal battery self-consumption, PV export, or PV charging. Set to 0 to disable. |
+| `export_fee_per_kwh`                 | `0.0`           | Retailer margin/balancing fee per kWh exported (issue #925), netted out of the export price everywhere export profitability is decided (applier physical block, MILP objective, cost function) — but never applied to `export_min_price`/`battery_export_min_price` floor comparisons, which stay on the raw price. A raw price that is positive but net-negative after this fee is treated like a negative price, so PV export gets physically curtailed instead of exported at a loss.                                           |
 
 The reserve uses one checkpoint for every slot in a contiguous forecast
 PV-surplus run. That checkpoint follows the run's demand window—immediately
@@ -459,9 +461,27 @@ recommendation it is not changed by later rules in the same layer.
 > **Wait mode behaviour:** the `batteries_wait_mode` recommendation normally keeps the
 > battery idle. When `hsem_batteries_wait_mode_behavior` is set to
 > `self_consumption_with_reserve`, the applier switches the inverter to
-> `MaximizeSelfConsumption` and caps discharge power so only surplus energy above
-> the planner's required reserve is used. This reduces unnecessary grid import
-> while still preserving capacity for future scheduled discharge windows.
+> `MaximizeSelfConsumption`. Discharge is gated by an SoC floor, not a rate cap
+> (issue #942): while the battery holds any surplus above the reserve, the house
+> may draw at the full rated/configured discharge rate — so a real load spike is
+> served from the battery instead of the grid — and once capacity reaches the
+> reserve floor, discharge stops. This applies to the normal case where the plan
+> held the battery fully idle for this slot, not just an edge case (issue #954) —
+> a genuine "Wait" slot always meets that hold condition, so the reserve-floor
+> decision must run instead of the hold default, not only when unheld. This
+> reduces unnecessary grid import while still preserving capacity for future
+> scheduled discharge windows. The reserve is
+> derived from the **selected plan's own simulated SoC trajectory** (issue #914) —
+> how far it dips before its next actual solved charge — not from a raw forecast
+> PV-surplus scan, so a small or short-lived forecast surplus no longer lets the
+> battery discharge energy the plan needs for a later expensive period. If no
+> reliable reserve can be derived, the applier falls back to strict Wait for that
+> slot. The reserve also **decays with time** (issue #956): the plan's next
+> committed charge/discharge is only protected in full once it's imminent — a
+> large discharge scheduled hours away no longer locks up nearly the whole
+> battery for self-consumption right now; the reserve ramps up linearly over
+> the last two hours before that action, trusting the next replan to
+> re-tighten it as the action approaches.
 
 **Discharge concentration** (`concentrate_discharge_on_expensive_slots`) runs after the
 seasonal fill but before candidate generation. It re-evaluates all discharge-mode
@@ -875,6 +895,17 @@ battery-destined export revenue on slots blocked by
 money, the applier still writes a physical watt limit to block all
 grid export, including surplus PV.
 
+**Export fee (`export_fee_per_kwh`, issue #925):** the raw market export
+price is not necessarily net revenue — retailer margin and balancing fees
+can make a positive market price a real loss. `export_fee_per_kwh`
+(default `0.0`) is subtracted from the export price everywhere export
+profitability is decided (the applier's negative-price physical block, the
+MILP objective's export-revenue and terminal-SoC terms, and the cost
+function's mirrored terms), so a positive-but-net-negative price is treated
+exactly like a negative raw price. It does **not** change the
+`export_min_price`/`battery_export_min_price` floor comparisons above,
+which stay on the raw price.
+
 ### Conversion loss compatibility field
 
 Primary efficiency is fully represented in physical grid flows:
@@ -1011,13 +1042,17 @@ unsafe or the system is in a degraded state.
 
 ### Degraded mode levels
 
+`DegradedMode` (`utils/degraded_mode.py`) has three values:
+
 | Mode       | Hardware writes         | Trigger                                                       |
 | ---------- | ----------------------- | ------------------------------------------------------------- |
-| `Normal`   | Allowed                 | All inputs present and valid                                  |
+| `OK`       | Allowed                 | All inputs present and valid                                  |
 | `Degraded` | Allowed (with warnings) | Non-critical data missing (e.g. tomorrow's prices)            |
 | `Error`    | **Blocked**             | Critical data missing (battery SoC, house load, working mode) |
-| `ReadOnly` | **Blocked**             | `is_read_only = True` in config or `PlannerInput`             |
-| `DryRun`   | **Blocked**             | Dry-run mode active                                           |
+
+Read-only mode is an independent gate, not a `DegradedMode` value: the
+applier checks `cfg.read_only` (`switch.hsem_read_only`) separately and
+blocks writes regardless of the degraded-mode result.
 
 ### Critical vs. non-critical missing data
 
@@ -1055,7 +1090,7 @@ runs from a fresh snapshot.
 The write-verify applier (`WriteVerifyApplier`) enforces these gates
 before any Huawei Solar service call:
 
-1. Checks `is_read_only` — skip writes if `True`.
+1. Checks `cfg.read_only` — skip writes if `True`.
 2. Checks degraded mode — skip writes in `Error` mode.
 3. Verifies the inverter is not unloading.
 4. After writing, reads back the entity state to confirm the change applied.

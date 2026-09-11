@@ -127,7 +127,6 @@ def _make_ev_input(
         solcast_slots=pv,
         months_winter=[1, 2, 3, 4, 10, 11, 12],
         excess_export_enabled=False,
-        is_read_only=True,
         # Primary EV
         ev_planned_load_enabled=ev_enabled,
         ev_planned_load_connected=ev_connected,

@@ -87,7 +87,6 @@ def _make_boundary_input() -> PlannerInput:
         excess_export_price_threshold=0.10,
         months_winter=_MONTHS_WINTER,
         house_power_includes_ev=True,
-        is_read_only=True,
     )
 
 
