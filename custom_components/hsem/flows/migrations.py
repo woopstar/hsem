@@ -54,6 +54,17 @@ _V3_DEPRECATED_KEYS: frozenset[str] = frozenset(
     | {f"hsem_charge_rate_override_{bucket}" for bucket in _CHARGE_RATE_BUCKETS}
 )
 
+# Fixed battery discharge/charge schedules were confirmed inert whenever MILP
+# is active (the default planner path) and removed entirely in issue #860 —
+# the schedule-consuming heuristic candidates were already retired, so
+# schedule-derived recommendations never reached the final plan. Drop the
+# now-dead enable/start/end keys during v4 migration.
+_V4_DEPRECATED_KEYS: frozenset[str] = frozenset(
+    {f"hsem_batteries_enable_batteries_schedule_{n}" for n in (1, 2, 3)}
+    | {f"hsem_batteries_enable_batteries_schedule_{n}_start" for n in (1, 2, 3)}
+    | {f"hsem_batteries_enable_batteries_schedule_{n}_end" for n in (1, 2, 3)}
+)
+
 # New keys introduced in v2 that did not exist in v1.  When
 # migrating a v1 entry these are backfilled with their defaults.
 _V2_NEW_KEY_DEFAULTS: dict[str, Any] = {
@@ -160,6 +171,43 @@ def _remove_v3_charge_rate_registry_entries(hass: HomeAssistant, entry_id: str) 
         if (
             entity_entry.platform == DOMAIN
             and entity_entry.domain == "number"
+            and entity_entry.unique_id in retired_unique_ids
+        ):
+            registry.async_remove(entity_entry.entity_id)
+
+
+def _migrate_v3_to_v4(values: dict[str, Any]) -> dict[str, Any]:
+    """Remove persisted values for the retired fixed battery schedules."""
+    return {
+        key: value for key, value in values.items() if key not in _V4_DEPRECATED_KEYS
+    }
+
+
+@callback
+def _remove_v4_battery_schedule_registry_entries(
+    hass: HomeAssistant, entry_id: str
+) -> None:
+    """Remove registry rows for the nine retired battery-schedule entities.
+
+    Three ``batteries_schedule_{1,2,3}`` switches and their six start/end
+    time entities — dead since issue #860 confirmed fixed battery schedules
+    are inert whenever MILP is active, and removed entirely in issue #873.
+    """
+    registry = er.async_get(hass)
+    retired_switch_ids = {
+        f"{DOMAIN}_{entry_id}_{DOMAIN}_batteries_enable_batteries_schedule_{n}_switch"
+        for n in (1, 2, 3)
+    }
+    retired_time_ids = {
+        f"{DOMAIN}_{entry_id}_{DOMAIN}_batteries_enable_batteries_schedule_{n}_{edge}_time"
+        for n in (1, 2, 3)
+        for edge in ("start", "end")
+    }
+    retired_unique_ids = retired_switch_ids | retired_time_ids
+    for entity_entry in list(er.async_entries_for_config_entry(registry, entry_id)):
+        if (
+            entity_entry.platform == DOMAIN
+            and entity_entry.domain in ("switch", "time")
             and entity_entry.unique_id in retired_unique_ids
         ):
             registry.async_remove(entity_entry.entity_id)

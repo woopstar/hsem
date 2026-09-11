@@ -18,10 +18,9 @@ HSEM is a modular, secure, and highly configurable Home Assistant integration th
 
 1. **Remove any previous Huawei Solar Battery Optimization Project integrations.**
 2. **Install HSEM** via HACS or manually.
-3. **Configure your sensors** for solar battery, inverter, grid, and EV charger (if present).
-4. **Set up battery schedules** in HSEM (do not use Fusion Solar app for scheduling).
-5. **Let HSEM run for at least 14 days** to collect historical data for optimal performance.
-6. **Monitor the Working Mode Sensor** for system status and recommendations.
+3. **Configure your sensors** for solar battery, inverter, grid, and EV charger (if present) — do not use the Fusion Solar app for scheduling; HSEM's planner drives charge/discharge decisions automatically.
+4. **Let HSEM run for at least 14 days** to collect historical data for optimal performance.
+5. **Monitor the Working Mode Sensor** for system status and recommendations.
 
 > **Tip:** New user? Enable **Read-Only** mode to safely observe what HSEM would do before letting it control your system.
 
@@ -48,7 +47,7 @@ reference for the full entity-to-device mapping.
 
 - **Dynamic Grid Export/Import Management** — avoids export at negative prices, forces charging at negative import prices.
 - **EV Charging Optimization** — smart TOU mode during EV charging, prevents battery drain into EV unless configured.
-- **Battery Scheduling** — up to three configurable discharge schedules with price-difference thresholds and depreciation-aware economics.
+- **MILP-Optimal Battery Planning** — a globally optimal charge/discharge plan is computed every cycle from price, solar, and consumption forecasts; no manual schedules to configure.
 - **Excess Battery Export** — automatically exports excess battery capacity when profitable, differentiating solar-charged vs grid-charged energy.
 - **Consumption Forecasting** — legacy weighted-average (1d/3d/7d/14d with IQR outlier detection) or ML ridge regression.
 - **Solar Forecast Integration** — Solcast PV forecasts for today and tomorrow.
@@ -89,7 +88,7 @@ any discharge.
 
 ### Should I configure time-of-use (TOU) settings in the Fusion Solar app?
 
-**No.** HSEM calculates and manages all battery schedules automatically. Any time slots in the Fusion Solar app will be overwritten.
+**No.** HSEM calculates and manages your battery's charge/discharge behavior automatically. Any time slots in the Fusion Solar app will be overwritten.
 
 ### How does HSEM interact with Fusion Solar time slots?
 
@@ -140,7 +139,7 @@ HSEM enters a "Missing Entities Input" state with a clear error description. No 
 Every update cycle, the sensor:
 
 1. **Fetches configuration & sensor states** — battery, inverter, grid prices, solar production, EV charger.
-2. **Performs pre-calculations** — net consumption, battery capacity, weighted consumption forecasts, solar forecast, hourly net consumption, battery schedules.
+2. **Performs pre-calculations** — net consumption, battery capacity, weighted consumption forecasts, solar forecast, hourly net consumption.
 3. **Applies optimization strategy** — determines the best action per hour (Force Export, Charge Solar/Grid, EV Smart Charging, Discharge, Wait).
 4. **Applies working mode & TOU periods** — sets battery mode and updates TOU periods if not in read-only mode.
 5. **Updates state & attributes** — exposes hourly calculations, recommendations, and schedule status.
@@ -152,16 +151,6 @@ Every update cycle, the sensor:
 - **Do not configure schedules in the Fusion Solar app.** HSEM overwrites them.
 - **Ensure all required sensors are available and correctly configured.**
 - **Allow HSEM to collect 14 days of data** before expecting optimal results.
-
----
-
-## Battery Schedules
-
-Define up to three discharge schedules with time windows and minimum price differences. HSEM automatically calculates required battery capacity and finds optimal charging times before each discharge.
-
-**Example:** Discharge 17:00–21:00 if the price difference exceeds your configured threshold.
-
-> See [How to Calculate the Minimum Charging Price](https://github.com/woopstar/hsem/wiki/How-to-Calculate-the-Minimum-Charging-Price-for-a-Battery-Schedule) for battery depreciation economics.
 
 ---
 

@@ -55,9 +55,12 @@ from custom_components.hsem.flows.migrations import (  # noqa: F401 — re-expor
     _V1_TO_V2_KEY_RENAMES,
     _V2_NEW_KEY_DEFAULTS,
     _V3_DEPRECATED_KEYS,
+    _V4_DEPRECATED_KEYS,
     _migrate_v1_to_v2,
     _migrate_v2_to_v3,
+    _migrate_v3_to_v4,
     _remove_v3_charge_rate_registry_entries,
+    _remove_v4_battery_schedule_registry_entries,
 )
 from custom_components.hsem.flows.months import get_months_schema, validate_months_input
 from custom_components.hsem.flows.ocpp import (
@@ -98,7 +101,7 @@ _LOGGER = logging.getLogger(__name__)
 class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: ignore[reportGeneralTypeIssues]  # HA ConfigFlow class hierarchy triggers false-positive on MRO
     """Config flow for HSEM."""
 
-    VERSION = 3
+    VERSION = 4
 
     async def async_migrate_entry(
         self, hass: HomeAssistant, config_entry: ConfigEntry
@@ -151,6 +154,12 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
             options = _migrate_v2_to_v3(options)
             _remove_v3_charge_rate_registry_entries(hass, config_entry.entry_id)
             migrated_version = 3
+
+        if migrated_version == 3:
+            data = _migrate_v3_to_v4(data)
+            options = _migrate_v3_to_v4(options)
+            _remove_v4_battery_schedule_registry_entries(hass, config_entry.entry_id)
+            migrated_version = 4
 
         if migrated_version != original_version:
             hass.config_entries.async_update_entry(

@@ -1,4 +1,4 @@
-# How to Calculate the Minimum Charging Price for a Battery Schedule
+# How to Calculate the Minimum Charging Price for Your Battery
 
 When using a battery system, it's crucial to consider the cost of wear and tear associated with charging and discharging the battery. This cost is referred to as **depreciation per kWh**, and understanding it allows you to determine the minimum price difference (charging vs. discharging) that makes it economically viable to charge the battery.
 
@@ -104,7 +104,7 @@ $$
 
 ## HSEM Integration
 
-HSEM uses a round-trip cycle-cost formula in the **Excess Battery Export** feature and battery schedule economics. The recommended threshold is calculated automatically during configuration using the battery purchase price, expected cycles, capacity loss, usable capacity, efficiency, and grid-fee inputs you provide.
+HSEM uses a round-trip cycle-cost formula in the planner's cost function and the **Excess Battery Export** feature. The recommended threshold is calculated automatically during configuration using the battery purchase price, expected cycles, capacity loss, usable capacity, efficiency, and grid-fee inputs you provide.
 
 Let:
 
