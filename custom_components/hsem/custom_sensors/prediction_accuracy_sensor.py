@@ -27,6 +27,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_prediction_accuracy_sensor_entity_id,
@@ -65,6 +66,7 @@ class HSEMPredictionAccuracySensor(
         """
         HSEMCoordinatorEntity.__init__(self, coordinator)
         HSEMEntity.__init__(self, config_entry)
+        self._hsem_device = HSEMDevice.FORECAST
         self._attr_unique_id = get_prediction_accuracy_sensor_unique_id(
             config_entry.entry_id
         )

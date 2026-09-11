@@ -35,6 +35,7 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.sensornames.ocpp import (
@@ -193,6 +194,9 @@ class HSEMOCPPChargerStatusSensor(
 
         self._config_entry = config_entry
         self._charger_index = charger_index
+        self._hsem_device = (
+            HSEMDevice.EV_SECONDARY if charger_index == 2 else HSEMDevice.EV_PRIMARY
+        )
         self._attr_unique_id = get_ocpp_charger_status_sensor_unique_id(
             config_entry.entry_id, charger_index=charger_index
         )
@@ -347,6 +351,9 @@ class HSEMOCPPChargerPowerSensor(
 
         self._config_entry = config_entry
         self._charger_index = charger_index
+        self._hsem_device = (
+            HSEMDevice.EV_SECONDARY if charger_index == 2 else HSEMDevice.EV_PRIMARY
+        )
         self._attr_unique_id = get_ocpp_charger_power_sensor_unique_id(
             config_entry.entry_id, charger_index=charger_index
         )
@@ -449,6 +456,9 @@ class HSEMOCPPChargerInfoSensor(
 
         self._config_entry = config_entry
         self._charger_index = charger_index
+        self._hsem_device = (
+            HSEMDevice.EV_SECONDARY if charger_index == 2 else HSEMDevice.EV_PRIMARY
+        )
         self._attr_unique_id = get_ocpp_charger_info_sensor_unique_id(
             config_entry.entry_id, charger_index=charger_index
         )
@@ -561,6 +571,9 @@ class HSEMOCPPChargerSessionsSensor(
 
         self._config_entry = config_entry
         self._charger_index = charger_index
+        self._hsem_device = (
+            HSEMDevice.EV_SECONDARY if charger_index == 2 else HSEMDevice.EV_PRIMARY
+        )
         self._attr_unique_id = get_ocpp_charger_sessions_sensor_unique_id(
             config_entry.entry_id, charger_index=charger_index
         )

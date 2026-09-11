@@ -19,6 +19,41 @@ HSEM exposes these entity types:
 
 ---
 
+## Devices (issue #875)
+
+Entities are split across 7 Home Assistant devices instead of one, so each
+subsystem gets its own device page and can be scoped independently in
+dashboards, automations, and Areas.
+
+| Device                         | Identifier suffix     | Entities                                                                                                                                                                                                                                                                                 |
+| ------------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Controller**                 | _(none — legacy)_     | Working mode, degraded mode, read-only, hardware-writes, missing-entities, force-mode, last/next-updated, update-interval, applier-status, plan-explanation, daily-plan-vs-actual, recommendation-interval, force-working-mode selector, extended-attributes/verbose-logging/ML switches |
+| **Battery & Energy**           | `_battery_energy`     | Battery SoC, effective discharge floor, net consumption, PV curtailment, charge/discharge efficiency numbers, battery schedule 1/2/3 switches and start/end times, dynamic discharge floor switch                                                                                        |
+| **Hourly Consumption Profile** | `_hourly_consumption` | All 168 per-hour-block entities (`HSEMHouseConsumptionPowerSensor` + integral + utility-meter + 1/3/7/14-day averages × 24 hour blocks)                                                                                                                                                  |
+| **Financial**                  | `_financial`          | Export income, import cost, net grid balance, savings                                                                                                                                                                                                                                    |
+| **Forecast**                   | `_forecast`           | Forecast accuracy, prediction accuracy, solar confidence, Solcast likelihood selector                                                                                                                                                                                                    |
+| **EV Primary**                 | `_ev_primary`         | EV charging/plan sensors, calculated power, current limit, target SoC number, deadline time, smart-charging/force-charge-now/force-discharge/auto-full switches, OCPP charger sensors for `charger_index=1`                                                                              |
+| **EV Secondary**               | `_ev_secondary`       | The same set as EV Primary for `charger_index=2` / the second EV (only present when the second EV is configured)                                                                                                                                                                         |
+
+The Controller device keeps the original `(DOMAIN, entry_id)` identifier that
+predates the split — no migration is needed for its entities. Every other
+device is identified as `(DOMAIN, f"{entry_id}_<suffix>")`.
+
+**Naming:** EV Secondary and OCPP entity _names_ no longer carry a redundant
+`"Second"`/`"2"` marker (e.g. `"Charger Status"`, not `"OCPP Charger Second
+Status"`) — the device name (e.g. "HSEM EV Secondary") already disambiguates
+via `_attr_has_entity_name = True`. `unique_id` and `entity_id` are
+unchanged.
+
+**Migration:** on first startup after upgrading, a one-time migration
+(`custom_components/hsem/device_migration.py`) reassigns `device_id` for
+every pre-existing entity to its new device, gated by a migration-version
+flag stored on the config entry so it runs exactly once. `unique_id` is
+never touched. This is a **breaking change** for dashboards/automations that
+reference the old single `device_id`.
+
+---
+
 ## Working mode sensor
 
 The primary HSEM sensor. Exposes the active battery recommendation and carries

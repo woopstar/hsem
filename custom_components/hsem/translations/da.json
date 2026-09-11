@@ -955,10 +955,10 @@
         "name": "EV Tving Opladning Nu"
       },
       "ev_second_smart_charging": {
-        "name": "EV 2 Smart Opladning"
+        "name": "EV Smart Opladning"
       },
       "ev_second_force_charge_now": {
-        "name": "EV 2 Tving Opladning Nu"
+        "name": "EV Tving Opladning Nu"
       },
       "ml_consumption": {
         "name": "ML-forbrugsforudsigelse"
@@ -992,7 +992,7 @@
         "name": "EV Mål SoC"
       },
       "ev_second_target_soc": {
-        "name": "EV 2 Mål SoC"
+        "name": "EV Mål SoC"
       },
       "charge_rate_below_0": {},
       "charge_rate_0_to_5": {},
@@ -1007,7 +1007,7 @@
         "name": "EV Opladningsfrist"
       },
       "ev_second_deadline": {
-        "name": "EV 2 Opladningsfrist"
+        "name": "EV Opladningsfrist"
       }
     },
     "sensor": {
@@ -1057,7 +1057,7 @@
         }
       },
       "ev_second_optimal_charging_plan": {
-        "name": "EV 2 Optimal Opladningsplan",
+        "name": "EV Optimal Opladningsplan",
         "state": {
           "charging": "Oplader",
           "fully_charged": "Fuldt opladet",
@@ -1103,16 +1103,16 @@
         "name": "Næste opdatering"
       },
       "ocpp_charger_info": {
-        "name": "OCPP Lader-info"
+        "name": "Lader-info"
       },
       "ocpp_charger_power": {
-        "name": "OCPP Lader-effekt"
+        "name": "Lader-effekt"
       },
       "ocpp_charger_sessions": {
-        "name": "OCPP Lader-sessioner"
+        "name": "Lader-sessioner"
       },
       "ocpp_charger_status": {
-        "name": "OCPP Lader-status"
+        "name": "Lader-status"
       },
       "plan_explanation": {
         "name": "Planstrategi"
@@ -1151,10 +1151,10 @@
         "name": "EV-lader strømgrænse"
       },
       "ev_second_charger_calculated_power": {
-        "name": "EV 2-lader beregnet effekt"
+        "name": "EV-lader beregnet effekt"
       },
       "ev_second_charger_current_limit": {
-        "name": "EV 2-lader strømgrænse"
+        "name": "EV-lader strømgrænse"
       },
       "export_income": {
         "name": "Eksportindtægt"
@@ -1178,16 +1178,16 @@
         "name": "Solprognose-sikkerhed"
       },
       "ocpp_second_charger_status": {
-        "name": "OCPP Anden Lader-status"
+        "name": "Lader-status"
       },
       "ocpp_second_charger_power": {
-        "name": "OCPP Anden Lader-effekt"
+        "name": "Lader-effekt"
       },
       "ocpp_second_charger_info": {
-        "name": "OCPP Anden Lader-info"
+        "name": "Lader-info"
       },
       "ocpp_second_charger_sessions": {
-        "name": "OCPP Anden Lader-sessioner"
+        "name": "Lader-sessioner"
       }
     }
   },

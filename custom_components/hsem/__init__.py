@@ -22,6 +22,7 @@ from homeassistant.exceptions import (
 
 from custom_components.hsem.const import DOMAIN, MIN_HUAWEI_SOLAR_VERSION
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
+from custom_components.hsem.device_migration import async_migrate_devices
 from custom_components.hsem.services import (
     async_register_services,
     async_unregister_services,
@@ -185,14 +186,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool
     """Set up the HSEM integration from a config entry.
 
     Creates the shared :class:`HSEMDataUpdateCoordinator`, forwards platform
-    setups, runs the first update cycle, and adds an options update
-    listener.  Services are registered once in ``async_setup``.
+    setups, runs the first update cycle, runs the one-time device-split
+    entity-registry migration, and adds an options update listener.
+    Services are registered once in ``async_setup``.
 
     The first update cycle intentionally runs *after* platform setups are
     forwarded: it reads HSEM's own select/number/switch/time entities back
     via the live HA state machine, so those entities must already exist
     (issue #926) — running it earlier raced the entity registry and logged
-    spurious "not found" warnings on every restart/reload.
+    spurious "not found" warnings on every restart/reload. The device-split
+    migration (issue #875) runs after that for the same reason — it needs
+    the entity registry already populated — and is internally gated so
+    subsequent calls are no-ops.
     """
     if not await check_huawei_solar_version(hass):
         raise ConfigEntryError(
@@ -213,6 +218,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool
 
     # Run the first update cycle now that HSEM's own entities exist.
     await _run_coordinator_setup_step(coordinator.async_run_first_refresh())
+
+    # One-time entity-registry migration for the device split (issue #875).
+    # Gated internally so a second call is a no-op.
+    await async_migrate_devices(hass, entry)
 
     # Add update listener for options.
     entry.async_on_unload(entry.add_update_listener(async_update_options))

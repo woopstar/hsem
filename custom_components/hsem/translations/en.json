@@ -985,13 +985,13 @@
         }
       },
       "ev_second_charger_calculated_power": {
-        "name": "EV 2 Charger Calculated Power"
+        "name": "EV Charger Calculated Power"
       },
       "ev_second_charger_current_limit": {
-        "name": "EV 2 Charger Current Limit"
+        "name": "EV Charger Current Limit"
       },
       "ev_second_optimal_charging_plan": {
-        "name": "EV 2 Optimal Charging Plan",
+        "name": "EV Optimal Charging Plan",
         "state": {
           "charging": "Charging",
           "fully_charged": "Fully Charged",
@@ -1070,16 +1070,16 @@
         "name": "Effective Discharge Floor"
       },
       "ocpp_charger_status": {
-        "name": "OCPP Charger Status"
+        "name": "Charger Status"
       },
       "ocpp_charger_power": {
-        "name": "OCPP Charger Power"
+        "name": "Charger Power"
       },
       "ocpp_charger_info": {
-        "name": "OCPP Charger Info"
+        "name": "Charger Info"
       },
       "ocpp_charger_sessions": {
-        "name": "OCPP Charger Sessions"
+        "name": "Charger Sessions"
       },
       "export_income": {
         "name": "Export Income"
@@ -1103,16 +1103,16 @@
         "name": "Solar Forecast Confidence"
       },
       "ocpp_second_charger_status": {
-        "name": "OCPP Charger Second Status"
+        "name": "Charger Status"
       },
       "ocpp_second_charger_power": {
-        "name": "OCPP Charger Second Power"
+        "name": "Charger Power"
       },
       "ocpp_second_charger_info": {
-        "name": "OCPP Charger Second Info"
+        "name": "Charger Info"
       },
       "ocpp_second_charger_sessions": {
-        "name": "OCPP Charger Second Sessions"
+        "name": "Charger Sessions"
       }
     },
     "switch": {
@@ -1135,10 +1135,10 @@
         "name": "EV Force Charge Now"
       },
       "ev_second_smart_charging": {
-        "name": "EV 2 Smart Charging"
+        "name": "EV Smart Charging"
       },
       "ev_second_force_charge_now": {
-        "name": "EV 2 Force Charge Now"
+        "name": "EV Force Charge Now"
       },
       "ml_consumption": {
         "name": "ML consumption prediction"
@@ -1172,7 +1172,7 @@
         "name": "EV Target SoC"
       },
       "ev_second_target_soc": {
-        "name": "EV 2 Target SoC"
+        "name": "EV Target SoC"
       }
     },
     "time": {
@@ -1180,7 +1180,7 @@
         "name": "EV Charge Deadline"
       },
       "ev_second_deadline": {
-        "name": "EV 2 Charge Deadline"
+        "name": "EV Charge Deadline"
       }
     }
   },

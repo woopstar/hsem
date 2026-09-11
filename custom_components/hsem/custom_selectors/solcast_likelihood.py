@@ -16,6 +16,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.sensornames.diagnostics import (
@@ -55,6 +56,7 @@ class HSEMSolcastLikelihoodSelector(HSEMEntity, SelectEntity):
                 and ``options``.
         """
         super().__init__(config_entry)
+        self._hsem_device = HSEMDevice.FORECAST
 
         self.hass = hass
         self._config_entry = config_entry

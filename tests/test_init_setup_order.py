@@ -6,6 +6,11 @@ first update cycle (which reads HSEM's own select/number/switch/time entities
 back via ``hass.states``) *before* forwarding platform setups — so those
 entities did not exist yet in the state machine. The fix moves the first
 cycle to run only after platform setups are forwarded.
+
+The device-split migration (``async_migrate_devices``, issue #875) also runs
+at the end of ``async_setup_entry`` and is patched out here — this module is
+only concerned with the coordinator/platform-forwarding call order, not
+migration behaviour (covered separately in ``tests/test_device_split.py``).
 """
 
 from __future__ import annotations
@@ -74,6 +79,10 @@ async def test_first_refresh_runs_after_platforms_are_forwarded(
         patch(
             "custom_components.hsem.HSEMDataUpdateCoordinator",
             return_value=mock_coordinator,
+        ),
+        patch(
+            "custom_components.hsem.async_migrate_devices",
+            new=AsyncMock(),
         ),
     ):
         result = await async_setup_entry(mock_hass, entry)

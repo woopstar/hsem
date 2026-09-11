@@ -985,13 +985,13 @@
         }
       },
       "ev_second_charger_calculated_power": {
-        "name": "EV 2 Ladegerät berechnete Leistung"
+        "name": "EV-Ladegerät berechnete Leistung"
       },
       "ev_second_charger_current_limit": {
-        "name": "EV 2 Ladegerät Stromgrenze"
+        "name": "EV-Ladegerät Stromgrenze"
       },
       "ev_second_optimal_charging_plan": {
-        "name": "EV 2 optimaler Ladeplan",
+        "name": "EV optimaler Ladeplan",
         "state": {
           "charging": "Lädt",
           "fully_charged": "Vollständig geladen",
@@ -1070,16 +1070,16 @@
         "name": "Effektive Entladeuntergrenze"
       },
       "ocpp_charger_status": {
-        "name": "OCPP-Ladegerät Status"
+        "name": "Ladegerät Status"
       },
       "ocpp_charger_power": {
-        "name": "OCPP-Ladegerät Leistung"
+        "name": "Ladegerät Leistung"
       },
       "ocpp_charger_info": {
-        "name": "OCPP-Ladegerät Info"
+        "name": "Ladegerät Info"
       },
       "ocpp_charger_sessions": {
-        "name": "OCPP-Ladegerät Sitzungen"
+        "name": "Ladegerät Sitzungen"
       },
       "export_income": {
         "name": "Exporterlös"
@@ -1103,16 +1103,16 @@
         "name": "Solarprognose-Konfidenz"
       },
       "ocpp_second_charger_status": {
-        "name": "OCPP-Ladegerät 2 Status"
+        "name": "Ladegerät Status"
       },
       "ocpp_second_charger_power": {
-        "name": "OCPP-Ladegerät 2 Leistung"
+        "name": "Ladegerät Leistung"
       },
       "ocpp_second_charger_info": {
-        "name": "OCPP-Ladegerät 2 Info"
+        "name": "Ladegerät Info"
       },
       "ocpp_second_charger_sessions": {
-        "name": "OCPP-Ladegerät 2 Sitzungen"
+        "name": "Ladegerät Sitzungen"
       }
     },
     "switch": {
@@ -1135,10 +1135,10 @@
         "name": "EV Laden jetzt erzwingen"
       },
       "ev_second_smart_charging": {
-        "name": "EV 2 Smart-Charging"
+        "name": "EV Smart-Charging"
       },
       "ev_second_force_charge_now": {
-        "name": "EV 2 Laden jetzt erzwingen"
+        "name": "EV Laden jetzt erzwingen"
       },
       "ml_consumption": {
         "name": "ML-Verbrauchsprognose"
@@ -1172,7 +1172,7 @@
         "name": "EV Ziel-SoC"
       },
       "ev_second_target_soc": {
-        "name": "EV 2 Ziel-SoC"
+        "name": "EV Ziel-SoC"
       }
     },
     "time": {
@@ -1180,7 +1180,7 @@
         "name": "EV Ladefrist"
       },
       "ev_second_deadline": {
-        "name": "EV 2 Ladefrist"
+        "name": "EV Ladefrist"
       }
     }
   },

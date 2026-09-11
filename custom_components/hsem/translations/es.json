@@ -985,13 +985,13 @@
         }
       },
       "ev_second_charger_calculated_power": {
-        "name": "Potencia calculada del cargador de VE 2"
+        "name": "Potencia calculada del cargador de VE"
       },
       "ev_second_charger_current_limit": {
-        "name": "Límite de corriente del cargador de VE 2"
+        "name": "Límite de corriente del cargador de VE"
       },
       "ev_second_optimal_charging_plan": {
-        "name": "Plan de carga óptimo del VE 2",
+        "name": "Plan de carga óptimo del VE",
         "state": {
           "charging": "Cargando",
           "fully_charged": "Completamente cargado",
@@ -1070,16 +1070,16 @@
         "name": "Límite de descarga efectivo"
       },
       "ocpp_charger_status": {
-        "name": "Estado del cargador OCPP"
+        "name": "Estado del cargador"
       },
       "ocpp_charger_power": {
-        "name": "Potencia del cargador OCPP"
+        "name": "Potencia del cargador"
       },
       "ocpp_charger_info": {
-        "name": "Información del cargador OCPP"
+        "name": "Información del cargador"
       },
       "ocpp_charger_sessions": {
-        "name": "Sesiones del cargador OCPP"
+        "name": "Sesiones del cargador"
       },
       "export_income": {
         "name": "Ingresos por exportación"
@@ -1103,16 +1103,16 @@
         "name": "Confianza de la previsión solar"
       },
       "ocpp_second_charger_status": {
-        "name": "Estado del segundo cargador OCPP"
+        "name": "Estado del cargador"
       },
       "ocpp_second_charger_power": {
-        "name": "Potencia del segundo cargador OCPP"
+        "name": "Potencia del cargador"
       },
       "ocpp_second_charger_info": {
-        "name": "Información del segundo cargador OCPP"
+        "name": "Información del cargador"
       },
       "ocpp_second_charger_sessions": {
-        "name": "Sesiones del segundo cargador OCPP"
+        "name": "Sesiones del cargador"
       }
     },
     "switch": {
@@ -1135,10 +1135,10 @@
         "name": "Forzar carga del VE ahora"
       },
       "ev_second_smart_charging": {
-        "name": "Carga inteligente del VE 2"
+        "name": "Carga inteligente del VE"
       },
       "ev_second_force_charge_now": {
-        "name": "Forzar carga del VE 2 ahora"
+        "name": "Forzar carga del VE ahora"
       },
       "ml_consumption": {
         "name": "Predicción de consumo mediante ML"
@@ -1172,7 +1172,7 @@
         "name": "SoC objetivo del VE"
       },
       "ev_second_target_soc": {
-        "name": "SoC objetivo del VE 2"
+        "name": "SoC objetivo del VE"
       }
     },
     "time": {
@@ -1180,7 +1180,7 @@
         "name": "Fecha límite de carga del VE"
       },
       "ev_second_deadline": {
-        "name": "Fecha límite de carga del VE 2"
+        "name": "Fecha límite de carga del VE"
       }
     }
   },

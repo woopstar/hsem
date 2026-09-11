@@ -27,6 +27,23 @@ HSEM is a modular, secure, and highly configurable Home Assistant integration th
 
 ---
 
+## Devices
+
+HSEM's entities are split across 7 Home Assistant devices — **Controller**,
+**Battery & Energy**, **Hourly Consumption Profile**, **Financial**,
+**Forecast**, **EV Primary**, and **EV Secondary** — instead of one, so each
+subsystem can be scoped independently in dashboards, automations, and Areas.
+See [Devices](sensors-reference.md#devices-issue-875) in the sensors
+reference for the full entity-to-device mapping.
+
+> **Upgrading from an older HSEM version?** A one-time migration moves
+> existing entities to their new device on first startup; dashboards or
+> automations that reference the old single device_id will need to be
+> re-pointed to the new devices. `unique_id`s and entity history/statistics
+> are preserved automatically.
+
+---
+
 ## Features
 
 - **Dynamic Grid Export/Import Management** — avoids export at negative prices, forces charging at negative import prices.

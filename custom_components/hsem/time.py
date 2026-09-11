@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.hsem.custom_times.description import HSEMTimeEntityDescription
 from custom_components.hsem.custom_times.time import HSEMTimeEntity
+from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.sensornames.ev import (
     get_ev_deadline_time_key,
@@ -26,11 +27,13 @@ TIME_DESCRIPTIONS: tuple[HSEMTimeEntityDescription, ...] = (
         key=get_ev_deadline_time_key(),
         icon=_ICON_CLOCK,
         translation_key="ev_deadline",
+        hsem_device=HSEMDevice.EV_PRIMARY,
     ),
     HSEMTimeEntityDescription(
         key=get_ev_second_deadline_time_key(),
         icon=_ICON_CLOCK,
         translation_key="ev_second_deadline",
+        hsem_device=HSEMDevice.EV_SECONDARY,
     ),
 )
 
@@ -68,6 +71,7 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
                     icon=description.icon,
                     translation_key=description.translation_key,
                     default_value=str(get_config_value(config_entry, description.key)),
+                    hsem_device=description.hsem_device,
                 ),
             )
             for description in descriptions
