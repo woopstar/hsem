@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from custom_components.hsem.models.savings_day import SavingsDay
+from custom_components.hsem.utils.persistence import read_json_history_file
 
 
 @dataclass
@@ -211,7 +212,7 @@ class SavingsTracker:
         if not path.exists():
             return
 
-        data = await asyncio.to_thread(self._read_history_file, path)
+        data = await asyncio.to_thread(read_json_history_file, path)
         if data is None:
             return
 
@@ -228,15 +229,6 @@ class SavingsTracker:
                 self.daily[entry.date] = entry
 
         self._prune_history()
-
-    @staticmethod
-    def _read_history_file(path: Path) -> dict[str, Any] | None:
-        """Read and parse the history JSON file (sync, offloaded to thread)."""
-        try:
-            with open(path, encoding="utf-8") as f:
-                return json.load(f)  # type: ignore[no-any-return]
-        except json.JSONDecodeError, OSError:
-            return None
 
     async def save_history(self) -> bool:
         """Persist the full savings state to disk atomically."""

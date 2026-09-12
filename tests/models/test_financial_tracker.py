@@ -11,6 +11,7 @@ from custom_components.hsem.models.financial_tracker import (
     FinancialDayEntry,
     FinancialTracker,
 )
+from custom_components.hsem.utils.persistence import read_json_history_file
 
 
 class TestFinancialDayEntry:
@@ -509,7 +510,7 @@ class TestFinancialTrackerPersistence:
         assert history_path.exists()
 
         restored = FinancialTracker.from_dict(
-            FinancialTracker._read_history_file(history_path) or {}
+            read_json_history_file(history_path) or {}
         )
         assert restored.import_cost_total == pytest.approx(original.import_cost_total)
         assert restored.export_income_total == pytest.approx(

@@ -502,17 +502,6 @@ class FinancialTracker:
         return await asyncio.to_thread(self._write_history_file, data, path)
 
     @staticmethod
-    def _read_history_file(path: Any) -> dict[str, Any] | None:
-        """Read and parse the history JSON file (sync, offloaded to thread)."""
-        import json
-
-        try:
-            with open(str(path), encoding="utf-8") as f:
-                return json.load(f)  # type: ignore[no-any-return]
-        except json.JSONDecodeError, OSError:
-            return None
-
-    @staticmethod
     def _write_history_file(data: dict[str, Any], path: Any) -> bool:
         """Write the history data to disk atomically (sync, offloaded to thread)."""
         import json
