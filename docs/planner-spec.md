@@ -865,9 +865,8 @@ matrix is built.
 command by the equality constraint above, `planner/milp/_write_results.py`
 publishes a managed EV's solved allocation **verbatim** — no post-solve
 concentration, minimum-power redistribution, or quantization. The legacy
-`_redistribute_below_minimum_power` / `_quantize_one_ev_allocation` helpers
-(`planner/milp/_ev_quantize.py`) remain available for direct/compatibility
-callers but are never invoked from the production write-out path.
+`_redistribute_below_minimum_power` compatibility helper (formerly
+`planner/milp/_ev_quantize.py`) had no production caller and was removed.
 
 **Time-limited incumbents**: semi-integer variables make the model more
 expensive for HiGHS to solve to proven optimality within the solver's time
@@ -1299,7 +1298,7 @@ assumed a different topology.
 - An unrecognised or missing stored topology resolves to `single_phase`; a
   relaxed envelope is never applied by accident.
 
-#### Published charging ceiling and stranded-residue re-portioning (issue #788)
+#### Published charging ceiling (issue #788)
 
 The planner already decides _how much_ to charge each EV in every future
 slot (`ev_charger_calculated_power` / `ev_second_charger_calculated_power`).
@@ -1327,43 +1326,12 @@ never be published as available headroom. HSEM owns the economics (how many
 amps are worth drawing this slot); the external controller keeps final
 authority for fuse safety and may only ramp _within_ the published ceiling.
 
-**Stranded-residue re-portioning.** The MILP models EV charge as a
-continuous variable, so it may allocate a fragment to a slot too small for
-the charger to actually run (`< charger_min_power_w`). The existing
-EV-fragment concentration pass (`planner/milp/_write_results.py`) folds such
-fragments into other allocated slots first. When every candidate recipient
-is already at a hard ceiling (fuse-limited or phase-limited), a residue can
-still remain unplaced after concentration. Discarding it would silently miss
-the EV's deadline target by that amount.
-
-`_redistribute_below_minimum_power()` handles this residue: when it is
-**material** (> 0.001 kWh — the publishing-rounding artefact left by
-flooring rated power to whole watts) and the EV has a deadline
-(`charge_past_target=False`, since past-target charging is opportunistic
-surplus-only demand with no target to protect), it opens **one** further
-empty, runnable slot before the deadline at the charger minimum and borrows
-the shortfall back from slots that can spare it above their own minimum.
-Later slots are drained first, so the cheaper early charging the solver
-chose is preserved. Total EV energy is unchanged; no commanded slot ends up
-below the charger minimum. The number of slots opened (`0` or `1` per EV) is
-surfaced in the MILP EV diagnostics as `reportioned_slots`.
-
 ##### Invariants
 
 - The published ceiling equals the planned command converted to whole amps,
   always rounded down, using the charger's configured phase topology.
 - Zero, negative, and non-finite planned power all publish a `0 A` ceiling —
   never negative headroom.
-- A residue at or below the 0.001 kWh publishing artefact never triggers
-  re-portioning — a clean plan is never churned for an immaterial amount.
-- A material residue is re-portioned into an additional runnable slot rather
-  than discarded; total EV energy is preserved (`sum(placed) + deficit ==
-sum(original)`), and every commanded slot stays at or above the charger
-  minimum.
-- Only deadline-driven charging (`charge_past_target=False`) may open a
-  slot; charge-past-target EVs never trigger re-portioning.
-- Without an eligible candidate slot (no headroom before the deadline), the
-  residue is reported as unplaceable rather than silently dropped.
 
 #### Executable whole-amp plans (issue #789)
 
@@ -1395,8 +1363,7 @@ idealised continuous target the ceiling sensor floors on display only:
 3. **One further slot.** If residue remains and no occupied slot has
    headroom, one further empty, deadline-eligible slot may open at the
    charger's activation minimum, borrowing amp-steps back from slots that
-   can spare them above that minimum — the same borrow-and-open pattern as
-   the stranded-residue re-portioning above, now amp-step granular.
+   can spare them above that minimum, amp-step granular.
 4. **Managed sessions are quantized too.** A live session's _fixed_ LP
    energy is snapped to the same whole-amp command that will be published
    (`command_current_a`, floored, zeroed below the activation minimum)
@@ -2818,7 +2785,7 @@ allocations would be silently converted into measured demand during
 writeback. Every hard per-EV site — constraint-row construction
 (`_constraints.py`), variable bounds (`_bounds.py`), the aggregate/per-phase
 fuse rows (`_constraints.py`, `_phase_fuse.py`), and the write-out/
-whole-amp-quantization pass (`_write_results.py`, `_ev_quantize.py`) — reads
+whole-amp-quantization pass (`_write_results.py`) — reads
 `session_dc_by_ev` (or its per-EV `session_slots_by_ev` slot-index view),
 never a single shared `session_slots_set`, except where the check is
 genuinely site-wide (the battery grid-charge-prevention row, which blocks

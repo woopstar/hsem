@@ -489,7 +489,7 @@ class TestRegisterListeners:
     """State-change listeners must include price sensors for reactive export control."""
 
     @pytest.mark.asyncio
-    async def test_price_sensors_are_tracked(self):
+    async def test_price_sensors_are_tracked(self) -> None:
         """Import and export price sensors must be registered for state-change events.
 
         This ensures the coordinator reacts immediately when a new 15-minute
@@ -525,7 +525,7 @@ class TestRegisterListeners:
         assert cfg.export_electricity_price_sensor in registered_entities
 
     @pytest.mark.asyncio
-    async def test_price_sensors_not_duplicated(self):
+    async def test_price_sensors_not_duplicated(self) -> None:
         """Price sensors must not be registered twice if already tracked."""
         sensor = MagicMock()
         sensor.hass = MagicMock()

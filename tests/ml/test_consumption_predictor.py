@@ -4,11 +4,19 @@ Uses lazy imports to avoid triggering the numpy/bcrypt native module
 conflict during pytest collection in CI environments.
 """
 
+from __future__ import annotations
+
 import math
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 import pytest
+
+if TYPE_CHECKING:
+    from custom_components.hsem.ml.consumption_predictor import (
+        ConsumptionPredictor,
+    )
 
 NOW = datetime(2026, 6, 4, 12, 0).astimezone()
 
@@ -29,13 +37,13 @@ def _predictor(**kwargs):
         pytest.skip(f"numpy/HA not available in test environment: {exc}")
 
 
-def _wind_chill_predictor():
+def _wind_chill_predictor() -> ConsumptionPredictor:
     """Predictor trained where wind is the only signal at a fixed cold
     temperature: calm days average 1.0 kWh, windy days 3.0 kWh. All samples
     share one (DOW, slot) group (day offsets are multiples of 7) so stage-2
     fits the wind-chill coefficient on the residual after the group mean.
     """
-    p = _predictor(
+    p: ConsumptionPredictor = _predictor(
         decay_days=60.0,
         alpha=0.01,
         slots_per_day=96,
@@ -274,8 +282,6 @@ class TestConsumptionPredictor:
         )
 
         assert predictor._X is not None
-        assert predictor._y is not None
-        assert predictor._y.tolist() == pytest.approx([1.0, 2.0, 4.0])
         assert predictor._X[:, predictor._lag_offset].tolist() == pytest.approx(
             [0.0, 1.0, 0.0]
         )

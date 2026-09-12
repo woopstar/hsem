@@ -1,18 +1,9 @@
 """Explicit unit-conversion helpers for HSEM (issue #290).
 
-This module provides named conversion functions that make W/kW, Wh/kWh,
+This module provides named conversion functions that make W/kW,
 price-per-unit transformations, duration conversions, and battery economics
 explicit and auditable.  Every function is a pure one-liner — the value is
 in the *name*, not the arithmetic.
-
-``watthours_to_kilowatthours``, ``kilowatthours_to_watthours``, and
-``energy_to_power_kw`` currently have no production caller (issue #967) —
-all of HSEM's actual Wh/kWh and energy/duration math happens to already be
-in kWh or to need a different combined formula.  They are kept as part of
-this module's deliberately complete, symmetric, one-liner-per-conversion
-toolkit (matching ``watt_to_kilowatt``'s W↔kW pair) rather than deleted,
-since a caller reaching for a Wh/kWh or energy-to-power conversion should
-find a named helper here instead of reinventing one inline.
 
 All functions accept ``int`` or ``float`` and return ``float``.
 
@@ -20,10 +11,8 @@ Usage
 -----
 >>> from custom_components.hsem.utils.units import (
 ...     watt_to_kilowatt,
-...     watthours_to_kilowatthours, kilowatthours_to_watthours,
-...     energy_to_power_kw,
 ...     timedelta_to_hours, slot_duration_hours, hours_ahead,
-...     roundtrip_loss_pct, usable_kwh_from_rated,
+...     usable_kwh_from_rated,
 ...     max_energy_per_slot_kwh, fuse_max_energy_per_slot_kwh,
 ...     ev_dc_to_ac_kwh, ev_ac_to_dc_kwh,
 ... )
@@ -32,8 +21,6 @@ Usage
 5.0
 >>> timedelta_to_hours(timedelta(minutes=90))  # 90 min → 1.5 h
 1.5
->>> roundtrip_loss_pct(97.0, 97.0)   # (1-0.97*0.97)*100
-5.91
 """
 
 from __future__ import annotations
@@ -55,35 +42,6 @@ def watt_to_kilowatt(power_w: float) -> float:
         Power in kiloWatts (kW).
     """
     return power_w / 1000.0
-
-
-# ---------------------------------------------------------------------------
-# Energy conversions (Wh ↔ kWh)
-# ---------------------------------------------------------------------------
-
-
-def watthours_to_kilowatthours(energy_wh: float) -> float:
-    """Convert Watt-hours to kiloWatt-hours.
-
-    Args:
-        energy_wh: Energy in Watt-hours (Wh).
-
-    Returns:
-        Energy in kiloWatt-hours (kWh).
-    """
-    return energy_wh / 1000.0
-
-
-def kilowatthours_to_watthours(energy_kwh: float) -> float:
-    """Convert kiloWatt-hours to Watt-hours.
-
-    Args:
-        energy_kwh: Energy in kiloWatt-hours (kWh).
-
-    Returns:
-        Energy in Watt-hours (Wh).
-    """
-    return energy_kwh * 1000.0
 
 
 # ---------------------------------------------------------------------------
@@ -137,53 +95,8 @@ def hours_ahead(now: datetime, future_time: datetime) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Duration-aware conversions (power ⇄ energy)
-# ---------------------------------------------------------------------------
-
-
-def energy_to_power_kw(energy_kwh: float, duration_h: float) -> float:
-    """Convert energy over a duration to average power.
-
-    ``power_kw = energy_kwh ÷ duration_h``
-
-    Args:
-        energy_kwh: Energy in kiloWatt-hours (kWh).
-        duration_h: Duration in hours (h).
-
-    Returns:
-        Average power in kiloWatts (kW).
-    """
-    if duration_h <= 0:
-        return 0.0
-
-    return energy_kwh / duration_h
-
-
-# ---------------------------------------------------------------------------
 # Battery / efficiency helpers
 # ---------------------------------------------------------------------------
-
-
-def roundtrip_loss_pct(
-    charge_efficiency_pct: float,
-    discharge_efficiency_pct: float,
-) -> float:
-    """Return the roundtrip energy loss as a percentage (0–100).
-
-    ``loss_pct = (1 − (charge_eff × discharge_eff)) × 100``
-
-    Replacement for the ``(1.0 - cd * dd) * 100.0`` pattern.
-
-    Args:
-        charge_efficiency_pct: Charge-side efficiency (0–100).
-        discharge_efficiency_pct: Discharge-side efficiency (0–100).
-
-    Returns:
-        Roundtrip loss in percentage points (e.g. 5.91 for 97 % each way).
-    """
-    return (
-        1.0 - (charge_efficiency_pct / 100.0) * (discharge_efficiency_pct / 100.0)
-    ) * 100.0
 
 
 def usable_kwh_from_rated(

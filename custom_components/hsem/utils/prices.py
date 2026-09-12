@@ -22,7 +22,6 @@ index instead, so this wrapper never had a production caller.
 
 from __future__ import annotations
 
-import math
 from typing import NamedTuple
 
 # ---------------------------------------------------------------------------
@@ -48,31 +47,3 @@ class SlotPrice(NamedTuple):
 
     import_price: float
     export_price: float
-
-    @property
-    def is_missing_import(self) -> bool:
-        """Return ``True`` if import price data is absent for this slot.
-
-        Uses :func:`math.isnan` for an explicit IEEE 754 NaN check.
-        """
-        return math.isnan(self.import_price)
-
-    @property
-    def is_missing_export(self) -> bool:
-        """Return ``True`` if export price data is absent for this slot.
-
-        Uses :func:`math.isnan` for an explicit IEEE 754 NaN check.
-        """
-        return math.isnan(self.export_price)
-
-    @property
-    def has_any_missing(self) -> bool:
-        """Return ``True`` if either import or export price is missing.
-
-        No production caller: ``planner/candidate_selector.py`` checks
-        ``math.isnan(slot.price.import_price)`` directly instead of this (or
-        the sibling ``is_missing_import``/``is_missing_export``) property.
-        Kept as a cheap, readable convenience exercised by ``TestSlotPrice``
-        below (issue #967).
-        """
-        return self.is_missing_import or self.is_missing_export

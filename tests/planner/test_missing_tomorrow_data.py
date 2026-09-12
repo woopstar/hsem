@@ -219,15 +219,15 @@ class TestDataQuality:
         """Setting tomorrow price missing hours must mark the quality as incomplete."""
         dq = DataQuality(tomorrow_price_missing_hours=[0, 1, 2])
         assert dq.is_complete is False
-        assert dq.tomorrow_price_complete is False
-        assert dq.tomorrow_pv_complete is True
+        assert dq.tomorrow_price_missing_hours
+        assert not dq.tomorrow_pv_missing_hours
 
     def test_tomorrow_pv_missing_marks_incomplete(self) -> None:
         """Setting tomorrow PV missing hours must mark the quality as incomplete."""
         dq = DataQuality(tomorrow_pv_missing_hours=[12, 13, 14])
         assert dq.is_complete is False
-        assert dq.tomorrow_pv_complete is False
-        assert dq.tomorrow_price_complete is True
+        assert dq.tomorrow_pv_missing_hours
+        assert not dq.tomorrow_price_missing_hours
 
     def test_as_dict_contains_expected_keys(self) -> None:
         """as_dict() must contain the required diagnostic keys."""
@@ -285,7 +285,7 @@ class TestTimeSeriesIndexTomorrowHelpers:
         tsi = TimeSeriesIndex.from_now(now, interval_minutes=60, horizon_hours=48)
         prices = dict.fromkeys(range(24), 0.20)
         tsi.align_hourly_prices(prices, prices)
-        assert tsi.missing_tomorrow_price_hours() == set()
+        assert tsi.missing_future_day_price_hours(1) == set()
 
     def test_missing_tomorrow_price_hours_detects_partial_gap(self) -> None:
         """Partial tomorrow price data must be detected by the TSI."""
@@ -296,7 +296,7 @@ class TestTimeSeriesIndexTomorrowHelpers:
         # Only provide prices for hours 0-11 (morning half)
         prices = dict.fromkeys(range(12), 0.20)
         tsi.align_hourly_prices(prices, prices)
-        missing = tsi.missing_tomorrow_price_hours()
+        missing = tsi.missing_future_day_price_hours(1)
         assert 12 in missing
         assert 23 in missing
         assert 0 not in missing  # today's hour 0 is covered
@@ -311,7 +311,7 @@ class TestTimeSeriesIndexTomorrowHelpers:
         # Only provide PV for night hours (no production expected anyway)
         pv = dict.fromkeys(range(6), 0.0)  # only 00:00-05:00
         tsi.align_hourly_pv(pv)
-        missing = tsi.missing_tomorrow_pv_hours()
+        missing = tsi.missing_future_day_pv_hours(1)
         # Hours 6-23 should be flagged as missing in tomorrow
         assert 6 in missing
         assert 12 in missing
@@ -330,8 +330,8 @@ class TestTimeSeriesIndexTomorrowHelpers:
         tsi.align_hourly_prices(partial_prices, partial_prices)
         tsi.align_hourly_pv(full_pv)
 
-        assert len(tsi.missing_tomorrow_price_hours()) > 0
-        assert len(tsi.missing_tomorrow_pv_hours()) == 0
+        assert len(tsi.missing_future_day_price_hours(1)) > 0
+        assert len(tsi.missing_future_day_pv_hours(1)) == 0
 
 
 # ===========================================================================
@@ -446,7 +446,6 @@ class TestPartialTomorrowPriceData:
         inp = self._make_partial_price_input(missing_hours={10, 11, 12})
         result = run_planner(inp)
         assert result.data_quality.is_complete is False
-        assert result.data_quality.tomorrow_price_complete is False
         assert len(result.data_quality.tomorrow_price_missing_hours) > 0
 
     def test_partial_tomorrow_prices_does_not_crash_planner(self) -> None:
@@ -532,7 +531,6 @@ class TestPartialTomorrowPvData:
         inp = self._make_partial_pv_input(missing_hours={9, 10, 11})
         result = run_planner(inp)
         assert result.data_quality.is_complete is False
-        assert result.data_quality.tomorrow_pv_complete is False
         assert len(result.data_quality.tomorrow_pv_missing_hours) > 0
 
     def test_partial_tomorrow_pv_does_not_crash_planner(self) -> None:
@@ -576,8 +574,8 @@ class TestBothMissingTomorrow:
         inp = _make_48h_input(price_points=prices, solcast_slots=pv)
         result = run_planner(inp)
 
-        assert not result.data_quality.tomorrow_price_complete
-        assert not result.data_quality.tomorrow_pv_complete
+        assert result.data_quality.tomorrow_price_missing_hours
+        assert result.data_quality.tomorrow_pv_missing_hours
         assert result.data_quality.is_complete is False
 
         price_entries = [

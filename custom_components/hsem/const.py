@@ -218,31 +218,6 @@ RELIABILITY_SCALE_STRENGTH = 1.00  # 1.0 = full effect; lower to soften
 # the inverter; a 100 W floor is used instead.
 GRID_EXPORT_LIMIT_WATT = 100
 
-# ---------------------------------------------------------------------------
-# Planner power thresholds (kWh per slot)
-# ---------------------------------------------------------------------------
-
-# Minimum solar surplus (negative net consumption) required to classify a
-# slot as having usable solar generation when scheduling battery charge.
-# A slot must export at least this much excess before it is considered a
-# "solar surplus" charging opportunity.  Default matches v5.1.0 behaviour.
-SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH = -0.2
-
-# Historical "near-zero" tolerance for solar-charge classification. Issue
-# #720 found that using this threshold (a slot qualified for
-# BatteriesChargeSolar whenever net consumption was <= this value) mislabeled
-# slots with a small positive load and zero PV as solar-charged; the fix
-# replaced the check with an exact `estimated_net_consumption_kwh < 0.0`
-# PV-surplus test and removed this constant's only import
-# (planner/discharge_scheduler.py). Deliberately kept, unused, as a pinned,
-# named value: tests/test_p0_regression_suite.py and
-# tests/test_power_thresholds.py assert it still exists at 0.1 and that
-# discharge_scheduler.py does not import it, so a future near-zero-tolerance
-# feature reaches for a named constant (per the P0-08/#272 fix) instead of
-# reintroducing a bare magic-number literal, and so it can't silently regress
-# back into the buggy comparison it originally caused (issue #967).
-NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH = 0.1
-
 # EMA smoothing factor for live net consumption used in EV charger power
 # smoothing.  Alpha=0.3 means each new reading contributes 30 % to the
 # smoothed value — this damps transient loads and

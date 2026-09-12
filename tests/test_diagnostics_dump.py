@@ -2,17 +2,12 @@
 
 Covers:
 - Redaction of HA entity IDs and sensitive keys.
-- PlannerInput round-trip serialisation / deserialisation.
 - build_diagnostics_dump structure and content.
-- load_planner_input_from_dump reproduces identical planner output.
-- dump_to_json produces valid JSON.
 - apply_summary serialisation (with and without results).
 - Edge cases: no apply_summary, empty candidates, null battery_max_discharge_power_w.
 """
 
 from __future__ import annotations
-
-import json
 
 import pytest
 
@@ -23,8 +18,6 @@ from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.diagnostics import (
     _REDACTED,
     build_diagnostics_dump,
-    dump_to_json,
-    load_planner_input_from_dump,
     redact_dict,
 )
 from custom_components.hsem.utils.inverter_verify import (
@@ -32,7 +25,7 @@ from custom_components.hsem.utils.inverter_verify import (
     ApplyStatus,
     CycleApplySummary,
 )
-from tests.planner.fixtures import make_summer_day_input, make_winter_day_input
+from tests.planner.fixtures import make_summer_day_input
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -118,56 +111,6 @@ class TestRedactDict:
 
 
 # ---------------------------------------------------------------------------
-# PlannerInput round-trip
-# ---------------------------------------------------------------------------
-
-
-class TestPlannerInputRoundTrip:
-    """Tests that PlannerInput → dict → PlannerInput preserves data."""
-
-    def test_summer_input_roundtrip(self) -> None:
-        original = make_summer_day_input()
-        dump = build_diagnostics_dump(original, run_planner(original))
-        reconstructed = load_planner_input_from_dump(dump)
-
-        assert reconstructed.now_iso == original.now_iso
-        assert reconstructed.interval_minutes == original.interval_minutes
-        assert reconstructed.battery_soc_pct == pytest.approx(original.battery_soc_pct)
-        assert reconstructed.battery_rated_capacity_kwh == pytest.approx(
-            original.battery_rated_capacity_kwh
-        )
-        assert len(reconstructed.price_points) == len(original.price_points)
-        assert len(reconstructed.solcast_slots) == len(original.solcast_slots)
-        assert len(reconstructed.consumption_averages) == len(
-            original.consumption_averages
-        )
-
-    def test_null_battery_max_discharge_preserved(self) -> None:
-        original = make_summer_day_input()
-        original.battery_max_discharge_power_w = None
-        dump = build_diagnostics_dump(original, run_planner(original))
-        reconstructed = load_planner_input_from_dump(dump)
-        assert reconstructed.battery_max_discharge_power_w is None
-
-    def test_winter_input_roundtrip(self) -> None:
-        original = make_winter_day_input()
-        dump = build_diagnostics_dump(original, run_planner(original))
-        reconstructed = load_planner_input_from_dump(dump)
-        assert reconstructed.now_iso == original.now_iso
-        assert reconstructed.battery_soc_pct == pytest.approx(original.battery_soc_pct)
-
-    def test_minimal_input_roundtrip(self) -> None:
-        original = _make_minimal_input()
-        dump = build_diagnostics_dump(original, run_planner(original))
-        reconstructed = load_planner_input_from_dump(dump)
-        assert reconstructed.battery_rated_capacity_kwh == pytest.approx(0.0)
-
-    def test_missing_planner_input_key_raises(self) -> None:
-        with pytest.raises(KeyError):
-            load_planner_input_from_dump({})  # no "planner_input" key
-
-
-# ---------------------------------------------------------------------------
 # build_diagnostics_dump structure
 # ---------------------------------------------------------------------------
 
@@ -229,13 +172,6 @@ class TestBuildDiagnosticsDump:
         assert "recommendation" in first_slot
         assert "import_price" in first_slot
 
-    def test_entity_ids_in_extra_are_redacted(self) -> None:
-        inp = _make_minimal_input()
-        inp.extra["debug_entity"] = "sensor.batteries_state_of_capacity"
-        out = run_planner(inp)
-        dump = build_diagnostics_dump(inp, out)
-        assert dump["planner_input"]["extra"]["debug_entity"] == _REDACTED
-
     def test_numeric_input_fields_not_redacted(self) -> None:
         inp = make_summer_day_input()
         out = run_planner(inp)
@@ -285,84 +221,3 @@ class TestApplySummarySerialization:
         dump = build_diagnostics_dump(inp, out, summary)
         assert dump["apply_result"]["results"] == []
         assert dump["apply_result"]["overall_status"] == "skipped"
-
-
-# ---------------------------------------------------------------------------
-# dump_to_json
-# ---------------------------------------------------------------------------
-
-
-class TestDumpToJson:
-    """Tests for dump_to_json()."""
-
-    def test_output_is_valid_json(self) -> None:
-        inp = make_summer_day_input()
-        out = run_planner(inp)
-        dump = build_diagnostics_dump(inp, out, integration_version="5.1.0")
-        json_str = dump_to_json(dump)
-        parsed = json.loads(json_str)
-        assert parsed["hsem_version"] == "5.1.0"
-
-    def test_json_contains_24_slots(self) -> None:
-        inp = make_summer_day_input()
-        out = run_planner(inp)
-        dump = build_diagnostics_dump(inp, out)
-        json_str = dump_to_json(dump)
-        parsed = json.loads(json_str)
-        assert len(parsed["planner_output"]["slots"]) == 24
-
-    def test_custom_indent(self) -> None:
-        inp = _make_minimal_input()
-        out = run_planner(inp)
-        dump = build_diagnostics_dump(inp, out)
-        json_str_4 = dump_to_json(dump, indent=4)
-        assert "    " in json_str_4
-
-
-# ---------------------------------------------------------------------------
-# Reproducibility: round-trip planner output
-# ---------------------------------------------------------------------------
-
-
-class TestReproducibility:
-    """End-to-end tests: dump → load_planner_input_from_dump → run_planner."""
-
-    def test_summer_plan_reproduced(self) -> None:
-        original_inp = make_summer_day_input()
-        original_out = run_planner(original_inp)
-
-        dump = build_diagnostics_dump(original_inp, original_out)
-        replayed_inp = load_planner_input_from_dump(dump)
-        replayed_out = run_planner(replayed_inp)
-
-        # Same number of slots.
-        assert len(replayed_out.slots) == len(original_out.slots)
-
-        # Same recommendation for each slot.
-        for orig_slot, replay_slot in zip(original_out.slots, replayed_out.slots):
-            assert replay_slot.recommendation == orig_slot.recommendation
-
-    def test_winter_plan_reproduced(self) -> None:
-        original_inp = make_winter_day_input()
-        original_out = run_planner(original_inp)
-
-        dump = build_diagnostics_dump(original_inp, original_out)
-        replayed_inp = load_planner_input_from_dump(dump)
-        replayed_out = run_planner(replayed_inp)
-
-        assert len(replayed_out.slots) == len(original_out.slots)
-        for orig_slot, replay_slot in zip(original_out.slots, replayed_out.slots):
-            assert replay_slot.recommendation == orig_slot.recommendation
-
-    def test_replayed_cost_matches_original(self) -> None:
-        original_inp = make_summer_day_input()
-        original_out = run_planner(original_inp)
-
-        dump = build_diagnostics_dump(original_inp, original_out)
-        replayed_inp = load_planner_input_from_dump(dump)
-        replayed_out = run_planner(replayed_inp)
-
-        # Total estimated cost must be identical after round-trip.
-        orig_total = sum(s.estimated_cost_currency for s in original_out.slots)
-        replay_total = sum(s.estimated_cost_currency for s in replayed_out.slots)
-        assert replay_total == pytest.approx(orig_total, rel=1e-6)

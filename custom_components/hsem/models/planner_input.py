@@ -336,9 +336,6 @@ class PlannerInput:
     #: 0.0 when there is no previous run.
     previous_winner_score: float = 0.0
 
-    # --- optional extra context that tests may inspect ---
-    extra: dict[str, Any] = field(default_factory=dict)
-
     # --- session-aware EV demand (issue #615) ---
     #: Current session charge power for the primary EV in kW, or None when
     #: the EV is not actively charging.  When set, the MILP treats the first

@@ -1246,7 +1246,9 @@ class TestEvDischargePermissionAndHeldExport:
         return cfg, live
 
     @staticmethod
-    async def _run(cfg, live, rec):
+    async def _run(
+        cfg: SensorConfig, live: LiveState, rec: HourlyRecommendation
+    ) -> dict[str, object]:
         written: dict[str, object] = {}
 
         async def _record_desired(entity_id, desired, writer, reader, **kwargs):  # type: ignore[no-untyped-def]
@@ -1381,7 +1383,9 @@ class TestSolarChargeDischargeCap:
         return cfg, live
 
     @staticmethod
-    async def _run(cfg, live, rec):
+    async def _run(
+        cfg: SensorConfig, live: LiveState, rec: HourlyRecommendation
+    ) -> dict[str, object]:
         written: dict[str, object] = {}
 
         async def _record_desired(entity_id, desired, writer, reader, **kwargs):  # type: ignore[no-untyped-def]
@@ -1507,7 +1511,7 @@ class TestForceBatteriesDischargeExcessPvRouting:
         return live
 
     @pytest.mark.asyncio
-    async def test_force_discharge_routes_excess_pv_to_grid_on_success(self):
+    async def test_force_discharge_routes_excess_pv_to_grid_on_success(self) -> None:
         """Successful forcible discharge must fall through to excess-PV routing."""
         from custom_components.hsem.utils.recommendations import Recommendations
 
@@ -1558,7 +1562,7 @@ class TestForceBatteriesDischargeExcessPvRouting:
         assert written.get("select.excess_pv") == "fed_to_grid"
 
     @pytest.mark.asyncio
-    async def test_force_discharge_returns_early_on_failure(self):
+    async def test_force_discharge_returns_early_on_failure(self) -> None:
         """Failed forcible discharge must bail out before excess-PV routing."""
         from custom_components.hsem.utils.recommendations import Recommendations
 

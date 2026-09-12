@@ -197,7 +197,10 @@ class TestChargeScheduling:
         # Start with empty battery so charging is definitely needed
         inp = make_summer_day_input(battery_soc_pct=0.0)
         result = run_planner(inp)
-        assert result.charge_slot_count() > 0, "Expected at least one charge slot"
+        charge_slot_count = sum(
+            1 for s in result.slots if s.recommendation in _CHARGE_VALUES
+        )
+        assert charge_slot_count > 0, "Expected at least one charge slot"
 
     def test_charge_windows_detected(self):
         """PlannerOutput.charge_windows must be populated when charging occurs."""
@@ -223,10 +226,13 @@ class TestChargeScheduling:
         # explicit charge slots OR battery SoC rose above the empty floor.
         end_of_discharge_floor = inp.battery_end_of_discharge_soc_pct
         soc_rose = result.battery_soc_at_end > end_of_discharge_floor + 1.0
-        has_charge_slots = result.charge_slot_count() > 0
+        charge_slot_count = sum(
+            1 for s in result.slots if s.recommendation in _CHARGE_VALUES
+        )
+        has_charge_slots = charge_slot_count > 0
         assert soc_rose or has_charge_slots, (
             f"Expected battery to charge when starting empty on summer day. "
-            f"charge_slot_count={result.charge_slot_count()}, "
+            f"charge_slot_count={charge_slot_count}, "
             f"battery_soc_at_end={result.battery_soc_at_end:.1f}% "
             f"(floor={end_of_discharge_floor}%)"
         )
@@ -236,9 +242,11 @@ class TestChargeScheduling:
         # Start empty so solar surplus has headroom to charge into
         inp = make_summer_day_input(battery_soc_pct=0.0)
         result = run_planner(inp)
-        solar_charge_slots = result.slots_with_recommendation(
-            Recommendations.BatteriesChargeSolar.value
-        )
+        solar_charge_slots = [
+            s
+            for s in result.slots
+            if s.recommendation == Recommendations.BatteriesChargeSolar.value
+        ]
         assert solar_charge_slots, (
             "Expected at least one BatteriesChargeSolar slot on a summer day"
         )
@@ -296,9 +304,11 @@ class TestSeasonalLogic:
     def test_summer_has_solar_charge_slots(self):
         """A clear summer day must have BatteriesChargeSolar recommendations."""
         result = run_planner(make_summer_day_input())
-        solar_slots = result.slots_with_recommendation(
-            Recommendations.BatteriesChargeSolar.value
-        )
+        solar_slots = [
+            s
+            for s in result.slots
+            if s.recommendation == Recommendations.BatteriesChargeSolar.value
+        ]
         assert solar_slots, "Expected BatteriesChargeSolar slots on summer day"
 
 
@@ -340,34 +350,7 @@ class TestFixtureCompleteness:
 
 
 # ===========================================================================
-# 7. Output helper methods
-# ===========================================================================
-
-
-class TestOutputHelpers:
-    """PlannerOutput helper methods must return correct values."""
-
-    def test_slots_with_recommendation_filters_correctly(self):
-        result = run_planner(make_summer_day_input())
-        charge_slots = result.slots_with_recommendation(
-            Recommendations.BatteriesChargeGrid.value
-        )
-        for s in charge_slots:
-            assert s.recommendation == Recommendations.BatteriesChargeGrid.value
-
-    def test_charge_slot_count_matches_manual_count(self):
-        result = run_planner(make_summer_day_input(battery_soc_pct=0.0))
-        manual = sum(1 for s in result.slots if s.recommendation in _CHARGE_VALUES)
-        assert result.charge_slot_count() == manual
-
-    def test_total_charged_energy_matches_sum(self):
-        result = run_planner(make_summer_day_input(battery_soc_pct=0.0))
-        expected = round(sum(s.batteries_charged_kwh for s in result.slots), 3)
-        assert abs(result.total_charged_energy_kwh() - expected) < 1e-6
-
-
-# ===========================================================================
-# 8. Edge cases
+# 7. Edge cases
 # ===========================================================================
 
 
@@ -379,9 +362,11 @@ class TestEdgeCases:
         inp = make_flat_price_input(battery_soc_pct=0.0)
         # flat_price_input already has zero PV
         result = run_planner(inp)
-        solar_slots = result.slots_with_recommendation(
-            Recommendations.BatteriesChargeSolar.value
-        )
+        solar_slots = [
+            s
+            for s in result.slots
+            if s.recommendation == Recommendations.BatteriesChargeSolar.value
+        ]
         assert not solar_slots, "No solar charge slots expected when PV=0"
 
     def test_default_winter_input_has_wait_mode_slots(self) -> None:
@@ -394,9 +379,11 @@ class TestEdgeCases:
         """
         inp = make_winter_day_input()
         result = run_planner(inp)
-        wait_mode = result.slots_with_recommendation(
-            Recommendations.BatteriesWaitMode.value
-        )
+        wait_mode = [
+            s
+            for s in result.slots
+            if s.recommendation == Recommendations.BatteriesWaitMode.value
+        ]
         assert wait_mode, "BatteriesWaitMode expected on the default winter fixture"
 
     def test_invalid_timezone_raises(self):

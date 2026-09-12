@@ -9,8 +9,8 @@ Acceptance criteria verified here
 - ``TimeSeriesIndex.from_now`` rejects naive datetimes, bad intervals, and
   non-positive horizons.
 - Slot resolution is configurable (15 min default, 30 min, 60 min).
-- Alignment methods (prices, PV, load, import/export, battery SoC) all
-  produce lists parallel to ``tsi.slots``.
+- Alignment methods (prices, PV, load) all produce lists parallel to
+  ``tsi.slots``.
 - Sub-hourly slots receive correctly scaled energy values.
 - ``slot_index_for`` correctly locates a datetime in the grid.
 
@@ -338,7 +338,7 @@ class TestAlignHourlyPrices:
     def test_no_missing_hours_when_complete(self):
         imp, exp = self._full_price_dicts()
         self.tsi.align_hourly_prices(imp, exp)
-        assert not self.tsi.has_missing()
+        assert not self.tsi.missing_slots
 
 
 # ---------------------------------------------------------------------------
@@ -430,80 +430,7 @@ class TestAlignHourlyLoad:
 
 
 # ---------------------------------------------------------------------------
-# 9. align_net_import_export
-# ---------------------------------------------------------------------------
-
-
-class TestAlignNetImportExport:
-    """Grid import/export energy values are scaled to slot fractions."""
-
-    def setup_method(self):
-        now = _cph(2024, 6, 15, 0)
-        self.tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
-
-    def test_lengths_match_slots(self):
-        imp = dict.fromkeys(range(24), 1.0)
-        exp = dict.fromkeys(range(24), 0.0)
-        ai, ae = self.tsi.align_net_import_export(imp, exp)
-        assert len(ai) == len(self.tsi)
-        assert len(ae) == len(self.tsi)
-
-    def test_values_scaled_to_slot_fraction(self):
-        imp = dict.fromkeys(range(24), 2.0)
-        exp = dict.fromkeys(range(24), 1.0)
-        ai, ae = self.tsi.align_net_import_export(imp, exp)
-        for i_val, e_val in zip(ai, ae):
-            assert i_val == pytest.approx(0.5)  # 2.0 * 0.25
-            assert e_val == pytest.approx(0.25)  # 1.0 * 0.25
-
-    def test_missing_export_is_sentinel(self):
-        imp = dict.fromkeys(range(24), 0.5)
-        exp = {h: 0.0 for h in range(24) if h != 20}
-        _, ae = self.tsi.align_net_import_export(imp, exp)
-        for s in range(4):
-            assert _is_sentinel(ae[20 * 4 + s])
-
-
-# ---------------------------------------------------------------------------
-# 10. align_battery_soc
-# ---------------------------------------------------------------------------
-
-
-class TestAlignBatterySoc:
-    """Battery SoC is a state (not scaled); missing hours → sentinel."""
-
-    def setup_method(self):
-        now = _cph(2024, 6, 15, 0)
-        self.tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
-
-    def test_length_matches_slots(self):
-        soc = dict.fromkeys(range(24), 80.0)
-        aligned = self.tsi.align_battery_soc(soc)
-        assert len(aligned) == len(self.tsi)
-
-    def test_value_is_not_scaled(self):
-        soc = dict.fromkeys(range(24), 75.0)
-        aligned = self.tsi.align_battery_soc(soc)
-        for val in aligned:
-            assert val == pytest.approx(75.0)
-
-    def test_all_4_sub_slots_same_value(self):
-        soc = {h: float(h * 4) for h in range(24)}
-        aligned = self.tsi.align_battery_soc(soc)
-        for h in range(24):
-            base = h * 4
-            for s in range(1, 4):
-                assert aligned[base] == aligned[base + s]
-
-    def test_missing_hour_is_sentinel(self):
-        soc = {h: 50.0 for h in range(24) if h != 8}
-        aligned = self.tsi.align_battery_soc(soc)
-        for s in range(4):
-            assert _is_sentinel(aligned[8 * 4 + s])
-
-
-# ---------------------------------------------------------------------------
-# 11. All series aligned together: index consistency
+# 9. All series aligned together: index consistency
 # ---------------------------------------------------------------------------
 
 
@@ -518,24 +445,16 @@ class TestMultiSeriesAlignment:
         exp_p = dict.fromkeys(range(24), 0.08)
         pv = dict.fromkeys(range(24), 2.0)
         load = dict.fromkeys(range(24), 0.5)
-        grid_imp = dict.fromkeys(range(24), 0.2)
-        grid_exp = dict.fromkeys(range(24), 0.0)
-        soc = dict.fromkeys(range(24), 60.0)
 
         ai, ae = tsi.align_hourly_prices(imp_p, exp_p)
         apv = tsi.align_hourly_pv(pv)
         aload = tsi.align_hourly_load(load)
-        a_grid_imp, a_grid_exp = tsi.align_net_import_export(grid_imp, grid_exp)
-        asoc = tsi.align_battery_soc(soc)
 
         n = len(tsi)
         assert len(ai) == n
         assert len(ae) == n
         assert len(apv) == n
         assert len(aload) == n
-        assert len(a_grid_imp) == n
-        assert len(a_grid_exp) == n
-        assert len(asoc) == n
 
     def test_missing_aggregation_across_series(self):
         """Missing slot set accumulates across multiple alignment calls."""
@@ -554,11 +473,11 @@ class TestMultiSeriesAlignment:
         missing = tsi.missing_hours()
         assert 5 in missing
         assert 10 in missing
-        assert tsi.has_missing()
+        assert tsi.missing_slots
 
 
 # ---------------------------------------------------------------------------
-# 12. slot_index_for
+# 10. slot_index_for
 # ---------------------------------------------------------------------------
 
 
@@ -603,7 +522,7 @@ class TestSlotIndexFor:
 
 
 # ---------------------------------------------------------------------------
-# 13. Dunder methods and repr
+# 11. Dunder methods and repr
 # ---------------------------------------------------------------------------
 
 
@@ -632,5 +551,4 @@ class TestDunderMethods:
     def test_missing_slots_empty_initially(self):
         now = _cph(2024, 6, 15, 0)
         tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
-        assert not tsi.has_missing()
         assert tsi.missing_slots == set()

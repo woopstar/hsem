@@ -538,15 +538,6 @@ class TestTimeSeriesIndexMultiDayHelpers:
         assert tsi.missing_future_day_pv_hours(1) == set()
         assert tsi.missing_future_day_pv_hours(2) == set()
 
-    def test_tomorrow_helpers_delegate_to_day1(self):
-        """missing_tomorrow_* helpers must equal missing_future_day_*(..., 1)."""
-        tsi = self._make_tsi(48)
-        today_prices = dict.fromkeys(range(24), 0.2)
-        tsi.align_hourly_prices(today_prices, today_prices)
-        assert tsi.missing_tomorrow_price_hours() == tsi.missing_future_day_price_hours(
-            1
-        )
-
     def test_has_tomorrow_slots_delegates_to_has_day_slots(self):
         tsi24 = self._make_tsi(24)
         tsi48 = self._make_tsi(48)

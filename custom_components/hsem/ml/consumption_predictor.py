@@ -90,15 +90,9 @@ class ConsumptionPredictor:
         self._coef: np.ndarray | None = None
         self._intercept: float = 0.0
 
-        # Raw arrays from the most recent fit, retained for introspection.
-        # ``_X`` has a real reader (``group_count`` below); ``_y``/``_w``
-        # currently don't, but are kept alongside it as the same fitted-data
-        # triple and are exercised by a white-box regression test for
-        # physical-time row ordering / lag-reset
-        # (test_sequential_training_resets_lag_across_recorder_gap, issue #967).
+        # Raw array from the most recent fit, retained for introspection by
+        # ``group_count`` below.
         self._X: np.ndarray | None = None
-        self._y: np.ndarray | None = None
-        self._w: np.ndarray | None = None
 
         # Raw per-group data for uncertainty estimation.
         # Maps (dow, slot) → list[(age_days, energy_kwh), ...]
@@ -299,8 +293,6 @@ class ConsumptionPredictor:
             and changed_samples < self._retrain_min_new
         ):
             self._X = X[:valid]
-            self._y = y[:valid]
-            self._w = w[:valid]
             return
 
         X = X[:valid]
@@ -308,8 +300,6 @@ class ConsumptionPredictor:
         w = w[:valid]
 
         self._X = X
-        self._y = y
-        self._w = w
         self._fit(X, y, w)
         self._last_fit_time = reference_aware
         self._last_fit_fingerprints = valid_fingerprints

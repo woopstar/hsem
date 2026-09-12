@@ -2,19 +2,18 @@
 
 Regression suite for the bug where ``apply_optimization_strategy`` stored the
 running cumulative ``charged`` total in each slot's ``batteries_charged_kwh`` field
-instead of the per-slot energy delta.  Summing those values in
-``total_charged_energy_kwh()`` or ``engine._derive_windows()`` therefore
-over-reported how much energy was charged.
+instead of the per-slot energy delta.  Summing those values across all slots
+or in ``engine._derive_windows()`` therefore over-reported how much energy
+was charged.
 
 Acceptance criteria
 -------------------
 1. Each BatteriesChargeSolar slot stores only the energy charged *in that slot*,
    not the running cumulative total.
 2. Summing ``batteries_charged_kwh`` across all BatteriesChargeSolar slots equals
-   ``total_charged_energy_kwh()`` (no duplication).
+   the sum across all slots (no duplication leaking onto non-solar slots).
 3. The sum never exceeds the battery's usable remaining capacity.
-4. ``total_charged_energy_kwh()`` matches a manual slot-by-slot sum.
-5. Multiple solar charge slots do not accumulate into a single incorrectly large
+4. Multiple solar charge slots do not accumulate into a single incorrectly large
    value on any individual slot.
 """
 
@@ -129,18 +128,6 @@ class TestSolarChargePerSlotSemantics:
                 f"exceeds available solar surplus={surplus}"
             )
 
-    def test_sum_matches_total_charged_energy_kwh(self):
-        """Summing batteries_charged_kwh across all slots must equal total_charged_energy_kwh."""
-        inp = _make_solar_only_input(battery_soc_pct=0.0, solar_per_hour=3.0)
-        result = run_planner(inp)
-
-        manual_sum = round(sum(s.batteries_charged_kwh for s in result.slots), 3)
-        reported = result.total_charged_energy_kwh()
-
-        assert abs(manual_sum - reported) < 1e-6, (
-            f"Manual sum {manual_sum} != total_charged_energy_kwh {reported}"
-        )
-
     def test_total_charged_does_not_exceed_usable_capacity(self):
         """Total solar charge must not exceed the available battery headroom."""
         rated = 10.0
@@ -158,7 +145,7 @@ class TestSolarChargePerSlotSemantics:
         )
         result = run_planner(inp)
 
-        total = result.total_charged_energy_kwh()
+        total = round(sum(s.batteries_charged_kwh for s in result.slots), 3)
         assert total <= headroom + 1e-3, (
             f"Total charged {total} kWh exceeds battery headroom {headroom} kWh"
         )
@@ -204,9 +191,10 @@ class TestSolarChargePerSlotSemantics:
         solar_slots = [
             s for s in result.slots if s.recommendation == _SOLAR_CHARGE_VALUE
         ]
-        # Total across slots must equal reported total (no double-count)
+        # Total across solar slots must equal the total across all slots
+        # (no double-count leaking charge onto non-solar slots).
         manual_sum = round(sum(s.batteries_charged_kwh for s in solar_slots), 3)
-        reported = result.total_charged_energy_kwh()
+        reported = round(sum(s.batteries_charged_kwh for s in result.slots), 3)
         assert abs(manual_sum - reported) < 1e-6
 
         # Each individual slot must not exceed its per-slot surplus
@@ -236,7 +224,7 @@ class TestSolarChargePerSlotSemantics:
         )
         result = run_planner(inp)
 
-        total = result.total_charged_energy_kwh()
+        total = round(sum(s.batteries_charged_kwh for s in result.slots), 3)
         # Total charged must not exceed rated capacity (usable + reserve) as an
         # absolute upper bound — the planner may cap at usable but never above rated.
         assert total <= rated + 1e-3, (

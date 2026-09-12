@@ -26,6 +26,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from custom_components.hsem.coordinator import (
+    CoordinatorData,
+    HSEMDataUpdateCoordinator,
+)
 from custom_components.hsem.custom_sensors.applier_status_sensor import (
     HSEMApplierStatusSensor,
 )
@@ -59,7 +63,9 @@ def _make_summary(n_results: int = 1) -> CycleApplySummary:
     )
 
 
-async def _run_two_cycles_carrying_data(coord):
+async def _run_two_cycles_carrying_data(
+    coord: HSEMDataUpdateCoordinator,
+) -> list[CoordinatorData]:
     """Run ``_async_run_update_cycle`` twice, actually publishing ``coord.data``.
 
     ``make_bare_coordinator`` mocks ``async_set_updated_data`` as a no-op, so
@@ -67,13 +73,13 @@ async def _run_two_cycles_carrying_data(coord):
     snapshot has to be reproduced here for the carry-forward logic (which
     reads ``self.data`` — i.e. the *previous* snapshot) to be exercised.
     """
-    captured: list = []
+    captured: list[CoordinatorData] = []
 
-    def _publish(d):
+    def _publish(d: CoordinatorData) -> None:
         captured.append(d)
         coord.data = d
 
-    coord.async_set_updated_data = _publish  # type: ignore[method-assign]  # test monkey-patch
+    coord.async_set_updated_data = _publish  # type: ignore[method-assign, assignment]  # test monkey-patch
 
     with _patch_all_ha_helpers():
         await coord._async_run_update_cycle()
