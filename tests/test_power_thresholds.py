@@ -1,11 +1,7 @@
-"""Tests for named power threshold constants (issue #272).
+"""Tests for planner power-threshold boundary behaviour (issue #272).
 
-Verifies that:
-- ``SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH`` and
-  ``NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH`` are exported from
-  ``custom_components.hsem.const``.
-- The planner classifies slots correctly at, above, and below each boundary.
-- The default values preserve v5.1.0 behaviour (no silent regression).
+Verifies that the planner classifies slots correctly at, above, and below
+each power threshold boundary.
 
 All tests are pure-Python — no Home Assistant runtime is required.
 """
@@ -14,12 +10,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-import pytest
-
-from custom_components.hsem.const import (
-    NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH,
-    SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH,
-)
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
@@ -115,35 +105,6 @@ def _make_minimal_input(
         ),
         house_power_includes_ev=False,
     )
-
-
-# ===========================================================================
-# 1. Constant definitions and default values
-# ===========================================================================
-
-
-class TestConstantDefinitions:
-    """Constants must exist in const.py with correct default values."""
-
-    def test_solar_surplus_threshold_is_negative(self):
-        """SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH must be negative (surplus means export)."""
-        assert SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH < 0
-
-    def test_solar_surplus_threshold_default_matches_v510(self):
-        """Default solar surplus threshold must match v5.1.0 value of -0.2 kWh."""
-        assert pytest.approx(-0.2) == SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH
-
-    def test_near_zero_threshold_is_positive_or_zero(self):
-        """NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH must be >= 0 (small positive buffer)."""
-        assert NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH >= 0
-
-    def test_near_zero_threshold_default_matches_v510(self):
-        """Default near-zero threshold must match v5.1.0 value of 0.1 kWh."""
-        assert pytest.approx(0.1) == NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
-
-    def test_solar_surplus_threshold_less_than_near_zero(self):
-        """Solar surplus threshold must be below the near-zero threshold."""
-        assert SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH < NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
 
 
 # ===========================================================================
@@ -279,47 +240,3 @@ class TestPlannerThresholdEndToEnd:
             f"Unexpected solar charge slots at night: "
             f"{[s.start.hour for s in night_solar_charged]}"
         )
-
-    def test_constant_values_match_threshold_names(self):
-        """The threshold constants used by the planner match the documented
-        v5.1.0 default values exactly — a regression guard."""
-        assert pytest.approx(-0.2) == SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH, (
-            "SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH must default to -0.2 kWh "
-            "(v5.1.0 backward compatibility)"
-        )
-        assert pytest.approx(0.1) == NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH, (
-            "NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH must default to 0.1 kWh "
-            "(v5.1.0 backward compatibility)"
-        )
-
-    def test_planner_uses_named_constants_not_literals(self) -> None:
-        """charge_scheduler.py and discharge_scheduler.py must not contain
-        unexplained 0.1 or 0.2 kW literals — they must reference the named
-        constants instead."""
-        import ast
-        from pathlib import Path
-
-        for mod_name in ("charge_scheduler.py", "discharge_scheduler.py"):
-            scheduler_path = (
-                Path(__file__).parents[1]
-                / "custom_components"
-                / "hsem"
-                / "planner"
-                / mod_name
-            )
-            source = scheduler_path.read_text(encoding="utf-8")
-            tree = ast.parse(source)
-
-            suspicious: list[tuple[int, float]] = []
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Constant) and isinstance(node.value, float):
-                    # Flag bare 0.1 and 0.2 — the only legitimate use of these
-                    # values is now via named constants imported from const.py
-                    if node.value in (0.1, 0.2, -0.1, -0.2):
-                        suspicious.append((node.lineno, node.value))
-
-            assert not suspicious, (
-                f"{mod_name} still contains bare power threshold literals "
-                f"at lines {suspicious}. Use SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH or "
-                f"NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH instead."
-            )

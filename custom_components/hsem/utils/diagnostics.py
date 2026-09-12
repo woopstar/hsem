@@ -4,7 +4,6 @@ Single responsibility: produce a safe, JSON-serialisable snapshot of one
 HSEM planning cycle that can be:
 
 - Attached to a Home Assistant diagnostics report (``async_get_config_entry_diagnostics``).
-- Stored to disk for offline replay in the test suite.
 - Shared in GitHub issue reports without leaking credentials.
 
 Redaction
@@ -16,23 +15,10 @@ with ``"**REDACTED**"`` before the dump is returned.
 Specifically, Huawei Solar entity IDs listed in the live state (e.g.
 ``sensor.batteries_state_of_capacity``) and config entry entity references are
 replaced so that the dump does not expose the user's HA entity namespace.
-
-Reproducibility
----------------
-The serialised :class:`~custom_components.hsem.models.planner_inputs.PlannerInput`
-is included verbatim (without entity IDs) so that the planner engine can be
-re-run deterministically in tests:
-
-    from custom_components.hsem.utils.diagnostics import load_planner_input_from_dump
-    from custom_components.hsem.planner import run_planner
-
-    inp = load_planner_input_from_dump(dump)
-    output = run_planner(inp)
 """
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import asdict
 from datetime import date, datetime
@@ -41,13 +27,8 @@ from typing import Any, cast
 import homeassistant.util.dt as dt_util
 from homeassistant.const import STATE_UNKNOWN
 
-from custom_components.hsem.models.hourly_consumption_average import (
-    HourlyConsumptionAverage,
-)
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
-from custom_components.hsem.models.price_point import PricePoint
-from custom_components.hsem.models.solcast_slot import SolcastSlot
 
 # ---------------------------------------------------------------------------
 # Redaction helpers
@@ -183,52 +164,7 @@ def _planner_input_to_dict(inp: PlannerInput) -> dict[str, Any]:
     # not needed to reproduce planner logic offline, so replace it with None.
     raw["solar_corrector"] = None
 
-    # Redact any stray entity-id strings that found their way into ``extra``.
-    if "extra" in raw:
-        raw["extra"] = redact_dict(raw["extra"])
-
     return cast(dict[str, Any], _serialise_value(raw))
-
-
-def _planner_input_from_dict(data: dict[str, Any]) -> PlannerInput:
-    """Reconstruct a :class:`PlannerInput` from a serialised dictionary.
-
-    Inverse of :func:`_planner_input_to_dict`.
-
-    Args:
-        data: A dictionary previously produced by :func:`_planner_input_to_dict`.
-
-    Returns:
-        A fully populated :class:`PlannerInput`.
-    """
-    inp_data = dict(data)
-
-    # Reconstruct nested dataclass lists.
-    inp_data["consumption_averages"] = [
-        HourlyConsumptionAverage(**item)
-        for item in inp_data.get("consumption_averages", [])
-    ]
-    inp_data["price_points"] = [
-        PricePoint(**item) for item in inp_data.get("price_points", [])
-    ]
-    inp_data["solcast_slots"] = [
-        SolcastSlot(**item) for item in inp_data.get("solcast_slots", [])
-    ]
-
-    # Discard the removed battery-schedule field from any pre-#860 dump so
-    # older diagnostics dumps can still be replayed.
-    inp_data.pop("battery_schedules", None)
-
-    # ``battery_max_discharge_power_w`` may be None (nullable float).
-    if (
-        "battery_max_discharge_power_w" in inp_data
-        and inp_data["battery_max_discharge_power_w"] is not None
-    ):
-        inp_data["battery_max_discharge_power_w"] = float(
-            inp_data["battery_max_discharge_power_w"]
-        )
-
-    return PlannerInput(**inp_data)
 
 
 # ---------------------------------------------------------------------------
@@ -396,13 +332,10 @@ def build_diagnostics_dump(
 
     The returned dictionary is JSON-serialisable and suitable for:
     - Attaching to an HA ``async_get_config_entry_diagnostics`` payload.
-    - Writing to disk for offline reproduction (see :func:`dump_to_json`).
     - Embedding in GitHub issue reports.
 
     Sensitive data (HA entity IDs, tokens, passwords) is redacted before
-    the dump is returned.  The planner input section retains all numeric
-    fields so the plan can be reproduced deterministically in tests via
-    :func:`load_planner_input_from_dump`.
+    the dump is returned.
 
     Args:
         planner_input: The input that was fed to the planner engine.
@@ -428,60 +361,3 @@ def build_diagnostics_dump(
         "planner_output": _planner_output_summary(planner_output),
         "apply_result": _apply_summary_to_dict(apply_summary),
     }
-
-
-def dump_to_json(dump: dict[str, Any], *, indent: int = 2) -> str:
-    """Serialise a diagnostics dump to a pretty-printed JSON string.
-
-    No production caller: this is offline developer tooling for writing a
-    dump to disk (e.g. to attach to a bug report) and replaying it via
-    :func:`load_planner_input_from_dump`, per this module's docstring.
-    Exercised by tests/test_diagnostics_dump.py (issue #967).
-
-    Args:
-        dump: A dict previously produced by :func:`build_diagnostics_dump`.
-        indent: JSON indentation level.
-
-    Returns:
-        A UTF-8 JSON string.
-    """
-    return json.dumps(dump, indent=indent, default=str)
-
-
-def load_planner_input_from_dump(dump: dict[str, Any]) -> PlannerInput:
-    """Reconstruct a :class:`PlannerInput` from a diagnostics dump.
-
-    This is the inverse of the serialisation step inside
-    :func:`build_diagnostics_dump`.  It allows any dump saved during a real
-    HA run to be replayed in a unit test:
-
-    .. code-block:: python
-
-        import json
-        from custom_components.hsem.utils.diagnostics import load_planner_input_from_dump
-        from custom_components.hsem.planner import run_planner
-
-        with open("dump.json", encoding="utf-8") as fh:
-            raw = json.load(fh)
-
-        inp = load_planner_input_from_dump(raw)
-        output = run_planner(inp)
-
-    Note:
-        The ``extra`` field and any redacted entity-id values are preserved as-is
-        (either as ``_REDACTED`` strings or the original numeric/bool values).
-        The reconstructed :class:`PlannerInput` is fully functional for replaying
-        planner logic; only the HA entity strings (which the planner never uses)
-        are missing.
-
-    Args:
-        dump: A dictionary previously produced by :func:`build_diagnostics_dump`.
-
-    Returns:
-        A :class:`PlannerInput` ready to be passed to :func:`run_planner`.
-
-    Raises:
-        KeyError: If ``"planner_input"`` is absent from *dump*.
-        ValueError: If the serialised data is structurally invalid.
-    """
-    return _planner_input_from_dict(dump["planner_input"])

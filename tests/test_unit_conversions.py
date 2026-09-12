@@ -10,13 +10,10 @@ from __future__ import annotations
 import pytest
 
 from custom_components.hsem.utils.units import (
-    energy_to_power_kw,
     ev_ac_to_dc_kwh,
     ev_dc_to_ac_kwh,
     fuse_max_energy_per_slot_kwh,
-    kilowatthours_to_watthours,
     watt_to_kilowatt,
-    watthours_to_kilowatthours,
 )
 
 # ---------------------------------------------------------------------------
@@ -46,83 +43,6 @@ class TestWattToKilowatt:
     def test_negative(self) -> None:
         """-500 W → -0.5 kW (negative power is valid for reverse flow)."""
         assert watt_to_kilowatt(-500.0) == pytest.approx(-0.5)
-
-
-# ---------------------------------------------------------------------------
-# Energy conversions (Wh ↔ kWh)
-# ---------------------------------------------------------------------------
-
-
-class TestWatthoursToKilowatthours:
-    """Tests for :func:`watthours_to_kilowatthours`."""
-
-    def test_typical_value(self) -> None:
-        """10000 Wh → 10.0 kWh."""
-        assert watthours_to_kilowatthours(10000.0) == pytest.approx(10.0)
-
-    def test_zero(self) -> None:
-        """0 Wh → 0.0 kWh."""
-        assert watthours_to_kilowatthours(0.0) == pytest.approx(0.0)
-
-    def test_single_wh(self) -> None:
-        """1 Wh → 0.001 kWh."""
-        assert watthours_to_kilowatthours(1.0) == pytest.approx(0.001)
-
-    def test_negative(self) -> None:
-        """-5000 Wh → -5.0 kWh."""
-        assert watthours_to_kilowatthours(-5000.0) == pytest.approx(-5.0)
-
-
-class TestKilowatthoursToWatthours:
-    """Tests for :func:`kilowatthours_to_watthours`."""
-
-    def test_typical_value(self) -> None:
-        """10.0 kWh → 10000 Wh."""
-        assert kilowatthours_to_watthours(10.0) == pytest.approx(10000.0)
-
-    def test_zero(self) -> None:
-        """0.0 kWh → 0 Wh."""
-        assert kilowatthours_to_watthours(0.0) == pytest.approx(0.0)
-
-    def test_negative(self) -> None:
-        """-2.5 kWh → -2500 Wh."""
-        assert kilowatthours_to_watthours(-2.5) == pytest.approx(-2500.0)
-
-    def test_roundtrip(self) -> None:
-        """Round-trip: Wh → kWh → Wh preserves value."""
-        original = 12345.0
-        assert kilowatthours_to_watthours(
-            watthours_to_kilowatthours(original)
-        ) == pytest.approx(original)
-
-
-# ---------------------------------------------------------------------------
-# Duration-aware conversions (power ⇄ energy)
-# ---------------------------------------------------------------------------
-
-
-class TestEnergyToPowerKw:
-    """Tests for :func:`energy_to_power_kw`."""
-
-    def test_typical_value(self) -> None:
-        """10 kWh ÷ 2 h → 5 kW."""
-        assert energy_to_power_kw(energy_kwh=10.0, duration_h=2.0) == pytest.approx(5.0)
-
-    def test_zero_energy(self) -> None:
-        """0 kWh ÷ 2 h → 0 kW."""
-        assert energy_to_power_kw(energy_kwh=0.0, duration_h=2.0) == pytest.approx(0.0)
-
-    def test_quarter_hour(self) -> None:
-        """1.25 kWh ÷ 0.25 h → 5 kW."""
-        assert energy_to_power_kw(energy_kwh=1.25, duration_h=0.25) == pytest.approx(
-            5.0
-        )
-
-    def test_negative_energy(self) -> None:
-        """-3 kWh ÷ 1 h → -3 kW."""
-        assert energy_to_power_kw(energy_kwh=-3.0, duration_h=1.0) == pytest.approx(
-            -3.0
-        )
 
 
 # ---------------------------------------------------------------------------

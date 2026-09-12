@@ -263,10 +263,13 @@ is a valid, available reading — it is no longer indistinguishable from "no
 reading yet". When a channel is unavailable, the engine leaves that slot's
 forecast value untouched instead of injecting a stale or invalid number.
 
-A short-window median sampler (`utils/live_power.py::LivePowerWindow`) is
-available for smoothing bursty live power over multiple ticks before it
-reaches the planner, but is not yet wired into the coordinator's update
-cycle — today's live values are still the latest single reading per cycle.
+A short-window median sampler (`utils/live_power.py::LivePowerWindow`) smooths
+bursty live power over multiple ticks before it reaches the planner. The
+coordinator wires it in via `coordinator_live_power.py` (issue #797): a
+dedicated fast timer keeps the window fresh between full planning cycles,
+and each cycle also seeds the window from its own immutable snapshot so a
+slow-cadence cycle without an intervening fast-timer sample still sees an
+up-to-date estimate.
 
 ### Excess export and grid controls
 

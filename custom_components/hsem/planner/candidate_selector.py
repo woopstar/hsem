@@ -78,22 +78,11 @@ class HysteresisResult:
             switch.  Empty when hysteresis is inactive.
         previous_plan_name:
             Name of the plan from the previous run, or ``""``.
-        previous_score:
-            Score of the previous plan re-evaluated with current data, or 0.
-            Not surfaced onto ``PlanExplanation`` — ``reason`` already states
-            the computed improvement/thresholds in human-readable form; this
-            field exists for precise numeric assertions in
-            tests/planner/test_hysteresis.py (issue #967).
-        new_score:
-            Score of the best new candidate, or 0. Same rationale as
-            ``previous_score``.
     """
 
     applied: bool = False
     reason: str = ""
     previous_plan_name: str = ""
-    previous_score: float = 0.0
-    new_score: float = 0.0
 
 
 def select_best_candidate(  # NOSONAR
@@ -394,8 +383,6 @@ def select_best_candidate(  # NOSONAR
     # plan to avoid flapping.
     hysteresis_result = HysteresisResult(
         previous_plan_name=previous_winner_name or "",
-        previous_score=previous_winner_score,
-        new_score=getattr(getattr(winner, "_cost", None), "score", 0.0),
     )
 
     winner_cost = winner._cost
@@ -414,8 +401,6 @@ def select_best_candidate(  # NOSONAR
             prev_score = getattr(getattr(prev_candidate, "_cost", None), "score", None)
             new_score = winner_cost.score
             if prev_score is not None:
-                hysteresis_result.previous_score = prev_score
-                hysteresis_result.new_score = new_score
                 improvement = prev_score - new_score
 
                 # Absolute threshold check

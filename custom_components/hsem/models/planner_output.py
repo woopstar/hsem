@@ -60,8 +60,6 @@ class PlannerOutput:
             load-forecast inputs for today and tomorrow.  Exposes which hours are missing
             so dashboards and logs can display the gap explicitly rather
             than silently treating missing slots as zero.
-        extra:
-            Arbitrary key-value pairs for debug / introspection purposes.
         explanation:
             Human-readable explanation of why the selected plan was chosen,
             including rejected alternatives, price spread, forecast summary,
@@ -79,7 +77,6 @@ class PlannerOutput:
     warnings: list[str] = field(default_factory=list)
     #: Structured data-quality report for price, PV, and load-forecast inputs.
     data_quality: DataQuality = field(default_factory=DataQuality)
-    extra: dict[str, Any] = field(default_factory=dict)
     #: Human-readable explanation of why the selected plan was chosen and what
     #: alternatives were considered.  Populated by the planner engine.
     explanation: PlanExplanation = field(default_factory=PlanExplanation)
@@ -111,20 +108,3 @@ class PlannerOutput:
     #: Same as ev_held_slot_start/ev_held_power_w, for the second EV.
     ev_second_held_slot_start: datetime | None = None
     ev_second_held_power_w: float = 0.0
-
-    # ------------------------------------------------------------------
-    # Convenience helpers used by tests
-    # ------------------------------------------------------------------
-
-    def slots_with_recommendation(self, recommendation: str) -> list[PlannedSlot]:
-        """Return all slots whose recommendation equals *recommendation*."""
-        return [s for s in self.slots if s.recommendation == recommendation]
-
-    def charge_slot_count(self) -> int:
-        """Return the number of slots assigned to any type of charging."""
-        charge_values = {"batteries_charge_grid", "batteries_charge_solar"}
-        return sum(1 for s in self.slots if s.recommendation in charge_values)
-
-    def total_charged_energy_kwh(self) -> float:
-        """Sum of ``batteries_charged`` across all slots."""
-        return round(sum(s.batteries_charged_kwh for s in self.slots), 3)

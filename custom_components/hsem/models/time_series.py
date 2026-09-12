@@ -1,7 +1,7 @@
 """Shared time-series slot model for the HSEM planner (issue #286).
 
 This module provides a single, authoritative time axis for all planner
-time-series inputs (prices, PV forecast, load, import/export, battery SoC).
+time-series inputs (prices, PV forecast, load).
 
 Design goals
 ------------
@@ -384,88 +384,6 @@ class TimeSeriesIndex:
                 aligned.append(round(hourly_kwh * meta.slot_fraction, 6))
         return aligned
 
-    def align_net_import_export(
-        self,
-        import_by_hour: dict[int, float],
-        export_by_hour: dict[int, float],
-    ) -> tuple[list[float], list[float]]:
-        """Align hourly grid import and export energy dicts onto the slot grid.
-
-        Part of the general alignment API this module's docstring commits to
-        (prices, PV, load, import/export, SoC) — no current planner caller
-        needs import/export or SoC on the slot grid the way it needs price/
-        PV/load, but the method stays as designed, general-purpose
-        infrastructure exercised by tests/test_time_series_model.py
-        (issue #967).
-
-        Values are divided proportionally across sub-hour slots.
-
-        Missing hours are filled with :data:`MISSING_SENTINEL`.
-
-        Args:
-            import_by_hour:
-                Dict mapping hour (0-23) to grid import energy in kWh for
-                the full hour.
-            export_by_hour:
-                Dict mapping hour (0-23) to grid export energy in kWh for
-                the full hour.
-
-        Returns:
-            ``(aligned_import_kwh, aligned_export_kwh)`` — two lists,
-            each parallel to :attr:`slots`.
-        """
-        aligned_import: list[float] = []
-        aligned_export: list[float] = []
-
-        for meta in self.slots:
-            imp = import_by_hour.get(meta.hour)
-            exp = export_by_hour.get(meta.hour)
-
-            if imp is None:
-                self.missing_slots.add(meta.key)
-                aligned_import.append(MISSING_SENTINEL)
-            else:
-                aligned_import.append(round(imp * meta.slot_fraction, 6))
-
-            if exp is None:
-                self.missing_slots.add(meta.key)
-                aligned_export.append(MISSING_SENTINEL)
-            else:
-                aligned_export.append(round(exp * meta.slot_fraction, 6))
-
-        return aligned_import, aligned_export
-
-    def align_battery_soc(
-        self,
-        soc_by_hour: dict[int, float],
-    ) -> list[float]:
-        """Align a battery state-of-charge (SoC) series onto the slot grid.
-
-        See :meth:`align_net_import_export` — same "designed but not yet
-        consumed by the planner" status (issue #967).
-
-        SoC is a *state* (%), not an energy flux, so no scaling is applied —
-        every slot in the same hour receives the same SoC value.
-
-        Missing hours are filled with :data:`MISSING_SENTINEL`.
-
-        Args:
-            soc_by_hour:
-                Dict mapping hour (0-23) to battery SoC percentage (0-100).
-
-        Returns:
-            List of per-slot SoC values parallel to :attr:`slots`.
-        """
-        aligned: list[float] = []
-        for meta in self.slots:
-            soc = soc_by_hour.get(meta.hour)
-            if soc is None:
-                self.missing_slots.add(meta.key)
-                aligned.append(MISSING_SENTINEL)
-            else:
-                aligned.append(soc)
-        return aligned
-
     def slot_index_for(self, dt: datetime) -> int | None:
         """Return the 0-based position of the slot containing *dt*, or ``None``.
 
@@ -491,55 +409,16 @@ class TimeSeriesIndex:
                 return i
         return None
 
-    def has_missing(self) -> bool:
-        """Return ``True`` if any series alignment found a missing slot.
-
-        No production caller currently needs this — ``missing_hours()`` (used
-        by ``engine_population.py``) already gives the more detailed per-hour
-        view. Kept as a cheap boolean convenience exercised throughout
-        tests/test_time_series_model.py (issue #967).
-        """
-        return bool(self.missing_slots)
-
     def missing_hours(self) -> set[int]:
         """Return the wall-clock hours (0-23) that have at least one missing slot."""
         key_to_hour: dict[SlotKey, int] = {m.key: m.hour for m in self.slots}
         return {key_to_hour[key] for key in self.missing_slots if key in key_to_hour}
 
-    def missing_tomorrow_price_hours(self) -> set[int]:
-        """Return wall-clock hours (0-23) in ``day_offset=1`` that lack price data.
-
-        Returns an empty set when the planning horizon does not include tomorrow
-        (i.e. ``horizon_hours`` ≤ 24) or when all tomorrow price hours are present.
-
-        Production code (``engine_population.py``) calls the generalised
-        ``missing_future_day_price_hours(1)`` directly instead of this named
-        wrapper; kept as a readable, directly-tested alias (issue #967).
-
-        Returns:
-            Set of integer hours (0-23) from tomorrow that have no price data.
-        """
-        return self.missing_future_day_price_hours(1)
-
-    def missing_tomorrow_pv_hours(self) -> set[int]:
-        """Return wall-clock hours (0-23) in ``day_offset=1`` that lack PV data.
-
-        Returns an empty set when the planning horizon does not include tomorrow
-        (i.e. ``horizon_hours`` ≤ 24) or when all tomorrow PV hours are present.
-
-        See :meth:`missing_tomorrow_price_hours` — same rationale (issue #967).
-
-        Returns:
-            Set of integer hours (0-23) from tomorrow that have no PV forecast data.
-        """
-        return self.missing_future_day_pv_hours(1)
-
     def missing_future_day_price_hours(self, day_offset: int) -> set[int]:
         """Return wall-clock hours (0-23) for *day_offset* that lack price data.
 
-        Generalised version of :meth:`missing_tomorrow_price_hours` that works for
-        any day in the planning horizon (e.g. day 1 = tomorrow, day 2 = day after
-        tomorrow, etc.).
+        Works for any day in the planning horizon (e.g. day 1 = tomorrow,
+        day 2 = day after tomorrow, etc.).
 
         Args:
             day_offset:
@@ -559,9 +438,8 @@ class TimeSeriesIndex:
     def missing_future_day_pv_hours(self, day_offset: int) -> set[int]:
         """Return wall-clock hours (0-23) for *day_offset* that lack PV data.
 
-        Generalised version of :meth:`missing_tomorrow_pv_hours` that works for
-        any day in the planning horizon (e.g. day 1 = tomorrow, day 2 = day after
-        tomorrow, etc.).
+        Works for any day in the planning horizon (e.g. day 1 = tomorrow,
+        day 2 = day after tomorrow, etc.).
 
         Args:
             day_offset:

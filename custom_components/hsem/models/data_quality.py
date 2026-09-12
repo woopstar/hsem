@@ -71,26 +71,6 @@ class DataQuality:
             or self.today_pv_missing_hours
         )
 
-    @property
-    def tomorrow_price_complete(self) -> bool:
-        """Return ``True`` when tomorrow price data is complete or not required.
-
-        No production caller currently reads this — ``as_dict()`` exposes the
-        more detailed ``tomorrow_price_missing_hours`` list instead, which is
-        a strict superset of this information. Kept as a cheap, readable
-        accessor used throughout tests/planner/test_missing_tomorrow_data.py
-        (issue #967).
-        """
-        return not self.tomorrow_price_missing_hours
-
-    @property
-    def tomorrow_pv_complete(self) -> bool:
-        """Return ``True`` when tomorrow PV data is complete or not required.
-
-        See :attr:`tomorrow_price_complete` — same rationale (issue #967).
-        """
-        return not self.tomorrow_pv_missing_hours
-
     def as_dict(self) -> dict[str, Any]:
         """Serialise the quality report to a plain dict for HA attributes.
 

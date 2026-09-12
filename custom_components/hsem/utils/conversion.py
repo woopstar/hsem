@@ -1,32 +1,13 @@
 """Type-conversion utilities for Home Assistant sensor states.
 
 Includes helpers for converting raw sensor values into float, int,
-month-list, boolean, and time types, with proper handling of
+month-list, and boolean types, with proper handling of
 HA sentinel values (``unknown`` / ``unavailable``).
 """
 
-from datetime import datetime, time
 from typing import Any
 
 from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
-
-
-def convert_to_time(time_value: str | time) -> time:
-    """Convert a string or ``datetime.time`` to a ``datetime.time`` object.
-
-    Args:
-        time_value: A time string in ``HH:MM:SS`` format or a ``datetime.time``.
-
-    Returns:
-        The converted ``datetime.time`` object.
-    """
-    if isinstance(time_value, time):
-        return time_value
-
-    if isinstance(time_value, str):
-        return datetime.strptime(time_value, "%H:%M:%S").time()
-
-    return time()
 
 
 def convert_to_float(state: Any) -> float | None:

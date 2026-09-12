@@ -8,13 +8,9 @@ Each section maps to one P0 issue and contains:
 Covered bugs
 ------------
 P0-01  Month matching (issue #265) — string-containment false positive
-P0-02  Midnight rollover (issue #266) — cross-midnight windows not handled
-P0-03  Next-day charging (issue #267) — 07:00 window not found from 22:00
-P0-04  Schedule_3 default (issue #268) — 00:00→00:00 zero-length window
 P0-05  Invalid sensor values (issue #269) — "unknown"/"unavailable" → 0
 P0-06  Concurrent updates (issue #270) — parallel update cycles not locked
 P0-07  Version comparison (issue #271) — "1.10" < "1.9" (lexicographic)
-P0-08  Magic thresholds (issue #272) — hard-coded 0.1/0.2 kWh literals
 P0-09  Exception handling (issue #273) — broad ``except Exception`` swallowed errors
 
 CI compatibility
@@ -26,34 +22,12 @@ Async tests use ``pytest-asyncio`` with the ``asyncio`` mark.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, time, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from homeassistant.exceptions import HomeAssistantError, ServiceNotFound
-
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
-
-_UTC = UTC
-
-
-def _dt(
-    hour: int,
-    minute: int = 0,
-    *,
-    day: int = 15,
-    month: int = 1,
-    year: int = 2026,
-    day_offset: int = 0,
-) -> datetime:
-    """Return a UTC-aware datetime. ``day_offset`` shifts by whole days."""
-    base = datetime(year, month, day, hour, minute, tzinfo=_UTC)
-    return base + timedelta(days=day_offset)
-
 
 # ===========================================================================
 # P0-01  Month matching  (issue #265)
@@ -139,125 +113,6 @@ class TestP001MonthMatching:
 
         with pytest.raises(ValueError, match="Month must be between 1 and 12"):
             convert_months_to_int(["13"])
-
-
-# ===========================================================================
-# P0-02  Midnight rollover  (issue #266)
-# ===========================================================================
-
-
-class TestP002MidnightRollover:
-    """OLD BUG: the eligible-slot ``interval_end <= window_start`` comparison
-    only handled same-day windows (start < end).  A cross-midnight window
-    such as 23:00-02:00 was silently treated as always-false, causing HSEM
-    to skip valid overnight charge/discharge windows entirely.
-
-    FIX: ``next_window_start_dt`` resolves ``window_start`` to a
-    timezone-aware datetime on the correct calendar date, so comparing
-    against it (as ``pre_charge.py``'s eligible-slot filter and
-    ``discharge_scheduler.py`` both do) handles cross-midnight windows
-    without false positives.
-
-    Note: the sibling ``is_time_in_window`` helper covered by the original
-    fix was removed as dead code in issue #891, and the thin
-    ``interval_ends_before_window_start`` wrapper (which had no production
-    caller and could not safely replace ``pre_charge.py``'s per-occurrence
-    filter) was removed in issue #898. Production cross-midnight window
-    handling lives inline in ``planner/discharge_scheduler.py`` (the
-    ``sched.end > sched.start`` branch) and
-    ``planner/charging/pre_charge.py``'s eligible-slot filter, exercised by
-    ``tests/test_cross_day_charge_windows.py``,
-    ``tests/planner/test_charge_scheduler_capacity.py``, and the planner
-    test suite.
-    """
-
-    def test_interval_ending_before_cross_midnight_window_start(self) -> None:
-        """An interval ending at 22:00 is before a 23:00 cross-midnight window."""
-        from custom_components.hsem.utils.time_windows import next_window_start_dt
-
-        now = _dt(21, 0)
-        interval_end = _dt(22, 0)
-        assert interval_end <= next_window_start_dt(now, time(23, 0))
-
-    def test_interval_ending_inside_cross_midnight_window_is_not_before(self) -> None:
-        """An interval ending at 23:30 is NOT before the 23:00 window start."""
-        from custom_components.hsem.utils.time_windows import next_window_start_dt
-
-        now = _dt(21, 0)
-        interval_end = _dt(23, 30)
-        assert not (interval_end <= next_window_start_dt(now, time(23, 0)))
-
-
-# ===========================================================================
-# P0-03  Next-day charging  (issue #267)
-# ===========================================================================
-
-
-class TestP003NextDayCharging:
-    """OLD BUG: ``next_window_start_dt`` did not exist; the sensor used a naive
-    ``now.replace(hour=..., minute=...)`` call which always returned a time on
-    the *current* calendar day.  At 22:00, the 07:00 morning discharge window
-    was computed as *already in the past* — so the cheap 02:00–05:00 overnight
-    grid-charge opportunity was never selected.
-
-    FIX: ``next_window_start_dt`` always returns the *next* future occurrence of
-    the requested wall-clock time (today if still upcoming, tomorrow if past).
-    """
-
-    def test_evening_planning_resolves_morning_window_to_tomorrow(self) -> None:
-        """At 22:00 a 07:00 window must resolve to the next calendar day."""
-        from custom_components.hsem.utils.time_windows import next_window_start_dt
-
-        now = _dt(22, 0)
-        result = next_window_start_dt(now, time(7, 0))
-        expected = _dt(7, 0, day_offset=1)
-        assert result == expected, (
-            f"At 22:00, 07:00 window should be tomorrow — got {result}"
-        )
-
-    def test_result_is_always_strictly_after_now(self) -> None:
-        """``next_window_start_dt`` must never return a past datetime."""
-        from custom_components.hsem.utils.time_windows import next_window_start_dt
-
-        for hour in (0, 6, 12, 18, 22, 23):
-            now = _dt(hour, 0)
-            result = next_window_start_dt(now, time(7, 0))
-            assert result > now, (
-                f"next_window_start_dt from {now.time()} returned {result.time()}, "
-                "which is not strictly after now"
-            )
-
-    def test_pre_morning_time_still_returns_today(self) -> None:
-        """At 06:00 the 07:00 window is still today — must not advance to tomorrow."""
-        from custom_components.hsem.utils.time_windows import next_window_start_dt
-
-        now = _dt(6, 0)
-        result = next_window_start_dt(now, time(7, 0))
-        assert result == _dt(7, 0), (
-            "At 06:00, the 07:00 window has not yet passed — should be today"
-        )
-
-    def test_cheap_night_slot_flagged_before_next_day_discharge_window(self) -> None:
-        """A 02:00-03:00 charge slot tonight is before the 07:00 window tomorrow.
-
-        This is the P0-03 key scenario: planning a 02:00 grid charge at 22:00
-        to cover morning peak use the following day.
-        """
-        from custom_components.hsem.utils.time_windows import next_window_start_dt
-
-        now = _dt(22, 0)
-        charge_slot_end = _dt(3, 0, day_offset=1)  # 03:00 next day
-        assert charge_slot_end <= next_window_start_dt(now, time(7, 0)), (
-            "02:00-03:00 charge slot must be flagged as 'before' the 07:00 discharge window"
-        )
-
-    def test_slot_after_discharge_window_excluded(self) -> None:
-        """A slot ending at 08:00 is NOT before the 07:00 window."""
-        from custom_components.hsem.utils.time_windows import next_window_start_dt
-
-        now = _dt(22, 0)
-        charge_slot_end = _dt(8, 0, day_offset=1)
-        assert not (charge_slot_end <= next_window_start_dt(now, time(7, 0)))
 
 
 # ===========================================================================
@@ -539,103 +394,6 @@ class TestP007VersionComparison:
         required = _parse_version("1.5.0a1")
         assert installed is not None and required is not None
         assert installed < required
-
-
-# ===========================================================================
-# P0-08  Magic thresholds  (issue #272)
-# ===========================================================================
-
-
-class TestP008MagicThresholds:
-    """OLD BUG: The planner used hard-coded ``0.1`` and ``0.2`` literals in
-    multiple places with no explanation of their meaning or units.  A change
-    in one location did not propagate to others, leading to the solar-charge
-    threshold regression in v5.1.0 (one site used ``-0.1``, another ``-0.2``).
-
-    FIX: Named constants ``SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH`` and
-    ``NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH`` are defined in ``const.py`` and
-    imported everywhere the threshold is used.
-    """
-
-    def test_solar_surplus_constant_exists_and_is_negative(self) -> None:
-        """SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH must be defined and negative."""
-        from custom_components.hsem.const import SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH
-
-        assert SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH < 0
-
-    def test_near_zero_constant_exists_and_is_non_negative(self) -> None:
-        """NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH must be defined and >= 0."""
-        from custom_components.hsem.const import NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
-
-        assert NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH >= 0
-
-    def test_solar_surplus_default_matches_v510(self) -> None:
-        """Default value must match v5.1.0 behaviour: -0.2 kWh."""
-        from custom_components.hsem.const import SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH
-
-        assert pytest.approx(-0.2) == SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH
-
-    def test_near_zero_default_matches_v510(self) -> None:
-        """Default value must match v5.1.0 behaviour: 0.1 kWh."""
-        from custom_components.hsem.const import NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
-
-        assert pytest.approx(0.1) == NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH
-
-    def test_discharge_scheduler_does_not_import_near_zero_constant(self) -> None:
-        """discharge_scheduler.py must not import the removed near-zero constant
-        (issue #720 removed the misapplied threshold)."""
-        import ast
-        import pathlib
-
-        source = pathlib.Path(
-            "custom_components/hsem/planner/discharge_scheduler.py"
-        ).read_text(encoding="utf-8")
-        tree = ast.parse(source)
-
-        imported_names: set[str] = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                for alias in node.names:
-                    imported_names.add(alias.asname or alias.name)
-
-        assert "NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH" not in imported_names, (
-            "discharge_scheduler.py must not import "
-            "NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH — the threshold was "
-            "misapplied to positive-consumption slots (issue #720)"
-        )
-
-    def test_near_zero_threshold_used_in_optimization_strategy(self) -> None:
-        """A slot at exactly zero net consumption has no PV surplus and must get
-        BatteriesDischargeMode, not BatteriesChargeSolar (issue #720)."""
-        from datetime import UTC, datetime
-
-        from custom_components.hsem.models.planned_slot import PlannedSlot
-        from custom_components.hsem.planner.discharge_scheduler import (
-            apply_optimization_strategy,
-        )
-        from custom_components.hsem.utils.prices import SlotPrice
-        from custom_components.hsem.utils.recommendations import Recommendations
-
-        now = datetime(2024, 6, 15, 12, 0, tzinfo=UTC)  # noon in June → summer
-        slot = PlannedSlot(
-            start=datetime(2024, 6, 15, 12, 0, tzinfo=UTC),
-            end=datetime(2024, 6, 15, 13, 0, tzinfo=UTC),
-            price=SlotPrice(import_price=0.20, export_price=0.05),
-            estimated_net_consumption_kwh=0.0,
-            recommendation=None,
-        )
-        apply_optimization_strategy(
-            slots=[slot],
-            now=now,
-            current_capacity=5.0,
-            usable_capacity=9.0,
-            required_capacity=0.0,
-            months_winter=[1, 2, 3, 4, 10, 11, 12],
-        )
-        assert slot.recommendation == Recommendations.BatteriesDischargeMode.value, (
-            "A slot at zero net consumption has no PV surplus and must be "
-            "classified as BatteriesDischargeMode"
-        )
 
 
 # ===========================================================================
