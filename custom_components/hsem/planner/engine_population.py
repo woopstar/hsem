@@ -163,7 +163,10 @@ def _inject_live_data_into_current_slot(
         s_end = as_tz(slot.end, now.tzinfo)
         if s_start <= now < s_end:
             # Convert live Watts to projected full-slot kWh.
-            if inp.live_solar_production_w > 1e-9:
+            live_solar_available = getattr(inp, "live_solar_production_available", None)
+            if live_solar_available is None:
+                live_solar_available = inp.live_solar_production_w > 1e-9
+            if live_solar_available:
                 live_pv_kwh = (inp.live_solar_production_w / 1000.0) * slot_hours
                 log_planner(
                     "debug",

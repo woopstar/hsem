@@ -147,10 +147,12 @@ class _Inp:
         live_solar_w: float = 0.0,
         includes_ev: bool = True,
         live_house_available: bool | None = None,
+        live_solar_available: bool | None = None,
         ev_kw: float | None = None,
     ) -> None:
         self.interval_minutes = 60
         self.live_solar_production_w = live_solar_w
+        self.live_solar_production_available = live_solar_available
         self.live_house_consumption_w = live_house_w
         self.live_house_consumption_available = live_house_available
         self.house_power_includes_ev = includes_ev
@@ -158,7 +160,7 @@ class _Inp:
         self.ev_second_session_charge_kw = None
 
 
-def _current_slot(forecast_kwh: float) -> PlannedSlot:
+def _current_slot(forecast_kwh: float, pv_forecast_kwh: float = 0.0) -> PlannedSlot:
     start = datetime(2024, 6, 15, 12, 0, tzinfo=_TZ)
     s = PlannedSlot(
         start=start,
@@ -166,7 +168,7 @@ def _current_slot(forecast_kwh: float) -> PlannedSlot:
         price=SlotPrice(import_price=0.5, export_price=0.4),
     )
     s.avg_house_consumption_kwh = forecast_kwh
-    s.solcast_pv_estimate_kwh = 0.0
+    s.solcast_pv_estimate_kwh = pv_forecast_kwh
     return s
 
 
@@ -236,6 +238,27 @@ def test_genuine_over_three_times_load_is_uncapped_for_ev_exclusive_meter():
     _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
 
     assert slot.avg_house_consumption_kwh == pytest.approx(4.0)
+
+
+def test_explicit_unavailable_solar_preserves_current_forecast():
+    """A numeric fallback is not authority when solar availability is explicitly false."""
+    slot = _current_slot(forecast_kwh=0.4, pv_forecast_kwh=0.6)
+    inp = _Inp(live_house_w=0.0, live_solar_w=3000.0, live_solar_available=False)
+
+    _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
+
+    assert slot.solcast_pv_estimate_kwh == pytest.approx(0.6)
+
+
+def test_explicit_available_zero_solar_overwrites_current_forecast():
+    """A physical 0 W solar reading (e.g. heavy cloud cover) is distinct from
+    an unavailable default — it must overwrite an over-optimistic forecast."""
+    slot = _current_slot(forecast_kwh=0.4, pv_forecast_kwh=0.6)
+    inp = _Inp(live_house_w=0.0, live_solar_w=0.0, live_solar_available=True)
+
+    _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
+
+    assert slot.solcast_pv_estimate_kwh == pytest.approx(0.0)
 
 
 def test_live_injection_preserves_sub_window_averages():

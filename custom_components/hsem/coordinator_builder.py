@@ -239,7 +239,7 @@ def build_planner_input(
             live.ev_second_planned_load_current_soc_pct
         )
 
-    live_solar_w, _live_solar_available = _resolve_live_solar_measurement(cfg, live)
+    live_solar_w, live_solar_available = _resolve_live_solar_measurement(cfg, live)
     live_house_w, live_house_available = _resolve_live_house_measurement(cfg, live)
     # The rolling median window (issue #797) is a strictly better estimate
     # than the single boundary sample above when it has enough fresh
@@ -253,7 +253,7 @@ def build_planner_input(
             live_house_available = True
         if live_power_estimate.solar_power_w is not None:
             live_solar_w = live_power_estimate.solar_power_w
-            _live_solar_available = True
+            live_solar_available = True
 
     excess_export_buffer_pct = convert_to_float(
         cfg.batteries_excess_export_discharge_buffer
@@ -336,6 +336,7 @@ def build_planner_input(
         months_winter=list(cfg.months_winter or []),
         house_power_includes_ev=bool(cfg.house_power_includes_ev_charger_power),
         live_solar_production_w=live_solar_w,
+        live_solar_production_available=live_solar_available,
         live_house_consumption_w=live_house_w,
         live_house_consumption_available=live_house_available,
         # EV planned load

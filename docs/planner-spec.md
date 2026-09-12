@@ -343,26 +343,27 @@ forecast PV and consumption with live measurements
 are converted to a projected full-slot kWh by multiplying by the slot's full
 duration.
 
-### Live house availability is explicit, not inferred (issue #792)
+### Live house and solar availability is explicit, not inferred (issue #792)
 
-`PlannerInput.live_house_consumption_available` is a tri-state
+`PlannerInput.live_house_consumption_available` and
+`PlannerInput.live_solar_production_available` are both tri-state
 (`bool | None`). The coordinator (`coordinator_builder.build_planner_input`,
-via `_resolve_live_house_measurement`) always sets an explicit `bool`: the
-reading is authoritative only when its entity is configured, present,
-finite, non-negative, and not on `live.missing_entities_list`. `None` is
-reserved for direct/legacy callers (e.g. hand-built `PlannerInput` instances
-in tests) that never set the field — for those, injection falls back to the
-old heuristic (`live_house_consumption_w > 1e-9`).
+via `_resolve_live_house_measurement` / `_resolve_live_solar_measurement`)
+always sets an explicit `bool` for each channel independently: a reading is
+authoritative only when its entity is configured, present, finite,
+non-negative, and not on `live.missing_entities_list`. `None` is reserved for
+direct/legacy callers (e.g. hand-built `PlannerInput` instances in tests)
+that never set the field — for those, injection falls back to the old
+per-channel heuristic (`live_house_consumption_w > 1e-9` /
+`live_solar_production_w > 1e-9`).
 
-This closes the gap where a genuine, available **0 W** house reading was
+This closes the gap where a genuine, available **0 W** reading was
 indistinguishable from "no reading yet" (both read as `0.0` and failed the
-old `> 1e-9` check): a real 0 W reading now overwrites the forecast, while an
+old `> 1e-9` check): a real 0 W reading (house load or, just as often, solar
+production under heavy cloud cover) now overwrites the forecast, while an
 explicitly-unavailable reading leaves the forecast untouched regardless of
-what stale/default wattage happens to be sitting in
-`live_house_consumption_w`. `_resolve_live_solar_measurement` is hardened
-with the same finite/non-negative checks for consistency, though PV
-injection itself still keys off `live_solar_production_w > 1e-9` (solar
-availability tri-stating is not yet wired end-to-end).
+what stale/default wattage happens to be sitting in `live_house_consumption_w`
+/ `live_solar_production_w`.
 
 `utils/live_power.py` (`LivePowerEstimate` / `LivePowerWindow`) provides a
 short rolling-median sampler for smoothing bursty live power across

@@ -217,6 +217,13 @@ class PlannerInput:
     #: partially-elapsed slot.
     live_solar_production_w: float = 0.0
 
+    #: Whether ``live_solar_production_w`` came from an available live
+    #: measurement. ``None`` preserves the legacy direct-caller convention:
+    #: positive power is authoritative and the default 0 W means absent. Runtime
+    #: coordinator inputs set an explicit boolean, allowing a measured 0 W
+    #: (e.g. genuine cloud cover) to remain authoritative (issue #792).
+    live_solar_production_available: bool | None = None
+
     #: Live house consumption power in Watts from the house power meter.
     #: Injected into the current slot's avg_house_consumption_kwh so the
     #: MILP and all candidates use measured (not forecast) load for the
