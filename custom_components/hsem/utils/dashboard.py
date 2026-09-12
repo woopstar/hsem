@@ -7,6 +7,7 @@ Lovelace dashboard so it appears in the HA sidebar.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -32,6 +33,10 @@ DASHBOARD_TITLE = "HSEM"
 DASHBOARD_ICON = "mdi:solar-power"
 DASHBOARD_STORAGE_VERSION = 1
 DASHBOARD_STORAGE_KEY = f"{DOMAIN}.dashboard_provisioned"
+
+# os.O_NOFOLLOW is POSIX-only; HSEM only runs under Home Assistant (Linux),
+# but fall back to a no-op flag rather than raising on other platforms.
+_O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 
 
 # ---------------------------------------------------------------------------
@@ -113,13 +118,46 @@ def _bundled_dashboard_path() -> Path:
     return Path(__file__).parent.parent / "dashboards" / "dashboard_en.yaml"
 
 
+def _resolve_contained_destination(hass: HomeAssistant, destination: Path) -> Path:
+    """Resolve *destination* and confirm it stays inside the HA config directory.
+
+    ``dashboard_path`` can arrive from the ``create_dashboard`` service call
+    as an arbitrary caller-supplied string, so this rejects any path — via
+    ``..`` segments or a symlinked parent directory — that would resolve
+    outside the Home Assistant config directory, before any file I/O happens.
+
+    Args:
+        hass: The Home Assistant instance.
+        destination: The requested (possibly unresolved) destination path.
+
+    Returns:
+        The resolved, contained destination path.
+
+    Raises:
+        HomeAssistantError: When *destination* resolves outside the config
+            directory.
+    """
+    config_root = Path(hass.config.path()).resolve()
+    resolved = destination.resolve()
+    if resolved != config_root and config_root not in resolved.parents:
+        raise HomeAssistantError(
+            f"Dashboard path {destination} is outside the Home Assistant "
+            "config directory."
+        )
+    return resolved
+
+
 def _write_dashboard_file_sync(
     source_path: Path,
     destination_path: Path,
 ) -> None:
     """Copy the bundled dashboard YAML to *destination_path*.
 
-    Synchronous I/O — must run inside the HA executor.
+    Synchronous I/O — must run inside the HA executor. *destination_path*
+    must already be resolved and containment-checked (see
+    :func:`_resolve_contained_destination`); this additionally opens it with
+    ``O_NOFOLLOW`` so a symlink swapped in after that check is never
+    followed for the write.
 
     Args:
         source_path: Path to the bundled YAML.
@@ -129,15 +167,25 @@ def _write_dashboard_file_sync(
         HomeAssistantError: When the bundled YAML is missing or cannot be
             copied.
     """
-    if not source_path.exists():
+    if not source_path.is_file() or source_path.is_symlink():
         raise HomeAssistantError(
             f"Bundled HSEM dashboard YAML not found at {source_path}"
         )
+    content = source_path.read_text(encoding="utf-8")
 
     destination_path.parent.mkdir(parents=True, exist_ok=True)
-    destination_path.write_text(
-        source_path.read_text(encoding="utf-8"), encoding="utf-8"
-    )
+    try:
+        fd = os.open(
+            destination_path,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | _O_NOFOLLOW,
+            0o644,
+        )
+    except OSError as err:
+        raise HomeAssistantError(
+            f"Cannot write dashboard YAML to {destination_path}: {err}"
+        ) from err
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(content)
 
 
 async def async_ensure_hsem_dashboard(
@@ -160,9 +208,12 @@ async def async_ensure_hsem_dashboard(
 
     Raises:
         HomeAssistantError: When the Lovelace collection is unavailable, the
-            bundled YAML is missing, or writing the dashboard fails.
+            bundled YAML is missing, ``dashboard_path`` resolves outside the
+            Home Assistant config directory, or writing the dashboard fails.
     """
-    destination = dashboard_path or _default_dashboard_path(hass)
+    destination = _resolve_contained_destination(
+        hass, dashboard_path or _default_dashboard_path(hass)
+    )
     source = _bundled_dashboard_path()
 
     # Offload file I/O to the executor.

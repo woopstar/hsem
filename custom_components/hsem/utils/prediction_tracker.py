@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from custom_components.hsem.models.prediction_record import PredictionRecord
+from custom_components.hsem.utils.persistence import read_json_history_file
 
 # 7 days × 4 slots/h × 24 h = 672
 _SEVEN_DAY_SLOTS = 672
@@ -234,7 +235,7 @@ class PredictionTracker:
         path = Path(self.history_file)
         if not path.exists():
             return
-        data = await asyncio.to_thread(self._read_history_file, path)
+        data = await asyncio.to_thread(read_json_history_file, path)
         if isinstance(data, Mapping):
             self.load_from_dict(data)
 
@@ -247,15 +248,6 @@ class PredictionTracker:
         return await asyncio.to_thread(
             self._write_history_file, path, self.to_persistence_dict()
         )
-
-    @staticmethod
-    def _read_history_file(path: Path) -> dict[str, Any] | None:
-        try:
-            with open(path, encoding="utf-8") as handle:
-                payload = json.load(handle)
-            return payload if isinstance(payload, dict) else None
-        except json.JSONDecodeError, OSError:
-            return None
 
     @staticmethod
     def _write_history_file(path: Path, data: Mapping[str, Any]) -> bool:

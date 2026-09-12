@@ -32,6 +32,7 @@ from custom_components.hsem.utils.forecast_tracker import (
     compute_accumulated_energy,
 )
 from custom_components.hsem.utils.logger import async_log
+from custom_components.hsem.utils.persistence import read_json_history_file
 from custom_components.hsem.utils.prediction_tracker import (
     PredictionTracker,
     _action_label,
@@ -353,7 +354,7 @@ async def _load_financial_tracker(tracker: FinancialTracker) -> None:
     if not path.exists():
         return
     try:
-        data = await asyncio.to_thread(FinancialTracker._read_history_file, path)
+        data = await asyncio.to_thread(read_json_history_file, path)
         if data is not None:
             loaded = FinancialTracker.from_dict(data)
             # Copy loaded state into the existing tracker instance.

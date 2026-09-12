@@ -20,6 +20,7 @@ from typing import Any
 from custom_components.hsem.models.daily_metrics import DailyMetrics
 from custom_components.hsem.models.daily_record import DailyRecord
 from custom_components.hsem.models.day_rollover_result import DayRolloverResult
+from custom_components.hsem.utils.persistence import read_json_history_file
 
 
 @dataclass
@@ -235,7 +236,7 @@ class DailyPlanVsActualTracker:
         if not path.exists():
             return
 
-        data = await asyncio.to_thread(self._read_history_file, path)
+        data = await asyncio.to_thread(read_json_history_file, path)
         if data is None:
             return
 
@@ -243,15 +244,6 @@ class DailyPlanVsActualTracker:
         if isinstance(days, list):
             self.history = [DailyRecord.from_dict(d) for d in days]
             self._prune_history()
-
-    @staticmethod
-    def _read_history_file(path: Path) -> dict[str, Any] | None:
-        """Read and parse the history JSON file (sync, offloaded to thread)."""
-        try:
-            with open(path, encoding="utf-8") as f:
-                return json.load(f)  # type: ignore[no-any-return]
-        except json.JSONDecodeError, OSError:
-            return None
 
     async def _save_record_to_history(self, record: DailyRecord) -> bool:
         """Append a record to the in-memory history, prune, and persist to disk.

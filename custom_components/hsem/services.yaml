@@ -262,4 +262,5 @@ create_dashboard:
         text:
       description: >-
         Optional absolute file path where the dashboard YAML should be written.
-        When omitted, the file is written to <config>/hsem_dashboard.yaml.
+        Must resolve inside the Home Assistant config directory. When omitted,
+        the file is written to <config>/hsem_dashboard.yaml.
