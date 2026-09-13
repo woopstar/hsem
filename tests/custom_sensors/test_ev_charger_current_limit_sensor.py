@@ -95,3 +95,43 @@ async def test_entity_registration_does_not_read_the_restored_state() -> None:
     sensor.async_get_last_state.assert_not_awaited()
     assert sensor.native_value == 0
     assert sensor.available is False
+
+
+# ---------------------------------------------------------------------------
+# Auto-phase-switching chargers (issue #1001): mode-aware ceiling conversion
+# ---------------------------------------------------------------------------
+
+_SWITCHABLE = "three_phase_switchable"
+
+
+def _switchable_sensor(power_w: float) -> HSEMEVChargerCurrentLimitSensor:
+    rec = _recommendation(power_w)
+    data = SimpleNamespace(
+        cfg=SimpleNamespace(
+            ev_planned_load_charger_phase_topology=_SWITCHABLE,
+            ev_planned_load_charger_power_kw=11.0,
+        ),
+        hourly_recommendation=rec,
+        hourly_recommendations=[rec],
+    )
+    return _sensor(success=True, data=data)
+
+
+def test_switchable_one_phase_power_publishes_one_phase_amps() -> None:
+    """2300 W is a 10 A one-phase command for an 11 kW switchable charger."""
+    assert _switchable_sensor(2300.0).native_value == 10
+
+
+def test_switchable_three_phase_power_publishes_three_phase_amps() -> None:
+    """6900 W is a 10 A three-phase command — same amps, triple the power."""
+    assert _switchable_sensor(6900.0).native_value == 10
+
+
+def test_switchable_gap_power_publishes_the_one_phase_ceiling() -> None:
+    """4000 W sits in the unexecutable gap — the ceiling is 16 A (3680 W)."""
+    assert _switchable_sensor(4000.0).native_value == 16
+
+
+def test_switchable_minimum_publishes_6a() -> None:
+    """1380 W is exactly 6 A one-phase — the real EVSE start floor."""
+    assert _switchable_sensor(1380.0).native_value == 6

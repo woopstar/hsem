@@ -19,11 +19,15 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from custom_components.hsem.utils.phase_power import (
+    EV_TOPOLOGY_THREE_PHASE_SWITCHABLE,
     PHASE_COUNT,
+    ev_phase_share_for_power_w,
     ev_phase_share_for_slot,
+    ev_switchable_single_phase_max_power_w,
     executable_ev_phase_kwh,
     fixed_session_phase_ac_kwh,
 )
+from custom_components.hsem.utils.units import GRID_PHASE_VOLTAGE
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
@@ -112,6 +116,16 @@ def add_phase_fuse_constraints(
     for a three-phase one.  The full-slot scale preserves instantaneous power
     for a partially elapsed current slot.
 
+    A managed ``three_phase_switchable`` charger (issue #1001) carries no
+    ``ev_c`` correction at all: its worst-case per-phase excess over the
+    balanced third is expressed **exactly** on its one-phase amp variable
+    instead — ``(2/3) · 230 V · avail_h / 1000`` per commanded one-phase amp
+    (the three-phase amp variable contributes exactly its balanced third,
+    already counted in ``gi/3``).  An unmanaged (fixed-session) switchable
+    charger keeps the ``ev_c`` form with a share derived from its measured
+    session power: the whole session at or below its one-phase-mode ceiling,
+    one third when the measurement physically requires three-phase mode.
+
     A session-fixed ``ev_c[t]`` is bounded to an exact value elsewhere (its
     LP variable's lower and upper bound are equal), so this row's
     coefficient does not need session-specific handling: the same
@@ -138,7 +152,36 @@ def add_phase_fuse_constraints(
             A_ub[row, ge_off + t] = -1.0 / PHASE_COUNT
 
             for ev_idx, ev in enumerate(active_evs):
-                share = second_share if ev.is_second else primary_share
+                if ev.charger_phase_topology == EV_TOPOLOGY_THREE_PHASE_SWITCHABLE:
+                    if column_layout.has(f"ev_{ev_idx}_amps3"):
+                        # Managed switchable: exact per-phase excess of the
+                        # one-phase mode over the balanced third, per
+                        # commanded one-phase amp (kWh).  The three-phase
+                        # amp variable needs no term — its per-phase share
+                        # equals the balanced third already counted in gi/3.
+                        amp1_off = column_layout.offset(f"ev_{ev_idx}_amps")
+                        A_ub[row, amp1_off + t] += (
+                            (1.0 - 1.0 / PHASE_COUNT)
+                            * GRID_PHASE_VOLTAGE
+                            * max(float(available_slot_hours[t]), 0.0)
+                            / 1000.0
+                        )
+                        continue
+                    # Unmanaged (fixed-session) switchable: the measured
+                    # session power decides the mode, so the share is exact.
+                    share = ev_phase_share_for_power_w(
+                        ev.charger_phase_topology,
+                        max(float(ev.session_charge_kw or 0.0), 0.0) * 1000.0,
+                        single_phase_max_power_w=(
+                            ev_switchable_single_phase_max_power_w(
+                                max_charge_per_slot=ev.max_charge_per_slot,
+                                charger_efficiency=ev.charger_efficiency,
+                                slot_hours=slot_hours,
+                            )
+                        ),
+                    )
+                else:
+                    share = second_share if ev.is_second else primary_share
                 correction = full_slot_scale * share - 1.0 / PHASE_COUNT
                 if correction > 1e-9:
                     A_ub[row, ev_var_offsets[ev_idx] + t] += correction / max(

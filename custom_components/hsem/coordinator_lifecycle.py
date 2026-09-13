@@ -88,6 +88,7 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
                     start_window_s=cfg.ocpp_start_window_s,
                     stop_window_s=cfg.ocpp_stop_window_s,
                     on_significant_event=self.async_ocpp_event,
+                    charging_rate_unit=cfg.ocpp_charging_rate_unit,
                 )
                 await self._ocpp_server.start()
                 async_log("info", "OCPP server started on port %d", cfg.ocpp_port)
@@ -105,6 +106,7 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
                     start_window_s=cfg.ocpp_start_window_s,
                     stop_window_s=cfg.ocpp_stop_window_s,
                     on_significant_event=self.async_ocpp_event,
+                    charging_rate_unit=cfg.ocpp_second_charging_rate_unit,
                 )
                 await self._ocpp_second_server.start()
                 async_log(

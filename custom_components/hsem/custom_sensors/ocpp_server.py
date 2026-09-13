@@ -50,6 +50,8 @@ from custom_components.hsem.custom_sensors.ocpp_commands import (
 )
 from custom_components.hsem.custom_sensors.ocpp_control import (
     DIAGNOSTIC_ACTIONS,
+    RATE_UNIT_PREF_AUTO,
+    RATE_UNIT_PREFERENCES,
     OCPPControlMixin,
 )
 from custom_components.hsem.custom_sensors.ocpp_message_handlers import (
@@ -125,6 +127,7 @@ class OCPPServer(
         start_window_s: int = _DEFAULT_START_WINDOW_S,
         stop_window_s: int = _DEFAULT_STOP_WINDOW_S,
         on_significant_event: Callable[[], Coroutine[Any, Any, None]] | None = None,
+        charging_rate_unit: str = RATE_UNIT_PREF_AUTO,
     ) -> None:
         """Initialise the OCPP server.
 
@@ -144,6 +147,11 @@ class OCPPServer(
                 ``sensor.hsem_ocpp_charger_status`` doesn't wait for the
                 next scheduled cycle to reflect a live protocol event.
                 Deliberately not invoked for ``MeterValues``/``Heartbeat``.
+            charging_rate_unit: ``chargingRateUnit`` preference for charging
+                profiles — one of ``auto`` (negotiate from the charger's
+                reported capabilities, watts preferred), ``amps`` or
+                ``watts`` (issue #1001). Unrecognised values fall back to
+                ``auto``.
         """
         self._hass = hass
         self._host = host
@@ -151,6 +159,11 @@ class OCPPServer(
         self._start_window_s = start_window_s
         self._stop_window_s = stop_window_s
         self._on_significant_event = on_significant_event
+        self._charging_rate_unit: str = (
+            charging_rate_unit
+            if charging_rate_unit in RATE_UNIT_PREFERENCES
+            else RATE_UNIT_PREF_AUTO
+        )
 
         # Runtime state
         self._runner: web.AppRunner | None = None
@@ -162,6 +175,13 @@ class OCPPServer(
         self._zero_entered_at: datetime | None = None
         self._last_sent_target: float = -1.0  # Track last sent to avoid duplicates
         self._last_sent_current_a: int = -1  # Last requested amps, -1 = none sent
+        # Last unit the profiles were built with ("W"/"A", "" = none sent):
+        # a unit change at the same wattage must not be deduped away.
+        self._last_sent_unit: str = ""
+        # Last phase mode published in an amp profile (1/3, None = none or
+        # not applicable) — replayed by the StartTransaction resend so a
+        # TxProfile keeps the phase intent of the original send.
+        self._last_sent_phases: int | None = None
 
         # Anti-flap state machine: "idle", "starting", "charging", "stopping"
         self._flap_state: str = "idle"

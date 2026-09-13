@@ -26,9 +26,15 @@ from custom_components.hsem.planner.ev_planner import (
 from custom_components.hsem.utils.datetime_utils import slot_contains, utc_key
 from custom_components.hsem.utils.logger import async_log
 from custom_components.hsem.utils.misc import get_config_value
-from custom_components.hsem.utils.phase_power import charger_power_to_current_a
+from custom_components.hsem.utils.phase_power import (
+    EV_TOPOLOGY_THREE_PHASE_BALANCED,
+    EV_TOPOLOGY_THREE_PHASE_SWITCHABLE,
+    PHASE_COUNT,
+    charger_power_to_current_a,
+    normalize_ev_phase_topology,
+)
 from custom_components.hsem.utils.recommendations import Recommendations
-from custom_components.hsem.utils.units import slot_duration_hours
+from custom_components.hsem.utils.units import GRID_PHASE_VOLTAGE, slot_duration_hours
 
 # ---------------------------------------------------------------------------
 # Lightweight slot for dynamic floor bridge computation
@@ -166,8 +172,13 @@ def write_ev_slot_commands(
     )
 
 
-def ocpp_charge_target(power_w: float, topology: str | None) -> tuple[float, int]:
-    """Return the ``(target_kw, max_current_a)`` pair to publish over OCPP.
+def ocpp_charge_target(
+    power_w: float,
+    topology: str | None,
+    *,
+    rated_current_a: int | None = None,
+) -> tuple[float, int, int | None]:
+    """Return the ``(target_kw, max_current_a, number_phases)`` triple for OCPP.
 
     OCPP dispatch must publish the exact same ceiling already shown on the EV
     charger current-limit sensor (see
@@ -177,11 +188,39 @@ def ocpp_charge_target(power_w: float, topology: str | None) -> tuple[float, int
     ``ev_second_charger_calculated_power`` field, so no further clamping
     against the charger's rated/minimum current is needed here — that
     clamping already happened when the command was stabilised (issue #886).
+
+    ``rated_current_a`` is the charger's rated whole-amp command; a
+    ``three_phase_switchable`` topology (issue #1001) needs it for the
+    mode-aware watts→amps conversion (one-phase amps at or below the
+    one-phase ceiling, three-phase amps above it).
+
+    ``number_phases`` is the intended phase mode of the amp ceiling: 1 for
+    ``single_phase``, 3 for ``three_phase_balanced``, and mode-derived for
+    ``three_phase_switchable`` (1 at or below the one-phase ceiling, 3 above
+    it).  ``None`` when the topology is unrecognised — the profile then
+    omits ``numberPhases``.
     """
     safe_power_w = max(float(power_w), 0.0)
+    normalized = normalize_ev_phase_topology(topology)
+    number_phases: int | None
+    if normalized == EV_TOPOLOGY_THREE_PHASE_SWITCHABLE:
+        if (
+            rated_current_a
+            and safe_power_w <= GRID_PHASE_VOLTAGE * rated_current_a + 1e-9
+        ):
+            number_phases = 1
+        else:
+            number_phases = 3
+    elif normalized == EV_TOPOLOGY_THREE_PHASE_BALANCED:
+        number_phases = PHASE_COUNT
+    else:
+        number_phases = 1
     return (
         safe_power_w / 1000.0,
-        charger_power_to_current_a(safe_power_w, topology),
+        charger_power_to_current_a(
+            safe_power_w, topology, rated_current_a=rated_current_a
+        ),
+        number_phases,
     )
 
 

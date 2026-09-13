@@ -1595,6 +1595,34 @@ fraction inline.
 - Config key: `hsem_ev_planned_load_charger_phase_topology` (+ `ev_second_`
   variant), wired const → flows → translations (config AND options steps)
   → sensor_config → planner_input → engine_ev_milp → EVConfig.
+- `three_phase_switchable` (issue #1001) models auto-phase-switching
+  chargers: single-phase minimum (1380 W = 6 A), three-phase nameplate.
+  MILP gets per-slot `ev_{i}_amps3` (semi-integer, 3-phase mode) +
+  `ev_{i}_mode3` (binary); `ev_c = k1·a1 + k3·a3` with mode-exclusion rows.
+  Per-phase fuse rows are exact via amp coefficients
+  (`(2/3)·230·avail_h/1000` on `a1`, nothing on `a3`) — never a static
+  share. Power-aware sites use `ev_phase_share_for_power_w()` /
+  `switchable_power_to_current_and_power_w()` /
+  `charger_power_to_current_a(..., rated_current_a=...)`; the mode boundary
+  is `230 V × rated amps`. `charger_current_to_power_w(a, switchable)` is
+  the **one-phase** basis (minimum-side semantics only); rated-side sites
+  pass `EV_TOPOLOGY_THREE_PHASE_BALANCED` explicitly.
+
+## OCPP Charging Rate Unit Negotiation (issue #1001)
+
+Charging profiles are published in the unit the charger accepts: the
+`GetConfiguration` reply after `BootNotification` already lands in
+`ChargerSession.configuration_keys` — read
+`ChargingScheduleAllowedChargingRateUnit` via
+`supported_charging_rate_units()` in `ocpp_control.py` (token parser
+mirrors lbbrhzn/ocpp; unreported/unknown → amps). `_effective_rate_unit()`
+in `ocpp_profiles.py` resolves the config preference
+(`hsem_ocpp_charging_rate_unit`: `auto`/`amps`/`watts`, default `auto`
+prefers watts — phase-agnostic for auto-phase-switching chargers).
+Amp profiles carry `numberPhases` (1/3, mode-derived for switchable via
+`ocpp_charge_target()`'s third return value); watt profiles omit it.
+`_last_sent_unit` participates in the anti-flap material-change filter so
+a unit renegotiation at the same wattage re-publishes the profile.
 
 ## OCPP/Huawei Phase-Headroom Write Ordering (issue #816)
 

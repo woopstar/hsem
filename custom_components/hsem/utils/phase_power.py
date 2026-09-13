@@ -42,11 +42,19 @@ PhasePowers = tuple[float, float, float]
 #: EV charger phase topology identifiers.  ``single_phase`` is the safe
 #: default: with an unknown or single-phase charger every hard per-phase row
 #: must assume the whole EV command can land on that one phase.
+#: ``three_phase_switchable`` (issue #1001) models an auto-phase-switching
+#: charger (go-e, Zaptec, Easee, ...): it starts a session at 6 A on a
+#: single phase and switches to balanced three-phase once the command
+#: exceeds what one phase can carry, so its minimum power is a single-phase
+#: figure (230 V × 6 A = 1380 W) while its rated power is three-phase
+#: (e.g. 230 V × 16 A × 3 = 11 kW).
 EV_TOPOLOGY_SINGLE_PHASE = "single_phase"
 EV_TOPOLOGY_THREE_PHASE_BALANCED = "three_phase_balanced"
+EV_TOPOLOGY_THREE_PHASE_SWITCHABLE = "three_phase_switchable"
 EV_PHASE_TOPOLOGIES = (
     EV_TOPOLOGY_SINGLE_PHASE,
     EV_TOPOLOGY_THREE_PHASE_BALANCED,
+    EV_TOPOLOGY_THREE_PHASE_SWITCHABLE,
 )
 
 
@@ -65,14 +73,73 @@ def ev_phase_share(topology: str | None) -> float:
 
     Returns:
         ``1 / PHASE_COUNT`` for a balanced three-phase charger, otherwise
-        ``1.0``.
+        ``1.0``.  A ``three_phase_switchable`` charger's share is
+        mode-dependent (1.0 in one-phase mode, ``1 / PHASE_COUNT`` in
+        three-phase mode), so this static helper conservatively returns
+        ``1.0`` for it; power-aware sites must use
+        :func:`ev_phase_share_for_power_w` instead.
     """
     if topology == EV_TOPOLOGY_THREE_PHASE_BALANCED:
         return 1.0 / PHASE_COUNT
     return 1.0
 
 
-def charger_power_to_current_a(power_w: float, topology: str | None) -> int:
+def ev_phase_share_for_power_w(
+    topology: str | None,
+    power_w: float,
+    *,
+    single_phase_max_power_w: float,
+) -> float:
+    """Return the per-phase share for a known AC command power.
+
+    Extends :func:`ev_phase_share` with the mode a ``three_phase_switchable``
+    charger must be in to deliver *power_w*: at or below
+    ``single_phase_max_power_w`` the whole command can sit on one phase
+    (share 1.0); above it the charger is physically in balanced three-phase
+    mode (share ``1 / PHASE_COUNT``).  Other topologies are power-independent.
+    """
+    if topology == EV_TOPOLOGY_THREE_PHASE_SWITCHABLE:
+        if math.isfinite(power_w) and power_w > single_phase_max_power_w + 1e-9:
+            return 1.0 / PHASE_COUNT
+        return 1.0
+    return ev_phase_share(topology)
+
+
+def ev_switchable_single_phase_max_power_w(
+    *,
+    max_charge_per_slot: float,
+    charger_efficiency: float,
+    slot_hours: float,
+) -> float:
+    """Return a switchable charger's one-phase-mode AC ceiling (W).
+
+    Mirrors the amp lattice's rated-current derivation
+    (``planner/milp/_ev_amp_lattice.py``): the rated whole-amp command comes
+    from the exact per-slot AC envelope on a three-phase basis, and the
+    one-phase mode tops out at that same per-phase current on a single
+    phase.  Returns ``0.0`` when the envelope is not positive and finite.
+    """
+    try:
+        bound_ac_power_w = (
+            float(max_charge_per_slot)
+            / max(float(charger_efficiency), 0.01)
+            / max(float(slot_hours), 1e-9)
+            * 1000.0
+        )
+    except TypeError, ValueError:
+        return 0.0
+    rated_current_a = charger_power_to_current_a(
+        bound_ac_power_w, EV_TOPOLOGY_THREE_PHASE_BALANCED
+    )
+    return charger_current_to_power_w(rated_current_a, EV_TOPOLOGY_SINGLE_PHASE)
+
+
+def charger_power_to_current_a(
+    power_w: float,
+    topology: str | None,
+    *,
+    rated_current_a: int | None = None,
+) -> int:
     """Return the whole-amp ceiling equivalent to an AC charger command.
 
     HSEM plans in watts, but an external current controller that consumes the
@@ -86,12 +153,29 @@ def charger_power_to_current_a(power_w: float, topology: str | None) -> int:
         topology: The charger's phase topology.  A balanced three-phase
             charger spreads the command over ``PHASE_COUNT`` phases; anything
             else is treated as single-phase.
+        rated_current_a: Rated whole-amp command (per phase) of a
+            ``three_phase_switchable`` charger.  Mode-aware conversion needs
+            it to know where the one-phase range ends: at or below
+            ``230 V × rated_current_a`` the command maps to one-phase amps,
+            above it to three-phase amps.  Callers publishing a ceiling for
+            a switchable charger must pass it; ``None`` falls back to the
+            conservative single-phase division.
 
     Returns:
         Whole amps per phase, floored, and never negative.
     """
     if not math.isfinite(power_w) or power_w <= 0.0:
         return 0
+    if topology == EV_TOPOLOGY_THREE_PHASE_SWITCHABLE and rated_current_a:
+        single_phase_max_w = GRID_PHASE_VOLTAGE * rated_current_a
+        if power_w <= single_phase_max_w + 1e-9:
+            return int(math.floor(power_w / GRID_PHASE_VOLTAGE + 1e-9))
+        amps = int(math.floor(power_w / (GRID_PHASE_VOLTAGE * PHASE_COUNT) + 1e-9))
+        if amps < EV_MIN_START_CURRENT_A:
+            # The unexecutable gap between the one-phase ceiling and the
+            # three-phase minimum: publish the one-phase ceiling.
+            return rated_current_a
+        return amps
     phases = PHASE_COUNT if topology == EV_TOPOLOGY_THREE_PHASE_BALANCED else 1
     return int(math.floor(power_w / (GRID_PHASE_VOLTAGE * phases) + 1e-9))
 
@@ -105,6 +189,16 @@ def charger_current_to_power_w(
     Charger current controls use the same whole-amp value on every active
     phase. Unknown topology stays conservative and is treated as one phase.
     Invalid or non-positive currents produce a zero-power command.
+
+    A ``three_phase_switchable`` command is mode-dependent (the same amp
+    value delivers ``a × 230 V`` in one-phase mode and ``a × 690 V`` in
+    three-phase mode), so this static helper returns the **one-phase-mode**
+    power for it — the basis every minimum-side conversion
+    (:func:`charger_min_power_to_current_a`,
+    :func:`ev_min_start_current_a`, activation quanta) must use.  Rated-side
+    and mode-aware sites must pass an explicit topology
+    (``EV_TOPOLOGY_THREE_PHASE_BALANCED``) or use
+    :func:`charger_power_to_current_a` with ``rated_current_a``.
     """
     if not math.isfinite(current_a) or current_a <= 0.0:
         return 0.0
@@ -122,8 +216,16 @@ def charger_max_power_to_current_a(
     nearest supported current preserves the physical rating: for example,
     11.0 kW for a balanced three-phase charger represents 16 A (11.04 kW),
     not a 15 A hard cap. Half-amp ties round upward deterministically.
+
+    A ``three_phase_switchable`` charger's nameplate is its three-phase
+    rating, so the snap uses the three-phase step.
     """
-    step_power_w = charger_current_to_power_w(1, topology)
+    step_topology = (
+        EV_TOPOLOGY_THREE_PHASE_BALANCED
+        if topology == EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
+        else topology
+    )
+    step_power_w = charger_current_to_power_w(1, step_topology)
     if not math.isfinite(power_w) or power_w <= 0.0 or step_power_w <= 0.0:
         return 0
     return int(math.floor(power_w / step_power_w + 0.5))
@@ -160,6 +262,43 @@ def ev_min_start_current_a(power_w: float, topology: str | None) -> int:
         charger_min_power_to_current_a(power_w, topology),
         EV_MIN_START_CURRENT_A,
     )
+
+
+def switchable_power_to_current_and_power_w(
+    power_w: float,
+    rated_current_a: int,
+) -> tuple[int, float]:
+    """Return ``(amps, executable_power_w)`` for a switchable charger command.
+
+    Mode selection follows the physical switching rule: at or below the
+    one-phase-mode ceiling (``230 V × rated_current_a``) the command is a
+    one-phase amp value; above it, a three-phase amp value.  The returned
+    power is the exact executable power of the floored whole-amp command in
+    the selected mode, so amps→power round-trips stay consistent (used by
+    the command-stability deadband, issue #1001).
+    """
+    if (
+        not math.isfinite(power_w)
+        or power_w <= 0.0
+        or not isinstance(rated_current_a, int)
+        or rated_current_a <= 0
+    ):
+        return (0, 0.0)
+    single_phase_max_w = GRID_PHASE_VOLTAGE * rated_current_a
+    if power_w <= single_phase_max_w + 1e-9:
+        amps = int(math.floor(power_w / GRID_PHASE_VOLTAGE + 1e-9))
+        return (amps, charger_current_to_power_w(amps, EV_TOPOLOGY_SINGLE_PHASE))
+    amps = int(math.floor(power_w / (GRID_PHASE_VOLTAGE * PHASE_COUNT) + 1e-9))
+    if amps < EV_MIN_START_CURRENT_A:
+        # The command falls into the unexecutable gap between the one-phase
+        # ceiling and the three-phase minimum (e.g. 3681–4139 W at 16 A):
+        # the nearest executable command at or below it is the one-phase
+        # ceiling itself.
+        return (
+            rated_current_a,
+            charger_current_to_power_w(rated_current_a, EV_TOPOLOGY_SINGLE_PHASE),
+        )
+    return (amps, charger_current_to_power_w(amps, EV_TOPOLOGY_THREE_PHASE_BALANCED))
 
 
 def normalize_ev_phase_topology(value: object) -> str:
@@ -203,13 +342,33 @@ def executable_ev_phase_kwh(
 
     Used identically by solved-decision-vector reconstruction and by
     published-plan validation so both sites weight each charger's power field
-    with the same topology share.
+    with the same topology share.  A charger missing from ``active_evs``
+    keeps the conservative single-phase share, matching the behaviour of an
+    unconfigured topology.  A ``three_phase_switchable`` charger's share is
+    derived from its published power: at or below its one-phase-mode ceiling
+    the whole command may sit on one phase; above it the command is
+    physically balanced three-phase (issue #1001).
     """
-    primary_share, second_share = ev_phase_share_for_slot(active_evs=active_evs)
+    shares = {False: 1.0, True: 1.0}
+    powers = {False: primary_power_w, True: second_power_w}
+    for ev in active_evs:
+        is_second = bool(ev.is_second)
+        if ev.charger_phase_topology == EV_TOPOLOGY_THREE_PHASE_SWITCHABLE:
+            shares[is_second] = ev_phase_share_for_power_w(
+                ev.charger_phase_topology,
+                max(float(powers[is_second]), 0.0),
+                single_phase_max_power_w=ev_switchable_single_phase_max_power_w(
+                    max_charge_per_slot=ev.max_charge_per_slot,
+                    charger_efficiency=ev.charger_efficiency,
+                    slot_hours=hours,
+                ),
+            )
+        else:
+            shares[is_second] = ev.phase_share
     return (
         (
-            max(float(primary_power_w), 0.0) * primary_share
-            + max(float(second_power_w), 0.0) * second_share
+            max(float(primary_power_w), 0.0) * shares[False]
+            + max(float(second_power_w), 0.0) * shares[True]
         )
         * hours
         / 1000.0
@@ -231,13 +390,30 @@ def fixed_session_phase_ac_kwh(
     so membership is checked per EV rather than against one shared,
     site-wide slot set: an unmanaged second charger's window must not make a
     different, managed charger's flexible slots look session-fixed.  Each
-    session is weighted by its charger's :attr:`~EVConfig.phase_share`, so a
+    session is weighted by its charger's topology share, so a
     single-phase charger keeps the full worst-case envelope while a balanced
     three-phase charger contributes only the third it can physically place
-    on any one phase.
+    on any one phase.  A ``three_phase_switchable`` charger's session power
+    is measured, so its share is exact: the whole session at or below its
+    one-phase-mode ceiling, one third when the measured power physically
+    requires balanced three-phase mode (issue #1001).
     """
     return sum(
-        max(float(ev.session_charge_kw or 0.0), 0.0) * hours * ev.phase_share
+        max(float(ev.session_charge_kw or 0.0), 0.0)
+        * hours
+        * (
+            ev_phase_share_for_power_w(
+                ev.charger_phase_topology,
+                max(float(ev.session_charge_kw or 0.0), 0.0) * 1000.0,
+                single_phase_max_power_w=ev_switchable_single_phase_max_power_w(
+                    max_charge_per_slot=ev.max_charge_per_slot,
+                    charger_efficiency=ev.charger_efficiency,
+                    slot_hours=hours,
+                ),
+            )
+            if ev.charger_phase_topology == EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
+            else ev.phase_share
+        )
         for ev_idx, ev in enumerate(active_evs)
         if lp_t in session_slots_by_ev.get(ev_idx, set())
         and (not unmanaged_only or ev.fixed_session_only)

@@ -23,6 +23,9 @@ import numpy as np
 
 from custom_components.hsem.planner.milp._layout import Bound, MilpBoundsBuilder
 from custom_components.hsem.utils.phase_power import (
+    EV_TOPOLOGY_SINGLE_PHASE,
+    EV_TOPOLOGY_THREE_PHASE_BALANCED,
+    EV_TOPOLOGY_THREE_PHASE_SWITCHABLE,
     charger_current_to_power_w,
     charger_power_to_current_a,
     ev_min_start_current_a,
@@ -72,6 +75,13 @@ class EvAmpSpec:
     discharge_cap_kwh: float
     needs_on: bool
     has_live_session: bool
+    #: ``True`` for an auto-phase-switching charger (issue #1001): the
+    #: lattice gets a second amp block (``ev_{i}_amps3``, three-phase mode)
+    #: and a phase-mode binary (``ev_{i}_mode3``) so exactly one mode is
+    #: active per slot.  One-phase mode spans
+    #: ``[minimum_current_a, rated_current_a]`` amps at 1× phase voltage;
+    #: three-phase mode spans the same amp range at 3× phase voltage.
+    switchable: bool = False
 
 
 @dataclass(frozen=True)
@@ -87,6 +97,18 @@ class EvAmpPlan:
     def on_widths(self, m: int) -> list[int | None]:
         """Return each EV's ``ev_{i}_on`` column width, or ``None``."""
         return [m if (spec.managed and spec.needs_on) else None for spec in self.specs]
+
+    def amp3_widths(self, m: int) -> list[int | None]:
+        """Return each EV's ``ev_{i}_amps3`` column width, or ``None``."""
+        return [
+            m if (spec.managed and spec.switchable) else None for spec in self.specs
+        ]
+
+    def mode3_widths(self, m: int) -> list[int | None]:
+        """Return each EV's ``ev_{i}_mode3`` column width, or ``None``."""
+        return [
+            m if (spec.managed and spec.switchable) else None for spec in self.specs
+        ]
 
 
 def resolve_ev_amp_plan(
@@ -104,6 +126,7 @@ def resolve_ev_amp_plan(
     specs: list[EvAmpSpec] = []
     for ev_idx, ev in enumerate(active_evs):
         managed = not ev.fixed_session_only
+        switchable = ev.charger_phase_topology == EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
         discharge_cap_kwh = ev_discharge_cap_kwh(ev, slot_hours)
         if not managed:
             specs.append(
@@ -128,11 +151,22 @@ def resolve_ev_amp_plan(
             / max(slot_hours, 1e-9)
             * 1000.0
         )
+        # An auto-phase-switching charger (issue #1001) starts at its
+        # minimum on ONE phase (6 A × 230 V = 1380 W) and only reaches its
+        # nameplate across THREE phases — so the minimum amp floor converts
+        # on a single-phase basis while the rated amp ceiling converts on a
+        # three-phase basis.
         rated_current_a = charger_power_to_current_a(
-            ev_bound_ac_power_w, ev.charger_phase_topology
+            ev_bound_ac_power_w,
+            (
+                EV_TOPOLOGY_THREE_PHASE_BALANCED
+                if switchable
+                else ev.charger_phase_topology
+            ),
         )
         minimum_current_a = ev_min_start_current_a(
-            ev.charger_min_power_w, ev.charger_phase_topology
+            ev.charger_min_power_w,
+            EV_TOPOLOGY_SINGLE_PHASE if switchable else ev.charger_phase_topology,
         )
         runnable = rated_current_a >= minimum_current_a
         # A conditional discharge-permission binary is only useful when this
@@ -150,6 +184,7 @@ def resolve_ev_amp_plan(
                 discharge_cap_kwh=discharge_cap_kwh,
                 needs_on=needs_on,
                 has_live_session=ev_has_live_session(ev),
+                switchable=switchable,
             )
         )
     return EvAmpPlan(specs=specs)
@@ -161,7 +196,7 @@ def write_ev_amp_bounds(
     *,
     m: int,
 ) -> None:
-    """Write ``ev_{i}_amps`` / ``ev_{i}_on`` bounds for every planned EV."""
+    """Write ``ev_{i}_amps``/``ev_{i}_amps3``/``ev_{i}_mode3``/``ev_{i}_on`` bounds."""
     for spec in plan.specs:
         if not spec.managed:
             continue
@@ -171,6 +206,9 @@ def write_ev_amp_bounds(
             else (0.0, 0.0)
         )
         bounds_builder.set(f"ev_{spec.ev_idx}_amps", [amp_bound] * m)
+        if spec.switchable:
+            bounds_builder.set(f"ev_{spec.ev_idx}_amps3", [amp_bound] * m)
+            bounds_builder.fill(f"ev_{spec.ev_idx}_mode3", (0.0, 1.0))
         if spec.needs_on:
             bounds_builder.fill(f"ev_{spec.ev_idx}_on", (0.0, 1.0))
 
@@ -188,6 +226,8 @@ def add_ev_amp_lattice_constraints(
     ed_off: int,
     max_dis: float,
     available_slot_hours: np.ndarray,  # type: ignore[type-arg]
+    ev_amp3_offsets: list[int | None] | None = None,
+    ev_mode3_offsets: list[int | None] | None = None,
 ) -> dict[str, Any]:
     """Link managed EV energy to executable whole-amp commands.
 
@@ -197,6 +237,20 @@ def add_ev_amp_lattice_constraints(
     primary battery discharge while that EV draws current.  A live
     session's already-flowing current also caps discharge directly on the
     current slot, independent of any amp decision.
+
+    An auto-phase-switching charger (``three_phase_switchable``, issue
+    #1001) gets a second amp variable ``a3[t]`` (three-phase mode) and a
+    phase-mode binary ``mode3[t]`` per slot::
+
+        ev_c[t] = k1·a1[t] + k3·a3[t]
+        a1[t] + rated·mode3[t] ≤ rated   (one-phase amps only when mode3=0)
+        a3[t] − rated·mode3[t] ≤ 0       (three-phase amps only when mode3=1)
+
+    with ``k1``/``k3`` the DC energy of one amp on one/three phases.  Both
+    amp variables keep the semi-integer zero-or-[min, rated] domain and the
+    mode rows guarantee at most one mode is active per slot, so the
+    executable power set is exactly ``{a×230 V} ∪ {a×690 V}`` for whole amps
+    in ``[min, rated]``.
     """
     managed_specs = [spec for spec in plan.specs if spec.managed]
     physical_session_caps: list[tuple[int, float]] = [
@@ -214,6 +268,7 @@ def add_ev_amp_lattice_constraints(
 
     equality_rows = len(managed_specs) * m
     on_rows = sum(3 * m for spec in managed_specs if spec.needs_on)
+    mode_rows = sum(2 * m for spec in managed_specs if spec.switchable)
     session_rows = len(physical_session_caps)
 
     a_eq = np.zeros((old_a_eq.shape[0] + equality_rows, n_vars))
@@ -221,8 +276,8 @@ def add_ev_amp_lattice_constraints(
     a_eq[: old_a_eq.shape[0], : old_a_eq.shape[1]] = old_a_eq
     b_eq[: old_b_eq.shape[0]] = old_b_eq
 
-    a_ub = np.zeros((old_a_ub.shape[0] + on_rows + session_rows, n_vars))
-    b_ub = np.zeros(old_b_ub.shape[0] + on_rows + session_rows)
+    a_ub = np.zeros((old_a_ub.shape[0] + on_rows + mode_rows + session_rows, n_vars))
+    b_ub = np.zeros(old_b_ub.shape[0] + on_rows + mode_rows + session_rows)
     a_ub[: old_a_ub.shape[0], : old_a_ub.shape[1]] = old_a_ub
     b_ub[: old_b_ub.shape[0]] = old_b_ub
 
@@ -234,9 +289,18 @@ def add_ev_amp_lattice_constraints(
         assert amp_off is not None
         ev_off = ev_var_offsets[spec.ev_idx]
         on_off = ev_on_offsets[spec.ev_idx]
+        amp3_off = ev_amp3_offsets[spec.ev_idx] if ev_amp3_offsets else None
+        mode3_off = ev_mode3_offsets[spec.ev_idx] if ev_mode3_offsets else None
         for t in range(m):
             one_amp_dc_kwh = (
-                charger_current_to_power_w(1, ev.charger_phase_topology)
+                charger_current_to_power_w(
+                    1,
+                    (
+                        EV_TOPOLOGY_SINGLE_PHASE
+                        if spec.switchable
+                        else ev.charger_phase_topology
+                    ),
+                )
                 * max(float(available_slot_hours[t]), 0.0)
                 * ev.charger_efficiency
                 / 1000.0
@@ -244,21 +308,48 @@ def add_ev_amp_lattice_constraints(
             # ev_c[t] - one_amp_dc_kwh * amp[t] = 0
             a_eq[eq_row, ev_off + t] = 1.0
             a_eq[eq_row, amp_off + t] = -one_amp_dc_kwh
+            if spec.switchable:
+                # Second amp variable carries the three-phase mode: one amp
+                # on three phases delivers PHASE_COUNT× the DC energy.
+                assert amp3_off is not None  # declared for every switchable EV
+                a_eq[eq_row, amp3_off + t] = -one_amp_dc_kwh * 3.0
             eq_row += 1
+
+            if spec.switchable:
+                assert mode3_off is not None and amp3_off is not None
+                # a1[t] + rated·mode3[t] ≤ rated — one-phase amps only when
+                # mode3 = 0.
+                a_ub[ub_row, amp_off + t] = 1.0
+                a_ub[ub_row, mode3_off + t] = float(spec.rated_current_a)
+                b_ub[ub_row] = float(spec.rated_current_a)
+                ub_row += 1
+                # a3[t] − rated·mode3[t] ≤ 0 — three-phase amps only when
+                # mode3 = 1.
+                a_ub[ub_row, amp3_off + t] = 1.0
+                a_ub[ub_row, mode3_off + t] = -float(spec.rated_current_a)
+                ub_row += 1
 
             if on_off is not None:
                 # A restrictive (or zero) discharge ceiling needs an exact
-                # conditional cap. Link the semi-integer amp variable to one
-                # binary, then activate ed <= cap only while this EV has a
-                # non-zero command:
-                #   amp <= rated*on
-                #   min*on <= amp
+                # conditional cap. Link the semi-integer amp variable(s) to
+                # one binary, then activate ed <= cap only while this EV has
+                # a non-zero command:
+                #   total_amps <= rated*on
+                #   min*on <= total_amps
                 #   ed + (max_dis-cap)*on <= max_dis
+                # For a switchable charger total_amps is a1+a3 — the mode
+                # rows above guarantee at most one of them is non-zero.
                 a_ub[ub_row, amp_off + t] = 1.0
+                if spec.switchable:
+                    assert amp3_off is not None  # declared for switchable EVs
+                    a_ub[ub_row, amp3_off + t] = 1.0
                 a_ub[ub_row, on_off + t] = -float(spec.rated_current_a)
                 ub_row += 1
                 a_ub[ub_row, on_off + t] = float(spec.minimum_current_a)
                 a_ub[ub_row, amp_off + t] = -1.0
+                if spec.switchable:
+                    assert amp3_off is not None  # declared for switchable EVs
+                    a_ub[ub_row, amp3_off + t] = -1.0
                 ub_row += 1
                 a_ub[ub_row, ed_off + t] = 1.0
                 a_ub[ub_row, on_off + t] = max_dis - spec.discharge_cap_kwh
@@ -287,12 +378,15 @@ def ev_amp_integrality(
     ev_amp_offsets: list[int | None],
     ev_on_offsets: list[int | None],
     m: int,
+    ev_amp3_offsets: list[int | None] | None = None,
+    ev_mode3_offsets: list[int | None] | None = None,
 ) -> np.ndarray:  # type: ignore[type-arg]
     """Return the integrality contribution for amp/on columns.
 
     Type 3 (semi-integer) for amp columns: zero, or an integer in
     ``[min_amp, rated_amp]``.  Type 1 (integer) for on columns: a plain 0/1
-    binary.
+    binary.  A switchable charger's ``amps3`` block is likewise
+    semi-integer and its ``mode3`` block binary (issue #1001).
     """
     integrality = np.zeros(n_vars, dtype=int)
     for spec in plan.specs:
@@ -302,6 +396,14 @@ def ev_amp_integrality(
         on_off = ev_on_offsets[spec.ev_idx]
         if on_off is not None:
             integrality[on_off : on_off + m] = 1
+        if ev_amp3_offsets is not None:
+            amp3_off = ev_amp3_offsets[spec.ev_idx]
+            if amp3_off is not None:
+                integrality[amp3_off : amp3_off + m] = 3
+        if ev_mode3_offsets is not None:
+            mode3_off = ev_mode3_offsets[spec.ev_idx]
+            if mode3_off is not None:
+                integrality[mode3_off : mode3_off + m] = 1
     return integrality
 
 

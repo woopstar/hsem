@@ -135,3 +135,38 @@ async def test_default_min_power_on_single_phase_topology_passes(prefix: str) ->
     }
     errors = await validate_ev_planned_load_schema_input(user_input, prefix)
     assert errors == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prefix", _PREFIXES)
+async def test_default_min_power_on_switchable_topology_passes(prefix: str) -> None:
+    """An auto-phase-switching charger starts on one phase (issue #1001).
+
+    1380 W = 230 V x 6 A x 1 phase is the correct minimum for a charger
+    that switches between one- and three-phase mode automatically, so the
+    single-phase basis applies and the documented default validates.
+    """
+    user_input = {
+        f"{prefix}_enabled": True,
+        f"{prefix}_battery_capacity_kwh": 75.0,
+        f"{prefix}_charger_min_power_w": 1380.0,
+        f"{prefix}_charger_phase_topology": "three_phase_switchable",
+    }
+    errors = await validate_ev_planned_load_schema_input(user_input, prefix)
+    assert errors == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prefix", _PREFIXES)
+async def test_sub_6a_min_power_on_switchable_topology_is_rejected(
+    prefix: str,
+) -> None:
+    """A switchable charger still cannot start below 6 A on one phase."""
+    user_input = {
+        f"{prefix}_enabled": True,
+        f"{prefix}_battery_capacity_kwh": 75.0,
+        f"{prefix}_charger_min_power_w": 1000.0,
+        f"{prefix}_charger_phase_topology": "three_phase_switchable",
+    }
+    errors = await validate_ev_planned_load_schema_input(user_input, prefix)
+    assert errors[f"{prefix}_charger_min_power_w"] == "ev_min_power_below_start_current"

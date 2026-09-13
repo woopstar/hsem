@@ -63,8 +63,9 @@ class OCPPMessageHandlersMixin:
     # follow-up).
     _last_sent_current_a: int
     _last_sent_target: float
+    _last_sent_phases: int | None
     _send_set_charging_profile: Callable[
-        [ChargerSession, int, int], Coroutine[Any, Any, bool]
+        [ChargerSession, int, int, int | None], Coroutine[Any, Any, bool]
     ]
     _background_tasks: set[asyncio.Task[Any]]
 
@@ -452,7 +453,10 @@ class OCPPMessageHandlersMixin:
         if self._last_sent_current_a >= 0:
             task = asyncio.create_task(
                 self._resend_profile_after_start(
-                    session, int(self._last_sent_target), self._last_sent_current_a
+                    session,
+                    int(self._last_sent_target),
+                    self._last_sent_current_a,
+                    self._last_sent_phases,
                 )
             )
             self._background_tasks.add(task)
@@ -464,7 +468,11 @@ class OCPPMessageHandlersMixin:
         }
 
     async def _resend_profile_after_start(
-        self, session: ChargerSession, max_power_w: int, max_current_a: int
+        self,
+        session: ChargerSession,
+        max_power_w: int,
+        max_current_a: int,
+        number_phases: int | None = None,
     ) -> None:
         """Background task: resend a charging profile after StartTransaction.
 
@@ -480,7 +488,9 @@ class OCPPMessageHandlersMixin:
             max_current_a: Maximum charging current in amperes to re-request.
         """
         try:
-            await self._send_set_charging_profile(session, max_power_w, max_current_a)
+            await self._send_set_charging_profile(
+                session, max_power_w, max_current_a, number_phases
+            )
         except Exception:
             _LOGGER.exception(
                 "OCPP %s: background profile resend after StartTransaction failed",

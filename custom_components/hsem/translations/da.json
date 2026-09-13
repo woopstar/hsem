@@ -64,7 +64,7 @@
           "hsem_ev_planned_load_deadline_safety_margin_pct": "Ekstra energi budgetteret ud over mål-SoC, som en procentdel af manglen, så normal opladningsfriktion (startforsinkelser, minimumseffektgrænser, gennemtvinget reduktion) ikke får deadline til at blive overskredet. Standard: 0% (deaktiveret).",
           "hsem_ev_planned_load_command_deadband_a": "Mindste sænkning af det offentliggjorte ladeloft, der faktisk gennemføres. Mindre sænkninger holdes, fordi konkurrerende hele-ampere-planer typisk ligger inden for en afrundingsfejl af hinanden på pris. En hævning af loftet forsinkes aldrig, og en sænkning, der forbedrer dette intervals ladeomkostning med mere end 5 %, slipper altid igennem. Standard: 3 A; 0 deaktiverer.",
           "hsem_ev_planned_load_stub_floor_minutes": "Undertryk en stop-kommando i så mange minutter sidst i et interval, mens bilen stadig mangler energi. De sidste sekunder kan ikke rumme nok energi til at nå laderens minimum, så planen tildeler dem ingenting, og ladningen ville stoppe og starte igen uden gevinst. Standard: 2 minutter; 0 deaktiverer.",
-          "hsem_ev_planned_load_charger_phase_topology": "Hvordan laderen fordeler sin belastning på forsyningens faser. Vælg 'Enfaset eller ukendt', medmindre du har bekræftet, at laderen trækker balanceret strøm på alle tre faser. Med per-fase-sikringsbeskyttelse aktiveret antager det sikre standardvalg, at hele laderkommandoen kan lande på én fase, hvilket begrænser planlagt opladning til den enfasede sikrings kapacitet."
+          "hsem_ev_planned_load_charger_phase_topology": "Hvordan laderen fordeler sin belastning på forsyningens faser. Vælg 'Enfaset eller ukendt', medmindre du har bekræftet, at laderen trækker balanceret strøm på alle tre faser. Vælg 'Trefaset med automatisk 1/3-fase-omskiftning', når laderen kan starte på én fase og automatisk skifte til balanceret trefaset — dens minimumseffekt er da det enfasede tal (f.eks. 1380 W). Med per-fase-sikringsbeskyttelse aktiveret antager det sikre standardvalg, at hele laderkommandoen kan lande på én fase, hvilket begrænser planlagt opladning til den enfasede sikrings kapacitet."
         },
         "description": "Konfigurer valgfri planlagt EV-opladningsbelastningsintegration. Når aktiveret, tager HSEM højde for kommende EV-opladningsbehov pr. planslot.",
         "title": "EV-planlagt belastningsintegration"
@@ -90,7 +90,7 @@
           "hsem_ev_second_planned_load_deadline_safety_margin_pct": "Samme som den primære EVs sikkerhedsmargin til deadline, for den anden EV. Standard: 0% (deaktiveret).",
           "hsem_ev_second_planned_load_command_deadband_a": "Samme som den primære EVs dødbånd for loft, for den anden EV. Standard: 3 A; 0 deaktiverer.",
           "hsem_ev_second_planned_load_stub_floor_minutes": "Samme som den primære EVs undertrykkelse af stop sidst i interval, for den anden EV. Standard: 2 minutter; 0 deaktiverer.",
-          "hsem_ev_second_planned_load_charger_phase_topology": "Hvordan laderen fordeler sin belastning på forsyningens faser. Vælg 'Enfaset eller ukendt', medmindre du har bekræftet, at laderen trækker balanceret strøm på alle tre faser. Med per-fase-sikringsbeskyttelse aktiveret antager det sikre standardvalg, at hele laderkommandoen kan lande på én fase, hvilket begrænser planlagt opladning til den enfasede sikrings kapacitet."
+          "hsem_ev_second_planned_load_charger_phase_topology": "Hvordan laderen fordeler sin belastning på forsyningens faser. Vælg 'Enfaset eller ukendt', medmindre du har bekræftet, at laderen trækker balanceret strøm på alle tre faser. Vælg 'Trefaset med automatisk 1/3-fase-omskiftning', når laderen kan starte på én fase og automatisk skifte til balanceret trefaset — dens minimumseffekt er da det enfasede tal (f.eks. 1380 W). Med per-fase-sikringsbeskyttelse aktiveret antager det sikre standardvalg, at hele laderkommandoen kan lande på én fase, hvilket begrænser planlagt opladning til den enfasede sikrings kapacitet."
         },
         "description": "Konfigurer valgfri planlagt opladningsbelastningsintegration for den anden EV. Vises kun, når en anden EV-lader er aktiveret.",
         "title": "EV 2-planlagt belastningsintegration"
@@ -416,7 +416,9 @@
           "hsem_ocpp_stop_window_s": "Stopvindue (s)",
           "hsem_ocpp_second_cpid": "Andet ladepunkt-ID",
           "hsem_ocpp_second_enabled": "Aktiver anden OCPP-server",
-          "hsem_ocpp_second_port": "Anden OCPP-port"
+          "hsem_ocpp_second_port": "Anden OCPP-port",
+          "hsem_ocpp_charging_rate_unit": "Ladeenhed (effekt/strøm)",
+          "hsem_ocpp_second_charging_rate_unit": "Anden ladeenhed (effekt/strøm)"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiver den indbyggede OCPP 1.6 WebSocket-server til direkte EV-laderstyring. Kun LAN - eksponer ikke porten til internettet.",
@@ -426,7 +428,9 @@
           "hsem_ocpp_stop_window_s": "Sekunder med vedvarende underskud før opladning stopper. Forhindrer hurtig stop-start cykling. Standard: 180.",
           "hsem_ocpp_second_cpid": "Forventet ladepunkt-identifikator for den anden EV-lader. Lad være tom for at acceptere enhver lader.",
           "hsem_ocpp_second_enabled": "Aktiver en anden, dedikeret OCPP-server til den anden EV. Kun tilgængelig når planlagt belastning for EV 2 er aktiveret.",
-          "hsem_ocpp_second_port": "TCP-port til den anden OCPP WebSocket-server. Standard: 9001. Skal være forskellig fra den første servers port."
+          "hsem_ocpp_second_port": "TCP-port til den anden OCPP WebSocket-server. Standard: 9001. Skal være forskellig fra den første servers port.",
+          "hsem_ocpp_charging_rate_unit": "Enheden i OCPP-ladeprofiler. 'Auto' forhandler ud fra laderens rapporterede egenskaber og foretrækker watt — en watt-grænse er utvetydig for ladere med automatisk 1/3-fase-omskiftning. 'Ampere' eller 'Watt' tvinger en enhed, hvis en lader rapporterer forkert. Standard: Auto.",
+          "hsem_ocpp_second_charging_rate_unit": "Samme som den primære servers ladeenhed, for den anden laders OCPP-server."
         },
         "description": "Konfigurer den indbyggede OCPP 1.6 server til LAN-kun EV-laderstyring. Når aktiveret, sender HSEM SetChargingProfile-kommandoer direkte til din EV-lader baseret på opladeplanen.",
         "title": "OCPP Server"
@@ -529,7 +533,7 @@
           "hsem_ev_planned_load_charger_power_kw": "AC-udgangseffekt for EV-laderen i kW.",
           "hsem_ev_planned_load_charger_efficiency": "Laderefficiens i procent (1-100). Standard: 100.",
           "hsem_ev_planned_load_charger_min_power_w": "Minimum AC-effekt (W) som EV-laderen skal bruge for at starte opladning. Standard: 1380 W (230 V × 6 A).",
-          "hsem_ev_planned_load_charger_phase_topology": "Hvordan laderen fordeler sin belastning på forsyningens faser. Vælg 'Enfaset eller ukendt', medmindre du har bekræftet, at laderen trækker balanceret strøm på alle tre faser. Med per-fase-sikringsbeskyttelse aktiveret antager det sikre standardvalg, at hele laderkommandoen kan lande på én fase, hvilket begrænser planlagt opladning til den enfasede sikrings kapacitet.",
+          "hsem_ev_planned_load_charger_phase_topology": "Hvordan laderen fordeler sin belastning på forsyningens faser. Vælg 'Enfaset eller ukendt', medmindre du har bekræftet, at laderen trækker balanceret strøm på alle tre faser. Vælg 'Trefaset med automatisk 1/3-fase-omskiftning', når laderen kan starte på én fase og automatisk skifte til balanceret trefaset — dens minimumseffekt er da det enfasede tal (f.eks. 1380 W). Med per-fase-sikringsbeskyttelse aktiveret antager det sikre standardvalg, at hele laderkommandoen kan lande på én fase, hvilket begrænser planlagt opladning til den enfasede sikrings kapacitet.",
           "hsem_ev_planned_load_command_deadband_a": "Mindste sænkning af det offentliggjorte ladeloft, der faktisk gennemføres. Mindre sænkninger holdes, fordi konkurrerende hele-ampere-planer typisk ligger inden for en afrundingsfejl af hinanden på pris. En hævning af loftet forsinkes aldrig, og en sænkning, der forbedrer dette intervals ladeomkostning med mere end 5 %, slipper altid igennem. Standard: 3 A; 0 deaktiverer.",
           "hsem_ev_planned_load_deadline_safety_margin_pct": "Ekstra energi budgetteret ud over mål-SoC, som en procentdel af manglen, så normal opladningsfriktion (startforsinkelser, minimumseffektgrænser, gennemtvinget reduktion) ikke får deadline til at blive overskredet. Standard: 0% (deaktiveret).",
           "hsem_ev_planned_load_stub_floor_minutes": "Undertryk en stop-kommando i så mange minutter sidst i et interval, mens bilen stadig mangler energi. De sidste sekunder kan ikke rumme nok energi til at nå laderens minimum, så planen tildeler dem ingenting, og ladningen ville stoppe og starte igen uden gevinst. Standard: 2 minutter; 0 deaktiverer."
@@ -558,7 +562,7 @@
           "hsem_ev_second_planned_load_deadline_safety_margin_pct": "Samme som den primære EVs sikkerhedsmargin til deadline, for den anden EV. Standard: 0% (deaktiveret).",
           "hsem_ev_second_planned_load_command_deadband_a": "Samme som den primære EVs dødbånd for loft, for den anden EV. Standard: 3 A; 0 deaktiverer.",
           "hsem_ev_second_planned_load_stub_floor_minutes": "Samme som den primære EVs undertrykkelse af stop sidst i interval, for den anden EV. Standard: 2 minutter; 0 deaktiverer.",
-          "hsem_ev_second_planned_load_charger_phase_topology": "Hvordan laderen fordeler sin belastning på forsyningens faser. Vælg 'Enfaset eller ukendt', medmindre du har bekræftet, at laderen trækker balanceret strøm på alle tre faser. Med per-fase-sikringsbeskyttelse aktiveret antager det sikre standardvalg, at hele laderkommandoen kan lande på én fase, hvilket begrænser planlagt opladning til den enfasede sikrings kapacitet."
+          "hsem_ev_second_planned_load_charger_phase_topology": "Hvordan laderen fordeler sin belastning på forsyningens faser. Vælg 'Enfaset eller ukendt', medmindre du har bekræftet, at laderen trækker balanceret strøm på alle tre faser. Vælg 'Trefaset med automatisk 1/3-fase-omskiftning', når laderen kan starte på én fase og automatisk skifte til balanceret trefaset — dens minimumseffekt er da det enfasede tal (f.eks. 1380 W). Med per-fase-sikringsbeskyttelse aktiveret antager det sikre standardvalg, at hele laderkommandoen kan lande på én fase, hvilket begrænser planlagt opladning til den enfasede sikrings kapacitet."
         },
         "description": "Konfigurer valgfri planlagt opladningsbelastningsintegration for den anden EV. Vises kun, når en anden EV-lader er aktiveret.",
         "title": "EV 2-planlagt belastningsintegration"
@@ -862,7 +866,9 @@
           "hsem_ocpp_stop_window_s": "Stopvindue (s)",
           "hsem_ocpp_second_cpid": "Andet ladepunkt-ID",
           "hsem_ocpp_second_enabled": "Aktiver anden OCPP-server",
-          "hsem_ocpp_second_port": "Anden OCPP-port"
+          "hsem_ocpp_second_port": "Anden OCPP-port",
+          "hsem_ocpp_charging_rate_unit": "Ladeenhed (effekt/strøm)",
+          "hsem_ocpp_second_charging_rate_unit": "Anden ladeenhed (effekt/strøm)"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiver den indbyggede OCPP 1.6 WebSocket-server til direkte EV-laderstyring. Kun LAN - eksponer ikke porten til internettet.",
@@ -872,7 +878,9 @@
           "hsem_ocpp_stop_window_s": "Sekunder med vedvarende underskud før opladning stopper. Standard: 180.",
           "hsem_ocpp_second_cpid": "Forventet ladepunkt-identifikator for den anden EV-lader. Lad være tom for at acceptere enhver lader.",
           "hsem_ocpp_second_enabled": "Aktiver en anden, dedikeret OCPP-server til den anden EV. Kun tilgængelig når planlagt belastning for EV 2 er aktiveret.",
-          "hsem_ocpp_second_port": "TCP-port til den anden OCPP WebSocket-server. Standard: 9001. Skal være forskellig fra den første servers port."
+          "hsem_ocpp_second_port": "TCP-port til den anden OCPP WebSocket-server. Standard: 9001. Skal være forskellig fra den første servers port.",
+          "hsem_ocpp_charging_rate_unit": "Enheden i OCPP-ladeprofiler. 'Auto' forhandler ud fra laderens rapporterede egenskaber og foretrækker watt — en watt-grænse er utvetydig for ladere med automatisk 1/3-fase-omskiftning. 'Ampere' eller 'Watt' tvinger en enhed, hvis en lader rapporterer forkert. Standard: Auto.",
+          "hsem_ocpp_second_charging_rate_unit": "Samme som den primære servers ladeenhed, for den anden laders OCPP-server."
         },
         "description": "Konfigurer den indbyggede OCPP 1.6 server til LAN-kun EV-laderstyring.",
         "title": "OCPP Server"
@@ -931,7 +939,15 @@
     "ev_charger_phase_topology": {
       "options": {
         "single_phase": "Enfaset eller ukendt (sikkert standardvalg)",
-        "three_phase_balanced": "Trefaset, balanceret over L1/L2/L3"
+        "three_phase_balanced": "Trefaset, balanceret over L1/L2/L3",
+        "three_phase_switchable": "Trefaset med automatisk 1/3-fase-omskiftning"
+      }
+    },
+    "ocpp_charging_rate_unit": {
+      "options": {
+        "auto": "Auto (forhandl, foretræk watt)",
+        "amps": "Ampere",
+        "watts": "Watt"
       }
     }
   },

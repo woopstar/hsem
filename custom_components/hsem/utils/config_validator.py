@@ -323,7 +323,9 @@ def validate_ev_min_power_topology(
     any real EVSE's minimum start current (6 A per IEC 61851). Saving such a
     value lets the planner command an unusable sub-6A charge that the
     charger will refuse (issue #968), so this is rejected at the config
-    flow rather than left to fail at runtime.
+    flow rather than left to fail at runtime.  A ``three_phase_switchable``
+    charger (issue #1001) starts on one phase, so its minimum converts on
+    the single-phase basis and 1380 W (230 V × 6 A) is valid.
 
     Args:
         user_input: Dict from the config/options form.

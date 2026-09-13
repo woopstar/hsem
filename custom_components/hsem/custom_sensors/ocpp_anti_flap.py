@@ -48,14 +48,16 @@ class OCPPAntiFlapMixin:
     _target_entered_at: datetime | None
     _zero_entered_at: datetime | None
     _last_sent_target: float
+    _last_sent_unit: str
     _last_profile_retry_attempt: datetime | None
     _stalled: bool
     _stall_logged: bool
     _send_remote_start: Callable[..., Coroutine[Any, Any, bool]]
     _send_remote_stop: Callable[..., Coroutine[Any, Any, bool]]
     _send_set_charging_profile: Callable[
-        [ChargerSession, int, int], Coroutine[Any, Any, bool]
+        [ChargerSession, int, int, int | None], Coroutine[Any, Any, bool]
     ]
+    _effective_rate_unit: Callable[[ChargerSession], str]
     _remote_start_due: Callable[[datetime], bool]
     _remote_stop_due: Callable[[datetime], bool]
     _profile_retry_due: Callable[[datetime], bool]
@@ -74,6 +76,7 @@ class OCPPAntiFlapMixin:
         max_current_a: int = 16,
         now: datetime | None = None,
         managed: bool = True,
+        number_phases: int | None = None,
     ) -> None:
         """Update the charge target for a charger with anti-flap logic.
 
@@ -95,6 +98,12 @@ class OCPPAntiFlapMixin:
                 installed), while a zero on an unmanaged EV means "HSEM
                 has no opinion" and releases HSEM's profiles exactly once
                 so no standing 0 A block remains (issue #920).
+            number_phases: Intended phase mode for an amp-unit profile
+                (1 or 3, issue #1001) — included as the schedule period's
+                ``numberPhases`` so an amp-only auto-phase-switching
+                charger is told whether the amp limit is a one-phase or a
+                three-phase command.  ``None`` omits the field (unknown,
+                or a watt-unit profile where phases are irrelevant).
         """
         if cpid not in self._chargers:
             return
@@ -164,7 +173,7 @@ class OCPPAntiFlapMixin:
                             session, now=now
                         )
                     profile_ok = await self._send_set_charging_profile(
-                        session, int(target_w), max_current_a
+                        session, int(target_w), max_current_a, number_phases
                     )
                     if remote_start_ok and profile_ok:
                         self._flap_state = "charging"
@@ -198,7 +207,16 @@ class OCPPAntiFlapMixin:
                 # check alone would otherwise never resend a limit the
                 # charger has already refused.
                 profile_status = session.last_call_status.get("SetChargingProfile")
-                material_change = abs(target_w - self._last_sent_target) > 50.0
+                # A unit renegotiation (the charger's GetConfiguration reply
+                # arriving after the first send, or a config change) at the
+                # same wattage is still a material change: the A-profile must
+                # be replaced by the W-profile or vice versa (issue #1001).
+                # An empty _last_sent_unit means no successful profile send
+                # has been recorded yet — never a reason to resend.
+                material_change = abs(target_w - self._last_sent_target) > 50.0 or (
+                    bool(self._last_sent_unit)
+                    and self._effective_rate_unit(session) != self._last_sent_unit
+                )
                 rejected_retry = profile_status in (
                     "Rejected",
                     "NotSupported",
@@ -206,7 +224,7 @@ class OCPPAntiFlapMixin:
                 if material_change or rejected_retry:
                     self._last_profile_retry_attempt = now
                     await self._send_set_charging_profile(
-                        session, int(target_w), max_current_a
+                        session, int(target_w), max_current_a, number_phases
                     )
 
                 # Stall diagnostics (issue #894): a charger stuck reporting

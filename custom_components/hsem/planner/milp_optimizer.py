@@ -393,10 +393,14 @@ def solve_milp(
         fuse_active=fuse_active,
         ev_amp_widths=ev_amp_plan.amp_widths(m),
         ev_on_widths=ev_amp_plan.on_widths(m),
+        ev_amp3_widths=ev_amp_plan.amp3_widths(m),
+        ev_mode3_widths=ev_amp_plan.mode3_widths(m),
     )
     _off = derive_milp_offsets(column_layout, len(active_evs))
     ev_amp_offsets = _off.ev_amp_offsets
     ev_on_offsets = _off.ev_on_offsets
+    ev_amp3_offsets = _off.ev_amp3_offsets
+    ev_mode3_offsets = _off.ev_mode3_offsets
     n_vars = _off.n_vars
     ec_off, ed_off, gi_off, ge_off = _off.ec_off, _off.ed_off, _off.gi_off, _off.ge_off
     pv_off, m_off = _off.pv_off, _off.m_off
@@ -574,6 +578,8 @@ def solve_milp(
         ed_off=ed_off,
         max_dis=max_dis,
         available_slot_hours=available_slot_hours,
+        ev_amp3_offsets=ev_amp3_offsets,
+        ev_mode3_offsets=ev_mode3_offsets,
     )
 
     A_eq = constraints["A_eq"]
@@ -612,6 +618,8 @@ def solve_milp(
         ev_amp_offsets=ev_amp_offsets,
         ev_on_offsets=ev_on_offsets,
         m=m,
+        ev_amp3_offsets=ev_amp3_offsets,
+        ev_mode3_offsets=ev_mode3_offsets,
     )
     result = solve_and_validate(
         linprog,

@@ -144,3 +144,49 @@ def test_target_cap_activation_quantum_uses_the_floored_minimum() -> None:
     )
     # 6 A * 230 V * 3 phases * 1 h / 1000 = 4.14 kWh at 100% efficiency.
     assert quantum == pytest.approx(4.14)
+
+
+# ---------------------------------------------------------------------------
+# Auto-phase-switching chargers (issue #1001): minimum is a SINGLE-phase
+# figure, nameplate is THREE-phase.
+# ---------------------------------------------------------------------------
+
+_SWITCHABLE = "three_phase_switchable"
+
+
+def test_switchable_min_power_converts_on_the_single_phase_basis() -> None:
+    """1380 W is exactly 6 A for an auto-switching charger — it starts 1-phase."""
+    assert charger_min_power_to_current_a(_DEFAULT_MIN_POWER_W, _SWITCHABLE) == 6
+    assert ev_min_start_current_a(_DEFAULT_MIN_POWER_W, _SWITCHABLE) == 6
+
+
+def test_switchable_sub_6a_minimum_still_floors() -> None:
+    """A misconfigured 1000 W threshold floors to the real 6 A EVSE minimum."""
+    assert ev_min_start_current_a(1000.0, _SWITCHABLE) == EV_MIN_START_CURRENT_A
+
+
+def test_resolve_ev_amp_plan_switchable_bounds() -> None:
+    """The lattice spans 6 A … 16 A in BOTH modes for an 11 kW switchable."""
+    ev = _ev(_SWITCHABLE, max_charge_per_slot=11.04)
+    plan = resolve_ev_amp_plan([ev], max_dis=0.0, slot_hours=1.0)
+
+    spec = plan.specs[0]
+    assert spec.switchable is True
+    assert spec.minimum_current_a == 6
+    # 11.04 kW / 690 W per amp = 16 A rated (three-phase basis).
+    assert spec.rated_current_a == 16
+    assert spec.runnable is True
+    # The switchable EV declares the extra 3-phase amp + mode-binary blocks.
+    assert plan.amp3_widths(4) == [4]
+    assert plan.mode3_widths(4) == [4]
+
+
+def test_target_cap_activation_quantum_switchable_is_single_phase() -> None:
+    """The smallest activation of a switchable charger is 6 A on ONE phase."""
+    ev = _ev(_SWITCHABLE, max_charge_per_slot=11.04)
+    available_slot_hours = np.array([1.0, 1.0, 1.0, 1.0])
+    quantum = target_cap_activation_quantum_dc(
+        ev, d=0, available_slot_hours=available_slot_hours
+    )
+    # 6 A * 230 V * 1 phase * 1 h / 1000 = 1.38 kWh at 100% efficiency.
+    assert quantum == pytest.approx(1.38)

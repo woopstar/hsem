@@ -20,7 +20,13 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 from custom_components.hsem.custom_sensors.ocpp_control import (
+    CHARGING_RATE_UNIT_KEY,
+    RATE_UNIT_AMPS,
+    RATE_UNIT_PREF_AMPS,
+    RATE_UNIT_PREF_WATTS,
+    RATE_UNIT_WATTS,
     STATION_MAX_CURRENT_KEY,
+    supported_charging_rate_units,
 )
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
@@ -44,38 +50,94 @@ class OCPPProfilesMixin:
     # the sibling mixins they actually live on.
     _last_sent_target: float
     _last_sent_current_a: int
+    _last_sent_unit: str
+    _last_sent_phases: int | None
+    _charging_rate_unit: str
     _chargers: dict[str, ChargerSession]
     _send_call: Callable[[ChargerSession, str, dict], Coroutine[Any, Any, bool]]
     profile_stack_levels: Callable[[ChargerSession], tuple[int, int]]
     station_max_current_a: Callable[[ChargerSession], int | None]
 
-    def _charging_profiles(
-        self, session: ChargerSession, max_current_a: int
-    ) -> tuple[dict, dict | None]:
-        """Build the charging profile(s) expressing a current limit.
+    def _effective_rate_unit(self, session: ChargerSession) -> str:
+        """Return the ``chargingRateUnit`` (``"W"`` or ``"A"``) to use.
 
-        Shared by the planner-driven limit and by the zero-current stop
+        Resolves the configured preference (``hsem_ocpp_charging_rate_unit``)
+        against the charger's own reported
+        ``ChargingScheduleAllowedChargingRateUnit`` capability (issue #1001):
+
+        * ``amps`` — always amps.
+        * ``watts`` — always watts (a charger that never reported watt
+          support gets a warning: per OCPP 1.6 it may schema-validate the
+          profile and then apply nothing).
+        * ``auto`` (default) — watts when the charger reports watt support,
+          otherwise amps.  Watts are preferred because a watt ceiling is
+          phase-agnostic: an auto-phase-switching charger maps the wattage
+          to its own 1/3-phase decision with no amp ambiguity.
+        """
+        preference = self._charging_rate_unit
+        if preference == RATE_UNIT_PREF_AMPS:
+            return RATE_UNIT_AMPS
+        _amps_ok, watts_ok = supported_charging_rate_units(session.configuration_keys)
+        if preference == RATE_UNIT_PREF_WATTS:
+            if not watts_ok:
+                _LOGGER.warning(
+                    "OCPP %s: watts forced but the charger never reported "
+                    "watt support (%s) — the profile may be accepted and "
+                    "silently ignored",
+                    session.cpid,
+                    CHARGING_RATE_UNIT_KEY,
+                )
+            return RATE_UNIT_WATTS
+        return RATE_UNIT_WATTS if watts_ok else RATE_UNIT_AMPS
+
+    def _charging_profiles(
+        self,
+        session: ChargerSession,
+        max_current_a: int,
+        *,
+        target_power_w: float = 0.0,
+        number_phases: int | None = None,
+    ) -> tuple[dict, dict | None, str]:
+        """Build the charging profile(s) expressing a charge limit.
+
+        Shared by the planner-driven limit and by the zero-limit stop
         (issue #920) so the two can never drift in stack level, profile ID
         or kind — the only difference between "charge at 8 A" and "do not
         charge" is the number in the schedule.
+
+        The schedule's unit is negotiated per charger (issue #1001): watts
+        when the charger reports watt support (default ``auto``
+        preference), amps otherwise.  Amp schedules additionally carry
+        ``numberPhases`` when the caller knows the intended phase mode, so
+        an amp-only auto-phase-switching charger is told whether an amp
+        limit is a one-phase or a three-phase command.
 
         Args:
             session: The charger session.
             max_current_a: Current limit in amperes; ``0`` means "draw
                 nothing".
+            target_power_w: The same limit expressed in watts — used
+                verbatim as the schedule limit when the negotiated unit is
+                watts.
+            number_phases: Intended phase count for an amp schedule
+                (1 or 3), or ``None`` when unknown/irrelevant.
 
         Returns:
-            The ``TxDefaultProfile``, and a ``TxProfile`` bound to the live
-            transaction when one is open (``None`` otherwise).
+            The ``TxDefaultProfile``, a ``TxProfile`` bound to the live
+            transaction when one is open (``None`` otherwise), and the
+            ``chargingRateUnit`` the profiles were built with.
         """
+        unit = self._effective_rate_unit(session)
+        period: dict[str, Any] = {"startPeriod": 0}
+        if unit == RATE_UNIT_WATTS:
+            period["limit"] = max(0, int(round(target_power_w)))
+        else:
+            period["limit"] = max_current_a
+            if number_phases is not None:
+                period["numberPhases"] = number_phases
         schedule = {
-            "chargingRateUnit": "A",
-            "chargingSchedulePeriod": [
-                {
-                    "startPeriod": 0,
-                    "limit": max_current_a,
-                }
-            ],
+            "chargingRateUnit": unit,
+            "chargingSchedulePeriod": [period],
         }
         # Install at the top of the stack-level range the charger reports,
         # not the bottom (issue #920): higher levels win, so a profile at
@@ -99,7 +161,7 @@ class OCPPProfilesMixin:
                 "transactionId": session.transaction_id,
                 "chargingSchedule": schedule,
             }
-        return tx_default_profile, tx_profile
+        return tx_default_profile, tx_profile, unit
 
     async def _send_zero_current_profile(self, session: ChargerSession) -> bool:
         """Tell the charger to draw nothing, using only standard OCPP.
@@ -131,7 +193,9 @@ class OCPPProfilesMixin:
         Returns:
             ``True`` if at least one profile reached the socket.
         """
-        tx_default_profile, tx_profile = self._charging_profiles(session, 0)
+        tx_default_profile, tx_profile, _unit = self._charging_profiles(
+            session, 0, target_power_w=0.0
+        )
         sent = await self._send_call(
             session,
             "SetChargingProfile",
@@ -148,13 +212,17 @@ class OCPPProfilesMixin:
             )
         if sent:
             session.hsem_zero_profile_active = True
-            _LOGGER.debug("Sent 0 A charging profile to %s", session.cpid)
+            _LOGGER.debug("Sent 0-limit charging profile to %s", session.cpid)
         return sent
 
     async def _send_set_charging_profile(
-        self, session: ChargerSession, max_power_w: int, max_current_a: int = 16
+        self,
+        session: ChargerSession,
+        max_power_w: int,
+        max_current_a: int = 16,
+        number_phases: int | None = None,
     ) -> bool:
-        """Send ``SetChargingProfile`` request(s) to limit charging current.
+        """Send ``SetChargingProfile`` request(s) to limit charging.
 
         Always sends a ``TxDefaultProfile`` (applies to whichever transaction
         becomes active on this connector). When a transaction is already
@@ -193,7 +261,12 @@ class OCPPProfilesMixin:
             wrongly suppress a rightful retry.
         """
         station_max_a = self.station_max_current_a(session)
-        if station_max_a is not None and max_current_a > station_max_a:
+        prospective_unit = self._effective_rate_unit(session)
+        if (
+            prospective_unit == RATE_UNIT_AMPS
+            and station_max_a is not None
+            and max_current_a > station_max_a
+        ):
             _LOGGER.warning(
                 "OCPP %s: requested %d A but the charger caps itself at %d A "
                 "(%s) — the request is valid but cannot raise the limit "
@@ -204,7 +277,12 @@ class OCPPProfilesMixin:
                 STATION_MAX_CURRENT_KEY,
             )
 
-        tx_default_profile, tx_profile = self._charging_profiles(session, max_current_a)
+        tx_default_profile, tx_profile, unit = self._charging_profiles(
+            session,
+            max_current_a,
+            target_power_w=float(max_power_w),
+            number_phases=number_phases,
+        )
         default_sent = await self._send_call(
             session,
             "SetChargingProfile",
@@ -229,19 +307,27 @@ class OCPPProfilesMixin:
         if sent:
             self._last_sent_target = float(max_power_w)
             self._last_sent_current_a = max_current_a
+            self._last_sent_unit = unit
+            self._last_sent_phases = number_phases
             # A real limit replaces any held zero on the same profile IDs;
-            # a 0 A send through this path *is* a zero profile (issue #990).
+            # a 0-limit send through this path *is* a zero profile
+            # (issue #990).
             session.hsem_zero_profile_active = max_current_a == 0
             _LOGGER.debug(
-                "Sent SetChargingProfile to %s: max %d A (~%d W)",
+                "Sent SetChargingProfile to %s: max %d A (~%d W, unit %s)",
                 session.cpid,
                 max_current_a,
                 max_power_w,
+                unit,
             )
         return sent
 
     async def send_set_charging_profile(
-        self, cpid: str, max_power_w: int, max_current_a: int = 16
+        self,
+        cpid: str,
+        max_power_w: int,
+        max_current_a: int = 16,
+        number_phases: int | None = None,
     ) -> bool:
         """Directly send a ``SetChargingProfile`` to a charger.
 
@@ -269,7 +355,7 @@ class OCPPProfilesMixin:
             )
             return False
         return await self._send_set_charging_profile(
-            self._chargers[cpid], max_power_w, max_current_a
+            self._chargers[cpid], max_power_w, max_current_a, number_phases
         )
 
 
