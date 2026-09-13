@@ -170,6 +170,15 @@ class OCPPMessageHandlersMixin:
         charger has been stuck in its current state rather than the time
         of the most recent heartbeat-style repeat.
 
+        ``connectorId`` is respected (issue #990): per OCPP 1.6,
+        ``connectorId == 0`` reports the status of the *charge point
+        itself*, not of the connector the car is plugged into. Those
+        messages update ``session.charge_point_status`` only — they must
+        never overwrite the connector-level ``session.status``, or a
+        charge-point-level ``Available`` could be misread as "car
+        unplugged" and release the connect gate while a connector-level
+        session is active.
+
         Args:
             session: The charger session.
             payload: StatusNotification payload.
@@ -178,42 +187,61 @@ class OCPPMessageHandlersMixin:
             Empty dict (CALLRESULT per OCPP spec).
         """
         new_status = payload.get("status", "")
-        if new_status:
-            if new_status != session.status:
-                old_status = session.status
-                session.status_changed_at = datetime.now(UTC)
-                session.status = new_status
-                _LOGGER.debug(
-                    "OCPP charger %s status changed to '%s'", session.cpid, new_status
-                )
-                # Notify promptly (issue #908) — only on an actual change,
-                # not a repeated StatusNotification carrying the same
-                # status.
-                await self._notify_significant_event()
+        if not new_status:
+            return {}
 
-                # Gate a fresh connection against free-vending before the
-                # planner has had a chance to decide anything for it yet
-                # (issue #969). The charger's own status leaving
-                # "Available" is the earliest signal HSEM has that a car
-                # was just plugged in — some chargers free-vend without
-                # ever sending StartTransaction through HSEM first. Only
-                # armed while HSEM's own anti-flap state is still "idle":
-                # a transition HSEM itself caused (e.g. its own remote
-                # start moving status to "Charging") is not a free-vend
-                # risk and must not re-arm the gate.
-                if (
-                    old_status == "Available"
-                    and new_status != "Available"
-                    and self._flap_state == "idle"
-                ):
-                    self._arm_connect_gate(session)
-                elif new_status == "Available" and session.gate_pending_plan:
-                    # The car was unplugged before the planner ever
-                    # decided anything for it — release the transient
-                    # block instead of leaving it stuck.
-                    self._schedule_release_connect_gate(session)
-            else:
-                session.status = new_status
+        # connectorId is mandatory per OCPP 1.6; a payload missing it is
+        # treated as connector-level (1) to preserve the pre-#990 lenient
+        # behaviour for non-conformant chargers.
+        connector_id = payload.get("connectorId", 1)
+        if connector_id == 0:
+            if new_status != session.charge_point_status:
+                session.charge_point_status = new_status
+                _LOGGER.debug(
+                    "OCPP charger %s charge-point status changed to '%s'",
+                    session.cpid,
+                    new_status,
+                )
+            return {}
+
+        if new_status != session.status:
+            old_status = session.status
+            session.status_changed_at = datetime.now(UTC)
+            session.status = new_status
+            _LOGGER.debug(
+                "OCPP charger %s status changed to '%s'", session.cpid, new_status
+            )
+            # Notify promptly (issue #908) — only on an actual change,
+            # not a repeated StatusNotification carrying the same
+            # status.
+            await self._notify_significant_event()
+
+            # Gate a fresh connection against free-vending before the
+            # planner has had a chance to decide anything for it yet
+            # (issue #969). The charger's own status leaving
+            # "Available" is the earliest signal HSEM has that a car
+            # was just plugged in — some chargers free-vend without
+            # ever sending StartTransaction through HSEM first. Only
+            # armed while HSEM's own anti-flap state is still "idle":
+            # a transition HSEM itself caused (e.g. its own remote
+            # start moving status to "Charging") is not a free-vend
+            # risk and must not re-arm the gate.
+            if (
+                old_status == "Available"
+                and new_status != "Available"
+                and self._flap_state == "idle"
+            ):
+                self._arm_connect_gate(session)
+            elif new_status == "Available" and (
+                session.gate_pending_plan or session.hsem_zero_profile_active
+            ):
+                # The car was unplugged either before the planner ever
+                # decided anything for it, or while HSEM was holding it at
+                # an enforced zero (issue #990) — release the 0 A block
+                # instead of leaving it standing on an idle connector.
+                self._schedule_release_connect_gate(session)
+        else:
+            session.status = new_status
         return {}
 
     async def _handle_meter_values(
