@@ -92,7 +92,9 @@ class EVSoCEconomicsResult:
     Attributes:
         state: One of ``"ready"``, ``"not_connected"``,
             ``"smart_charging_disabled"``, or ``STATE_UNAVAILABLE``.
-        current_soc_pct: EV's current SoC at computation time.
+        current_soc_pct: EV's current SoC at computation time, or ``None``
+            when unavailable (issue #988) — the result is then an empty
+            ``STATE_UNAVAILABLE`` table, never computed from a fabricated 0 %.
         points: Flat list of :class:`EVSoCEconomicsPoint`, one per
             (target_soc_pct, deadline_label) combination.  Deliberately flat
             (not pre-grouped by deadline) — Jinja's ``groupby`` filter and
@@ -100,14 +102,18 @@ class EVSoCEconomicsResult:
     """
 
     state: str = STATE_UNAVAILABLE
-    current_soc_pct: float = 0.0
+    current_soc_pct: float | None = None
     points: list[EVSoCEconomicsPoint] = field(default_factory=list)
 
     def as_attributes(self) -> dict[str, Any]:
         """Serialise to a flat HA sensor attributes dict."""
         return {
             "state": self.state,
-            "current_soc_pct": round(self.current_soc_pct, 1),
+            "current_soc_pct": (
+                round(self.current_soc_pct, 1)
+                if self.current_soc_pct is not None
+                else None
+            ),
             "points": [
                 {
                     "target_soc_pct": p.target_soc_pct,
@@ -135,7 +141,7 @@ def compute_ev_soc_economics(
     base_input: PlannerInput,
     *,
     is_second: bool,
-    current_soc_pct: float,
+    current_soc_pct: float | None,
     capacity_kwh: float,
     max_charge_kw: float,
     now: datetime,
@@ -159,6 +165,8 @@ def compute_ev_soc_economics(
     - Not connected → ``"not_connected"``.
     - Smart charging disabled → ``"smart_charging_disabled"``.
     - Zero battery capacity or zero charger power → ``STATE_UNAVAILABLE``.
+    - SoC unavailable (``None``) → ``STATE_UNAVAILABLE`` with empty points
+      (issue #988) — the table is never computed from a fabricated 0 %.
 
     Targets at or below ``current_soc_pct`` cost ``0.0`` and do not trigger
     a ``run_planner()`` solve.
@@ -217,6 +225,9 @@ def compute_ev_soc_economics(
         result.state = "smart_charging_disabled"
         return result
     if capacity_kwh <= 0 or max_charge_kw <= 0:
+        result.state = STATE_UNAVAILABLE
+        return result
+    if current_soc_pct is None:
         result.state = STATE_UNAVAILABLE
         return result
 

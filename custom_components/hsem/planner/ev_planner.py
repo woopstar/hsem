@@ -236,6 +236,22 @@ def build_ev_charging_plan(
         }
         return plan
 
+    # Refuse to plan on an unknown SoC (issue #988). An unavailable sensor
+    # must never be treated as an empty battery: the deadline-driven branch
+    # would then import a full battery's worth of energy from the grid,
+    # through whatever prices the window contains. The plan stays inert —
+    # no charging slots, zero commanded power — until the sensor reports
+    # again. A genuine 0.0 reading is honoured as a real empty battery.
+    if inp.current_soc_pct is None:
+        plan.state = STATE_UNAVAILABLE
+        plan.data_quality = {"error": "current_soc_pct unavailable"}
+        log_planner(
+            "info",
+            "[ev_planner] EV SoC unavailable — refusing to plan EV charging "
+            "until the sensor reports again",
+        )
+        return plan
+
     energy_needed = compute_ev_energy_needed(
         inp.current_soc_pct, inp.target_soc_pct, inp.battery_capacity_kwh
     )

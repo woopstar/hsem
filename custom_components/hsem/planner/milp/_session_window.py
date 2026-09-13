@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.units import slot_duration_hours
 
 if TYPE_CHECKING:
@@ -80,6 +81,22 @@ def resolve_session_windows(
     if active_evs and slot_hours > 0:
         for ev_idx, ev in enumerate(active_evs):
             if ev.session_charge_kw is None or ev.session_charge_kw <= 1e-9:
+                continue
+            if ev.charge_past_target:
+                # A charge-past-target EV must never carry session pins
+                # (issue #988): pinned slots are exempt from the
+                # surplus-only constraint, so pinning one would let
+                # past-target charging import from grid. The combination
+                # is already unreachable — pinning requires
+                # ``fixed_session_only`` and ``charge_past_target``
+                # excludes it — this guard keeps the invariant if session
+                # pinning ever evolves.
+                log_planner(
+                    "warning",
+                    "[milp_ev] charge_past_target EV %d has a live session — "
+                    "refusing to pin session demand",
+                    ev_idx,
+                )
                 continue
             session_ev_indices.append(ev_idx)
             session_power_kw = max(float(ev.session_charge_kw), 0.0)

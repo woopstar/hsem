@@ -345,7 +345,7 @@ def build_planner_input(
         ev_planned_load_smart_charging_enabled=bool(
             live.ev_planned_load_smart_charging_enabled
         ),
-        ev_planned_load_current_soc_pct=ev_soc_pct or 0.0,
+        ev_planned_load_current_soc_pct=ev_soc_pct,
         ev_planned_load_target_soc_pct=convert_to_float(
             live.ev_planned_load_target_soc_pct
         )
@@ -397,7 +397,7 @@ def build_planner_input(
         ev_second_planned_load_smart_charging_enabled=bool(
             live.ev_second_planned_load_smart_charging_enabled
         ),
-        ev_second_planned_load_current_soc_pct=ev_second_soc_pct or 0.0,
+        ev_second_planned_load_current_soc_pct=ev_second_soc_pct,
         ev_second_planned_load_target_soc_pct=convert_to_float(
             live.ev_second_planned_load_target_soc_pct
         )
