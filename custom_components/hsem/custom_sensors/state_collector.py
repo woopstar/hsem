@@ -585,7 +585,12 @@ def _read_ev_planned_load_state(
 
     if soc_sensor:
         _soc = convert_to_float(_read(soc_sensor, "float", label=f"{p}_soc"))
-        setattr(state, f"{p}_current_soc_pct", _soc if _soc is not None else 0.0)
+        # Propagate None for unavailable/unknown — never coerce to 0.0.
+        # convert_to_float() preserves the missing-data distinction
+        # precisely so callers can refuse to act on absent data (issue
+        # #988): a fabricated 0 % reads as an empty battery and makes the
+        # deadline-driven EV planner charge through peak prices.
+        setattr(state, f"{p}_current_soc_pct", _soc)
 
     # Target SoC is read from the HSEM number entity config option.
     target_soc_config_key = (

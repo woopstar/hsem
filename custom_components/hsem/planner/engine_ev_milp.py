@@ -67,7 +67,7 @@ def _build_ev_configs_for_milp(
             bool,
             bool,
             bool,
-            float,
+            float | None,
             float,
             float,
             float,
@@ -194,80 +194,99 @@ def _build_ev_configs_for_milp(
                 effective_capacity,
             )
             continue
-        initial_kwh = (soc_pct / 100.0) * effective_capacity
-        target_kwh = (target_pct / 100.0) * effective_capacity
+        initial_kwh: float
+        target_kwh: float
         fixed_session_only = has_live_session and (
             not enabled or not connected or not smart or configured_max_power_w <= 1e-9
         )
-
-        # When the EV is already at or above its target SoC, normally we
-        # skip it — there is no energy deficit to meet.  But when
-        # allow_charge_past_target_soc is enabled and the EV is not yet
-        # at 100 %, the MILP should still include the EV so it can
-        # allocate surplus PV that would otherwise be curtailed or
-        # exported at low/negative prices.  In this mode the deadline
-        # constraint is suppressed (deadline_slot=None) so the MILP
-        # never imports from grid to meet a target that is already
-        # satisfied — it only charges from free/cheap surplus.
-        at_or_above_target = target_kwh <= initial_kwh + 1e-9
         deadline_slot: int | None = None
         charge_past_target = False
         managed_session_cap_only = False
         deadline_margin_kwh = 0.0
         if fixed_session_only:
+            # Pinned energy is measured physical demand — SoC is unused.
             initial_kwh = 0.0
             target_kwh = 0.0
-        elif at_or_above_target:
-            if has_live_session and (not allow_past_target or soc_pct >= 100):
-                # Keep a command-zero managed sentinel while physical power
-                # is still present.  Huawei's discharge limit is global, so
-                # the MILP must retain this EV's current-slot permission/
-                # ceiling even though target completion forbids future EV
-                # charging.
-                target_kwh = initial_kwh
-                managed_session_cap_only = True
-            elif not allow_past_target or soc_pct >= 100:
-                log_planner(
-                    "debug",
-                    "[milp_ev] %s EV excluded: fully_charged (soc=%.1f%% target=%.1f%% "
-                    "allow_past_target=%s)",
-                    label,
-                    soc_pct,
-                    target_pct,
-                    allow_past_target,
-                )
-                continue  # fully charged or past-target not allowed
-            else:
-                # Charge-past-target mode: allow up to 100 %, no deadline
-                # pressure.
-                target_kwh = effective_capacity
-                charge_past_target = True
-        else:
-            # Normal mode: map deadline to LP slot index.
-            eff_deadline = _effective_deadline_dt(deadline)
-            for lp_t, slot_i in enumerate(future_slots):
-                s = slots[slot_i]
-                if as_tz(s.end, now.tzinfo) <= eff_deadline:
-                    deadline_slot = lp_t
-                else:
-                    break
-            if deadline_slot is None:
-                log_planner(
-                    "debug",
-                    "[milp_ev] %s EV excluded: no slot before deadline=%s",
-                    label,
-                    eff_deadline.isoformat(),
-                )
-                continue
-            charge_past_target = False
-            # Safety margin (issue #845): budget extra energy above the
-            # bare target, proportional to the shortfall, so normal
-            # execution-layer friction (anti-flap windows, min-power
-            # floors, phase-headroom throttling) doesn't turn an
-            # on-paper-exact plan into a missed deadline.
-            deadline_margin_kwh = (
-                max(target_kwh - initial_kwh, 0.0) * deadline_margin_pct / 100.0
+        elif soc_pct is None:
+            # Refuse to plan on an unknown SoC (issue #988). An
+            # unavailable sensor must never be treated as an empty
+            # battery — the deadline-driven branch would import a full
+            # battery's worth of energy from the grid at whatever prices
+            # the window contains. The EV is excluded (logged in the same
+            # style as the other exclusions) and re-enters planning on the
+            # first cycle after the sensor reports again.
+            log_planner(
+                "info",
+                "[milp_ev] %s EV excluded: SoC unavailable — refusing to "
+                "plan EV charging until the sensor reports again",
+                label,
             )
+            continue
+        else:
+            initial_kwh = (soc_pct / 100.0) * effective_capacity
+            target_kwh = (target_pct / 100.0) * effective_capacity
+
+            # When the EV is already at or above its target SoC, normally we
+            # skip it — there is no energy deficit to meet.  But when
+            # allow_charge_past_target_soc is enabled and the EV is not yet
+            # at 100 %, the MILP should still include the EV so it can
+            # allocate surplus PV that would otherwise be curtailed or
+            # exported at low/negative prices.  In this mode the deadline
+            # constraint is suppressed (deadline_slot=None) so the MILP
+            # never imports from grid to meet a target that is already
+            # satisfied — it only charges from free/cheap surplus.
+            at_or_above_target = target_kwh <= initial_kwh + 1e-9
+            if at_or_above_target:
+                if has_live_session and (not allow_past_target or soc_pct >= 100):
+                    # Keep a command-zero managed sentinel while physical power
+                    # is still present.  Huawei's discharge limit is global, so
+                    # the MILP must retain this EV's current-slot permission/
+                    # ceiling even though target completion forbids future EV
+                    # charging.
+                    target_kwh = initial_kwh
+                    managed_session_cap_only = True
+                elif not allow_past_target or soc_pct >= 100:
+                    log_planner(
+                        "debug",
+                        "[milp_ev] %s EV excluded: fully_charged (soc=%.1f%% "
+                        "target=%.1f%% allow_past_target=%s)",
+                        label,
+                        soc_pct,
+                        target_pct,
+                        allow_past_target,
+                    )
+                    continue  # fully charged or past-target not allowed
+                else:
+                    # Charge-past-target mode: allow up to 100 %, no deadline
+                    # pressure.
+                    target_kwh = effective_capacity
+                    charge_past_target = True
+            else:
+                # Normal mode: map deadline to LP slot index.
+                eff_deadline = _effective_deadline_dt(deadline)
+                for lp_t, slot_i in enumerate(future_slots):
+                    s = slots[slot_i]
+                    if as_tz(s.end, now.tzinfo) <= eff_deadline:
+                        deadline_slot = lp_t
+                    else:
+                        break
+                if deadline_slot is None:
+                    log_planner(
+                        "debug",
+                        "[milp_ev] %s EV excluded: no slot before deadline=%s",
+                        label,
+                        eff_deadline.isoformat(),
+                    )
+                    continue
+                charge_past_target = False
+                # Safety margin (issue #845): budget extra energy above the
+                # bare target, proportional to the shortfall, so normal
+                # execution-layer friction (anti-flap windows, min-power
+                # floors, phase-headroom throttling) doesn't turn an
+                # on-paper-exact plan into a missed deadline.
+                deadline_margin_kwh = (
+                    max(target_kwh - initial_kwh, 0.0) * deadline_margin_pct / 100.0
+                )
 
         # Configured power is the hard actuator nameplate for every managed
         # session. Only an unmanaged session may expand its *accounting*
@@ -331,13 +350,16 @@ def _build_ev_configs_for_milp(
             )
         )
 
+        # soc_pct is None for a fixed-session-only EV with unavailable SoC
+        # telemetry (issue #988) — format defensively.
+        soc_label = f"{soc_pct:.1f}%" if soc_pct is not None else "unavailable"
         if charge_past_target:
             log_planner(
                 "debug",
                 "[milp_ev] %s EV included  mode=charge_past_target  "
-                "soc=%.1f%%  target=100%%  future_value=%.4f/kWh",
+                "soc=%s  target=100%%  future_value=%.4f/kWh",
                 label,
-                soc_pct,
+                soc_label,
                 future_value_per_kwh if future_value_per_kwh else 0.0,
             )
         else:
@@ -345,11 +367,11 @@ def _build_ev_configs_for_milp(
             log_planner(
                 "debug",
                 "[milp_ev] %s EV included  mode=%s  "
-                "soc=%.1f%%  target=%.1f%%  initial=%.3fkWh  target=%.3fkWh  "
+                "soc=%s  target=%.1f%%  initial=%.3fkWh  target=%.3fkWh  "
                 "deadline_slot=%s  max_dc_per_slot=%.4fkWh",
                 label,
                 mode,
-                soc_pct,
+                soc_label,
                 target_pct,
                 initial_kwh,
                 target_kwh,

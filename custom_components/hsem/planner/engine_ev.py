@@ -199,7 +199,7 @@ def _build_and_inject_for_ev(
     enabled: bool,
     connected: bool,
     smart: bool,
-    soc: float,
+    soc: float | None,
     target: float,
     cap_kwh: float,
     pwr_kw: float,
@@ -225,11 +225,11 @@ def _build_and_inject_for_ev(
     log_planner(
         "debug",
         "[core] _build_and_inject_for_ev  label=%s  connected=%s  smart=%s  "
-        "soc=%.1f%%  target=%.1f%%  cap=%.2f  pwr=%.2f  eff=%.1f%%  min_pwr=%.0fW",
+        "soc=%s  target=%.1f%%  cap=%.2f  pwr=%.2f  eff=%.1f%%  min_pwr=%.0fW",
         label,
         connected,
         smart,
-        soc,
+        f"{soc:.1f}%" if soc is not None else "unavailable",
         target,
         cap_kwh,
         pwr_kw,
