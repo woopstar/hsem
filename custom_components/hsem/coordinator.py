@@ -53,10 +53,8 @@ from custom_components.hsem.coordinator_helpers import (
     LoadForecastSignature,
     apply_force_charge_now,
     apply_load_forecast_hold,
-    assess_load_forecast,
     future_consumption_profile_is_nonzero,
     live_demand_contradicts_zero_profile,
-    load_forecast_signatures_match,
 )
 from custom_components.hsem.coordinator_lifecycle import CoordinatorLifecycleMixin
 from custom_components.hsem.coordinator_live_power import (
@@ -106,10 +104,8 @@ if TYPE_CHECKING:
 # Compatibility exports retained for existing tests and integrations.
 _apply_force_charge_now = apply_force_charge_now
 _apply_load_forecast_hold = apply_load_forecast_hold
-_assess_load_forecast = assess_load_forecast
 _future_consumption_profile_is_nonzero = future_consumption_profile_is_nonzero
 _live_demand_contradicts_zero_profile = live_demand_contradicts_zero_profile
-_load_forecast_signatures_match = load_forecast_signatures_match
 
 
 #: Consecutive failed cycles retried while newer state is pending before the
