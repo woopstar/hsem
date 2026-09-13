@@ -170,7 +170,7 @@ class CoordinatorSharedState(_Base):
 
     # Method provided by CoordinatorEvSoCEconomicsMixin.
     async def _maybe_compute_ev_soc_economics(
-        self, now: datetime, captured_generation: int
+        self, now: datetime, captured_generation: int, *, force: bool = False
     ) -> None: ...
 
     async def _set_update_interval(

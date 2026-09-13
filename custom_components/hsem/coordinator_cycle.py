@@ -549,7 +549,14 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                     consumption_ok,
                     captured_generation,
                 )
-                await self._maybe_compute_ev_soc_economics(now, captured_generation)
+                # Keep the SoC economics table in lock-step with the EV
+                # charging plan: a fresh plan is the same event that updates
+                # sensor.hsem_ev_optimal_charging_plan, so bypass the
+                # throttle. The 30-min window only rate-limits refreshes
+                # while the previous plan is being reused.
+                await self._maybe_compute_ev_soc_economics(
+                    now, captured_generation, force=fresh_plan
+                )
 
         except _StaleUpdateCycle:
             self._restore_accepted_plan_state(accepted_plan_state)

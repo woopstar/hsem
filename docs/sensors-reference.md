@@ -385,9 +385,12 @@ would it cost to change _only_ this choice right now". No auto-recommended
 target is exposed; the raw cost/delta numbers are surfaced and the user
 decides.
 
-Recomputation is throttled independently of the normal replan cadence (at
-most every 30 minutes), since each recompute is up to ~8 extra
-`run_planner()` solves per EV.
+The table is recomputed on every fresh replan — the same events that update
+`sensor.hsem_ev_optimal_charging_plan` (EV plug/unplug, charging
+start/stop, target-SoC threshold crossings, slot boundaries, price
+changes). While the previous plan is being reused (no fresh replan),
+recomputation is throttled to at most every 30 minutes, since each
+recompute is up to ~8 extra `run_planner()` solves per EV.
 
 **Entities:**
 

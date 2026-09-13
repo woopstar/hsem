@@ -20,9 +20,11 @@ from custom_components.hsem.planner.ev_soc_economics import (
     compute_ev_soc_economics,
 )
 
-#: Minimum seconds between EV SoC economics recomputes, independent of the
-#: normal replan cadence — this table is a "what if" diagnostic, not part of
-#: the live plan, and does not need to track every replan.
+#: Minimum seconds between EV SoC economics recomputes when no fresh plan
+#: ran. On a fresh replan (the same events that update
+#: ``sensor.hsem_ev_optimal_charging_plan``) the throttle is bypassed so the
+#: two sensors always move together; the window only rate-limits refreshes
+#: while the plan itself is being reused.
 EV_SOC_ECONOMICS_RECOMPUTE_MIN_SECONDS = 1800.0
 
 
@@ -57,13 +59,19 @@ class CoordinatorEvSoCEconomicsMixin(CoordinatorSharedState):
         self,
         now: datetime,
         captured_generation: int,
+        *,
+        force: bool = False,
     ) -> None:
         """Recompute both EVs' SoC economics tables, throttled.
 
         No-ops when ``self._last_planner_input`` is not yet set (e.g. the
         first cycle, before any plan has run) or when the throttle window
-        has not elapsed. Both EVs are solved in a single executor job so a
-        recompute never blocks the event loop. Re-checks the
+        has not elapsed. Pass ``force=True`` when this cycle produced a
+        fresh plan (the same event that updates
+        ``sensor.hsem_ev_optimal_charging_plan``) to bypass the throttle and
+        keep the economics table in lock-step with the plan it is derived
+        from. Both EVs are solved in a single executor job so a recompute
+        never blocks the event loop. Re-checks the
         update-generation guard afterwards, exactly like the main
         ``run_planner()`` call in ``coordinator_planner_phase.py``, so a
         stale cycle's result is discarded rather than published.
@@ -74,7 +82,8 @@ class CoordinatorEvSoCEconomicsMixin(CoordinatorSharedState):
 
         last_computed = getattr(self, "_ev_soc_economics_last_computed", None)
         if (
-            last_computed is not None
+            not force
+            and last_computed is not None
             and (now - last_computed).total_seconds()
             < EV_SOC_ECONOMICS_RECOMPUTE_MIN_SECONDS
         ):
