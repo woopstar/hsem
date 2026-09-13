@@ -133,9 +133,9 @@ registered in Home Assistant so it appears in the sidebar.
 
 **Schema:**
 
-| Field            | Required | Type   | Description                                                                            |
-| ---------------- | -------- | ------ | -------------------------------------------------------------------------------------- |
-| `dashboard_path` | No       | String | Absolute file path for the dashboard YAML. Defaults to `<config>/hsem_dashboard.yaml`. |
+| Field            | Required | Type   | Description                                                                                                                         |
+| ---------------- | -------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `dashboard_path` | No       | String | Absolute file path for the dashboard YAML, must resolve inside the HA config directory. Defaults to `<config>/hsem_dashboard.yaml`. |
 
 **Response:**
 
@@ -157,6 +157,9 @@ registered in Home Assistant so it appears in the sidebar.
 - If the user deletes the dashboard via the HA UI, the service remembers that
   choice and will not recreate it automatically.
 - You can still edit the generated YAML manually after creation.
+- `dashboard_path` must resolve inside the HA config directory; paths that
+  escape it (via `..` segments or a symlinked parent) are rejected before any
+  file is written.
 
 **Examples:**
 
