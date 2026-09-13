@@ -2046,6 +2046,8 @@ applier (`applier._planned_ev_discharge_cap_w()` +
 **Primary battery hold**: independent of any EV, when the solved plan
 scheduled neither charge nor discharge for the primary battery this slot
 (`primary_battery_hold` — see below), the cap is unconditionally 0 W.
+`batteries_discharge_mode` is exempt from this particular 0 W path — see
+"Discharge-mode exemption" below.
 
 **Solar-charge-only slot (issue #922)**: when the recommendation is
 `batteries_charge_solar` and no EV is active/planned, the cap is
@@ -2089,6 +2091,42 @@ This applies to both `batteries_wait_mode` (an unheld strict wait stays in
 TOU) and `ev_smart_charging` (which otherwise always executes as MSC to
 retain unexpected solar). `held_planned_export` takes priority over
 self-consumption-with-reserve too — see issue #954 below.
+
+#### Discharge-mode exemption (issue #983)
+
+The hold is _derived_ from a near-zero energy pair, which is only a valid
+reading of "the plan explicitly holds the battery" for a slot whose label
+carries no independent discharge intent. `batteries_discharge_mode` does
+carry one, so the **discharge-cap decision** uses
+`applier_caps._primary_battery_cap_hold(rec)` — `_primary_battery_hold(rec)`
+**and** the recommendation is not `batteries_discharge_mode` — instead:
+
+- The SoC simulation relabels only `force_batteries_discharge` /
+  `force_export` to `batteries_wait_mode` when the simulated discharge is
+  zero (`planner/soc_simulation.py`). A schedule discharge window
+  deliberately keeps its label: it is the user's configured window, not a
+  forced action. A solved discharge that merely rounds below
+  `PLANNED_ENERGY_ROUNDING_KWH` therefore still satisfies the derived hold
+  without the plan ever having decided to hold.
+- `batteries_discharge_mode` executes as `MaximizeSelfConsumption`, where
+  the cap is a **ceiling the firmware ramps within** from live house load,
+  not a setpoint. A 0 W cap disables the behaviour the mode exists for and
+  contradicts the mode's own contract ("discharge battery to cover house
+  load").
+
+Without the exemption the cap flips between 0 W and the rated maximum every
+time the re-solved current slot crosses the materiality boundary, while the
+published recommendation — and therefore plan-level hysteresis (#372) and
+window hysteresis (#315), which only react to a _recommendation_ change —
+never moves. Nothing else guards this actuator boundary.
+
+The exemption is scoped to the cap decision only. `_primary_battery_hold()`
+keeps its meaning for `_held_planned_export_is_authoritative()` and for the
+`batteries_wait_mode` working-mode branch. Every other 0 W path is
+independent of the hold and keeps immediate precedence: EV permission
+gating (#797), the solar-charge-only cap (#922), the wait-mode reserve floor
+(#954), the `current_required_battery_kwh` SoC guard (#592), and the
+read-only / degraded-mode gates.
 
 ### Wait-mode self-consumption reserve (issue #914)
 

@@ -46,6 +46,7 @@ from custom_components.hsem.custom_sensors.applier_caps import (  # noqa: F401
     _fmt_live_power_w,
     _held_planned_export_is_authoritative,
     _planned_ev_discharge_cap_w,
+    _primary_battery_cap_hold,
     _primary_battery_hold,
     _wait_mode_self_consumption_cap_w,
 )
@@ -163,7 +164,8 @@ async def async_apply_battery_settings(
     )
 
     recommendation = rec.recommendation
-    primary_battery_hold = _primary_battery_hold(rec)
+    # Cap-scoped: exempts batteries_discharge_mode (issue #983).
+    primary_battery_hold = _primary_battery_cap_hold(rec)
     held_planned_export = _held_planned_export_is_authoritative(rec)
 
     # Huawei exposes ONE global battery discharge limit, shared with every EV.
