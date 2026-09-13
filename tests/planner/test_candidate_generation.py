@@ -43,9 +43,9 @@ from custom_components.hsem.planner.slot_population import (
     build_slots,
     build_time_series_index,
     populate_consumption,
-    populate_prices,
     populate_solcast,
 )
+from custom_components.hsem.planner.slot_price_population import populate_prices
 from custom_components.hsem.utils.prices import SlotPrice
 from custom_components.hsem.utils.recommendations import Recommendations
 from tests.planner.fixtures import (

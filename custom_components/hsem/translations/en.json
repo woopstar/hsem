@@ -919,8 +919,7 @@
         "12": "12 hours",
         "24": "24 hours",
         "36": "36 hours",
-        "48": "48 hours",
-        "72": "72 hours"
+        "48": "48 hours"
       }
     },
     "batteries_wait_mode_behavior": {

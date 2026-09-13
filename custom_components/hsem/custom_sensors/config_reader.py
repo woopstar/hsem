@@ -25,6 +25,7 @@ from custom_components.hsem.utils.conversion import (
     convert_to_float,
     convert_to_int,
 )
+from custom_components.hsem.utils.logger import HSEM_LOGGER
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.phase_power import (
     normalize_ev_phase_topology,
@@ -105,6 +106,16 @@ def build_sensor_config(
     _rec_interval_len = convert_to_int(
         get_config_value(config_entry, "hsem_recommendation_interval_length")
     )
+    if _rec_interval_len is not None and _rec_interval_len > 48:
+        # The 72-hour option was removed (issue #1002): spot prices are
+        # never published that far ahead, so the tail had no real data.
+        # Clamp legacy stored values to the longest supported horizon.
+        HSEM_LOGGER.warning(
+            "hsem_recommendation_interval_length=%d is no longer supported; "
+            "clamping to 48 hours (issue #1002).",
+            _rec_interval_len,
+        )
+        _rec_interval_len = 48
     cfg.recommendation_interval_length = (
         _rec_interval_len if _rec_interval_len is not None else 48
     )

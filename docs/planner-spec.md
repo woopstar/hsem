@@ -1900,7 +1900,7 @@ available), HSEM falls back to the configured interval for prices and to
    are passed through directly to `PricePoint`; there is **no inverse
    multiply** in the coordinator.
 
-3. **Slot population** (`planner.slot_population.populate_prices`):
+3. **Slot population** (`planner.slot_price_population.populate_prices`):
    When price points carry `slot_in_day`, slots are keyed by
    `(day_offset, slot_in_day)` so each quarter-hourly price lands on its
    own planner slot; points without `slot_in_day` (legacy hourly callers)
@@ -2525,12 +2525,18 @@ Add tests for these invariants:
 
 ## Multi-day planning horizon
 
-The planner supports configurable planning horizons: 12, 24, 36, 48, and 72
-hours. All five are offered by the config-flow selector.
+The planner supports configurable planning horizons: 12, 24, 36, and 48
+hours. All four are offered by the config-flow selector. The 72-hour option
+was removed in issue #1002: day-ahead spot prices are only published for
+tomorrow (~13:00 local time), so the final ~24-37 h of a 72 h horizon could
+never be covered by real price data and distorted the plan.
 
 The horizon is controlled by `interval_length_hours` in `PlannerInput` (and
-`recommendation_interval_length` in `SensorConfig`). The supported 12, 24, 36,
-48, and 72-hour values are accepted without special-casing in the engine.
+`recommendation_interval_length` in `SensorConfig`). The engine itself is
+horizon-agnostic — any positive hour count produces a valid slot grid; the
+12/24/36/48 set is enforced at the config-flow selector, and legacy config
+entries storing 72 are clamped to 48 when read
+(`custom_sensors/config_reader.py`).
 
 ### Slot count
 
@@ -2544,7 +2550,25 @@ total_slots = (interval_length_hours * 60) // interval_minutes
 | 24 h    | 96           | 24           |
 | 36 h    | 144          | 36           |
 | 48 h    | 192          | 48           |
-| 72 h    | 288          | 72           |
+
+### Missing-price estimation (issue #1002)
+
+A slot whose hour has no source price data must never be planned as _free_
+energy. `populate_prices` fills such slots with the **same-hour price from
+the nearest earlier day that has data** (day+1 falls back to day+0; day+2
+falls back to day+1, then day+0). Only when no earlier day has data for
+that hour at all does the slot fall back to 0.0.
+
+The gap is always recorded on `TimeSeriesIndex.missing_price_slots` — on
+both the sub-hourly (`slot_in_day`) path and the hourly alignment path — so
+`DataQuality` warnings (`tomorrow_price_missing_hours`,
+`day2_price_missing_hours`, …) reflect the true data coverage regardless of
+the estimate filled in.
+
+Note: when _no_ price point carries a non-zero `day_offset` (e.g. only
+today's prices exist), the legacy hour-only keying applies today's prices
+cyclically to every day of the horizon and nothing is reported missing —
+this is the intended single-day-source behaviour.
 
 ### Confidence decay for future days
 
@@ -2754,14 +2778,16 @@ These labels are **non-critical** — they do not match battery or house-load
 keywords — so they trigger `DegradedMode.Degraded` (hardware writes allowed)
 rather than `Error` (writes blocked).
 
-Missing slots default to `0.0` in the planner. The planner **must never**
-silently treat absent data as real zero without surfacing a diagnostic.
+Price-missing slots are filled with the nearest earlier day's same-hour
+price (see _Missing-price estimation_ above); PV-missing slots default to
+`0.0`. The planner **must never** silently treat absent data as real zero
+without surfacing a diagnostic.
 
 ### DataQuality fields for multi-day horizons
 
 `DataQuality.horizon_days` reflects the number of calendar days covered.
 `DataQuality.day2_price_missing_hours` and `DataQuality.day2_pv_missing_hours`
-carry the day+2 gap lists for 72-hour horizon runs.
+carry the day+2 gap lists for horizons spanning three or more calendar days.
 
 `DataQuality.load_forecast_ready` is false when consumption provenance or a
 future profile value cannot safely support a solve.
@@ -2794,14 +2820,21 @@ discharge slots on the same day.
 - A 24-hour horizon produces exactly `(24 * 60) // interval_minutes` slots.
 - A 36-hour horizon produces exactly `(36 * 60) // interval_minutes` slots.
 - A 48-hour horizon produces exactly `(48 * 60) // interval_minutes` slots.
-- A 72-hour horizon produces exactly `(72 * 60) // interval_minutes` slots.
+- The engine is horizon-agnostic: any positive `interval_length_hours`
+  produces exactly `(interval_length_hours * 60) // interval_minutes` slots
+  (the config-flow selector restricts the choice to 12/24/36/48 — issue
+  #1002).
 - All slots have a non-`None` recommendation regardless of horizon.
 - Day+1 PV estimates are ≤ day+0 estimates for the same hour when both have
   the same raw input (confidence decay applied).
 - Day+2 PV estimates are ≤ day+1 estimates for the same raw input.
-- On ordinary dates, `DataQuality.horizon_days` equals 1 / 1 / 2 / 2 / 3 for
-  12 h / 24 h / 36 h / 48 h / 72 h. A spring-forward physical horizon can touch
+- On ordinary dates, `DataQuality.horizon_days` equals 1 / 1 / 2 / 2 for
+  12 h / 24 h / 36 h / 48 h. A spring-forward physical horizon can touch
   one extra local date.
+- A price-missing slot is filled with the nearest earlier day's same-hour
+  price (issue #1002) — never silently 0.0 when an earlier day has data —
+  and is still recorded in `missing_price_slots` on both the sub-hourly and
+  hourly population paths.
 - Missing day+2 price data surfaces in `day2_price_missing_hours`.
 - Missing day+2 PV data surfaces in `day2_pv_missing_hours`.
 - `DataQuality.is_complete` is `False` when any future-day data is missing.
@@ -3003,7 +3036,7 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
 8. **One-midnight-crossing horizon cap** (issue #413): The EV charging
    window may extend into tomorrow but must NEVER reach into the day after
    tomorrow, regardless of the planner's overall slot horizon (which may be
-   48 h or 72 h).
+   up to 48 h).
 
    Define:
 

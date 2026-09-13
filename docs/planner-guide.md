@@ -37,7 +37,7 @@ The HSEM planner is a forward-looking, cost-minimising battery scheduler.
 Every time the coordinator runs (typically every minute) the planner:
 
 1. Reads the current battery state, electricity prices, and PV forecast.
-2. Generates a time grid of **slots** covering the planning horizon (24, 48, or 72 hours).
+2. Generates a time grid of **slots** covering the planning horizon (12, 24, 36, or 48 hours).
 3. Populates each slot with expected house load, PV production, and prices.
 4. Evaluates several candidate strategies (charge from grid, discharge only, solar only, etc.).
 5. Scores every candidate with the cost function.
@@ -59,15 +59,16 @@ All inputs are collected in the `PlannerInput` dataclass
 | ----------------------- | ----- | --------------------------------------------------------------------------------------------- |
 | `now_iso`               | `str` | ISO-8601 timezone-aware timestamp of the planning moment (e.g. `"2024-06-15T14:00:00+02:00"`) |
 | `interval_minutes`      | `int` | Slot width in minutes — `15` or `60`                                                          |
-| `interval_length_hours` | `int` | Planning horizon length — `24`, `48`, or `72` hours                                           |
+| `interval_length_hours` | `int` | Planning horizon length — `12`, `24`, `36`, or `48` hours                                     |
 
 The total number of slots generated is `(interval_length_hours * 60) // interval_minutes`.
 
 | Horizon | 15-min slots | 60-min slots |
 | ------- | ------------ | ------------ |
+| 12 h    | 48           | 12           |
 | 24 h    | 96           | 24           |
+| 36 h    | 144          | 36           |
 | 48 h    | 192          | 48           |
-| 72 h    | 288          | 72           |
 
 ### Battery hardware
 
@@ -1194,7 +1195,7 @@ The `DataQuality` object on `PlannerOutput` reports completeness of the planning
 | `today_pv_missing_hours`       | `list[int]` | Hours (0–23) with no PV forecast today                                     |
 | `tomorrow_price_missing_hours` | `list[int]` | Hours with no price data for tomorrow                                      |
 | `tomorrow_pv_missing_hours`    | `list[int]` | Hours with no PV forecast for tomorrow                                     |
-| `day2_price_missing_hours`     | `list[int]` | Hours with no price data for day +2 (72-h horizon only)                    |
+| `day2_price_missing_hours`     | `list[int]` | Hours with no price data for day +2 (horizons spanning 3+ calendar days)   |
 | `day2_pv_missing_hours`        | `list[int]` | Hours with no PV forecast for day +2                                       |
 | `horizon_has_tomorrow`         | `bool`      | `True` when horizon extends beyond 24 h                                    |
 | `horizon_days`                 | `int`       | Number of calendar days covered (1, 2, or 3)                               |
@@ -1598,11 +1599,15 @@ The planner treats all `price_points` as equally reliable. In practice:
 
 - Today's prices are firm (EDS publishes by ~13:00).
 - Tomorrow's prices arrive around 13:00 CET and are typically available before the evening planning run.
-- Day +2 prices (72-hour horizon) may be unavailable or estimated.
+- Any hours beyond the published data (e.g. tomorrow before ~13:00) are estimated.
 
-Missing price data is surfaced in `data_quality` and triggers `Degraded` mode,
-but the planner proceeds using `0.0` as a fallback — which means it cannot
-meaningfully optimise slots where prices are absent.
+Missing price data is surfaced in `data_quality` and triggers `Degraded` mode.
+Since issue #1002 the planner fills price-missing slots with the same-hour
+price from the nearest earlier day that has data, instead of planning against
+a fictitious `0.0` ("free energy") price; only hours missing on every earlier
+day still fall back to `0.0`. The estimate is always flagged in
+`data_quality.*_price_missing_hours`, so diagnostics reflect the true data
+coverage.
 
 ### No intra-day re-planning of past slots
 
