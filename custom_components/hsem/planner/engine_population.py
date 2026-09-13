@@ -9,9 +9,9 @@ from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.time_series import TimeSeriesIndex
 from custom_components.hsem.planner.slot_population import (
     populate_consumption,
-    populate_prices,
     populate_solcast,
 )
+from custom_components.hsem.planner.slot_price_population import populate_prices
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 

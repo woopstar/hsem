@@ -31,24 +31,25 @@ cycle are durable; stale generations must not publish.
 
 ### Planner layer (`custom_components/hsem/planner/`)
 
-| File                      | Responsibility                                                                                                                                                            |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `engine.py`               | Main entry point — orchestrates the full planning pipeline                                                                                                                |
-| `slot_population.py`      | Builds the 48/96/192-slot time horizon from price data                                                                                                                    |
-| `candidate_generator.py`  | Generates charge/discharge plan candidates (partial-SoC, MILP, solar)                                                                                                     |
-| `candidate_selector.py`   | Picks the best candidate using time-discounted score; also hosts avoided-cost pricing helpers (`replacement_price_from_next_discharge`, `ev_future_charge_value_per_kwh`) |
-| `charge_scheduler.py`     | Assigns charge recommendations to slots                                                                                                                                   |
-| `discharge_scheduler.py`  | Assigns discharge recommendations to slots; `concentrate_discharge_on_expensive_slots` uses **per-calendar-day** budget pools                                             |
-| `milp_optimizer.py`       | Solves the MILP LP problem — variable vector is 8\*n base, growing to 8n + 2n·E + E with EV co-optimisation. Accepts optional `EVConfig` list for EV integration.         |
-| `milp/_price_sanitise.py` | Pre-solve price transformations: NaN handling, battery-export floor mask, export-≤-import clamp, negative-import clamp.                                                   |
-| `milp/_constraints.py`    | Builds LP constraint matrices and variable bounds.                                                                                                                        |
-| `milp/_objective.py`      | Builds LP objective vector.                                                                                                                                               |
-| `milp/_write_results.py`  | Translates LP solution back into `PlannedSlot` recommendations and energy flows.                                                                                          |
-| `milp/_diagnostics.py`    | Computes MILP diagnostics and violation reports.                                                                                                                          |
-| `milp/_export_cap.py`     | Resolves DNO/inverter grid-export power cap per slot.                                                                                                                     |
-| `cost_function.py`        | Scores a candidate plan — source of truth for cost math                                                                                                                   |
-| `soc_simulation.py`       | Simulates battery SoC forward through a slot plan                                                                                                                         |
-| `ev_planner.py`           | EV-specific planning logic                                                                                                                                                |
+| File                       | Responsibility                                                                                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `engine.py`                | Main entry point — orchestrates the full planning pipeline                                                                                                                |
+| `slot_population.py`       | Builds the 48/96/192-slot time horizon; populates PV/consumption/capacity                                                                                                 |
+| `slot_price_population.py` | Populates per-slot prices incl. missing-price estimation (issue #1002) — split out of `slot_population.py` for the 30 KB limit                                            |
+| `candidate_generator.py`   | Generates charge/discharge plan candidates (partial-SoC, MILP, solar)                                                                                                     |
+| `candidate_selector.py`    | Picks the best candidate using time-discounted score; also hosts avoided-cost pricing helpers (`replacement_price_from_next_discharge`, `ev_future_charge_value_per_kwh`) |
+| `charge_scheduler.py`      | Assigns charge recommendations to slots                                                                                                                                   |
+| `discharge_scheduler.py`   | Assigns discharge recommendations to slots; `concentrate_discharge_on_expensive_slots` uses **per-calendar-day** budget pools                                             |
+| `milp_optimizer.py`        | Solves the MILP LP problem — variable vector is 8\*n base, growing to 8n + 2n·E + E with EV co-optimisation. Accepts optional `EVConfig` list for EV integration.         |
+| `milp/_price_sanitise.py`  | Pre-solve price transformations: NaN handling, battery-export floor mask, export-≤-import clamp, negative-import clamp.                                                   |
+| `milp/_constraints.py`     | Builds LP constraint matrices and variable bounds.                                                                                                                        |
+| `milp/_objective.py`       | Builds LP objective vector.                                                                                                                                               |
+| `milp/_write_results.py`   | Translates LP solution back into `PlannedSlot` recommendations and energy flows.                                                                                          |
+| `milp/_diagnostics.py`     | Computes MILP diagnostics and violation reports.                                                                                                                          |
+| `milp/_export_cap.py`      | Resolves DNO/inverter grid-export power cap per slot.                                                                                                                     |
+| `cost_function.py`         | Scores a candidate plan — source of truth for cost math                                                                                                                   |
+| `soc_simulation.py`        | Simulates battery SoC forward through a slot plan                                                                                                                         |
+| `ev_planner.py`            | EV-specific planning logic                                                                                                                                                |
 
 ### ML layer (`custom_components/hsem/ml/`)
 
@@ -131,6 +132,21 @@ assert result == pytest.approx(expected, rel=1e-6)
 # and the planner refuses to plan EV charging on it; a real 0.0 reading
 # is still honoured as an empty battery.
 ```
+
+### Missing-price estimation (issue #1002)
+
+```python
+# populate_prices NEVER plans price-missing slots as free energy.
+# A slot with no source price is filled with the same-hour price from the
+# nearest earlier day that has data; 0.0 only when NO earlier day has that
+# hour. The gap is always recorded on tsi.missing_price_slots (both the
+# slot_in_day and hourly paths) so DataQuality warnings still fire.
+```
+
+Planning horizon selector offers **12/24/36/48 h only** — 72 h was removed
+(spot prices are never published that far ahead). Legacy stored values > 48
+are clamped to 48 in `custom_sensors/config_reader.py`. The engine itself
+stays horizon-agnostic.
 
 ### Grid fuse limit
 

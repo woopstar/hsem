@@ -33,14 +33,14 @@ every step in order so individual entities can be customised.
 
 ### Step: `init`
 
-| Field                   | Key                                    | Default                            | Description                                   |
-| ----------------------- | -------------------------------------- | ---------------------------------- | --------------------------------------------- |
-| Device name             | `device_name`                          | `"Huawei Solar Energy Management"` | Friendly name for the integration             |
-| Update interval         | `hsem_update_interval`                 | 5 minutes                          | Coordinator polling interval                  |
-| Recommendation interval | `hsem_recommendation_interval_minutes` | 15 minutes                         | Planner slot resolution (15 or 60 minutes)    |
-| Planning horizon        | `hsem_recommendation_interval_length`  | 48 hours                           | Physical horizon: 12, 24, 36, 48, or 72 hours |
-| Read-only mode          | `hsem_read_only`                       | `False`                            | Block all hardware writes when enabled        |
-| Verbose logging         | `hsem_verbose_logging`                 | `False`                            | Enable debug-level planner logging            |
+| Field                   | Key                                    | Default                            | Description                                                                                                       |
+| ----------------------- | -------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Device name             | `device_name`                          | `"Huawei Solar Energy Management"` | Friendly name for the integration                                                                                 |
+| Update interval         | `hsem_update_interval`                 | 5 minutes                          | Coordinator polling interval                                                                                      |
+| Recommendation interval | `hsem_recommendation_interval_minutes` | 15 minutes                         | Planner slot resolution (15 or 60 minutes)                                                                        |
+| Planning horizon        | `hsem_recommendation_interval_length`  | 48 hours                           | Physical horizon: 12, 24, 36, or 48 hours (72 h removed in issue #1002; legacy stored values are clamped to 48 h) |
+| Read-only mode          | `hsem_read_only`                       | `False`                            | Block all hardware writes when enabled                                                                            |
+| Verbose logging         | `hsem_verbose_logging`                 | `False`                            | Enable debug-level planner logging                                                                                |
 
 ### Step: `prices`
 

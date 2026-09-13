@@ -1,7 +1,8 @@
 """Slot population helpers for the HSEM planner.
 
-Single responsibility: transform raw time-series inputs (prices, Solcast PV,
+Single responsibility: transform raw time-series inputs (Solcast PV,
 consumption averages) into fully populated :class:`PlannedSlot` objects.
+Price population lives in ``planner/slot_price_population.py``.
 
 All functions are pure — no I/O, no side effects beyond mutating the slot list
 passed in.  No Home Assistant imports.
@@ -33,12 +34,10 @@ from custom_components.hsem.models.hourly_consumption_average import (
 )
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
-from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.models.time_series import TimeSeriesIndex
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
-from custom_components.hsem.utils.prices import SlotPrice
 from custom_components.hsem.utils.recommendations import Recommendations
 
 if TYPE_CHECKING:
@@ -111,94 +110,8 @@ def index_by_hour(items: list, hour_attr: str = "hour") -> dict[int, Any]:
 # Time-series population
 # ---------------------------------------------------------------------------
 
-
-def populate_prices(
-    slots: list[PlannedSlot],
-    price_points: list[PricePoint],
-    tsi: TimeSeriesIndex | None = None,
-) -> None:
-    """Write import/export prices into each slot from ``price_points``.
-
-    When a :class:`TimeSeriesIndex` is provided the prices are aligned via
-    the shared slot index so that all series use the same time axis.  Missing
-    hours (``NaN`` sentinel) default to 0 to preserve backward-compatible
-    behaviour.
-
-    Args:
-        slots: Mutable list of planned slots to update.
-        price_points: Per-hour price data.
-        tsi: Optional shared time-series index.  When supplied, alignment is
-            delegated to :meth:`TimeSeriesIndex.align_hourly_prices` so that
-            missing slots are tracked centrally.
-    """
-    log_planner(
-        "debug",
-        "[pop] populate_prices  price_points=%d  tsi_provided=%s",
-        len(price_points),
-        tsi is not None,
-    )
-    if tsi is not None:
-        # Sub-hourly path: when the points carry slot_in_day (issue #720),
-        # key by (day_offset, slot_in_day) so quarter-hourly prices land on
-        # their own slots instead of being fanned out from one hourly value.
-        if any(pp.slot_in_day is not None for pp in price_points):
-            imp_by_slot = {
-                (pp.day_offset, pp.slot_in_day): pp.import_price
-                for pp in price_points
-                if pp.slot_in_day is not None
-            }
-            exp_by_slot = {
-                (pp.day_offset, pp.slot_in_day): pp.export_price
-                for pp in price_points
-                if pp.slot_in_day is not None
-            }
-            # Hourly fallback for slots the source does not cover (e.g. a
-            # 60-min price source feeding 15-min slots).
-            imp_by_hour = {
-                (pp.day_offset, pp.hour): pp.import_price for pp in price_points
-            }
-            exp_by_hour = {
-                (pp.day_offset, pp.hour): pp.export_price for pp in price_points
-            }
-            for slot, meta in zip(slots, tsi.slots):
-                key = (meta.key.day_offset, meta.key.slot_in_day)
-                hour_key = (meta.key.day_offset, meta.hour)
-                imp = imp_by_slot.get(key, imp_by_hour.get(hour_key, 0.0))
-                exp = exp_by_slot.get(key, exp_by_hour.get(hour_key, 0.0))
-                slot.price = SlotPrice(import_price=imp, export_price=exp)
-            return
-
-        # Use (day_offset, hour) keys when any entry carries a non-zero
-        # day_offset so that tomorrow's prices are not overwritten by today's.
-        imp_prices: dict[int, float] | dict[tuple[int, int], float]
-        exp_prices: dict[int, float] | dict[tuple[int, int], float]
-        if any(pp.day_offset != 0 for pp in price_points):
-            imp_prices = {
-                (pp.day_offset, pp.hour): pp.import_price for pp in price_points
-            }
-            exp_prices = {
-                (pp.day_offset, pp.hour): pp.export_price for pp in price_points
-            }
-        else:
-            imp_prices = {pp.hour: pp.import_price for pp in price_points}
-            exp_prices = {pp.hour: pp.export_price for pp in price_points}
-        aligned_imp, aligned_exp = tsi.align_hourly_prices(imp_prices, exp_prices)
-        for slot, imp, exp in zip(slots, aligned_imp, aligned_exp):
-            # Missing hours (NaN sentinel) fall back to 0.0 — preserve
-            # backward-compatible behaviour for downstream consumers.
-            slot.price = SlotPrice(
-                import_price=0.0 if math.isnan(imp) else imp,
-                export_price=0.0 if math.isnan(exp) else exp,
-            )
-        return
-
-    price_by_hour = index_by_hour(price_points)
-    for slot in slots:
-        pt = price_by_hour.get(slot.start.hour)
-        if pt is not None:
-            slot.price = SlotPrice(
-                import_price=pt.import_price, export_price=pt.export_price
-            )
+# ``populate_prices`` lives in ``planner/slot_price_population.py`` (split to
+# keep this module under the 30 KB file-size limit).
 
 
 def populate_solcast(

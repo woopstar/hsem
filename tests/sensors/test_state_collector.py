@@ -158,6 +158,19 @@ class TestBuildSensorConfig:
         )
         assert cfg.recommendation_interval_minutes == 60
 
+    def test_recommendation_interval_length_72_clamped_to_48(self):
+        """Legacy stored 72 h horizon is clamped to 48 h (issue #1002)."""
+        cfg = build_sensor_config(
+            _make_config_entry(hsem_recommendation_interval_length=72)
+        )
+        assert cfg.recommendation_interval_length == 48
+
+    def test_recommendation_interval_length_supported_value_unchanged(self):
+        cfg = build_sensor_config(
+            _make_config_entry(hsem_recommendation_interval_length=24)
+        )
+        assert cfg.recommendation_interval_length == 24
+
     def test_consumption_weights(self):
         cfg = build_sensor_config(
             _make_config_entry(
