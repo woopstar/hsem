@@ -686,6 +686,18 @@ the MILP decides **when and how much each EV charges**.
 - `ev_on[t]` — optional binary, present only for a managed EV whose Huawei
   discharge permission is restrictive (see _Discharge permission_ below).
 
+**EV inclusion gate — SoC availability (issue #988)**: an EV whose SoC is
+unknown (`ev_planned_load_current_soc_pct is None`) is excluded from all EV
+charging decisions. An unavailable sensor must never be coerced to 0 % — that
+reads as an empty battery and makes the deadline-driven branch import a full
+battery's worth of energy at whatever prices the window contains. The
+baseline EV planner returns an inert plan in state `unavailable`, and
+`_build_ev_configs_for_milp()` skips the EV (logged as
+`[milp_ev] … EV excluded: SoC unavailable`). A `fixed_session_only` EV is
+exempt: its pinned energy is measured physical demand, not derived from SoC.
+A genuine 0 % reading is honoured as a real empty battery. Planning resumes
+on the first cycle after the sensor reports again.
+
 **EV constraints**:
 
 - SOC dynamics (cumulative, no discharge):
@@ -712,6 +724,10 @@ the MILP decides **when and how much each EV charges**.
   its own surplus-only mechanism instead.
 - **Surplus-only for charge-past-target**: When `charge_past_target=True`,
   `ev_c[t]/η_charger ≤ max(0, pv[t] − base_load[t])` — charging only from PV surplus.
+  A charge-past-target EV never carries session pins (issue #988): pinned slots
+  are exempt from this row, and pinning requires `fixed_session_only`, which
+  `charge_past_target` excludes by construction. `resolve_session_windows()`
+  refuses to pin a charge-past-target EV even if that ever changes.
 - **Battery-first for charge-past-target (issue #775)**: When `charge_past_target=True`,
   the house battery must take its share of the slot's PV surplus before the EV
   absorbs any. A shared per-slot row enforces
@@ -1186,6 +1202,16 @@ retained as a consistency check but no longer drives the LP's decisions.
 The constraint `ev_c[t]/charger_eff ≤ max(0, pv[t] − base_load[t])` ensures
 past-target EV charging **never** draws from the battery or grid — only
 genuine PV surplus that has nowhere else to go.
+
+Scope note (issue #988): `allow_charge_past_target_soc` governs **only** the
+at-or-above-target regime — the mode is entered solely when the EV has
+reached its target SoC. Below target, charging remains deadline-driven and
+grid-capable regardless of the setting; it is not a standing "PV only"
+guarantee. The surplus-only row is emitted for every slot of a
+charge-past-target EV: session-pinned slots, which are exempt from the row,
+cannot occur because pinning requires `fixed_session_only` and
+`charge_past_target` is only ever set for managed (pinnable-by-nothing)
+EVs — `resolve_session_windows()` enforces this structurally.
 
 #### Charge-past-target benefit: avoided future import cost (issue #630)
 
@@ -2514,6 +2540,15 @@ Add tests for these invariants:
 - Hysteresis is inactive when the feature is disabled.
 - `PlanExplanation.hysteresis_active` reflects the hysteresis decision.
 - `PlanExplanation.hysteresis_reason` describes why hysteresis kept or released the plan.
+- An EV with unavailable/unknown SoC is excluded from EV charging planning
+  (baseline plan inert in state `unavailable`; MILP excludes it) — never
+  treated as 0 % (issue #988).
+- A genuine 0 % EV SoC reading still plans charging — unknown is never
+  conflated with empty (issue #988).
+- A `fixed_session_only` EV needs no SoC — its pinned energy is measured
+  physical demand (issue #988).
+- A charge-past-target EV never carries session pins, so its surplus-only
+  constraint covers every slot (issue #988).
 
 ## Multi-day planning horizon
 
@@ -3020,7 +3055,9 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
 
 9. **Guard states**: The EV planner must return a valid `EVChargingPlan` with
    an appropriate `state` string in all edge cases (disabled, not connected,
-   smart charging off, fully charged, no slots before deadline, invalid config).
+   smart charging off, **SoC unavailable**, fully charged, no slots before
+   deadline, invalid config). An unavailable SoC yields an inert plan in
+   state `unavailable` — never a fabricated 0 % (issue #988).
 
 10. **Disabled EV is zero-cost**: When `ev_planned_load_enabled = False`, all
     three EV load fields must be `0.0` and the home battery planner output
@@ -3031,7 +3068,9 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
     EV can receive surplus PV that would otherwise be exported at low/negative
     prices — or, when its avoided-future-import valuation exceeds the export
     price, surplus PV that would otherwise be exported at any price
-    (issue #630). This is handled exclusively by the MILP:
+    (issue #630). This is handled exclusively by the MILP. The setting governs
+    **only** this at-or-above-target regime; below-target charging remains
+    deadline-driven and grid-capable regardless of the setting (issue #988).
 
     - The EV is included with `charge_past_target=True`: `target_kwh = capacity_kwh`,
       `deadline_slot = None` (no grid import pressure), a surplus-only constraint

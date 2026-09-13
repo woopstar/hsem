@@ -77,7 +77,9 @@ class EVPlannerInput:
         enabled: Whether EV planned load integration is active.
         ev_connected: True when a vehicle is physically plugged in.
         smart_charging_enabled: True when smart charging is permitted.
-        current_soc_pct: Vehicle battery SoC in percent (0–100).
+        current_soc_pct: Vehicle battery SoC in percent (0–100), or ``None``
+            when the SoC entity is unavailable/unknown. ``None`` is never a
+            empty battery — the planner refuses to plan on it (issue #988).
         target_soc_pct: Target SoC in percent (0–100).
         battery_capacity_kwh: EV battery nameplate capacity in kWh.
         charger_power_kw: Charger output power in kW.
@@ -99,7 +101,7 @@ class EVPlannerInput:
     enabled: bool = False
     ev_connected: bool = False
     smart_charging_enabled: bool = True
-    current_soc_pct: float = 0.0
+    current_soc_pct: float | None = None
     target_soc_pct: float = 80.0
     battery_capacity_kwh: float = 0.0
     charger_power_kw: float = 0.0
@@ -118,7 +120,8 @@ class EVChargingPlan:
     Attributes:
         state: Human-readable state string for the HA sensor.
         ev_connected: Whether the EV is connected.
-        current_soc_pct: EV battery SoC at plan time.
+        current_soc_pct: EV battery SoC at plan time, or ``None`` when the
+            SoC was unavailable (issue #988) — the plan is then inert.
         target_soc_pct: Target SoC.
         battery_capacity_kwh: EV battery capacity.
         charger_power_kw: Charger rated power.
@@ -134,7 +137,7 @@ class EVChargingPlan:
     state: str = STATE_UNAVAILABLE
     ev_connected: bool = False
     base_load_includes_ev: bool = False
-    current_soc_pct: float = 0.0
+    current_soc_pct: float | None = None
     target_soc_pct: float = 80.0
     battery_capacity_kwh: float = 0.0
     charger_power_kw: float = 0.0
@@ -151,7 +154,11 @@ class EVChargingPlan:
         return {
             "battery_capacity_kwh": round(self.battery_capacity_kwh, 2),
             "charge_power_kw": round(self.charger_power_kw, 2),
-            "current_soc": round(self.current_soc_pct, 1),
+            "current_soc": (
+                round(self.current_soc_pct, 1)
+                if self.current_soc_pct is not None
+                else None
+            ),
             "target_soc": round(self.target_soc_pct, 1),
             "ev_connected": self.ev_connected,
             "base_load_includes_ev": self.base_load_includes_ev,
