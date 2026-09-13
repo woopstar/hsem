@@ -587,6 +587,9 @@ def build_sensor_config(
     cfg.ocpp_start_window_s = _start if _start is not None else 60
     _stop = convert_to_int(get_config_value(config_entry, "hsem_ocpp_stop_window_s"))
     cfg.ocpp_stop_window_s = _stop if _stop is not None else 180
+    cfg.ocpp_charging_rate_unit = str(
+        get_config_value(config_entry, "hsem_ocpp_charging_rate_unit") or "auto"
+    )
 
     # Second OCPP server for the optional second EV (separate port).
     cfg.ocpp_second_enabled = convert_to_boolean(
@@ -597,6 +600,9 @@ def build_sensor_config(
     )
     cfg.ocpp_second_port = _ocpp_second_port if _ocpp_second_port is not None else 9001
     cfg.ocpp_second_cpid = get_config_value(config_entry, "hsem_ocpp_second_cpid") or ""
+    cfg.ocpp_second_charging_rate_unit = str(
+        get_config_value(config_entry, "hsem_ocpp_second_charging_rate_unit") or "auto"
+    )
 
     return cfg
 

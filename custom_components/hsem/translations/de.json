@@ -104,7 +104,9 @@
           "hsem_ocpp_stop_window_s": "Stoppfenster (s)",
           "hsem_ocpp_second_enabled": "Zweiten OCPP-Server aktivieren",
           "hsem_ocpp_second_port": "Zweiter OCPP-Port",
-          "hsem_ocpp_second_cpid": "Zweite Ladepunkt-ID"
+          "hsem_ocpp_second_cpid": "Zweite Ladepunkt-ID",
+          "hsem_ocpp_charging_rate_unit": "Ladeeinheit (Watt/Ampere)",
+          "hsem_ocpp_second_charging_rate_unit": "Zweite Ladeeinheit (Watt/Ampere)"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiviere den eingebetteten OCPP-1.6-WebSocket-Server für die direkte Steuerung des EV-Ladegeräts. Nur LAN — setze den Port nicht dem Internet aus.",
@@ -114,7 +116,9 @@
           "hsem_ocpp_stop_window_s": "Sekunden anhaltenden Mangels, die vor dem Stoppen eines Ladevorgangs erforderlich sind. Verhindert schnelles Stopp-Start-Takten. Standard: 180.",
           "hsem_ocpp_second_enabled": "Aktiviere einen zweiten, dedizierten OCPP-Server für das zweite EV. Nur verfügbar, wenn die EV-2-Lastplanung aktiviert ist.",
           "hsem_ocpp_second_port": "TCP-Port für den zweiten OCPP-WebSocket-Server. Standard: 9001. Muss sich vom Port des ersten Servers unterscheiden.",
-          "hsem_ocpp_second_cpid": "Erwartete Ladepunkt-Kennung des zweiten EV-Ladegeräts. Leer lassen, um jedes Ladegerät zu akzeptieren."
+          "hsem_ocpp_second_cpid": "Erwartete Ladepunkt-Kennung des zweiten EV-Ladegeräts. Leer lassen, um jedes Ladegerät zu akzeptieren.",
+          "hsem_ocpp_charging_rate_unit": "Einheit für OCPP-Ladeprofile. 'Auto' handelt anhand der vom Ladegerät gemeldeten Fähigkeiten aus und bevorzugt Watt — eine Watt-Obergrenze ist eindeutig für Ladegeräte mit automatischer 1-/3-Phasen-Umschaltung. 'Ampere' oder 'Watt' erzwingt eine Einheit, wenn ein Ladegerät seine Unterstützung falsch meldet. Standard: Auto.",
+          "hsem_ocpp_second_charging_rate_unit": "Wie die Ladeeinheit des primären Servers, für den OCPP-Server des zweiten Ladegeräts."
         },
         "description": "Konfiguriere den eingebetteten OCPP-1.6-Server für die reine LAN-Steuerung von EV-Ladegeräten. Wenn aktiviert, sendet HSEM SetChargingProfile-Befehle direkt an dein EV-Ladegerät auf Basis des Ladeplans.",
         "title": "OCPP-Server"
@@ -572,7 +576,9 @@
           "hsem_ocpp_stop_window_s": "Stoppfenster (s)",
           "hsem_ocpp_second_enabled": "Zweiten OCPP-Server aktivieren",
           "hsem_ocpp_second_port": "Zweiter OCPP-Port",
-          "hsem_ocpp_second_cpid": "Zweite Ladepunkt-ID"
+          "hsem_ocpp_second_cpid": "Zweite Ladepunkt-ID",
+          "hsem_ocpp_charging_rate_unit": "Ladeeinheit (Watt/Ampere)",
+          "hsem_ocpp_second_charging_rate_unit": "Zweite Ladeeinheit (Watt/Ampere)"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiviere den eingebetteten OCPP-1.6-WebSocket-Server für die direkte Steuerung des EV-Ladegeräts. Nur LAN — setze den Port nicht dem Internet aus.",
@@ -582,7 +588,9 @@
           "hsem_ocpp_stop_window_s": "Sekunden anhaltenden Mangels, die vor dem Stoppen eines Ladevorgangs erforderlich sind. Verhindert schnelles Stopp-Start-Takten. Standard: 180.",
           "hsem_ocpp_second_enabled": "Aktiviere einen zweiten, dedizierten OCPP-Server für das zweite EV. Nur verfügbar, wenn die EV-2-Lastplanung aktiviert ist.",
           "hsem_ocpp_second_port": "TCP-Port für den zweiten OCPP-WebSocket-Server. Standard: 9001. Muss sich vom Port des ersten Servers unterscheiden.",
-          "hsem_ocpp_second_cpid": "Erwartete Ladepunkt-Kennung des zweiten EV-Ladegeräts. Leer lassen, um jedes Ladegerät zu akzeptieren."
+          "hsem_ocpp_second_cpid": "Erwartete Ladepunkt-Kennung des zweiten EV-Ladegeräts. Leer lassen, um jedes Ladegerät zu akzeptieren.",
+          "hsem_ocpp_charging_rate_unit": "Einheit für OCPP-Ladeprofile. 'Auto' handelt anhand der vom Ladegerät gemeldeten Fähigkeiten aus und bevorzugt Watt — eine Watt-Obergrenze ist eindeutig für Ladegeräte mit automatischer 1-/3-Phasen-Umschaltung. 'Ampere' oder 'Watt' erzwingt eine Einheit, wenn ein Ladegerät seine Unterstützung falsch meldet. Standard: Auto.",
+          "hsem_ocpp_second_charging_rate_unit": "Wie die Ladeeinheit des primären Servers, für den OCPP-Server des zweiten Ladegeräts."
         },
         "description": "Konfiguriere den eingebetteten OCPP-1.6-Server für die reine LAN-Steuerung von EV-Ladegeräten. Wenn aktiviert, sendet HSEM SetChargingProfile-Befehle direkt an dein EV-Ladegerät auf Basis des Ladeplans.",
         "title": "OCPP-Server"
@@ -934,6 +942,13 @@
         "single_phase": "Einphasig oder unbekannt (sicherer Standard)",
         "three_phase_balanced": "Dreiphasig, ausgeglichen über L1/L2/L3",
         "three_phase_switchable": "Dreiphasig mit automatischer 1-/3-Phasen-Umschaltung"
+      }
+    },
+    "ocpp_charging_rate_unit": {
+      "options": {
+        "auto": "Auto (aushandeln, Watt bevorzugt)",
+        "amps": "Ampere",
+        "watts": "Watt"
       }
     }
   },

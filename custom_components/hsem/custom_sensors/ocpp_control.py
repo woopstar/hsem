@@ -74,6 +74,69 @@ STATION_MAX_CURRENT_KEY = "Station-MaxCurrent"
 # the range; HSEM previously hardcoded 0/1 — the bottom.
 MAX_STACK_LEVEL_KEY = "ChargeProfileMaxStackLevel"
 
+# Which ``chargingRateUnit`` values the charger accepts in a
+# ChargingSchedule (OCPP 1.6): a comma-separated list reporting amps
+# ("Current"/"A") and/or watts ("Power"/"W") support. A charger that only
+# supports one unit schema-validates the other and then silently applies
+# nothing — observed on real hardware (lbbrhzn/ocpp documents the Huawei
+# FusionCharge reporting "Power" and ignoring amp profiles).
+CHARGING_RATE_UNIT_KEY = "ChargingScheduleAllowedChargingRateUnit"
+
+#: Token spellings real chargers use for amp support in
+#: :data:`CHARGING_RATE_UNIT_KEY` (matches lbbrhzn/ocpp's parser).
+_AMPS_UNIT_TOKENS = frozenset({"current", "a", "amp", "amps", "ampere", "amperes"})
+
+#: Token spellings real chargers use for watt support in
+#: :data:`CHARGING_RATE_UNIT_KEY`.
+_WATTS_UNIT_TOKENS = frozenset({"power", "w", "watt", "watts"})
+
+#: OCPP 1.6 ``chargingRateUnit`` values.
+RATE_UNIT_AMPS = "A"
+RATE_UNIT_WATTS = "W"
+
+#: User-selectable rate-unit preferences (config key
+#: ``hsem_ocpp_charging_rate_unit``): ``auto`` negotiates from the
+#: charger's reported capabilities (watts preferred — unambiguous for
+#: auto-phase-switching chargers), ``amps``/``watts`` force a unit.
+RATE_UNIT_PREF_AUTO = "auto"
+RATE_UNIT_PREF_AMPS = "amps"
+RATE_UNIT_PREF_WATTS = "watts"
+RATE_UNIT_PREFERENCES = (
+    RATE_UNIT_PREF_AUTO,
+    RATE_UNIT_PREF_AMPS,
+    RATE_UNIT_PREF_WATTS,
+)
+
+
+def supported_charging_rate_units(
+    configuration_keys: dict[str, str],
+) -> tuple[bool, bool]:
+    """Parse ``ChargingScheduleAllowedChargingRateUnit`` into (amps, watts).
+
+    Args:
+        configuration_keys: The charger's reported configuration
+            (:attr:`ChargerSession.configuration_keys`).
+
+    Returns:
+        ``(supports_amps, supports_watts)``. An unreported or
+        unrecognisable value conservatively means amps-only — the OCPP 1.6
+        implicit default, and the only safe assumption for a charger that
+        never answered (matching lbbrhzn/ocpp's fallback).
+    """
+    raw = configuration_keys.get(CHARGING_RATE_UNIT_KEY)
+    if not raw:
+        return True, False
+    tokens = {
+        token.strip().lower()
+        for token in str(raw).replace(";", ",").split(",")
+        if token.strip()
+    }
+    supports_amps = bool(tokens & _AMPS_UNIT_TOKENS)
+    supports_watts = bool(tokens & _WATTS_UNIT_TOKENS)
+    if not supports_amps and not supports_watts:
+        return True, False
+    return supports_amps, supports_watts
+
 
 class OCPPControlMixin:
     """Senders that interrogate or administer a connected charger."""

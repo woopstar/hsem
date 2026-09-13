@@ -11,7 +11,25 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
+from custom_components.hsem.custom_sensors.ocpp_control import (
+    RATE_UNIT_PREFERENCES,
+)
 from custom_components.hsem.utils.misc import get_config_value
+
+# Charging-profile rate unit preference (issue #1001). ``auto`` negotiates
+# from the charger's reported ChargingScheduleAllowedChargingRateUnit
+# (watts preferred — a watt ceiling is phase-agnostic); amps/watts force a
+# unit for chargers whose reported capability is wrong.
+_RATE_UNIT_SELECTOR = selector(
+    {
+        "select": {
+            "multiple": False,
+            "translation_key": "ocpp_charging_rate_unit",
+            "mode": "list",
+            "options": list(RATE_UNIT_PREFERENCES),
+        }
+    }
+)
 
 
 async def get_ocpp_step_schema(
@@ -81,6 +99,10 @@ async def get_ocpp_step_schema(
                 }
             }
         ),
+        vol.Required(
+            "hsem_ocpp_charging_rate_unit",
+            default=get_config_value(config_entry, "hsem_ocpp_charging_rate_unit"),
+        ): _RATE_UNIT_SELECTOR,
     }
 
     if second_ev_enabled:
@@ -115,6 +137,14 @@ async def get_ocpp_step_schema(
                 default=get_config_value(config_entry, "hsem_ocpp_second_cpid") or "",
             )
         ] = str
+        fields[
+            vol.Required(
+                "hsem_ocpp_second_charging_rate_unit",
+                default=get_config_value(
+                    config_entry, "hsem_ocpp_second_charging_rate_unit"
+                ),
+            )
+        ] = _RATE_UNIT_SELECTOR
 
     return vol.Schema(fields)
 

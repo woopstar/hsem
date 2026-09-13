@@ -1592,6 +1592,22 @@ fraction inline.
   the **one-phase** basis (minimum-side semantics only); rated-side sites
   pass `EV_TOPOLOGY_THREE_PHASE_BALANCED` explicitly.
 
+## OCPP Charging Rate Unit Negotiation (issue #1001)
+
+Charging profiles are published in the unit the charger accepts: the
+`GetConfiguration` reply after `BootNotification` already lands in
+`ChargerSession.configuration_keys` — read
+`ChargingScheduleAllowedChargingRateUnit` via
+`supported_charging_rate_units()` in `ocpp_control.py` (token parser
+mirrors lbbrhzn/ocpp; unreported/unknown → amps). `_effective_rate_unit()`
+in `ocpp_profiles.py` resolves the config preference
+(`hsem_ocpp_charging_rate_unit`: `auto`/`amps`/`watts`, default `auto`
+prefers watts — phase-agnostic for auto-phase-switching chargers).
+Amp profiles carry `numberPhases` (1/3, mode-derived for switchable via
+`ocpp_charge_target()`'s third return value); watt profiles omit it.
+`_last_sent_unit` participates in the anti-flap material-change filter so
+a unit renegotiation at the same wattage re-publishes the profile.
+
 ## OCPP/Huawei Phase-Headroom Write Ordering (issue #816)
 
 **Race confirmed and fixed (2026-08-25).** When the plan transitions from "EV charging" to "battery discharging", the OCPP anti-flap stop window (180s) means the charger hasn't stopped yet when the Huawei discharge cap is updated. The cap was computed from the **planned** EV power (0 kW), not accounting for the still-running EV draw (e.g., 7 kW), causing a transient phase-fuse overload.

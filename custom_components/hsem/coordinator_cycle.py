@@ -726,7 +726,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             topology = normalize_ev_phase_topology(
                 self._cfg.ev_planned_load_charger_phase_topology
             )
-            target_kw, max_current_a = ocpp_charge_target(
+            target_kw, max_current_a, number_phases = ocpp_charge_target(
                 power_w,
                 topology,
                 rated_current_a=charger_max_power_to_current_a(
@@ -744,6 +744,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 max_current_a=max_current_a,
                 now=now,
                 managed=ev_is_managed(self._cfg, live, is_second=False),
+                number_phases=number_phases,
             )
 
         ocpp_second_server = getattr(self, "_ocpp_second_server", None)
@@ -761,17 +762,21 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             second_topology = normalize_ev_phase_topology(
                 self._cfg.ev_second_planned_load_charger_phase_topology
             )
-            second_target_kw, second_max_current_a = ocpp_charge_target(
-                second_power_w,
-                second_topology,
-                rated_current_a=charger_max_power_to_current_a(
-                    max(
-                        float(self._cfg.ev_second_planned_load_charger_power_kw or 0.0),
-                        0.0,
-                    )
-                    * 1000.0,
+            second_target_kw, second_max_current_a, second_number_phases = (
+                ocpp_charge_target(
+                    second_power_w,
                     second_topology,
-                ),
+                    rated_current_a=charger_max_power_to_current_a(
+                        max(
+                            float(
+                                self._cfg.ev_second_planned_load_charger_power_kw or 0.0
+                            ),
+                            0.0,
+                        )
+                        * 1000.0,
+                        second_topology,
+                    ),
+                )
             )
             await ocpp_second_server.update_charge_target(
                 second_cpid,
@@ -779,6 +784,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 max_current_a=second_max_current_a,
                 now=now,
                 managed=ev_is_managed(self._cfg, live, is_second=True),
+                number_phases=second_number_phases,
             )
 
         async_log("debug", "------ HSEM Coordinator: update cycle complete")

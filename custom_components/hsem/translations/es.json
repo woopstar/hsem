@@ -104,7 +104,9 @@
           "hsem_ocpp_stop_window_s": "Ventana de parada (s)",
           "hsem_ocpp_second_enabled": "Activar segundo servidor OCPP",
           "hsem_ocpp_second_port": "Segundo puerto OCPP",
-          "hsem_ocpp_second_cpid": "ID del segundo punto de carga"
+          "hsem_ocpp_second_cpid": "ID del segundo punto de carga",
+          "hsem_ocpp_charging_rate_unit": "Unidad de carga (vatios/amperios)",
+          "hsem_ocpp_second_charging_rate_unit": "Segunda unidad de carga (vatios/amperios)"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Activa el servidor WebSocket OCPP 1.6 integrado para el control directo del cargador de VE. Solo para red local: no expongas el puerto a internet.",
@@ -114,7 +116,9 @@
           "hsem_ocpp_stop_window_s": "Segundos de déficit sostenido necesarios antes de detener una carga. Evita ciclos rápidos de parada y arranque. Predeterminado: 180.",
           "hsem_ocpp_second_enabled": "Activa un segundo servidor OCPP dedicado para el segundo VE. Solo disponible cuando la carga planificada del VE 2 está activada.",
           "hsem_ocpp_second_port": "Puerto TCP para el segundo servidor WebSocket OCPP. Predeterminado: 9001. Debe ser diferente del puerto del primer servidor.",
-          "hsem_ocpp_second_cpid": "Identificador de punto de carga esperado del segundo cargador de VE. Déjalo vacío para aceptar cualquier cargador."
+          "hsem_ocpp_second_cpid": "Identificador de punto de carga esperado del segundo cargador de VE. Déjalo vacío para aceptar cualquier cargador.",
+          "hsem_ocpp_charging_rate_unit": "Unidad usada en los perfiles de carga OCPP. 'Auto' negocia según las capacidades reportadas por el cargador y prefiere vatios — un límite en vatios es inequívoco para cargadores con conmutación automática 1/3 fases. 'Amperios' o 'Vatios' fuerza una unidad cuando un cargador reporta mal su soporte. Predeterminado: Auto.",
+          "hsem_ocpp_second_charging_rate_unit": "Igual que la unidad de carga del servidor primario, para el servidor OCPP del segundo cargador."
         },
         "description": "Configura el servidor OCPP 1.6 integrado para el control del cargador de VE únicamente en red local. Cuando está activado, HSEM envía órdenes SetChargingProfile directamente a tu cargador de VE según el plan de carga.",
         "title": "Servidor OCPP"
@@ -572,7 +576,9 @@
           "hsem_ocpp_stop_window_s": "Ventana de parada (s)",
           "hsem_ocpp_second_enabled": "Activar segundo servidor OCPP",
           "hsem_ocpp_second_port": "Segundo puerto OCPP",
-          "hsem_ocpp_second_cpid": "ID del segundo punto de carga"
+          "hsem_ocpp_second_cpid": "ID del segundo punto de carga",
+          "hsem_ocpp_charging_rate_unit": "Unidad de carga (vatios/amperios)",
+          "hsem_ocpp_second_charging_rate_unit": "Segunda unidad de carga (vatios/amperios)"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Activa el servidor WebSocket OCPP 1.6 integrado para el control directo del cargador de VE. Solo para red local: no expongas el puerto a internet.",
@@ -582,7 +588,9 @@
           "hsem_ocpp_stop_window_s": "Segundos de déficit sostenido necesarios antes de detener una carga. Evita ciclos rápidos de parada y arranque. Predeterminado: 180.",
           "hsem_ocpp_second_enabled": "Activa un segundo servidor OCPP dedicado para el segundo VE. Solo disponible cuando la carga planificada del VE 2 está activada.",
           "hsem_ocpp_second_port": "Puerto TCP para el segundo servidor WebSocket OCPP. Predeterminado: 9001. Debe ser diferente del puerto del primer servidor.",
-          "hsem_ocpp_second_cpid": "Identificador de punto de carga esperado del segundo cargador de VE. Déjalo vacío para aceptar cualquier cargador."
+          "hsem_ocpp_second_cpid": "Identificador de punto de carga esperado del segundo cargador de VE. Déjalo vacío para aceptar cualquier cargador.",
+          "hsem_ocpp_charging_rate_unit": "Unidad usada en los perfiles de carga OCPP. 'Auto' negocia según las capacidades reportadas por el cargador y prefiere vatios — un límite en vatios es inequívoco para cargadores con conmutación automática 1/3 fases. 'Amperios' o 'Vatios' fuerza una unidad cuando un cargador reporta mal su soporte. Predeterminado: Auto.",
+          "hsem_ocpp_second_charging_rate_unit": "Igual que la unidad de carga del servidor primario, para el servidor OCPP del segundo cargador."
         },
         "description": "Configura el servidor OCPP 1.6 integrado para el control del cargador de VE únicamente en red local. Cuando está activado, HSEM envía órdenes SetChargingProfile directamente a tu cargador de VE según el plan de carga.",
         "title": "Servidor OCPP"
@@ -934,6 +942,13 @@
         "single_phase": "Monofásico o desconocido (valor predeterminado seguro)",
         "three_phase_balanced": "Trifásico, equilibrado entre L1/L2/L3",
         "three_phase_switchable": "Trifásico con conmutación automática 1/3 fases"
+      }
+    },
+    "ocpp_charging_rate_unit": {
+      "options": {
+        "auto": "Auto (negociar, preferir vatios)",
+        "amps": "Amperios",
+        "watts": "Vatios"
       }
     }
   },

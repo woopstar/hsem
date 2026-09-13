@@ -414,6 +414,20 @@ amperage is derived from the same command and phase topology backing
 `coordinator_helpers.ocpp_charge_target()` (issue #886), and is exposed for
 diagnostics as `requested_current_a` on `sensor.hsem_ocpp_charger_status`.
 
+**Charging rate unit (issue #1001).** Charging profiles are published in the
+unit the charger actually accepts: after `BootNotification` HSEM reads the
+charger's reported `ChargingScheduleAllowedChargingRateUnit` from its
+`GetConfiguration` reply. With the default `hsem_ocpp_charging_rate_unit: auto`,
+a charger reporting watt support (`Power`/`W`) receives the ceiling in **watts**
+— phase-agnostic, so an auto-phase-switching charger maps the wattage to its
+own 1/3-phase decision with no amp ambiguity. Amp-only chargers receive amps
+with `numberPhases` set to the intended phase mode (1 or 3; mode-derived for
+`three_phase_switchable`), so even an amp profile states whether the limit is
+a one-phase or three-phase command. Set the option to `amps` or `watts` to
+force a unit when a charger misreports its support. A unit renegotiation
+(e.g. the capability reply arriving after the first send) re-publishes the
+profile in the new unit even at an unchanged wattage.
+
 When starting a session, HSEM also sends `RemoteStartTransaction` (fixed
 `idTag: "HSEM"`) alongside `SetChargingProfile` if the charger has no active
 transaction yet (`transaction_id` unset) — a charging profile alone only

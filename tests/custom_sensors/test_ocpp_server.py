@@ -2745,3 +2745,176 @@ class TestSetChargingProfileRejectedRetry:
             "test-cpid", target_power_kw=3.68, now=now
         )
         assert "SetChargingProfile" not in _sent_actions(charger_session)
+
+
+# ---------------------------------------------------------------------------
+# Charging-rate-unit negotiation (issue #1001)
+# ---------------------------------------------------------------------------
+
+
+class TestChargingRateUnitNegotiation:
+    """W/A unit selection from charger capability and user preference."""
+
+    def test_unreported_capability_defaults_to_amps(
+        self,
+        ocpp_server: OCPPServer,
+        charger_session: ChargerSession,
+    ) -> None:
+        """A charger that never answered GetConfiguration gets amps (OCPP default)."""
+        assert ocpp_server._effective_rate_unit(charger_session) == "A"
+
+    def test_auto_prefers_watts_when_reported(
+        self,
+        ocpp_server: OCPPServer,
+        charger_session: ChargerSession,
+    ) -> None:
+        """Auto negotiates watts the moment the charger reports W support."""
+        charger_session.configuration_keys = {
+            "ChargingScheduleAllowedChargingRateUnit": "Current,Power"
+        }
+        assert ocpp_server._effective_rate_unit(charger_session) == "W"
+
+    def test_auto_falls_back_to_amps_for_amp_only_charger(
+        self,
+        ocpp_server: OCPPServer,
+        charger_session: ChargerSession,
+    ) -> None:
+        charger_session.configuration_keys = {
+            "ChargingScheduleAllowedChargingRateUnit": "Current"
+        }
+        assert ocpp_server._effective_rate_unit(charger_session) == "A"
+
+    def test_auto_uses_watts_for_watt_only_charger(
+        self,
+        ocpp_server: OCPPServer,
+        charger_session: ChargerSession,
+    ) -> None:
+        """A watt-only charger (e.g. Huawei FusionCharge reports 'Power')."""
+        charger_session.configuration_keys = {
+            "ChargingScheduleAllowedChargingRateUnit": "Power"
+        }
+        assert ocpp_server._effective_rate_unit(charger_session) == "W"
+
+    def test_forced_amps_overrides_watt_capability(
+        self, mock_hass: MagicMock, charger_session: ChargerSession
+    ) -> None:
+        server = OCPPServer(hass=mock_hass, charging_rate_unit="amps")
+        charger_session.configuration_keys = {
+            "ChargingScheduleAllowedChargingRateUnit": "Current,Power"
+        }
+        assert server._effective_rate_unit(charger_session) == "A"
+
+    def test_forced_watts_without_reported_support_still_sends_watts(
+        self,
+        mock_hass: MagicMock,
+        charger_session: ChargerSession,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Forcing watts on an unreported charger sends W but logs a warning."""
+        server = OCPPServer(hass=mock_hass, charging_rate_unit="watts")
+        with caplog.at_level("WARNING"):
+            assert server._effective_rate_unit(charger_session) == "W"
+        assert "never reported watt support" in caplog.text
+
+    def test_unrecognised_preference_falls_back_to_auto(
+        self, mock_hass: MagicMock, charger_session: ChargerSession
+    ) -> None:
+        server = OCPPServer(hass=mock_hass, charging_rate_unit="bogus")
+        charger_session.configuration_keys = {
+            "ChargingScheduleAllowedChargingRateUnit": "Power"
+        }
+        assert server._effective_rate_unit(charger_session) == "W"
+
+    @pytest.mark.asyncio
+    async def test_watt_profile_carries_watt_limit_without_phases(
+        self,
+        ocpp_server: OCPPServer,
+        charger_session: ChargerSession,
+    ) -> None:
+        """A negotiated W profile publishes the watt ceiling verbatim."""
+        charger_session.configuration_keys = {
+            "ChargingScheduleAllowedChargingRateUnit": "Current,Power"
+        }
+        await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=2300, max_current_a=10, number_phases=1
+        )
+        sent = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        schedule = sent[3]["csChargingProfiles"]["chargingSchedule"]
+        assert schedule["chargingRateUnit"] == "W"
+        period = schedule["chargingSchedulePeriod"][0]
+        assert period["limit"] == 2300
+        assert "numberPhases" not in period
+        assert ocpp_server._last_sent_unit == "W"
+
+    @pytest.mark.asyncio
+    async def test_amp_profile_carries_number_phases(
+        self,
+        ocpp_server: OCPPServer,
+        charger_session: ChargerSession,
+    ) -> None:
+        """An amp-only charger gets the intended phase mode in the profile."""
+        await ocpp_server._send_set_charging_profile(
+            charger_session, max_power_w=2300, max_current_a=10, number_phases=1
+        )
+        sent = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        schedule = sent[3]["csChargingProfiles"]["chargingSchedule"]
+        assert schedule["chargingRateUnit"] == "A"
+        period = schedule["chargingSchedulePeriod"][0]
+        assert period["limit"] == 10
+        assert period["numberPhases"] == 1
+
+    @pytest.mark.asyncio
+    async def test_zero_profile_follows_negotiated_unit(
+        self,
+        ocpp_server: OCPPServer,
+        charger_session: ChargerSession,
+    ) -> None:
+        """A watt-only charger gets a 0 W stop, not a silently-ignored 0 A."""
+        charger_session.configuration_keys = {
+            "ChargingScheduleAllowedChargingRateUnit": "Power"
+        }
+        await ocpp_server._send_zero_current_profile(charger_session)
+        sent = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        schedule = sent[3]["csChargingProfiles"]["chargingSchedule"]
+        assert schedule["chargingRateUnit"] == "W"
+        assert schedule["chargingSchedulePeriod"][0]["limit"] == 0
+
+
+class TestRateUnitRenegotiation:
+    """A capability reply arriving after the first send must resend in W."""
+
+    @pytest.mark.asyncio
+    async def test_unit_change_at_same_wattage_resends(
+        self,
+        ocpp_server: OCPPServer,
+        charger_session: ChargerSession,
+    ) -> None:
+        """First cycle sent amps (capability unknown); once the charger
+        reports watt support the same 3.68 kW target must be republished as
+        a watt profile — the material-change dedup must not suppress it."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        ocpp_server._flap_state = "charging"
+        ocpp_server._last_sent_target = 3680.0
+        charger_session.transaction_id = 1
+        now = datetime.now(UTC)
+
+        # Simulate the pre-capability state: a previous A-profile send.
+        ocpp_server._last_sent_unit = "A"
+        charger_session.configuration_keys = {
+            "ChargingScheduleAllowedChargingRateUnit": "Current,Power"
+        }
+
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=3.68, now=now
+        )
+        assert _sent_actions(charger_session).count("SetChargingProfile") == 2
+        sent = json.loads(charger_session.websocket.send_str.call_args[0][0])
+        schedule = sent[3]["csChargingProfiles"]["chargingSchedule"]
+        assert schedule["chargingRateUnit"] == "W"
+        assert schedule["chargingSchedulePeriod"][0]["limit"] == 3680
+
+        # Stable state: same unit, same target — no further resend.
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=3.68, now=now + timedelta(seconds=61)
+        )
+        assert _sent_actions(charger_session).count("SetChargingProfile") == 2

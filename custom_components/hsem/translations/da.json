@@ -416,7 +416,9 @@
           "hsem_ocpp_stop_window_s": "Stopvindue (s)",
           "hsem_ocpp_second_cpid": "Andet ladepunkt-ID",
           "hsem_ocpp_second_enabled": "Aktiver anden OCPP-server",
-          "hsem_ocpp_second_port": "Anden OCPP-port"
+          "hsem_ocpp_second_port": "Anden OCPP-port",
+          "hsem_ocpp_charging_rate_unit": "Ladeenhed (effekt/strøm)",
+          "hsem_ocpp_second_charging_rate_unit": "Anden ladeenhed (effekt/strøm)"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiver den indbyggede OCPP 1.6 WebSocket-server til direkte EV-laderstyring. Kun LAN - eksponer ikke porten til internettet.",
@@ -426,7 +428,9 @@
           "hsem_ocpp_stop_window_s": "Sekunder med vedvarende underskud før opladning stopper. Forhindrer hurtig stop-start cykling. Standard: 180.",
           "hsem_ocpp_second_cpid": "Forventet ladepunkt-identifikator for den anden EV-lader. Lad være tom for at acceptere enhver lader.",
           "hsem_ocpp_second_enabled": "Aktiver en anden, dedikeret OCPP-server til den anden EV. Kun tilgængelig når planlagt belastning for EV 2 er aktiveret.",
-          "hsem_ocpp_second_port": "TCP-port til den anden OCPP WebSocket-server. Standard: 9001. Skal være forskellig fra den første servers port."
+          "hsem_ocpp_second_port": "TCP-port til den anden OCPP WebSocket-server. Standard: 9001. Skal være forskellig fra den første servers port.",
+          "hsem_ocpp_charging_rate_unit": "Enheden i OCPP-ladeprofiler. 'Auto' forhandler ud fra laderens rapporterede egenskaber og foretrækker watt — en watt-grænse er utvetydig for ladere med automatisk 1/3-fase-omskiftning. 'Ampere' eller 'Watt' tvinger en enhed, hvis en lader rapporterer forkert. Standard: Auto.",
+          "hsem_ocpp_second_charging_rate_unit": "Samme som den primære servers ladeenhed, for den anden laders OCPP-server."
         },
         "description": "Konfigurer den indbyggede OCPP 1.6 server til LAN-kun EV-laderstyring. Når aktiveret, sender HSEM SetChargingProfile-kommandoer direkte til din EV-lader baseret på opladeplanen.",
         "title": "OCPP Server"
@@ -862,7 +866,9 @@
           "hsem_ocpp_stop_window_s": "Stopvindue (s)",
           "hsem_ocpp_second_cpid": "Andet ladepunkt-ID",
           "hsem_ocpp_second_enabled": "Aktiver anden OCPP-server",
-          "hsem_ocpp_second_port": "Anden OCPP-port"
+          "hsem_ocpp_second_port": "Anden OCPP-port",
+          "hsem_ocpp_charging_rate_unit": "Ladeenhed (effekt/strøm)",
+          "hsem_ocpp_second_charging_rate_unit": "Anden ladeenhed (effekt/strøm)"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiver den indbyggede OCPP 1.6 WebSocket-server til direkte EV-laderstyring. Kun LAN - eksponer ikke porten til internettet.",
@@ -872,7 +878,9 @@
           "hsem_ocpp_stop_window_s": "Sekunder med vedvarende underskud før opladning stopper. Standard: 180.",
           "hsem_ocpp_second_cpid": "Forventet ladepunkt-identifikator for den anden EV-lader. Lad være tom for at acceptere enhver lader.",
           "hsem_ocpp_second_enabled": "Aktiver en anden, dedikeret OCPP-server til den anden EV. Kun tilgængelig når planlagt belastning for EV 2 er aktiveret.",
-          "hsem_ocpp_second_port": "TCP-port til den anden OCPP WebSocket-server. Standard: 9001. Skal være forskellig fra den første servers port."
+          "hsem_ocpp_second_port": "TCP-port til den anden OCPP WebSocket-server. Standard: 9001. Skal være forskellig fra den første servers port.",
+          "hsem_ocpp_charging_rate_unit": "Enheden i OCPP-ladeprofiler. 'Auto' forhandler ud fra laderens rapporterede egenskaber og foretrækker watt — en watt-grænse er utvetydig for ladere med automatisk 1/3-fase-omskiftning. 'Ampere' eller 'Watt' tvinger en enhed, hvis en lader rapporterer forkert. Standard: Auto.",
+          "hsem_ocpp_second_charging_rate_unit": "Samme som den primære servers ladeenhed, for den anden laders OCPP-server."
         },
         "description": "Konfigurer den indbyggede OCPP 1.6 server til LAN-kun EV-laderstyring.",
         "title": "OCPP Server"
@@ -934,6 +942,13 @@
         "single_phase": "Enfaset eller ukendt (sikkert standardvalg)",
         "three_phase_balanced": "Trefaset, balanceret over L1/L2/L3",
         "three_phase_switchable": "Trefaset med automatisk 1/3-fase-omskiftning"
+      }
+    },
+    "ocpp_charging_rate_unit": {
+      "options": {
+        "auto": "Auto (forhandl, foretræk watt)",
+        "amps": "Ampere",
+        "watts": "Watt"
       }
     }
   },

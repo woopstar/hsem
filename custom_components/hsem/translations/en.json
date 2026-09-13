@@ -104,7 +104,9 @@
           "hsem_ocpp_stop_window_s": "Stop Window (s)",
           "hsem_ocpp_second_enabled": "Enable Second OCPP Server",
           "hsem_ocpp_second_port": "Second OCPP Port",
-          "hsem_ocpp_second_cpid": "Second Charge Point ID"
+          "hsem_ocpp_second_cpid": "Second Charge Point ID",
+          "hsem_ocpp_charging_rate_unit": "Charging Rate Unit",
+          "hsem_ocpp_second_charging_rate_unit": "Second Charging Rate Unit"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Enable the embedded OCPP 1.6 WebSocket server for direct EV charger control. LAN-only — do not expose the port to the internet.",
@@ -114,7 +116,9 @@
           "hsem_ocpp_stop_window_s": "Seconds of sustained shortage required before stopping a charge. Prevents rapid stop-start cycling. Default: 180.",
           "hsem_ocpp_second_enabled": "Enable a second, dedicated OCPP server for the second EV. Only available when EV 2 planned load is enabled.",
           "hsem_ocpp_second_port": "TCP port for the second OCPP WebSocket server. Default: 9001. Must differ from the first server's port.",
-          "hsem_ocpp_second_cpid": "Expected charge-point identifier of the second EV charger. Leave empty to accept any charger."
+          "hsem_ocpp_second_cpid": "Expected charge-point identifier of the second EV charger. Leave empty to accept any charger.",
+          "hsem_ocpp_charging_rate_unit": "Unit used in OCPP charging profiles. 'Auto' negotiates from the charger's reported capabilities and prefers watts — a watt ceiling is unambiguous for chargers with automatic 1/3-phase switching. 'Amps' or 'Watts' force a unit when a charger misreports its support. Default: Auto.",
+          "hsem_ocpp_second_charging_rate_unit": "Same as the primary server's charging rate unit, for the second charger's OCPP server."
         },
         "description": "Configure the embedded OCPP 1.6 server for LAN-only EV charger control. When enabled, HSEM sends SetChargingProfile commands directly to your EV charger based on the charging plan.",
         "title": "OCPP Server"
@@ -572,7 +576,9 @@
           "hsem_ocpp_stop_window_s": "Stop Window (s)",
           "hsem_ocpp_second_enabled": "Enable Second OCPP Server",
           "hsem_ocpp_second_port": "Second OCPP Port",
-          "hsem_ocpp_second_cpid": "Second Charge Point ID"
+          "hsem_ocpp_second_cpid": "Second Charge Point ID",
+          "hsem_ocpp_charging_rate_unit": "Charging Rate Unit",
+          "hsem_ocpp_second_charging_rate_unit": "Second Charging Rate Unit"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Enable the embedded OCPP 1.6 WebSocket server for direct EV charger control. LAN-only — do not expose the port to the internet.",
@@ -582,7 +588,9 @@
           "hsem_ocpp_stop_window_s": "Seconds of sustained shortage required before stopping a charge. Prevents rapid stop-start cycling. Default: 180.",
           "hsem_ocpp_second_enabled": "Enable a second, dedicated OCPP server for the second EV. Only available when EV 2 planned load is enabled.",
           "hsem_ocpp_second_port": "TCP port for the second OCPP WebSocket server. Default: 9001. Must differ from the first server's port.",
-          "hsem_ocpp_second_cpid": "Expected charge-point identifier of the second EV charger. Leave empty to accept any charger."
+          "hsem_ocpp_second_cpid": "Expected charge-point identifier of the second EV charger. Leave empty to accept any charger.",
+          "hsem_ocpp_charging_rate_unit": "Unit used in OCPP charging profiles. 'Auto' negotiates from the charger's reported capabilities and prefers watts — a watt ceiling is unambiguous for chargers with automatic 1/3-phase switching. 'Amps' or 'Watts' force a unit when a charger misreports its support. Default: Auto.",
+          "hsem_ocpp_second_charging_rate_unit": "Same as the primary server's charging rate unit, for the second charger's OCPP server."
         },
         "description": "Configure the embedded OCPP 1.6 server for LAN-only EV charger control. When enabled, HSEM sends SetChargingProfile commands directly to your EV charger based on the charging plan.",
         "title": "OCPP Server"
@@ -934,6 +942,13 @@
         "single_phase": "Single-phase or unknown (safe default)",
         "three_phase_balanced": "Three-phase, balanced across L1/L2/L3",
         "three_phase_switchable": "Three-phase with automatic 1/3-phase switching"
+      }
+    },
+    "ocpp_charging_rate_unit": {
+      "options": {
+        "auto": "Auto (negotiate, prefer watts)",
+        "amps": "Amps",
+        "watts": "Watts"
       }
     }
   },
