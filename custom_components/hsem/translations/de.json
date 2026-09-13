@@ -6,6 +6,7 @@
     },
     "error": {
       "device_not_found": "Das ausgewählte Gerät wurde nicht gefunden.",
+      "discharge_power_required_when_forced": "Lege eine maximale Entladeleistung über 0 W fest. Bei aktivierter Force-Option blockiert eine Obergrenze von 0 W still jede Batterieentladung, während das EV lädt.",
       "energy_out_of_range": "Der Energiewert liegt außerhalb des zulässigen Bereichs.",
       "entity_not_found": "Die ausgewählte Entität wurde nicht gefunden.",
       "entity_unavailable": "Die ausgewählte Entität ist derzeit nicht verfügbar. Überprüfe das Gerät oder den Dienst.",
@@ -203,8 +204,8 @@
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Aktiviere diese Option, wenn du zulassen möchtest, dass das System die EV-Batterie auch nach Erreichen des Ziel-Ladezustands (SoC) weiter lädt. Dies kann in Szenarien nützlich sein, in denen du sicherstellen möchtest, dass das EV unabhängig von der Zieleinstellung vollständig geladen wird.",
-          "hsem_ev_charger_force_max_discharge_power": "Aktiviere dies, wenn du eine bestimmte maximale Entladeleistung für die Huawei-Batterien erzwingen möchtest, während das EV lädt.",
-          "hsem_ev_charger_max_discharge_power": "Lege die maximale Entladeleistung für die Huawei-Batterien fest, während das EV lädt.",
+          "hsem_ev_charger_force_max_discharge_power": "Aktiviere dies, damit die Huawei-Batterie entladen darf, während dieses EV lädt, bis zu der unten eingestellten maximalen Entladeleistung. Solange dies aus ist, entlädt die Batterie überhaupt nicht, während das EV lädt — der Hausverbrauch wird aus dem Netz gedeckt. Erfordert eine maximale Entladeleistung über 0 W.",
+          "hsem_ev_charger_max_discharge_power": "Lege die maximale Entladeleistung für die Huawei-Batterien fest, während das EV lädt. Muss über 0 W liegen, wenn die Force-Option aktiviert ist — eine Obergrenze von 0 W blockiert still jede Batterieentladung, während das EV lädt.",
           "hsem_ev_charger_power": "Wähle den Sensor, der den Stromverbrauch deines EV-Ladegeräts misst.",
           "hsem_ev_charger_status": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV-Ladegerät aktiv ist (z. B. ein Schalter oder Sensor).",
           "hsem_ev_connected": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV mit dem Ladegerät verbunden ist.",
@@ -230,8 +231,8 @@
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Aktiviere diese Option, wenn du zulassen möchtest, dass das System die EV-Batterie auch nach Erreichen des Ziel-Ladezustands (SoC) weiter lädt. Dies kann in Szenarien nützlich sein, in denen du sicherstellen möchtest, dass das EV unabhängig von der Zieleinstellung vollständig geladen wird.",
-          "hsem_ev_second_charger_force_max_discharge_power": "Aktiviere dies, wenn du eine bestimmte maximale Entladeleistung für die Huawei-Batterien erzwingen möchtest, während das EV lädt.",
-          "hsem_ev_second_charger_max_discharge_power": "Lege die maximale Entladeleistung für die Huawei-Batterien fest, während das EV lädt.",
+          "hsem_ev_second_charger_force_max_discharge_power": "Aktiviere dies, damit die Huawei-Batterie entladen darf, während dieses EV lädt, bis zu der unten eingestellten maximalen Entladeleistung. Solange dies aus ist, entlädt die Batterie überhaupt nicht, während das EV lädt — der Hausverbrauch wird aus dem Netz gedeckt. Erfordert eine maximale Entladeleistung über 0 W.",
+          "hsem_ev_second_charger_max_discharge_power": "Lege die maximale Entladeleistung für die Huawei-Batterien fest, während das EV lädt. Muss über 0 W liegen, wenn die Force-Option aktiviert ist — eine Obergrenze von 0 W blockiert still jede Batterieentladung, während das EV lädt.",
           "hsem_ev_second_charger_power": "Wähle den Sensor, der den Stromverbrauch deines EV-Ladegeräts misst.",
           "hsem_ev_second_charger_status": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV-Ladegerät aktiv ist (z. B. ein Schalter oder Sensor).",
           "hsem_ev_second_connected": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV mit dem Ladegerät verbunden ist.",
@@ -544,6 +545,7 @@
   "options": {
     "error": {
       "device_not_found": "Das ausgewählte Gerät wurde nicht gefunden.",
+      "discharge_power_required_when_forced": "Lege eine maximale Entladeleistung über 0 W fest. Bei aktivierter Force-Option blockiert eine Obergrenze von 0 W still jede Batterieentladung, während das EV lädt.",
       "energy_out_of_range": "Der Energiewert liegt außerhalb des zulässigen Bereichs.",
       "entity_not_found": "Die ausgewählte Entität wurde nicht gefunden.",
       "entity_unavailable": "Die ausgewählte Entität ist derzeit nicht verfügbar. Überprüfe das Gerät oder den Dienst.",
@@ -741,8 +743,8 @@
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Aktiviere diese Option, wenn du zulassen möchtest, dass das System die EV-Batterie auch nach Erreichen des Ziel-Ladezustands (SoC) weiter lädt. Dies kann in Szenarien nützlich sein, in denen du sicherstellen möchtest, dass das EV unabhängig von der Zieleinstellung vollständig geladen wird.",
-          "hsem_ev_charger_force_max_discharge_power": "Aktiviere dies, wenn du eine bestimmte maximale Entladeleistung für die Huawei-Batterien erzwingen möchtest, während das EV lädt.",
-          "hsem_ev_charger_max_discharge_power": "Lege die maximale Entladeleistung für die Huawei-Batterien fest, während das EV lädt.",
+          "hsem_ev_charger_force_max_discharge_power": "Aktiviere dies, damit die Huawei-Batterie entladen darf, während dieses EV lädt, bis zu der unten eingestellten maximalen Entladeleistung. Solange dies aus ist, entlädt die Batterie überhaupt nicht, während das EV lädt — der Hausverbrauch wird aus dem Netz gedeckt. Erfordert eine maximale Entladeleistung über 0 W.",
+          "hsem_ev_charger_max_discharge_power": "Lege die maximale Entladeleistung für die Huawei-Batterien fest, während das EV lädt. Muss über 0 W liegen, wenn die Force-Option aktiviert ist — eine Obergrenze von 0 W blockiert still jede Batterieentladung, während das EV lädt.",
           "hsem_ev_charger_power": "Wähle den Sensor, der den Stromverbrauch deines EV-Ladegeräts misst.",
           "hsem_ev_charger_status": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV-Ladegerät aktiv ist (z. B. ein Schalter oder Sensor).",
           "hsem_ev_connected": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV mit dem Ladegerät verbunden ist.",
@@ -768,8 +770,8 @@
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Aktiviere diese Option, wenn du zulassen möchtest, dass das System die EV-Batterie auch nach Erreichen des Ziel-Ladezustands (SoC) weiter lädt. Dies kann in Szenarien nützlich sein, in denen du sicherstellen möchtest, dass das EV unabhängig von der Zieleinstellung vollständig geladen wird.",
-          "hsem_ev_second_charger_force_max_discharge_power": "Aktiviere dies, wenn du eine bestimmte maximale Entladeleistung für die Huawei-Batterien erzwingen möchtest, während das EV lädt.",
-          "hsem_ev_second_charger_max_discharge_power": "Lege die maximale Entladeleistung für die Huawei-Batterien fest, während das EV lädt.",
+          "hsem_ev_second_charger_force_max_discharge_power": "Aktiviere dies, damit die Huawei-Batterie entladen darf, während dieses EV lädt, bis zu der unten eingestellten maximalen Entladeleistung. Solange dies aus ist, entlädt die Batterie überhaupt nicht, während das EV lädt — der Hausverbrauch wird aus dem Netz gedeckt. Erfordert eine maximale Entladeleistung über 0 W.",
+          "hsem_ev_second_charger_max_discharge_power": "Lege die maximale Entladeleistung für die Huawei-Batterien fest, während das EV lädt. Muss über 0 W liegen, wenn die Force-Option aktiviert ist — eine Obergrenze von 0 W blockiert still jede Batterieentladung, während das EV lädt.",
           "hsem_ev_second_charger_power": "Wähle den Sensor, der den Stromverbrauch deines EV-Ladegeräts misst.",
           "hsem_ev_second_charger_status": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV-Ladegerät aktiv ist (z. B. ein Schalter oder Sensor).",
           "hsem_ev_second_connected": "Wähle den Sensor oder die Entität, die anzeigt, ob das EV mit dem Ladegerät verbunden ist.",

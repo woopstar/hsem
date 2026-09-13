@@ -6,6 +6,7 @@
     },
     "error": {
       "device_not_found": "No se encontró el dispositivo seleccionado.",
+      "discharge_power_required_when_forced": "Establece una potencia máxima de descarga superior a 0 W. Con la opción de forzar activada, un límite de 0 W bloquea silenciosamente toda descarga de la batería mientras el VE se carga.",
       "energy_out_of_range": "El valor de energía está fuera del rango permitido.",
       "entity_not_found": "No se encontró la entidad seleccionada.",
       "entity_unavailable": "La entidad seleccionada no está disponible en este momento. Comprueba el dispositivo o el servicio.",
@@ -203,8 +204,8 @@
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Activa esta opción si quieres permitir que el sistema siga cargando la batería del VE incluso después de haber alcanzado el estado de carga (SoC) objetivo. Esto puede resultar útil en situaciones en las que quieras asegurarte de que el VE quede completamente cargado, independientemente del ajuste del objetivo.",
-          "hsem_ev_charger_force_max_discharge_power": "Activa esto si quieres forzar una potencia máxima de descarga específica para las baterías Huawei mientras el VE se está cargando.",
-          "hsem_ev_charger_max_discharge_power": "Define la potencia máxima de descarga de las baterías Huawei mientras el VE se está cargando.",
+          "hsem_ev_charger_force_max_discharge_power": "Activa esto para permitir que la batería Huawei se descargue mientras este VE se carga, hasta la potencia máxima de descarga indicada abajo. Mientras esté desactivado, la batería no se descargará en absoluto mientras el VE se carga — la carga de la casa se sirve desde la red. Requiere una potencia máxima de descarga superior a 0 W.",
+          "hsem_ev_charger_max_discharge_power": "Establece la potencia máxima de descarga de las baterías Huawei mientras el VE se carga. Debe ser superior a 0 W cuando la opción de forzar está activada: un límite de 0 W bloquea silenciosamente toda descarga de la batería mientras el VE se carga.",
           "hsem_ev_charger_power": "Selecciona el sensor que mide el consumo de potencia de tu cargador de VE.",
           "hsem_ev_charger_status": "Selecciona el sensor o la entidad que indica si el cargador de VE está activo (p. ej., un interruptor o un sensor).",
           "hsem_ev_connected": "Selecciona el sensor o la entidad que indica si el VE está conectado al cargador.",
@@ -230,8 +231,8 @@
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Activa esta opción si quieres permitir que el sistema siga cargando la batería del VE incluso después de haber alcanzado el estado de carga (SoC) objetivo. Esto puede resultar útil en situaciones en las que quieras asegurarte de que el VE quede completamente cargado, independientemente del ajuste del objetivo.",
-          "hsem_ev_second_charger_force_max_discharge_power": "Activa esto si quieres forzar una potencia máxima de descarga específica para las baterías Huawei mientras el VE se está cargando.",
-          "hsem_ev_second_charger_max_discharge_power": "Define la potencia máxima de descarga de las baterías Huawei mientras el VE se está cargando.",
+          "hsem_ev_second_charger_force_max_discharge_power": "Activa esto para permitir que la batería Huawei se descargue mientras este VE se carga, hasta la potencia máxima de descarga indicada abajo. Mientras esté desactivado, la batería no se descargará en absoluto mientras el VE se carga — la carga de la casa se sirve desde la red. Requiere una potencia máxima de descarga superior a 0 W.",
+          "hsem_ev_second_charger_max_discharge_power": "Establece la potencia máxima de descarga de las baterías Huawei mientras el VE se carga. Debe ser superior a 0 W cuando la opción de forzar está activada: un límite de 0 W bloquea silenciosamente toda descarga de la batería mientras el VE se carga.",
           "hsem_ev_second_charger_power": "Selecciona el sensor que mide el consumo de potencia de tu cargador de VE.",
           "hsem_ev_second_charger_status": "Selecciona el sensor o la entidad que indica si el cargador de VE está activo (p. ej., un interruptor o un sensor).",
           "hsem_ev_second_connected": "Selecciona el sensor o la entidad que indica si el VE está conectado al cargador.",
@@ -544,6 +545,7 @@
   "options": {
     "error": {
       "device_not_found": "No se encontró el dispositivo seleccionado.",
+      "discharge_power_required_when_forced": "Establece una potencia máxima de descarga superior a 0 W. Con la opción de forzar activada, un límite de 0 W bloquea silenciosamente toda descarga de la batería mientras el VE se carga.",
       "energy_out_of_range": "El valor de energía está fuera del rango permitido.",
       "entity_not_found": "No se encontró la entidad seleccionada.",
       "entity_unavailable": "La entidad seleccionada no está disponible en este momento. Comprueba el dispositivo o el servicio.",
@@ -741,8 +743,8 @@
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Activa esta opción si quieres permitir que el sistema siga cargando la batería del VE incluso después de haber alcanzado el estado de carga (SoC) objetivo. Esto puede resultar útil en situaciones en las que quieras asegurarte de que el VE quede completamente cargado, independientemente del ajuste del objetivo.",
-          "hsem_ev_charger_force_max_discharge_power": "Activa esto si quieres forzar una potencia máxima de descarga específica para las baterías Huawei mientras el VE se está cargando.",
-          "hsem_ev_charger_max_discharge_power": "Define la potencia máxima de descarga de las baterías Huawei mientras el VE se está cargando.",
+          "hsem_ev_charger_force_max_discharge_power": "Activa esto para permitir que la batería Huawei se descargue mientras este VE se carga, hasta la potencia máxima de descarga indicada abajo. Mientras esté desactivado, la batería no se descargará en absoluto mientras el VE se carga — la carga de la casa se sirve desde la red. Requiere una potencia máxima de descarga superior a 0 W.",
+          "hsem_ev_charger_max_discharge_power": "Establece la potencia máxima de descarga de las baterías Huawei mientras el VE se carga. Debe ser superior a 0 W cuando la opción de forzar está activada: un límite de 0 W bloquea silenciosamente toda descarga de la batería mientras el VE se carga.",
           "hsem_ev_charger_power": "Selecciona el sensor que mide el consumo de potencia de tu cargador de VE.",
           "hsem_ev_charger_status": "Selecciona el sensor o la entidad que indica si el cargador de VE está activo (p. ej., un interruptor o un sensor).",
           "hsem_ev_connected": "Selecciona el sensor o la entidad que indica si el VE está conectado al cargador.",
@@ -768,8 +770,8 @@
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Activa esta opción si quieres permitir que el sistema siga cargando la batería del VE incluso después de haber alcanzado el estado de carga (SoC) objetivo. Esto puede resultar útil en situaciones en las que quieras asegurarte de que el VE quede completamente cargado, independientemente del ajuste del objetivo.",
-          "hsem_ev_second_charger_force_max_discharge_power": "Activa esto si quieres forzar una potencia máxima de descarga específica para las baterías Huawei mientras el VE se está cargando.",
-          "hsem_ev_second_charger_max_discharge_power": "Define la potencia máxima de descarga de las baterías Huawei mientras el VE se está cargando.",
+          "hsem_ev_second_charger_force_max_discharge_power": "Activa esto para permitir que la batería Huawei se descargue mientras este VE se carga, hasta la potencia máxima de descarga indicada abajo. Mientras esté desactivado, la batería no se descargará en absoluto mientras el VE se carga — la carga de la casa se sirve desde la red. Requiere una potencia máxima de descarga superior a 0 W.",
+          "hsem_ev_second_charger_max_discharge_power": "Establece la potencia máxima de descarga de las baterías Huawei mientras el VE se carga. Debe ser superior a 0 W cuando la opción de forzar está activada: un límite de 0 W bloquea silenciosamente toda descarga de la batería mientras el VE se carga.",
           "hsem_ev_second_charger_power": "Selecciona el sensor que mide el consumo de potencia de tu cargador de VE.",
           "hsem_ev_second_charger_status": "Selecciona el sensor o la entidad que indica si el cargador de VE está activo (p. ej., un interruptor o un sensor).",
           "hsem_ev_second_connected": "Selecciona el sensor o la entidad que indica si el VE está conectado al cargador.",

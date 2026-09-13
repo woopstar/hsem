@@ -49,6 +49,9 @@ from custom_components.hsem.custom_sensors.applier_caps import (  # noqa: F401
     _primary_battery_cap_hold,
     _primary_battery_hold,
     _wait_mode_self_consumption_cap_w,
+    _warn_on_zero_ceiling_evs,
+    _zero_ceiling_cap_reason,
+    _zero_ceiling_ev_names,
 )
 from custom_components.hsem.custom_sensors.applier_forcible_discharge import (  # noqa: F401
     _async_apply_forcible_discharge,
@@ -183,6 +186,9 @@ async def async_apply_battery_settings(
         )
         if _ev_is_active_or_planned(ev=ev, planned_power_w=planned_power_w)
     )
+    # Permission-on-but-ceiling-0 EVs fail closed (issue #991) — used below
+    # for a distinct cap_reason and a latched warning naming both settings.
+    zero_ceiling_evs = _zero_ceiling_ev_names(relevant_evs)
     # A genuine batteries_charge_solar slot is solar-charge-only: the MILP
     # expects the grid to cover any house-load deficit, not the battery.
     # Huawei's own MaximizeSelfConsumption firmware behaviour follows live
@@ -268,6 +274,10 @@ async def async_apply_battery_settings(
                     f"(planned={rec.batteries_discharged_kwh:.3f} kWh, "
                     f"slot={slot_hours:.3f} h)"
                 )
+                if cap_w <= 0 and zero_ceiling_evs:
+                    # The 0 W ceiling, not the plan, forced this cap to
+                    # zero (issue #991).
+                    cap_reason = _zero_ceiling_cap_reason(zero_ceiling_evs)
                 # Phase-headroom reservation (issue #816): when an EV is
                 # live charging but the planned power is 0 (or lower), the
                 # OCPP anti-flap stop window means the charger hasn't
@@ -320,6 +330,13 @@ async def async_apply_battery_settings(
                 current_required_battery_kwh,
             )
             cap_w = 0
+
+    # Surface configs saved in the zero-ceiling trap (issue #991).
+    _warn_on_zero_ceiling_evs(
+        sensor,
+        zero_ceiling_evs=zero_ceiling_evs,
+        cap_w=cap_w,
+    )
 
     if live.huawei_batteries_max_discharge_power_w != cap_w:
         discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
