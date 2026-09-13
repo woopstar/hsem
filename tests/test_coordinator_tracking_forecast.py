@@ -86,7 +86,6 @@ def _accumulate(
         forecast_tracker=tracker,
         last_accumulation_ts=last_accumulation_ts,
         solar_corrector=SolarForecastCorrector(),
-        solar_corrector_processed=set(),
         prediction_tracker=PredictionTracker(),
         last_planner_output=None,
         update_interval_minutes=1,

@@ -587,6 +587,30 @@ set to 0, the battery cannot export regardless of HSEM's decision.
   integration or FusionSolar app. Ensure export is permitted at the
   inverter level.
 
+**7i. Maximum discharging power capped at 0 W**
+
+The battery physically cannot discharge while the Huawei _Maximum
+discharging power_ register is 0 W, even if the recommendation looks
+correct. HSEM writes that cap deliberately in several situations:
+
+- an EV is charging or about to be commanded and has not been given
+  permission via _Force max discharge power_,
+- the slot is a solar-charge-only slot (`batteries_charge_solar`), where the
+  grid — not the battery — covers any house-load deficit,
+- the slot is a genuine `batteries_wait_mode` hold, or wait-mode
+  self-consumption has reached its reserve floor,
+- the remaining battery energy is at or below the reserve the planner needs
+  for its upcoming scheduled plans.
+
+- **Check:** `number.*_maximum_discharging_power` (or the equivalent entity
+  configured in the Huawei Solar config step) against
+  `sensor.hsem_workingmode_sensor`. Then turn on
+  `switch.hsem_verbose_logging` and search `hsem.log` for
+  `capped max discharge power to` — the log line names the exact reason.
+- **Fix:** Address whichever reason the log reports. If the cap is 0 W
+  while the recommendation is `batteries_discharge_mode` and none of the
+  above applies, that is the bug fixed in issue #983 — upgrade.
+
 ---
 
 ## When to check the logs
@@ -607,6 +631,7 @@ Search for these patterns in `hsem.log`:
 | `[selector] No eligible candidates`                  | All plans rejected during validation                       |
 | `[selector] HYSTERESIS kept previous plan`           | Plan switch suppressed by hysteresis                       |
 | `Sensor read failed for entity_id`                   | Specific entity reading error — check entity               |
+| `capped max discharge power to`                      | Battery discharge limited — line names the reason          |
 | `EV is physically charging but no slot has load > 0` | EV charging without planned load                           |
 
 ### Home Assistant log (`home-assistant.log`)
