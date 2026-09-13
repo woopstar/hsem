@@ -78,6 +78,11 @@ in the same layer must not change it.
 
 1. Export price > import price AND export price ≥ `export_min_price` → `force_export`
 2. Actual PV surplus (`estimated_net_consumption_kwh < 0`) and battery not full → `batteries_charge_solar`
+   — allocated from a per-calendar-day budget over the day's unassigned slots sorted by
+   **ascending export price**, so the cheapest-export slots are served first. A slot reached
+   after the budget is exhausted receives a residual allocation that may round to `0.000`
+   while still carrying the label; the SoC simulation clears such a label (see
+   "Zero-charge labels" below, issue #989).
 3. Future `force_batteries_discharge` AND battery > required → `batteries_wait_mode`
 4. Slot's month is a winter month → `batteries_wait_mode`
 5. Slot's month is a summer month, actual PV surplus → `batteries_charge_solar`; else → `batteries_discharge_mode`
@@ -994,6 +999,30 @@ A slot mostly funded by grid import must never be labelled
 enables grid import, so the grid-funded portion of the plan would be
 silently dropped and the real battery SoC would diverge from the planned
 trajectory (issue #913).
+
+**Zero-charge labels (issue #989).** A charge label is only valid while the
+slot actually stores energy. `planner/soc_simulation.py` clamps every
+pre-scheduled charge to the live headroom and the per-slot power limit, and
+whenever that clamp resolves to zero on a slot carrying any charge
+recommendation, the label is cleared to `batteries_wait_mode` and
+`batteries_charged_kwh` is pinned to `0.0` — **regardless of why** it
+resolved to zero.
+
+This check deliberately does not test headroom. It originally fired only
+when the battery was completely full, so a slot whose charge was zero for
+any other reason — an LP that planned no battery action, or a seasonal-fill
+allocation that rounded away against an exhausted day budget — kept its
+`batteries_charge_solar` label with `batteries_charged_kwh == 0.0`. Every
+charge recommendation drives a Huawei mode that absorbs energy, so the
+inverter physically charged the battery from live PV while the plan stored
+none, destroying reserved headroom and forfeiting a planned export. That is
+the same plan-vs-actuator contradiction as issue #983, in the charge
+direction.
+
+When the cleared slot carries a material solved `grid_export_kwh`, the
+resulting `batteries_wait_mode` satisfies `_held_planned_export_is_authoritative()`,
+so the applier keeps it in TOU wait with `fed_to_grid` excess routing
+(issue #797) — holding SoC while the planned PV sale still executes.
 
 Two guards take priority over this PV-coverage comparison:
 
