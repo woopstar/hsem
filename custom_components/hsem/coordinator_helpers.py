@@ -18,6 +18,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.planner.ev_planner import (
     EVChargingPlan,
     rebuild_ev_plan_from_slots,
@@ -181,6 +182,32 @@ def ocpp_charge_target(power_w: float, topology: str | None) -> tuple[float, int
     return (
         safe_power_w / 1000.0,
         charger_power_to_current_a(safe_power_w, topology),
+    )
+
+
+def ev_is_managed(cfg: SensorConfig, live: LiveState, *, is_second: bool) -> bool:
+    """Return whether HSEM is responsible for commanding this EV's charger.
+
+    An EV is *managed* only while all three hold: its planned-load feature
+    is enabled, the car reports connected, and its smart-charging switch is
+    on. The distinction decides what a planned zero means over OCPP (issue
+    #990): on a managed EV it is an enforced zero (a 0 A profile is held),
+    on an unmanaged EV it means "HSEM has no opinion" and HSEM relinquishes
+    control of the charger instead.
+
+    Canonical definition — never re-derive the three-term check inline; the
+    command-stability layer and the OCPP dispatch must agree on it.
+    """
+    if is_second:
+        return bool(
+            cfg.ev_second_planned_load_enabled
+            and live.ev_second_planned_load_connected
+            and live.ev_second_planned_load_smart_charging_enabled
+        )
+    return bool(
+        cfg.ev_planned_load_enabled
+        and live.ev_planned_load_connected
+        and live.ev_planned_load_smart_charging_enabled
     )
 
 
