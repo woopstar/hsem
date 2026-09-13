@@ -207,7 +207,9 @@ class LiveState:
     # EV planned load live state — primary EV
     ev_planned_load_connected: bool = False
     ev_planned_load_smart_charging_enabled: bool = True
-    ev_planned_load_current_soc_pct: float = 0.0
+    #: ``None`` when the SoC entity is unavailable/unknown — never fabricate
+    #: 0 %, which the planner would read as an empty battery (issue #988).
+    ev_planned_load_current_soc_pct: float | None = None
     ev_planned_load_target_soc_pct: float = 80.0
     ev_planned_load_deadline: Any = (
         None  # datetime | None, typed as Any to avoid import
@@ -215,7 +217,8 @@ class LiveState:
     # EV planned load live state — second EV
     ev_second_planned_load_connected: bool = False
     ev_second_planned_load_smart_charging_enabled: bool = True
-    ev_second_planned_load_current_soc_pct: float = 0.0
+    #: ``None`` when the SoC entity is unavailable/unknown (issue #988).
+    ev_second_planned_load_current_soc_pct: float | None = None
     ev_second_planned_load_target_soc_pct: float = 80.0
     ev_second_planned_load_deadline: Any = None  # datetime | None
 

@@ -122,6 +122,16 @@ if abs(value) > 1e-9:   # instead of: if value != 0
 assert result == pytest.approx(expected, rel=1e-6)
 ```
 
+### Missing vs. zero telemetry (issue #988)
+
+```python
+# convert_to_float() returns None for unavailable/unknown ON PURPOSE —
+# never collapse that to 0.0 with `or 0.0` / `else 0.0` for values the
+# planner acts on. EV SoC stays None end-to-end (LiveState → PlannerInput)
+# and the planner refuses to plan EV charging on it; a real 0.0 reading
+# is still honoured as an empty battery.
+```
+
 ### Grid fuse limit
 
 ```python

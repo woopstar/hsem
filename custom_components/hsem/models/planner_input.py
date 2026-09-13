@@ -249,7 +249,10 @@ class PlannerInput:
     ev_planned_load_enabled: bool = False
     ev_planned_load_connected: bool = False
     ev_planned_load_smart_charging_enabled: bool = True
-    ev_planned_load_current_soc_pct: float = 0.0
+    #: ``None`` when the EV SoC is unavailable/unknown (issue #988). The
+    #: planner must treat an unknown SoC as a reason to refuse EV charging
+    #: decisions — never as an empty battery.
+    ev_planned_load_current_soc_pct: float | None = None
     ev_planned_load_target_soc_pct: float = 80.0
     ev_planned_load_battery_capacity_kwh: float = 0.0
     ev_planned_load_charger_power_kw: float = 0.0
@@ -287,7 +290,8 @@ class PlannerInput:
     ev_second_planned_load_enabled: bool = False
     ev_second_planned_load_connected: bool = False
     ev_second_planned_load_smart_charging_enabled: bool = True
-    ev_second_planned_load_current_soc_pct: float = 0.0
+    #: ``None`` when the second EV's SoC is unavailable/unknown (issue #988).
+    ev_second_planned_load_current_soc_pct: float | None = None
     ev_second_planned_load_target_soc_pct: float = 80.0
     ev_second_planned_load_battery_capacity_kwh: float = 0.0
     ev_second_planned_load_charger_power_kw: float = 0.0

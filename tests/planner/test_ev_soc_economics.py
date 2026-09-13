@@ -255,6 +255,30 @@ class TestComputeEvSocEconomicsGuards:
         assert result.points == []
         mock_run.assert_not_called()
 
+    def test_unavailable_soc_short_circuits(self):
+        """SoC None (unavailable sensor) short-circuits — issue #988.
+
+        The economics table is a what-if diagnostic; computing it from a
+        fabricated 0 % would show made-up prices for an empty battery.
+        """
+        base_input = _make_planner_input()
+        with patch(
+            "custom_components.hsem.planner.ev_soc_economics.run_planner"
+        ) as mock_run:
+            result = compute_ev_soc_economics(
+                base_input,
+                is_second=False,
+                current_soc_pct=None,
+                capacity_kwh=77.0,
+                max_charge_kw=11.0,
+                now=self._now(),
+            )
+        assert result.state == STATE_UNAVAILABLE
+        assert result.points == []
+        assert result.current_soc_pct is None
+        assert result.as_attributes()["current_soc_pct"] is None
+        mock_run.assert_not_called()
+
     def test_second_ev_guards_read_second_fields(self):
         """is_second=True reads ev_second_* guard fields, not primary."""
         base_input = _make_planner_input(
