@@ -120,6 +120,11 @@ class OCPPProfilesMixin:
         them, and recording 0 A here would let the material-change filter
         mistake the next real target for a continuation.
 
+        Records :attr:`~models.ocpp_session.ChargerSession.
+        hsem_zero_profile_active` on success so the anti-flap layer can
+        later release the block exactly once if the EV becomes unmanaged
+        or disconnects (issue #990).
+
         Args:
             session: The charger session.
 
@@ -142,6 +147,7 @@ class OCPPProfilesMixin:
                 or sent
             )
         if sent:
+            session.hsem_zero_profile_active = True
             _LOGGER.debug("Sent 0 A charging profile to %s", session.cpid)
         return sent
 
@@ -223,6 +229,9 @@ class OCPPProfilesMixin:
         if sent:
             self._last_sent_target = float(max_power_w)
             self._last_sent_current_a = max_current_a
+            # A real limit replaces any held zero on the same profile IDs;
+            # a 0 A send through this path *is* a zero profile (issue #990).
+            session.hsem_zero_profile_active = max_current_a == 0
             _LOGGER.debug(
                 "Sent SetChargingProfile to %s: max %d A (~%d W)",
                 session.cpid,

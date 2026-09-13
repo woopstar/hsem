@@ -1602,18 +1602,21 @@ class TestConnectPendingPlanGate:
     async def test_gate_releases_profile_on_zero_plan_decision(
         self, ocpp_server, charger_session
     ):
-        """A first decision of zero actively releases the gate, not just clears it.
+        """A first decision of zero on an *unmanaged* EV releases the gate.
 
         Otherwise the transient 0 A block installed on connect would
         linger as a standing limit with nothing to replace it — exactly
-        the issue #920 regression this gate must not reintroduce.
+        the issue #920 regression this gate must not reintroduce. On a
+        *managed* EV the same decision instead holds the 0 A profile as
+        an enforced zero (issue #990) — covered in
+        test_ocpp_zero_enforcement.py.
         """
         ocpp_server._chargers["test-cpid"] = charger_session
         charger_session.gate_pending_plan = True
         now = datetime.now(UTC)
 
         await ocpp_server.update_charge_target(
-            "test-cpid", target_power_kw=0.0, now=now
+            "test-cpid", target_power_kw=0.0, now=now, managed=False
         )
 
         assert charger_session.gate_pending_plan is False

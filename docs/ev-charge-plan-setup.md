@@ -696,21 +696,50 @@ narrow window rather than reintroducing a general idle-time block:
   charger's own `StartTransaction`. Arming immediately installs a 0 A
   `SetChargingProfile`, reusing the same generic zero-current mechanism the
   stop path uses.
-- **Released** the moment `update_charge_target()` is next called for this
+- **Resolved** the moment `update_charge_target()` is next called for this
   connector — which happens on the very next coordinator cycle, itself
   triggered promptly by the same debounced out-of-cycle refresh issue #908
   wired for OCPP events (typically within a couple of seconds of the
   connect, not the full ~5 minute polling interval). If the planner's first
   decision allocates real power, the normal start path installs it,
-  replacing the transient 0 A profile. If the first decision is still zero
-  (smart charging disabled, feature off, or a legitimate zero-allocation
-  slot), HSEM actively clears its own 0 A profile via
-  `ClearChargingProfile` rather than leaving it standing — otherwise the
-  gate itself would become the exact issue #920 regression it exists to
-  prevent.
-- **Released** immediately if the car is unplugged (status returns to
-  `"Available"`) before the planner ever gets a chance to decide — nothing
-  is left gated with no connection behind it.
+  replacing the transient 0 A profile. If the first decision is still zero,
+  what happens depends on whether the EV is _managed_ (planned-load feature
+  enabled, car connected, smart charging on) — issue #990:
+  - **Managed EV:** the zero is an _enforced_ zero — HSEM holds the 0 A
+    profile. "HSEM wants zero" must never actuate identically to "HSEM has
+    no opinion", which is what clearing the profile would do.
+  - **Unmanaged EV** (smart charging disabled, feature off): the zero
+    carries no intent, so HSEM actively clears its own 0 A profile via
+    `ClearChargingProfile` rather than leaving it standing — otherwise the
+    gate itself would become the exact issue #920 regression it exists to
+    prevent.
+- **Released** immediately if the car is unplugged (connector-level status
+  returns to `"Available"`), whether the planner had already decided or was
+  still holding an enforced zero — nothing is left gated with no connection
+  behind it. If an EV later _becomes_ unmanaged while held at an enforced
+  zero (smart charging switched off mid-hold), the next coordinator cycle
+  releases the profile exactly once.
+
+### What a planned zero guarantees (issue #990)
+
+When the plan allocates **0 W** to a managed, plugged-in EV, HSEM guarantees
+the charger is actively held at zero: a 0 A charging profile is installed
+(or retained), and any active transaction is stopped — including a
+**charger-initiated** (free-vend) session HSEM never started. A charger that
+opens its own `StartTransaction` is driven to zero via the same stop path
+(0 A profile plus `RemoteStopTransaction`) once the anti-flap stop window
+elapses.
+
+HSEM **deliberately relinquishes control** — clearing its own profiles —
+only when the EV is genuinely unmanaged: the planned-load feature is off,
+smart charging is switched off, or the car is unplugged. While unmanaged,
+HSEM neither enforces a zero nor stops a locally started session.
+
+`StatusNotification` handling respects `connectorId` per OCPP 1.6:
+`connectorId: 0` is the _charge point itself_, not the car. Charge-point
+level statuses are tracked separately
+(`ChargerSession.charge_point_status`) and never arm or release the connect
+gate — only connector-level (`connectorId >= 1`) statuses do.
 
 The gate is per-connection state on `ChargerSession.gate_pending_plan`, so a
 disconnect (which recreates the session) always starts the next connection

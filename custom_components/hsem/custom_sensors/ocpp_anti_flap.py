@@ -73,6 +73,7 @@ class OCPPAntiFlapMixin:
         target_power_kw: float,
         max_current_a: int = 16,
         now: datetime | None = None,
+        managed: bool = True,
     ) -> None:
         """Update the charge target for a charger with anti-flap logic.
 
@@ -87,6 +88,13 @@ class OCPPAntiFlapMixin:
             max_current_a: Maximum charging current in amperes (used to
                 build the charging profile).  Default 16 A.
             now: Current timestamp (injected for testability).
+            managed: ``True`` while HSEM is responsible for this EV —
+                planned-load feature enabled, car connected, and smart
+                charging switched on (issue #990). A planned zero on a
+                managed EV is an *enforced* zero (a 0 A profile is held or
+                installed), while a zero on an unmanaged EV means "HSEM
+                has no opinion" and releases HSEM's profiles exactly once
+                so no standing 0 A block remains (issue #920).
         """
         if cpid not in self._chargers:
             return
@@ -108,12 +116,28 @@ class OCPPAntiFlapMixin:
             # in the standing-block regression issue #920 fixed.
             session.gate_pending_plan = False
             if target_w <= _SLOT_EPSILON:
-                _LOGGER.info(
-                    "OCPP %s: planner's first cycle since connect allocated "
-                    "no charge — releasing the transient pending-plan gate",
-                    session.cpid,
-                )
-                await self._release_connect_gate(session)
+                if managed:
+                    # "HSEM wants zero" is not "HSEM has no opinion"
+                    # (issue #990): on a managed, plugged-in EV the planned
+                    # zero is an *enforced* zero — hold the 0 A profile
+                    # instead of clearing it. Re-affirm the profile here
+                    # so an arm-time send that failed or is still in flight
+                    # cannot leave the charger unlimited.
+                    _LOGGER.info(
+                        "OCPP %s: planner's first cycle since connect "
+                        "allocated no charge — holding the enforced 0 A "
+                        "profile for a managed EV",
+                        session.cpid,
+                    )
+                    await self._send_zero_current_profile(session)
+                else:
+                    _LOGGER.info(
+                        "OCPP %s: planner's first cycle since connect "
+                        "allocated no charge for an unmanaged EV — "
+                        "releasing the transient pending-plan gate",
+                        session.cpid,
+                    )
+                    await self._release_connect_gate(session)
             # target_w > 0 needs no special handling here — the normal
             # "starting" branch below installs the real profile, replacing
             # the transient 0 A one.
@@ -216,7 +240,29 @@ class OCPPAntiFlapMixin:
             # every subsequent cycle, so a stop that failed to send (or
             # that the charger silently ignored) was never retried despite
             # the "will retry next cycle" comment below.
-            if self._flap_state in ("charging", "starting", "stopping"):
+            #
+            # A charger-initiated session (free-vend) is admitted via
+            # ``free_vend`` (issue #990): _flap_state only leaves "idle"
+            # when HSEM itself starts a session, but a charger that opens
+            # its own StartTransaction still carries an open
+            # transaction_id — and a managed EV whose plan says zero must
+            # be driven to zero regardless of who started the session.
+            # Gated on ``managed`` so a locally started charge on an
+            # unmanaged EV (smart charging off) is left alone.
+            free_vend = (
+                managed
+                and self._flap_state == "idle"
+                and session.transaction_id is not None
+            )
+            if self._flap_state in ("charging", "starting", "stopping") or free_vend:
+                if free_vend and self._flap_state == "idle":
+                    _LOGGER.info(
+                        "OCPP %s: charger-initiated transaction %s is "
+                        "running while the plan allocates zero — driving "
+                        "it to zero",
+                        session.cpid,
+                        session.transaction_id,
+                    )
                 if self._flap_state != "stopping":
                     self._zero_entered_at = now
                     self._flap_state = "stopping"
@@ -249,6 +295,17 @@ class OCPPAntiFlapMixin:
                         elapsed,
                         self._stop_window_s,
                     )
+            elif not managed and session.hsem_zero_profile_active:
+                # The EV became unmanaged (feature off, smart charging
+                # off) while HSEM was holding an enforced zero. Release it
+                # exactly once — leaving the 0 A profile standing would be
+                # the issue #920 regression, and repeating the clear every
+                # cycle would spam the charger (issue #990).
+                _LOGGER.info(
+                    "OCPP %s: EV is no longer managed — releasing the held 0 A profile",
+                    session.cpid,
+                )
+                await self._release_connect_gate(session)
             self._target_entered_at = None
 
     # ------------------------------------------------------------------
@@ -304,22 +361,29 @@ class OCPPAntiFlapMixin:
         self._spawn_gate_task(self._send_zero_current_profile(session))
 
     def _schedule_release_connect_gate(self, session: ChargerSession) -> None:
-        """Release the pending-plan gate from a message-handler context.
+        """Release HSEM's zero block from a message-handler context.
 
-        Called when the car disconnects (status returns to ``"Available"``)
-        while the gate is still armed — the planner never got a chance to
-        decide anything for this connection, so there is nothing left to
-        gate (issue #969). Scheduled as a detached task for the same
-        ordering reason as :meth:`_arm_connect_gate`.
+        Called when the car disconnects (connector-level status returns to
+        ``"Available"``) while either the pending-plan gate is still armed
+        — the planner never got a chance to decide anything for this
+        connection (issue #969) — or HSEM was holding an enforced zero the
+        car will no longer consume (issue #990). In both cases there is
+        nothing left to gate, and leaving the 0 A profile standing on an
+        idle connector would be the issue #920 regression. Scheduled as a
+        detached task for the same ordering reason as
+        :meth:`_arm_connect_gate`.
 
         Args:
             session: The charger session that returned to ``"Available"``.
         """
+        was_pending = session.gate_pending_plan
         session.gate_pending_plan = False
         _LOGGER.info(
-            "OCPP %s: disconnected before the planner decided — releasing "
-            "the transient pending-plan gate",
+            "OCPP %s: disconnected %s — releasing the 0 A block",
             session.cpid,
+            "before the planner decided"
+            if was_pending
+            else "while held at an enforced zero",
         )
         self._spawn_gate_task(self._release_connect_gate(session))
 
@@ -341,6 +405,7 @@ class OCPPAntiFlapMixin:
         """
         for profile_id in HSEM_PROFILE_IDS:
             await self.send_clear_charging_profile(session.cpid, profile_id)
+        session.hsem_zero_profile_active = False
 
 
 __all__ = ["OCPPAntiFlapMixin"]

@@ -62,6 +62,20 @@ class ChargerSession:
             planner's next decision arrives (``update_charge_target()``,
             whatever it decides) or the car disconnects — never a
             standing idle-time block, which would regress issue #920.
+        charge_point_status: Most recent ``connectorId == 0`` status from
+            ``StatusNotification`` — the charge point itself, not the
+            connector/car (OCPP 1.6). Tracked separately from
+            :attr:`status` so a charge-point-level ``Available`` can never
+            be misread as "car unplugged" and release the connect gate
+            (issue #990). Diagnostic only; no logic gates on it.
+        hsem_zero_profile_active: ``True`` while HSEM has a 0 A charging
+            profile installed on this charger — either the transient
+            connect gate (issue #969) or an enforced zero the planner
+            asked for on a managed EV (issue #990). Lets
+            ``update_charge_target()`` release the block exactly once when
+            the EV becomes unmanaged (feature off, smart charging off) or
+            the car disconnects, instead of leaving a standing 0 A limit
+            (issue #920) or spamming ``ClearChargingProfile`` every cycle.
     """
 
     cpid: str = ""
@@ -81,3 +95,5 @@ class ChargerSession:
     last_call_status: dict[str, str] = field(default_factory=dict)
     configuration_keys: dict[str, str] = field(default_factory=dict)
     gate_pending_plan: bool = False
+    charge_point_status: str = "Available"
+    hsem_zero_profile_active: bool = False
