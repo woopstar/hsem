@@ -30,6 +30,7 @@ from custom_components.hsem.utils.config_validator import (
     async_validate_entity_ids,
     merge_errors,
 )
+from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.misc import get_config_value
 
 # Domain lists reused for multiple fields — defined once to avoid repetition.
@@ -225,4 +226,20 @@ async def validate_ev_charger_input(
             f"{prefix}_connected",
         ],
     )
-    return merge_errors(required_errors, entity_errors)
+
+    # Cross-field coherence (issue #991): the discharge permission fails
+    # closed on a zero ceiling in both the planner and the applier, so
+    # enabling it while the ceiling stays at its 0 default silently changes
+    # nothing. Reject the combination instead of saving a config that can
+    # never take effect. A missing ceiling keeps its "required" error; the
+    # coherence key is for present-but-unusable values. The 0 default
+    # itself stays valid while the permission is off.
+    force_key = f"{prefix}_charger_force_max_discharge_power"
+    ceiling_key = f"{prefix}_charger_max_discharge_power"
+    coherence_errors: dict[str, str] = {}
+    if user_input.get(force_key) and ceiling_key in user_input:
+        ceiling = convert_to_float(user_input.get(ceiling_key))
+        if ceiling is None or ceiling <= 0.0:
+            coherence_errors[ceiling_key] = "discharge_power_required_when_forced"
+
+    return merge_errors(merge_errors(required_errors, entity_errors), coherence_errors)

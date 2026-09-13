@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from custom_components.hsem.models.live_state import EVLiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import is_material_planned_energy_kwh
 
@@ -143,6 +144,81 @@ def _ev_phase_headroom_reservation_w(
     # Reservation is the live draw minus the planned draw (if positive).
     reservation_w = live_power_w - planned_w
     return max(math.floor(reservation_w + 1e-9), 0) if reservation_w > 1e-9 else 0
+
+
+def _zero_ceiling_ev_names(
+    relevant_evs: tuple[tuple[str, EVLiveState, object], ...],
+) -> tuple[str, ...]:
+    """Return names of relevant EVs in the incoherent config state (issue #991).
+
+    An EV whose discharge permission is on (``force_max_discharge_power``)
+    but whose ceiling (``max_discharge_power_w``) is 0 fails closed in both
+    the planner and the applier — the permission alone silently changes
+    nothing. The config flow rejects the combination on submit; this powers
+    the distinct cap reason and latched warning for entries saved before
+    that check existed.
+    """
+    return tuple(
+        name
+        for name, ev, _ in relevant_evs
+        if ev.force_max_discharge_power and ev.max_discharge_power_w <= 0
+    )
+
+
+def _zero_ceiling_cap_reason(zero_ceiling_evs: tuple[str, ...]) -> str:
+    """Cap-reason text for the issue #991 zero-ceiling trap.
+
+    Distinct from the generic planned-discharge reason so diagnostics show
+    that the 0 W ceiling — not the plan — forced the cap to zero.
+    """
+    return (
+        "EV discharge ceiling is 0 W — force permission has no effect "
+        f"({', '.join(zero_ceiling_evs)})"
+    )
+
+
+def _warn_on_zero_ceiling_evs(
+    sensor: object,
+    *,
+    zero_ceiling_evs: tuple[str, ...],
+    cap_w: int,
+) -> None:
+    """Warn once per episode when a zero ceiling forces a 0 W cap.
+
+    One clear warning per EV naming both settings, latched on the sensor so
+    it does not repeat every cycle; the latch re-arms once the config is
+    coherent again so a later regression warns again (issue #991).
+
+    Args:
+        sensor: Working-mode sensor instance; the latch lives on it as
+            ``_ev_zero_discharge_ceiling_warned``.
+        zero_ceiling_evs: Names of relevant EVs with permission on and a
+            zero ceiling, from :func:`_zero_ceiling_ev_names`.
+        cap_w: The cycle's computed discharge cap in watts.
+    """
+    warned = getattr(sensor, "_ev_zero_discharge_ceiling_warned", None)
+    if not zero_ceiling_evs and not warned:
+        return
+    if not isinstance(warned, set):
+        warned = set()
+        sensor._ev_zero_discharge_ceiling_warned = warned  # type: ignore[attr-defined]
+    if cap_w <= 0:
+        for name in zero_ceiling_evs:
+            if name not in warned:
+                warned.add(name)
+                prefix = "hsem_ev_second" if name == "second" else "hsem_ev"
+                _LOGGER.warning(
+                    "EV %s: %s is enabled but %s is 0 W — the battery still "
+                    "cannot discharge at all while this EV is charging; set "
+                    "a maximum discharge power above 0 W or disable the "
+                    "force option",
+                    name,
+                    f"{prefix}_charger_force_max_discharge_power",
+                    f"{prefix}_charger_max_discharge_power",
+                )
+    for name in tuple(warned):
+        if name not in zero_ceiling_evs:
+            warned.discard(name)
 
 
 def _planned_ev_discharge_cap_w(
