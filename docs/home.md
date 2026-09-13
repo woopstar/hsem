@@ -81,7 +81,11 @@ global battery discharge limit shared by the house battery and every EV,
 so by default HSEM forces battery discharge to 0 W whenever an EV is
 charging or about to be commanded — 100% of the EV's load then comes from
 the grid. Enabling `hsem_ev_charger_force_max_discharge_power` lifts that
-block; `hsem_ev_charger_max_discharge_power` sets the ceiling. The actual
+block; `hsem_ev_charger_max_discharge_power` sets the ceiling. The ceiling
+must be above 0 W — enabling the permission while the ceiling stays at its
+0 default still caps discharge at 0 W (the config flow rejects that
+combination, and existing entries saved with it log a one-time warning
+naming both settings — issue #991). The actual
 discharge rate is still the planner's own solved value for the slot,
 clamped to that ceiling — enabling the option does not by itself create
 any discharge.
@@ -200,7 +204,7 @@ HSEM supports two prediction modes:
 | Option                                      | Purpose                                                                                                                      |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `hsem_ev_charger_force_max_discharge_power` | Permits (does not force) battery discharge while this EV is charging; without it, discharge is 0 W whenever the EV is active |
-| `hsem_ev_charger_max_discharge_power`       | Maximum discharge power (W) for EV charging                                                                                  |
+| `hsem_ev_charger_max_discharge_power`       | Maximum discharge power (W) for EV charging; must be above 0 W when the permission above is enabled (issue #991)             |
 | `hsem_force_working_mode`                   | Manually override to a specific working mode                                                                                 |
 
 ---

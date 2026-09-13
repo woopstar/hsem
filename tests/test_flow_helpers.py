@@ -258,6 +258,151 @@ class TestValidateEvChargerInput:
 
 
 # ===========================================================================
+# ev_helpers — discharge-permission/ceiling coherence (issue #991)
+# ===========================================================================
+
+
+class TestEvDischargePowerCoherence:
+    """force_max_discharge_power=True with a 0 W ceiling must be rejected.
+
+    Both the planner and the applier fail closed on a zero ceiling, so
+    enabling the permission alone silently changes nothing (issue #991).
+    """
+
+    @staticmethod
+    def _primary_input(**overrides):
+        user_input = {
+            "hsem_ev_charger_max_discharge_power": 2000,
+            "hsem_ev_charger_force_max_discharge_power": True,
+            "hsem_ev_allow_charge_past_target_soc": False,
+            "hsem_ev_past_target_confidence_factor": 0.9,
+            "hsem_ev_auto_full_negative_price": False,
+            "hsem_house_power_includes_ev_charger_power": True,
+        }
+        user_input.update(overrides)
+        return user_input
+
+    @staticmethod
+    def _second_input(**overrides):
+        user_input = {
+            "hsem_ev_second_charger_max_discharge_power": 2000,
+            "hsem_ev_second_charger_force_max_discharge_power": True,
+            "hsem_ev_second_allow_charge_past_target_soc": False,
+            "hsem_ev_second_past_target_confidence_factor": 0.9,
+        }
+        user_input.update(overrides)
+        return user_input
+
+    @pytest.mark.asyncio
+    async def test_force_on_with_zero_ceiling_is_rejected(self):
+        """The exact trap from issue #991: permission on, ceiling at default 0."""
+        from custom_components.hsem.flows.ev_helpers import validate_ev_charger_input
+
+        errors = await validate_ev_charger_input(
+            _make_hass(),
+            self._primary_input(hsem_ev_charger_max_discharge_power=0),
+            prefix="hsem_ev",
+            extra_required_fields=["hsem_house_power_includes_ev_charger_power"],
+        )
+        assert errors.get("hsem_ev_charger_max_discharge_power") == (
+            "discharge_power_required_when_forced"
+        )
+
+    @pytest.mark.asyncio
+    async def test_force_on_with_zero_ceiling_rejected_for_second_ev(self):
+        from custom_components.hsem.flows.ev_helpers import validate_ev_charger_input
+
+        errors = await validate_ev_charger_input(
+            _make_hass(),
+            self._second_input(hsem_ev_second_charger_max_discharge_power=0),
+            prefix="hsem_ev_second",
+        )
+        assert errors.get("hsem_ev_second_charger_max_discharge_power") == (
+            "discharge_power_required_when_forced"
+        )
+
+    @pytest.mark.asyncio
+    async def test_force_on_with_negative_ceiling_is_rejected(self):
+        from custom_components.hsem.flows.ev_helpers import validate_ev_charger_input
+
+        errors = await validate_ev_charger_input(
+            _make_hass(),
+            self._primary_input(hsem_ev_charger_max_discharge_power=-500),
+            prefix="hsem_ev",
+            extra_required_fields=["hsem_house_power_includes_ev_charger_power"],
+        )
+        assert errors.get("hsem_ev_charger_max_discharge_power") == (
+            "discharge_power_required_when_forced"
+        )
+
+    @pytest.mark.asyncio
+    async def test_force_on_with_non_numeric_ceiling_is_rejected(self):
+        from custom_components.hsem.flows.ev_helpers import validate_ev_charger_input
+
+        errors = await validate_ev_charger_input(
+            _make_hass(),
+            self._primary_input(hsem_ev_charger_max_discharge_power="abc"),
+            prefix="hsem_ev",
+            extra_required_fields=["hsem_house_power_includes_ev_charger_power"],
+        )
+        assert errors.get("hsem_ev_charger_max_discharge_power") == (
+            "discharge_power_required_when_forced"
+        )
+
+    @pytest.mark.asyncio
+    async def test_force_off_with_zero_ceiling_remains_valid(self):
+        """The default config (permission off, ceiling 0) must still pass."""
+        from custom_components.hsem.flows.ev_helpers import validate_ev_charger_input
+
+        errors = await validate_ev_charger_input(
+            _make_hass(),
+            self._primary_input(
+                hsem_ev_charger_force_max_discharge_power=False,
+                hsem_ev_charger_max_discharge_power=0,
+            ),
+            prefix="hsem_ev",
+            extra_required_fields=["hsem_house_power_includes_ev_charger_power"],
+        )
+        assert errors == {}
+
+    @pytest.mark.asyncio
+    async def test_force_on_with_positive_ceiling_remains_valid(self):
+        from custom_components.hsem.flows.ev_helpers import validate_ev_charger_input
+
+        errors = await validate_ev_charger_input(
+            _make_hass(),
+            self._primary_input(),
+            prefix="hsem_ev",
+            extra_required_fields=["hsem_house_power_includes_ev_charger_power"],
+        )
+        assert errors == {}
+
+    @pytest.mark.asyncio
+    async def test_wrappers_agree_with_helper_on_incoherent_input(self):
+        """Both EV step wrappers surface the coherence error identically."""
+        from custom_components.hsem.flows.ev import validate_ev_step_input
+        from custom_components.hsem.flows.ev_second import (
+            validate_ev_second_step_input,
+        )
+
+        errors_primary = await validate_ev_step_input(
+            _make_hass(),
+            self._primary_input(hsem_ev_charger_max_discharge_power=0),
+        )
+        assert errors_primary.get("hsem_ev_charger_max_discharge_power") == (
+            "discharge_power_required_when_forced"
+        )
+
+        errors_second = await validate_ev_second_step_input(
+            _make_hass(),
+            self._second_input(hsem_ev_second_charger_max_discharge_power=0),
+        )
+        assert errors_second.get("hsem_ev_second_charger_max_discharge_power") == (
+            "discharge_power_required_when_forced"
+        )
+
+
+# ===========================================================================
 # Round-trip: all four flow keys survive voluptuous validation
 # ===========================================================================
 
