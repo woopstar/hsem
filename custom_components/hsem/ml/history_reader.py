@@ -187,8 +187,7 @@ class HistoryReader:
         readings.sort(key=lambda item: utc_key(item[0]))
 
         # Compute per-slot consumption deltas from the accumulator.
-        slots_per_day = 24 * 60 // slot_minutes
-        history = self._compute_slot_deltas(readings, now, slot_minutes, slots_per_day)
+        history = self._compute_slot_deltas(readings, now, slot_minutes)
 
         # Check minimum history requirement.
         if history:
@@ -452,8 +451,7 @@ class HistoryReader:
         readings.sort(key=lambda item: utc_key(item[0]))
 
         # Compute per-slot deltas for today only.
-        slots_per_day = 24 * 60 // slot_minutes
-        history = self._compute_slot_deltas(readings, now, slot_minutes, slots_per_day)
+        history = self._compute_slot_deltas(readings, now, slot_minutes)
 
         # Filter to today's completed slots and key by physical slot identity.
         # ``_compute_slot_deltas`` has already excluded the in-progress slot.
@@ -470,7 +468,6 @@ class HistoryReader:
         readings: list[tuple[datetime, float]],
         now: datetime,
         slot_minutes: int,
-        slots_per_day: int,
     ) -> list[tuple[datetime, int, float]]:
         """Compute per-slot energy deltas from accumulator readings.
 
@@ -481,18 +478,16 @@ class HistoryReader:
             readings: Sorted list of ``(timestamp, accumulator_value)``.
             now: Current time (used to skip incomplete slots).
             slot_minutes: Width of each slot in minutes.
-            slots_per_day: Total slots per 24-hour day.
 
         Returns:
             List of ``(slot_start_dt, slot_index, energy_kwh)``.
-        """
 
-        # ``slots_per_day`` remains part of the private signature for callers
-        # that already pre-compute it, but physical slot identity comes from a
-        # canonical UTC datetime rather than ``ordinal * slots_per_day``.  A
-        # wall-clock integer would collapse both folds of an autumn repeated
-        # hour and cannot represent a 92/100-slot DST day.
-        del slots_per_day
+        Note:
+            Physical slot identity is a canonical UTC datetime, never an
+            ``ordinal * slots_per_day`` integer.  A wall-clock integer would
+            collapse both folds of an autumn repeated hour and cannot
+            represent a 92/100-slot DST day.
+        """
 
         # Group readings by physical slot identity after converting recorder
         # UTC timestamps to Home Assistant local time.  Calendar features

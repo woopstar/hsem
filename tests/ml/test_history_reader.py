@@ -51,7 +51,7 @@ def _deltas(
     readings: list[tuple[datetime, float]],
     now: datetime,
 ) -> list[tuple[datetime, int, float]]:
-    return HistoryReader._compute_slot_deltas(readings, now, 15, 96)
+    return HistoryReader._compute_slot_deltas(readings, now, 15)
 
 
 @pytest.mark.parametrize(
