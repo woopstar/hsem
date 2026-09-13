@@ -204,13 +204,23 @@ def simulate_soc(
         scheduled_charge = max(scheduled_charge, 0.0)
         slot.batteries_charged_kwh = round(scheduled_charge, 3)
 
-        # If the scheduled charge was clamped to zero because the battery
-        # is already full (no headroom), clear the charge recommendation
-        # so the label doesn't claim "charge" when nothing is charged.
+        # A charge label with nothing actually charged is a lie the applier
+        # executes: every charge recommendation drives a Huawei mode that
+        # absorbs energy, so the battery charges even though the plan stored
+        # none.  Clear the label whenever the scheduled charge resolves to
+        # zero, regardless of *why*.
+        #
+        # This deliberately does not test ``headroom`` (issue #989).  The
+        # original guard only fired when the battery was completely full,
+        # so a slot whose charge was zero for any other reason — an LP that
+        # planned no action, or a seasonal-fill allocation that rounded away
+        # against an exhausted day budget — kept its charge label with
+        # ``batteries_charged_kwh == 0.0`` and still drove
+        # ``MaximizeSelfConsumption``.  That is the same plan-vs-actuator
+        # contradiction as issue #983, in the charge direction.
         if scheduled_charge <= 1e-9 and slot.recommendation in _CHARGE_RECS:
-            if headroom <= 1e-9:
-                slot.recommendation = Recommendations.BatteriesWaitMode.value
-                slot.batteries_charged_kwh = 0.0
+            slot.recommendation = Recommendations.BatteriesWaitMode.value
+            slot.batteries_charged_kwh = 0.0
 
         # --- Net demand on the shared AC bus ---
         # The battery, house loads, and EV charger all share one AC bus.
