@@ -6,6 +6,7 @@
     },
     "error": {
       "device_not_found": "The selected device was not found.",
+      "discharge_power_required_when_forced": "Set a maximum discharge power above 0 W. With the force option enabled, a 0 W ceiling silently blocks all battery discharge while the EV is charging.",
       "energy_out_of_range": "Energy value is outside the allowed range.",
       "entity_not_found": "The selected entity was not found.",
       "entity_unavailable": "The selected entity is currently unavailable. Check the device or service.",
@@ -203,8 +204,8 @@
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
-          "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
-          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_charger_force_max_discharge_power": "Enable this to let the Huawei battery discharge while this EV is charging, up to the maximum discharge power set below. While this is off, the battery will not discharge at all while this EV is charging — house load is served from the grid. Requires a maximum discharge power above 0 W.",
+          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging. Must be above 0 W when the force option is enabled — a 0 W ceiling silently blocks all battery discharge while the EV is charging.",
           "hsem_ev_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
           "hsem_ev_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
@@ -230,8 +231,8 @@
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
-          "hsem_ev_second_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
-          "hsem_ev_second_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_second_charger_force_max_discharge_power": "Enable this to let the Huawei battery discharge while this EV is charging, up to the maximum discharge power set below. While this is off, the battery will not discharge at all while this EV is charging — house load is served from the grid. Requires a maximum discharge power above 0 W.",
+          "hsem_ev_second_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging. Must be above 0 W when the force option is enabled — a 0 W ceiling silently blocks all battery discharge while the EV is charging.",
           "hsem_ev_second_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_second_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
           "hsem_ev_second_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
@@ -544,6 +545,7 @@
   "options": {
     "error": {
       "device_not_found": "The selected device was not found.",
+      "discharge_power_required_when_forced": "Set a maximum discharge power above 0 W. With the force option enabled, a 0 W ceiling silently blocks all battery discharge while the EV is charging.",
       "energy_out_of_range": "Energy value is outside the allowed range.",
       "entity_not_found": "The selected entity was not found.",
       "entity_unavailable": "The selected entity is currently unavailable. Check the device or service.",
@@ -741,8 +743,8 @@
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
-          "hsem_ev_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
-          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_charger_force_max_discharge_power": "Enable this to let the Huawei battery discharge while this EV is charging, up to the maximum discharge power set below. While this is off, the battery will not discharge at all while this EV is charging — house load is served from the grid. Requires a maximum discharge power above 0 W.",
+          "hsem_ev_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging. Must be above 0 W when the force option is enabled — a 0 W ceiling silently blocks all battery discharge while the EV is charging.",
           "hsem_ev_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
           "hsem_ev_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
@@ -768,8 +770,8 @@
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Enable this option if you want to allow the system to continue charging the EV battery even after it has reached the target state of charge (SoC). This can be useful in scenarios where you want to ensure the EV is fully charged regardless of the target setting.",
-          "hsem_ev_second_charger_force_max_discharge_power": "Enable this if you want to force a specific maximum discharge power for the Huawei batteries while EV is charging.",
-          "hsem_ev_second_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging.",
+          "hsem_ev_second_charger_force_max_discharge_power": "Enable this to let the Huawei battery discharge while this EV is charging, up to the maximum discharge power set below. While this is off, the battery will not discharge at all while this EV is charging — house load is served from the grid. Requires a maximum discharge power above 0 W.",
+          "hsem_ev_second_charger_max_discharge_power": "Set the maximum discharge power for the Huawei batteries while EV is charging. Must be above 0 W when the force option is enabled — a 0 W ceiling silently blocks all battery discharge while the EV is charging.",
           "hsem_ev_second_charger_power": "Select the sensor that measures the power consumption of your EV charger.",
           "hsem_ev_second_charger_status": "Select the sensor or entity that indicates whether the EV charger is active (e.g., a switch or sensor).",
           "hsem_ev_second_connected": "Select the sensor or entity that indicates whether the EV is connected to the charger.",
