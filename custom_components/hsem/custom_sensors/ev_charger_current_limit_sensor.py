@@ -48,6 +48,8 @@ from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.utils.phase_power import (
+    EV_TOPOLOGY_THREE_PHASE_SWITCHABLE,
+    charger_max_power_to_current_a,
     charger_power_to_current_a,
     normalize_ev_phase_topology,
 )
@@ -120,6 +122,27 @@ class HSEMEVChargerCurrentLimitSensorBase(
         )
         return normalize_ev_phase_topology(raw)
 
+    def _rated_current_a(self, data: CoordinatorData, topology: str) -> int | None:
+        """Return this charger's rated whole-amp command for mode-aware conversion.
+
+        Only a ``three_phase_switchable`` topology needs it (issue #1001):
+        the one-phase/three-phase mode boundary sits at ``230 V × rated``.
+        """
+        if topology != EV_TOPOLOGY_THREE_PHASE_SWITCHABLE:
+            return None
+        cfg = data.cfg
+        if cfg is None:
+            return None
+        power_kw = (
+            cfg.ev_second_planned_load_charger_power_kw
+            if self._is_second
+            else cfg.ev_planned_load_charger_power_kw
+        )
+        rated = charger_max_power_to_current_a(
+            max(float(power_kw or 0.0), 0.0) * 1000.0, topology
+        )
+        return rated or None
+
     def _power_w(self, rec: HourlyRecommendation) -> float:
         """Return this charger's planned AC power for one recommendation slot."""
         value = (
@@ -166,9 +189,11 @@ class HSEMEVChargerCurrentLimitSensorBase(
         if data is None:
             return 0
         assert data.hourly_recommendation is not None  # guaranteed by _live_data()
+        topology = self._topology(data)
         return charger_power_to_current_a(
             self._power_w(data.hourly_recommendation),
-            self._topology(data),
+            topology,
+            rated_current_a=self._rated_current_a(data, topology),
         )
 
     @property
@@ -191,6 +216,7 @@ class HSEMEVChargerCurrentLimitSensorBase(
         if data is None:
             return {"phase_topology": None, "schedule": []}
         topology = self._topology(data)
+        rated_current_a = self._rated_current_a(data, topology)
         current = data.hourly_recommendation
         schedule: list[dict[str, Any]] = []
         for rec in data.hourly_recommendations:
@@ -200,7 +226,9 @@ class HSEMEVChargerCurrentLimitSensorBase(
             schedule.append(
                 {
                     "start": rec.start.isoformat(),
-                    "current_a": charger_power_to_current_a(power_w, topology),
+                    "current_a": charger_power_to_current_a(
+                        power_w, topology, rated_current_a=rated_current_a
+                    ),
                     "power_w": round(power_w, 1),
                 }
             )

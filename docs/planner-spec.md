@@ -684,6 +684,12 @@ the MILP decides **when and how much each EV charges**.
   is always directly executable — there is no post-solve quantization step
   that can diverge from what was solved. See
   `planner/milp/_ev_amp_lattice.py`.
+- `ev_amps3[t]` / `ev_mode3[t]` — only for a `three_phase_switchable`
+  charger (issue #1001): a second semi-integer amp variable carrying the
+  three-phase-mode command and a binary selecting the phase mode, with
+  `ev_c[t] = k1·a1[t] + k3·a3[t]` and mode-exclusion rows so exactly one
+  mode is active per slot. See _Optional hard per-phase charging
+  protection_ below for the full model.
 - `ev_on[t]` — optional binary, present only for a managed EV whose Huawei
   discharge permission is restrictive (see _Discharge permission_ below).
 
@@ -875,7 +881,9 @@ unmanaged). `resolve_ev_amp_plan` naturally reduces its amp bounds to
 `max_charge_per_slot`), so `needs_on` stays `False` for it: no wasted binary
 for an EV that can never command a positive amp.
 
-**Column layout**: `ev_{i}_amps` / `ev_{i}_on` blocks are declared last in
+**Column layout**: `ev_{i}_amps` / `ev_{i}_on` blocks (plus
+`ev_{i}_amps3` / `ev_{i}_mode3` for a `three_phase_switchable` charger,
+issue #1001) are declared last in
 `build_milp_column_layout` (`planner/milp/_layout.py`), after every physical
 and fuse block, using the same `MilpColumnLayout`/`MilpBoundsBuilder`
 machinery as every other named block (see _Named MILP bounds layout_
@@ -1309,15 +1317,45 @@ single phase may be assumed to carry. It is selected per charger via the
 config-flow option `hsem_ev_planned_load_charger_phase_topology` (and its
 `ev_second` counterpart):
 
-| Topology                 | `σ_e` | Meaning                                                                                                                        |
-| ------------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `single_phase` (default) | `1`   | Unknown or single-phase charger. Every phase is checked as if it carries the whole EV command.                                 |
-| `three_phase_balanced`   | `1/3` | Charger confirmed to draw balanced current on L1/L2/L3, so the balanced `gi-ge` split already assigns its full physical share. |
+| Topology                 | `σ_e` | Meaning                                                                                                                                                               |
+| ------------------------ | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `single_phase` (default) | `1`   | Unknown or single-phase charger. Every phase is checked as if it carries the whole EV command.                                                                        |
+| `three_phase_balanced`   | `1/3` | Charger confirmed to draw balanced current on L1/L2/L3, so the balanced `gi-ge` split already assigns its full physical share.                                        |
+| `three_phase_switchable` | exact | Auto-phase-switching charger (issue #1001): starts at 6 A on one phase, switches to balanced three-phase above its one-phase ceiling. See the mode-aware model below. |
 
 `single_phase` is the default and the fallback for any missing or
 unrecognised stored value (`normalize_ev_phase_topology` in
 `utils/phase_power.py`), so an entry written before this option existed keeps
 the original worst-case envelope.
+
+**`three_phase_switchable` (issue #1001)**: an auto-phase-switching charger
+(go-e, Zaptec, Easee, …) has a _single-phase_ minimum (230 V × 6 A = 1380 W)
+and a _three-phase_ nameplate (e.g. 230 V × 16 A × 3 = 11 kW). The MILP
+models it with two semi-integer amp variables and a phase-mode binary per
+slot (`planner/milp/_ev_amp_lattice.py`):
+
+```text
+ev_c[t] = k1·a1[t] + k3·a3[t]
+a1[t] + rated·mode3[t] ≤ rated      (one-phase amps only when mode3 = 0)
+a3[t] − rated·mode3[t] ≤ 0          (three-phase amps only when mode3 = 1)
+```
+
+so the executable power set is exactly `{a × 230 V} ∪ {a × 690 V}` for whole
+amps in `[min_amp, rated_amp]` — the 3681–4139 W gap between the one-phase
+ceiling and the three-phase minimum is never planned. The per-phase fuse
+rows stay **exact** without a static share: the worst case any single phase
+may carry is `230 V × (a1[t] + a3[t])` (the one-phase portion can land
+entirely on one phase; the three-phase portion contributes its balanced
+third, already counted in `gi/3`), so the rows add
+`(2/3) · 230 · avail_h / 1000` per commanded one-phase amp and nothing for
+three-phase amps. Power-aware read-out sites (published-ceiling conversion,
+command stability, post-solve envelope validation, measured-session shares)
+derive the mode from the power itself: at or below `230 V × rated amps` the
+command is one-phase, above it three-phase
+(`ev_phase_share_for_power_w`, `switchable_power_to_current_and_power_w`,
+`charger_power_to_current_a(..., rated_current_a=...)`). Config-flow
+validation (`validate_ev_min_power_topology`) checks the minimum power on
+the single-phase basis for this topology, so 1380 W is valid.
 
 The phase share is read from one shared helper
 (`ev_phase_share` / `EVConfig.phase_share`) by all three hard per-phase sites:
@@ -1351,6 +1389,12 @@ assumed a different topology.
 - With a charger configured as `three_phase_balanced`, only one third of its
   command is charged to any one phase, and a command that fits three-phase
   headroom is never rejected for exceeding single-phase headroom.
+- With a charger configured as `three_phase_switchable` (issue #1001), the
+  per-phase rows are exact in both modes: a one-phase-mode command is
+  checked as if the whole command lands on one phase, a three-phase-mode
+  command charges exactly one third per phase, and the solver can never
+  plan the unexecutable power gap between the one-phase ceiling and the
+  three-phase minimum.
 - An unrecognised or missing stored topology resolves to `single_phase`; a
   relaxed envelope is never applied by accident.
 
@@ -1376,7 +1420,12 @@ amps = floor(power_w / (230 * phases))
 
 `phases` is `PHASE_COUNT` (3) for a charger configured
 `three_phase_balanced`, otherwise `1` — the same topology read by the hard
-per-phase fuse rows above (`normalize_ev_phase_topology`). Rounding is
+per-phase fuse rows above (`normalize_ev_phase_topology`). For a
+`three_phase_switchable` charger (issue #1001) the conversion is
+mode-aware: at or below the one-phase ceiling (`230 V × rated amps`) the
+command converts on one phase, above it on three phases, so the published
+ceiling always maps back to the planned watts under the charger's
+auto-switching rule. Rounding is
 **always down**: a partial amp the charger cannot be commanded to draw must
 never be published as available headroom. HSEM owns the economics (how many
 amps are worth drawing this slot); the external controller keeps final

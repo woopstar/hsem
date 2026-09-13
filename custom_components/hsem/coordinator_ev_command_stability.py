@@ -60,12 +60,16 @@ from custom_components.hsem.utils.datetime_utils import slot_contains, utc_key
 from custom_components.hsem.utils.logger import async_log
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.phase_power import (
+    EV_TOPOLOGY_SINGLE_PHASE,
+    EV_TOPOLOGY_THREE_PHASE_BALANCED,
+    EV_TOPOLOGY_THREE_PHASE_SWITCHABLE,
     charger_current_to_power_w,
     charger_max_power_to_current_a,
     charger_power_to_current_a,
     ev_min_start_current_a,
+    switchable_power_to_current_and_power_w,
 )
-from custom_components.hsem.utils.units import slot_duration_hours
+from custom_components.hsem.utils.units import GRID_PHASE_VOLTAGE, slot_duration_hours
 
 
 @dataclass(frozen=True)
@@ -324,10 +328,34 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
 
         A command below the charger's minimum operating power cannot start a
         session, so it collapses to zero rather than being published as an
-        unrunnable trickle.
+        unrunnable trickle.  A switchable charger's round-trip is mode-aware
+        (issue #1001): one-phase amps below its one-phase ceiling,
+        three-phase amps above it.
         """
         if power_w <= 1e-9:
             return 0.0
+        if (
+            spec.topology == EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
+            and spec.rated_current_a > 0
+        ):
+            amps, executable_w = switchable_power_to_current_and_power_w(
+                power_w, spec.rated_current_a
+            )
+            if amps > spec.rated_current_a:
+                # Clamp to the nameplate, recovering the executable power of
+                # the rated amps in the mode the original command selected.
+                amps = spec.rated_current_a
+                executable_w = charger_current_to_power_w(
+                    amps,
+                    (
+                        EV_TOPOLOGY_THREE_PHASE_BALANCED
+                        if power_w > GRID_PHASE_VOLTAGE * spec.rated_current_a
+                        else EV_TOPOLOGY_SINGLE_PHASE
+                    ),
+                )
+            if amps < spec.min_current_a:
+                return 0.0
+            return executable_w
         amps = min(
             charger_power_to_current_a(power_w, spec.topology),
             spec.rated_current_a,
@@ -382,8 +410,12 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
         if previous_w <= 1e-9 or spec.deadband_a <= 0.0:
             return planned_w
 
-        planned_a = charger_power_to_current_a(planned_w, spec.topology)
-        previous_a = charger_power_to_current_a(previous_w, spec.topology)
+        planned_a = charger_power_to_current_a(
+            planned_w, spec.topology, rated_current_a=spec.rated_current_a or None
+        )
+        previous_a = charger_power_to_current_a(
+            previous_w, spec.topology, rated_current_a=spec.rated_current_a or None
+        )
         # HSEM publishes a *ceiling*, not a setpoint: a charger that follows
         # PV surplus itself only has to react when the ceiling drops below
         # what it is already drawing.  Raising the ceiling merely grants

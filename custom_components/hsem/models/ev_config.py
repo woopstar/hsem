@@ -99,7 +99,10 @@ class EVConfig:
     #: :data:`~custom_components.hsem.utils.phase_power.EV_PHASE_TOPOLOGIES`.
     #: ``single_phase`` is the safe default and reproduces the pre-feature
     #: worst-case envelope, where every hard per-phase row assumes the whole
-    #: EV command lands on that one phase.
+    #: EV command lands on that one phase.  ``three_phase_switchable``
+    #: (issue #1001) models an auto-phase-switching charger: single-phase
+    #: minimum, three-phase nameplate, and a MILP phase-mode binary so the
+    #: per-phase rows stay exact in both modes.
     charger_phase_topology: str = EV_TOPOLOGY_SINGLE_PHASE
     #: Permission (not a command) for the Huawei house battery to discharge
     #: while this EV charges.  Huawei exposes one global discharge cap, so an

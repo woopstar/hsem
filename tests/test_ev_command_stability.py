@@ -371,3 +371,67 @@ def test_published_command_is_remembered_for_the_next_cycle() -> None:
     harness._ev_last_command_w["ev"] = 16 * AMP_W
     _run(harness, SLOT_START + timedelta(minutes=5), _cfg(), _live())
     assert harness._ev_last_command_w["ev"] == pytest.approx(16 * AMP_W)
+
+
+# ---------------------------------------------------------------------------
+# Auto-phase-switching chargers (issue #1001): mode-aware quantisation
+# ---------------------------------------------------------------------------
+
+
+def _cfg_switchable(**overrides: float) -> SensorConfig:
+    """Build a config for an 11 kW auto-phase-switching charger."""
+    cfg = _cfg()
+    cfg.ev_planned_load_charger_phase_topology = "three_phase_switchable"
+    for key, value in overrides.items():
+        setattr(cfg, key, value)
+    return cfg
+
+
+def test_switchable_one_phase_command_quantises_on_one_phase() -> None:
+    """2300 W is exactly 10 A one-phase — published unchanged."""
+    rec = _rec(ev_power_w=2300.0)
+    harness = _Harness([rec])
+    published = _run(
+        harness, SLOT_START + timedelta(minutes=1), _cfg_switchable(), _live()
+    )
+    assert published == pytest.approx(2300.0)
+
+
+def test_switchable_gap_command_floors_to_one_phase_ceiling() -> None:
+    """4000 W sits in the 3681–4139 W gap — floors to 16 A one-phase (3680 W)."""
+    rec = _rec(ev_power_w=4000.0)
+    harness = _Harness([rec])
+    published = _run(
+        harness, SLOT_START + timedelta(minutes=1), _cfg_switchable(), _live()
+    )
+    assert published == pytest.approx(3680.0)
+
+
+def test_switchable_three_phase_command_quantises_on_three_phases() -> None:
+    """6900 W is exactly 10 A three-phase — published unchanged."""
+    rec = _rec(ev_power_w=6900.0)
+    harness = _Harness([rec])
+    published = _run(
+        harness, SLOT_START + timedelta(minutes=1), _cfg_switchable(), _live()
+    )
+    assert published == pytest.approx(6900.0)
+
+
+def test_switchable_command_is_clamped_to_three_phase_nameplate() -> None:
+    """15 kW exceeds the 11 kW (16 A x 3) nameplate — clamps to 11040 W."""
+    rec = _rec(ev_power_w=15_000.0)
+    harness = _Harness([rec])
+    published = _run(
+        harness, SLOT_START + timedelta(minutes=1), _cfg_switchable(), _live()
+    )
+    assert published == pytest.approx(11_040.0)
+
+
+def test_switchable_minimum_is_the_single_phase_floor() -> None:
+    """A 1000 W command cannot start the charger — collapses to zero."""
+    rec = _rec(ev_power_w=1000.0)
+    harness = _Harness([rec])
+    published = _run(
+        harness, SLOT_START + timedelta(minutes=1), _cfg_switchable(), _live()
+    )
+    assert published == pytest.approx(0.0)

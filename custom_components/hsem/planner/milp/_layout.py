@@ -95,6 +95,8 @@ def build_milp_column_layout(
     fuse_active: bool,
     ev_amp_widths: Sequence[int | None] | None = None,
     ev_on_widths: Sequence[int | None] | None = None,
+    ev_amp3_widths: Sequence[int | None] | None = None,
+    ev_mode3_widths: Sequence[int | None] | None = None,
 ) -> MilpColumnLayout:
     """Return the canonical column layout for one MILP model.
 
@@ -116,6 +118,12 @@ def build_milp_column_layout(
             binary block (``ev_{i}_on``), or ``None`` to omit it for that
             EV (full discharge permission, or no discharge permission at
             all — both cases need no conditional binary).
+        ev_amp3_widths: Per-EV width of the three-phase-mode amp block
+            (``ev_{i}_amps3``) for an auto-phase-switching charger
+            (issue #1001), or ``None`` to omit the block for that EV.
+        ev_mode3_widths: Per-EV width of the phase-mode binary block
+            (``ev_{i}_mode3``) for an auto-phase-switching charger, or
+            ``None`` to omit it for that EV.
 
     Returns:
         A validated :class:`MilpColumnLayout`.
@@ -147,6 +155,12 @@ def build_milp_column_layout(
         amp_width = ev_amp_widths[ev_idx] if ev_amp_widths is not None else None
         if amp_width:
             blocks.append((f"ev_{ev_idx}_amps", amp_width))
+        amp3_width = ev_amp3_widths[ev_idx] if ev_amp3_widths is not None else None
+        if amp3_width:
+            blocks.append((f"ev_{ev_idx}_amps3", amp3_width))
+        mode3_width = ev_mode3_widths[ev_idx] if ev_mode3_widths is not None else None
+        if mode3_width:
+            blocks.append((f"ev_{ev_idx}_mode3", mode3_width))
         on_width = ev_on_widths[ev_idx] if ev_on_widths is not None else None
         if on_width:
             blocks.append((f"ev_{ev_idx}_on", on_width))
@@ -356,6 +370,12 @@ class MilpOffsets(NamedTuple):
     #: binary, or ``None`` when that EV needs no conditional binary (full
     #: discharge permission, or none at all).
     ev_on_offsets: list[int | None]
+    #: Per-EV offset of the ``ev_{i}_amps3`` three-phase-mode amp block for
+    #: an auto-phase-switching charger (issue #1001), or ``None``.
+    ev_amp3_offsets: list[int | None]
+    #: Per-EV offset of the ``ev_{i}_mode3`` phase-mode binary for an
+    #: auto-phase-switching charger, or ``None``.
+    ev_mode3_offsets: list[int | None]
 
 
 def derive_milp_offsets(layout: MilpColumnLayout, num_evs: int) -> MilpOffsets:
@@ -388,6 +408,14 @@ def derive_milp_offsets(layout: MilpColumnLayout, num_evs: int) -> MilpOffsets:
         ],
         ev_on_offsets=[
             layout.offset(f"ev_{i}_on") if layout.has(f"ev_{i}_on") else None
+            for i in range(num_evs)
+        ],
+        ev_amp3_offsets=[
+            layout.offset(f"ev_{i}_amps3") if layout.has(f"ev_{i}_amps3") else None
+            for i in range(num_evs)
+        ],
+        ev_mode3_offsets=[
+            layout.offset(f"ev_{i}_mode3") if layout.has(f"ev_{i}_mode3") else None
             for i in range(num_evs)
         ],
     )

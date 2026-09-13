@@ -63,7 +63,10 @@ from custom_components.hsem.utils.logger import (
     set_hsem_verbose,
 )
 from custom_components.hsem.utils.misc import ema_filter
-from custom_components.hsem.utils.phase_power import normalize_ev_phase_topology
+from custom_components.hsem.utils.phase_power import (
+    charger_max_power_to_current_a,
+    normalize_ev_phase_topology,
+)
 from custom_components.hsem.utils.prediction_tracker import PredictionTracker
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
@@ -723,7 +726,18 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             topology = normalize_ev_phase_topology(
                 self._cfg.ev_planned_load_charger_phase_topology
             )
-            target_kw, max_current_a = ocpp_charge_target(power_w, topology)
+            target_kw, max_current_a = ocpp_charge_target(
+                power_w,
+                topology,
+                rated_current_a=charger_max_power_to_current_a(
+                    max(
+                        float(self._cfg.ev_planned_load_charger_power_kw or 0.0),
+                        0.0,
+                    )
+                    * 1000.0,
+                    topology,
+                ),
+            )
             await ocpp_server.update_charge_target(
                 cpid,
                 target_kw,
@@ -748,7 +762,16 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 self._cfg.ev_second_planned_load_charger_phase_topology
             )
             second_target_kw, second_max_current_a = ocpp_charge_target(
-                second_power_w, second_topology
+                second_power_w,
+                second_topology,
+                rated_current_a=charger_max_power_to_current_a(
+                    max(
+                        float(self._cfg.ev_second_planned_load_charger_power_kw or 0.0),
+                        0.0,
+                    )
+                    * 1000.0,
+                    second_topology,
+                ),
             )
             await ocpp_second_server.update_charge_target(
                 second_cpid,
