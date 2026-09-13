@@ -961,6 +961,21 @@ class TestEvSoCEconomicsRecompute:
         assert coordinator._ev_soc_economics_last_computed == last_computed
 
     @pytest.mark.asyncio
+    async def test_force_bypasses_throttle(self) -> None:
+        """A fresh plan (force=True) recomputes even inside the throttle window."""
+        now = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
+        coordinator, executor_mock = _coordinator_with_executor(now)
+        coordinator._last_planner_input = PlannerInput(now_iso=now.isoformat())
+        coordinator._ev_soc_economics_last_computed = now - timedelta(
+            seconds=EV_SOC_ECONOMICS_RECOMPUTE_MIN_SECONDS - 1
+        )
+
+        await coordinator._maybe_compute_ev_soc_economics(now, 0, force=True)
+
+        executor_mock.assert_called_once()
+        assert coordinator._ev_soc_economics_last_computed == now
+
+    @pytest.mark.asyncio
     async def test_recomputes_after_throttle_window_elapses(self) -> None:
         """Once the throttle window has elapsed, a recompute runs again."""
         now = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
