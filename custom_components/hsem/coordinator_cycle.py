@@ -25,6 +25,7 @@ from custom_components.hsem.coordinator_helpers import (
     _StaleUpdateCycle,
     apply_load_forecast_hold,
     assess_load_forecast,
+    ev_is_managed,
     ocpp_charge_target,
 )
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
@@ -720,7 +721,11 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             )
             target_kw, max_current_a = ocpp_charge_target(power_w, topology)
             await ocpp_server.update_charge_target(
-                cpid, target_kw, max_current_a=max_current_a, now=now
+                cpid,
+                target_kw,
+                max_current_a=max_current_a,
+                now=now,
+                managed=ev_is_managed(self._cfg, live, is_second=False),
             )
 
         ocpp_second_server = getattr(self, "_ocpp_second_server", None)
@@ -746,6 +751,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 second_target_kw,
                 max_current_a=second_max_current_a,
                 now=now,
+                managed=ev_is_managed(self._cfg, live, is_second=True),
             )
 
         async_log("debug", "------ HSEM Coordinator: update cycle complete")

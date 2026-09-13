@@ -48,6 +48,7 @@ from datetime import datetime
 
 from custom_components.hsem.const import EV_COMMAND_DEADBAND_COST_BYPASS_FRACTION
 from custom_components.hsem.coordinator_helpers import (
+    ev_is_managed,
     ev_site_power_budget_w,
     write_ev_slot_commands,
 )
@@ -102,10 +103,7 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
             key,
             label,
             is_second,
-            enabled,
             ev_live,
-            connected,
-            smart_charging,
             deadband_a,
             stub_floor_minutes,
             topology,
@@ -119,10 +117,7 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
                 "ev",
                 "EV",
                 False,
-                cfg.ev_planned_load_enabled,
                 live.ev,
-                live.ev_planned_load_connected,
-                live.ev_planned_load_smart_charging_enabled,
                 cfg.ev_planned_load_command_deadband_a,
                 cfg.ev_planned_load_stub_floor_minutes,
                 cfg.ev_planned_load_charger_phase_topology,
@@ -136,10 +131,7 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
                 "ev_second",
                 "EV2",
                 True,
-                cfg.ev_second_planned_load_enabled,
                 live.ev_second,
-                live.ev_second_planned_load_connected,
-                live.ev_second_planned_load_smart_charging_enabled,
                 cfg.ev_second_planned_load_command_deadband_a,
                 cfg.ev_second_planned_load_stub_floor_minutes,
                 cfg.ev_second_planned_load_charger_phase_topology,
@@ -170,7 +162,7 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
                     min_current_a=ev_min_start_current_a(
                         max(float(min_power_w or 0.0), 0.0), topology
                     ),
-                    managed=bool(enabled) and bool(connected) and bool(smart_charging),
+                    managed=ev_is_managed(cfg, live, is_second=is_second),
                     ev_live=ev_live,
                     capacity_kwh=max(float(capacity_kwh or 0.0), 0.0),
                     target_soc_pct=float(target_soc_pct or 0.0),
