@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from custom_components.hsem.models.live_state import EVLiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import is_material_planned_energy_kwh
 
 if TYPE_CHECKING:
@@ -194,6 +195,41 @@ def _primary_battery_hold(rec: HourlyRecommendation) -> bool:
     return not is_material_planned_energy_kwh(
         rec.batteries_charged_kwh
     ) and not is_material_planned_energy_kwh(rec.batteries_discharged_kwh)
+
+
+def _primary_battery_cap_hold(rec: HourlyRecommendation) -> bool:
+    """Return whether a hold-derived 0 W discharge cap applies to this slot.
+
+    :func:`_primary_battery_hold` *derives* an explicit hold from a
+    near-zero energy pair.  That derivation is only valid for a slot whose
+    label carries no independent discharge intent.  A
+    ``batteries_discharge_mode`` slot is exempt (issue #983):
+
+    - ``soc_simulation.py`` relabels only ``force_batteries_discharge`` /
+      ``force_export`` to wait when the simulated discharge is zero.  A
+      schedule discharge window deliberately keeps its label — it is the
+      user's configured window, not a forced action — so a solved discharge
+      that merely rounds below the materiality threshold still reads as an
+      explicit hold here, which it is not.
+    - The slot executes as ``MaximizeSelfConsumption``, where this cap is a
+      *ceiling* the firmware ramps within from live house load, not a
+      setpoint.  A 0 W cap disables the exact behaviour the mode exists for
+      and contradicts :class:`~utils.recommendations.Recommendations`'
+      own contract for it ("discharge battery to cover house load").
+
+    Without the exemption the cap flips between 0 W and the rated maximum
+    every time the re-solved current slot crosses the 0.001 kWh boundary,
+    while the published recommendation — and therefore every existing
+    hysteresis layer — never changes.
+
+    Only the discharge-cap decision uses this wrapper.  Every other 0 W
+    path is independent of it and keeps immediate precedence: EV permission
+    gating, the solar-charge-only cap, the wait-mode reserve floor, the SoC
+    reserve guard, and the read-only/degraded gates.
+    """
+    if rec.recommendation == Recommendations.BatteriesDischargeMode.value:
+        return False
+    return _primary_battery_hold(rec)
 
 
 def _held_planned_export_is_authoritative(rec: HourlyRecommendation) -> bool:
