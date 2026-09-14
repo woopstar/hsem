@@ -1044,6 +1044,7 @@
           "batteries_charge_solar": "Charge from Solar",
           "ev_smart_charging": "EV Smart Charging",
           "batteries_discharge_mode": "Discharge",
+          "batteries_discharge_window_mode": "Discharge Window",
           "force_batteries_discharge": "Force Discharge",
           "force_export": "Force Export",
           "batteries_wait_mode": "Wait"
@@ -1096,6 +1097,7 @@
           "batteries_charge_solar": "Charge from Solar",
           "ev_smart_charging": "EV Smart Charging",
           "batteries_discharge_mode": "Discharge",
+          "batteries_discharge_window_mode": "Discharge Window",
           "force_batteries_discharge": "Force Discharge",
           "force_export": "Force Export",
           "batteries_wait_mode": "Wait"

@@ -278,8 +278,9 @@ def _primary_battery_cap_hold(rec: HourlyRecommendation) -> bool:
 
     :func:`_primary_battery_hold` *derives* an explicit hold from a
     near-zero energy pair.  That derivation is only valid for a slot whose
-    label carries no independent discharge intent.  A
-    ``batteries_discharge_mode`` slot is exempt (issue #983):
+    label carries no independent discharge intent.  Both
+    ``batteries_discharge_mode`` and ``batteries_discharge_window_mode``
+    are exempt (issues #983, #1005):
 
     - ``soc_simulation.py`` relabels only ``force_batteries_discharge`` /
       ``force_export`` to wait when the simulated discharge is zero.  A
@@ -303,7 +304,10 @@ def _primary_battery_cap_hold(rec: HourlyRecommendation) -> bool:
     gating, the solar-charge-only cap, the wait-mode reserve floor, the SoC
     reserve guard, and the read-only/degraded gates.
     """
-    if rec.recommendation == Recommendations.BatteriesDischargeMode.value:
+    if rec.recommendation in (
+        Recommendations.BatteriesDischargeMode.value,
+        Recommendations.BatteriesDischargeWindowMode.value,
+    ):
         return False
     return _primary_battery_hold(rec)
 

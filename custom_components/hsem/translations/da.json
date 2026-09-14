@@ -1110,6 +1110,7 @@
           "batteries_charge_solar": "Oplad fra sol",
           "ev_smart_charging": "EV smart opladning",
           "batteries_discharge_mode": "Aflad",
+          "batteries_discharge_window_mode": "Afladningsvindue",
           "force_batteries_discharge": "Tving afladning",
           "force_export": "Tving eksport",
           "batteries_wait_mode": "Vent"
@@ -1174,6 +1175,7 @@
           "batteries_charge_solar": "Oplad fra sol",
           "ev_smart_charging": "EV smart opladning",
           "batteries_discharge_mode": "Aflad",
+          "batteries_discharge_window_mode": "Afladningsvindue",
           "force_batteries_discharge": "Tving afladning",
           "force_export": "Tving eksport",
           "batteries_wait_mode": "Vent"

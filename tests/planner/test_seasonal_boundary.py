@@ -99,11 +99,11 @@ class TestSeasonalBoundaryUnit:
     """``apply_optimization_strategy`` must use each slot's own calendar month."""
 
     def test_aug31_summer_sep1_winter(self):
-        """Slots on Aug 31 (summer) → Discharge; Sep 1 (winter) → Wait.
+        """Slots on Aug 31 (summer) → DischargeWindow; Sep 1 (winter) → Wait.
 
         ``now`` is Aug 31 (month 8, summer).  The old code used
         ``now.month`` for every slot, so Sep 1 slots (month 9, winter)
-        would incorrectly get ``BatteriesDischargeMode``.
+        would incorrectly get ``BatteriesDischargeWindowMode``.
         """
         now = datetime(2024, 8, 31, 0, 0, tzinfo=_TZ)
 
@@ -122,10 +122,11 @@ class TestSeasonalBoundaryUnit:
 
         for slot in aug31_slots:
             assert (
-                slot.recommendation == Recommendations.BatteriesDischargeMode.value
+                slot.recommendation
+                == Recommendations.BatteriesDischargeWindowMode.value
             ), (
                 f"Aug 31 slot {slot.start.isoformat()} should be "
-                f"BatteriesDischargeMode (summer), got {slot.recommendation}"
+                f"BatteriesDischargeWindowMode (summer), got {slot.recommendation}"
             )
 
         for slot in sep1_slots:
@@ -137,7 +138,7 @@ class TestSeasonalBoundaryUnit:
     def test_single_day_no_regression(self):
         """A single-day plan (no boundary crossing) must behave as before.
 
-        All slots on Aug 31 (summer) → ``BatteriesDischargeMode``.
+        All slots on Aug 31 (summer) → ``BatteriesDischargeWindowMode``.
         """
         now = datetime(2024, 8, 31, 0, 0, tzinfo=_TZ)
         slots = [_make_slot(now + timedelta(hours=h)) for h in range(24)]
@@ -153,10 +154,11 @@ class TestSeasonalBoundaryUnit:
 
         for slot in slots:
             assert (
-                slot.recommendation == Recommendations.BatteriesDischargeMode.value
+                slot.recommendation
+                == Recommendations.BatteriesDischargeWindowMode.value
             ), (
                 f"Aug 31 slot {slot.start.isoformat()} should be "
-                f"BatteriesDischargeMode (summer), got {slot.recommendation}"
+                f"BatteriesDischargeWindowMode (summer), got {slot.recommendation}"
             )
 
     def test_winter_to_summer_boundary(self):
@@ -192,10 +194,11 @@ class TestSeasonalBoundaryUnit:
 
         for slot in oct1_slots:
             assert (
-                slot.recommendation == Recommendations.BatteriesDischargeMode.value
+                slot.recommendation
+                == Recommendations.BatteriesDischargeWindowMode.value
             ), (
                 f"Oct 1 slot {slot.start.isoformat()} should be "
-                f"BatteriesDischargeMode (summer), got {slot.recommendation}"
+                f"BatteriesDischargeWindowMode (summer), got {slot.recommendation}"
             )
 
 

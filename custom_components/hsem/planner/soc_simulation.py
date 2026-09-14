@@ -382,8 +382,9 @@ def simulate_soc(
         # If the slot has a FORCE discharge/export recommendation but
         # no discharge actually happened (battery empty or PV surplus),
         # clear it to wait_mode.  Schedule discharge windows
-        # (BatteriesDischargeMode) stay as-is — they represent the
-        # user's configured windows, not a forced action.
+        # (BatteriesDischargeMode / BatteriesDischargeWindowMode) stay
+        # as-is — they represent the user's configured windows, not a
+        # forced action.
         if discharge <= 1e-9 and slot.recommendation in (
             Recommendations.ForceBatteriesDischarge.value,
             Recommendations.ForceExport.value,
@@ -396,6 +397,17 @@ def simulate_soc(
                 discharge,
             )
             slot.recommendation = Recommendations.BatteriesWaitMode.value
+
+        # A held discharge-window slot that actually discharged is an
+        # active discharge slot; promote the label so dashboards and
+        # downstream logic see the real behaviour.  If it stayed at zero
+        # it keeps the window label (issue #1005).
+        if (
+            discharge > 1e-9
+            and slot.recommendation
+            == Recommendations.BatteriesDischargeWindowMode.value
+        ):
+            slot.recommendation = Recommendations.BatteriesDischargeMode.value
 
         log_planner(
             "debug",

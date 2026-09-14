@@ -79,6 +79,22 @@ class Recommendations(Enum):
                export only incidental PV surplus
     """
 
+    BatteriesDischargeWindowMode = "batteries_discharge_window_mode"
+    """Inside a scheduled discharge window, but the planner holds the battery.
+
+    This slot sits in a user-configured or seasonal discharge window, yet
+    the solved plan schedules no battery discharge this interval (prices
+    are not high enough or the energy is reserved for a later slot).
+    Self-consumption discharge is still allowed: the inverter runs in
+    MaximizeSelfConsumption and the firmware may ramp discharge up to the
+    ceiling to cover live house load.
+
+    Battery:   hold by plan; may self-consume up to max_discharge_per_slot
+    House:     covered by battery first, grid for remainder
+    Grid:      import only if battery cannot fully cover house load;
+               export only incidental PV surplus
+    """
+
     ForceBatteriesDischarge = "force_batteries_discharge"
     """Force battery discharge — cover house AND export excess to grid.
 
@@ -124,11 +140,17 @@ class Recommendations(Enum):
 DISCHARGE_RECS: frozenset[str] = frozenset(
     {
         Recommendations.BatteriesDischargeMode.value,
+        Recommendations.BatteriesDischargeWindowMode.value,
         Recommendations.ForceBatteriesDischarge.value,
         Recommendations.ForceExport.value,
     }
 )
-"""All modes where the battery discharges energy."""
+"""All modes where the battery discharges energy.
+
+Includes ``batteries_discharge_window_mode`` so that discharge-window
+logic (concentration, window hysteresis, replacement-price derivation)
+treats the held-window label as part of the discharge schedule.
+"""
 
 CHARGE_RECS: frozenset[str] = frozenset(
     {
