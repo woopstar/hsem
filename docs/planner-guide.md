@@ -398,17 +398,18 @@ Each `PlannedSlot` in the output list covers one time interval and carries:
 
 #### Recommendation values
 
-| Value                       | Meaning                                                                                                                                                                                         |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `batteries_charge_grid`     | Charge battery from grid (forced by price signal)                                                                                                                                               |
-| `batteries_charge_solar`    | Battery is charging from PV surplus                                                                                                                                                             |
-| `batteries_discharge_mode`  | Battery discharges to cover house load during high-price window                                                                                                                                 |
-| `force_batteries_discharge` | Forced discharge (excess export to grid)                                                                                                                                                        |
-| `force_export`              | Export price above import/threshold (planner), or — at runtime only — a negative import price combined with a profitable live export price and excess battery export enabled                    |
-| `ev_smart_charging`         | EV charging load is allocated to this slot (planner or runtime resolver)                                                                                                                        |
-| `batteries_wait_mode`       | Battery idle by default; when **Wait mode behaviour** is set to _Self-consumption with reserve_, normal household self-consumption is allowed using energy above the planner's required reserve |
-| `time_passed`               | Slot is in the past — no recommendation applied                                                                                                                                                 |
-| `missing_input_entities`    | Required HA entities were unavailable when this slot was scheduled                                                                                                                              |
+| Value                             | Meaning                                                                                                                                                                                         |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `batteries_charge_grid`           | Charge battery from grid (forced by price signal)                                                                                                                                               |
+| `batteries_charge_solar`          | Battery is charging from PV surplus                                                                                                                                                             |
+| `batteries_discharge_mode`        | Battery discharges to cover house load during high-price window                                                                                                                                 |
+| `batteries_discharge_window_mode` | Inside a scheduled discharge window, but the planner solved zero discharge this slot; self-consumption discharge is still allowed                                                               |
+| `force_batteries_discharge`       | Forced discharge (excess export to grid)                                                                                                                                                        |
+| `force_export`                    | Export price above import/threshold (planner), or — at runtime only — a negative import price combined with a profitable live export price and excess battery export enabled                    |
+| `ev_smart_charging`               | EV charging load is allocated to this slot (planner or runtime resolver)                                                                                                                        |
+| `batteries_wait_mode`             | Battery idle by default; when **Wait mode behaviour** is set to _Self-consumption with reserve_, normal household self-consumption is allowed using energy above the planner's required reserve |
+| `time_passed`                     | Slot is in the past — no recommendation applied                                                                                                                                                 |
+| `missing_input_entities`          | Required HA entities were unavailable when this slot was scheduled                                                                                                                              |
 
 ---
 
@@ -440,14 +441,14 @@ recommendation it is not changed by later rules in the same layer.
 
 **Seasonal optimisation fill** (`apply_optimization_strategy`) — for all remaining `None` slots:
 
-| Priority | Condition                                                                        | Recommendation             |
-| -------- | -------------------------------------------------------------------------------- | -------------------------- |
-| 1        | Export price > import price AND export price ≥ `export_min_price`                | `force_export`             |
-| 2        | Actual PV surplus (`estimated_net_consumption_kwh < 0`) and battery not full     | `batteries_charge_solar`   |
-| 3        | Future `force_batteries_discharge` slot exists AND battery > required            | `batteries_wait_mode`      |
-| 4        | Slot's month is a winter month                                                   | `batteries_wait_mode`      |
-| 5        | Slot's month is a summer month, actual PV surplus                                | `batteries_charge_solar`   |
-| 5        | Slot's month is a summer month, no PV surplus (zero or positive net consumption) | `batteries_discharge_mode` |
+| Priority | Condition                                                                        | Recommendation                    |
+| -------- | -------------------------------------------------------------------------------- | --------------------------------- |
+| 1        | Export price > import price AND export price ≥ `export_min_price`                | `force_export`                    |
+| 2        | Actual PV surplus (`estimated_net_consumption_kwh < 0`) and battery not full     | `batteries_charge_solar`          |
+| 3        | Future `force_batteries_discharge` slot exists AND battery > required            | `batteries_wait_mode`             |
+| 4        | Slot's month is a winter month                                                   | `batteries_wait_mode`             |
+| 5        | Slot's month is a summer month, actual PV surplus                                | `batteries_charge_solar`          |
+| 5        | Slot's month is a summer month, no PV surplus (zero or positive net consumption) | `batteries_discharge_window_mode` |
 
 > **Note:** `BatteriesChargeSolar` is only assigned when there is a genuine PV
 > surplus (negative net consumption). A small positive house load with zero PV
@@ -512,15 +513,16 @@ Charging is turned off (or a session with no HSEM control, e.g.
 `fixed_session_only`) from recreating its own `ev_smart_charging`
 permission.
 
-| Current recommendation      | Positive EV command? | Result                                |
-| --------------------------- | -------------------- | ------------------------------------- |
-| `batteries_charge_solar`    | Yes                  | → `ev_smart_charging`                 |
-| `batteries_wait_mode`       | Yes                  | → `ev_smart_charging`                 |
-| `batteries_discharge_mode`  | Yes                  | → `ev_smart_charging` (EV label wins) |
-| `batteries_charge_grid`     | Yes                  | Kept — grid charge takes priority     |
-| `force_batteries_discharge` | Yes                  | Kept — forced export takes priority   |
-| `force_export`              | Yes                  | Kept                                  |
-| `time_passed`               | Yes                  | Kept                                  |
+| Current recommendation            | Positive EV command? | Result                                |
+| --------------------------------- | -------------------- | ------------------------------------- |
+| `batteries_charge_solar`          | Yes                  | → `ev_smart_charging`                 |
+| `batteries_wait_mode`             | Yes                  | → `ev_smart_charging`                 |
+| `batteries_discharge_mode`        | Yes                  | → `ev_smart_charging` (EV label wins) |
+| `batteries_discharge_window_mode` | Yes                  | → `ev_smart_charging` (EV label wins) |
+| `batteries_charge_grid`           | Yes                  | Kept — grid charge takes priority     |
+| `force_batteries_discharge`       | Yes                  | Kept — forced export takes priority   |
+| `force_export`                    | Yes                  | Kept                                  |
+| `time_passed`                     | Yes                  | Kept                                  |
 
 ---
 
@@ -557,7 +559,7 @@ output with live sensor readings that were unknown at planning time.
    ──────────────────────────────────────────────────────── resolver boundary ──
 5. force_batteries_discharge      [excess export, planner]
 6. batteries_charge_grid          [schedule/opportunistic, planner]
-7. batteries_discharge_mode       [discharge schedule, planner]
+| 7. batteries_discharge_mode / batteries_discharge_window_mode [discharge schedule, planner]
 8. force_export                   [seasonal optimisation, planner]
 9. ev_smart_charging              [EV load labelling, planner]
 10. batteries_charge_solar        [solar surplus, planner]

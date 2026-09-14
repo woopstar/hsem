@@ -25,6 +25,7 @@ _RECOMMENDATION_OPTIONS = [
     Recommendations.BatteriesChargeGrid.value,
     Recommendations.BatteriesChargeSolar.value,
     Recommendations.BatteriesDischargeMode.value,
+    Recommendations.BatteriesDischargeWindowMode.value,
     Recommendations.BatteriesWaitMode.value,
     Recommendations.EVSmartCharging.value,
     Recommendations.ForceBatteriesDischarge.value,

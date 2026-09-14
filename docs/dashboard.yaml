@@ -256,6 +256,27 @@ views:
                     out.push([s, on], [e, on]);
                   }); return out;
                 color: "#f97316"
+              - name: Discharge Window
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: area
+                opacity: 1
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end, recommendation })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    const on = recommendation === 'batteries_discharge_window_mode' ? 1 : null;
+                    out.push([s, on], [e, on]);
+                  }); return out;
+                color: "#fdba74"
               - name: Wait
                 entity: sensor.hsem_workingmode_sensor
                 attribute: hourly_recommendations

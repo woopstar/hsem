@@ -1044,6 +1044,7 @@
           "batteries_charge_solar": "Cargar desde solar",
           "ev_smart_charging": "Carga inteligente del VE",
           "batteries_discharge_mode": "Descarga",
+          "batteries_discharge_window_mode": "Ventana de descarga",
           "force_batteries_discharge": "Forzar descarga",
           "force_export": "Forzar exportación",
           "batteries_wait_mode": "Espera"
@@ -1096,6 +1097,7 @@
           "batteries_charge_solar": "Cargar desde solar",
           "ev_smart_charging": "Carga inteligente del VE",
           "batteries_discharge_mode": "Descarga",
+          "batteries_discharge_window_mode": "Ventana de descarga",
           "force_batteries_discharge": "Forzar descarga",
           "force_export": "Forzar exportación",
           "batteries_wait_mode": "Espera"

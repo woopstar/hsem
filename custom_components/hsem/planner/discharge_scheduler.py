@@ -467,7 +467,9 @@ def apply_optimization_strategy(
     3. Future forced export pending and battery above required → ``BatteriesWaitMode``
     4. Slot's month is a winter month → ``BatteriesWaitMode``
     5. Slot's month is a summer month with solar → ``BatteriesChargeSolar``;
-       else ``BatteriesDischargeMode``
+       else ``BatteriesDischargeWindowMode`` (promoted to
+       ``BatteriesDischargeMode`` by the SoC simulation if the battery
+       actually discharges)
 
     The seasonal check (steps 4–5) uses each slot's own calendar month
     (derived from ``rec.start``), not the month of ``now``.  This means a
@@ -562,4 +564,9 @@ def apply_optimization_strategy(
             if rec.estimated_net_consumption_kwh < 0.0:
                 rec.recommendation = Recommendations.BatteriesChargeSolar.value
             else:
-                rec.recommendation = Recommendations.BatteriesDischargeMode.value
+                # Seasonal discharge-window slots start as
+                # batteries_discharge_window_mode.  The SoC simulation
+                # promotes them to batteries_discharge_mode if the battery
+                # actually discharges, so the published label reflects
+                # whether the planner is actively dispatching the slot.
+                rec.recommendation = Recommendations.BatteriesDischargeWindowMode.value

@@ -171,13 +171,9 @@ async def async_apply_battery_settings(
     primary_battery_hold = _primary_battery_cap_hold(rec)
     held_planned_export = _held_planned_export_is_authoritative(rec)
 
-    # Huawei exposes ONE global battery discharge limit, shared with every EV.
-    # An EV that is charging or about to be commanded (planned power > 0)
-    # must have explicitly opted in via force_max_discharge_power before the
-    # primary battery may discharge at all in this slot — permission, never a
-    # command on its own (issue #797).  This replaces the old house-only-load
-    # heuristic (issue #592): the cap is now the planner's own solved
-    # discharge rate for this slot, not a derived historical/live-net guess.
+    # The global discharge limit is shared with every EV. An EV that is
+    # charging or planned must opt in via force_max_discharge_power before the
+    # primary battery may discharge (issues #797, #592).
     relevant_evs = tuple(
         (name, ev, planned_power_w)
         for name, ev, planned_power_w in (
@@ -429,7 +425,10 @@ async def async_apply_battery_settings(
             else:
                 working_mode = WorkingModes.MaximizeSelfConsumption.value
 
-        case Recommendations.BatteriesDischargeMode.value:
+        case (
+            Recommendations.BatteriesDischargeMode.value
+            | Recommendations.BatteriesDischargeWindowMode.value
+        ):
             working_mode = WorkingModes.MaximizeSelfConsumption.value
 
         case Recommendations.BatteriesChargeSolar.value:

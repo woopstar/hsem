@@ -26,6 +26,7 @@ set_temporary_override:
             - "batteries_charge_grid"
             - "batteries_charge_solar"
             - "batteries_discharge_mode"
+            - "batteries_discharge_window_mode"
             - "batteries_wait_mode"
             - "ev_smart_charging"
             - "force_batteries_discharge"

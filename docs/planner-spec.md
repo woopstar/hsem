@@ -57,7 +57,7 @@ in the same layer must not change it.
 
 **Discharge schedule windows** (highest priority in layer 1):
 
-1. Slot falls inside a configured discharge window and price spread is met → `batteries_discharge_mode`
+1. Slot falls inside a configured discharge window and price spread is met → `batteries_discharge_window_mode` (promoted to `batteries_discharge_mode` by the SoC simulation if the battery actually discharges)
 
 **Charge schedule windows** (before each discharge window):
 
@@ -85,7 +85,7 @@ in the same layer must not change it.
    "Zero-charge labels" below, issue #989).
 3. Future `force_batteries_discharge` AND battery > required → `batteries_wait_mode`
 4. Slot's month is a winter month → `batteries_wait_mode`
-5. Slot's month is a summer month, actual PV surplus → `batteries_charge_solar`; else → `batteries_discharge_mode`
+5. Slot's month is a summer month, actual PV surplus → `batteries_charge_solar`; else → `batteries_discharge_window_mode` (promoted to `batteries_discharge_mode` if the battery actually discharges)
 
 > **Note:** `BatteriesChargeSolar` is only assigned when there is a genuine PV
 > surplus (negative net consumption). A small positive house load with zero PV
@@ -127,11 +127,11 @@ The following must never be overridden by the EV label:
 `batteries_charge_grid`, `force_batteries_discharge`, `force_export`,
 `time_passed`, `missing_input_entities`.
 
-`batteries_discharge_mode` is **not** in this protected set — it is intentionally
-overrideable. When an EV is scheduled to charge in a slot that is also inside a
-discharge window, the `ev_smart_charging` label wins so dashboards correctly reflect
-EV activity rather than showing a discharge recommendation during an active charge
-session.
+`batteries_discharge_mode` and `batteries_discharge_window_mode` are **not** in this
+protected set — they are intentionally overrideable. When an EV is scheduled to
+charge in a slot that is also inside a discharge window, the `ev_smart_charging`
+label wins so dashboards correctly reflect EV activity rather than showing a
+discharge recommendation during an active charge session.
 
 #### Layer 3 — Runtime resolver (current slot only, at hardware-write time)
 
@@ -160,9 +160,9 @@ Applied to the current slot immediately before hardware writes, using live senso
 
 - A slot assigned `batteries_charge_grid` by the planner must never be relabelled by
   the EV load labelling pass (layer 2).
-- A slot assigned `batteries_discharge_mode` **may** be relabelled `ev_smart_charging`
-  by the EV load labelling pass when `ev_charger_calculated_power > 1e-9` or
-  `ev_second_charger_calculated_power > 1e-9`.
+- A slot assigned `batteries_discharge_mode` or `batteries_discharge_window_mode`
+  **may** be relabelled `ev_smart_charging` by the EV load labelling pass when
+  `ev_charger_calculated_power > 1e-9` or `ev_second_charger_calculated_power > 1e-9`.
 - A slot with `ev_charger_calculated_power > 1e-9` (or
   `ev_second_charger_calculated_power > 1e-9`) and recommendation
   `batteries_charge_solar` must be relabelled `ev_smart_charging` after layer 2.
@@ -2056,7 +2056,8 @@ Two categories are defined:
 - **Charge-type**: `batteries_charge_grid`, `batteries_charge_solar`,
   `ev_smart_charging`
 - **Discharge-type**: `batteries_discharge_mode`,
-  `force_batteries_discharge`, `force_export`
+  `batteries_discharge_window_mode`, `force_batteries_discharge`,
+  `force_export`
 - **Neutral**: `batteries_wait_mode`, `time_passed`,
   `missing_input_entities`, `None`
 
@@ -2200,23 +2201,23 @@ self-consumption-with-reserve too — see issue #954 below.
 
 The hold is _derived_ from a near-zero energy pair, which is only a valid
 reading of "the plan explicitly holds the battery" for a slot whose label
-carries no independent discharge intent. `batteries_discharge_mode` does
-carry one, so the **discharge-cap decision** uses
-`applier_caps._primary_battery_cap_hold(rec)` — `_primary_battery_hold(rec)`
-**and** the recommendation is not `batteries_discharge_mode` — instead:
+carries no independent discharge intent. `batteries_discharge_mode` and
+`batteries_discharge_window_mode` both carry one, so the **discharge-cap decision**
+uses `applier_caps._primary_battery_cap_hold(rec)` — `_primary_battery_hold(rec)`
+**and** the recommendation is not one of those two — instead:
 
 - The SoC simulation relabels only `force_batteries_discharge` /
   `force_export` to `batteries_wait_mode` when the simulated discharge is
-  zero (`planner/soc_simulation.py`). A schedule discharge window
-  deliberately keeps its label: it is the user's configured window, not a
-  forced action. A solved discharge that merely rounds below
-  `PLANNED_ENERGY_ROUNDING_KWH` therefore still satisfies the derived hold
-  without the plan ever having decided to hold.
-- `batteries_discharge_mode` executes as `MaximizeSelfConsumption`, where
-  the cap is a **ceiling the firmware ramps within** from live house load,
-  not a setpoint. A 0 W cap disables the behaviour the mode exists for and
-  contradicts the mode's own contract ("discharge battery to cover house
-  load").
+  zero (`planner/soc_simulation.py`). A schedule discharge window deliberately
+  keeps its label (or the new `batteries_discharge_window_mode` label introduced
+  in issue #1005): it is the user's configured window, not a forced action. A
+  solved discharge that merely rounds below `PLANNED_ENERGY_ROUNDING_KWH`
+  therefore still satisfies the derived hold without the plan ever having
+  decided to hold.
+- Both discharge-mode labels execute as `MaximizeSelfConsumption`, where the cap
+  is a **ceiling the firmware ramps within** from live house load, not a setpoint.
+  A 0 W cap disables the behaviour the mode exists for and contradicts the mode's
+  own contract ("discharge battery to cover house load").
 
 Without the exemption the cap flips between 0 W and the rated maximum every
 time the re-solved current slot crosses the materiality boundary, while the

@@ -35,7 +35,7 @@ from custom_components.hsem.utils.recommendations import Recommendations
 
 _UTC = UTC
 _CHARGE_SOLAR = Recommendations.BatteriesChargeSolar.value
-_DISCHARGE = Recommendations.BatteriesDischargeMode.value
+_DISCHARGE_WINDOW = Recommendations.BatteriesDischargeWindowMode.value
 
 
 def _slot(
@@ -84,7 +84,7 @@ class TestZeroPvSolarChargeMislabel:
             required_capacity=0.0,
             months_winter=[1, 2, 3, 4, 10, 11, 12],
         )
-        assert slot.recommendation == _DISCHARGE, (
+        assert slot.recommendation == _DISCHARGE_WINDOW, (
             "Slot with 0.08 kWh house load and zero PV must not be "
             "mislabeled as BatteriesChargeSolar"
         )
@@ -101,7 +101,7 @@ class TestZeroPvSolarChargeMislabel:
             required_capacity=0.0,
             months_winter=[1, 2, 3, 4, 10, 11, 12],
         )
-        assert slot.recommendation == _DISCHARGE
+        assert slot.recommendation == _DISCHARGE_WINDOW
 
     def test_actual_pv_surplus_is_charge_solar(self) -> None:
         """A slot with negative net consumption (real PV surplus) must
@@ -135,8 +135,8 @@ class TestZeroPvSolarChargeMislabel:
             months_winter=[1, 2, 3, 4, 10, 11, 12],
         )
         # The two zero-PV evening slots must not be solar-charged
-        assert slots[0].recommendation == _DISCHARGE
-        assert slots[1].recommendation == _DISCHARGE
+        assert slots[0].recommendation == _DISCHARGE_WINDOW
+        assert slots[1].recommendation == _DISCHARGE_WINDOW
         # The midday PV-surplus slot must be solar-charged
         assert slots[2].recommendation == _CHARGE_SOLAR
         assert slots[2].batteries_charged_kwh == 0.5
