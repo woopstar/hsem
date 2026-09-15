@@ -223,6 +223,7 @@ def _build_constraints(
         pv_avail=pv_avail,
         base_load=base_load,
         available_slot_hours=available_slot_hours,
+        slot_hours=slot_hours,
         session_dc_by_ev=session_dc_by_ev,
         session_ev_indices=session_ev_indices,
         session_slots_set=session_slots_set,

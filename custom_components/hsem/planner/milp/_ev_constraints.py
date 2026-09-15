@@ -17,6 +17,7 @@ import numpy as np
 from custom_components.hsem.planner.milp._ev_amp_lattice import (
     target_cap_activation_quantum_dc,
 )
+from custom_components.hsem.utils.units import remaining_slot_fraction
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
@@ -34,6 +35,7 @@ def add_ev_and_session_constraint_rows(
     pv_avail: np.ndarray,  # type: ignore[name-defined]
     base_load: np.ndarray,  # type: ignore[name-defined]
     available_slot_hours: np.ndarray,  # type: ignore[name-defined]
+    slot_hours: float,
     session_dc_by_ev: dict[int, dict[int, float]],
     session_ev_indices: list[int],
     session_slots_set: set[int],
@@ -78,11 +80,12 @@ def add_ev_and_session_constraint_rows(
         and ev.target_kwh > ev.initial_soc_kwh + 1e-9
         and not ev.charge_past_target
     )
-    # Surplus-only rows: for charge-past-target EVs, ev_c[t]/eff ≤ max(0, pv[t] - base_load[t])
+    # Surplus-only rows: for charge-past-target EVs,
+    # ev_c[t]/eff ≤ remaining_surplus[t]
     ev_surplus_rows = sum(1 for ev in active_evs if ev.charge_past_target) * m
     # Battery-first rows (issue #775): for charge-past-target EVs, the EV may
     # only absorb PV surplus that the house battery cannot take.  One shared
-    # row per slot: ec[t] + Σ ev_c[t]/eff ≤ max(0, pv[t] - base_load[t]).
+    # row per slot: ec[t] + Σ ev_c[t]/eff ≤ remaining_surplus[t].
     ev_battery_first_rows = sum(1 for ev in active_evs if ev.charge_past_target) * m
     ev_total_rows = (
         ev_soc_rows
@@ -110,6 +113,24 @@ def add_ev_and_session_constraint_rows(
         first_past_target_ev = next(
             (i for i, e in enumerate(active_evs) if e.charge_past_target), None
         )
+
+        def _remaining_surplus_kwh(t: int) -> float:
+            """Return the PV surplus slot *t* has still to deliver, in kWh.
+
+            The forecast surplus is a *full-width* slot energy, but the live
+            slot is usually partly elapsed and the charger command is derived
+            from the energy allocated to the minutes that remain
+            (``_ev_power_writeout._write_ev_power_fields_to_slots``).  Bounding
+            a partly elapsed slot with a full slot's surplus would therefore
+            let the command reach ``full_slot_surplus / remaining_hours`` —
+            a multiple of the surplus actually arriving — and the difference
+            would come from the battery or the grid, which the surplus-only
+            rule exists to forbid (issue #1012).
+            """
+            full_slot_surplus = max(float(pv_avail[t] - base_load[t]), 0.0)
+            return full_slot_surplus * remaining_slot_fraction(
+                float(available_slot_hours[t]), slot_hours
+            )
 
         def _pinned_session_dc(ev_idx: int, ev: EVConfig, t: int) -> float | None:
             """Return DC energy a live session pins into slot *t*, else ``None``.
@@ -235,9 +256,12 @@ def add_ev_and_session_constraint_rows(
                     ev_row += 1
 
             # Surplus-only constraint for charge-past-target EVs:
-            # ev_c[t] / charger_eff ≤ max(0, pv[t] - base_load[t])
+            # ev_c[t] / charger_eff ≤ remaining_surplus[t]
             # This ensures past-target charging ONLY uses genuine PV
-            # surplus — never battery discharge or grid import.
+            # surplus — never battery discharge or grid import.  The bound is
+            # the surplus still to arrive, so a partly elapsed live slot
+            # cannot hand the charger a whole slot's surplus to draw in the
+            # minutes that remain (issue #1012).
             if ev.charge_past_target:
                 for t in range(m):
                     # Session-pinned slots are uncontrollable demand, not
@@ -245,13 +269,13 @@ def add_ev_and_session_constraint_rows(
                     # apply to them and would otherwise be infeasible whenever
                     # a live session runs without forecast PV surplus.
                     if _pinned_session_dc(ev_idx, ev, t) is None:
-                        surplus_kwh = max(pv_avail[t] - base_load[t], 0.0)
+                        surplus_kwh = _remaining_surplus_kwh(t)
                         A_ub[ev_row + t, ev_off + t] = 1.0 / ev.charger_efficiency
                         b_ub[ev_row + t] = surplus_kwh
                 ev_row += m
 
             # Battery-first constraint for charge-past-target EVs (issue #775):
-            #   ec[t] + Σ_ev ev_c[t] / charger_eff ≤ max(0, pv[t] - base_load[t])
+            #   ec[t] + Σ_ev ev_c[t] / charger_eff ≤ remaining_surplus[t]
             # The house battery must take its share of the slot's PV surplus
             # BEFORE the EV absorbs any.  Without this, a charge-past-target
             # EV valued at its avoided-future-import cost (issue #630) can
@@ -266,7 +290,7 @@ def add_ev_and_session_constraint_rows(
             # keep their deadline benefit and may charge ahead of the battery.
             if ev.charge_past_target and ev_idx == first_past_target_ev:
                 for t in range(m):
-                    surplus_kwh = max(pv_avail[t] - base_load[t], 0.0)
+                    surplus_kwh = _remaining_surplus_kwh(t)
                     A_ub[ev_row + t, ec_off + t] = 1.0
                     for other_idx, other in enumerate(active_evs):
                         if other.charge_past_target:
