@@ -201,6 +201,26 @@ A past-target EV's command is a PV-surplus ceiling, so neither post-plan hold ap
 slot-entry hold (`_hold_current_slot_ev_power(follow_plan=True)`, selected from
 `EVConfig.charge_past_target`) and the command deadband both follow the plan.
 
+### OCPP: is a car plugged in / is this EV managed? (issue #1018)
+
+```python
+# ALWAYS use these — never re-derive the status set or the config-only check
+from custom_components.hsem.custom_sensors.ocpp_commands import connector_has_car
+from custom_components.hsem.coordinator_helpers import (
+    ev_is_managed, ev_management_enabled, ocpp_management_flags,
+)
+```
+
+The coordinator passes both flags to `update_charge_target` via
+`**ocpp_management_flags(cfg, live, is_second=...)`.
+
+`ev_is_managed` = `ev_management_enabled` (feature on and smart charging on) plus
+the HA car-connected reading. That entity can blip for one cycle while the car
+stays plugged in, so the OCPP layer takes `connector_has_car(session)` (the
+charger's own connector status) as ground truth: an EV with management enabled
+stays managed while the charger reports a car, and a planned zero stays enforced.
+Never write a 0 A profile onto a connector with no car (issue #920 standing block).
+
 ### Sensor unit normalization (issue #945)
 
 ```python
