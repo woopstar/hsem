@@ -79,6 +79,25 @@ _PROFILE_RETRY_INTERVAL_S = 60
 # car-side scheduled charging), which is normal and must never be flagged.
 _STALL_STATUSES = frozenset({"SuspendedEVSE", "Faulted", "Unavailable"})
 
+# Connector-level StatusNotification values that mean a car is plugged in
+# (OCPP 1.6 ChargePointStatus). "Available" means the connector is free;
+# "Reserved", "Unavailable" and "Faulted" say nothing about a car, so they are
+# deliberately excluded (issue #1018).
+_CAR_PLUGGED_IN_STATUSES = frozenset(
+    {"Preparing", "Charging", "SuspendedEVSE", "SuspendedEV", "Finishing"}
+)
+
+
+def connector_has_car(session: ChargerSession) -> bool:
+    """Return whether the charger itself reports a car plugged into the connector.
+
+    The charger's own connector status is ground truth for occupancy, and it is
+    tracked separately from a Home Assistant "connected" entity, which can blip
+    for a single cycle while the car stays plugged in (issue #1018).
+    """
+    return session.status in _CAR_PLUGGED_IN_STATUSES
+
+
 # Minimum time a charger must stay in one of _STALL_STATUSES with an open
 # transaction before it's considered stalled (issue #894). Long enough to
 # not flag a transient flap (e.g. a few seconds in "SuspendedEVSE" before
