@@ -17,6 +17,7 @@ from custom_components.hsem.planner.milp._layout import (
     MilpBoundsBuilder,
     MilpColumnLayout,
 )
+from custom_components.hsem.utils.units import remaining_slot_fraction
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
@@ -106,9 +107,8 @@ def build_bounds(
                 # minutes of charge, so the flexible ceiling is scaled down
                 # accordingly.  Without this the optimiser reserves a full
                 # slot's energy that the charger cannot physically deliver.
-                duration_scale = min(
-                    max(float(available_slot_hours[t]) / max(slot_hours, 1e-9), 0.0),
-                    1.0,
+                duration_scale = remaining_slot_fraction(
+                    float(available_slot_hours[t]), slot_hours
                 )
                 ev_bounds.append((0.0, ev.max_charge_per_slot * duration_scale))
         bounds_builder.set(f"ev_{ev_idx}_charge", ev_bounds)

@@ -78,6 +78,26 @@ def slot_duration_hours(slot_start: datetime, slot_end: datetime) -> float:
     return timedelta_to_hours(slot_end - slot_start)
 
 
+def remaining_slot_fraction(available_hours: float, slot_hours: float) -> float:
+    """Return the fraction of a slot that is still ahead, clamped to [0, 1].
+
+    A partly elapsed current slot can only deliver its remaining minutes of
+    energy, so every per-slot energy budget derived from a full-width forecast
+    must be scaled by this fraction before it constrains that slot.  Canonical
+    replacement for inlining ``available_hours / slot_hours`` with its guards.
+
+    Args:
+        available_hours: Hours left in the slot (its full width for any slot
+            that has not started yet).
+        slot_hours: Full width of one slot, in hours.
+
+    Returns:
+        Remaining fraction of the slot in ``[0.0, 1.0]``; ``1.0`` for a slot
+        that has not started, smaller as the current slot elapses.
+    """
+    return min(max(available_hours / max(slot_hours, 1e-9), 0.0), 1.0)
+
+
 def hours_ahead(now: datetime, future_time: datetime) -> float:
     """Return the hours from *now* to *future_time* (≥ 0).
 

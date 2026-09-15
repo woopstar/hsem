@@ -27,7 +27,10 @@ from custom_components.hsem.utils.phase_power import (
     executable_ev_phase_kwh,
     fixed_session_phase_ac_kwh,
 )
-from custom_components.hsem.utils.units import GRID_PHASE_VOLTAGE
+from custom_components.hsem.utils.units import (
+    GRID_PHASE_VOLTAGE,
+    remaining_slot_fraction,
+)
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
@@ -141,9 +144,8 @@ def add_phase_fuse_constraints(
     for t in range(m):
         # Fraction of the slot still ahead — a partially elapsed current slot
         # can only draw its remaining minutes of power.
-        full_slot_scale = min(
-            max(float(available_slot_hours[t]) / max(slot_hours, 1e-9), 0.0),
-            1.0,
+        full_slot_scale = remaining_slot_fraction(
+            float(available_slot_hours[t]), slot_hours
         )
 
         for phase_index in range(PHASE_COUNT):

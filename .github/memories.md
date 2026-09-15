@@ -170,6 +170,22 @@ dc_kwh  = ev_ac_to_dc_kwh(ac_kwh, eff)   # energy delivered to the EV battery
 
 EV charger efficiency **percentage** → fraction uses the same
 `clamp_efficiency()` as battery efficiency (never `max(pct, 1.0) / 100.0` inline).
+
+### Partly elapsed live slot (issue #1012)
+
+```python
+# ALWAYS use this — never inline available_slot_hours[t] / slot_hours with its guards
+from custom_components.hsem.utils.units import remaining_slot_fraction
+scale = remaining_slot_fraction(float(available_slot_hours[t]), slot_hours)
+```
+
+Any per-slot energy budget derived from a **full-width** forecast must be
+scaled by this fraction before it constrains the live slot. The MILP's EV
+bounds, the amp lattice, the phase-fuse rows, the session pins and the
+charge-past-target surplus rows all work in remaining-slot terms, and
+`_ev_power_writeout.py` divides the live slot's energy by the hours that
+_remain_ to produce the charger command — mixing a full-width budget into that
+chain silently multiplies the published command.
 Note: LP matrix _coefficients_ in `planner/milp/_constraints.py` and
 `_objective.py` intentionally stay as raw `1.0 / ev.charger_efficiency`
 (they are constraint coefficients, not energy conversions) — do not wrap those.
@@ -686,12 +702,22 @@ battery oscillate for the same surplus across replans.
 
 Two mechanisms enforce this (both in `planner/milp/`):
 
-1. **Shared surplus-budget constraint** (`_constraints.py`): one row per slot,
-   emitted once by the first charge-past-target EV:
-   `ec[t] + Σ ev_c[t]/η_charger ≤ max(0, pv[t] − base_load[t])`. The battery
+1. **Shared surplus-budget constraint** (`_ev_constraints.py`): one row per
+   slot, emitted once by the first charge-past-target EV:
+   `ec[t] + Σ ev_c[t]/η_charger ≤ surplus_remaining[t]`. The battery
    (`ec`) and every charge-past-target EV share the slot's PV surplus budget,
    so the EV can only use what the battery leaves. Pre-deadline (below-target)
    EVs are excluded — they keep their deadline benefit.
+
+   `surplus_remaining[t]` is `max(0, pv[t] − base_load[t])` scaled by
+   `remaining_slot_fraction(available_slot_hours[t], slot_hours)` — the surplus
+   the slot still has to deliver (issue #1012). The full-width forecast energy
+   must never bound a partly elapsed live slot: `_ev_power_writeout.py` derives
+   the charger command by dividing that slot's energy by the hours that
+   _remain_, so an un-pro-rated bound admits a command of
+   `full_slot_surplus / remaining_hours` and the excess comes from the battery
+   or the grid. The same applies to the per-EV surplus-only row.
+
 2. **Objective benefit cap** (`_objective.py`): the EV's per-kWh
    charge-past-target benefit is capped at the battery's charge credit
    (`abs(c_obj[ec_off + t])`) when the battery can absorb the full slot
