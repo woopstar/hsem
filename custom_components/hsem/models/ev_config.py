@@ -87,6 +87,17 @@ class EVConfig:
     #: to a tiny fixed tiebreaker benefit in the MILP (no future price data
     #: available).
     future_value_per_kwh: float | None = None
+    #: Per-LP-slot AC energy (kWh, full slot width) that the plan solved
+    #: *without* any charge-past-target EV already spent on the house battery
+    #: and every other EV (issue #1015). Indexed like the MILP's future slots
+    #: (``utils.datetime_utils.future_slot_indices``). Set only on
+    #: charge-past-target EVs, by
+    #: ``planner.milp._past_target_reservation.solve_milp_with_past_target_reservation``.
+    #: When set, a charge-past-target EV may only absorb PV that plan left
+    #: unused, so it can never displace the battery. ``None`` keeps the
+    #: conservative battery-first row (issue #775), which also blocks battery
+    #: grid-charging while such an EV is plugged in.
+    past_target_reserved_ac_kwh: tuple[float, ...] | None = None
     #: Current session charge power in kW, or None when EV is not actively
     #: charging.  When set, the MILP treats the first 2h of EV slots as
     #: certain demand at this power level instead of using the probabilistic

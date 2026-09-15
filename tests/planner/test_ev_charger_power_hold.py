@@ -27,10 +27,13 @@ TestHoldSessionStartsMidSlot — a session starting mid-slot captures the
                               correct one-time rate for the time that
                               genuinely remains
 TestHoldWiringThroughPlanner — PlannerInput/PlannerOutput round trip
+TestHoldFollowsPlanPastTarget — a charge-past-target EV is never held: its
+                              command is a PV-surplus ceiling (issue #1015)
 """
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime, timedelta
 
 from custom_components.hsem.models.hourly_consumption_average import (
@@ -363,3 +366,116 @@ class TestHoldWiringThroughPlanner:
         assert held_current is not None
         assert held_current.ev_charger_calculated_power == synthetic_w
         assert held_out.ev_held_power_w == synthetic_w
+
+
+# ---------------------------------------------------------------------------
+# TestHoldFollowsPlanPastTarget — issue #1015
+# ---------------------------------------------------------------------------
+
+
+class TestHoldFollowsPlanPastTarget:
+    """A charge-past-target EV publishes its fresh, surplus-bounded rate.
+
+    Its command is a PV-surplus ceiling. Holding the slot-entry rate through
+    a mid-slot cloud dip kept the charger at ~2.3 kW while the surplus fell to
+    ~1.8 kW (field logs, 2026-09-14 11:45-11:56), and the difference came from
+    the grid.
+    """
+
+    def test_fresh_lower_rate_replaces_the_held_rate(self):
+        """A cloud dip lowers the plan mid-slot — the lower rate is published."""
+        slots = _slots(current_power_w=1840.0)
+        held_start, held_w = _hold_current_slot_ev_power(
+            slots,
+            _SLOT_START + timedelta(minutes=5),
+            _SLOT_START,
+            2300.0,
+            second=False,
+            follow_plan=True,
+        )
+        assert slots[0].ev_charger_calculated_power == 1840.0
+        assert held_start is None
+        assert held_w == 0.0
+
+    def test_first_capture_holds_nothing(self):
+        slots = _slots(current_power_w=2300.0)
+        held_start, held_w = _hold_current_slot_ev_power(
+            slots, _SLOT_START, None, 0.0, second=False, follow_plan=True
+        )
+        assert slots[0].ev_charger_calculated_power == 2300.0
+        assert held_start is None
+        assert held_w == 0.0
+
+    def test_second_ev_follows_plan_independently(self):
+        slots = [
+            PlannedSlot(
+                start=_SLOT_START,
+                end=_SLOT_END,
+                ev_charger_calculated_power=730.0,
+                ev_second_charger_calculated_power=1200.0,
+            )
+        ]
+        held_start, held_w = _hold_current_slot_ev_power(
+            slots, _SLOT_START, _SLOT_START, 2300.0, second=True, follow_plan=True
+        )
+        assert slots[0].ev_second_charger_calculated_power == 1200.0
+        assert slots[0].ev_charger_calculated_power == 730.0
+        assert (held_start, held_w) == (None, 0.0)
+
+
+def _past_target_planner_input(
+    now_iso: str,
+    *,
+    ev_held_slot_start: datetime | None = None,
+    ev_held_power_w: float = 0.0,
+) -> PlannerInput:
+    """A full house battery, a sunny morning and an EV above its target SoC."""
+    base = _make_planner_input(
+        now_iso,
+        ev_held_slot_start=ev_held_slot_start,
+        ev_held_power_w=ev_held_power_w,
+    )
+    return dataclasses.replace(
+        base,
+        solcast_slots=[
+            SolcastSlot(hour=h, pv_estimate=6.0 if 4 <= h <= 10 else 0.0)
+            for h in range(24)
+        ],
+        battery_soc_pct=90.0,
+        ev_planned_load_current_soc_pct=94.0,
+        ev_planned_allow_charge_past_target_soc=True,
+    )
+
+
+class TestPastTargetHoldWiringThroughPlanner:
+    """run_planner never applies the slot-entry hold to a past-target EV."""
+
+    def test_held_input_is_ignored_for_a_past_target_ev(self):
+        """The mirror of ``test_held_input_overrides_freshly_computed_value``.
+
+        The same synthetic held rate that a deadline-driven EV publishes is
+        discarded for a past-target EV, which keeps its freshly solved rate
+        and reports nothing held.
+        """
+        now_iso = "2024-06-15T06:05:00+00:00"
+        now = datetime.fromisoformat(now_iso)
+        fresh_out = run_planner(_past_target_planner_input(now_iso))
+        fresh = next((s for s in fresh_out.slots if s.start <= now < s.end), None)
+        assert fresh is not None
+        assert fresh.ev_charger_calculated_power > 1e-9, (
+            "Test setup expects the past-target EV to charge from surplus in "
+            "the current slot; adjust the fixture if this assumption changes."
+        )
+
+        held_out = run_planner(
+            _past_target_planner_input(
+                now_iso,
+                ev_held_slot_start=fresh.start,
+                ev_held_power_w=fresh.ev_charger_calculated_power + 1234.0,
+            )
+        )
+        held = next((s for s in held_out.slots if s.start <= now < s.end), None)
+        assert held is not None
+        assert held.ev_charger_calculated_power == fresh.ev_charger_calculated_power
+        assert held_out.ev_held_slot_start is None
+        assert held_out.ev_held_power_w == 0.0

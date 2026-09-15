@@ -107,6 +107,7 @@ def _hold_current_slot_ev_power(
     held_power_w: float,
     *,
     second: bool = False,
+    follow_plan: bool = False,
 ) -> tuple[datetime | None, float]:
     """Freeze the current slot's EV charger command at its slot-entry rate.
 
@@ -145,11 +146,21 @@ def _hold_current_slot_ev_power(
         second: If ``True``, operate on
             ``ev_second_charger_calculated_power``; otherwise
             ``ev_charger_calculated_power``.
+        follow_plan: Publish the freshly solved rate and hold nothing. Set
+            for a charge-past-target EV (issue #1015): its command is a PV
+            surplus ceiling, so freezing the slot-entry rate through a
+            mid-slot cloud dip would make up the difference from the grid.
+            The degenerate tail this hold exists for cannot arise there —
+            the surplus row bounds the live slot's energy by the surplus
+            still to come, so the command never exceeds the surplus power
+            (issue #1012).
 
     Returns:
         The ``(slot_start, power_w)`` to persist and pass back in on the
         next solve.
     """
+    if follow_plan:
+        return None, 0.0
     attr = (
         "ev_second_charger_calculated_power"
         if second

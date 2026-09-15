@@ -20,7 +20,7 @@ from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.planner._scipy_probe import (  # noqa: F401
     is_scipy_available,
 )
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import future_slot_indices
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 
@@ -246,9 +246,7 @@ def solve_milp(
     # ------------------------------------------------------------------
     # Identify future (active) vs. past (fixed-zero) slot indices
     # ------------------------------------------------------------------
-    future_mask = [as_tz(s.end, now.tzinfo) > now for s in slots]
-    # Indices of future slots in the full slot list
-    future_idx = [i for i, m in enumerate(future_mask) if m]
+    future_idx = future_slot_indices((s.end for s in slots), now)
 
     if not future_idx:
         return None

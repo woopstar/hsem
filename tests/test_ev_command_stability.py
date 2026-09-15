@@ -278,6 +278,108 @@ def test_zero_stub_floor_minutes_disables_suppression() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Charge-past-target EVs follow the plan (issue #1015)
+# ---------------------------------------------------------------------------
+
+
+def _past_target_cfg() -> SensorConfig:
+    """Config with charge-past-target enabled for the primary EV."""
+    cfg = _cfg()
+    cfg.ev.allow_charge_past_target_soc = True
+    return cfg
+
+
+def test_past_target_small_reduction_is_not_held() -> None:
+    """A past-target ceiling drops with the surplus instead of being held.
+
+    Holding 16 A against a 14 A surplus plan would draw the difference from
+    the grid; the same 2 A reduction is held for a below-target EV
+    (``test_small_reduction_is_held``).
+    """
+    rec = _rec(ev_power_w=14 * AMP_W)
+    harness = _Harness([rec])
+    harness._ev_last_command_w["ev"] = 16 * AMP_W
+    published = _run(
+        harness,
+        SLOT_START + timedelta(minutes=5),
+        _past_target_cfg(),
+        _live(soc_pct=94.0),
+    )
+    assert published == pytest.approx(14 * AMP_W)
+
+
+def test_past_target_is_not_held_when_prices_are_flat() -> None:
+    """The cost bypass cannot release a past-target hold, so none is taken.
+
+    Mirrors ``test_equally_priced_alternative_keeps_the_hold``: with equal
+    prices the bypass never fires, which is exactly why a past-target EV
+    must not be held at all.
+    """
+    now = SLOT_START + timedelta(minutes=5)
+    live_slot = _rec(import_price=0.35, ev_power_w=14 * AMP_W)
+    next_slot = _rec(
+        start=SLOT_END,
+        end=SLOT_END + timedelta(minutes=15),
+        import_price=0.35,
+        ev_power_w=10 * AMP_W,
+    )
+    harness = _Harness([live_slot, next_slot])
+    harness._ev_last_command_w["ev"] = 16 * AMP_W
+    assert _run(harness, now, _past_target_cfg(), _live(soc_pct=94.0)) == pytest.approx(
+        14 * AMP_W
+    )
+
+
+def test_past_target_zero_stops_in_the_slot_tail() -> None:
+    """A past-target zero is never suppressed, even with a live session."""
+    rec = _rec(ev_power_w=0.0)
+    harness = _Harness([rec])
+    harness._ev_last_command_w["ev"] = 16 * AMP_W
+    now = SLOT_END - timedelta(seconds=23)
+    assert _run(harness, now, _past_target_cfg(), _live(soc_pct=94.0)) == pytest.approx(
+        0.0
+    )
+
+
+def test_setting_alone_does_not_disable_the_deadband() -> None:
+    """Below target the EV is deadline-driven, so the deadband still holds."""
+    rec = _rec(ev_power_w=14 * AMP_W)
+    harness = _Harness([rec])
+    harness._ev_last_command_w["ev"] = 16 * AMP_W
+    published = _run(
+        harness,
+        SLOT_START + timedelta(minutes=5),
+        _past_target_cfg(),
+        _live(soc_pct=75.0),
+    )
+    assert published == pytest.approx(16 * AMP_W)
+
+
+def test_above_target_without_the_setting_keeps_the_deadband() -> None:
+    """Being above target is not past-target mode unless the setting is on."""
+    rec = _rec(ev_power_w=14 * AMP_W)
+    harness = _Harness([rec])
+    harness._ev_last_command_w["ev"] = 16 * AMP_W
+    published = _run(
+        harness, SLOT_START + timedelta(minutes=5), _cfg(), _live(soc_pct=94.0)
+    )
+    assert published == pytest.approx(16 * AMP_W)
+
+
+@pytest.mark.parametrize(
+    ("soc_pct", "expected"),
+    [(79.9, False), (80.0, True), (94.0, True), (100.0, True), (None, False)],
+)
+def test_past_target_predicate(soc_pct: float | None, expected: bool) -> None:
+    """Past-target needs the setting and a known SoC at or above target."""
+    harness = _Harness([_rec()])
+    live = _live(soc_pct=80.0)
+    live.ev.effective_soc_pct = soc_pct
+    (spec, _second) = harness._resolve_ev_command_specs(_past_target_cfg(), live)
+    assert harness._ev_is_past_target(spec) is expected
+
+
+# ---------------------------------------------------------------------------
 # Safety clamps always win over stability
 # ---------------------------------------------------------------------------
 

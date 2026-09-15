@@ -190,6 +190,33 @@ Note: LP matrix _coefficients_ in `planner/milp/_constraints.py` and
 `_objective.py` intentionally stay as raw `1.0 / ev.charger_efficiency`
 (they are constraint coefficients, not energy conversions) — do not wrap those.
 
+### Aligning per-slot data with a MILP solve (issue #1015)
+
+```python
+# ALWAYS use this — never re-derive `as_tz(s.end, now.tzinfo) > now` inline
+from custom_components.hsem.utils.datetime_utils import future_slot_indices
+future_idx = future_slot_indices((s.end for s in slots), now)  # LP index t -> slot
+```
+
+`solve_milp` enumerates exactly these slots as LP indices, so anything that maps
+a solve's output back onto LP rows (e.g. the charge-past-target reservation in
+`planner/milp/_past_target_reservation.py`) must use the same helper.
+
+### Charge-past-target is a two-stage solve (issue #1015)
+
+`candidate_generator.py` calls `solve_milp_with_past_target_reservation`, not
+`solve_milp`. While a charge-past-target EV is active it first solves without
+it, reserves the battery/other-EV energy per slot on
+`EVConfig.past_target_reserved_ac_kwh`, and caps the EV at the PV left unused.
+`ec[t]` is the battery's TOTAL charge (grid + PV share one column), so no single
+linear row can both let the battery grid-charge and stop the EV displacing it.
+A direct `solve_milp` call without a reservation keeps the conservative
+battery-first row — safe, but it blocks battery grid-charging while such an EV
+is plugged in. The #775 objective cap is skipped in reservation mode.
+A past-target EV's command is a PV-surplus ceiling, so neither post-plan hold applies to it: the
+slot-entry hold (`_hold_current_slot_ev_power(follow_plan=True)`, selected from
+`EVConfig.charge_past_target`) and the command deadband both follow the plan.
+
 ### Sensor unit normalization (issue #945)
 
 ```python

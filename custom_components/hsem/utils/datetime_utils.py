@@ -31,6 +31,7 @@ so that all timezone normalisation is routed through this module.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta, tzinfo
 
 import homeassistant.util.dt as dt_util
@@ -160,6 +161,24 @@ def as_tz(value: datetime, tz: tzinfo | None) -> datetime:
         ``microsecond=0``.
     """
     return value.astimezone(tz).replace(microsecond=0)
+
+
+def future_slot_indices(slot_ends: Iterable[datetime], now: datetime) -> list[int]:
+    """Return the indices of slots that have not yet ended at *now*.
+
+    The MILP's LP index ``t`` enumerates exactly these slots, in order, so
+    ``future_slot_indices(...)[t]`` maps an LP index back to the full slot list.
+    Any caller that aligns per-slot data with a MILP solve must use this rather
+    than re-deriving the filter, or the two will drift.
+
+    Args:
+        slot_ends: End datetime of every slot, in slot order.
+        now: Timezone-aware current datetime.
+
+    Returns:
+        Ascending indices of slots whose end lies strictly after *now*.
+    """
+    return [i for i, end in enumerate(slot_ends) if as_tz(end, now.tzinfo) > now]
 
 
 def utc_now_iso() -> str:
