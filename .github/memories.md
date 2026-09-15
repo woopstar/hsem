@@ -197,6 +197,9 @@ linear row can both let the battery grid-charge and stop the EV displacing it.
 A direct `solve_milp` call without a reservation keeps the conservative
 battery-first row — safe, but it blocks battery grid-charging while such an EV
 is plugged in. The #775 objective cap is skipped in reservation mode.
+A past-target EV's command is a PV-surplus ceiling, so neither post-plan hold applies to it: the
+slot-entry hold (`_hold_current_slot_ev_power(follow_plan=True)`, selected from
+`EVConfig.charge_past_target`) and the command deadband both follow the plan.
 
 ### Sensor unit normalization (issue #945)
 

@@ -3266,6 +3266,17 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
       is published immediately — never a stale non-zero hold.
     - Crossing into a new current slot always re-evaluates from scratch.
 
+    **A charge-past-target EV is never held** (issue #1015). Its command is a
+    PV-surplus ceiling, so freezing the slot-entry rate through a mid-slot
+    cloud dip makes up the difference from the grid — in the field the
+    charger stayed at ~2.3 kW while the surplus fell to ~1.8 kW. The MILP's
+    own EV configs (`EVConfig.charge_past_target`) select these EVs, and
+    `_hold_current_slot_ev_power(..., follow_plan=True)` publishes the fresh
+    rate and holds nothing. The degenerate tail the hold exists for cannot
+    arise there: the surplus rows bound the live slot's energy by the surplus
+    still to come (issue #1012), so the command never exceeds the surplus
+    power.
+
     The hold state (`ev_held_slot_start` / `ev_held_power_w`, and the
     `ev_second_*` equivalents) is threaded through `PlannerInput` →
     `PlannerOutput` and persisted by the coordinator across solves — the
@@ -3323,6 +3334,10 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
     recomputation would have produced.
   - `winner.cost == final_output.cost` still holds — the hold only mutates
     the display/command wattage field.
+  - A charge-past-target EV is never held: a fed-back held rate is ignored,
+    the fresh surplus-bounded rate is published and nothing is held, while a
+    deadline-driven EV in the same situation still republishes its held rate
+    (issue #1015).
 
 ### EV charger command stability (post-plan command layer)
 
@@ -3387,7 +3402,8 @@ the "charger follows PV itself" premise above does not hold — and the cost
 bypass cannot release it, because it prices a hold as energy shifted between
 slots while past-target energy is not being shifted; on flat prices the bypass
 never fires. A past-target command therefore follows the plan in both
-directions, before the deadband and the stop suppression are consulted.
+directions, before the deadband and the stop suppression are consulted — and
+the planner's slot-entry hold (invariant 14) does not apply to it either.
 Missing SoC telemetry is not past-target (the planner refuses to plan such an
 EV anyway, issue #988).
 
