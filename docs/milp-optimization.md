@@ -274,7 +274,19 @@ $$
 \frac{\mathrm{ev\_c}_v[t]}{\eta_{\mathrm{charger}}^{(v)}} \leq \max\bigl(0,\; \mathrm{pv\_avail}[t] - \mathrm{base\_load}[t]\bigr)
 $$
 
-This constraint ensures charge-past-target EVs only consume **genuine PV surplus** — never battery discharge or grid import. It is added for EVs where `charge_past_target=True` (EV already at user-configured target SoC but `allow_charge_past_target_soc` is enabled and SoC < 100 %). The house battery charges first (benefit ~$p_{\mathrm{imp}}$), then export at good prices (benefit $p_{\mathrm{exp}}$), and only when both are saturated does the EV get the remaining surplus.
+This constraint ensures charge-past-target EVs only consume **genuine PV surplus** — never battery discharge or grid import. It is added for EVs where `charge_past_target=True` (EV already at user-configured target SoC but `allow_charge_past_target_soc` is enabled and SoC < 100 %). The bound is pro-rated by the remaining fraction of a partly elapsed live slot (issue #1012).
+
+**Shared battery-first budget (issue #775, #1015):**
+
+A per-slot surplus cap alone cannot stop a past-target EV from taking surplus the house battery would have stored while the battery refills from cheap grid — the EV would then draw from grid in all but name. And because `ec[t]` is the battery's _total_ charge (grid- and PV-sourced energy share one column), a shared row $ec[t] + \sum_v \mathrm{ev\_c}_v[t]/\eta_{\mathrm{charger}}^{(v)} \le S[t]$ caps **all** battery charging at the surplus, so the battery could not grid-charge while such an EV was plugged in.
+
+The production path solves the counterfactual in two stages (`planner/milp/_past_target_reservation.py`). Stage 1 solves without any charge-past-target EV and records $\mathrm{reserved}[t]$, the AC energy it spent on the battery and the other EVs. Stage 2 caps the past-target EVs at the PV stage 1 left unused:
+
+$$
+\sum_v \frac{\mathrm{ev\_c}_v[t]}{\eta_{\mathrm{charger}}^{(v)}} \leq \max\bigl(0,\; S_{\mathrm{full}}[t] - \mathrm{reserved}[t]\bigr) \cdot \mathrm{remaining\_fraction}[t]
+$$
+
+The battery then needs no row and stays free to grid-charge. The second solve runs only while a charge-past-target EV is active. A direct `solve_milp` call without a reservation keeps the conservative shared row above. See [planner-spec.md](planner-spec.md) _Battery-first for charge-past-target_.
 
 **Main fuse grid import limit (soft):**
 

@@ -17,6 +17,7 @@ import numpy as np
 from custom_components.hsem.planner.milp._ev_amp_lattice import (
     target_cap_activation_quantum_dc,
 )
+from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.units import remaining_slot_fraction
 
 if TYPE_CHECKING:
@@ -288,17 +289,61 @@ def add_ev_and_session_constraint_rows(
             # EV; every charge-past-target EV's ev_c[t] contributes to it.
             # Pre-deadline (below-target) EVs are deliberately excluded — they
             # keep their deadline benefit and may charge ahead of the battery.
+            #
+            # Reservation mode (issue #1015). ``ec[t]`` is the battery's TOTAL
+            # charge — grid- and PV-sourced share one column — so the row
+            # above caps ALL battery charging at the surplus: at night S = 0
+            # and the battery cannot grid-charge while a past-target EV is
+            # plugged in. Dropping ``ec[t]`` from the row is not enough on its
+            # own: the EV could then take surplus the battery would have
+            # stored and the battery refill from cheap grid, so the EV would
+            # draw from grid in all but name. When the two-stage solve has
+            # reserved what the no-past-target plan spent on the battery and
+            # the other EVs, the EV is instead capped at the PV that plan left
+            # unused:
+            #   Σ ev_c[t] / charger_eff ≤ max(0, S_full[t] − reserved[t])
+            #                             × remaining_fraction[t]
+            # The EV gains nothing from the battery yielding surplus, so the
+            # battery needs no row and is free to grid-charge. Session-pinned
+            # columns are excluded exactly as in the surplus-only row.
             if ev.charge_past_target and ev_idx == first_past_target_ev:
+                reserved = ev.past_target_reserved_ac_kwh
+                if reserved is not None and len(reserved) != m:
+                    log_planner(
+                        "warning",
+                        "[milp_ev] past-target reservation has %d slots for an "
+                        "LP of %d — using the battery-first row instead",
+                        len(reserved),
+                        m,
+                    )
+                    reserved = None
                 for t in range(m):
-                    surplus_kwh = _remaining_surplus_kwh(t)
-                    A_ub[ev_row + t, ec_off + t] = 1.0
-                    for other_idx, other in enumerate(active_evs):
-                        if other.charge_past_target:
-                            A_ub[
-                                ev_row + t,
-                                ev_var_offsets[other_idx] + t,
-                            ] = 1.0 / other.charger_efficiency
-                    b_ub[ev_row + t] = surplus_kwh
+                    if reserved is None:
+                        A_ub[ev_row + t, ec_off + t] = 1.0
+                        for other_idx, other in enumerate(active_evs):
+                            if other.charge_past_target:
+                                A_ub[
+                                    ev_row + t,
+                                    ev_var_offsets[other_idx] + t,
+                                ] = 1.0 / other.charger_efficiency
+                        b_ub[ev_row + t] = _remaining_surplus_kwh(t)
+                        continue
+                    ev_cols = [
+                        (ev_var_offsets[other_idx] + t, other.charger_efficiency)
+                        for other_idx, other in enumerate(active_evs)
+                        if other.charge_past_target
+                        and _pinned_session_dc(other_idx, other, t) is None
+                    ]
+                    if not ev_cols:
+                        continue
+                    for col, charger_eff in ev_cols:
+                        A_ub[ev_row + t, col] = 1.0 / charger_eff
+                    unused_full_kwh = max(
+                        float(pv_avail[t] - base_load[t]) - float(reserved[t]), 0.0
+                    )
+                    b_ub[ev_row + t] = unused_full_kwh * remaining_slot_fraction(
+                        float(available_slot_hours[t]), slot_hours
+                    )
                 ev_row += m
 
     # ------------------------------------------------------------------

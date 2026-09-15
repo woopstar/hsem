@@ -85,6 +85,8 @@ class _EvCommandSpec:
     capacity_kwh: float
     target_soc_pct: float
     deadline: datetime | None
+    #: Whether this EV may charge past its target SoC from PV surplus.
+    allow_charge_past_target: bool = False
 
 
 class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
@@ -112,6 +114,7 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
             capacity_kwh,
             target_soc_pct,
             deadline,
+            allow_charge_past_target,
         ) in (
             (
                 "ev",
@@ -126,6 +129,7 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
                 cfg.ev_planned_load_battery_capacity_kwh,
                 live.ev_planned_load_target_soc_pct,
                 live.ev_planned_load_deadline,
+                cfg.ev.allow_charge_past_target_soc,
             ),
             (
                 "ev_second",
@@ -140,6 +144,7 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
                 cfg.ev_second_planned_load_battery_capacity_kwh,
                 live.ev_second_planned_load_target_soc_pct,
                 live.ev_second_planned_load_deadline,
+                cfg.ev_second.allow_charge_past_target_soc,
             ),
         ):
             specs.append(
@@ -167,6 +172,7 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
                     capacity_kwh=max(float(capacity_kwh or 0.0), 0.0),
                     target_soc_pct=float(target_soc_pct or 0.0),
                     deadline=deadline,
+                    allow_charge_past_target=bool(allow_charge_past_target),
                 )
             )
         return specs
@@ -174,6 +180,23 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
     # ------------------------------------------------------------------
     # Predicates
     # ------------------------------------------------------------------
+
+    def _ev_is_past_target(self, spec: _EvCommandSpec) -> bool:
+        """Return whether this EV is charging past its target SoC (issue #1015).
+
+        Only then is its planned command a PV-surplus ceiling. Fails closed to
+        ``False`` on missing telemetry — the planner refuses to plan an EV
+        with an unavailable SoC anyway (issue #988), so its plan is zero.
+        """
+        if not spec.allow_charge_past_target or spec.capacity_kwh <= 1e-9:
+            return False
+        current_kwh = self._ev_effective_energy_kwh(spec.ev_live, spec.capacity_kwh)
+        if current_kwh is None:
+            return False
+        target_kwh = (
+            max(min(spec.target_soc_pct, 100.0), 0.0) / 100.0 * spec.capacity_kwh
+        )
+        return current_kwh + 1e-9 >= target_kwh
 
     def _ev_has_unmet_need(self, spec: _EvCommandSpec, now: datetime) -> bool:
         """Return whether this EV still needs energy before its deadline.
@@ -368,6 +391,16 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
         # planned load, or smart charging switched off must follow the plan
         # (including straight to zero) immediately.
         if not spec.managed:
+            return planned_w
+
+        # A charge-past-target EV may only draw PV surplus, and its planned
+        # command already *is* that surplus (issue #1015). Holding a higher,
+        # stale ceiling would make up the difference from the grid: under
+        # OCPP the profile is a hard current limit the vehicle draws up to,
+        # and the cost bypass below cannot release it — it prices a hold as
+        # energy shifted between slots, but past-target energy is not being
+        # shifted, so on flat prices the bypass never fires. Follow the plan.
+        if self._ev_is_past_target(spec):
             return planned_w
 
         if planned_w <= 1e-9:
