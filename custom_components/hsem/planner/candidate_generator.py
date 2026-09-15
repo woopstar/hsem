@@ -48,10 +48,12 @@ from custom_components.hsem.planner.candidates._mutations import (
     _copy_slots,
 )
 from custom_components.hsem.planner.cost_function import PlanCostBreakdown
+from custom_components.hsem.planner.milp._past_target_reservation import (
+    solve_milp_with_past_target_reservation,
+)
 from custom_components.hsem.planner.milp_optimizer import (
     CANDIDATE_MILP,
     is_scipy_available,
-    solve_milp,
 )
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import (
@@ -312,7 +314,7 @@ def generate_candidates(
         )
         forecast_export_reserve_kwh = _forecast_export_reserve_kwh(inp, usable_kwh)
 
-        milp_result = solve_milp(
+        milp_result = solve_milp_with_past_target_reservation(
             baseline_slots,
             now,
             current_kwh=current_kwh,
