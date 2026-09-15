@@ -631,8 +631,18 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # agnostic to whether the baseline EV planner or the MILP produced the
     # raw value, and only mutates the display/command wattage field — never
     # energy, grid-flow, or cost — so it cannot move `winner.cost`.
+    # A charge-past-target EV follows its surplus-bounded plan instead
+    # (issue #1015); the MILP's own EV configs say which EVs are in that mode.
+    past_target_is_second = {
+        config.is_second for config in ev_configs or [] if config.charge_past_target
+    }
     ev_held_slot_start, ev_held_power_w = _hold_current_slot_ev_power(
-        slots, now, inp.ev_held_slot_start, inp.ev_held_power_w, second=False
+        slots,
+        now,
+        inp.ev_held_slot_start,
+        inp.ev_held_power_w,
+        second=False,
+        follow_plan=False in past_target_is_second,
     )
     ev_second_held_slot_start, ev_second_held_power_w = _hold_current_slot_ev_power(
         slots,
@@ -640,6 +650,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         inp.ev_second_held_slot_start,
         inp.ev_second_held_power_w,
         second=True,
+        follow_plan=True in past_target_is_second,
     )
 
     # Wait-mode self-consumption reserve (issue #914): derived from the
