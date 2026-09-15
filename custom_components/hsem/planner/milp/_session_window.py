@@ -13,7 +13,10 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from custom_components.hsem.utils.logger import log_planner
-from custom_components.hsem.utils.units import slot_duration_hours
+from custom_components.hsem.utils.units import (
+    remaining_slot_fraction,
+    slot_duration_hours,
+)
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
@@ -106,9 +109,8 @@ def resolve_session_windows(
                 for t, available_hours in enumerate(available_slot_hours):
                     if hours_remaining <= 1e-9:
                         break
-                    duration_scale = min(
-                        max(float(available_hours) / max(slot_hours, 1e-9), 0.0),
-                        1.0,
+                    duration_scale = remaining_slot_fraction(
+                        float(available_hours), slot_hours
                     )
                     fixed_dc[t] = min(
                         session_power_kw

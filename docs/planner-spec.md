@@ -723,7 +723,17 @@ on the first cycle after the sensor reports again.
   point is one activation quantum away. `charge_past_target=True` still uses
   its own surplus-only mechanism instead.
 - **Surplus-only for charge-past-target**: When `charge_past_target=True`,
-  `ev_c[t]/η_charger ≤ max(0, pv[t] − base_load[t])` — charging only from PV surplus.
+  `ev_c[t]/η_charger ≤ surplus_remaining[t]` — charging only from PV surplus.
+  `surplus_remaining[t] = max(0, pv[t] − base_load[t]) × remaining_fraction[t]`,
+  where `remaining_fraction[t] = clamp(available_slot_hours[t] / slot_hours, 0, 1)`
+  is the share of the slot still ahead (issue #1012). The forecast surplus is a
+  full-width slot energy, but the published charger command is derived from the
+  energy allocated to the minutes that _remain_ in the live slot, so an
+  un-pro-rated bound would admit a command of
+  `full_slot_surplus / remaining_hours` — a multiple of the surplus actually
+  arriving, with the difference drawn from the battery or the grid.
+  `remaining_fraction[t]` is exactly `1.0` for every slot that has not started,
+  so only the live slot is affected.
   A charge-past-target EV never carries session pins (issue #988): pinned slots
   are exempt from this row, and pinning requires `fixed_session_only`, which
   `charge_past_target` excludes by construction. `resolve_session_windows()`
@@ -731,7 +741,7 @@ on the first cycle after the sensor reports again.
 - **Battery-first for charge-past-target (issue #775)**: When `charge_past_target=True`,
   the house battery must take its share of the slot's PV surplus before the EV
   absorbs any. A shared per-slot row enforces
-  `ec[t] + Σ_ev ev_c[t]/η_charger ≤ max(0, pv[t] − base_load[t])` across all
+  `ec[t] + Σ_ev ev_c[t]/η_charger ≤ surplus_remaining[t]` across all
   charge-past-target EVs, so the EV can only use surplus the battery cannot
   take. Combined with the objective-side benefit cap (below), this guarantees
   the battery fills first and the EV only absorbs the remainder.
@@ -904,7 +914,8 @@ instead of discarding a good solution outright.
   no charging allowed after the deadline.
 - When `charge_past_target=True`: `ev_c[t]` receives a tiny benefit of
   `-0.0001/η_charger` per kWh AC, but is constrained to PV surplus only
-  (`ev_c[t]/η_charger ≤ pv[t] − base_load[t]`). The house battery charges
+  (`ev_c[t]/η_charger ≤ surplus_remaining[t]`, pro-rated for a partly elapsed
+  live slot — issue #1012). The house battery charges
   first (benefit ~`p_imp`), then export at good prices (benefit `p_exp`),
   and only when both are saturated does the EV get the remaining surplus.
 
@@ -985,13 +996,13 @@ has zero cost. The LP always uses available PV to cover house load first.
 
 #### 2. Use remaining PV surplus
 
-| Priority | Action                                 | Cost coefficient                                                                                               | When taken                                                                                                                                                                                                           |
-| -------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2a       | Charge house battery                   | Physical AC draw `ec/charge_eff` enters `gi` or reduces PV export, plus cycle wear                             | Battery below `usable_kwh`, future savings justify the real input/opportunity cost                                                                                                                                   |
-| 2b       | Charge EV (pre-deadline, below target) | `-ev_penalty_cost` (benefit) + `p_imp[t]` (via grid) or `0` (via surplus)                                      | EV below target, `t ≤ D` — the **deadline benefit** forces charging; PV used first, grid import when PV insufficient                                                                                                 |
-| 2c       | Charge EV (post-deadline, past target) | **−future_value/η_charger** (benefit, capped at battery charge credit while battery has headroom — issue #775) | `t > D`, `charge_past_target=True`. Surplus-only + battery-first constraints: `ev_c/eff ≤ pv − base_load` and `ec + Σ ev_c/eff ≤ pv − base_load`. House battery fills first, then EV gets the remainder, then export |
-| 2d       | Export to grid                         | **−p_exp[t]** (revenue)                                                                                        | Battery full, EV doesn't want surplus, export price > 0                                                                                                                                                              |
-| 2e       | Curtail PV                             | `0` (free)                                                                                                     | Battery full, EV doesn't want surplus, `p_exp ≤ 0` (export costs money or is blocked)                                                                                                                                |
+| Priority | Action                                 | Cost coefficient                                                                                               | When taken                                                                                                                                                                                                                                                                          |
+| -------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2a       | Charge house battery                   | Physical AC draw `ec/charge_eff` enters `gi` or reduces PV export, plus cycle wear                             | Battery below `usable_kwh`, future savings justify the real input/opportunity cost                                                                                                                                                                                                  |
+| 2b       | Charge EV (pre-deadline, below target) | `-ev_penalty_cost` (benefit) + `p_imp[t]` (via grid) or `0` (via surplus)                                      | EV below target, `t ≤ D` — the **deadline benefit** forces charging; PV used first, grid import when PV insufficient                                                                                                                                                                |
+| 2c       | Charge EV (post-deadline, past target) | **−future_value/η_charger** (benefit, capped at battery charge credit while battery has headroom — issue #775) | `t > D`, `charge_past_target=True`. Surplus-only + battery-first constraints: `ev_c/eff ≤ surplus_remaining` and `ec + Σ ev_c/eff ≤ surplus_remaining` (pro-rated for a partly elapsed live slot — issue #1012). House battery fills first, then EV gets the remainder, then export |
+| 2d       | Export to grid                         | **−p_exp[t]** (revenue)                                                                                        | Battery full, EV doesn't want surplus, export price > 0                                                                                                                                                                                                                             |
+| 2e       | Curtail PV                             | `0` (free)                                                                                                     | Battery full, EV doesn't want surplus, `p_exp ≤ 0` (export costs money or is blocked)                                                                                                                                                                                               |
 
 #### Charge recommendation label: solar vs. grid (write-out, issue #913)
 
@@ -1081,10 +1092,13 @@ After the deadline slot `D`:
 - **Charge-past-target mode** (`charge_past_target=True`): The EV may still
   charge, but only from genuine PV surplus that would otherwise be curtailed
   or exported at near-zero prices:
-  - Surplus-only constraint: `ev_c[t]/η_charger ≤ max(0, pv[t] − base_load[t])`
+  - Surplus-only constraint: `ev_c[t]/η_charger ≤ surplus_remaining[t]`
   - **Battery-first constraint (issue #775)**: `ec[t] + Σ ev_c[t]/η_charger ≤
-max(0, pv[t] − base_load[t])` — the house battery takes its share of the
+surplus_remaining[t]` — the house battery takes its share of the
     surplus first; the EV only absorbs what the battery cannot take.
+  - Both bounds use `surplus_remaining[t]`, the surplus the slot has still to
+    deliver, so a partly elapsed live slot cannot hand the charger a whole
+    slot's surplus to draw in the minutes that remain (issue #1012).
   - Benefit: `-future_value_per_kwh/η_charger` per kWh AC (issue #630), where
     `future_value_per_kwh` is the avoided cost of importing the same energy
     later (`confidence_factor × mean(import_price)` over the next 24h — see
@@ -1199,9 +1213,31 @@ retained as a consistency check but no longer drives the LP's decisions.
 
 #### Key constraint: EV surplus-only for charge-past-target
 
-The constraint `ev_c[t]/charger_eff ≤ max(0, pv[t] − base_load[t])` ensures
+The constraint `ev_c[t]/charger_eff ≤ surplus_remaining[t]` ensures
 past-target EV charging **never** draws from the battery or grid — only
 genuine PV surplus that has nowhere else to go.
+
+The bound is the surplus the slot has **still to deliver**, not its full-width
+forecast energy (issue #1012):
+
+```
+remaining_fraction[t] = clamp(available_slot_hours[t] / slot_hours, 0, 1)
+surplus_remaining[t]  = max(0, pv[t] − base_load[t]) × remaining_fraction[t]
+```
+
+The pro-rating is load-bearing, not cosmetic. `_bounds.py` and
+`_ev_amp_lattice.py` already scale `ev_c[t]` by `available_slot_hours[t]`, and
+`_ev_power_writeout.py` turns the live slot's energy into a charger command by
+dividing by the hours that _remain_. A full-width surplus bound on a partly
+elapsed slot therefore admits a command of
+`full_slot_surplus / remaining_hours` instead of
+`full_slot_surplus / slot_hours` — up to 15× the genuine surplus power with
+15-minute slots. Two things then go wrong: the inflated command can clear
+`charger_min_power_w` and start a charger that the real surplus could never
+sustain, and the plan still reports `grid_import_kwh = 0` because the cost
+model believes a whole slot's surplus is available in the final minutes. Every
+future slot has `remaining_fraction[t] == 1.0`, so only the live slot is
+affected.
 
 Scope note (issue #988): `allow_charge_past_target_soc` governs **only** the
 at-or-above-target regime — the mode is entered solely when the EV has
@@ -1240,7 +1276,7 @@ Because this benefit is priced in the same currency units as `p_imp` and
 against house battery charging and export. However, the house battery always
 wins the surplus it can absorb (issue #775): the EV's benefit is capped at the
 battery's charge credit while the battery has headroom, and a shared
-battery-first constraint (`ec[t] + Σ ev_c[t]/η ≤ pv − base_load`) reserves the
+battery-first constraint (`ec[t] + Σ ev_c[t]/η ≤ surplus_remaining`) reserves the
 battery's share of the surplus. The EV only absorbs surplus the battery
 cannot take. When no future price data is available (`future_value_per_kwh`
 is `None`, e.g. missing forecast), the MILP falls back to a tiny fixed
@@ -2549,6 +2585,18 @@ Add tests for these invariants:
   physical demand (issue #988).
 - A charge-past-target EV never carries session pins, so its surplus-only
   constraint covers every slot (issue #988).
+- The charge-past-target surplus-only and battery-first bounds are pro-rated by
+  the remaining fraction of a partly elapsed live slot, so the published
+  charger command never exceeds the genuine PV surplus _power_ — regardless of
+  how much of the slot has elapsed (issue #1012).
+- A genuine surplus below `charger_min_power_w` never starts the charger at any
+  point within a slot; slot-tail compression cannot lift a sub-minimum surplus
+  over the charger's minimum (issue #1012).
+- A full-width future slot's surplus bound is unchanged
+  (`remaining_fraction[t] == 1.0`) (issue #1012).
+- Planned past-target EV load never exceeds the surplus energy the slot has
+  still to deliver, so a plan reporting `grid_import_kwh == 0` implies no
+  actual import (issue #1012).
 
 ## Multi-day planning horizon
 
@@ -3074,7 +3122,8 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
 
     - The EV is included with `charge_past_target=True`: `target_kwh = capacity_kwh`,
       `deadline_slot = None` (no grid import pressure), a surplus-only constraint
-      (`ev_c/eff ≤ pv − base_load`), and a benefit equal to
+      (`ev_c/eff ≤ surplus_remaining`, pro-rated for a partly elapsed live
+      slot — issue #1012), and a benefit equal to
       `future_value_per_kwh` (avoided cost of importing the same energy
       later, `confidence_factor × mean(import_price)` over the next 24h),
       falling back to a tiny fixed tiebreaker (0.0001/kWh AC) when no future
