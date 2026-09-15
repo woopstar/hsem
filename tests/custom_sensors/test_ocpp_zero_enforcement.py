@@ -347,3 +347,194 @@ class TestConnectorIdHandling:
         await asyncio.sleep(0)
         assert charger_session.gate_pending_plan is False
         assert _cleared_profile_ids(charger_session) == set(HSEM_PROFILE_IDS)
+
+
+# ---------------------------------------------------------------------------
+# Issue #1018 — a "connected" blip must not lose the enforced zero
+# ---------------------------------------------------------------------------
+
+
+async def _hold_zero_with_car_plugged_in(
+    ocpp_server: OCPPServer, charger_session: ChargerSession
+) -> None:
+    """Reach the field state: a held 0 A profile, car plugged in, charger idle.
+
+    Mirrors 2026-09-14 13:03 → 16:25: HSEM had stopped the session with a
+    0 A profile and the connector sat at ``Finishing`` with the car attached.
+    """
+    await _arm_gate(ocpp_server, charger_session)
+    await ocpp_server.update_charge_target(
+        "test-cpid", target_power_kw=0.0, now=datetime.now(UTC)
+    )
+    await ocpp_server._handle_status_notification(
+        charger_session, {"status": "Finishing", "connectorId": 1}
+    )
+    await asyncio.sleep(0)
+    assert charger_session.hsem_zero_profile_active is True
+    assert ocpp_server._flap_state == "idle"
+    charger_session.websocket.send_str.reset_mock()
+
+
+class TestConnectivityBlipKeepsEnforcedZero:
+    """A one-cycle HA "connected" blip cannot release the 0 A limit (#1018)."""
+
+    @pytest.mark.asyncio
+    async def test_disconnect_blip_with_car_plugged_in_keeps_zero(
+        self, ocpp_server, charger_session
+    ):
+        """The charger still reports a car: the zero stays enforced."""
+        await _hold_zero_with_car_plugged_in(ocpp_server, charger_session)
+
+        await ocpp_server.update_charge_target(
+            "test-cpid",
+            target_power_kw=0.0,
+            managed=False,
+            management_enabled=True,
+            now=datetime.now(UTC),
+        )
+
+        assert "ClearChargingProfile" not in _sent_actions(charger_session)
+        assert charger_session.hsem_zero_profile_active is True
+
+    @pytest.mark.asyncio
+    async def test_disconnect_the_charger_agrees_with_releases_zero(
+        self, ocpp_server, charger_session
+    ):
+        """When the charger also reports no car, the release still happens."""
+        await _hold_zero_with_car_plugged_in(ocpp_server, charger_session)
+        charger_session.status = "Available"
+
+        await ocpp_server.update_charge_target(
+            "test-cpid",
+            target_power_kw=0.0,
+            managed=False,
+            management_enabled=True,
+            now=datetime.now(UTC),
+        )
+
+        assert _cleared_profile_ids(charger_session) == set(HSEM_PROFILE_IDS)
+        assert charger_session.hsem_zero_profile_active is False
+
+    @pytest.mark.asyncio
+    async def test_smart_charging_off_releases_even_with_car_plugged_in(
+        self, ocpp_server, charger_session
+    ):
+        """Switching management off is explicit — issue #920 must not regress."""
+        await _hold_zero_with_car_plugged_in(ocpp_server, charger_session)
+
+        await ocpp_server.update_charge_target(
+            "test-cpid",
+            target_power_kw=0.0,
+            managed=False,
+            management_enabled=False,
+            now=datetime.now(UTC),
+        )
+
+        assert _cleared_profile_ids(charger_session) == set(HSEM_PROFILE_IDS)
+        assert charger_session.hsem_zero_profile_active is False
+
+    @pytest.mark.asyncio
+    async def test_lost_zero_is_reinstalled_exactly_once(
+        self, ocpp_server, charger_session
+    ):
+        """A managed, plugged-in EV without its 0 A profile gets it back once."""
+        await _hold_zero_with_car_plugged_in(ocpp_server, charger_session)
+        charger_session.hsem_zero_profile_active = False  # e.g. after a release
+
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=datetime.now(UTC)
+        )
+        assert _zero_limit_sent(charger_session)
+        assert charger_session.hsem_zero_profile_active is True
+
+        charger_session.websocket.send_str.reset_mock()
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=datetime.now(UTC)
+        )
+        charger_session.websocket.send_str.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_zero_is_never_written_onto_an_idle_connector(
+        self, ocpp_server, charger_session
+    ):
+        """No car plugged in: re-installing 0 A would be the #920 standing block."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        assert charger_session.status == "Available"
+
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=datetime.now(UTC)
+        )
+
+        assert "SetChargingProfile" not in _sent_actions(charger_session)
+        assert charger_session.hsem_zero_profile_active is False
+
+    @pytest.mark.asyncio
+    async def test_charging_without_a_transaction_is_driven_to_zero(
+        self, ocpp_server, charger_session
+    ):
+        """A charger that resumes Charging with no StartTransaction is stopped."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.status = "Charging"
+        assert charger_session.transaction_id is None
+
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=datetime.now(UTC)
+        )
+
+        assert _zero_limit_sent(charger_session)
+        assert charger_session.hsem_zero_profile_active is True
+        assert "ClearChargingProfile" not in _sent_actions(charger_session)
+
+    @pytest.mark.asyncio
+    async def test_charging_without_a_transaction_resends_an_ignored_zero(
+        self, ocpp_server, charger_session
+    ):
+        """Even with 0 A believed held, a Charging connector is re-driven to zero."""
+        await _hold_zero_with_car_plugged_in(ocpp_server, charger_session)
+        await ocpp_server._handle_status_notification(
+            charger_session, {"status": "Charging", "connectorId": 1}
+        )
+        charger_session.websocket.send_str.reset_mock()
+
+        await ocpp_server.update_charge_target(
+            "test-cpid", target_power_kw=0.0, now=datetime.now(UTC)
+        )
+
+        assert _zero_limit_sent(charger_session)
+
+    @pytest.mark.asyncio
+    async def test_field_sequence_never_loses_the_limit(
+        self, ocpp_server, charger_session
+    ):
+        """2026-09-14 16:25, replayed: blip → Charging with no transaction → zero plan.
+
+        Before the fix the blip cleared both HSEM profiles, the car drew
+        ~10.9 kW from grid, and nothing re-armed the limit.
+        """
+        await _hold_zero_with_car_plugged_in(ocpp_server, charger_session)
+
+        # 16:25:34 — one cycle with the HA entity reading disconnected.
+        await ocpp_server.update_charge_target(
+            "test-cpid",
+            target_power_kw=0.0,
+            managed=False,
+            management_enabled=True,
+            now=datetime.now(UTC),
+        )
+        # 16:25:48 — the charger resumes Charging without a StartTransaction.
+        await ocpp_server._handle_status_notification(
+            charger_session, {"status": "Charging", "connectorId": 1}
+        )
+        await asyncio.sleep(0)
+        # 16:25:52 onwards — connected again, plan still zero.
+        await ocpp_server.update_charge_target(
+            "test-cpid",
+            target_power_kw=0.0,
+            managed=True,
+            management_enabled=True,
+            now=datetime.now(UTC),
+        )
+
+        assert "ClearChargingProfile" not in _sent_actions(charger_session)
+        assert _zero_limit_sent(charger_session)
+        assert charger_session.hsem_zero_profile_active is True

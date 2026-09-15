@@ -749,6 +749,27 @@ only when the EV is genuinely unmanaged: the planned-load feature is off,
 smart charging is switched off, or the car is unplugged. While unmanaged,
 HSEM neither enforces a zero nor stops a locally started session.
 
+**"Unplugged" is decided by the charger, not by a single Home Assistant
+reading** (issue #1018). The car-connected entity can blip to `False` for one
+cycle while the car stays plugged in. While the feature and smart charging
+are on and the charger itself reports a car on the connector (`Preparing`,
+`Charging`, `SuspendedEVSE`, `SuspendedEV` or `Finishing`), the EV stays
+managed and its zero stays enforced. A real unplug is released as soon as the
+connector reports `Available`. Previously a one-cycle blip cleared the 0 A
+profile, and the car immediately charged at full power from grid.
+
+Two further safeguards keep a lost limit from going unnoticed:
+
+- **Re-armed when missing.** If a managed EV with a car plugged in has no
+  enforced 0 A profile while the plan allocates zero, HSEM installs it again
+  on the next cycle, exactly once — without waiting for the stop window,
+  which damps HSEM's own sessions rather than one it never started. It is
+  never written onto a connector with no car, which would be the issue #920
+  standing block.
+- **Charging without a transaction.** Some chargers resume `Charging` with no
+  `StartTransaction` at all. A connector reporting `Charging` now counts as a
+  session for the free-vend path, so it is driven to zero like any other.
+
 `StatusNotification` handling respects `connectorId` per OCPP 1.6:
 `connectorId: 0` is the _charge point itself_, not the car. Charge-point
 level statuses are tracked separately
