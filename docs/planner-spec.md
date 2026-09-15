@@ -745,13 +745,40 @@ on the first cycle after the sensor reports again.
   are exempt from this row, and pinning requires `fixed_session_only`, which
   `charge_past_target` excludes by construction. `resolve_session_windows()`
   refuses to pin a charge-past-target EV even if that ever changes.
-- **Battery-first for charge-past-target (issue #775)**: When `charge_past_target=True`,
-  the house battery must take its share of the slot's PV surplus before the EV
-  absorbs any. A shared per-slot row enforces
-  `ec[t] + Σ_ev ev_c[t]/η_charger ≤ surplus_remaining[t]` across all
-  charge-past-target EVs, so the EV can only use surplus the battery cannot
-  take. Combined with the objective-side benefit cap (below), this guarantees
-  the battery fills first and the EV only absorbs the remainder.
+- **Battery-first for charge-past-target (issues #775, #1015)**: When
+  `charge_past_target=True`, the house battery must take its share of the
+  slot's PV surplus before the EV absorbs any, and the EV must never draw from
+  grid or battery. `ec[t]` is the battery's **total** charge — grid- and
+  PV-sourced energy share one column — so no single linear row can express
+  both rules: a shared row `ec[t] + Σ ev_c[t]/η_charger ≤ surplus_remaining[t]`
+  caps _all_ battery charging at the surplus (at night the battery could not
+  grid-charge while such an EV was plugged in), while dropping `ec[t]` from it
+  lets the EV take surplus the battery would have stored as the battery
+  refills from cheap grid — the EV then draws from grid in all but name.
+  The production path therefore solves the counterfactual directly, in two
+  stages (`planner/milp/_past_target_reservation.py`):
+
+  1. **Stage 1** solves with every charge-past-target EV removed and records,
+     per future slot, the AC energy spent on the house battery
+     (`batteries_charged_kwh / η_charge`) and on every other EV (the load the
+     solve added over the input slot's own EV load) — `reserved[t]`.
+  2. **Stage 2** solves the full plan with that reservation attached to each
+     charge-past-target EV (`EVConfig.past_target_reserved_ac_kwh`). One
+     shared per-slot row caps those EVs at the PV stage 1 left unused:
+
+  $$\sum_{ev} \frac{ev_c[t]}{\eta_{charger}} \le \max\bigl(0,\ S_{full}[t] - reserved[t]\bigr) \cdot remaining\_fraction[t]$$
+
+  The EV gains nothing from the battery yielding surplus, so the battery needs
+  no row at all and is free to grid-charge. Session-pinned EV columns are
+  excluded from the row, exactly as from the surplus-only row. A second solve
+  runs only while a charge-past-target EV is active; with none, the call is a
+  single unchanged `solve_milp`. When stage 1 fails to solve, `reserved[t]` is
+  infinite and the past-target EV gets nothing (fail closed).
+  `solve_milp` called **directly** with a charge-past-target EV that carries
+  no reservation (or one whose length does not match the LP) keeps the
+  conservative battery-first row above: it never lets the EV draw grid, at the
+  cost of blocking battery grid-charging while the EV is plugged in.
+
 - No discharge: `ev_c[t] ≥ 0` (via bounds).
 
 **Energy balance** includes EV AC load:
@@ -1004,13 +1031,13 @@ has zero cost. The LP always uses available PV to cover house load first.
 
 #### 2. Use remaining PV surplus
 
-| Priority | Action                                 | Cost coefficient                                                                                               | When taken                                                                                                                                                                                                                                                                          |
-| -------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2a       | Charge house battery                   | Physical AC draw `ec/charge_eff` enters `gi` or reduces PV export, plus cycle wear                             | Battery below `usable_kwh`, future savings justify the real input/opportunity cost                                                                                                                                                                                                  |
-| 2b       | Charge EV (pre-deadline, below target) | `-ev_penalty_cost` (benefit) + `p_imp[t]` (via grid) or `0` (via surplus)                                      | EV below target, `t ≤ D` — the **deadline benefit** forces charging; PV used first, grid import when PV insufficient                                                                                                                                                                |
-| 2c       | Charge EV (post-deadline, past target) | **−future_value/η_charger** (benefit, capped at battery charge credit while battery has headroom — issue #775) | `t > D`, `charge_past_target=True`. Surplus-only + battery-first constraints: `ev_c/eff ≤ surplus_remaining` and `ec + Σ ev_c/eff ≤ surplus_remaining` (pro-rated for a partly elapsed live slot — issue #1012). House battery fills first, then EV gets the remainder, then export |
-| 2d       | Export to grid                         | **−p_exp[t]** (revenue)                                                                                        | Battery full, EV doesn't want surplus, export price > 0                                                                                                                                                                                                                             |
-| 2e       | Curtail PV                             | `0` (free)                                                                                                     | Battery full, EV doesn't want surplus, `p_exp ≤ 0` (export costs money or is blocked)                                                                                                                                                                                               |
+| Priority | Action                                 | Cost coefficient                                                                                               | When taken                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| -------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2a       | Charge house battery                   | Physical AC draw `ec/charge_eff` enters `gi` or reduces PV export, plus cycle wear                             | Battery below `usable_kwh`, future savings justify the real input/opportunity cost                                                                                                                                                                                                                                                                                                                                                                                       |
+| 2b       | Charge EV (pre-deadline, below target) | `-ev_penalty_cost` (benefit) + `p_imp[t]` (via grid) or `0` (via surplus)                                      | EV below target, `t ≤ D` — the **deadline benefit** forces charging; PV used first, grid import when PV insufficient                                                                                                                                                                                                                                                                                                                                                     |
+| 2c       | Charge EV (post-deadline, past target) | **−future_value/η_charger** (benefit, capped at battery charge credit while battery has headroom — issue #775) | `t > D`, `charge_past_target=True`. Surplus-only + battery-first constraints: `ev_c/eff ≤ surplus_remaining` and, in the two-stage production solve, `Σ ev_c/eff ≤ max(0, S_full − reserved) × remaining_fraction` (issue #1015; a direct `solve_milp` call without a reservation keeps `ec + Σ ev_c/eff ≤ surplus_remaining`). All pro-rated for a partly elapsed live slot — issue #1012. House battery takes its share first, then EV gets the remainder, then export |
+| 2d       | Export to grid                         | **−p_exp[t]** (revenue)                                                                                        | Battery full, EV doesn't want surplus, export price > 0                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 2e       | Curtail PV                             | `0` (free)                                                                                                     | Battery full, EV doesn't want surplus, `p_exp ≤ 0` (export costs money or is blocked)                                                                                                                                                                                                                                                                                                                                                                                    |
 
 #### Charge recommendation label: solar vs. grid (write-out, issue #913)
 
@@ -1101,9 +1128,13 @@ After the deadline slot `D`:
   charge, but only from genuine PV surplus that would otherwise be curtailed
   or exported at near-zero prices:
   - Surplus-only constraint: `ev_c[t]/η_charger ≤ surplus_remaining[t]`
-  - **Battery-first constraint (issue #775)**: `ec[t] + Σ ev_c[t]/η_charger ≤
-surplus_remaining[t]` — the house battery takes its share of the
-    surplus first; the EV only absorbs what the battery cannot take.
+  - **Battery-first (issues #775, #1015)**: in the two-stage production
+    solve, `Σ ev_c[t]/η_charger ≤ max(0, S_full[t] − reserved[t]) ×
+remaining_fraction[t]`, where `reserved[t]` is what the plan without any
+    past-target EV spent on the battery and other EVs — the EV only absorbs
+    PV that plan left unused, and the battery stays free to grid-charge.
+    Without a reservation the conservative `ec[t] + Σ ev_c[t]/η_charger ≤
+surplus_remaining[t]` row applies instead.
   - Both bounds use `surplus_remaining[t]`, the surplus the slot has still to
     deliver, so a partly elapsed live slot cannot hand the charger a whole
     slot's surplus to draw in the minutes that remain (issue #1012).
@@ -1113,7 +1144,10 @@ surplus_remaining[t]` — the house battery takes its share of the
     `ev_future_charge_value_per_kwh` in `candidate_selector.py`). Falls back
     to a tiny fixed `0.0001/η_charger` tiebreaker when no future price data is
     available.
-  - **Battery-first benefit cap (issue #775)**: the EV's per-kWh benefit is
+  - **Battery-first benefit cap (issue #775)** — not applied in reservation
+    mode (issue #1015), where the battery has already had its pick in stage 1
+    and the cap would only price the leftover below export: the EV's per-kWh
+    benefit is
     capped at the battery's charge credit (`abs(c_obj[ec[t]])`) minus the
     AC-side efficiency difference (`p_imp_obj[t] × (1/η_charge −
 1/η_charger)`) when the battery can absorb the full slot surplus. The
@@ -1282,11 +1316,14 @@ future_value_per_kwh = confidence_factor × mean(import_price[t] for t in next 2
 Because this benefit is priced in the same currency units as `p_imp` and
 `p_exp`, the MILP lets charge-past-target EV charging compete fairly
 against house battery charging and export. However, the house battery always
-wins the surplus it can absorb (issue #775): the EV's benefit is capped at the
-battery's charge credit while the battery has headroom, and a shared
-battery-first constraint (`ec[t] + Σ ev_c[t]/η ≤ surplus_remaining`) reserves the
-battery's share of the surplus. The EV only absorbs surplus the battery
-cannot take. When no future price data is available (`future_value_per_kwh`
+wins the surplus it can absorb (issues #775, #1015): the two-stage solve
+reserves what the plan without any past-target EV spent on the battery, and
+caps the EV at the PV that plan left unused. The EV only absorbs surplus the
+battery did not take. (The objective-side benefit cap sized from the battery's
+initial headroom applies only to a direct `solve_milp` call without a
+reservation; in reservation mode it would starve the EV — a battery with
+headroom that has nothing to store for still priced the EV below export, so
+every kWh was exported.) When no future price data is available (`future_value_per_kwh`
 is `None`, e.g. missing forecast), the MILP falls back to a tiny fixed
 tiebreaker (`0.0001`/kWh AC) so surplus PV still prefers the EV over being
 wastefully curtailed/exported at near-zero or negative prices — but only
@@ -2611,6 +2648,20 @@ Add tests for these invariants:
   the remaining fraction of a partly elapsed live slot, so the published
   charger command never exceeds the genuine PV surplus _power_ — regardless of
   how much of the slot has elapsed (issue #1012).
+- A plugged-in charge-past-target EV never blocks house-battery grid charging:
+  with no PV the battery charges from cheap grid exactly as it would with no
+  EV (issue #1015).
+- Adding a charge-past-target EV never raises the plan's grid import, and the
+  EV never takes PV the plan without it would have stored in the battery —
+  the battery-then-grid-refill path is closed (issue #1015). (Within a single
+  slot, PV/grid attribution is arbitrary at cost-equal prices — e.g. a
+  negative or import-equals-export price — so this is asserted on days with a
+  strict import/export spread.)
+- A battery with headroom that declines to store surplus does not starve a
+  charge-past-target EV: the EV absorbs up to its headroom (issue #1015).
+- Only an active charge-past-target EV triggers the second solve; stage 1
+  failing leaves the past-target EV with no energy, never unbounded
+  (issue #1015).
 - A genuine surplus below `charger_min_power_w` never starts the charger at any
   point within a slot; slot-tail compression cannot lift a sub-minimum surplus
   over the charger's minimum (issue #1012).
@@ -3382,6 +3433,19 @@ _difference_ between the two slots' import prices; when it exceeds
 `EV_COMMAND_DEADBAND_COST_BYPASS_FRACTION` (5 %, mirroring the plan-level
 hysteresis default) of the live slot's own EV cost, the change is published.
 
+**Charge-past-target EVs are never held** (issue #1015). A past-target EV
+(`allow_charge_past_target_soc` on and effective SoC at or above target) may
+only draw PV surplus, and its planned command already _is_ that surplus.
+Holding a higher, stale ceiling makes up the difference from the grid: under
+OCPP the published profile is a hard current limit the vehicle draws up to —
+the "charger follows PV itself" premise above does not hold — and the cost
+bypass cannot release it, because it prices a hold as energy shifted between
+slots while past-target energy is not being shifted; on flat prices the bypass
+never fires. A past-target command therefore follows the plan in both
+directions, before the deadband and the stop suppression are consulted.
+Missing SoC telemetry is not past-target (the planner refuses to plan such an
+EV anyway, issue #988).
+
 **Slot-tail stop suppression** addresses a distinct defect: in the last seconds
 of a slot the remaining time cannot hold enough energy to clear the charger
 minimum, so the optimiser correctly allocates the stub nothing and the
@@ -3412,6 +3476,9 @@ can never publish something the site cannot carry.
 - A held command below the charger minimum collapses to 0, never a trickle.
 - Stop suppression never fires for a disconnected EV, a disabled smart-charging
   switch, a met target, a passed deadline, or an idle charger.
+- A charge-past-target EV is never held, in either direction and at any
+  price spread; below target, or with the setting off, the deadband applies
+  unchanged (issue #1015).
 - Slot accounting stays coherent: `ev_total_planned_load_kwh`,
   `ev_accounted_load_kwh`/`ev_planned_load_kwh`, `grid_import_kwh`,
   `grid_export_kwh` and `estimated_cost_currency` all follow the published

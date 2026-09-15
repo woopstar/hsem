@@ -32,6 +32,7 @@ import pytest
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.utils.datetime_utils import future_slot_indices
 
 # ---------------------------------------------------------------------------
 # Helpers – build lightweight planner/coordinator objects for testing
@@ -864,3 +865,38 @@ class TestSlotKeyEdgeCases:
 
         for _ in range(5):
             assert slot_key(t, 60) == expected
+
+
+class TestFutureSlotIndices:
+    """``future_slot_indices`` defines the MILP's LP slot order (issue #1015)."""
+
+    _TZ = ZoneInfo("Europe/Copenhagen")
+
+    def _ends(self, count: int) -> list[datetime]:
+        start = datetime(2026, 9, 14, 11, 0, tzinfo=self._TZ)
+        return [start + timedelta(minutes=15 * (i + 1)) for i in range(count)]
+
+    def test_excludes_slots_that_have_ended(self) -> None:
+        ends = self._ends(4)
+        now = datetime(2026, 9, 14, 11, 20, tzinfo=self._TZ)
+        assert future_slot_indices(ends, now) == [1, 2, 3]
+
+    def test_live_slot_is_future(self) -> None:
+        """A slot ending after *now* is still in the LP, even if it has started."""
+        ends = self._ends(2)
+        now = datetime(2026, 9, 14, 11, 14, 59, tzinfo=self._TZ)
+        assert future_slot_indices(ends, now) == [0, 1]
+
+    def test_slot_ending_exactly_now_is_excluded(self) -> None:
+        ends = self._ends(2)
+        assert future_slot_indices(ends, ends[0]) == [1]
+
+    def test_compares_by_instant_across_timezones(self) -> None:
+        ends = [end.astimezone(UTC) for end in self._ends(3)]
+        now = datetime(2026, 9, 14, 11, 20, tzinfo=self._TZ)
+        assert future_slot_indices(ends, now) == [1, 2]
+
+    def test_accepts_a_generator(self) -> None:
+        ends = self._ends(3)
+        now = datetime(2026, 9, 14, 11, 0, tzinfo=self._TZ)
+        assert future_slot_indices((end for end in ends), now) == [0, 1, 2]

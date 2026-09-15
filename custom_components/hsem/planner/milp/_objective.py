@@ -319,7 +319,15 @@ def _build_objective(
                     max_charge_per_slot, max(usable_kwh - current_kwh, 0.0)
                 )
                 battery_takes_all = battery_absorption >= slot_surplus - 1e-9
-                if battery_takes_all and slot_surplus > 1e-9:
+                # Not in reservation mode (issue #1015): the EV is then already
+                # confined to PV the no-past-target plan left unused, so the
+                # battery has had its pick and this cap would only price that
+                # leftover below export.
+                if (
+                    battery_takes_all
+                    and slot_surplus > 1e-9
+                    and ev.past_target_reserved_ac_kwh is None
+                ):
                     # Magnitude of the battery's charge credit at this slot
                     # (c_obj[ec] is negative = a credit).  Capping the EV
                     # benefit at this value makes the battery weakly
