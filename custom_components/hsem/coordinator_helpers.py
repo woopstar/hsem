@@ -224,6 +224,28 @@ def ocpp_charge_target(
     )
 
 
+def ev_management_enabled(
+    cfg: SensorConfig, live: LiveState, *, is_second: bool
+) -> bool:
+    """Return whether the user has asked HSEM to manage this EV's charger.
+
+    True while the planned-load feature is enabled and the smart-charging
+    switch is on — the *configuration* half of :func:`ev_is_managed`, without
+    the car-connected reading. Turning either off is an explicit decision to
+    relinquish the charger, whereas a "connected" entity can blip for a single
+    cycle while the car stays plugged in; the OCPP layer needs to tell the two
+    apart (issue #1018).
+    """
+    if is_second:
+        return bool(
+            cfg.ev_second_planned_load_enabled
+            and live.ev_second_planned_load_smart_charging_enabled
+        )
+    return bool(
+        cfg.ev_planned_load_enabled and live.ev_planned_load_smart_charging_enabled
+    )
+
+
 def ev_is_managed(cfg: SensorConfig, live: LiveState, *, is_second: bool) -> bool:
     """Return whether HSEM is responsible for commanding this EV's charger.
 
@@ -237,17 +259,29 @@ def ev_is_managed(cfg: SensorConfig, live: LiveState, *, is_second: bool) -> boo
     Canonical definition — never re-derive the three-term check inline; the
     command-stability layer and the OCPP dispatch must agree on it.
     """
-    if is_second:
-        return bool(
-            cfg.ev_second_planned_load_enabled
-            and live.ev_second_planned_load_connected
-            and live.ev_second_planned_load_smart_charging_enabled
-        )
-    return bool(
-        cfg.ev_planned_load_enabled
-        and live.ev_planned_load_connected
-        and live.ev_planned_load_smart_charging_enabled
+    connected = (
+        live.ev_second_planned_load_connected
+        if is_second
+        else live.ev_planned_load_connected
     )
+    return bool(connected) and ev_management_enabled(cfg, live, is_second=is_second)
+
+
+def ocpp_management_flags(
+    cfg: SensorConfig, live: LiveState, *, is_second: bool
+) -> dict[str, bool]:
+    """Return the ``managed`` and ``management_enabled`` arguments for OCPP dispatch.
+
+    Passed as keyword arguments to ``OCPPServer.update_charge_target``. The
+    OCPP layer needs both: ``managed`` includes the Home Assistant
+    car-connected reading, while ``management_enabled`` is configuration only,
+    so a one-cycle "connected" blip cannot release an enforced zero on a car
+    the charger still reports plugged in (issue #1018).
+    """
+    return {
+        "managed": ev_is_managed(cfg, live, is_second=is_second),
+        "management_enabled": ev_management_enabled(cfg, live, is_second=is_second),
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -25,8 +25,8 @@ from custom_components.hsem.coordinator_helpers import (
     _StaleUpdateCycle,
     apply_load_forecast_hold,
     assess_load_forecast,
-    ev_is_managed,
     ocpp_charge_target,
+    ocpp_management_flags,
 )
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import (
@@ -743,7 +743,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 target_kw,
                 max_current_a=max_current_a,
                 now=now,
-                managed=ev_is_managed(self._cfg, live, is_second=False),
+                **ocpp_management_flags(self._cfg, live, is_second=False),
                 number_phases=number_phases,
             )
 
@@ -783,7 +783,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 second_target_kw,
                 max_current_a=second_max_current_a,
                 now=now,
-                managed=ev_is_managed(self._cfg, live, is_second=True),
+                **ocpp_management_flags(self._cfg, live, is_second=True),
                 number_phases=second_number_phases,
             )
 
