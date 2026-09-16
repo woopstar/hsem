@@ -2,6 +2,8 @@
 
 import voluptuous as vol
 
+from custom_components.hsem.utils.solcast_likelihood import DEFAULT_SOLCAST_LIKELIHOOD
+
 DOMAIN = "hsem"  # Domain name for the integration.
 NAME = "Huawei Solar Energy Management"  # Display name for the integration.
 
@@ -140,7 +142,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_recommendation_interval_length": 48,
     "hsem_recommendation_interval_minutes": 15,
     "hsem_solar_production_power": "sensor.power_inverter_input_total",
-    "hsem_solcast_pv_forecast_forecast_likelihood": "pv_estimate",
+    "hsem_solcast_pv_forecast_forecast_likelihood": DEFAULT_SOLCAST_LIKELIHOOD,
     "hsem_solcast_pv_forecast_forecast_today": "sensor.solcast_pv_forecast_forecast_today",
     "hsem_solcast_pv_forecast_forecast_tomorrow": "sensor.solcast_pv_forecast_forecast_tomorrow",
     "hsem_update_interval": 5,

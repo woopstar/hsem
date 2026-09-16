@@ -30,6 +30,7 @@ from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.phase_power import (
     normalize_ev_phase_topology,
 )
+from custom_components.hsem.utils.solcast_likelihood import DEFAULT_SOLCAST_LIKELIHOOD
 
 
 def _normalize_optional_device_id(value: Any) -> str | None:
@@ -248,7 +249,7 @@ def build_sensor_config(
     )
     cfg.solcast_pv_forecast_forecast_likelihood = (
         get_config_value(config_entry, "hsem_solcast_pv_forecast_forecast_likelihood")
-        or "pv_estimate"
+        or DEFAULT_SOLCAST_LIKELIHOOD
     )
 
     # Electricity prices (generic — Energi Data Service, Nordpool, Amber Electric, …)

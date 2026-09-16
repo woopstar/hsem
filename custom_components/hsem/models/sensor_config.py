@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import cast
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
+from custom_components.hsem.utils.solcast_likelihood import DEFAULT_SOLCAST_LIKELIHOOD
 
 
 @dataclass
@@ -209,7 +210,7 @@ class SensorConfig:
     # Solcast
     solcast_pv_forecast_forecast_today: str | None = None
     solcast_pv_forecast_forecast_tomorrow: str | None = None
-    solcast_pv_forecast_forecast_likelihood: str = "pv_estimate"
+    solcast_pv_forecast_forecast_likelihood: str = DEFAULT_SOLCAST_LIKELIHOOD
 
     # Electricity prices (generic — supports Energi Data Service, Nordpool, Amber Electric, …)
     import_electricity_price_sensor: str | None = None
