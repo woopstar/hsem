@@ -41,6 +41,7 @@ from custom_components.hsem.custom_sensors.hourly_data_populator.consumption imp
 from custom_components.hsem.custom_sensors.hourly_data_populator.prices_solcast import (
     populate_price_and_solcast_from_snapshot,
 )
+from custom_components.hsem.custom_sensors.ocpp_flap_state import FlapState
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
     async_collect_all_states,
     build_sensor_config,
@@ -580,7 +581,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         ocpp_sessions: list | None = None
         ocpp_listening = False
         ocpp_last_requested_current_a: int | None = None
-        ocpp_anti_flap_state = "idle"
+        ocpp_anti_flap_state = FlapState.Idle.value
         ocpp_charger_stalled = False
         ocpp = getattr(self, "_ocpp_server", None)
         if ocpp is not None:
@@ -596,7 +597,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         ocpp_second_sessions: list | None = None
         ocpp_second_listening = False
         ocpp_second_last_requested_current_a: int | None = None
-        ocpp_second_anti_flap_state = "idle"
+        ocpp_second_anti_flap_state = FlapState.Idle.value
         ocpp_second_charger_stalled = False
         ocpp_second = getattr(self, "_ocpp_second_server", None)
         if ocpp_second is not None:

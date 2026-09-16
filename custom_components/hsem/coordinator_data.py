@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from custom_components.hsem.custom_sensors.ocpp_flap_state import FlapState
 from custom_components.hsem.models.data_quality import DataQuality
 from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
@@ -124,9 +125,9 @@ class CoordinatorData:
     ocpp_second_last_requested_current_a: int | None = None
     #: Primary OCPP server's anti-flap state machine state (issue #892):
     #: one of "idle", "starting", "charging", "stopping".
-    ocpp_anti_flap_state: str = "idle"
+    ocpp_anti_flap_state: str = FlapState.Idle.value
     #: Second EV's OCPP server anti-flap state machine state (issue #892).
-    ocpp_second_anti_flap_state: str = "idle"
+    ocpp_second_anti_flap_state: str = FlapState.Idle.value
     #: True while the primary OCPP server's active charging session appears
     #: stalled — stuck non-"Charging" despite an open transaction, per
     #: :func:`~custom_components.hsem.custom_sensors.ocpp_server.charger_appears_stalled`

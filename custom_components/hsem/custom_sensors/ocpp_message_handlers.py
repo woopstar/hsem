@@ -39,6 +39,7 @@ from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
+from custom_components.hsem.custom_sensors.ocpp_flap_state import FlapState
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ class OCPPMessageHandlersMixin:
     # Declared (not assigned) so mypy resolves these against
     # OCPPAntiFlapMixin, which composes into the same OCPPServer — the
     # connect-time pending-plan gate (issue #969).
-    _flap_state: str
+    _flap_state: FlapState
     _arm_connect_gate: Callable[[ChargerSession], None]
     _schedule_release_connect_gate: Callable[[ChargerSession], None]
 
@@ -230,7 +231,7 @@ class OCPPMessageHandlersMixin:
             if (
                 old_status == "Available"
                 and new_status != "Available"
-                and self._flap_state == "idle"
+                and self._flap_state == FlapState.Idle
             ):
                 self._arm_connect_gate(session)
             elif new_status == "Available" and (

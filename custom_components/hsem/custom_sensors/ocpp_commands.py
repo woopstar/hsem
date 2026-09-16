@@ -23,6 +23,7 @@ from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
+from custom_components.hsem.custom_sensors.ocpp_flap_state import FlapState
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -152,7 +153,7 @@ class OCPPCommandsMixin:
     _last_sent_target: float
     _last_sent_current_a: int
     _on_significant_event: Callable[[], Coroutine[Any, Any, None]] | None
-    _flap_state: str
+    _flap_state: FlapState
     _target_entered_at: datetime | None
     _zero_entered_at: datetime | None
     _stalled: bool
@@ -435,7 +436,7 @@ class OCPPCommandsMixin:
         normal start window again rather than resuming as if nothing
         happened.
         """
-        self._flap_state = "idle"
+        self._flap_state = FlapState.Idle
         self._target_entered_at = None
         self._zero_entered_at = None
         self._last_sent_target = -1.0
