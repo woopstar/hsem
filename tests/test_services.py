@@ -22,6 +22,9 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.hsem import services as services_module
 from custom_components.hsem.const import DOMAIN
+from custom_components.hsem.custom_sensors.force_mode_sensor import (
+    FORCE_MODE_SENSOR_OPTIONS,
+)
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.select import _RECOMMENDATION_OPTIONS
 from custom_components.hsem.services import (
@@ -348,7 +351,9 @@ class TestOverrideModeSurfacesAgree:
 
     ``batteries_discharge_window_mode`` reached ``services.yaml`` and
     ``select.py`` but not the service validator, so the UI offered a mode the
-    schema then rejected.  All three now derive from ``USER_SELECTABLE_RECS``.
+    schema then rejected.  All four surfaces — the service schema,
+    ``services.yaml``, the ``select`` platform, and the force-mode sensor's
+    ``_attr_options`` — now derive from ``USER_SELECTABLE_RECS``.
     """
 
     def test_service_schema_matches_canonical_list(self) -> None:
@@ -365,6 +370,10 @@ class TestOverrideModeSurfacesAgree:
             "working_mode"
         ]["selector"]["select"]["options"]
         assert sorted(options) == sorted(USER_SELECTABLE_RECS)
+
+    def test_force_mode_sensor_options_match_canonical_list(self) -> None:
+        """The diagnostic sensor's ENUM options are "auto" plus every mode."""
+        assert ["auto", *USER_SELECTABLE_RECS] == FORCE_MODE_SENSOR_OPTIONS
 
     def test_select_platform_matches_canonical_list(self) -> None:
         assert list(USER_SELECTABLE_RECS) == _RECOMMENDATION_OPTIONS
