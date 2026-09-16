@@ -13,12 +13,16 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.wait_mode_behavior import (
+    WAIT_MODE_BEHAVIOR_VALUES,
+    WaitModeBehavior,
+)
 
 WAIT_MODE_BEHAVIOR_OPTIONS = [
-    {"label": "Strict wait", "value": "strict"},
+    {"label": "Strict wait", "value": WaitModeBehavior.Strict.value},
     {
         "label": "Self-consumption with reserve",
-        "value": "self_consumption_with_reserve",
+        "value": WaitModeBehavior.SelfConsumptionWithReserve.value,
     },
 ]
 
@@ -71,6 +75,6 @@ async def validate_batteries_wait_mode_input(user_input: dict) -> dict[str, str]
     """
     errors: dict[str, str] = {}
     value = user_input.get("hsem_batteries_wait_mode_behavior")
-    if value not in ("strict", "self_consumption_with_reserve"):
+    if value not in WAIT_MODE_BEHAVIOR_VALUES:
         errors["hsem_batteries_wait_mode_behavior"] = "invalid_wait_mode_behavior"
     return errors

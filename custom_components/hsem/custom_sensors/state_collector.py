@@ -26,6 +26,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 
 # Re-export from config_reader so existing callers continue to work.
+from custom_components.hsem.const import FORCE_MODE_AUTO
 from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401 — re-exported for backward compat in coordinator.py
     build_sensor_config,
 )
@@ -143,7 +144,9 @@ async def async_collect_live_state(
     raw_fwm = _read(fwm_entity, "string", label=get_force_working_mode_selector_key())
     # Cast to str because _read() returns Any; str() is safe here since the
     # value comes from a HA select entity that always produces a string state.
-    state.force_working_mode_state = str(raw_fwm) if raw_fwm is not None else "auto"
+    state.force_working_mode_state = (
+        str(raw_fwm) if raw_fwm is not None else FORCE_MODE_AUTO
+    )
 
     # --- First EV charger ---
     ev = EVLiveState()

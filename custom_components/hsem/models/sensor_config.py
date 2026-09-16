@@ -17,6 +17,7 @@ from typing import cast
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
 from custom_components.hsem.utils.solcast_likelihood import DEFAULT_SOLCAST_LIKELIHOOD
+from custom_components.hsem.utils.wait_mode_behavior import DEFAULT_WAIT_MODE_BEHAVIOR
 
 
 @dataclass
@@ -266,7 +267,7 @@ class SensorConfig:
     batteries_export_min_price: float = 0.0
 
     # Wait mode behaviour
-    batteries_wait_mode_behavior: str = "strict"
+    batteries_wait_mode_behavior: str = DEFAULT_WAIT_MODE_BEHAVIOR
 
     # EV planned load integration — primary EV (optional, disabled by default)
     ev_planned_load_enabled: bool = False

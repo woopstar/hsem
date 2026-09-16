@@ -3,9 +3,15 @@
 import voluptuous as vol
 
 from custom_components.hsem.utils.solcast_likelihood import DEFAULT_SOLCAST_LIKELIHOOD
+from custom_components.hsem.utils.wait_mode_behavior import DEFAULT_WAIT_MODE_BEHAVIOR
 
 DOMAIN = "hsem"  # Domain name for the integration.
 NAME = "Huawei Solar Energy Management"  # Display name for the integration.
+
+# Force-working-mode sentinel meaning "no override — the planner is in control".
+# Not a Recommendations member: it is the absence of a forced mode.  Distinct
+# from ocpp_control.RATE_UNIT_PREF_AUTO, which is an unrelated OCPP setting.
+FORCE_MODE_AUTO = "auto"
 
 # Default TOU modes for letting the battery wait.
 DEFAULT_HSEM_BATTERIES_WAIT_MODE = ["00:00-00:01/1234567/+"]
@@ -28,7 +34,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_batteries_export_min_price": 0.0,
     # Wait mode behaviour: "strict" keeps the battery idle, "self_consumption_with_reserve"
     # allows normal household self-consumption while protecting the planner reserve.
-    "hsem_batteries_wait_mode_behavior": "strict",
+    "hsem_batteries_wait_mode_behavior": DEFAULT_WAIT_MODE_BEHAVIOR,
     "hsem_batteries_purchase_price": 0.0,
     "hsem_batteries_expected_cycles": 6000,
     "hsem_batteries_cycle_cost": 0.0,

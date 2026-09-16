@@ -27,6 +27,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 
+from custom_components.hsem.const import FORCE_MODE_AUTO
 from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
@@ -43,7 +44,7 @@ from custom_components.hsem.utils.sensornames.diagnostics import (
 # service schema, or services.yaml.  Kept at module level because Home
 # Assistant's entity metaclass rewrites ``_attr_*`` class attributes into
 # properties, which makes the class attribute unreadable for tests.
-FORCE_MODE_SENSOR_OPTIONS: list[str] = ["auto", *USER_SELECTABLE_RECS]
+FORCE_MODE_SENSOR_OPTIONS: list[str] = [FORCE_MODE_AUTO, *USER_SELECTABLE_RECS]
 
 
 class HSEMForceModeSensor(
@@ -105,7 +106,7 @@ class HSEMForceModeSensor(
         """Return the force-mode select value (``'auto'`` when not overriding)."""
         data: CoordinatorData | None = self.coordinator.data
         if data is None or data.live is None:
-            return self._restored_state or "auto"
+            return self._restored_state or FORCE_MODE_AUTO
         return data.live.force_working_mode_state
 
     @property
