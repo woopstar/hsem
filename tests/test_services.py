@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import voluptuous as vol
+import yaml
 
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
@@ -22,6 +23,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from custom_components.hsem import services as services_module
 from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.select import _RECOMMENDATION_OPTIONS
 from custom_components.hsem.services import (
     SCHEMA_CREATE_DASHBOARD,
     SCHEMA_OCPP_DEBUG_SET_AVAILABILITY,
@@ -29,9 +31,15 @@ from custom_components.hsem.services import (
     SCHEMA_OCPP_DEBUG_SET_CURRENT,
     SCHEMA_OCPP_DEBUG_START_CHARGING,
     SCHEMA_OCPP_DEBUG_STOP_CHARGING,
+    SCHEMA_SET_TEMPORARY_OVERRIDE,
     SERVICE_HANDLER_MAP,
+    SUPPORTED_OVERRIDE_MODES,
     async_register_services,
     async_unregister_services,
+)
+from custom_components.hsem.utils.recommendations import (
+    USER_SELECTABLE_RECS,
+    Recommendations,
 )
 
 
@@ -333,6 +341,51 @@ async def test_export_diagnostics_dump_is_json_serializable(
         result["planner_input"]["ev_second_planned_load_deadline"]
         == "2026-08-03T18:00:00+00:00"
     )
+
+
+class TestOverrideModeSurfacesAgree:
+    """Every user-facing override surface must offer the same modes.
+
+    ``batteries_discharge_window_mode`` reached ``services.yaml`` and
+    ``select.py`` but not the service validator, so the UI offered a mode the
+    schema then rejected.  All three now derive from ``USER_SELECTABLE_RECS``.
+    """
+
+    def test_service_schema_matches_canonical_list(self) -> None:
+        assert list(USER_SELECTABLE_RECS) == SUPPORTED_OVERRIDE_MODES
+
+    def test_services_yaml_matches_canonical_list(self) -> None:
+        raw = (
+            Path(__file__).parent.parent
+            / "custom_components"
+            / "hsem"
+            / "services.yaml"
+        ).read_text(encoding="utf-8")
+        options = yaml.safe_load(raw)["set_temporary_override"]["fields"][
+            "working_mode"
+        ]["selector"]["select"]["options"]
+        assert sorted(options) == sorted(USER_SELECTABLE_RECS)
+
+    def test_select_platform_matches_canonical_list(self) -> None:
+        assert list(USER_SELECTABLE_RECS) == _RECOMMENDATION_OPTIONS
+
+    def test_only_state_sentinels_are_excluded(self) -> None:
+        excluded = {m.value for m in Recommendations} - set(USER_SELECTABLE_RECS)
+        assert excluded == {
+            Recommendations.TimePassed.value,
+            Recommendations.MissingInputEntities.value,
+        }
+
+    @pytest.mark.parametrize("mode", USER_SELECTABLE_RECS)
+    def test_schema_accepts_every_offered_mode(self, mode: str) -> None:
+        result = SCHEMA_SET_TEMPORARY_OVERRIDE({"working_mode": mode})
+        assert result["working_mode"] == mode  # type: ignore[index]
+
+    def test_schema_still_rejects_a_state_sentinel(self) -> None:
+        with pytest.raises(vol.Invalid):
+            SCHEMA_SET_TEMPORARY_OVERRIDE(
+                {"working_mode": Recommendations.TimePassed.value}
+            )
 
 
 def test_create_dashboard_schema_accepts_empty_data() -> None:
