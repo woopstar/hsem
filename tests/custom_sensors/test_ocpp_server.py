@@ -28,6 +28,7 @@ import aiohttp
 import pytest
 from aiohttp import web
 
+from custom_components.hsem.custom_sensors.ocpp_flap_state import FlapState
 from custom_components.hsem.custom_sensors.ocpp_profiles import HSEM_PROFILE_IDS
 from custom_components.hsem.custom_sensors.ocpp_server import (
     _WS_HEARTBEAT_INTERVAL_S,
@@ -1003,7 +1004,7 @@ class TestLastRequestedCurrentA:
             "test-cpid", target_power_kw=7.2, max_current_a=32, now=now
         )
         assert ocpp_server.last_requested_current_a == 32
-        ocpp_server._flap_state = "charging"
+        ocpp_server._flap_state = FlapState.Charging
         await ocpp_server.update_charge_target(
             "test-cpid", target_power_kw=0.0, now=now
         )
@@ -1089,7 +1090,7 @@ class TestRemoteStartTransaction:
     async def test_not_sent_when_stopping(self, ocpp_server, charger_session):
         """Stopping a charge must never trigger a RemoteStartTransaction."""
         ocpp_server._chargers["test-cpid"] = charger_session
-        ocpp_server._flap_state = "charging"
+        ocpp_server._flap_state = FlapState.Charging
         now = datetime.now(UTC)
         await ocpp_server.update_charge_target(
             "test-cpid", target_power_kw=0.0, now=now
@@ -1481,7 +1482,7 @@ class TestAntiFlap:
         """With stop_window_s=0, charge should stop immediately."""
         ocpp_server._chargers["test-cpid"] = charger_session
         now = datetime.now(UTC)
-        ocpp_server._flap_state = "charging"
+        ocpp_server._flap_state = FlapState.Charging
         await ocpp_server.update_charge_target(
             "test-cpid", target_power_kw=0.0, now=now
         )
@@ -1567,7 +1568,7 @@ class TestConnectPendingPlanGate:
 
         Only a transition HSEM did not itself cause is a free-vend risk.
         """
-        ocpp_server._flap_state = "charging"
+        ocpp_server._flap_state = FlapState.Charging
 
         await ocpp_server._handle_status_notification(
             charger_session, {"status": "Charging"}
@@ -1916,7 +1917,7 @@ class TestFailedSendRollback:
     ):
         """A failed RemoteStopTransaction keeps flap_state at 'stopping'."""
         ocpp_server._chargers["test-cpid"] = charger_session
-        ocpp_server._flap_state = "charging"
+        ocpp_server._flap_state = FlapState.Charging
         charger_session.transaction_id = 5
         charger_session.websocket.send_str.side_effect = ConnectionResetError()
         now = datetime.now(UTC)
@@ -2187,7 +2188,7 @@ class TestResetAntiFlapStateOnDisconnect:
 
     def test_reset_clears_all_bookkeeping(self, ocpp_server):
         """_reset_anti_flap_state() returns every field to its idle default."""
-        ocpp_server._flap_state = "charging"
+        ocpp_server._flap_state = FlapState.Charging
         ocpp_server._target_entered_at = datetime.now(UTC)
         ocpp_server._zero_entered_at = datetime.now(UTC)
         ocpp_server._last_sent_target = 7200.0
@@ -2220,7 +2221,7 @@ class TestResetAntiFlapStateOnDisconnect:
                 client.ws_connect("ws://127.0.0.1:19015/reset-test"),
             ):
                 await asyncio.sleep(0.05)
-                server._flap_state = "charging"
+                server._flap_state = FlapState.Charging
             await asyncio.sleep(0.05)
             assert server._flap_state == "idle"
         finally:
@@ -2457,7 +2458,7 @@ class TestRemoteStopRetry:
         attempted once and then never retried.
         """
         ocpp_server._chargers["test-cpid"] = charger_session
-        ocpp_server._flap_state = "charging"
+        ocpp_server._flap_state = FlapState.Charging
         charger_session.transaction_id = 42
         now = datetime.now(UTC)
 
@@ -2491,7 +2492,7 @@ class TestRemoteStopRetry:
         or a silently-ignored command.
         """
         ocpp_server._chargers["test-cpid"] = charger_session
-        ocpp_server._flap_state = "charging"
+        ocpp_server._flap_state = FlapState.Charging
         charger_session.transaction_id = 42
         charger_session.websocket.send_str = AsyncMock(side_effect=Exception("boom"))
         now = datetime.now(UTC)
@@ -2517,7 +2518,7 @@ class TestRemoteStopRetry:
         """Once the charger's own StopTransaction clears transaction_id,
         the state machine settles to idle and stops retrying."""
         ocpp_server._chargers["test-cpid"] = charger_session
-        ocpp_server._flap_state = "charging"
+        ocpp_server._flap_state = FlapState.Charging
         charger_session.transaction_id = 42
         now = datetime.now(UTC)
 
@@ -2706,7 +2707,7 @@ class TestSetChargingProfileRejectedRetry:
         it to ever converge on a value the charger accepts.
         """
         ocpp_server._chargers["test-cpid"] = charger_session
-        ocpp_server._flap_state = "charging"
+        ocpp_server._flap_state = FlapState.Charging
         ocpp_server._last_sent_target = 3680.0
         charger_session.transaction_id = 1
         charger_session.last_call_status["SetChargingProfile"] = "Rejected"
@@ -2736,7 +2737,7 @@ class TestSetChargingProfileRejectedRetry:
     async def test_no_retry_when_status_unknown(self, ocpp_server, charger_session):
         """No prior CALLRESULT and no material change means no resend."""
         ocpp_server._chargers["test-cpid"] = charger_session
-        ocpp_server._flap_state = "charging"
+        ocpp_server._flap_state = FlapState.Charging
         ocpp_server._last_sent_target = 3680.0
         charger_session.transaction_id = 1
         now = datetime.now(UTC)
@@ -2893,7 +2894,7 @@ class TestRateUnitRenegotiation:
         reports watt support the same 3.68 kW target must be republished as
         a watt profile — the material-change dedup must not suppress it."""
         ocpp_server._chargers["test-cpid"] = charger_session
-        ocpp_server._flap_state = "charging"
+        ocpp_server._flap_state = FlapState.Charging
         ocpp_server._last_sent_target = 3680.0
         charger_session.transaction_id = 1
         now = datetime.now(UTC)

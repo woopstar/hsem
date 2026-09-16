@@ -54,6 +54,7 @@ from custom_components.hsem.custom_sensors.ocpp_control import (
     RATE_UNIT_PREFERENCES,
     OCPPControlMixin,
 )
+from custom_components.hsem.custom_sensors.ocpp_flap_state import FlapState
 from custom_components.hsem.custom_sensors.ocpp_message_handlers import (
     OCPPMessageHandlersMixin,
 )
@@ -184,7 +185,7 @@ class OCPPServer(
         self._last_sent_phases: int | None = None
 
         # Anti-flap state machine: "idle", "starting", "charging", "stopping"
-        self._flap_state: str = "idle"
+        self._flap_state: FlapState = FlapState.Idle
 
         # RemoteStartTransaction retry tracking (issue #892). HSEM never
         # correlates OCPP CALLRESULTs to a specific outbound request, so the
@@ -317,12 +318,17 @@ class OCPPServer(
     def anti_flap_state(self) -> str:
         """Return the anti-flap state machine's current state.
 
-        One of ``"idle"``, ``"starting"``, ``"charging"``, ``"stopping"``.
+        One of the :class:`~custom_sensors.ocpp_flap_state.FlapState` values:
+        ``"idle"``, ``"starting"``, ``"charging"``, ``"stopping"``.
         Exposed for diagnostics (issue #892) — without this, diagnosing why
         a charger isn't starting/stopping requires reading source code to
         understand HSEM's own internal state.
+
+        Coerced with ``str()`` so the value published as an entity attribute
+        stays a plain string rather than a ``FlapState`` member.  ``StrEnum``
+        would serialise identically either way; this keeps it explicit.
         """
-        return self._flap_state
+        return str(self._flap_state)
 
     @property
     def is_stalled(self) -> bool:

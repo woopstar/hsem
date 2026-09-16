@@ -7,8 +7,8 @@ stop commands, holding each one until the target has been stable long
 enough to be worth acting on. Without it, a target oscillating around
 zero would start and stop a physical charger every planner cycle.
 
-The state machine is ``"idle"`` → ``"starting"`` → ``"charging"`` →
-``"stopping"`` → ``"idle"``, with the start and stop windows
+The state machine is :class:`FlapState` — ``Idle`` → ``Starting`` →
+``Charging`` → ``Stopping`` → ``Idle`` — with the start and stop windows
 (:attr:`~ocpp_server.OCPPServer._start_window_s` /
 ``_stop_window_s``) gating each transition. Mixes into
 :class:`~ocpp_server.OCPPServer`, so the timing state and the senders on
@@ -28,6 +28,7 @@ from custom_components.hsem.custom_sensors.ocpp_commands import (
     charger_appears_stalled,
     connector_has_car,
 )
+from custom_components.hsem.custom_sensors.ocpp_flap_state import FlapState
 from custom_components.hsem.custom_sensors.ocpp_profiles import HSEM_PROFILE_IDS
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
@@ -45,7 +46,7 @@ class OCPPAntiFlapMixin:
     _chargers: dict[str, ChargerSession]
     _start_window_s: int
     _stop_window_s: int
-    _flap_state: str
+    _flap_state: FlapState
     _target_entered_at: datetime | None
     _zero_entered_at: datetime | None
     _last_sent_target: float
@@ -181,14 +182,18 @@ class OCPPAntiFlapMixin:
         # Anti-flap state machine
         if target_w > _SLOT_EPSILON:
             # Target is non-zero — handle start window
-            if self._flap_state in ("idle", "stopping", "starting"):
+            if self._flap_state in (
+                FlapState.Idle,
+                FlapState.Stopping,
+                FlapState.Starting,
+            ):
                 # Not yet charging — the stall diagnostic only applies once
                 # a session is confirmed "charging" (issue #894).
                 self._stalled = False
                 self._stall_logged = False
-                if self._flap_state != "starting":
+                if self._flap_state != FlapState.Starting:
                     self._target_entered_at = now
-                    self._flap_state = "starting"
+                    self._flap_state = FlapState.Starting
                 target_at = self._target_entered_at
                 if target_at is None:
                     target_at = now
@@ -203,7 +208,7 @@ class OCPPAntiFlapMixin:
                         session, int(target_w), max_current_a, number_phases
                     )
                     if remote_start_ok and profile_ok:
-                        self._flap_state = "charging"
+                        self._flap_state = FlapState.Charging
                     else:
                         # Stay "starting" so the next cycle retries — the
                         # start window has already elapsed, so elapsed
@@ -221,7 +226,7 @@ class OCPPAntiFlapMixin:
                         elapsed,
                         self._start_window_s,
                     )
-            elif self._flap_state == "charging":
+            elif self._flap_state == FlapState.Charging:
                 # Still no confirmed transaction from the charger — the
                 # first RemoteStartTransaction may have been rejected,
                 # dropped, or simply never answered. Retry on a cooldown
@@ -287,7 +292,7 @@ class OCPPAntiFlapMixin:
             # the "will retry next cycle" comment below.
             #
             # A charger-initiated session (free-vend) is admitted via
-            # ``free_vend`` (issue #990): _flap_state only leaves "idle"
+            # ``free_vend`` (issue #990): _flap_state only leaves Idle
             # when HSEM itself starts a session, but a charger that opens
             # its own StartTransaction still carries an open
             # transaction_id — and a managed EV whose plan says zero must
@@ -309,7 +314,7 @@ class OCPPAntiFlapMixin:
             # would be the standing block issue #920 removed.
             if (
                 managed
-                and self._flap_state == "idle"
+                and self._flap_state == FlapState.Idle
                 and not session.hsem_zero_profile_active
                 and connector_has_car(session)
             ):
@@ -321,11 +326,15 @@ class OCPPAntiFlapMixin:
                 await self._send_zero_current_profile(session)
             free_vend = (
                 managed
-                and self._flap_state == "idle"
+                and self._flap_state == FlapState.Idle
                 and (session.transaction_id is not None or session.status == "Charging")
             )
-            if self._flap_state in ("charging", "starting", "stopping") or free_vend:
-                if free_vend and self._flap_state == "idle":
+            if (
+                self._flap_state
+                in (FlapState.Charging, FlapState.Starting, FlapState.Stopping)
+                or free_vend
+            ):
+                if free_vend and self._flap_state == FlapState.Idle:
                     _LOGGER.info(
                         "OCPP %s: charger-initiated transaction %s is "
                         "running while the plan allocates zero — driving "
@@ -333,9 +342,9 @@ class OCPPAntiFlapMixin:
                         session.cpid,
                         session.transaction_id,
                     )
-                if self._flap_state != "stopping":
+                if self._flap_state != FlapState.Stopping:
                     self._zero_entered_at = now
-                    self._flap_state = "stopping"
+                    self._flap_state = FlapState.Stopping
                 zero_at = self._zero_entered_at
                 if zero_at is None:
                     zero_at = now
@@ -350,7 +359,7 @@ class OCPPAntiFlapMixin:
                         # to reset its target-tracking bookkeeping; it
                         # no-ops the actual socket write in this case.
                         await self._send_remote_stop(session, now=now)
-                        self._flap_state = "idle"
+                        self._flap_state = FlapState.Idle
                     elif self._remote_stop_due(now):
                         if not await self._send_remote_stop(session, now=now):
                             _LOGGER.warning(
