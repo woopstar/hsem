@@ -15,6 +15,12 @@ from custom_components.hsem.planner.slot_population import (
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 
+#: How far below zero ``live_house_power − EV power`` may land before the two
+#: readings are treated as inconsistent rather than as a zero house load.
+#: Covers ordinary sampling skew between the two meters; a real disagreement
+#: (a house meter lagging an 11 kW EV ramp) is orders of magnitude larger.
+_HOUSE_MINUS_EV_TOLERANCE_W = 200.0
+
 
 def _parse_now(now_iso: str) -> datetime:
     """Parse a timezone-aware ISO-8601 string."""
@@ -204,7 +210,28 @@ def _inject_live_data_into_current_slot(
                         and inp.ev_second_session_charge_kw > 1e-9
                     ):
                         ev_ac_w += inp.ev_second_session_charge_kw * 1000.0
-                    live_house_w = max(live_house_w - ev_ac_w, 0.0)
+                    remainder_w = live_house_w - ev_ac_w
+                    if remainder_w < -_HOUSE_MINUS_EV_TOLERANCE_W:
+                        # The EV is drawing more than the house meter reports
+                        # in total, so the two readings disagree — typically a
+                        # house meter still lagging an EV ramp (issue #1018
+                        # follow-up: 2.4 kW house against 10.9 kW of EV).
+                        # Clamping to zero would assert "the house consumes
+                        # nothing", inventing PV surplus that the planner then
+                        # hands to the EV. The house load is simply unknown
+                        # this cycle, so keep the forecast, exactly as when no
+                        # live reading is available at all.
+                        log_planner(
+                            "debug",
+                            "[core] _inject_live_data  slot=%s  "
+                            "live house %.0f W is below EV draw %.0f W — "
+                            "readings disagree, keeping the forecast",
+                            slot.start.isoformat(),
+                            live_house_w,
+                            ev_ac_w,
+                        )
+                        break
+                    live_house_w = max(remainder_w, 0.0)
 
                 live_load_kwh = (live_house_w / 1000.0) * slot_hours
 

@@ -196,6 +196,39 @@ def test_live_injection_subtracts_known_ev_power():
     assert slot.avg_house_consumption_kwh == pytest.approx(0.4)
 
 
+def test_live_injection_keeps_forecast_when_ev_draw_exceeds_house_reading():
+    """Disagreeing meters mean the house load is unknown — keep the forecast.
+
+    Field case (issue #1018 follow-up, 2026-09-14 16:26): the house meter
+    still read 2.4 kW while the EV drew 10.87 kW. Clamping the subtraction at
+    zero asserted "the house consumes nothing" and handed the planner the
+    whole PV output as surplus.
+    """
+    slot = _current_slot(forecast_kwh=0.513)
+    inp = _Inp(live_house_w=2400.0, ev_kw=10.87)
+    _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
+    assert slot.avg_house_consumption_kwh == pytest.approx(0.513)
+
+
+def test_live_injection_still_uses_live_pv_when_house_readings_disagree():
+    """Only the house half is unknown; measured PV is still injected."""
+    slot = _current_slot(forecast_kwh=0.513)
+    slot.solcast_pv_estimate_kwh = 0.9
+    inp = _Inp(live_house_w=2400.0, live_solar_w=1750.0, ev_kw=10.87)
+    _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
+    assert slot.avg_house_consumption_kwh == pytest.approx(0.513)
+    assert slot.solcast_pv_estimate_kwh == pytest.approx(1.75)
+
+
+def test_live_injection_tolerates_small_meter_skew():
+    """A small negative remainder is sampling skew, not disagreement."""
+    slot = _current_slot(forecast_kwh=0.4)
+    # House 2.30 kW against 2.45 kW of EV — 150 W apart, inside the tolerance.
+    inp = _Inp(live_house_w=2300.0, ev_kw=2.45)
+    _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
+    assert slot.avg_house_consumption_kwh == pytest.approx(0.0)
+
+
 def test_live_injection_normal_load_passes_through():
     """A normal live reading within 3x of forecast is injected unchanged."""
     slot = _current_slot(forecast_kwh=0.4)
