@@ -381,7 +381,14 @@ protect against this:
 
 1. **Known EV power subtraction** — when `ev_session_charge_kw` (and/or the
    second charger's) is available, it is subtracted from the live reading
-   (floored at 0) before injection.
+   (floored at 0) before injection. If the EV draw exceeds the whole house
+   reading by more than `_HOUSE_MINUS_EV_TOLERANCE_W` (200 W), the two meters
+   disagree — typically a house meter still lagging an EV ramp — and the
+   house load is simply unknown for this cycle: the **forecast is kept**,
+   exactly as when no live reading is available (issue #1018). Flooring at 0
+   there would assert "the house consumes nothing" and invent PV surplus,
+   which the surplus-only rules then hand to a charge-past-target EV. Live PV
+   is still injected; only the house half is withheld.
 2. **Spike cap** — if the remaining live reading still exceeds
    `max(3 × forecast, 0.05 kWh)`, it is capped at the forecast (or at the
    0.05 kWh floor when the forecast is ~0, where the ratio test would be
