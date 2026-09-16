@@ -398,16 +398,54 @@ def simulate_soc(
             )
             slot.recommendation = Recommendations.BatteriesWaitMode.value
 
-        # A held discharge-window slot that actually discharged is an
-        # active discharge slot; promote the label so dashboards and
-        # downstream logic see the real behaviour.  If it stayed at zero
-        # it keeps the window label (issue #1005).
-        if (
-            discharge > 1e-9
-            and slot.recommendation
-            == Recommendations.BatteriesDischargeWindowMode.value
+        # Keep the published discharge label honest about whether the plan
+        # actually dispatches the battery this slot (issues #1005, #1026).
+        # The two branches are mutually exclusive on ``discharge``, so a slot
+        # can never oscillate between the labels within one simulation.
+        if slot.recommendation == Recommendations.BatteriesDischargeWindowMode.value:
+            if discharge > 1e-9:
+                # A held window slot that actually discharged is an active
+                # discharge slot; promote so dashboards and downstream logic
+                # see the real behaviour (issue #1005).
+                slot.recommendation = Recommendations.BatteriesDischargeMode.value
+        elif (
+            milp_prepopulated
+            and slot.recommendation == Recommendations.BatteriesDischargeMode.value
+            and discharge <= 1e-9
         ):
-            slot.recommendation = Recommendations.BatteriesDischargeMode.value
+            # An active discharge label the plan does not dispatch —
+            # ``_write_results`` assigns the label when ``ed_kwh`` clears
+            # ``_min_action_kwh``, then clamps the written energy to the
+            # running SoC, so a slot at the reserve floor keeps the label with
+            # zero energy.
+            #
+            # Gated on ``milp_prepopulated`` because only then is ``discharge``
+            # the LP's own ``ed[t]`` and therefore an authoritative statement
+            # of plan intent.  Without the flag this function *re-derives*
+            # discharge from the label and ``net_demand``, which is 0 for a
+            # slot whose plan intended arbitrage export rather than covering
+            # house load — demoting there would destroy a legitimate label.
+            # Non-MILP candidates cannot reach this branch anyway: the
+            # seasonal fill assigns the window label, and the promotion above
+            # only produces ``batteries_discharge_mode`` when discharge > 0.
+            #
+            # Demote to the window label, NOT to wait_mode: wait carries the
+            # reserve floor and TOU handling in the applier, which would
+            # suppress the self-consumption a discharge window must still
+            # permit, and would also force discharge to 0 on any re-simulation
+            # of these slots.  The window label executes identically to
+            # batteries_discharge_mode, so only the published label changes
+            # (issue #1026).  This mirrors the charge-direction rule from
+            # issue #989 — a direction label is only valid while the slot
+            # actually moves energy that way.
+            log_planner(
+                "debug",
+                "[soc_sim] demoted discharge rec to window mode "
+                "(cap=%.3f discharge=%.3f)",
+                cap,
+                discharge,
+            )
+            slot.recommendation = Recommendations.BatteriesDischargeWindowMode.value
 
         log_planner(
             "debug",
