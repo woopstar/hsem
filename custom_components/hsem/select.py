@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from custom_components.hsem.const import FORCE_MODE_AUTO
 from custom_components.hsem.custom_selectors.solcast_likelihood import (
     HSEMSolcastLikelihoodSelector,
 )
@@ -26,7 +27,7 @@ from custom_components.hsem.utils.solcast_likelihood import SOLCAST_LIKELIHOOD_O
 _RECOMMENDATION_OPTIONS = list(USER_SELECTABLE_RECS)
 
 # Default selection value.
-_DEFAULT_OPTION = "auto"
+_DEFAULT_OPTION = FORCE_MODE_AUTO
 
 # Entity descriptions for each select entity in this platform.
 # Using SelectEntityDescription keeps the definition declarative and makes it

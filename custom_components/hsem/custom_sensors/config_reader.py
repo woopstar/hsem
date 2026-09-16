@@ -31,6 +31,7 @@ from custom_components.hsem.utils.phase_power import (
     normalize_ev_phase_topology,
 )
 from custom_components.hsem.utils.solcast_likelihood import DEFAULT_SOLCAST_LIKELIHOOD
+from custom_components.hsem.utils.wait_mode_behavior import DEFAULT_WAIT_MODE_BEHAVIOR
 
 
 def _normalize_optional_device_id(value: Any) -> str | None:
@@ -417,7 +418,7 @@ def build_sensor_config(
     cfg.batteries_wait_mode_behavior = (
         str(_wait_mode_behavior).lower()
         if _wait_mode_behavior is not None
-        else "strict"
+        else DEFAULT_WAIT_MODE_BEHAVIOR
     )
 
     # EV planned load integration

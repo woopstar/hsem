@@ -94,7 +94,8 @@ from custom_components.hsem.utils.misc import (
 )
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import slot_duration_hours
-from custom_components.hsem.utils.workingmodes import WorkingModes
+from custom_components.hsem.utils.wait_mode_behavior import WaitModeBehavior
+from custom_components.hsem.utils.workingmodes import ExcessPvUseInTou, WorkingModes
 
 
 async def async_apply_battery_settings(
@@ -207,7 +208,8 @@ async def async_apply_battery_settings(
         recommendation == Recommendations.BatteriesWaitMode.value
         and not relevant_evs
         and not held_planned_export
-        and cfg.batteries_wait_mode_behavior == "self_consumption_with_reserve"
+        and cfg.batteries_wait_mode_behavior
+        == WaitModeBehavior.SelfConsumptionWithReserve
         and wait_mode_reserve_kwh is not None
     )
 
@@ -558,9 +560,13 @@ async def async_apply_battery_settings(
         or held_planned_export
     )
     desired_excess = (
-        "charge"
+        ExcessPvUseInTou.Charge.value
         if wait_mode_self_consumption
-        else ("fed_to_grid" if export_is_intended else "charge")
+        else (
+            ExcessPvUseInTou.FedToGrid.value
+            if export_is_intended
+            else ExcessPvUseInTou.Charge.value
+        )
     )
     if live.huawei_batteries_excess_pv_use_in_tou != desired_excess:
         excess_entity = cfg.huawei_solar_batteries_excess_pv_energy_use_in_tou

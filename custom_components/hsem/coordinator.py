@@ -38,6 +38,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from custom_components.hsem.const import FORCE_MODE_AUTO
 from custom_components.hsem.coordinator_cycle import CoordinatorCycleMixin
 from custom_components.hsem.coordinator_data import CoordinatorData
 from custom_components.hsem.coordinator_ev_command_stability import (
@@ -254,7 +255,7 @@ class HSEMDataUpdateCoordinator(
         self._last_plan_ev_second_charging: bool = False
         self._last_plan_ev_second_soc_below_target: bool = False
         self._last_plan_ev_second_effective_energy_kwh: float | None = None
-        self._last_plan_force_mode: str = "auto"
+        self._last_plan_force_mode: str = FORCE_MODE_AUTO
         self._last_plan_slot_start: datetime | None = None
         self._last_plan_import_price: float | None = None
         self._last_plan_load_forecast_signature: LoadForecastSignature | None = None
