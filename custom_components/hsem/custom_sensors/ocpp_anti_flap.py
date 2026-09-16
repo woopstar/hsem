@@ -26,6 +26,7 @@ from typing import Any
 from custom_components.hsem.custom_sensors.ocpp_commands import (
     CHARGER_STALL_THRESHOLD_S,
     charger_appears_stalled,
+    connector_has_car,
 )
 from custom_components.hsem.custom_sensors.ocpp_profiles import HSEM_PROFILE_IDS
 from custom_components.hsem.models.ocpp_session import ChargerSession
@@ -77,6 +78,7 @@ class OCPPAntiFlapMixin:
         now: datetime | None = None,
         managed: bool = True,
         number_phases: int | None = None,
+        management_enabled: bool | None = None,
     ) -> None:
         """Update the charge target for a charger with anti-flap logic.
 
@@ -104,6 +106,13 @@ class OCPPAntiFlapMixin:
                 charger is told whether the amp limit is a one-phase or a
                 three-phase command.  ``None`` omits the field (unknown,
                 or a watt-unit profile where phases are irrelevant).
+            management_enabled: ``True`` while the planned-load feature is
+                enabled and smart charging is on — *managed* without the
+                car-connected reading (issue #1018). While it holds and the
+                charger itself reports a car plugged in, the EV stays
+                managed even if the Home Assistant "connected" entity says
+                otherwise, so a one-cycle blip cannot release an enforced
+                zero. ``None`` treats it as equal to *managed*.
         """
         if cpid not in self._chargers:
             return
@@ -113,6 +122,24 @@ class OCPPAntiFlapMixin:
             now = datetime.now(UTC)
 
         target_w = target_power_kw * 1000.0
+
+        # A car the charger itself reports plugged in is still managed while
+        # the user has HSEM managing this EV, whatever a single Home Assistant
+        # "connected" reading says (issue #1018). Otherwise a one-cycle blip
+        # of that entity releases the enforced 0 A profile, and the car
+        # immediately charges at full power from grid. Turning the feature
+        # or smart charging off still relinquishes the charger, and a real
+        # unplug is released by the StatusNotification "Available" path.
+        if management_enabled is None:
+            management_enabled = managed
+        if management_enabled and not managed and connector_has_car(session):
+            _LOGGER.debug(
+                "OCPP %s: EV reads disconnected but the connector reports '%s' "
+                "— keeping it managed",
+                session.cpid,
+                session.status,
+            )
+            managed = True
 
         if session.gate_pending_plan:
             # This call is itself the signal that the planner has now had
@@ -267,10 +294,35 @@ class OCPPAntiFlapMixin:
             # be driven to zero regardless of who started the session.
             # Gated on ``managed`` so a locally started charge on an
             # unmanaged EV (smart charging off) is left alone.
+            #
+            # Some chargers resume ``Charging`` with no StartTransaction at
+            # all (issue #1018: a go-eCharger after its profile was cleared),
+            # so a connector reporting ``Charging`` counts as a session too —
+            # mirroring ``_send_remote_stop``, which already sends the 0 A
+            # profile in exactly that case.
+            #
+            # A managed EV whose zero is not currently enforced gets its 0 A
+            # profile back immediately (issue #1018) — without waiting for the
+            # stop window, which exists to damp HSEM's own sessions, not one
+            # it never started. Only on a connector with a car plugged in: a
+            # TxDefaultProfile persists, and writing 0 A onto an idle connector
+            # would be the standing block issue #920 removed.
+            if (
+                managed
+                and self._flap_state == "idle"
+                and not session.hsem_zero_profile_active
+                and connector_has_car(session)
+            ):
+                _LOGGER.info(
+                    "OCPP %s: plugged-in managed EV has no enforced 0 A profile "
+                    "while the plan allocates zero — re-installing it",
+                    session.cpid,
+                )
+                await self._send_zero_current_profile(session)
             free_vend = (
                 managed
                 and self._flap_state == "idle"
-                and session.transaction_id is not None
+                and (session.transaction_id is not None or session.status == "Charging")
             )
             if self._flap_state in ("charging", "starting", "stopping") or free_vend:
                 if free_vend and self._flap_state == "idle":
@@ -315,7 +367,9 @@ class OCPPAntiFlapMixin:
                     )
             elif not managed and session.hsem_zero_profile_active:
                 # The EV became unmanaged (feature off, smart charging
-                # off) while HSEM was holding an enforced zero. Release it
+                # off, or the car reads disconnected and the charger agrees
+                # there is no car — see issue #1018 above) while HSEM was
+                # holding an enforced zero. Release it
                 # exactly once — leaving the 0 A profile standing would be
                 # the issue #920 regression, and repeating the clear every
                 # cycle would spam the charger (issue #990).
