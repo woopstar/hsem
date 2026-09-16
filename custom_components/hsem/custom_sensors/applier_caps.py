@@ -284,8 +284,8 @@ def _primary_battery_cap_hold(rec: HourlyRecommendation) -> bool:
 
     - ``soc_simulation.py`` relabels only ``force_batteries_discharge`` /
       ``force_export`` to wait when the simulated discharge is zero.  A
-      schedule discharge window deliberately keeps its label — it is the
-      user's configured window, not a forced action — so a solved discharge
+      seasonal discharge window deliberately keeps its label — it is the
+      planner's own window, not a forced action — so a solved discharge
       that merely rounds below the materiality threshold still reads as an
       explicit hold here, which it is not.
     - The slot executes as ``MaximizeSelfConsumption``, where this cap is a

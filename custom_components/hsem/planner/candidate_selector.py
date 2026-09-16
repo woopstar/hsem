@@ -203,11 +203,11 @@ def select_best_candidate(  # NOSONAR
         # DISCHARGE_RECS, so it also cannot damage the MILP's results.
         # Apply seasonal optimization strategy BEFORE concentration.
         # The seasonal fill marks unassigned summer slots as
-        # BatteriesDischargeMode; concentrate_discharge then clears the
+        # BatteriesDischargeWindowMode; concentrate_discharge then clears the
         # cheap discharge slots the battery cannot serve.  Running
         # concentrate first would find no discharge slots (e.g. on the
         # passive candidate, whose recs are cleared), after which the
-        # seasonal fill would mark every slot as BatteriesDischargeMode
+        # seasonal fill would mark every slot as a discharge-window slot
         # with nothing left to thin them out — collapsing the whole
         # horizon into a single discharge window.  This matches the
         # original engine_core pipeline order.
@@ -575,11 +575,11 @@ def replacement_price_from_next_discharge(
 
     The energy stored at end-of-horizon is worth what it would cost to
     re-purchase that energy from the grid during the **first** upcoming
-    discharge schedule window.  Within that window the battery discharges
+    discharge window.  Within that window the battery discharges
     in priority order from the most expensive slots, so we use the average
     of the *top_n* most expensive import prices within that window.
 
-    In a 48h or 72h horizon the planner marks ``BatteriesDischargeMode``
+    In a 48h or 72h horizon the planner marks discharge-window slots
     across all days, but the replacement price must reflect only the
     closest discharge window — not windows 2+ days away.  We identify the
     first window by collecting all future discharge slots, sorting them by
