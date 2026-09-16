@@ -14,23 +14,15 @@ from custom_components.hsem.custom_selectors.solcast_likelihood import (
     HSEMSolcastLikelihoodSelector,
 )
 from custom_components.hsem.custom_selectors.working_mode import HSEMWorkingModeSelector
-from custom_components.hsem.utils.recommendations import Recommendations
+from custom_components.hsem.utils.recommendations import USER_SELECTABLE_RECS
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_force_working_mode_selector_key,
     get_solcast_likelihood_selector_key,
 )
 
-# Selectable working modes exposed to the user.
-_RECOMMENDATION_OPTIONS = [
-    Recommendations.BatteriesChargeGrid.value,
-    Recommendations.BatteriesChargeSolar.value,
-    Recommendations.BatteriesDischargeMode.value,
-    Recommendations.BatteriesDischargeWindowMode.value,
-    Recommendations.BatteriesWaitMode.value,
-    Recommendations.EVSmartCharging.value,
-    Recommendations.ForceBatteriesDischarge.value,
-    Recommendations.ForceExport.value,
-]
+# Selectable working modes exposed to the user.  Derived from the canonical
+# enum so this surface cannot drift from the service schema or services.yaml.
+_RECOMMENDATION_OPTIONS = list(USER_SELECTABLE_RECS)
 
 # Default selection value.
 _DEFAULT_OPTION = "auto"

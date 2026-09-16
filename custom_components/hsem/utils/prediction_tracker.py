@@ -22,6 +22,10 @@ from typing import Any
 
 from custom_components.hsem.models.prediction_record import PredictionRecord
 from custom_components.hsem.utils.persistence import read_json_history_file
+from custom_components.hsem.utils.recommendations import (
+    BATTERY_CHARGE_ACTION_RECS,
+    BATTERY_DISCHARGE_ACTION_RECS,
+)
 
 # 7 days × 4 slots/h × 24 h = 672
 _SEVEN_DAY_SLOTS = 672
@@ -30,20 +34,31 @@ _THIRTY_DAY_SLOTS = 2880
 
 
 def _action_label(recommendation: str | None) -> str:
-    """Map a recommendation string to a human-readable action label.
+    """Map a recommendation to the action the plan commits the battery to.
+
+    Classifies by what the *plan* decided for the primary battery, which is
+    narrower than "does this slot involve charging/discharging at all".
+    Labels that leave the battery's direction unresolved therefore count as
+    ``"idle"``: ``ev_smart_charging`` (a display relabel applied after the SoC
+    simulation solved the flows), ``force_export`` (inverter PV routing only),
+    and ``batteries_discharge_window_mode`` (the plan holds the battery, even
+    though self-consumption stays permitted).
+
+    See :data:`~utils.recommendations.BATTERY_CHARGE_ACTION_RECS` and
+    :data:`~utils.recommendations.BATTERY_DISCHARGE_ACTION_RECS` for the
+    canonical membership and the rationale behind each exclusion.
 
     Args:
         recommendation: The ``PlannedSlot.recommendation`` value, or ``None``.
 
     Returns:
-        ``"charge"`` for any charging recommendation, ``"discharge"`` for
-        any discharging recommendation, ``"idle"`` otherwise.
+        ``"charge"``, ``"discharge"``, or ``"idle"``.
     """
     if recommendation is None:
         return "idle"
-    if recommendation in {"batteries_charge_grid", "batteries_charge_solar"}:
+    if recommendation in BATTERY_CHARGE_ACTION_RECS:
         return "charge"
-    if recommendation in {"batteries_discharge_mode", "force_batteries_discharge"}:
+    if recommendation in BATTERY_DISCHARGE_ACTION_RECS:
         return "discharge"
     return "idle"
 

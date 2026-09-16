@@ -32,11 +32,18 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
-from custom_components.hsem.utils.recommendations import Recommendations
+from custom_components.hsem.utils.recommendations import USER_SELECTABLE_RECS
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_force_mode_sensor_entity_id,
     get_force_mode_sensor_unique_id,
 )
+
+# Mirrors the force-mode select: "auto" plus every forceable mode.  Derived from
+# the canonical tuple so this surface cannot drift from the select platform, the
+# service schema, or services.yaml.  Kept at module level because Home
+# Assistant's entity metaclass rewrites ``_attr_*`` class attributes into
+# properties, which makes the class attribute unreadable for tests.
+FORCE_MODE_SENSOR_OPTIONS: list[str] = ["auto", *USER_SELECTABLE_RECS]
 
 
 class HSEMForceModeSensor(
@@ -58,11 +65,7 @@ class HSEMForceModeSensor(
     _attr_has_entity_name = True
     _attr_translation_key = "force_mode"
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = ["auto"] + [
-        r.value
-        for r in Recommendations
-        if r not in (Recommendations.TimePassed, Recommendations.MissingInputEntities)
-    ]
+    _attr_options = FORCE_MODE_SENSOR_OPTIONS
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(

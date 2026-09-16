@@ -61,17 +61,18 @@ all planner output as attributes.
 
 **Entity:** `sensor.hsem_working_mode`
 
-| State                       | Meaning                                                                                                 |
-| --------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `batteries_charge_grid`     | Battery charging from grid (forced by schedule or price)                                                |
-| `batteries_charge_solar`    | Battery charging from PV surplus                                                                        |
-| `batteries_discharge_mode`  | Battery discharging to cover house load                                                                 |
-| `force_batteries_discharge` | Forced discharge to grid (excess export)                                                                |
-| `force_export`              | Negative import price — all energy exported                                                             |
-| `ev_smart_charging`         | EV charging load allocated                                                                              |
-| `batteries_wait_mode`       | Battery idle; may allow self-consumption above the planner reserve depending on **Wait mode behaviour** |
-| `time_passed`               | Slot is in the past                                                                                     |
-| `missing_input_entities`    | Required HA entities unavailable                                                                        |
+| State                             | Meaning                                                                                                  |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `batteries_charge_grid`           | Battery charging from grid (forced by schedule or price)                                                 |
+| `batteries_charge_solar`          | Battery charging from PV surplus                                                                         |
+| `batteries_discharge_mode`        | Battery discharging to cover house load                                                                  |
+| `batteries_discharge_window_mode` | Inside a seasonal discharge window, but the plan dispatches no discharge; self-consumption still allowed |
+| `force_batteries_discharge`       | Forced discharge to grid (excess export)                                                                 |
+| `force_export`                    | Negative import price — all energy exported                                                              |
+| `ev_smart_charging`               | EV charging load allocated                                                                               |
+| `batteries_wait_mode`             | Battery idle; may allow self-consumption above the planner reserve depending on **Wait mode behaviour**  |
+| `time_passed`                     | Slot is in the past                                                                                      |
+| `missing_input_entities`          | Required HA entities unavailable                                                                         |
 
 ### Standard attributes
 
@@ -752,16 +753,17 @@ Detects when the inverter is actively curtailing PV production.
 
 **Entity:** `select.hsem_force_working_mode`
 
-| Option                      | Description                                 |
-| --------------------------- | ------------------------------------------- |
-| `auto`                      | Normal operation — planner controls battery |
-| `batteries_charge_grid`     | Force grid charge                           |
-| `batteries_charge_solar`    | Force solar charge                          |
-| `batteries_discharge_mode`  | Force discharge to house                    |
-| `batteries_wait_mode`       | Force idle                                  |
-| `ev_smart_charging`         | Force EV charging                           |
-| `force_batteries_discharge` | Force discharge to grid                     |
-| `force_export`              | Force all energy to export                  |
+| Option                            | Description                                 |
+| --------------------------------- | ------------------------------------------- |
+| `auto`                            | Normal operation — planner controls battery |
+| `batteries_charge_grid`           | Force grid charge                           |
+| `batteries_charge_solar`          | Force solar charge                          |
+| `batteries_discharge_mode`        | Force discharge to house                    |
+| `batteries_discharge_window_mode` | Force discharge to house (window label)     |
+| `batteries_wait_mode`             | Force idle                                  |
+| `ev_smart_charging`               | Force EV charging                           |
+| `force_batteries_discharge`       | Force discharge to grid                     |
+| `force_export`                    | Force all energy to export                  |
 
 ### Solcast PV forecast likelihood
 

@@ -162,3 +162,65 @@ CHARGE_RECS: frozenset[str] = frozenset(
     }
 )
 """All modes where the battery charges (or EV charging suppresses discharge)."""
+
+_SENTINEL_RECS: frozenset[Recommendations] = frozenset(
+    {
+        Recommendations.TimePassed,
+        Recommendations.MissingInputEntities,
+    }
+)
+
+USER_SELECTABLE_RECS: tuple[str, ...] = tuple(
+    sorted(member.value for member in Recommendations if member not in _SENTINEL_RECS)
+)
+"""Every mode a user may force, in stable alphabetical order.
+
+Excludes only the two state sentinels (``time_passed``,
+``missing_input_entities``), which describe planner state rather than an
+operating mode and cannot be commanded.
+
+Import this everywhere a user-facing override surface enumerates modes — the
+``select`` platform's force-working-mode entity, the
+``set_temporary_override`` service schema, and ``services.yaml``.  These drifted
+apart once already (``batteries_discharge_window_mode`` reached ``services.yaml``
+and ``select.py`` but not the service validator, so the UI offered a mode the
+schema then rejected), which is why the list is derived from the enum rather
+than restated per surface.
+"""
+
+BATTERY_CHARGE_ACTION_RECS: frozenset[str] = frozenset(
+    {
+        Recommendations.BatteriesChargeGrid.value,
+        Recommendations.BatteriesChargeSolar.value,
+    }
+)
+"""Modes where the *label itself* commits the primary battery to charging.
+
+Deliberately narrower than :data:`CHARGE_RECS`: ``ev_smart_charging`` is a
+display relabel applied *after* the SoC simulation has already solved the
+battery's own flows, so it says nothing about the battery's direction (the
+battery may charge, discharge for house load, or hold).  Use
+:data:`CHARGE_RECS` to ask "does this slot involve charging at all"; use this
+set to ask "did the plan commit the battery to charge".
+"""
+
+BATTERY_DISCHARGE_ACTION_RECS: frozenset[str] = frozenset(
+    {
+        Recommendations.BatteriesDischargeMode.value,
+        Recommendations.ForceBatteriesDischarge.value,
+    }
+)
+"""Modes where the *label itself* commits the primary battery to discharging.
+
+Deliberately narrower than :data:`DISCHARGE_RECS`, which exists for
+discharge-*window* logic and so also covers labels that do not dispatch the
+battery:
+
+- ``batteries_discharge_window_mode`` — the plan holds the battery this slot
+  (self-consumption is permitted, but nothing is dispatched).
+- ``force_export`` — changes inverter PV routing (``FullyFedToGrid``); the
+  battery is left unchanged and may still charge, discharge, or hold.
+
+Use :data:`DISCHARGE_RECS` for window/schedule logic; use this set to ask
+"did the plan commit the battery to discharge".
+"""

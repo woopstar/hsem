@@ -21,6 +21,11 @@ from custom_components.hsem.utils.prediction_tracker import (
     PredictionTracker,
     _action_label,
 )
+from custom_components.hsem.utils.recommendations import (
+    BATTERY_CHARGE_ACTION_RECS,
+    BATTERY_DISCHARGE_ACTION_RECS,
+    Recommendations,
+)
 
 # Sentinel timestamp for tests
 NEVER = datetime(2099, 1, 1, tzinfo=UTC)
@@ -91,6 +96,35 @@ class TestActionLabel:
     def test_ev_smart_charging(self) -> None:
         """EV smart charging maps to 'idle'."""
         assert _action_label("ev_smart_charging") == "idle"
+
+    def test_discharge_window_mode(self) -> None:
+        """A held discharge-window slot maps to 'idle' — the plan dispatches nothing."""
+        assert _action_label("batteries_discharge_window_mode") == "idle"
+
+    def test_force_export(self) -> None:
+        """Force export maps to 'idle' — it reroutes PV, not the battery."""
+        assert _action_label("force_export") == "idle"
+
+    def test_wait_mode(self) -> None:
+        """Wait mode maps to 'idle'."""
+        assert _action_label("batteries_wait_mode") == "idle"
+
+    def test_every_recommendation_is_classified(self) -> None:
+        """No recommendation may raise or return an unexpected label."""
+        assert {_action_label(m.value) for m in Recommendations} <= {
+            "charge",
+            "discharge",
+            "idle",
+        }
+
+    def test_labels_agree_with_canonical_sets(self) -> None:
+        """The helper's mapping is exactly the two canonical action sets."""
+        assert {
+            m.value for m in Recommendations if _action_label(m.value) == "charge"
+        } == set(BATTERY_CHARGE_ACTION_RECS)
+        assert {
+            m.value for m in Recommendations if _action_label(m.value) == "discharge"
+        } == set(BATTERY_DISCHARGE_ACTION_RECS)
 
 
 # ---------------------------------------------------------------------------

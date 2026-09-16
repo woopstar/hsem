@@ -60,6 +60,7 @@ from custom_components.hsem.utils.integration_version import (
     async_get_hsem_integration_version,
 )
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+from custom_components.hsem.utils.recommendations import USER_SELECTABLE_RECS
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_force_working_mode_selector_entity_id,
 )
@@ -68,15 +69,7 @@ from custom_components.hsem.utils.sensornames.diagnostics import (
 # Supported override modes
 # ---------------------------------------------------------------------------
 
-SUPPORTED_OVERRIDE_MODES: list[str] = [
-    "batteries_charge_grid",
-    "batteries_charge_solar",
-    "batteries_discharge_mode",
-    "batteries_wait_mode",
-    "ev_smart_charging",
-    "force_batteries_discharge",
-    "force_export",
-]
+SUPPORTED_OVERRIDE_MODES: list[str] = list(USER_SELECTABLE_RECS)
 
 # ---------------------------------------------------------------------------
 # Service name constants
