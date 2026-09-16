@@ -85,7 +85,7 @@ in the same layer must not change it.
    "Zero-charge labels" below, issue #989).
 3. Future `force_batteries_discharge` AND battery > required → `batteries_wait_mode`
 4. Slot's month is a winter month → `batteries_wait_mode`
-5. Slot's month is a summer month, actual PV surplus → `batteries_charge_solar`; else → `batteries_discharge_window_mode` (promoted to `batteries_discharge_mode` if the battery actually discharges)
+5. Slot's month is a summer month, actual PV surplus → `batteries_charge_solar`; else → `batteries_discharge_window_mode` (the SoC simulation relabels between this and `batteries_discharge_mode` in both directions, based on whether the battery actually discharges — see "Zero-discharge labels" below)
 
 > **Note:** `BatteriesChargeSolar` is only assigned when there is a genuine PV
 > surplus (negative net consumption). A small positive house load with zero PV
@@ -1103,6 +1103,51 @@ Two guards take priority over this PV-coverage comparison:
   demand is never assigned `batteries_charge_grid`, even when PV covers
   only part of the planned charge — this is a defensive fallback since the
   LP constraints already prevent `ec[t] > 0` in session slots in practice.
+
+**Zero-discharge labels (issue #1026).** The same rule applies in the
+discharge direction: a discharge label is only valid while the slot actually
+dispatches the battery. `planner/soc_simulation.py` therefore relabels in both
+directions once the slot's discharge is resolved:
+
+| Label before                      | Simulated discharge | `milp_prepopulated` | Label after                       |
+| --------------------------------- | ------------------- | ------------------- | --------------------------------- |
+| `batteries_discharge_window_mode` | `> 1e-9`            | either              | `batteries_discharge_mode`        |
+| `batteries_discharge_window_mode` | `<= 1e-9`           | either              | unchanged                         |
+| `batteries_discharge_mode`        | `> 1e-9`            | either              | unchanged                         |
+| `batteries_discharge_mode`        | `<= 1e-9`           | `True`              | `batteries_discharge_window_mode` |
+| `batteries_discharge_mode`        | `<= 1e-9`           | `False`             | unchanged                         |
+
+The promotion and demotion branches are mutually exclusive on `discharge`, so
+a slot cannot oscillate between the labels within one simulation, and repeated
+simulation is idempotent.
+
+The demotion case arises because `milp/_write_results.py` assigns
+`batteries_discharge_mode` whenever `ed_kwh > _min_action_kwh` and only _then_
+clamps the written energy to the running SoC. A slot at the reserve floor
+therefore keeps the label while carrying zero energy, publishing an active
+discharge label for a slot that dispatches nothing.
+
+**The demotion is gated on `milp_prepopulated`.** Only under that flag is
+`discharge` the LP's own `ed[t]`, and therefore an authoritative statement of
+plan intent. Without it, `simulate_soc` _re-derives_ discharge from the label
+and `net_demand` — and `net_demand <= 0` for a slot whose plan intended
+arbitrage export rather than covering house load, so demoting there would
+destroy a legitimate label. Non-MILP candidates cannot reach the demotion
+branch in any case: the seasonal fill assigns the window label, and the
+promotion only yields `batteries_discharge_mode` when discharge is material.
+
+Unlike the charge direction, the demotion target is
+**`batteries_discharge_window_mode`, not `batteries_wait_mode`**. Wait carries
+the wait-mode reserve floor and TOU handling in the applier, which would
+suppress the self-consumption a discharge window must still permit, and would
+force `discharge = 0` on any re-simulation of the slot. The window label
+executes identically to `batteries_discharge_mode` (same
+`MaximizeSelfConsumption` arm, same exemption from the hold-derived 0 W cap),
+so the demotion changes only the published label — never a hardware write.
+
+Note this shifts such slots from `"discharge"` to `"idle"` in the action-mix
+scorecard, since `utils/prediction_tracker._action_label` classifies by
+`BATTERY_DISCHARGE_ACTION_RECS`, which deliberately excludes the window label.
 
 #### 3. Cover house-load deficit
 

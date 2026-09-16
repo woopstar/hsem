@@ -669,3 +669,86 @@ class TestDegenerateFallback:
             f"fallback (passive), got {winner.name!r}"
         )
         assert winner.is_valid is True
+
+
+# ===========================================================================
+# 7. Zero-discharge label demotion in the selected plan (issue #1026)
+# ===========================================================================
+
+
+class TestSelectedPlanHasNoUndispatchedDischargeLabel:
+    """The winner's published plan must not claim discharge it never dispatched.
+
+    ``simulate_soc`` runs per-candidate, so a demotion observed in a trace
+    proves nothing about what was published.  These assertions run against the
+    **winner** returned by ``select_best_candidate``.
+    """
+
+    def _cost_weights(self) -> CostWeights:
+        return CostWeights(
+            min_soc_pct=10.0,
+            max_soc_pct=100.0,
+            battery_purchase_price=10_000.0,
+            battery_rated_capacity_kwh=10.0,
+            battery_expected_cycles=6000,
+        )
+
+    def _winner(self, *, current_kwh: float) -> CandidatePlan:
+        inp = make_summer_day_input()
+        now = datetime.fromisoformat(inp.now_iso)
+        slots = _populated_slots_for_input(inp)
+        candidates = generate_candidates(slots, inp, now, max_charge_per_slot=1.25)
+        winner, _, _ = select_best_candidate(
+            candidates,
+            now=now,
+            current_kwh=current_kwh,
+            usable_kwh=9.0,
+            max_soc_capacity_kwh=9.0,
+            max_charge_per_slot=1.25,
+            max_discharge_per_slot=None,
+            rated_kwh=10.0,
+            end_of_discharge_soc_pct=10.0,
+            cost_weights=self._cost_weights(),
+            slot_duration_hours=1.0,
+        )
+        return winner
+
+    @pytest.mark.parametrize("current_kwh", [0.0, 0.5, 4.5, 9.0])
+    def test_no_discharge_mode_slot_dispatches_zero(self, current_kwh: float) -> None:
+        """Every published batteries_discharge_mode slot must move real energy.
+
+        Swept across starting SoC, including an empty battery — the reserve-floor
+        case where the LP plans a discharge the simulation cannot deliver.
+        """
+        offenders = [
+            (s.start.isoformat(), s.batteries_discharged_kwh)
+            for s in self._winner(current_kwh=current_kwh).slots
+            if s.recommendation == Recommendations.BatteriesDischargeMode.value
+            and s.batteries_discharged_kwh <= 1e-9
+        ]
+        assert offenders == []
+
+    @pytest.mark.parametrize("current_kwh", [0.0, 4.5])
+    def test_window_mode_slots_never_dispatch(self, current_kwh: float) -> None:
+        """The converse: a published window label must have dispatched nothing."""
+        offenders = [
+            (s.start.isoformat(), s.batteries_discharged_kwh)
+            for s in self._winner(current_kwh=current_kwh).slots
+            if s.recommendation == Recommendations.BatteriesDischargeWindowMode.value
+            and s.batteries_discharged_kwh > 1e-9
+        ]
+        assert offenders == []
+
+    def test_winner_is_valid_and_soc_stays_in_bounds(self) -> None:
+        """Relabelling must not invalidate the plan or break the SoC bounds."""
+        winner = self._winner(current_kwh=0.0)
+        assert winner.is_valid, winner.rejection_reason
+        for slot in winner.slots:
+            assert 0.0 <= slot.estimated_battery_soc_pct <= 100.0
+
+    def test_relabelling_preserves_energy_fields(self) -> None:
+        """Demotion changes only labels, so no slot may carry negative energy."""
+        for slot in self._winner(current_kwh=0.0).slots:
+            assert slot.batteries_discharged_kwh >= -1e-9
+            assert slot.batteries_charged_kwh >= -1e-9
+            assert slot.grid_import_kwh >= -1e-9

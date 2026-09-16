@@ -277,6 +277,124 @@ class TestSocSimulationWindowMode:
         assert slot.batteries_discharged_kwh <= 1e-9
 
 
+class TestSocSimulationDemotion:
+    """simulate_soc demotes an undispatched discharge label (issue #1026).
+
+    The relabel must work in both directions: a discharge label is only valid
+    while the slot actually dispatches the battery, mirroring the
+    charge-direction rule from issue #989.
+    """
+
+    def _simulate(
+        self,
+        slot: PlannedSlot,
+        *,
+        current_kwh: float,
+        milp_prepopulated: bool = False,
+    ) -> None:
+        simulate_soc(
+            [slot],
+            now=_NOW,
+            current_kwh=current_kwh,
+            usable_kwh=9.0,
+            max_capacity_kwh=9.0,
+            max_charge_per_slot=5.0,
+            max_discharge_per_slot=None,
+            milp_prepopulated=milp_prepopulated,
+        )
+
+    def test_milp_prepopulated_zero_discharge_is_demoted(self) -> None:
+        """The #1026 case: the MILP labelled the slot, the plan dispatches nothing."""
+        slot = _make_planned_slot(
+            recommendation=Recommendations.BatteriesDischargeMode.value,
+            net_consumption_kwh=0.8,
+            discharged_kwh=0.0,
+        )
+        self._simulate(slot, current_kwh=0.0, milp_prepopulated=True)
+        assert slot.recommendation == Recommendations.BatteriesDischargeWindowMode.value
+
+    def test_rederived_discharge_is_never_demoted(self) -> None:
+        """Without the LP flag, ``discharge`` is re-derived and is not plan intent.
+
+        A slot whose plan intended arbitrage export has ``net_demand <= 0``, so
+        the re-derivation yields 0 even though the LP planned a real discharge.
+        Demoting there would destroy a legitimate label, so the demotion is
+        gated on ``milp_prepopulated``.
+        """
+        slot = _make_planned_slot(
+            recommendation=Recommendations.BatteriesDischargeMode.value,
+            net_consumption_kwh=-0.5,
+        )
+        self._simulate(slot, current_kwh=0.0)
+        assert slot.recommendation == Recommendations.BatteriesDischargeMode.value
+
+    def test_discharge_mode_with_real_discharge_keeps_its_label(self) -> None:
+        slot = _make_planned_slot(
+            recommendation=Recommendations.BatteriesDischargeMode.value,
+            net_consumption_kwh=0.8,
+            discharged_kwh=0.5,
+        )
+        self._simulate(slot, current_kwh=5.0, milp_prepopulated=True)
+        assert slot.recommendation == Recommendations.BatteriesDischargeMode.value
+        assert slot.batteries_discharged_kwh > 1e-9
+
+    def test_demotion_target_is_not_wait_mode(self) -> None:
+        """Wait would suppress the self-consumption a discharge window permits."""
+        slot = _make_planned_slot(
+            recommendation=Recommendations.BatteriesDischargeMode.value,
+            net_consumption_kwh=0.8,
+            discharged_kwh=0.0,
+        )
+        self._simulate(slot, current_kwh=0.0, milp_prepopulated=True)
+        assert slot.recommendation != Recommendations.BatteriesWaitMode.value
+        assert slot.recommendation in DISCHARGE_RECS
+
+    def test_force_labels_still_demote_to_wait_mode(self) -> None:
+        """The pre-existing forced-action demotion is unchanged."""
+        for forced in (
+            Recommendations.ForceBatteriesDischarge.value,
+            Recommendations.ForceExport.value,
+        ):
+            slot = _make_planned_slot(recommendation=forced, net_consumption_kwh=0.8)
+            self._simulate(slot, current_kwh=0.0)
+            assert slot.recommendation == Recommendations.BatteriesWaitMode.value
+
+    def test_relabel_is_idempotent_across_repeated_simulation(self) -> None:
+        """The two branches are mutually exclusive, so labels must not oscillate."""
+        slot = _make_planned_slot(
+            recommendation=Recommendations.BatteriesDischargeMode.value,
+            net_consumption_kwh=0.8,
+        )
+        seen = []
+        for _ in range(3):
+            self._simulate(slot, current_kwh=0.0, milp_prepopulated=True)
+            seen.append(slot.recommendation)
+        assert seen == [Recommendations.BatteriesDischargeWindowMode.value] * 3
+
+    def test_demotion_does_not_disturb_energy_fields(self) -> None:
+        """Only the label changes — the LP's solved energy flows are preserved."""
+        slot = _make_planned_slot(
+            recommendation=Recommendations.BatteriesDischargeMode.value,
+            net_consumption_kwh=0.8,
+        )
+        slot.grid_import_kwh = 0.8
+        slot.grid_export_kwh = 0.0
+        self._simulate(slot, current_kwh=0.0, milp_prepopulated=True)
+        assert slot.recommendation == Recommendations.BatteriesDischargeWindowMode.value
+        assert slot.batteries_discharged_kwh == pytest.approx(0.0)
+        assert slot.batteries_charged_kwh == pytest.approx(0.0)
+        assert slot.grid_import_kwh == pytest.approx(0.8)
+        assert slot.grid_export_kwh == pytest.approx(0.0)
+
+    def test_soc_stays_within_bounds_after_demotion(self) -> None:
+        slot = _make_planned_slot(
+            recommendation=Recommendations.BatteriesDischargeMode.value,
+            net_consumption_kwh=0.8,
+        )
+        self._simulate(slot, current_kwh=0.0, milp_prepopulated=True)
+        assert 0.0 <= slot.estimated_battery_soc_pct <= 100.0
+
+
 # ---------------------------------------------------------------------------
 # Applier mapping and cap hold
 # ---------------------------------------------------------------------------
