@@ -23,9 +23,13 @@ from custom_components.hsem.utils.sensornames.diagnostics import (
     get_solcast_likelihood_selector_entity_id,
     get_solcast_likelihood_selector_unique_id,
 )
+from custom_components.hsem.utils.solcast_likelihood import (
+    DEFAULT_SOLCAST_LIKELIHOOD,
+    SOLCAST_LIKELIHOOD_OPTIONS,
+)
 
-_OPTIONS = ["pv_estimate", "pv_estimate10", "pv_estimate90"]
-_DEFAULT = "pv_estimate"
+_OPTIONS = list(SOLCAST_LIKELIHOOD_OPTIONS)
+_DEFAULT = DEFAULT_SOLCAST_LIKELIHOOD
 _CONFIG_KEY = "hsem_solcast_pv_forecast_forecast_likelihood"
 
 

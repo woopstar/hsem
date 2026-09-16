@@ -12,6 +12,7 @@ from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import async_validate_entity_ids
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.solcast_likelihood import SOLCAST_LIKELIHOOD_OPTIONS
 
 
 async def get_solcast_step_schema(
@@ -41,7 +42,7 @@ async def get_solcast_step_schema(
             ): selector(
                 {
                     "select": {
-                        "options": ["pv_estimate", "pv_estimate10", "pv_estimate90"],
+                        "options": list(SOLCAST_LIKELIHOOD_OPTIONS),
                         "translation_key": "pv_estimate_likelihood",
                         "mode": "list",
                     }

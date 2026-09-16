@@ -19,6 +19,7 @@ from custom_components.hsem.utils.sensornames.diagnostics import (
     get_force_working_mode_selector_key,
     get_solcast_likelihood_selector_key,
 )
+from custom_components.hsem.utils.solcast_likelihood import SOLCAST_LIKELIHOOD_OPTIONS
 
 # Selectable working modes exposed to the user.  Derived from the canonical
 # enum so this surface cannot drift from the service schema or services.yaml.
@@ -42,7 +43,7 @@ SELECTOR_DESCRIPTIONS: tuple[SelectEntityDescription, ...] = (
     SelectEntityDescription(
         key=get_solcast_likelihood_selector_key(),
         icon="mdi:solar-power",
-        options=["pv_estimate", "pv_estimate10", "pv_estimate90"],
+        options=list(SOLCAST_LIKELIHOOD_OPTIONS),
         translation_key="pv_estimate_likelihood",
     ),
 )
