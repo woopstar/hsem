@@ -1044,6 +1044,7 @@
           "batteries_charge_solar": "Laden von Solar",
           "ev_smart_charging": "EV Smart-Charging",
           "batteries_discharge_mode": "Entladen",
+          "batteries_discharge_window_mode": "Entlade-Fenster",
           "force_batteries_discharge": "Entladung erzwingen",
           "force_export": "Export erzwingen",
           "batteries_wait_mode": "Warten"
@@ -1096,6 +1097,7 @@
           "batteries_charge_solar": "Laden von Solar",
           "ev_smart_charging": "EV Smart-Charging",
           "batteries_discharge_mode": "Entladen",
+          "batteries_discharge_window_mode": "Entlade-Fenster",
           "force_batteries_discharge": "Entladung erzwingen",
           "force_export": "Export erzwingen",
           "batteries_wait_mode": "Warten"

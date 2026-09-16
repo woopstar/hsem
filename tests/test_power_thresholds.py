@@ -31,7 +31,7 @@ from custom_components.hsem.utils.recommendations import Recommendations
 _UTC = UTC
 _CHARGE_SOLAR = Recommendations.BatteriesChargeSolar.value
 _CHARGE_GRID = Recommendations.BatteriesChargeGrid.value
-_DISCHARGE = Recommendations.BatteriesDischargeMode.value
+_DISCHARGE_WINDOW = Recommendations.BatteriesDischargeWindowMode.value
 
 
 def _slot(
@@ -138,21 +138,23 @@ class TestNearZeroThresholdInOptimizationStrategy:
 
     def test_at_exact_zero_assigned_discharge(self):
         """A slot at exactly zero net consumption has no PV surplus — must get
-        BatteriesDischargeMode, not BatteriesChargeSolar."""
-        assert self._run_summer(0.0) == _DISCHARGE
+        BatteriesDischargeWindowMode, not BatteriesChargeSolar."""
+        assert self._run_summer(0.0) == _DISCHARGE_WINDOW
 
     def test_small_positive_consumption_assigned_discharge(self):
         """A slot with small positive consumption (0.08 kWh) and no PV must
-        get BatteriesDischargeMode, not BatteriesChargeSolar (issue #720)."""
-        assert self._run_summer(0.08) == _DISCHARGE
+        get BatteriesDischargeWindowMode, not BatteriesChargeSolar (issue #720)."""
+        assert self._run_summer(0.08) == _DISCHARGE_WINDOW
 
     def test_just_above_threshold_assigned_discharge(self):
-        """A slot just above the old threshold (0.11 kWh) must get BatteriesDischargeMode."""
-        assert self._run_summer(0.11) == _DISCHARGE
+        """A slot just above the old threshold (0.11 kWh) must get
+        BatteriesDischargeWindowMode."""
+        assert self._run_summer(0.11) == _DISCHARGE_WINDOW
 
     def test_high_consumption_assigned_discharge(self):
-        """A high-consumption slot (1.2 kWh) must get BatteriesDischargeMode in summer."""
-        assert self._run_summer(1.2) == _DISCHARGE
+        """A high-consumption slot (1.2 kWh) must get
+        BatteriesDischargeWindowMode in summer."""
+        assert self._run_summer(1.2) == _DISCHARGE_WINDOW
 
 
 # ===========================================================================

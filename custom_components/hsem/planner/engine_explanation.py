@@ -33,6 +33,7 @@ _CHARGE_RECOMMENDATIONS = frozenset(
 _DISCHARGE_RECOMMENDATIONS = frozenset(
     {
         Recommendations.BatteriesDischargeMode.value,
+        Recommendations.BatteriesDischargeWindowMode.value,
         Recommendations.ForceBatteriesDischarge.value,
     }
 )
@@ -201,6 +202,7 @@ def _build_explanation(
         s.recommendation
         in {
             Recommendations.BatteriesDischargeMode.value,
+            Recommendations.BatteriesDischargeWindowMode.value,
             Recommendations.ForceBatteriesDischarge.value,
         }
         for s in future_slots
