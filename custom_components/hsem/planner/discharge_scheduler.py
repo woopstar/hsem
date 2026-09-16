@@ -313,12 +313,12 @@ def concentrate_discharge_on_expensive_slots(
     """Clear cheap discharge slots the battery cannot fully serve, per calendar day.
 
     ``apply_optimization_strategy`` marks *every* slot in a discharge window
-    as ``BatteriesDischargeMode``, but the battery can only cover a fraction
-    of them.  Without concentration
+    as ``BatteriesDischargeWindowMode``, but the battery can only cover a
+    fraction of them.  Without concentration
     the SoC simulation greedily discharges in the *first* (cheapest) slots
     and runs out before the most expensive ones.
 
-    This function ranks all ``BatteriesDischargeMode`` slots by import price
+    This function ranks all ``DISCHARGE_RECS`` slots by import price
     (descending) and clears the recommendation on the cheapest slots that
     exceed the battery's discharge capacity, turning them into grid-import
     slots (marked ``BatteriesWaitMode``).  The most expensive slots keep

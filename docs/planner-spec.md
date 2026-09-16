@@ -55,15 +55,15 @@ Slots are assigned recommendations by the scheduling functions in strict
 priority order. Once a slot has a non-`None` recommendation, later rules
 in the same layer must not change it.
 
-**Discharge schedule windows** (highest priority in layer 1):
-
-1. Slot falls inside a configured discharge window and price spread is met → `batteries_discharge_window_mode` (promoted to `batteries_discharge_mode` by the SoC simulation if the battery actually discharges)
-
-**Charge schedule windows** (before each discharge window):
-
-1. Import price < 0 → `batteries_charge_grid`
-2. Solar surplus (`estimated_net_consumption < threshold`) → `batteries_charge_solar`
-3. Cheapest grid hour where spread ≥ `min_price_difference + cycle_cost` → `batteries_charge_grid`
+> **Fixed schedules removed (issue #860):** user-configured charge/discharge
+> schedule windows were confirmed inert whenever MILP is active (the default
+> planner path) and removed entirely — the schedule-consuming heuristic
+> candidates had already been retired, so schedule-derived recommendations
+> never reached the final plan. No code reads a configured window, and the
+> `hsem_batteries_enable_batteries_schedule_*` keys are dropped during the v4
+> config migration. Layer 1 therefore begins with the opportunistic grid
+> charge below; `batteries_discharge_window_mode` is produced only by the
+> seasonal fill (step 5).
 
 **Opportunistic grid charge** (outside any schedule):
 
@@ -2288,9 +2288,9 @@ uses `applier_caps._primary_battery_cap_hold(rec)` — `_primary_battery_hold(re
 
 - The SoC simulation relabels only `force_batteries_discharge` /
   `force_export` to `batteries_wait_mode` when the simulated discharge is
-  zero (`planner/soc_simulation.py`). A schedule discharge window deliberately
+  zero (`planner/soc_simulation.py`). A seasonal discharge window deliberately
   keeps its label (or the new `batteries_discharge_window_mode` label introduced
-  in issue #1005): it is the user's configured window, not a forced action. A
+  in issue #1005): it is the planner's own window, not a forced action. A
   solved discharge that merely rounds below `PLANNED_ENERGY_ROUNDING_KWH`
   therefore still satisfies the derived hold without the plan ever having
   decided to hold.

@@ -80,11 +80,13 @@ class Recommendations(Enum):
     """
 
     BatteriesDischargeWindowMode = "batteries_discharge_window_mode"
-    """Inside a scheduled discharge window, but the planner holds the battery.
+    """Inside a seasonal discharge window, but the planner holds the battery.
 
-    This slot sits in a user-configured or seasonal discharge window, yet
-    the solved plan schedules no battery discharge this interval (prices
-    are not high enough or the energy is reserved for a later slot).
+    Assigned by the seasonal fill in ``apply_optimization_strategy`` to a
+    summer slot with no PV surplus, yet the solved plan schedules no battery
+    discharge this interval (prices are not high enough or the energy is
+    reserved for a later slot).  Fixed user-configured schedule windows were
+    removed in issue #860, so this label has no configured-window producer.
     Self-consumption discharge is still allowed: the inverter runs in
     MaximizeSelfConsumption and the firmware may ramp discharge up to the
     ceiling to cover live house load.

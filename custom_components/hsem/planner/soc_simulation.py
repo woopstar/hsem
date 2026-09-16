@@ -381,9 +381,9 @@ def simulate_soc(
 
         # If the slot has a FORCE discharge/export recommendation but
         # no discharge actually happened (battery empty or PV surplus),
-        # clear it to wait_mode.  Schedule discharge windows
+        # clear it to wait_mode.  Seasonal discharge windows
         # (BatteriesDischargeMode / BatteriesDischargeWindowMode) stay
-        # as-is — they represent the user's configured windows, not a
+        # as-is — they represent the planner's own windows, not a
         # forced action.
         if discharge <= 1e-9 and slot.recommendation in (
             Recommendations.ForceBatteriesDischarge.value,
