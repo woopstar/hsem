@@ -306,6 +306,9 @@ def _planner_output_summary(output: PlannerOutput) -> dict[str, Any]:
         "required_capacity_kwh": round(output.required_capacity_kwh, 3),
         "missing_inputs": list(output.missing_inputs),
         "warnings": list(output.warnings),
+        # Issue #1035: always present so a clean plan is visibly clean in a
+        # dump, rather than indistinguishable from an older HSEM version.
+        "plan_consistency_violations": list(output.plan_consistency_violations),
         "data_quality": output.data_quality.as_dict(),
         "explanation": output.explanation.as_dict(),
         "plan_cost": plan_cost,

@@ -55,6 +55,10 @@ from custom_components.hsem.planner.ev_planner import (
     EVChargingPlan,
     rebuild_ev_plan_from_slots,
 )
+from custom_components.hsem.planner.plan_consistency import (
+    check_plan_self_consistency,
+    consistency_warning,
+)
 from custom_components.hsem.planner.slot_population import (
     build_slots,
     build_time_series_index,
@@ -659,6 +663,21 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     wait_mode_reserve_kwh = calculate_required_battery_for_plan(slots, now, current_kwh)
 
     _label_commanded_ev_slots(slots)
+
+    # Post-plan self-consistency gate (issue #1035).  Runs on the *winner*,
+    # after every relabelling pass including the EV display relabel above, so
+    # it sees exactly what is about to be published.  Reported, never raised
+    # and never auto-corrected — see the module docstring.
+    plan_consistency_violations = check_plan_self_consistency(slots)
+    if plan_consistency_violations:
+        warnings.append(consistency_warning(plan_consistency_violations))
+        log_planner(
+            "warning",
+            "[core] plan self-consistency violated on %d slot(s): %s",
+            len(plan_consistency_violations),
+            "; ".join(plan_consistency_violations[:5]),
+        )
+
     cur_rec: str | None = None
     for s in slots:
         if as_tz(s.start, now.tzinfo) <= now < as_tz(s.end, now.tzinfo):
@@ -755,6 +774,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         wait_mode_reserve_kwh=wait_mode_reserve_kwh,
         missing_inputs=missing_inputs,
         warnings=warnings,
+        plan_consistency_violations=plan_consistency_violations,
         data_quality=data_quality,
         explanation=expl,
         plan_cost=pc,

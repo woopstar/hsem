@@ -9,6 +9,7 @@ Usage
 >>> slot.recommendation = Recommendations.BatteriesDischargeMode.value
 """
 
+from dataclasses import dataclass
 from enum import Enum
 
 
@@ -223,4 +224,165 @@ battery:
 
 Use :data:`DISCHARGE_RECS` for window/schedule logic; use this set to ask
 "did the plan commit the battery to discharge".
+"""
+
+
+# ---------------------------------------------------------------------------
+# Label ⇒ energy contract (issue #1035)
+# ---------------------------------------------------------------------------
+
+MATERIAL_ENERGY_KWH: float = 1e-9
+"""Epsilon above which a slot's battery energy counts as *material*.
+
+Matches the threshold every existing label/energy guard already uses
+(``soc_simulation.py``, ``concentrate_discharge_on_expensive_slots``), so the
+self-consistency check and the guards that enforce it agree exactly.
+"""
+
+
+class EnergyExpectation(Enum):
+    """What a recommendation label promises about one battery energy field."""
+
+    MATERIAL = "material"
+    """The field must exceed :data:`MATERIAL_ENERGY_KWH`."""
+
+    ZERO = "zero"
+    """The field must not exceed :data:`MATERIAL_ENERGY_KWH`."""
+
+    UNCONSTRAINED = "unconstrained"
+    """The label makes no promise about this field — explicitly undecidable."""
+
+
+@dataclass(frozen=True)
+class LabelEnergyContract:
+    """The energy a recommendation label promises about its own slot.
+
+    Attributes:
+        charge: Expectation for ``PlannedSlot.batteries_charged_kwh``.
+        discharge: Expectation for ``PlannedSlot.batteries_discharged_kwh``.
+        rationale: Why the contract is what it is — in particular why a field
+            is ``UNCONSTRAINED``, so "no guarantee" reads as a decision rather
+            than an oversight.
+    """
+
+    charge: EnergyExpectation
+    discharge: EnergyExpectation
+    rationale: str
+
+
+_MATERIAL = EnergyExpectation.MATERIAL
+_ZERO = EnergyExpectation.ZERO
+_UNCONSTRAINED = EnergyExpectation.UNCONSTRAINED
+
+LABEL_ENERGY_CONTRACTS: dict[Recommendations, LabelEnergyContract] = {
+    Recommendations.TimePassed: LabelEnergyContract(
+        charge=_UNCONSTRAINED,
+        discharge=_UNCONSTRAINED,
+        rationale=(
+            "Sentinel, not an operating mode. A past slot is a frozen record of "
+            "what already happened, so both fields are history rather than a "
+            "promise."
+        ),
+    ),
+    Recommendations.MissingInputEntities: LabelEnergyContract(
+        charge=_UNCONSTRAINED,
+        discharge=_UNCONSTRAINED,
+        rationale=(
+            "Sentinel, not an operating mode. The planner could not run, so no "
+            "energy claim was made."
+        ),
+    ),
+    Recommendations.BatteriesChargeGrid: LabelEnergyContract(
+        charge=_MATERIAL,
+        discharge=_ZERO,
+        rationale=(
+            "The applier opens a TOU grid-charge window for this label, so the "
+            "battery physically absorbs energy. A zero-charge slot is issue "
+            "#989's plan-vs-actuator contradiction."
+        ),
+    ),
+    Recommendations.BatteriesChargeSolar: LabelEnergyContract(
+        charge=_MATERIAL,
+        discharge=_ZERO,
+        rationale=(
+            "The applier drives MaximizeSelfConsumption, which absorbs live PV, "
+            "so a zero-charge slot destroys reserved headroom (issue #989)."
+        ),
+    ),
+    Recommendations.EVSmartCharging: LabelEnergyContract(
+        charge=_UNCONSTRAINED,
+        discharge=_UNCONSTRAINED,
+        rationale=(
+            "DECIDED: no battery guarantee. This is a display relabel applied "
+            "by ``_label_commanded_ev_slots`` *after* the SoC simulation has "
+            "already solved the battery's flows, and it overwrites whatever "
+            "label the slot had. It states that HSEM commands a charger, not "
+            "what the battery does: the battery may charge from PV, discharge "
+            "for non-EV house load (issue #862), or hold. Only the EV's own "
+            "load is guaranteed never to be served from the battery, and that "
+            "is enforced at the hardware layer, not by this label. Membership "
+            "in CHARGE_RECS is for 'does this slot involve charging at all' — "
+            "see BATTERY_CHARGE_ACTION_RECS for the narrower question."
+        ),
+    ),
+    Recommendations.BatteriesDischargeMode: LabelEnergyContract(
+        charge=_ZERO,
+        discharge=_MATERIAL,
+        rationale=(
+            "An active discharge label that dispatches nothing publishes a "
+            "discharge the plan never made (issue #1026)."
+        ),
+    ),
+    Recommendations.ForceBatteriesDischarge: LabelEnergyContract(
+        charge=_ZERO,
+        discharge=_MATERIAL,
+        rationale=(
+            "Forces the inverter to inject beyond house load. ``simulate_soc`` "
+            "clears the label to wait mode when the simulated discharge is "
+            "zero, so a published slot always dispatches."
+        ),
+    ),
+    Recommendations.BatteriesDischargeWindowMode: LabelEnergyContract(
+        charge=_ZERO,
+        discharge=_ZERO,
+        rationale=(
+            "The plan holds the battery this interval — it is the demotion "
+            "target for a discharge label that dispatched nothing (issue "
+            "#1026). Firmware self-consumption may still run, but the *plan* "
+            "schedules no battery energy either way."
+        ),
+    ),
+    Recommendations.ForceExport: LabelEnergyContract(
+        charge=_ZERO,
+        discharge=_MATERIAL,
+        rationale=(
+            "DECIDED: material discharge, no charge. The enum docstring's "
+            "'battery unchanged' describes the *applier* (FullyFedToGrid "
+            "re-routes PV, it does not command the battery), but the planner's "
+            "own simulation treats the label as a max-rate discharge and "
+            "``soc_simulation.py`` clears it to wait mode whenever that "
+            "resolves to zero. Every published force_export slot therefore "
+            "carries material discharge, and nothing in the planner ever "
+            "schedules charge into one. The permissive reading was never what "
+            "the code did; pinning it down here is the point of issue #1035."
+        ),
+    ),
+    Recommendations.BatteriesWaitMode: LabelEnergyContract(
+        charge=_ZERO,
+        discharge=_ZERO,
+        rationale=(
+            "Strict Wait executes as 0 W at the inverter, so any energy on a "
+            "wait slot contradicts the command being sent (issue #1032)."
+        ),
+    ),
+}
+"""The single source of truth for what each label promises about its slot.
+
+Every :class:`Recommendations` member must appear here — a member without an
+entry fails ``tests/planner/test_plan_consistency.py``, which is what forces a
+new label to come with an explicit decision instead of a silent omission.
+
+Checked against the *selected* plan by
+:func:`custom_components.hsem.planner.plan_consistency.check_plan_self_consistency`.
+See ``docs/planner-spec.md`` § "Label/energy self-consistency".
 """
