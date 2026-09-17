@@ -92,6 +92,9 @@ occurrence started on the previous calendar day.
 3. Future `force_batteries_discharge` AND battery > required → `batteries_wait_mode`
 4. Slot's month is a winter month → `batteries_wait_mode`
 5. Slot's month is a summer month, actual PV surplus → `batteries_charge_solar`; else → `batteries_discharge_mode`
+   — except on the MILP candidate, where a slot still unassigned after the solve is an LP
+   decision to hold and becomes `batteries_wait_mode` (issue #1041, see "The fill does not
+   label LP-idle slots on the MILP candidate")
 
 > **Note:** `BatteriesChargeSolar` is only assigned when there is a genuine PV
 > surplus (negative net consumption). A small positive house load with zero PV
@@ -2967,6 +2970,64 @@ between.
 Within each day the estimate is conservative: it assumes the battery
 starts at full capacity and there is no incoming charge between
 discharge slots on the same day.
+
+#### The fill does not label LP-idle slots on the MILP candidate (issue #1041)
+
+The per-day rationale above is a statement about `apply_optimization_strategy`
+marking every unassigned summer slot `batteries_discharge_mode`. It does not
+apply to slots the MILP left idle: the LP allocates discharge under exact SoC
+constraints and never over-allocates, and its write-out resets every future
+slot to `None` before labelling only the slots it allocated energy to. A slot
+still unassigned after the solve is a slot **the LP declined to act in**.
+
+Before issue #1041 the fill labelled such a slot by calendar month alone — a
+winter slot became `batteries_wait_mode`, a summer slot with no PV surplus
+became `batteries_discharge_mode`. Concentration cleared some of those back to
+wait, but any that fitted inside the per-day budget survived and were
+published. `batteries_discharge_mode` executes as `MaximizeSelfConsumption`
+and is exempt from the hold-derived 0 W discharge cap, so the firmware drained
+the battery in intervals the LP had deliberately left idle — including below
+the dynamic discharge floor, which is only enforced through the plan. The plan
+meanwhile published grid import and zero discharge for the same slot (issue
+#1094 is one such report).
+
+The selector now passes
+`unassigned_slots_are_lp_decisions=(candidate.name == CANDIDATE_MILP)` — the
+same predicate that drives `milp_prepopulated`, and for the same reason. Under
+that flag the seasonal branch holds the battery (`batteries_wait_mode`) instead
+of labelling the slot `batteries_discharge_mode`, so an LP-idle slot gets the
+same label in summer as in winter.
+
+Only that one branch is gated. `force_export` re-routes PV rather than
+dispatching the battery, and the solar-charge steps write
+`batteries_charged_kwh`, so gating those would change plan energy rather than
+just a label.
+
+The change is label-only in the plan by construction: the MILP candidate is
+simulated with `milp_prepopulated=True`, so `simulate_soc` never re-derives
+energy from the recommendation, and plan cost and every slot's energy fields
+are unchanged. It is **not** label-only at the inverter: the affected slots
+now execute as a hold rather than as self-consumption, which is what the plan
+already assumed.
+
+Concentration still runs on the MILP candidate and is now a no-op there. It is
+kept because that no-op is a property of the current fill rather than a
+guarantee, and because it remains load-bearing on the non-MILP candidates, where
+the fill's original rationale genuinely applies.
+
+##### Invariants for tests
+
+- On the MILP candidate, concentration never clears a slot carrying material
+  solved `batteries_discharged_kwh` (issue #1032).
+- Concentration clears **zero** slots on the MILP candidate, in every season —
+  the fill no longer produces slots for it to thin there (issue #1041).
+- On the MILP candidate, the seasonal fill never labels a slot
+  `batteries_discharge_mode`; every such label comes from the LP.
+- An LP-idle slot receives the same label in summer as in winter.
+- Non-MILP candidates keep the seasonal-fill behaviour: an unassigned summer
+  slot with no PV surplus still becomes `batteries_discharge_mode`.
+- Enabling the flag changes labels only — plan cost, score and every slot's
+  energy fields are bit-identical.
 
 ### Invariants for multi-day horizon tests
 
