@@ -195,16 +195,27 @@ def select_best_candidate(  # NOSONAR
         months_winter = []
     for candidate in candidates:
         # The MILP only writes recommendations for slots where the LP
-        # allocates charge or discharge (ec_kwh > 0 or ed_kwh > 0).
+        # allocates charge or discharge (ec_kwh > 0 or ed_kwh > 0); its
+        # write-out first resets every future slot to None.
         # apply_optimization_strategy only fills slots that are still None,
         # so it will never overwrite the LP's decisions — it just provides
         # sensible defaults for idle slots where the LP took no action.
+        # On the MILP candidate those defaults must be a *hold*: a slot the
+        # LP declined is a decision, not an unscheduled gap, so the fill is
+        # told so via unassigned_slots_are_lp_decisions (issue #1041).
+        # Before that, the label such a slot received depended only on its
+        # calendar month — winter held the battery, summer opened a discharge
+        # window that concentration then had to clear back to wait.
         # concentrate_discharge_on_expensive_slots acts on DISCHARGE_RECS,
         # which *includes* the LP's own discharge slots — so unlike the
         # seasonal fill it is not inherently safe for the MILP's results
         # (issue #1032; an earlier version of this comment claimed it was).
         # It therefore reserves any slot carrying material solved discharge
-        # and only thins the seasonal-fill additions.
+        # and only thins the seasonal-fill additions.  With #1041 there are
+        # no such additions left on the MILP candidate, so it is a no-op
+        # there — it still runs, because that is a property of the current
+        # fill rather than a guarantee, and it remains load-bearing for the
+        # non-MILP candidates (issue #1036).
         # Apply seasonal optimization strategy BEFORE concentration.
         # The seasonal fill marks unassigned summer slots as
         # BatteriesDischargeWindowMode; concentrate_discharge then clears the
@@ -223,6 +234,10 @@ def select_best_candidate(  # NOSONAR
             required_capacity,
             months_winter,
             export_min_price=export_min_price,
+            # On the MILP candidate the LP has already considered every slot,
+            # so a still-unassigned slot is a decision to hold, not an
+            # unscheduled gap (issue #1041).
+            unassigned_slots_are_lp_decisions=(candidate.name == CANDIDATE_MILP),
         )
         # Concentrate discharge on expensive slots (per-candidate)
         concentrate_discharge_on_expensive_slots(
