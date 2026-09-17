@@ -210,8 +210,12 @@ def select_best_candidate(  # NOSONAR
         # apply_optimization_strategy only fills slots that are still None,
         # so it will never overwrite the LP's decisions — it just provides
         # sensible defaults for idle slots where the LP took no action.
-        # concentrate_discharge_on_expensive_slots only acts on
-        # DISCHARGE_RECS, so it also cannot damage the MILP's results.
+        # concentrate_discharge_on_expensive_slots acts on DISCHARGE_RECS,
+        # which *includes* the LP's own discharge slots — so unlike the
+        # seasonal fill it is not inherently safe for the MILP's results
+        # (issue #1032; an earlier version of this comment claimed it was).
+        # It therefore reserves any slot carrying material solved discharge
+        # and only thins the seasonal-fill additions.
         # Apply seasonal optimization strategy BEFORE concentration.
         # The seasonal fill marks unassigned summer slots as
         # BatteriesDischargeMode; concentrate_discharge then clears the
