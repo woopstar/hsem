@@ -232,6 +232,7 @@ def select_best_candidate(  # NOSONAR
             usable_kwh,
             max_discharge_per_slot,
             discharge_efficiency_pct=discharge_efficiency_pct,
+            candidate_name=candidate.name,
         )
 
     # --- Step 1 & 2: simulate and validate each candidate ---------------
