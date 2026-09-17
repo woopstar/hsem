@@ -55,6 +55,12 @@ class PlannerOutput:
             during planning.  An empty list means all inputs were present.
         warnings:
             Human-readable warning strings emitted during planning.
+        plan_consistency_violations:
+            Slots of the *selected* plan whose recommendation contradicts their
+            energy fields (issue #1035), one string per offending slot.  Always
+            empty in a correct plan; a non-empty list is an HSEM bug, never a
+            reason to stop controlling the battery, so it is reported here and
+            summarised into ``warnings`` rather than raised or auto-corrected.
         data_quality:
             Structured diagnostics about the completeness of price, PV, and
             load-forecast inputs for today and tomorrow.  Exposes which hours are missing
@@ -75,6 +81,8 @@ class PlannerOutput:
     wait_mode_reserve_kwh: float | None = None
     missing_inputs: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    #: Label/energy contract violations in the selected plan (issue #1035).
+    plan_consistency_violations: list[str] = field(default_factory=list)
     #: Structured data-quality report for price, PV, and load-forecast inputs.
     data_quality: DataQuality = field(default_factory=DataQuality)
     #: Human-readable explanation of why the selected plan was chosen and what

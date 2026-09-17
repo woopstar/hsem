@@ -1069,8 +1069,87 @@ enables grid import, so the grid-funded portion of the plan would be
 silently dropped and the real battery SoC would diverge from the planned
 trajectory (issue #913).
 
-**Zero-charge labels (issue #989).** A charge label is only valid while the
-slot actually stores energy. `planner/soc_simulation.py` clamps every
+#### Label/energy self-consistency (issue #1035)
+
+**Invariant.** _Every slot of the selected plan must carry energy that agrees
+with its own recommendation label._ Formally, for each published slot the pair
+(`batteries_charged_kwh`, `batteries_discharged_kwh`) must satisfy the contract
+its label declares in
+`utils/recommendations.py::LABEL_ENERGY_CONTRACTS`:
+
+| Label                             | `batteries_charged_kwh` | `batteries_discharged_kwh` |
+| --------------------------------- | ----------------------- | -------------------------- |
+| `batteries_charge_grid`           | material                | zero                       |
+| `batteries_charge_solar`          | material                | zero                       |
+| `batteries_discharge_mode`        | zero                    | material                   |
+| `force_batteries_discharge`       | zero                    | material                   |
+| `force_export`                    | zero                    | material                   |
+| `batteries_discharge_window_mode` | zero                    | zero                       |
+| `batteries_wait_mode`             | zero                    | zero                       |
+| `ev_smart_charging`               | unconstrained           | unconstrained              |
+| `time_passed`                     | unconstrained           | unconstrained              |
+| `missing_input_entities`          | unconstrained           | unconstrained              |
+
+"Material" means `> 1e-9`; "zero" means `<= 1e-9`, the same threshold the
+guards below already use. This single invariant subsumes the three per-case
+rules stated further down — **Zero-charge labels** (#989), **Zero-discharge
+labels** (#1026) and **Wait labels never carry discharge** (#1032) — each of
+which is one face of it. Those sections describe _how_ each case is prevented;
+this section states _what_ must hold.
+
+**Two contracts are explicitly decided, not inferred:**
+
+- **`force_export` — material discharge, zero charge.** The enum docstring says
+  the battery is "unchanged (may still charge/discharge per schedule)", which
+  describes the _applier_: `FullyFedToGrid` re-routes PV and issues no battery
+  command. The _planner_ is stricter. `soc_simulation.py` dispatches the
+  battery at max rate for this label and clears the label to
+  `batteries_wait_mode` whenever that resolves to zero, so a zero-discharge
+  `force_export` slot cannot be published. The permissive docstring reading was
+  never what the planner did.
+- **`ev_smart_charging` — no guarantee, in either direction.** This is a
+  display relabel applied by `engine_core.py::_label_commanded_ev_slots`
+  _after_ the SoC simulation has solved the battery's flows, and it overwrites
+  whatever label the slot held. It states that HSEM commands a charger, not
+  what the battery does: the battery may charge from PV surplus, discharge for
+  non-EV house load (issue #862), or hold. Only the EV's own load is guaranteed
+  never to come from the battery, and that is enforced at the hardware layer
+  (`applier.py` writes `maximum_discharge_power`), not by this label. Asserting
+  any contract here would report slots behaving exactly as designed.
+
+**Enforcement.** `planner/plan_consistency.py::check_plan_self_consistency`
+runs in the planner output path on the **winning** candidate, after every
+relabelling pass including the EV relabel. It must run there and not
+per-candidate: `simulate_soc` runs once per candidate, so a per-candidate check
+proves nothing about what was published.
+
+Violations are **reported, never raised and never auto-corrected**. They surface
+on `PlannerOutput.plan_consistency_violations`, are summarised into
+`PlannerOutput.warnings`, and appear in the diagnostics dump. A violation is a
+bug in HSEM, not a reason to stop controlling a user's battery, so a false
+positive must not be able to break an automation or block a hardware write.
+Auto-correction is explicitly rejected: zeroing a slot's energy after the fact
+leaves every downstream slot with more battery energy than the plan's SoC
+recursion assumed, and hides the wrong decision that produced the slot — the
+same reasoning that rejected the auto-correcting fix in issue #1033.
+
+Adding a `Recommendations` member without an entry in
+`LABEL_ENERGY_CONTRACTS` fails `tests/planner/test_plan_consistency.py`, so a
+new label cannot silently arrive without a decision.
+
+##### Invariants for tests
+
+- Every `Recommendations` member has an entry in `LABEL_ENERGY_CONTRACTS`.
+- The selected plan produces zero violations across the stock fixtures,
+  parametrized over starting SoC.
+- Reverting the #989, #1026 or #1032 fix makes the check report a violation.
+- The check never mutates a slot and never raises, including on an unknown
+  label.
+- A clean plan leaves `plan_consistency_violations` empty and adds no warning.
+
+**Zero-charge labels (issue #989).** One face of the
+[label/energy self-consistency invariant](#labelenergy-self-consistency-issue-1035)
+above. A charge label is only valid while the slot actually stores energy. `planner/soc_simulation.py` clamps every
 pre-scheduled charge to the live headroom and the per-slot power limit, and
 whenever that clamp resolves to zero on a slot carrying any charge
 recommendation, the label is cleared to `batteries_wait_mode` and
@@ -1105,8 +1184,9 @@ Two guards take priority over this PV-coverage comparison:
   LP constraints already prevent `ec[t] > 0` in session slots in practice.
 
 **Zero-discharge labels (issue #1026).** The same rule applies in the
-discharge direction: a discharge label is only valid while the slot actually
-dispatches the battery. `planner/soc_simulation.py` therefore relabels in both
+discharge direction — the second face of the
+[label/energy self-consistency invariant](#labelenergy-self-consistency-issue-1035):
+a discharge label is only valid while the slot actually dispatches the battery. `planner/soc_simulation.py` therefore relabels in both
 directions once the slot's discharge is resolved:
 
 | Label before                      | Simulated discharge | `milp_prepopulated` | Label after                       |
@@ -1149,8 +1229,9 @@ Note this shifts such slots from `"discharge"` to `"idle"` in the action-mix
 scorecard, since `utils/prediction_tracker._action_label` classifies by
 `BATTERY_DISCHARGE_ACTION_RECS`, which deliberately excludes the window label.
 
-**Wait labels never carry discharge (issue #1032).** The third face of the same
-rule: a `batteries_wait_mode` slot must have zero battery discharge. Strict Wait
+**Wait labels never carry discharge (issue #1032).** The third face of the
+[label/energy self-consistency invariant](#labelenergy-self-consistency-issue-1035):
+a `batteries_wait_mode` slot must have zero battery discharge. Strict Wait
 executes as 0 W at the inverter, so a wait slot that still accounts for
 discharge publishes an SoC trajectory and a plan cost that contradict the
 command being sent.
