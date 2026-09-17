@@ -22,6 +22,7 @@ from custom_components.hsem.utils.recommendations import (
     Recommendations,
 )
 from custom_components.hsem.utils.time_windows import next_window_start_dt
+from custom_components.hsem.utils.units import is_material_planned_energy_kwh
 
 # ---------------------------------------------------------------------------
 # Discharge schedule detection
@@ -450,6 +451,14 @@ def concentrate_discharge_on_expensive_slots(
     slots (marked ``BatteriesWaitMode``).  The most expensive slots keep
     their discharge recommendation.
 
+    **LP-dispatched slots are never cleared** (issue #1032).  A slot carrying
+    material solved ``batteries_discharged_kwh`` came from the MILP, which
+    allocates discharge under exact SoC constraints; this function's per-day
+    estimate is deliberately conservative and must not override it.  Such
+    slots are reserved before the greedy pass and their solved energy is
+    charged against the day budget, so only the seasonal-fill slots this
+    function was written for are thinned.
+
     **Per-day budget pools:** slots are grouped by calendar day and each day
     receives its own independent ``usable_kwh`` budget.  This avoids overly
     conservative behaviour where slots on day N+1 compete with slots on day N
@@ -524,7 +533,37 @@ def concentrate_discharge_on_expensive_slots(
     keep_set: set[int] = set()
     per_day_used: dict[date, float] = defaultdict(float)
 
+    # Reserve LP-dispatched slots first (issue #1032).  A slot carrying
+    # material solved discharge was allocated by the MILP, whose SoC-constrained
+    # solution is strictly better informed than this function's conservative
+    # estimate (see "The estimate within each day is conservative" above).
+    # Clearing one would override the optimizer with a worse model *and* leave a
+    # self-contradictory slot: the MILP candidate is simulated with
+    # ``milp_prepopulated=True``, which trusts ``batteries_discharged_kwh``
+    # verbatim, so the relabelled wait slot would keep dispatching energy.
+    #
+    # Their energy is charged against the day budget up front so the greedy
+    # pass below thins the seasonal-fill slots against the capacity that is
+    # genuinely left over.
+    lp_reserved = 0
     for s in discharge_slots:
+        if not is_material_planned_energy_kwh(s.batteries_discharged_kwh):
+            continue
+        slot_day = as_tz(s.start, now.tzinfo).date()
+        per_day_used[slot_day] += s.batteries_discharged_kwh
+        keep_set.add(id(s))
+        lp_reserved += 1
+    if lp_reserved:
+        log_planner(
+            "debug",
+            "[disch] concentrate: reserved %d LP-dispatched slot(s) — their solved "
+            "discharge is preserved and charged against the day budget",
+            lp_reserved,
+        )
+
+    for s in discharge_slots:
+        if id(s) in keep_set:
+            continue
         slot_day = as_tz(s.start, now.tzinfo).date()
         slot_demand = max(s.estimated_net_consumption_kwh, 0.0)
         battery_needed = slot_demand / discharge_eff if discharge_eff > 1e-9 else 0.0
