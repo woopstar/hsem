@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -148,3 +149,32 @@ async def test_accumulate_savings_survives_simulated_restart(tmp_path: Path) -> 
     )
 
     assert tracker_after_restart.baseline_cost >= tracker_before_restart.baseline_cost
+
+
+@pytest.mark.asyncio
+async def test_savings_tracker_init_failure_is_logged_once() -> None:
+    """A ``hass`` without a config dir logs one error and keeps accumulating.
+
+    The tracker is marked initialised even on failure so the coordinator does
+    not retry (and re-log) every cycle, and the savings sensor shows no
+    persisted history instead of crashing the update.
+    """
+    tracker = SavingsTracker()
+    broken_hass = cast(HomeAssistant, SimpleNamespace())
+    log = MagicMock()
+
+    with patch("custom_components.hsem.coordinator_tracking.async_log", log):
+        for minutes in (0, 15):
+            await accumulate_savings(
+                now=datetime(2026, 6, 26, 12, minutes, tzinfo=UTC),
+                live=LiveState(),
+                output=PlannerOutput(),
+                savings_tracker=tracker,
+                daily_tracker=DailyPlanVsActualTracker(),
+                hourly_recommendation=None,
+                hass=broken_hass,
+            )
+
+    log.assert_called_once()
+    assert log.call_args.args[0] == "error"
+    assert tracker.history_file == ""
