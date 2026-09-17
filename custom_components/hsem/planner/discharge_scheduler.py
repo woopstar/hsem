@@ -10,6 +10,7 @@ All functions are pure — no I/O, no Home Assistant imports.  They mutate the
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, datetime
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
@@ -303,6 +304,34 @@ def apply_excess_export(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class ConcentrationStats:
+    """What one concentration pass did, for logging and offline measurement.
+
+    Attributes:
+        candidate_name: Candidate the pass ran on, or ``""`` when the caller
+            did not say.
+        lp_reserved: Slots carrying material solved discharge, preserved
+            untouched (issue #1032).
+        kept: Slots that kept their discharge recommendation.
+        cleared_seasonal_fill: Cleared slots that carried the seasonal fill's
+            ``batteries_discharge_window_mode`` label — the slots this
+            function was written to thin.
+        cleared_other: Cleared slots carrying any other discharge label.
+    """
+
+    candidate_name: str = ""
+    lp_reserved: int = 0
+    kept: int = 0
+    cleared_seasonal_fill: int = 0
+    cleared_other: int = 0
+
+    @property
+    def cleared(self) -> int:
+        """Total slots relabelled to wait mode by this pass."""
+        return self.cleared_seasonal_fill + self.cleared_other
+
+
 def concentrate_discharge_on_expensive_slots(
     slots: list[PlannedSlot],
     now: datetime,
@@ -310,7 +339,8 @@ def concentrate_discharge_on_expensive_slots(
     usable_kwh: float,
     max_discharge_per_slot: float | None,
     discharge_efficiency_pct: float = 100.0,
-) -> None:
+    candidate_name: str = "",
+) -> ConcentrationStats:
     """Clear cheap discharge slots the battery cannot fully serve, per calendar day.
 
     ``apply_optimization_strategy`` marks *every* slot in a discharge window
@@ -353,11 +383,20 @@ def concentrate_discharge_on_expensive_slots(
         max_discharge_per_slot: Maximum energy dischargeable per slot (kWh).
             ``None`` means unlimited (inverter default).
         discharge_efficiency_pct: Discharge-side efficiency (0-100 %).
+        candidate_name: Name of the candidate being thinned.  Logging and
+            measurement only — it never changes what this function does.
+
+    Returns:
+        A :class:`ConcentrationStats` describing what the pass did.  Callers
+        may ignore it; it exists so "what is concentration doing on the MILP
+        candidate" is answerable from a log line or a test without re-deriving
+        it (issue #1036).
     """
     log_planner(
         "debug",
-        "[disch] concentrate_discharge_on_expensive_slots  usable=%.3f  current=%.3f  "
-        "max_discharge=%s",
+        "[disch] concentrate_discharge_on_expensive_slots  candidate=%s  usable=%.3f  "
+        "current=%.3f  max_discharge=%s",
+        candidate_name or "(unnamed)",
         usable_kwh,
         current_kwh,
         f"{max_discharge_per_slot:.3f}" if max_discharge_per_slot is not None else "∞",
@@ -372,7 +411,7 @@ def concentrate_discharge_on_expensive_slots(
         if s.recommendation in _DISCHARGE_RECS and as_tz(s.end, now.tzinfo) > now
     ]
     if not discharge_slots:
-        return
+        return ConcentrationStats(candidate_name=candidate_name)
 
     # Group slots by calendar day — each day gets its own independent budget
     # because the battery is recharged by solar between discharge windows on
@@ -402,8 +441,6 @@ def concentrate_discharge_on_expensive_slots(
     # does not reduce day N+1's capacity.
     discharge_slots.sort(key=lambda s: s.price.import_price, reverse=True)
 
-    total_kept = 0
-    total_cleared = 0
     keep_set: set[int] = set()
     per_day_used: dict[date, float] = defaultdict(float)
 
@@ -430,8 +467,9 @@ def concentrate_discharge_on_expensive_slots(
     if lp_reserved:
         log_planner(
             "debug",
-            "[disch] concentrate: reserved %d LP-dispatched slot(s) — their solved "
-            "discharge is preserved and charged against the day budget",
+            "[disch] concentrate: candidate=%s reserved %d LP-dispatched slot(s) — "
+            "their solved discharge is preserved and charged against the day budget",
+            candidate_name or "(unnamed)",
             lp_reserved,
         )
 
@@ -452,34 +490,56 @@ def concentrate_discharge_on_expensive_slots(
             continue
 
     total_kept = 0
-    total_cleared = 0
+    cleared_seasonal_fill = 0
+    cleared_other = 0
+    window_label = Recommendations.BatteriesDischargeWindowMode.value
 
     for s in discharge_slots:
         if id(s) in keep_set:
             total_kept += 1
         else:
-            total_cleared += 1
+            # Attribute the clearing to its source: the seasonal fill's window
+            # label is what this function was written to thin, anything else is
+            # a label some other pass assigned (issue #1036).
+            if s.recommendation == window_label:
+                cleared_seasonal_fill += 1
+            else:
+                cleared_other += 1
             log_planner(
                 "debug",
-                "concentrate: clearing discharge at %s→%s  price=%.4f  day=%s",
+                "concentrate: clearing discharge at %s→%s  price=%.4f  day=%s  was=%s",
                 s.start.strftime("%d %H:%M"),
                 s.end.strftime("%H:%M"),
                 s.price.import_price,
                 as_tz(s.start, now.tzinfo).strftime("%Y-%m-%d"),
+                s.recommendation,
             )
             s.recommendation = Recommendations.BatteriesWaitMode.value
             s.batteries_charged_kwh = 0.0
 
+    stats = ConcentrationStats(
+        candidate_name=candidate_name,
+        lp_reserved=lp_reserved,
+        kept=total_kept,
+        cleared_seasonal_fill=cleared_seasonal_fill,
+        cleared_other=cleared_other,
+    )
     log_planner(
         "debug",
-        "[disch] concentrate_discharge_on_expensive_slots DONE  "
-        "days=%d  kept=%d  cleared=%d  usable_per_day=%.3f  total_budget=%.3f",
+        "[disch] concentrate_discharge_on_expensive_slots DONE  candidate=%s  "
+        "days=%d  kept=%d  cleared=%d (seasonal_fill=%d other=%d)  lp_reserved=%d  "
+        "usable_per_day=%.3f  total_budget=%.3f",
+        candidate_name or "(unnamed)",
         len(by_day),
         total_kept,
-        total_cleared,
+        stats.cleared,
+        cleared_seasonal_fill,
+        cleared_other,
+        lp_reserved,
         usable_kwh,
         usable_kwh * len(by_day),
     )
+    return stats
 
 
 # ---------------------------------------------------------------------------

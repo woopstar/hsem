@@ -3123,6 +3123,61 @@ Within each day the estimate is conservative: it assumes the battery
 starts at full capacity and there is no incoming charge between
 discharge slots on the same day.
 
+#### On the MILP candidate (issue #1036)
+
+Concentration runs on **every** candidate, including the MILP one, but what it
+does there is not what the paragraph above describes. The header rationale —
+the seasonal fill marks every window slot and the battery can only cover a
+fraction — is a statement about `apply_optimization_strategy`. The MILP
+allocates discharge under exact SoC constraints and never over-allocates, and
+since issue #1032 every slot carrying material solved `batteries_discharged_kwh`
+is reserved before the greedy pass. So on the MILP candidate concentration only
+ever thins slots **the LP deliberately left idle** and the seasonal fill then
+labelled `batteries_discharge_window_mode`.
+
+Measured (issue #1036) against a replayed production input, sweeping house load
+so the per-day budget is genuinely exceeded:
+
+- 100 % of the slots it clears on the MILP candidate are seasonal-fill window
+  slots — `cleared_seasonal_fill == cleared` at every load level tested.
+- **Plan cost is bit-identical** with concentration enabled vs skipped for that
+  candidate: `total_cost` and `score` compare exactly equal and no slot differs
+  in any energy field. The MILP candidate is simulated with
+  `milp_prepopulated=True`, so energy is trusted verbatim, and recommendation
+  labels carry no price in the cost function.
+- The **only** difference is the published label — up to 98 slots flipping
+  between `batteries_wait_mode` (concentration on) and
+  `batteries_discharge_window_mode` (skipped).
+
+**That label difference is load-bearing, which is why concentration stays.**
+`batteries_discharge_window_mode` executes as `MaximizeSelfConsumption`, so the
+firmware may discharge the battery to cover live house load;
+`batteries_wait_mode` executes as a TOU hold with a 0 W discharge cap unless the
+opt-in `SelfConsumptionWithReserve` behaviour is configured. Skipping
+concentration on the MILP candidate would therefore let the firmware drain the
+battery in slots the LP chose to leave idle — a hardware behaviour change that
+is invisible to plan cost.
+
+Concentration's real job on the MILP candidate is therefore:
+
+> suppress the seasonal fill's discharge-window labels on LP-idle slots, so
+> those slots execute as a hold rather than as self-consumption.
+
+Known design smell, deliberately not changed here: the seasonal fill arguably
+should not be labelling LP-idle slots in the first place, and concentration is
+cleaning up after it using a price-ranked heuristic unrelated to why those
+labels are wrong. Removing the fill's labels instead would need the ordering at
+`candidate_selector.py` (fill before concentration) revisited.
+
+##### Invariants for tests
+
+- On the MILP candidate, concentration never clears a slot carrying material
+  solved `batteries_discharged_kwh` (issue #1032).
+- Enabling vs skipping concentration for the MILP candidate leaves every slot's
+  energy fields unchanged and the plan cost exactly equal.
+- Every slot concentration clears on the MILP candidate carried the seasonal
+  fill's window label — `cleared_other == 0`.
+
 ### Invariants for multi-day horizon tests
 
 - A 12-hour horizon produces exactly `(12 * 60) // interval_minutes` slots.
