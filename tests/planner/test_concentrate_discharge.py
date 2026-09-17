@@ -375,3 +375,122 @@ class TestConcentrateDischargePerDay:
         # Slot B (2.40) must be cleared
         assert len(cleared) == 1, f"Expected 1 cleared, got {len(cleared)}"
         assert cleared[0].price.import_price == pytest.approx(2.40)
+
+
+class TestConcentratePreservesLpDischarge:
+    """LP-dispatched slots must survive concentration (issue #1032).
+
+    Concentration's per-day estimate is deliberately conservative, while the
+    MILP allocates discharge under exact SoC constraints.  Clearing an
+    LP-dispatched slot both overrides the better model and — because the MILP
+    candidate is simulated with ``milp_prepopulated=True`` — leaves a
+    ``batteries_wait_mode`` slot that still dispatches energy.
+    """
+
+    def _lp_slot(self, *, price: float, discharged: float) -> PlannedSlot:
+        slot = _make_discharge_slot(demand_kwh=0.7, price=price)
+        slot.batteries_discharged_kwh = discharged
+        return slot
+
+    def test_lp_dispatched_slot_is_never_cleared(self) -> None:
+        """Even as the cheapest slot with no budget left, it must be kept."""
+        lp = self._lp_slot(price=1.00, discharged=0.683)
+        fill = [_make_discharge_slot(demand_kwh=0.7, price=2.30) for _ in range(4)]
+        concentrate_discharge_on_expensive_slots(
+            [lp, *fill],
+            _NOW,
+            current_kwh=1.0,
+            usable_kwh=1.0,
+            max_discharge_per_slot=None,
+            discharge_efficiency_pct=100.0,
+        )
+        assert lp.recommendation == Recommendations.BatteriesDischargeMode.value
+        assert lp.batteries_discharged_kwh == pytest.approx(0.683)
+
+    def test_seasonal_fill_slots_are_still_thinned(self) -> None:
+        """The function must keep doing the job it exists for."""
+        lp = self._lp_slot(price=1.00, discharged=0.683)
+        fill = [_make_discharge_slot(demand_kwh=0.7, price=2.30) for _ in range(8)]
+        concentrate_discharge_on_expensive_slots(
+            [lp, *fill],
+            _NOW,
+            current_kwh=1.0,
+            usable_kwh=1.0,
+            max_discharge_per_slot=None,
+            discharge_efficiency_pct=100.0,
+        )
+        cleared = [
+            s
+            for s in fill
+            if s.recommendation == Recommendations.BatteriesWaitMode.value
+        ]
+        assert len(cleared) == 8
+
+    def test_no_wait_slot_retains_discharge(self) -> None:
+        """The invariant from the issue: wait must mean zero discharge."""
+        slots = [
+            self._lp_slot(price=1.00, discharged=0.683),
+            self._lp_slot(price=0.90, discharged=0.429),
+            *[_make_discharge_slot(demand_kwh=0.7, price=2.30) for _ in range(6)],
+        ]
+        concentrate_discharge_on_expensive_slots(
+            slots,
+            _NOW,
+            current_kwh=0.5,
+            usable_kwh=0.5,
+            max_discharge_per_slot=None,
+            discharge_efficiency_pct=100.0,
+        )
+        offenders = [
+            s
+            for s in slots
+            if s.recommendation == Recommendations.BatteriesWaitMode.value
+            and s.batteries_discharged_kwh > 1e-9
+        ]
+        assert offenders == []
+
+    def test_lp_energy_is_charged_against_the_day_budget(self) -> None:
+        """Reserved LP energy must consume budget, or fill slots over-survive."""
+        lp = self._lp_slot(price=1.00, discharged=1.0)  # consumes the whole budget
+        fill = [_make_discharge_slot(demand_kwh=0.7, price=2.30) for _ in range(3)]
+        concentrate_discharge_on_expensive_slots(
+            [lp, *fill],
+            _NOW,
+            current_kwh=1.0,
+            usable_kwh=1.0,
+            max_discharge_per_slot=None,
+            discharge_efficiency_pct=100.0,
+        )
+        assert all(
+            s.recommendation == Recommendations.BatteriesWaitMode.value for s in fill
+        )
+
+    def test_non_lp_slots_behave_as_before(self) -> None:
+        """With no LP energy anywhere, the greedy pass is unchanged."""
+        slots = [_make_discharge_slot(demand_kwh=0.5, price=p) for p in (2.0, 1.5, 1.0)]
+        concentrate_discharge_on_expensive_slots(
+            slots,
+            _NOW,
+            current_kwh=1.0,
+            usable_kwh=1.0,
+            max_discharge_per_slot=None,
+            discharge_efficiency_pct=100.0,
+        )
+        # Budget 1.0 kWh serves the two most expensive 0.5 kWh slots.
+        assert slots[0].recommendation == Recommendations.BatteriesDischargeMode.value
+        assert slots[1].recommendation == Recommendations.BatteriesDischargeMode.value
+        assert slots[2].recommendation == Recommendations.BatteriesWaitMode.value
+
+    def test_immaterial_rounding_residue_is_not_reserved(self) -> None:
+        """A 0.001 kWh residue is not an LP dispatch and must not be protected."""
+        residue = self._lp_slot(price=0.50, discharged=0.001)
+        expensive = [_make_discharge_slot(demand_kwh=0.7, price=2.30)]
+        concentrate_discharge_on_expensive_slots(
+            [residue, *expensive],
+            _NOW,
+            current_kwh=0.7,
+            usable_kwh=0.7,
+            max_discharge_per_slot=None,
+            discharge_efficiency_pct=100.0,
+        )
+        assert residue.recommendation == Recommendations.BatteriesWaitMode.value

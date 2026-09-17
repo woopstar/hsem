@@ -746,6 +746,22 @@ class TestSelectedPlanHasNoUndispatchedDischargeLabel:
         for slot in winner.slots:
             assert 0.0 <= slot.estimated_battery_soc_pct <= 100.0
 
+    @pytest.mark.parametrize("current_kwh", [0.0, 0.5, 4.5, 9.0])
+    def test_no_wait_slot_retains_discharge(self, current_kwh: float) -> None:
+        """Issue #1032: a wait slot must never account for battery discharge.
+
+        Strict Wait executes as 0 W, so a published wait slot carrying discharge
+        contradicts the command sent and corrupts the SoC trajectory and plan
+        cost.  Asserted on the winner, across starting SoC.
+        """
+        offenders = [
+            (s.start.isoformat(), s.batteries_discharged_kwh)
+            for s in self._winner(current_kwh=current_kwh).slots
+            if s.recommendation == Recommendations.BatteriesWaitMode.value
+            and s.batteries_discharged_kwh > 1e-9
+        ]
+        assert offenders == []
+
     def test_relabelling_preserves_energy_fields(self) -> None:
         """Demotion changes only labels, so no slot may carry negative energy."""
         for slot in self._winner(current_kwh=0.0).slots:
