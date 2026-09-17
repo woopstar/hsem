@@ -343,11 +343,18 @@ def concentrate_discharge_on_expensive_slots(
 ) -> ConcentrationStats:
     """Clear cheap discharge slots the battery cannot fully serve, per calendar day.
 
-    ``apply_optimization_strategy`` marks *every* slot in a discharge window
-    as ``BatteriesDischargeWindowMode``, but the battery can only cover a
-    fraction of them.  Without concentration
-    the SoC simulation greedily discharges in the *first* (cheapest) slots
-    and runs out before the most expensive ones.
+    On the **non-MILP** candidates ``apply_optimization_strategy`` marks
+    *every* unassigned summer slot as ``BatteriesDischargeWindowMode``, but
+    the battery can only cover a fraction of them.  Without concentration the
+    SoC simulation greedily discharges in the *first* (cheapest) slots and
+    runs out before the most expensive ones.  That is still the problem this
+    function solves there.
+
+    It is **not** the problem on the MILP candidate: the LP never
+    over-allocates, and since issue #1041 the fill holds an LP-declined slot
+    instead of opening a window, so nothing is left to thin.  It still runs
+    there — that no-op is a property of the current fill, not a guarantee,
+    and the issue #1032 reservation is what keeps it safe.
 
     This function ranks all ``DISCHARGE_RECS`` slots by import price
     (descending) and clears the recommendation on the cheapest slots that
@@ -555,6 +562,7 @@ def apply_optimization_strategy(
     required_capacity: float,
     months_winter: list[int],
     export_min_price: float = 0.0,
+    unassigned_slots_are_lp_decisions: bool = False,
 ) -> None:
     """Apply seasonal optimization logic to remaining unassigned slots.
 
@@ -568,7 +576,8 @@ def apply_optimization_strategy(
     5. Slot's month is a summer month with solar → ``BatteriesChargeSolar``;
        else ``BatteriesDischargeWindowMode`` (promoted to
        ``BatteriesDischargeMode`` by the SoC simulation if the battery
-       actually discharges)
+       actually discharges) — unless
+       ``unassigned_slots_are_lp_decisions`` is set, see below.
 
     The seasonal check (steps 4–5) uses each slot's own calendar month
     (derived from ``rec.start``), not the month of ``now``.  This means a
@@ -586,6 +595,14 @@ def apply_optimization_strategy(
             ``ForceExport``.  Slots where export price is below this
             threshold are not marked for export even if export > import.
             Defaults to ``0.0`` (any positive export price qualifies).
+        unassigned_slots_are_lp_decisions: ``True`` when an optimizer has
+            already considered every slot, so ``recommendation is None``
+            means *the optimizer declined to act here* rather than *nothing
+            has scheduled this slot yet* (issue #1041).  Set only for the
+            MILP candidate, whose write-out resets every future slot to
+            ``None`` and then labels only the slots it allocated energy to.
+            Under this flag step 5 holds the battery instead of opening a
+            discharge window.
     """
     log_planner(
         "debug",
@@ -662,6 +679,15 @@ def apply_optimization_strategy(
             # BatteriesChargeSolar (issue #720).
             if rec.estimated_net_consumption_kwh < 0.0:
                 rec.recommendation = Recommendations.BatteriesChargeSolar.value
+            elif unassigned_slots_are_lp_decisions:
+                # The optimizer considered this slot and declined to dispatch
+                # the battery, so opening a discharge window would contradict
+                # it — winter already reaches this answer one branch up
+                # (issue #1041).  Only this branch is gated: steps 1-3 write
+                # energy or re-route PV, so gating them would change the plan
+                # rather than just its labels.  See docs/planner-spec.md
+                # § "The fill no longer creates those labels".
+                rec.recommendation = Recommendations.BatteriesWaitMode.value
             else:
                 # Seasonal discharge-window slots start as
                 # batteries_discharge_window_mode.  The SoC simulation

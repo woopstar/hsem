@@ -3158,16 +3158,49 @@ concentration on the MILP candidate would therefore let the firmware drain the
 battery in slots the LP chose to leave idle — a hardware behaviour change that
 is invisible to plan cost.
 
-Concentration's real job on the MILP candidate is therefore:
+Concentration's real job on the MILP candidate was therefore to suppress the
+seasonal fill's discharge-window labels on LP-idle slots, so those slots execute
+as a hold rather than as self-consumption.
 
-> suppress the seasonal fill's discharge-window labels on LP-idle slots, so
-> those slots execute as a hold rather than as self-consumption.
+#### The fill no longer creates those labels (issue #1036 → #1041)
 
-Known design smell, deliberately not changed here: the seasonal fill arguably
-should not be labelling LP-idle slots in the first place, and concentration is
-cleaning up after it using a price-ranked heuristic unrelated to why those
-labels are wrong. Removing the fill's labels instead would need the ordering at
-`candidate_selector.py` (fill before concentration) revisited.
+Cleaning up after the fill with a price-ranked heuristic was the wrong shape for
+the problem: the reason an LP-idle slot must not be a discharge window has
+nothing to do with price ranking or a per-day budget — the LP simply declined to
+act there. Any such slot that fitted inside the budget **survived concentration
+and was published**. Measured on the stock fixtures before the fix, on the
+selected MILP plan: 17 mislabelled slots published on `flat` at 10 % SoC, 10 at
+50 %, 2 on `negative`. Those slots reached the applier as
+`MaximizeSelfConsumption`, so the firmware was free to drain the battery in
+intervals the LP had deliberately left idle.
+
+The root cause was in `apply_optimization_strategy`: for a slot the optimizer
+left unassigned, the label depended only on the slot's calendar month — a winter
+slot became `batteries_wait_mode` (correct), a summer slot with no PV surplus
+became `batteries_discharge_window_mode`.
+
+Since issue #1041 the selector passes
+`unassigned_slots_are_lp_decisions=(candidate.name == CANDIDATE_MILP)` — the
+same predicate that drives `milp_prepopulated`, and for the same reason. Under
+that flag a slot still unassigned after the LP ran means _the optimizer declined
+to act here_, not _nothing has scheduled this slot yet_, and the seasonal branch
+holds the battery instead of opening a discharge window.
+
+Only that one branch is gated. `force_export` re-routes PV rather than
+dispatching the battery, and the solar-charge steps write
+`batteries_charged_kwh`, so gating those would change plan energy rather than
+just a label.
+
+The change is label-only by construction: the MILP candidate is simulated with
+`milp_prepopulated=True`, so `simulate_soc` never re-derives energy from the
+recommendation. Verified across the four stock fixtures × load × starting SoC —
+plan cost and score compare exactly equal and no slot differs in any energy
+field, while up to 17 slots change label.
+
+Concentration still runs on the MILP candidate and is now a no-op there. It is
+kept because that no-op is a property of the current fill rather than a
+guarantee, and because it remains load-bearing on the non-MILP candidates, where
+the fill's original rationale genuinely applies.
 
 ##### Invariants for tests
 
@@ -3175,8 +3208,15 @@ labels are wrong. Removing the fill's labels instead would need the ordering at
   solved `batteries_discharged_kwh` (issue #1032).
 - Enabling vs skipping concentration for the MILP candidate leaves every slot's
   energy fields unchanged and the plan cost exactly equal.
-- Every slot concentration clears on the MILP candidate carried the seasonal
-  fill's window label — `cleared_other == 0`.
+- Concentration clears **zero** slots on the MILP candidate, in every season —
+  the fill no longer produces slots for it to thin there (issue #1041).
+- No slot is published as `batteries_discharge_window_mode` while the LP
+  allocated it no discharge.
+- An LP-idle slot receives the same label in summer as in winter.
+- Non-MILP candidates keep the seasonal-fill behaviour: an unassigned summer
+  slot with no PV surplus still becomes `batteries_discharge_window_mode`.
+- Enabling the flag changes labels only — plan cost, score and every slot's
+  energy fields are bit-identical.
 
 ### Invariants for multi-day horizon tests
 

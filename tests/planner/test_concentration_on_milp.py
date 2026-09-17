@@ -170,15 +170,23 @@ class TestConcentrationOnMilpCandidate:
                 b.batteries_charged_kwh, abs=1e-12
             )
 
-    def test_skipping_changes_labels_from_wait_to_window(
+    def test_skipping_is_now_a_no_op_on_the_milp_candidate(
         self, request: pytest.FixtureRequest
     ) -> None:
-        """The label effect is the whole point — it must be observable.
+        """Concentration has nothing left to do on the MILP candidate.
 
-        ``batteries_discharge_window_mode`` executes as MaximizeSelfConsumption
-        (firmware may drain the battery); ``batteries_wait_mode`` holds at 0 W.
-        Skipping concentration on the MILP candidate leaves LP-idle slots in the
-        former.
+        Until issue #1041 this asserted the opposite: skipping concentration
+        flipped LP-idle slots from ``batteries_wait_mode`` back to
+        ``batteries_discharge_window_mode``, which executes as
+        MaximizeSelfConsumption and let the firmware drain the battery.  That
+        label effect was concentration's real job here (issue #1036).
+
+        #1041 removed the *cause* instead — the seasonal fill no longer opens a
+        discharge window on a slot the LP declined — so concentration now finds
+        nothing to thin on this candidate and skipping it changes nothing.
+        Concentration still runs, because that is a property of the current
+        fill rather than a guarantee, and it stays load-bearing for the
+        non-MILP candidates.
         """
         inp = _scale_load(make_summer_day_input(), 5.0)
         on = run_planner(inp)
@@ -186,17 +194,15 @@ class TestConcentrationOnMilpCandidate:
         off = run_planner(inp)
 
         flips = [
-            (a.recommendation, b.recommendation)
+            (a.start.isoformat(), a.recommendation, b.recommendation)
             for a, b in zip(on.slots, off.slots, strict=True)
             if a.recommendation != b.recommendation
         ]
-        assert flips, (
-            "skipping concentration on the MILP candidate changed nothing — "
-            "the load scaling no longer reaches the clearing regime"
+        assert flips == [], (
+            f"concentration still changes labels on the MILP candidate: {flips[:5]} "
+            f"— the seasonal fill is producing discharge windows on LP-idle slots "
+            f"again (issue #1041)"
         )
-        for before, after in flips:
-            assert before == Recommendations.BatteriesWaitMode.value
-            assert after == Recommendations.BatteriesDischargeWindowMode.value
 
     def test_1032_invariant_holds_either_way(
         self, request: pytest.FixtureRequest
