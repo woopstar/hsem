@@ -18,6 +18,7 @@
     "documentation": "https://github.com/woopstar/hsem/blob/main/README.md",
     "iot_class": "cloud_polling",
     "issue_tracker": "https://github.com/woopstar/hsem/issues",
+    "quality_scale": "bronze",
     "requirements": [
         "scipy>=1.14,<2",
         "numpy>=2.0,<3"
