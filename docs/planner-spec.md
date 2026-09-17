@@ -1149,6 +1149,33 @@ Note this shifts such slots from `"discharge"` to `"idle"` in the action-mix
 scorecard, since `utils/prediction_tracker._action_label` classifies by
 `BATTERY_DISCHARGE_ACTION_RECS`, which deliberately excludes the window label.
 
+**Wait labels never carry discharge (issue #1032).** The third face of the same
+rule: a `batteries_wait_mode` slot must have zero battery discharge. Strict Wait
+executes as 0 W at the inverter, so a wait slot that still accounts for
+discharge publishes an SoC trajectory and a plan cost that contradict the
+command being sent.
+
+This is enforced **structurally**, not by a cleanup pass.
+`concentrate_discharge_on_expensive_slots` reserves any slot carrying material
+solved `batteries_discharged_kwh` before its greedy pass and charges that energy
+against the day budget, so it only ever relabels slots that had no discharge to
+begin with:
+
+- The function's per-day estimate is deliberately conservative — it "assumes the
+  battery starts at full capacity and there is no incoming charge between
+  discharge slots on the same day". The MILP allocates discharge under exact
+  SoC constraints, so concentration must not override it.
+- The MILP candidate is simulated with `milp_prepopulated=True`, which trusts
+  the LP's energy fields verbatim. The
+  `batteries_wait_mode → discharge = 0.0` guard lives in the re-derivation
+  branch that this mode skips, so a relabelled LP slot would keep dispatching
+  energy. Non-MILP candidates self-heal through that guard.
+- Zeroing the energy after the fact would not be equivalent: the LP's `ed[t]`
+  values satisfy an SoC recursion, so clearing one slot leaves every downstream
+  slot with more battery energy than the LP assumed.
+
+Concentration therefore thins only the seasonal-fill slots it was written for.
+
 #### 3. Cover house-load deficit
 
 | Priority | Action            | Cost coefficient                                                                     | When taken                                                                   |
