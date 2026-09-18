@@ -24,7 +24,7 @@ from custom_components.hsem.custom_sensors.state_collector import (
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
 
-_MODULE = "custom_components.hsem.custom_sensors.state_collector"
+_DEADLINE_MODULE = "custom_components.hsem.custom_sensors.ev_deadline"
 # ``hsem_now`` is imported inside the resolver, so patch it at its source.
 _CLOCK = "custom_components.hsem.utils.datetime_utils.now"
 _NOW = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
@@ -140,6 +140,29 @@ class TestReadEvPlannedLoadState:
 
         assert state.ev_planned_load_target_soc_pct == pytest.approx(80.0)
 
+    def test_corrupt_deadline_does_not_abort_state_collection(self) -> None:
+        """A corrupt stored deadline produces a snapshot with no deadline."""
+        cfg = SensorConfig()
+        state = LiveState()
+
+        with (
+            patch(_CLOCK, return_value=_NOW),
+            patch(f"{_DEADLINE_MODULE}._LOGGER") as logger,
+        ):
+            _read_ev_planned_load_state(
+                _sensor({"hsem_ev_deadline_time": "25:00"}),
+                state,
+                cfg,
+                _reader({}),
+                False,
+            )
+
+        assert state.ev_planned_load_deadline is None
+        assert state.ev_planned_load_connected is True
+        logger.debug.assert_called_once_with(
+            "Ignoring invalid EV deadline time '%s'", "25:00"
+        )
+
 
 class TestResolveEvDeadline:
     """The deadline comes from an entity when present, else from config."""
@@ -148,7 +171,8 @@ class TestResolveEvDeadline:
         """A plain string entity state is used directly."""
         with (
             patch(
-                f"{_MODULE}.ha_get_entity_state_and_convert", return_value="06:15:00"
+                f"{_DEADLINE_MODULE}.ha_get_entity_state_and_convert",
+                return_value="06:15:00",
             ),
             patch(_CLOCK, return_value=_NOW),
         ):
@@ -166,7 +190,10 @@ class TestResolveEvDeadline:
         state_obj = State("time.ev_deadline", "23:45")
 
         with (
-            patch(f"{_MODULE}.ha_get_entity_state_and_convert", return_value=state_obj),
+            patch(
+                f"{_DEADLINE_MODULE}.ha_get_entity_state_and_convert",
+                return_value=state_obj,
+            ),
             patch(_CLOCK, return_value=_NOW),
         ):
             deadline = _resolve_ev_deadline_from_params(
@@ -182,11 +209,11 @@ class TestResolveEvDeadline:
         """A failing entity read is logged and the config value is used."""
         with (
             patch(
-                f"{_MODULE}.ha_get_entity_state_and_convert",
+                f"{_DEADLINE_MODULE}.ha_get_entity_state_and_convert",
                 side_effect=HomeAssistantError("boom"),
             ),
             patch(_CLOCK, return_value=_NOW),
-            patch(f"{_MODULE}._LOGGER") as logger,
+            patch(f"{_DEADLINE_MODULE}._LOGGER") as logger,
         ):
             deadline = _resolve_ev_deadline_from_params(
                 _sensor(), "time.ev_deadline", "22:00"
@@ -199,7 +226,9 @@ class TestResolveEvDeadline:
     def test_non_time_entity_value_falls_back(self) -> None:
         """An entity value that is neither a string nor a state is ignored."""
         with (
-            patch(f"{_MODULE}.ha_get_entity_state_and_convert", return_value=42),
+            patch(
+                f"{_DEADLINE_MODULE}.ha_get_entity_state_and_convert", return_value=42
+            ),
             patch(_CLOCK, return_value=_NOW),
         ):
             deadline = _resolve_ev_deadline_from_params(
@@ -220,8 +249,48 @@ class TestResolveEvDeadline:
         assert deadline is not None
         assert (deadline.hour, deadline.minute) == (7, 0)
 
-    @pytest.mark.parametrize("fixed", ["not a time", "7", "07:5"], ids=lambda v: v)
-    def test_unparseable_times_resolve_to_no_deadline(self, fixed: str) -> None:
-        """A malformed time never becomes a bogus deadline."""
+    @pytest.mark.parametrize(
+        ("fixed", "expected"),
+        [
+            ("07:30", (7, 30)),
+            ("7:30", (7, 30)),
+            ("23:45:00", (23, 45)),
+        ],
+        ids=lambda value: str(value),
+    )
+    def test_valid_time_forms_resolve(
+        self, fixed: str, expected: tuple[int, int]
+    ) -> None:
+        """Supported time forms keep resolving to a deadline."""
         with patch(_CLOCK, return_value=_NOW):
-            assert _resolve_ev_deadline_from_params(_sensor(), None, fixed) is None
+            deadline = _resolve_ev_deadline_from_params(_sensor(), None, fixed)
+
+        assert deadline is not None
+        assert (deadline.hour, deadline.minute) == expected
+
+    @pytest.mark.parametrize(
+        "fixed",
+        [
+            "not a time",
+            "7",
+            "07:5",
+            "24:00",
+            "25:00",
+            "12:60",
+            "99:99",
+            "23:45:60",
+        ],
+        ids=lambda value: value,
+    )
+    def test_unparseable_times_resolve_to_no_deadline(self, fixed: str) -> None:
+        """A malformed or out-of-range time never becomes a bogus deadline."""
+        with (
+            patch(_CLOCK, return_value=_NOW),
+            patch(f"{_DEADLINE_MODULE}._LOGGER") as logger,
+        ):
+            deadline = _resolve_ev_deadline_from_params(_sensor(), None, fixed)
+
+        assert deadline is None
+        logger.debug.assert_called_once_with(
+            "Ignoring invalid EV deadline time '%s'", fixed
+        )

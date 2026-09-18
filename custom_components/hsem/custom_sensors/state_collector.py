@@ -16,9 +16,7 @@ so that downstream population functions never need additional
 from __future__ import annotations
 
 import math
-import re
 from collections.abc import Callable
-from datetime import datetime, time, timedelta
 from typing import Any
 
 from homeassistant.const import UnitOfEnergy, UnitOfPower
@@ -29,6 +27,9 @@ from homeassistant.helpers.event import async_track_state_change_event
 from custom_components.hsem.const import FORCE_MODE_AUTO
 from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401 — re-exported for backward compat in coordinator.py
     build_sensor_config,
+)
+from custom_components.hsem.custom_sensors.ev_deadline import (
+    resolve_ev_deadline_from_params as _resolve_ev_deadline_from_params,
 )
 from custom_components.hsem.custom_sensors.state_collector_compute import (  # noqa: F401 — re-exported for callers
     _compute_battery_capacities,
@@ -47,7 +48,6 @@ from custom_components.hsem.utils.conversion import (
     normalize_ev_power_w,
 )
 from custom_components.hsem.utils.ha_helpers import (
-    EntityNotFoundError,
     async_resolve_entity_id_from_unique_id,
     ha_get_entity_state_and_convert,
     read_normalized_float,
@@ -614,60 +614,6 @@ def _read_ev_planned_load_state(
         f"{p}_deadline",
         _resolve_ev_deadline_from_params(sensor, None, deadline_fixed),
     )
-
-
-def _resolve_ev_deadline_from_params(
-    sensor: Any,
-    deadline_entity: str | None,
-    deadline_fixed: str | None,
-) -> datetime | None:
-    """Resolve EV charging deadline from entity or fixed config string.
-
-    Args:
-        sensor: Working-mode sensor instance (provides ``hass``).
-        deadline_entity: Optional HA entity whose state is a time string.
-        deadline_fixed: Fallback HH:MM string from config.
-
-    Returns:
-        A timezone-aware ``datetime`` for the deadline, or ``None``.
-    """
-    time_str: str | None = None
-
-    if deadline_entity:
-        try:
-            raw = ha_get_entity_state_and_convert(sensor, deadline_entity, None)
-            from homeassistant.core import State as _State  # noqa: PLC0415
-
-            if isinstance(raw, _State):
-                time_str = raw.state
-            elif isinstance(raw, str):
-                time_str = raw
-        except (EntityNotFoundError, HomeAssistantError) as exc:
-            _LOGGER.warning(
-                "Could not read EV deadline entity '%s': %s. Falling back to default.",
-                deadline_entity,
-                exc,
-            )
-
-    if not time_str:
-        time_str = deadline_fixed or "07:00"
-
-    m = re.match(r"^(\d{1,2}):(\d{2})(?::\d{2})?$", (time_str or "").strip())
-    if not m:
-        return None
-
-    hour, minute = int(m.group(1)), int(m.group(2))
-    from custom_components.hsem.utils.datetime_utils import now as hsem_now
-
-    now_local = hsem_now()
-    today = now_local.date()
-    deadline_naive = datetime.combine(today, time(hour, minute))
-    deadline = deadline_naive.replace(tzinfo=now_local.tzinfo)
-
-    if deadline <= now_local:
-        deadline = deadline + timedelta(days=1)
-
-    return deadline
 
 
 async def _register_listeners(
