@@ -1,0 +1,11 @@
+# Codecov configuration for HSEM.
+#
+# The coverage report is generated with `--cov=custom_components`, so
+# coverage.py writes paths relative to that source directory — `hsem/x.py` —
+# while the repository stores them at `custom_components/hsem/x.py`.  Codecov
+# matches report paths against the repo tree, so without the mapping below
+# every path in the report fails to resolve and the whole report is rejected
+# (every commit lands in state `error` with 0 files, which is what happened
+# from 2026-08-17 onward).
+fixes:
+  - "hsem/::custom_components/hsem/"
