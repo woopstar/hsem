@@ -664,7 +664,11 @@ OCPP server.
 
 ## Savings tracker sensor
 
-Tracks actual vs missed savings over a rolling 90-day window.
+Tracks actual vs missed savings over a rolling 90-day window. Savings include
+export revenue, avoided grid-import cost from battery discharge, and the price
+difference when battery energy is charged below the mean positive import price
+for the current cycle's calendar day. Missing, non-finite, and non-positive
+planner prices are excluded from that daily mean.
 
 **Entity:** `sensor.hsem_savings_tracker`
 

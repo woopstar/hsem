@@ -426,16 +426,15 @@ async def accumulate_financials(
 # ---------------------------------------------------------------------------
 
 
-def _compute_daily_avg_import_price(output: PlannerOutput) -> float:
-    """Compute the average import price for today from planner slots."""
-    today_str = date.today().isoformat()
-    prices: list[float] = []
-    for slot in output.slots:
-        slot_date = slot.start.strftime("%Y-%m-%d")
-        if slot_date == today_str:
-            p = getattr(slot, "import_price", None)
-            if p is not None and p > 0:
-                prices.append(float(p))
+def _compute_daily_avg_import_price(output: PlannerOutput, now: datetime) -> float:
+    """Compute today's average finite, positive import price from planner slots."""
+    prices = [
+        slot.price.import_price
+        for slot in output.slots
+        if slot.start.date() == now.date()
+        and math.isfinite(slot.price.import_price)
+        and slot.price.import_price > 0.0
+    ]
     if not prices:
         return 0.0
     return sum(prices) / len(prices)
@@ -489,7 +488,7 @@ async def accumulate_savings(
     import_price = live.import_electricity_price
 
     # Compute average daily import price from planner slots for today.
-    avg_import_price = _compute_daily_avg_import_price(output)
+    avg_import_price = _compute_daily_avg_import_price(output, now)
 
     # Check if the current recommendation is a charge action.
     if (

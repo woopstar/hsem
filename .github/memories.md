@@ -147,6 +147,14 @@ assert result == pytest.approx(expected, rel=1e-6)
 # slot_in_day and hourly paths) so DataQuality warnings still fire.
 ```
 
+### Planned-slot price access (issue #1053)
+
+`PlannerOutput.slots` contains `PlannedSlot` objects. Read prices through
+`slot.price.import_price` and `slot.price.export_price`; `PlannedSlot` has no
+top-level price attributes. Financial averages must exclude non-finite and
+non-positive import prices and derive their calendar day from the coordinator
+cycle's timezone-aware `now`, never `date.today()`.
+
 Planning horizon selector offers **12/24/36/48 h only** — 72 h was removed
 (spot prices are never published that far ahead). Legacy stored values > 48
 are clamped to 48 in `custom_sensors/config_reader.py`. The engine itself
