@@ -706,7 +706,10 @@ def test_milp_solves_96_slot_horizon_within_performance_budget() -> None:
     # mypy and pyright have just run.  The fastest of a few attempts
     # approximates the unloaded solve, which is what the budget is about.
     # A real regression slows every attempt, so the floor still catches it.
-    attempts = 3
+    # Three attempts still flapped about 1 run in 10 — a load spike lasting
+    # ~1 s covers that many solves — so five it is.  If it ever flaps again,
+    # raise this rather than the budget: the budget is the regression guard.
+    attempts = 5
     elapsed = float("inf")
     for _ in range(attempts):
         t_start = time_module.perf_counter()
