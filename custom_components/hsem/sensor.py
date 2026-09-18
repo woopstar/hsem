@@ -109,6 +109,8 @@ from custom_components.hsem.custom_sensors.working_mode_sensor import (
 )
 from custom_components.hsem.utils.misc import get_config_value
 
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
     hass: HomeAssistant,

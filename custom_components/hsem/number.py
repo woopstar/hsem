@@ -33,6 +33,8 @@ from custom_components.hsem.utils.sensornames.ev import (
     get_ev_target_soc_number_unique_id,
 )
 
+PARALLEL_UPDATES = 0
+
 # Entity descriptions for each number entity in this platform.
 # Display names come from translations via translation_key.
 NUMBER_DESCRIPTIONS: tuple[NumberEntityDescription, ...] = (

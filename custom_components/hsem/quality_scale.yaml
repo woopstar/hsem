@@ -107,9 +107,8 @@ rules:
       Missing-entity state is surfaced via sensor.hsem_missing_entities but not
       logged once per transition. Tracked in issue #1045.
   parallel-updates:
-    status: todo
-    comment: >-
-      PARALLEL_UPDATES is not set on any HSEM platform. Tracked in issue #1043.
+    status: done
+    comment: Every HSEM platform declares PARALLEL_UPDATES = 0 for coordinator-driven updates.
   reauthentication-flow:
     status: exempt
     comment: >-
