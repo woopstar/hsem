@@ -356,20 +356,7 @@ async def _load_financial_tracker(tracker: FinancialTracker) -> None:
     try:
         data = await asyncio.to_thread(read_json_history_file, path)
         if data is not None:
-            loaded = FinancialTracker.from_dict(data)
-            # Copy loaded state into the existing tracker instance.
-            tracker.import_cost_total = loaded.import_cost_total
-            tracker.export_income_total = loaded.export_income_total
-            tracker._today_start_import_cost = loaded._today_start_import_cost
-            tracker._today_start_export_income = loaded._today_start_export_income
-            tracker.today = loaded.today
-            tracker._last_import_energy_kwh = loaded._last_import_energy_kwh
-            tracker._last_export_energy_kwh = loaded._last_export_energy_kwh
-            tracker._last_import_sample_at = loaded._last_import_sample_at
-            tracker._last_export_sample_at = loaded._last_export_sample_at
-            tracker._last_import_price = loaded._last_import_price
-            tracker._last_export_price = loaded._last_export_price
-            tracker.daily_log = loaded.daily_log
+            tracker.restore_from(FinancialTracker.from_dict(data))
     except Exception:
         async_log("error", "Failed to load financial tracker history")
 
