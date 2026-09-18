@@ -433,7 +433,9 @@ undecomposable — the same fail-closed rule as _Live house availability_
 above, applied to the rolling window: `_live_power_ev_ambiguous` clears the
 house channel (never the solar channel) whenever any EV is charging or has
 positive power, on both the once-per-cycle snapshot and the fast-timer's
-independent reads.
+independent reads. A configured charger-status entity in `unknown` or
+`unavailable` state is also ambiguous: the fast timer withholds the inclusive
+house channel until the entity reports a definite state (issue #1056).
 
 **Materiality.** A channel is considered "changed materially" only when
 the full-slot energy delta exceeds `max(LIVE_POWER_REPLAN_MIN_DELTA_KWH,

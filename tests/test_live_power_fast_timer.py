@@ -60,10 +60,11 @@ class TestReadLivePowerBoolean:
     """Boolean timer reads never turn an unavailable entity into ``False``."""
 
     @pytest.mark.parametrize(
-        ("state", "expected"), [("on", True), ("off", False), ("unknown", None)]
+        ("state", "expected"),
+        [("on", True), ("off", False), ("unknown", None), ("unavailable", None)],
     )
     def test_reads_state(self, state: str, expected: bool | None) -> None:
-        """``on``/``off`` map to booleans; an unknown state maps to ``None``."""
+        """Valid states map to booleans; HA sentinel states map to ``None``."""
         coordinator = _coordinator({_EV_STATUS: _FakeState(state)})
 
         assert coordinator._read_live_power_boolean(_EV_STATUS) is expected
@@ -124,6 +125,19 @@ class TestTickEvAmbiguity:
     def test_same_tick_status_entity_is_ambiguous(self) -> None:
         """A charger status of ``on`` this tick is enough to fail closed."""
         coordinator = _coordinator({_EV_STATUS: _FakeState("on")}, includes_ev=True)
+
+        assert (
+            coordinator._live_power_tick_ev_ambiguous(
+                coordinator._cfg, coordinator._live
+            )
+            is True
+        )
+
+    def test_unavailable_status_entity_is_ambiguous(self) -> None:
+        """An unavailable configured charger status fails closed."""
+        coordinator = _coordinator(
+            {_EV_STATUS: _FakeState("unavailable")}, includes_ev=True
+        )
 
         assert (
             coordinator._live_power_tick_ev_ambiguous(

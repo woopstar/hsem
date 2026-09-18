@@ -184,7 +184,7 @@ def ha_get_entity_state_and_convert(
         The converted state value, or None if the entity is unavailable.
 
     Raises:
-        EntityNotFoundError: If the entity is not found or state is unknown.
+        EntityNotFoundError: If the entity is not found, unknown, or unavailable.
         HomeAssistantError: If conversion fails.
     """
 
@@ -217,8 +217,10 @@ def ha_get_entity_state_and_convert(
             return convert_to_int(state.state)
 
         if output_type.lower() == "boolean":
-            if state.state == STATE_UNKNOWN:
-                raise EntityNotFoundError(f"Entity '{entity_id}' state unknown.")
+            if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+                raise EntityNotFoundError(
+                    f"Entity '{entity_id}' state unknown or unavailable."
+                )
 
             return convert_to_boolean(state.state)
 

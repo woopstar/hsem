@@ -270,7 +270,10 @@ coordinator wires it in via `coordinator_live_power.py` (issue #797): a
 dedicated fast timer keeps the window fresh between full planning cycles,
 and each cycle also seeds the window from its own immutable snapshot so a
 slow-cadence cycle without an intervening fast-timer sample still sees an
-up-to-date estimate.
+up-to-date estimate. When the house meter includes EV charger load, a
+configured charger-status entity that is `unknown` or `unavailable` makes the
+house sample ambiguous and therefore unavailable; HSEM never treats that
+missing boolean state as a definite idle charger (issue #1056).
 
 ### Excess export and grid controls
 

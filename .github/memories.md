@@ -123,7 +123,7 @@ if abs(value) > 1e-9:   # instead of: if value != 0
 assert result == pytest.approx(expected, rel=1e-6)
 ```
 
-### Missing vs. zero telemetry (issue #988)
+### Missing vs. zero telemetry (issues #988 and #1056)
 
 ```python
 # convert_to_float() returns None for unavailable/unknown ON PURPOSE —
@@ -131,6 +131,10 @@ assert result == pytest.approx(expected, rel=1e-6)
 # planner acts on. EV SoC stays None end-to-end (LiveState → PlannerInput)
 # and the planner refuses to plan EV charging on it; a real 0.0 reading
 # is still honoured as an empty battery.
+# ha_get_entity_state_and_convert(..., "boolean") raises EntityNotFoundError
+# for unavailable/unknown. Callers must preserve that missing-state distinction;
+# the inclusive-house live-power guard treats a configured missing EV status as
+# ambiguous rather than as a definite idle charger.
 ```
 
 ### Missing-price estimation (issue #1002)

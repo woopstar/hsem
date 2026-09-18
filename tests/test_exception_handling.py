@@ -95,6 +95,13 @@ class TestSensorReadFailures:
         result = ha_get_entity_state_and_convert(sensor, "sensor.offline", "float")
         assert result is None
 
+    def test_unavailable_boolean_raises_entity_not_found(self):
+        """An unavailable boolean remains missing instead of reading as false."""
+        sensor = _make_sensor("binary_sensor.offline", "unavailable")
+
+        with pytest.raises(EntityNotFoundError, match="unknown or unavailable"):
+            ha_get_entity_state_and_convert(sensor, "binary_sensor.offline", "boolean")
+
     def test_non_numeric_float_returns_none(self):
         """A non-numeric string for a float entity returns None."""
         sensor = _make_sensor("sensor.weird", "not-a-number")
