@@ -40,7 +40,7 @@ async def _async_apply_forcible_discharge(
     """Issue a forcible-discharge command to the battery pack and verify acceptance.
 
     Returns:
-        List of :class:`ApplyResult` entries (one per configured battery device).
+        List of :class:`ApplyResult` entries (one per attempted battery device).
         Returns an empty list if preconditions are not met and no write is attempted.
     """
     battery_device_ids = _configured_battery_device_ids(cfg)
@@ -58,6 +58,9 @@ async def _async_apply_forcible_discharge(
 
     bat_fc_entity = cfg.huawei_solar_batteries_forcible_charge
 
+    # Huawei exposes one pack-level forcible-charge sensor for all battery
+    # devices. Once one device activates it, later devices correctly report
+    # SKIPPED because the shared read-back already matches.
     def _read_fc_accepted() -> float | None:
         """Return 1.0 if forcible charge state is active (not stopped/empty),
         None otherwise.  The forcible_charge sensor reports a string like
@@ -101,6 +104,6 @@ async def _async_apply_forcible_discharge(
             max_discharge_power,
             result.status.value,
         )
-        if result.status == ApplyStatus.FAILED:
+        if result.status in {ApplyStatus.FAILED, ApplyStatus.UNVERIFIED}:
             break
     return results

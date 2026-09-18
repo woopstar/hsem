@@ -93,7 +93,7 @@ with a read-back verification loop:
 7. Compare: value matches?  → OK
    - Yes: return ApplyResult.OK
    - No:  retry up to max_retries
-8. If all retries exhausted → return ApplyResult.FAILED
+8. If all retries exhausted → FAILED after a mismatching value, or UNVERIFIED when no readable value was returned
 ```
 
 ### Apply status values
@@ -102,8 +102,12 @@ with a read-back verification loop:
 | ------------ | --------------------------------------------------------- |
 | `ok`         | Read-back value matched desired value within tolerance    |
 | `unverified` | Write accepted but read-back timed out or returned `None` |
-| `failed`     | All retries exhausted — inverter did not accept the value |
+| `failed`     | Retries exhausted with a mismatching read-back value      |
 | `skipped`    | Current value already matched — no write performed        |
+
+For forcible discharge, Huawei exposes one pack-level acceptance sensor for all
+configured battery devices. `ok` and `skipped` continue to the next device, while
+`failed` or `unverified` aborts the remaining device writes in that pass.
 
 ### Verified writes
 
