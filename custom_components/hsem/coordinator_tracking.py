@@ -14,7 +14,7 @@ import math
 from datetime import date, datetime
 from pathlib import Path
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_change
 
 from custom_components.hsem.models.daily_metrics import DailyMetrics
@@ -613,9 +613,13 @@ async def _init_daily_tracker(
         )
         await tracker.load_history()
 
+        @callback
+        def _schedule_midnight(_now: datetime) -> None:
+            hass.async_create_task(_async_handle_midnight(tracker, hass))
+
         tracker._midnight_unsub = async_track_time_change(  # type: ignore[attr-defined]
             hass,
-            lambda _now: _async_handle_midnight(tracker, hass),
+            _schedule_midnight,
             hour=0,
             minute=0,
             second=0,
