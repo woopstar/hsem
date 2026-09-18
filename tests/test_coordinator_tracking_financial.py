@@ -12,7 +12,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -44,6 +44,24 @@ def _make_hass(config_dir: Path) -> HomeAssistant:
 def _history_path(config_dir: Path) -> Path:
     """Return the financial history file path under *config_dir*."""
     return config_dir / ".storage" / "hsem_financial_history.json"
+
+
+def _assert_serialized_state_equal(actual: Any, expected: Any) -> None:
+    """Recursively compare serialized state using approximate float checks."""
+    if isinstance(expected, float):
+        assert actual == pytest.approx(expected)
+    elif isinstance(expected, dict):
+        assert isinstance(actual, dict)
+        assert actual.keys() == expected.keys()
+        for key, expected_value in expected.items():
+            _assert_serialized_state_equal(actual[key], expected_value)
+    elif isinstance(expected, list):
+        assert isinstance(actual, list)
+        assert len(actual) == len(expected)
+        for actual_item, expected_item in zip(actual, expected, strict=True):
+            _assert_serialized_state_equal(actual_item, expected_item)
+    else:
+        assert actual == expected
 
 
 def _live(import_kwh: float, export_kwh: float) -> LiveState:
@@ -80,6 +98,8 @@ class TestInitFinancialTracker:
         saved._last_export_sample_at = _T0
         saved._last_import_price = 2.0
         saved._last_export_price = 0.5
+        saved._last_import_price_available = True
+        saved._last_export_price_available = True
         saved.daily_log["2026-05-31"] = FinancialDayEntry(
             date="2026-05-31", import_cost=4.0, export_income=1.0
         )
@@ -100,7 +120,71 @@ class TestInitFinancialTracker:
         assert tracker._last_export_sample_at == _T0
         assert tracker._last_import_price == pytest.approx(2.0)
         assert tracker._last_export_price == pytest.approx(0.5)
+        assert tracker._last_import_price_available is True
+        assert tracker._last_export_price_available is True
         assert tracker.daily_log["2026-05-31"].import_cost == pytest.approx(4.0)
+        _assert_serialized_state_equal(tracker.as_dict(), saved.as_dict())
+
+    @pytest.mark.asyncio
+    async def test_quick_restart_prices_the_first_contiguous_interval(
+        self, tmp_path: Path
+    ) -> None:
+        """A persisted left-endpoint price applies after a quick restart."""
+        saved = FinancialTracker(
+            today=_T0.date().isoformat(),
+            history_file=str(_history_path(tmp_path)),
+        )
+        saved.accumulate(
+            grid_import_energy_kwh=10.0,
+            import_price=2.0,
+            import_price_available=True,
+            sample_time=_T0,
+            max_gap_seconds=600.0,
+        )
+        assert await saved.save_history()
+
+        tracker = FinancialTracker()
+        await init_financial_tracker(tracker, _make_hass(tmp_path))
+        tracker.accumulate(
+            grid_import_energy_kwh=11.0,
+            import_price=2.0,
+            import_price_available=True,
+            sample_time=_T0 + timedelta(minutes=5),
+            max_gap_seconds=600.0,
+        )
+
+        assert tracker.import_cost_total == pytest.approx(2.0)
+
+    @pytest.mark.asyncio
+    async def test_stale_restart_gap_rebaselines_without_pricing(
+        self, tmp_path: Path
+    ) -> None:
+        """A persisted baseline older than the maximum gap is not replayed."""
+        saved = FinancialTracker(
+            today=_T0.date().isoformat(),
+            history_file=str(_history_path(tmp_path)),
+        )
+        saved.accumulate(
+            grid_import_energy_kwh=10.0,
+            import_price=2.0,
+            import_price_available=True,
+            sample_time=_T0,
+            max_gap_seconds=600.0,
+        )
+        assert await saved.save_history()
+
+        tracker = FinancialTracker()
+        await init_financial_tracker(tracker, _make_hass(tmp_path))
+        tracker.accumulate(
+            grid_import_energy_kwh=11.0,
+            import_price=2.0,
+            import_price_available=True,
+            sample_time=_T0 + timedelta(minutes=11),
+            max_gap_seconds=600.0,
+        )
+
+        assert tracker.import_cost_total == pytest.approx(0.0)
+        assert tracker._last_import_energy_kwh == pytest.approx(11.0)
 
     @pytest.mark.asyncio
     async def test_initialises_only_once(self, tmp_path: Path) -> None:

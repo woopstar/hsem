@@ -488,6 +488,17 @@ class FinancialTracker:
 
         return tracker
 
+    def restore_from(self, loaded: FinancialTracker) -> None:
+        """Replace persisted state from a reconstructed tracker.
+
+        The history file belongs to the live coordinator instance and is not
+        persisted, so it remains unchanged while all reconstructed fields are
+        restored together.
+        """
+        history_file = self.history_file
+        self.__dict__.update(loaded.__dict__)
+        self.history_file = history_file
+
     async def save_history(self) -> bool:
         """Persist tracker state to disk atomically.
 
