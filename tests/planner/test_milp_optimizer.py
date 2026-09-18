@@ -698,25 +698,37 @@ def test_milp_solves_96_slot_horizon_within_performance_budget() -> None:
         )
         slots_96.append(s)
 
-    t_start = time_module.perf_counter()
-    milp_result = solve_milp(
-        slots_96,
-        _NOW,
-        current_kwh=5.0,
-        usable_kwh=9.0,
-        max_charge_per_slot=2.5,  # 5 kW × 0.5 h
-        max_discharge_per_slot=2.5,
-    )
-    elapsed = time_module.perf_counter() - t_start
+    # Best of N, not a single shot: the budget is meant to catch an
+    # algorithmic regression, but a single wall-clock sample also picks up
+    # whatever else the machine is doing.  Measured locally, ambient load
+    # alone moves one solve between ~240 ms and ~390 ms — straddling the
+    # budget and flapping the test, worst under `quality.sh all` where lint,
+    # mypy and pyright have just run.  The fastest of a few attempts
+    # approximates the unloaded solve, which is what the budget is about.
+    # A real regression slows every attempt, so the floor still catches it.
+    attempts = 3
+    elapsed = float("inf")
+    for _ in range(attempts):
+        t_start = time_module.perf_counter()
+        milp_result = solve_milp(
+            slots_96,
+            _NOW,
+            current_kwh=5.0,
+            usable_kwh=9.0,
+            max_charge_per_slot=2.5,  # 5 kW × 0.5 h
+            max_discharge_per_slot=2.5,
+        )
+        elapsed = min(elapsed, time_module.perf_counter() - t_start)
+        assert milp_result is not None, "MILP must solve the 96-slot horizon"
+        _, _diag = milp_result
 
-    assert milp_result is not None, "MILP must solve the 96-slot horizon"
-    _, _diag = milp_result
     # Wall-clock budget, not a solver budget: shared CI runners and coverage
     # instrumentation add variance well past a 100 ms threshold.  320 ms still
-    # catches a genuine algorithmic regression without flapping.
+    # catches a genuine algorithmic regression.
     performance_budget_seconds = 0.32
     assert elapsed < performance_budget_seconds, (
-        f"MILP took {elapsed * 1000:.1f} ms on 96 slots — must be under 320 ms"
+        f"MILP took {elapsed * 1000:.1f} ms on 96 slots "
+        f"(best of {attempts}) — must be under 320 ms"
     )
 
 
