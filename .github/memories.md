@@ -346,13 +346,14 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
   needs splitting. These limits keep files small enough for efficient AI
   development (context window, diff size, review latency).
 - If a file exceeds either limit, split it before adding more features.
-- Current oversized files (as of 2026-08-21):
-  - `coordinator.py` — 116 KB, 2555 lines (needs splitting)
-  - `applier.py` — 44 KB, 1083 lines (needs splitting)
-  - `ev_planner.py` — 32 KB, 795 lines (over 30 KB)
-  - `config_flow.py` — 31 KB, 846 lines (over 30 KB)
-  - `forecast_tracker.py` — 31 KB, 841 lines (over 30 KB)
-  - `state_collector.py` — 31 KB, 837 lines (over 30 KB)
+- Current oversized files (as of 2026-09-18):
+  - `coordinator_planner_phase.py` — 32,040 bytes (over 30 KB)
+  - `coordinator_tracking.py` — 31,036 bytes (over 30 KB)
+  - `coordinator_cycle.py` — 33,713 bytes (over 30 KB)
+  - `custom_sensors/working_mode_sensor.py` — 32,933 bytes (over 30 KB)
+  - `planner/candidate_selector.py` — 31,401 bytes (over 30 KB)
+- Resolved in issue #1057: EV deadline parsing moved from `state_collector.py`
+  to `custom_sensors/ev_deadline.py`, bringing the collector below 30 KB.
 - Check before every PR:
   ```bash
   # Lines
