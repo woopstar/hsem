@@ -151,7 +151,7 @@ class TestForcibleDischargeWrite:
 
     @pytest.mark.asyncio
     async def test_second_battery_is_skipped_while_already_discharging(self) -> None:
-        """Both batteries share one forcible-charge sensor.
+        """Both batteries intentionally share one pack-level read-back sensor.
 
         Once it reports an active session the second write is unnecessary, so
         ``async_write_and_verify`` reports it as skipped rather than writing
@@ -233,13 +233,8 @@ class TestForcibleDischargeWrite:
         set_discharge.assert_awaited()
 
     @pytest.mark.asyncio
-    async def test_an_unverified_write_still_tries_the_second_battery(self) -> None:
-        """An unconfirmed write does not stop the remaining batteries.
-
-        The read-back only ever answers "active" (which verifies) or "no
-        reading", so an unconfirmed command ends as ``UNVERIFIED`` and the
-        loop's ``FAILED`` break is never taken.
-        """
+    async def test_an_unverified_write_stops_before_the_second_battery(self) -> None:
+        """An unconfirmed write stops the remaining battery commands."""
         cfg = _cfg()
         cfg.huawei_solar_device_id_batteries_2 = "battery_2"
         set_discharge = AsyncMock()
@@ -249,14 +244,27 @@ class TestForcibleDischargeWrite:
                 _sensor({_FC_ENTITY: _FakeState(_IDLE)}), cfg, _live(), 1.0, 5000
             )
 
+        assert [r.status for r in results] == [ApplyStatus.UNVERIFIED]
+        set_discharge.assert_awaited()
+        assert {call.args[1] for call in set_discharge.await_args_list} == {"battery_1"}
+
+    @pytest.mark.asyncio
+    async def test_a_skipped_first_battery_continues_to_the_second(self) -> None:
+        """A pack-level active read-back skips both writes without aborting."""
+        cfg = _cfg()
+        cfg.huawei_solar_device_id_batteries_2 = "battery_2"
+        set_discharge = AsyncMock()
+
+        with patch(f"{_MODULE}.async_set_forcible_discharge", set_discharge):
+            results = await _async_apply_forcible_discharge(
+                _sensor({_FC_ENTITY: _FakeState(_ACTIVE)}), cfg, _live(), 1.0, 5000
+            )
+
         assert [r.status for r in results] == [
-            ApplyStatus.UNVERIFIED,
-            ApplyStatus.UNVERIFIED,
+            ApplyStatus.SKIPPED,
+            ApplyStatus.SKIPPED,
         ]
-        assert {call.args[1] for call in set_discharge.await_args_list} == {
-            "battery_1",
-            "battery_2",
-        }
+        set_discharge.assert_not_awaited()
 
 
 class TestApplierStateReaders:

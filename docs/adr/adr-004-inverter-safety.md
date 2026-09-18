@@ -86,7 +86,7 @@ The `WriteVerifyApplier` wraps every hardware write with a read-back confirmatio
 7. Compare: does the value match within tolerance?
    - Yes → return `ok`
    - No → retry up to `max_retries`
-8. All retries exhausted → return `failed`
+8. All retries exhausted → return `failed` after a mismatching value, or `unverified` when no readable value was returned
 
 **Verified writes** include:
 
@@ -100,8 +100,12 @@ The `WriteVerifyApplier` wraps every hardware write with a read-back confirmatio
 | ------------ | --------------------------------------------------------- |
 | `ok`         | Read-back value matched within tolerance                  |
 | `unverified` | Write accepted but read-back timed out or returned `None` |
-| `failed`     | All retries exhausted                                     |
+| `failed`     | All retries exhausted with a mismatching read-back value  |
 | `skipped`    | Current value already matched — no write performed        |
+
+For forcible discharge, Huawei exposes one pack-level acceptance sensor for all
+configured battery devices. `ok` and `skipped` therefore continue to the next
+device, but `failed` or `unverified` stops the remaining writes in that pass.
 
 ### Layer 4: Runtime Recommendation Resolver
 
