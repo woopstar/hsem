@@ -12,7 +12,7 @@ Agents must follow this document strictly.
 - Keep changes minimal, isolated, and testable.
 - Prefer deterministic, explicit implementations over implicit or heuristic behavior.
 - Never fabricate missing technical details.
-- Maintain compatibility with Home Assistant Silver quality standards and work toward Gold.
+- Preserve every met Home Assistant quality-scale rule and work toward Bronze, Silver, and Gold.
 
 ## No-Assumption Rule (Facts Only)
 
@@ -220,8 +220,8 @@ The agent must:
 - Use `DataUpdateCoordinator` where periodic or shared polling is required.
 - Provide and maintain `config_flow`, diagnostics/repair handling (when relevant), and translations.
 - Keep `manifest.json` and supported features aligned with Home Assistant requirements.
-- Ensure changes maintain at least Home Assistant Silver quality expectations, and move toward Gold
-  where feasible.
+- Preserve every met Home Assistant quality-scale rule, close the tracked Bronze and Silver gaps,
+  and move toward Gold where feasible.
 - Add or update tests for behavior changes, especially setup flows, coordinator behavior, and entity
   state handling.
 

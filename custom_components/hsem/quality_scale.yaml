@@ -1,0 +1,202 @@
+# HSEM Home Assistant Integration Quality Scale
+#
+# This file tracks the integration's status against the Home Assistant quality
+# scale rules (https://developers.home-assistant.io/docs/core/integration-quality-scale/).
+#
+# HSEM is a custom integration. The manifest declares no_score because one Bronze
+# rule remains unmet. Rules above the declaration are recorded for transparency,
+# but they are not claimed as complete unless they are genuinely met.
+#
+# Status values:
+#   done   - the rule is satisfied.
+#   todo   - the rule is not yet satisfied.
+#   exempt - the rule does not apply to HSEM; a comment explains why.
+
+rules:
+  # ---------------------------------------------------------------------------
+  # Bronze — one gap currently prevents a Bronze declaration
+  # ---------------------------------------------------------------------------
+  action-setup:
+    status: done
+    comment: Services are registered from async_setup before any config entry is loaded.
+  appropriate-polling:
+    status: done
+    comment: Polling defaults to five minutes and shortens to one minute only when needed.
+  brands:
+    status: done
+    comment: The HA brands repository contains icon.png and icon@2x.png for HSEM.
+  common-modules:
+    status: done
+    comment: Shared entity, coordinator, model, and utility behavior lives in common modules.
+  config-flow:
+    status: done
+    comment: HSEM is configured through a translated, multi-step config flow.
+  config-flow-test-coverage:
+    status: todo
+    comment: >-
+      Config-flow coverage is 51.92 % and options-flow coverage is 28.11 %,
+      below the required 100 %. Tracked in issue #1048.
+  dependency-transparency:
+    status: done
+    comment: NumPy and SciPy are public PyPI packages with OSI-approved source repositories.
+  docs-actions:
+    status: done
+    comment: docs/services-reference.md documents every HSEM action and its parameters.
+  docs-conditions:
+    status: exempt
+    comment: HSEM does not provide any conditions.
+  docs-high-level-description:
+    status: done
+    comment: README.md explains HSEM's purpose, supported energy hardware, and features.
+  docs-installation-instructions:
+    status: done
+    comment: README.md provides step-by-step HACS and manual installation instructions.
+  docs-removal-instructions:
+    status: done
+    comment: README.md provides integration, HACS, and manual removal instructions.
+  docs-triggers:
+    status: exempt
+    comment: HSEM does not provide any triggers.
+  entity-event-setup:
+    status: done
+    comment: Entity listeners are registered in async_added_to_hass via async_on_remove.
+  entity-unique-id:
+    status: done
+    comment: Every HSEM entity receives a stable unique ID from centralized ID helpers.
+  has-entity-name:
+    status: done
+    comment: HSEM entities set _attr_has_entity_name = True.
+  runtime-data:
+    status: done
+    comment: The coordinator is stored in typed ConfigEntry.runtime_data.
+  test-before-configure:
+    status: done
+    comment: The final config-flow step validates critical configured entity states.
+  test-before-setup:
+    status: done
+    comment: Setup checks Huawei Solar compatibility and awaits coordinator setup and refresh.
+  unique-config-entry:
+    status: done
+    comment: The user flow sets a domain unique ID and aborts duplicate entries.
+
+  # ---------------------------------------------------------------------------
+  # Silver — gaps are filed as separate issues and linked from issue #1038
+  # ---------------------------------------------------------------------------
+  action-exceptions:
+    status: done
+    comment: Action handlers raise ServiceValidationError or HomeAssistantError on failure.
+  config-entry-unloading:
+    status: done
+    comment: async_unload_entry tears down the coordinator, platforms, services, and logger.
+  docs-configuration-parameters:
+    status: done
+    comment: docs/config-flow-reference.md documents every options-flow parameter.
+  docs-installation-parameters:
+    status: done
+    comment: docs/config-flow-reference.md documents every installation-flow parameter.
+  entity-unavailable:
+    status: done
+    comment: Coordinator and self-polling sensors expose explicit availability state.
+  integration-owner:
+    status: done
+    comment: manifest.json lists two active code owners.
+  log-when-unavailable:
+    status: todo
+    comment: >-
+      No single "unavailable / back online" log transition for input entities.
+      Missing-entity state is surfaced via sensor.hsem_missing_entities but not
+      logged once per transition. Tracked in issue #1045.
+  parallel-updates:
+    status: todo
+    comment: >-
+      PARALLEL_UPDATES is not set on any HSEM platform. Tracked in issue #1043.
+  reauthentication-flow:
+    status: exempt
+    comment: >-
+      HSEM stores no credentials and does not authenticate directly with a
+      device or service; it consumes entities provided by other integrations.
+  test-coverage:
+    status: todo
+    comment: >-
+      Overall test coverage is ~87 %, below the 95 % Silver threshold. Tracked
+      in issue #1044.
+
+  # ---------------------------------------------------------------------------
+  # Gold — not audited for this declaration; kept as todo
+  # ---------------------------------------------------------------------------
+  devices:
+    status: todo
+    comment: Not audited against Gold for this declaration.
+  diagnostics:
+    status: todo
+    comment: Not audited against Gold for this declaration.
+  discovery:
+    status: exempt
+    comment: Custom integrations are installed manually or via HACS, not discovered by HA.
+  discovery-update-info:
+    status: exempt
+    comment: Custom integrations are installed manually or via HACS, not discovered by HA.
+  docs-data-update:
+    status: todo
+    comment: Not audited against Gold for this declaration.
+  docs-examples:
+    status: todo
+    comment: Not audited against Gold for this declaration.
+  docs-known-limitations:
+    status: todo
+    comment: Not audited against Gold for this declaration.
+  docs-supported-devices:
+    status: todo
+    comment: Not audited against Gold for this declaration.
+  docs-supported-functions:
+    status: todo
+    comment: Not audited against Gold for this declaration.
+  docs-troubleshooting:
+    status: todo
+    comment: Not audited against Gold for this declaration.
+  docs-use-cases:
+    status: todo
+    comment: Not audited against Gold for this declaration.
+  dynamic-devices:
+    status: exempt
+    comment: HSEM creates a fixed set of seven devices per config entry.
+  entity-category:
+    status: todo
+    comment: Not audited against Gold for this declaration.
+  entity-device-class:
+    status: todo
+    comment: Not audited against Gold for this declaration.
+  entity-disabled-by-default:
+    status: exempt
+    comment: HSEM does not currently disable any entities by default.
+  entity-translations:
+    status: todo
+    comment: Not audited against Gold for this declaration.
+  exception-translations:
+    status: todo
+    comment: Not audited against Gold for this declaration.
+  icon-translations:
+    status: exempt
+    comment: HSEM uses static _attr_icon values; icon translations are not used.
+  reconfiguration-flow:
+    status: todo
+    comment: Not audited against Gold for this declaration.
+  repair-issues:
+    status: todo
+    comment: Not audited against Gold for this declaration.
+  stale-devices:
+    status: exempt
+    comment: HSEM creates a fixed set of seven devices per config entry.
+
+  # ---------------------------------------------------------------------------
+  # Platinum — not audited for this declaration; kept as todo
+  # ---------------------------------------------------------------------------
+  async-dependency:
+    status: exempt
+    comment: HSEM interacts with HA entities, not an external async device library.
+  inject-websession:
+    status: exempt
+    comment: HSEM does not make direct HTTP requests that would use a shared websession.
+  strict-typing:
+    status: todo
+    comment: Not audited against Platinum for this declaration.
