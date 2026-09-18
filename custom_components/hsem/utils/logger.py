@@ -87,8 +87,8 @@ _HSEM_LOG_BACKUP_COUNT = 2
 # All HSEM modules log to this logger.
 HSEM_LOGGER = logging.getLogger("custom_components.hsem")
 
-# Start at WARNING — verbose debug logging is enabled later by the
-# coordinator via set_hsem_verbose() once the user's config is loaded.
+# Start at WARNING until the coordinator loads the user's config. Non-verbose
+# operation then uses INFO so important state transitions remain visible.
 HSEM_LOGGER.setLevel(logging.WARNING)
 
 # Stop propagation to Home Assistant's root logger — HSEM uses its own file.
@@ -230,8 +230,8 @@ def set_hsem_verbose(enabled: bool) -> None:
     ``HSEM_LOGGER.debug()`` calls (coordinator cycle messages, planner
     slot-level decisions, etc.) are written to ``hsem.log``.
 
-    When disabled, sets the level to ``WARNING`` so only warnings and
-    errors are written.
+    When disabled, sets the level to ``INFO`` so important state transitions,
+    warnings, and errors are written while debug output stays suppressed.
 
     This replaces the previous dual-gating (``async_logger``'s per-call
     verbose check and ``set_planner_verbose``'s module global).  The
@@ -240,7 +240,7 @@ def set_hsem_verbose(enabled: bool) -> None:
     Args:
         enabled: ``True`` to enable debug output; ``False`` to suppress.
     """
-    HSEM_LOGGER.setLevel(logging.DEBUG if enabled else logging.WARNING)
+    HSEM_LOGGER.setLevel(logging.DEBUG if enabled else logging.INFO)
 
 
 # ---------------------------------------------------------------------------

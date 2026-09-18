@@ -101,11 +101,11 @@ rules:
     status: done
     comment: manifest.json lists two active code owners.
   log-when-unavailable:
-    status: todo
+    status: done
     comment: >-
-      No single "unavailable / back online" log transition for input entities.
-      Missing-entity state is surfaced via sensor.hsem_missing_entities but not
-      logged once per transition. Tracked in issue #1045.
+      The coordinator tracks each configured input entity and logs its first
+      unavailable transition and subsequent recovery without repeating messages
+      on unchanged polling cycles.
   parallel-updates:
     status: todo
     comment: >-

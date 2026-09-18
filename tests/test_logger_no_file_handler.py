@@ -22,6 +22,7 @@ Key contract:
 
 from __future__ import annotations
 
+import importlib
 import io
 import logging
 from logging.handlers import QueueHandler
@@ -71,11 +72,15 @@ class TestLoggerHandlerHygiene:
 
     def test_logger_default_level_is_warning(self) -> None:
         """HSEM_LOGGER defaults to WARNING until set_hsem_verbose is called."""
-        assert HSEM_LOGGER.level == logging.WARNING, (
-            "HSEM_LOGGER must start at WARNING to avoid log spam "
-            "before the config is loaded. "
-            f"Got: {logging.getLevelName(HSEM_LOGGER.level)}"
-        )
+        importlib.reload(logger_module)
+        try:
+            assert HSEM_LOGGER.level == logging.WARNING, (
+                "HSEM_LOGGER must start at WARNING to avoid log spam "
+                "before the config is loaded. "
+                f"Got: {logging.getLevelName(HSEM_LOGGER.level)}"
+            )
+        finally:
+            set_hsem_verbose(False)
 
     def test_level_is_debug_after_set_hsem_verbose_true(self) -> None:
         """set_hsem_verbose(True) must set HSEM_LOGGER to DEBUG."""
@@ -87,11 +92,11 @@ class TestLoggerHandlerHygiene:
         finally:
             set_hsem_verbose(False)
 
-    def test_level_is_warning_after_set_hsem_verbose_false(self) -> None:
-        """set_hsem_verbose(False) must restore WARNING level."""
+    def test_level_is_info_after_set_hsem_verbose_false(self) -> None:
+        """set_hsem_verbose(False) must retain important INFO messages."""
         set_hsem_verbose(True)
         set_hsem_verbose(False)
-        assert HSEM_LOGGER.level == logging.WARNING
+        assert HSEM_LOGGER.level == logging.INFO
 
     def test_logger_module_exposes_log_file_constants(self) -> None:
         """The logger module must expose the filename constant for diagnostics."""
@@ -144,16 +149,18 @@ class TestVerboseLogging:
             HSEM_LOGGER.removeHandler(handler)
             handler.close()
 
-    def test_warning_always_writes_regardless_of_verbose(self) -> None:
-        """_LOGGER.warning() must write even when verbose is off."""
+    def test_info_and_warning_always_write_regardless_of_verbose(self) -> None:
+        """Important INFO and WARNING messages must write with verbose off."""
         set_hsem_verbose(False)
         handler = _attach_capture_handler()
         try:
-            HSEM_LOGGER.warning("must appear")
+            HSEM_LOGGER.info("info must appear")
+            HSEM_LOGGER.warning("warning must appear")
             stream = handler.stream
             stream.seek(0)
             output = stream.read()
-            assert "must appear" in output
+            assert "info must appear" in output
+            assert "warning must appear" in output
         finally:
             HSEM_LOGGER.removeHandler(handler)
             handler.close()
@@ -203,20 +210,20 @@ class TestPlannerLogger:
             handler.close()
             set_hsem_verbose(False)
 
-    def test_log_planner_suppressed_when_not_verbose(
+    def test_log_planner_info_survives_when_not_verbose(
         self,
     ) -> None:
-        """With verbose disabled, ``log_planner`` must emit nothing."""
+        """With verbose disabled, ``log_planner`` retains INFO messages."""
         from custom_components.hsem.utils.logger import log_planner
 
         set_hsem_verbose(False)
         handler = _attach_capture_handler()
         try:
-            log_planner("info", "must-not-appear")
+            log_planner("info", "must-appear")
             stream = handler.stream
             stream.seek(0)
             output = stream.read()
-            assert "must-not-appear" not in output
+            assert "must-appear" in output
         finally:
             HSEM_LOGGER.removeHandler(handler)
             handler.close()
