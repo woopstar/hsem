@@ -275,7 +275,11 @@ class CoordinatorLivePowerMixin(CoordinatorSharedState):
         if self._live_power_ev_ambiguous(cfg, live):
             return True
         for charger in (cfg.ev, cfg.ev_second):
-            if self._read_live_power_boolean(charger.status_entity) is True:
+            status_entity = self._live_power_entity_id(charger.status_entity)
+            if (
+                status_entity is not None
+                and self._read_live_power_boolean(status_entity) is not False
+            ):
                 return True
             if self._read_live_power_positive_raw(charger.power_entity):
                 return True
