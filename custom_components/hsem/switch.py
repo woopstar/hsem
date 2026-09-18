@@ -34,6 +34,8 @@ from custom_components.hsem.utils.sensornames.ml import (
     get_ml_sequential_switch_key,
 )
 
+PARALLEL_UPDATES = 0
+
 _ICON_TOGGLE = "mdi:toggle-switch"
 _ICON_EV = "mdi:ev-station"
 

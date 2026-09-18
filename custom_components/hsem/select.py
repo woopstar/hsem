@@ -22,6 +22,8 @@ from custom_components.hsem.utils.sensornames.diagnostics import (
 )
 from custom_components.hsem.utils.solcast_likelihood import SOLCAST_LIKELIHOOD_OPTIONS
 
+PARALLEL_UPDATES = 0
+
 # Selectable working modes exposed to the user.  Derived from the canonical
 # enum so this surface cannot drift from the service schema or services.yaml.
 _RECOMMENDATION_OPTIONS = list(USER_SELECTABLE_RECS)

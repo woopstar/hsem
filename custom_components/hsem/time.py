@@ -17,6 +17,8 @@ from custom_components.hsem.utils.sensornames.ev import (
     get_ev_second_deadline_time_key,
 )
 
+PARALLEL_UPDATES = 0
+
 _ICON_CLOCK = "mdi:clock"
 
 # One description per time entity.  Keys are sourced from sensornames/ package so
