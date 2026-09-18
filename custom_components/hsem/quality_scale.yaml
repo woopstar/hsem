@@ -32,10 +32,10 @@ rules:
     status: done
     comment: HSEM is configured through a translated, multi-step config flow.
   config-flow-test-coverage:
-    status: todo
+    status: done
     comment: >-
-      Config-flow coverage is 51.92 % and options-flow coverage is 28.11 %,
-      below the required 100 %. Tracked in issue #1048.
+      config_flow.py and options_flow.py are both at 100 % coverage. Closed by
+      issue #1048.
   dependency-transparency:
     status: done
     comment: NumPy and SciPy are public PyPI packages with OSI-approved source repositories.
@@ -115,10 +115,10 @@ rules:
       HSEM stores no credentials and does not authenticate directly with a
       device or service; it consumes entities provided by other integrations.
   test-coverage:
-    status: todo
+    status: done
     comment: >-
-      Overall test coverage is ~87 %, below the 95 % Silver threshold. Tracked
-      in issue #1044.
+      Overall coverage is 99 % and every module under custom_components/hsem/
+      is above the 95 % Silver threshold. Closed by issue #1044.
 
   # ---------------------------------------------------------------------------
   # Gold — not audited for this declaration; kept as todo
