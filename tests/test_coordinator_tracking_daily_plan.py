@@ -107,6 +107,35 @@ class TestInitDailyTracker:
         assert tracker._initialized is True  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
+    async def test_registered_midnight_action_saves_and_resets(
+        self, tmp_path: Path
+    ) -> None:
+        """The registered action schedules the async midnight handler."""
+        tracker = _dirty_tracker("")
+        create_task = MagicMock()
+        hass = cast(
+            HomeAssistant,
+            SimpleNamespace(
+                async_create_task=create_task,
+                config=SimpleNamespace(config_dir=str(tmp_path)),
+            ),
+        )
+        track_time_change = MagicMock(return_value=MagicMock())
+
+        with patch(f"{_MODULE}.async_track_time_change", track_time_change):
+            await _init_daily_tracker(tracker, hass)
+
+        midnight_action = track_time_change.call_args.args[1]
+        midnight_action(_T0)
+        create_task.assert_called_once()
+        await create_task.call_args.args[0]
+
+        saved = json.loads(Path(tracker.history_file).read_text(encoding="utf-8"))
+        assert saved["days"][0]["date"] == "2026-05-31"
+        assert saved["days"][0]["actual"]["grid_import_kwh"] == pytest.approx(5.0)
+        _assert_reset_for_today(tracker)
+
+    @pytest.mark.asyncio
     async def test_failure_is_logged_and_does_not_retry(self) -> None:
         """A broken ``hass`` logs an error but never crashes the coordinator."""
         tracker = DailyPlanVsActualTracker()
