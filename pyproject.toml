@@ -144,6 +144,10 @@ disallow_incomplete_defs = true
 
 [tool.coverage.run]
 source = ["custom_components"]
+# Emit repo-relative paths (custom_components/hsem/x.py) rather than paths
+# relative to `source` (hsem/x.py).  Codecov matches report paths against the
+# repo tree, and the stripped form matches nothing.
+relative_files = true
 omit = [
     "*/tests/*",
     "*/test_*.py",
