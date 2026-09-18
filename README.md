@@ -59,6 +59,7 @@
 
 - **Read-only / monitoring mode** — observe what HSEM would do before enabling control
 - **Degraded mode** — safely degrades when critical entities are missing
+- **Availability transition logging** — logs each configured input once when it becomes unavailable and once when it recovers
 - **Hardware write verification** — confirms inverter accepted every command
 - **Data quality diagnostics** — reports missing price/PV data per horizon day
 

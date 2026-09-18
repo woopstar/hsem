@@ -23,6 +23,7 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | `coordinator_data.py`     | Atomic `CoordinatorData` snapshot exposed to entities            |
 | `coordinator_helpers.py`  | Pure override, strict-hold, and load-readiness/signature helpers |
 | `coordinator_tracking.py` | Forecast, daily, financial, and savings accumulation             |
+| `entity_availability.py`  | Per-input unavailable/recovery transition tracking and logging   |
 
 Load-average availability must remain explicit: unknown/non-finite values are
 missing, genuine finite zero is valid, and contradictory zero load above 50 W
@@ -963,6 +964,8 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
 - Use `HSEM_LOGGER` from `utils/logger.py` for all planner output.
 - Never use `logging.getLogger(__name__)` directly in planner files.
 - `HSEM_LOGGER.propagate = False` keeps output out of `home-assistant.log`.
+- Non-verbose mode keeps `INFO` enabled so availability and recovery transitions are never suppressed; only `DEBUG` requires verbose logging.
+- `EntityAvailabilityTracker` logs each configured input's first unavailable state and recovery once, pruning history when an entity is removed from configuration.
 - Log to `hsem.log` (10 MB × 5 files rotating) in HA config dir.
 - **Never call `HSEM_LOGGER.debug()`/`.info()`/`.warning()` directly from pure-Python
   planner/utils modules that can run synchronously inside the coordinator's async

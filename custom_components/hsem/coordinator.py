@@ -72,6 +72,7 @@ from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F40
     async_collect_all_states,
     build_sensor_config,
 )
+from custom_components.hsem.entity_availability import EntityAvailabilityTracker
 from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
     DailyPlanVsActualTracker,
 )
@@ -193,6 +194,7 @@ class HSEMDataUpdateCoordinator(
         # Entity resolution cache (persisted across cycles).
         self._force_working_mode_entity: str | None = None
         self._tracked_entities: set[str] = set()
+        self._entity_availability_tracker = EntityAvailabilityTracker()
         # Unsubscribe callbacks for state-change listeners registered via
         # state_collector._register_listeners.  Cancelled during async_teardown.
         self._listener_unsubs: list = []
@@ -383,6 +385,16 @@ class HSEMDataUpdateCoordinator(
                 self._event_update_pending = False
                 try:
                     await self._async_run_update_cycle()
+                    hass = getattr(self, "hass", None)
+                    cfg = getattr(self, "_cfg", None)
+                    if hass is not None and cfg is not None:
+                        availability_tracker = getattr(
+                            self, "_entity_availability_tracker", None
+                        )
+                        if availability_tracker is None:
+                            availability_tracker = EntityAvailabilityTracker()
+                            self._entity_availability_tracker = availability_tracker
+                        availability_tracker.track(hass, cfg)
                 except Exception as err:
                     # An event that arrived while this cycle was running set the
                     # pending flag again. Letting the exception escape here would
