@@ -429,6 +429,13 @@ The scheduler assigns the first recommendations during slot population, before
 candidate scoring. Rules are applied in strict priority order; once a slot has a
 recommendation it is not changed by later rules in the same layer.
 
+> **Fixed battery schedules are retired.** The former user-configured
+> enable/start/end windows and their `min_price_difference` values do not feed
+> the MILP. They were removed under issues #860/#873 after their heuristic
+> consumers became inert. References below to a discharge or charge "window"
+> describe contiguous actions produced by the solved plan, not a configured
+> fixed schedule.
+
 **Opportunistic grid charge** (`apply_opportunistic_charge`):
 
 | Priority | Condition                                          | Recommendation          |
@@ -477,8 +484,8 @@ recommendation it is not changed by later rules in the same layer.
 > held the battery fully idle for this slot, not just an edge case (issue #954) —
 > a genuine "Wait" slot always meets that hold condition, so the reserve-floor
 > decision must run instead of the hold default, not only when unheld. This
-> reduces unnecessary grid import while still preserving capacity for future
-> scheduled discharge windows. The reserve is
+> reduces unnecessary grid import while still preserving capacity for the next
+> committed battery action in the selected plan. The reserve is
 > derived from the **selected plan's own simulated SoC trajectory** (issue #914) —
 > how far it dips before its next actual solved charge — not from a raw forecast
 > PV-surplus scan, so a small or short-lived forecast surplus no longer lets the
@@ -538,8 +545,7 @@ output with live sensor readings that were unknown at planning time.
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
 | 1 (highest) | Live import price < 0 AND **Enable Excess Battery Export** is on AND the live export price is available, non-negative, and ≥ `max(export_electricity_min_price, batteries_export_min_price)` | → `force_export`                      |
 | 2           | Current recommendation = `batteries_charge_grid`                                                                                                                                             | Kept — grid charge never overridden   |
-| 3           | Any EV (primary or second) is actively charging right now                                                                                                                                    | → `ev_smart_charging`                 |
-| 4           | Battery energy > remaining discharge-schedule need                                                                                                                                           | → `batteries_discharge_mode`          |
+| 3           | Any EV is actively charging AND the planner allocated EV load to the current slot                                                                                                            | → `ev_smart_charging`                 |
 | —           | None of the above                                                                                                                                                                            | Planner recommendation kept unchanged |
 
 > **Note (issue #732):** a negative import price alone does not make exporting
@@ -557,17 +563,16 @@ output with live sensor readings that were unknown at planning time.
 ```
 1. import_price < 0 + profitable export + excess export enabled → force_export [runtime resolver]
 2. batteries_charge_grid active   → batteries_charge_grid  [runtime resolver guard]
-3. EV actively charging (live)    → ev_smart_charging      [runtime resolver]
-4. Battery above schedule need    → batteries_discharge_mode [runtime resolver]
+3. EV actively charging + planner-allocated EV load → ev_smart_charging [runtime resolver]
    ──────────────────────────────────────────────────────── resolver boundary ──
-5. force_batteries_discharge      [excess export, planner]
-6. batteries_charge_grid          [schedule/opportunistic, planner]
-| 7. batteries_discharge_mode / batteries_discharge_window_mode [discharge schedule, planner]
-8. force_export                   [seasonal optimisation, planner]
-9. ev_smart_charging              [EV load labelling, planner]
-10. batteries_charge_solar        [solar surplus, planner]
-11. batteries_wait_mode           [seasonal/idle, planner]
-12. time_passed / missing_input_entities
+4. force_batteries_discharge      [excess export, planner]
+5. batteries_charge_grid          [MILP/opportunistic, planner]
+6. batteries_discharge_mode / batteries_discharge_window_mode [solved battery action, planner]
+7. force_export                   [seasonal optimisation, planner]
+8. ev_smart_charging              [EV load labelling, planner]
+9. batteries_charge_solar         [solar surplus, planner]
+10. batteries_wait_mode          [seasonal/idle, planner]
+11. time_passed / missing_input_entities
 ```
 
 ### Charge and discharge windows (`charge_windows`, `discharge_windows`)
@@ -893,6 +898,34 @@ If the battery stores `x` kWh and charge efficiency is `e`, the grid
 import is `x / e`. Conversion loss is therefore already included in import
 cost and must not receive an explicit second charge.
 
+### Grid-charge break-even
+
+The MILP has no user-configured `min_price_difference` gate and does not reserve
+energy for retired fixed battery schedules. It compares the complete physical
+and economic cost directly. Charging one stored kWh at price `p_charge` and
+later discharging it at price `p_discharge` is profitable only when:
+
+```text
+p_discharge × discharge_efficiency
+  > p_charge / charge_efficiency + cycle_cost_per_kwh
+```
+
+Equivalently:
+
+```text
+p_discharge
+  > (p_charge / charge_efficiency + cycle_cost_per_kwh)
+    / discharge_efficiency
+```
+
+For example, with `p_charge = 0.297`, 97% charge/discharge efficiency, and
+`cycle_cost_per_kwh = 0.065789`, the later import price must exceed approximately
+`0.384/kWh`. A morning peak of `0.363/kWh` therefore does not justify overnight
+grid charging even though the raw spread (`0.066/kWh`) is marginally above the
+cycle cost: conversion losses erase that margin. Terminal-SoC valuation and
+export opportunity cost can alter the full-horizon optimum, but legacy schedule
+attributes such as `needed_batteries_capacity` do not participate.
+
 ### Export revenue
 
 ```text
@@ -1021,27 +1054,28 @@ _charging_ is capped so it never beats exporting the same PV surplus:
 
 ## Candidate generation and selection
 
-The planner evaluates multiple independent strategies before committing to a plan.
+The planner operates in **MILP-only mode**. The MILP is the sole optimisation
+authority; two diagnostic/fail-closed baselines remain for comparison and safety.
 
 ### Candidate strategies
 
-| Name             | Description                                                                    |
-| ---------------- | ------------------------------------------------------------------------------ |
-| `baseline`       | Current HSEM scheduling output — the result of running all schedulers normally |
-| `no_action`      | Battery completely idle — no forced charge, no forced discharge                |
-| `grid_charge`    | Grid-charge slots kept, solar-charge slots cleared                             |
-| `solar_only`     | Only solar charging active, grid charging cleared                              |
-| `discharge_only` | Discharge slots kept, all charging cleared                                     |
-| `aggressive`     | Cheapest 3 slots forced to grid-charge, most expensive 3 forced to discharge   |
+| Name        | Description                                                                         |
+| ----------- | ----------------------------------------------------------------------------------- |
+| `no_action` | Battery completely idle; diagnostic cost floor only and never eligible to win       |
+| `passive`   | Absorb available PV surplus; no grid charge or intentional battery discharge        |
+| `milp`      | Globally optimal LP solution for battery, grid, PV, and any active managed EV loads |
 
-Each candidate is built from a **deep copy** of the baseline slots so strategies
-cannot interfere with each other. After generation, `simulate_soc` is called for
-each candidate to fill in `batteries_discharged`, `grid_import_kwh`, `grid_export_kwh`,
-and `estimated_battery_soc`.
+The retired `baseline`, `grid_charge`, `solar_only`, `discharge_only`,
+`aggressive`, and partial-SoC heuristic families are not generated. Candidate
+slots are independently copied, simulated, validated, and scored so no candidate
+can mutate another.
 
 ### Selection
 
-After scoring, the selector picks the candidate with the lowest `total_cost`.
+After scoring, the selector chooses the lowest valid **score**, which includes
+real cost plus terminal-SoC valuation and safety penalties. A validated MILP is
+preferred; `passive` is the fail-closed fallback if the solve is unavailable or
+invalid.
 
 The invariant **must always hold**:
 
@@ -1338,29 +1372,30 @@ Hours 22–24:  batteries_wait_mode
 
 **Why this plan wins:**
 
-The price spread of 2.95 DKK/kWh (peak 3.20 − night 0.25) far exceeds the
-cycle cost (~0.50 DKK/kWh for a typical installation). The `aggressive` candidate
-also finds the cheap slots but may over-charge if the battery is already full.
-The `baseline` candidate with schedule-driven pre-charge produces the same plan
-here. The `no_action` candidate pays full peak prices.
+The MILP compares the physical cost of storing energy at `0.25 DKK/kWh`
+(including charge loss and cycle wear) with the import avoided at up to
+`3.20 DKK/kWh` (including discharge loss). The large spread remains profitable,
+so the solved MILP charges only the energy and slots needed by the global optimum.
+The diagnostic `no_action` plan pays the full peak import cost; the `passive`
+plan can use PV but cannot exploit the cheap night tariff.
 
-**Key cost comparison:**
+**Illustrative cost comparison:**
 
-| Candidate                | Estimated cost (DKK)     |
-| ------------------------ | ------------------------ |
-| `baseline` (grid charge) | 6.75                     |
-| `solar_only`             | 22.50 (no night charge)  |
-| `no_action`              | 30.00 (full peak import) |
+| Candidate   | Estimated cost (DKK)     |
+| ----------- | ------------------------ |
+| `milp`      | 6.75                     |
+| `passive`   | 22.50 (no night charge)  |
+| `no_action` | 30.00 (full peak import) |
 
 **Explanation excerpt:**
 
 ```json
 {
-  "selected_strategy": "grid_charge",
-  "summary": "Cheap night rate (0.25 DKK/kWh) enables grid pre-charge; discharges during peak (3.20 DKK/kWh).",
+  "selected_strategy": "charge_grid_discharge_peak",
+  "summary": "Battery will be charged from the grid during cheap hours (min 0.250) and discharged during peak hours (max 3.200).",
   "score": 23.25,
   "price_spread": 2.95,
-  "constraints": ["winter_month", "grid_charge_price_spread_met"],
+  "constraints": ["winter_month"],
   "battery_soc_at_end_pct": 10.0
 }
 ```
@@ -1542,8 +1577,8 @@ can inspect it directly:
 Entity: sensor.hsem_working_mode
 Attributes:
   explanation:
-    selected_strategy: grid_charge
-    summary: "Pre-charge for evening discharge: 0.25 DKK night vs 3.20 DKK peak"
+    selected_strategy: charge_grid_discharge_peak
+    summary: "Battery will be charged from the grid during cheap hours (min 0.250) and discharged during peak hours (max 3.200)."
     score: 23.25
     estimated_total_cost: 6.75
     price_spread: 2.95
@@ -1553,9 +1588,9 @@ Attributes:
     forecast_net_consumption_kwh: 16.5
     battery_soc_pct: 15.0
     battery_soc_at_end_pct: 10.0
-    constraints: [winter_month, grid_charge_price_spread_met]
+    constraints: [winter_month]
     rejected_plans:
-      - name: no_action
+      - name: do_nothing
         reason: "Peak-price import cost exceeds grid-charge cost plus cycle cost."
         estimated_cost: 30.00
 ```
@@ -1575,14 +1610,16 @@ Attributes:
 
 Common constraint tags and their meaning:
 
-| Tag                            | Meaning                                                                |
-| ------------------------------ | ---------------------------------------------------------------------- |
-| `winter_month`                 | Current month is in `months_winter`; winter scheduling strategy active |
-| `summer_month`                 | Not in winter months; summer scheduling strategy active                |
-| `no_price_spread`              | Max − min import price is near zero; no grid-charge arbitrage          |
-| `grid_charge_price_spread_met` | Price spread exceeds min_price_difference threshold                    |
-| `excess_export_enabled`        | Excess export feature is active in config                              |
-| `export_price_above_threshold` | Export price exceeds `excess_export_price_threshold`                   |
+| Tag                     | Meaning                                                                |
+| ----------------------- | ---------------------------------------------------------------------- |
+| `winter_month`          | Current month is in `months_winter`; winter scheduling strategy active |
+| `summer_month`          | Not in winter months; summer scheduling strategy active                |
+| `no_price_spread`       | Max − min import price is near zero; no grid-charge arbitrage          |
+| `excess_export_enabled` | Excess export feature is active in config                              |
+| `battery_disabled`      | Rated battery capacity is zero or unavailable                          |
+| `battery_full`          | Initial SoC is at or above the configured maximum                      |
+| `battery_empty`         | Initial SoC is at or below the configured discharge floor              |
+| `battery_low_at_end`    | Simulated terminal SoC reaches the configured discharge floor          |
 
 ---
 
