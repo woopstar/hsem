@@ -150,11 +150,14 @@ When active:
 Prevents rapid recommendation toggling by enforcing a minimum hold time.
 
 - **Charge-type**: `batteries_charge_grid`, `batteries_charge_solar`, `ev_smart_charging`
-- **Discharge-type**: `batteries_discharge_mode`, `force_batteries_discharge`, `force_export`
-- **Neutral**: `batteries_wait_mode`, `time_passed`, `missing_input_entities`, `None`
+- **Discharge-type**: `batteries_discharge_mode`, `batteries_discharge_window_mode`,
+  `force_batteries_discharge`, `force_export`
+- **Actionable neutral**: `batteries_wait_mode`
+- **Inert**: `time_passed`, `missing_input_entities`, `None`
 
 All actionable recommendation changes are held within the hold window,
-including within-category flips (e.g. `ev_smart_charging` ↔
-`batteries_charge_solar`). Only transitions to/from neutral pass through.
-The hold time is configured by `planner_window_hysteresis_minutes`
-(default: 10).
+including transitions into and out of strict `batteries_wait_mode` and
+within-category flips (e.g. `ev_smart_charging` ↔
+`batteries_charge_solar`). Only transitions to/from inert planner-state
+sentinels pass through. The hold time is configured by
+`planner_window_hysteresis_minutes` (default: 10).

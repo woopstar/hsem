@@ -164,15 +164,16 @@ CHARGE_RECS: frozenset[str] = frozenset(
 )
 """All modes where the battery charges (or EV charging suppresses discharge)."""
 
-_SENTINEL_RECS: frozenset[Recommendations] = frozenset(
+SENTINEL_RECS: frozenset[Recommendations] = frozenset(
     {
         Recommendations.TimePassed,
         Recommendations.MissingInputEntities,
     }
 )
+"""Inert planner-state sentinels that never represent a hardware action."""
 
 USER_SELECTABLE_RECS: tuple[str, ...] = tuple(
-    sorted(member.value for member in Recommendations if member not in _SENTINEL_RECS)
+    sorted(member.value for member in Recommendations if member not in SENTINEL_RECS)
 )
 """Every mode a user may force, in stable alphabetical order.
 
