@@ -70,6 +70,7 @@ Commands:
   translations  Validate en/da/de/es translation files stay in sync
   skylos    Run Skylos static analysis (experimental, not in 'all')
   test      Run tests with pytest and coverage
+  coverage-floor  Assert every module meets the 95% per-module coverage floor
   all       Run lint, typing, quality, translations, and test in sequence
 EOF
     exit 1
@@ -102,6 +103,9 @@ case "${1:-}" in
     skylos)
         SKYLOS_GREP_BUDGET=120 run skylos custom_components -a
         ;;
+    coverage-floor)
+        run python3 scripts/check_coverage_floor.py
+        ;;
     test)
         run python -m pytest tests/ \
             -o cache_dir="${PYTEST_CACHE_DIR}" \
@@ -110,6 +114,11 @@ case "${1:-}" in
             --cov-report=xml \
             --junitxml=test-results.xml \
             "${@:2}"
+        # A subset run (extra pytest args) writes a partial report, so the
+        # per-module floor is only meaningful for a full run.
+        if [[ $# -le 1 ]]; then
+            run python3 scripts/check_coverage_floor.py
+        fi
         ;;
     all)
         echo "=== Lint ==="
@@ -139,6 +148,11 @@ case "${1:-}" in
             --cov-report=xml \
             --junitxml=test-results.xml \
             "${@:2}"
+        # A subset run (extra pytest args) writes a partial report, so the
+        # per-module floor is only meaningful for a full run.
+        if [[ $# -le 1 ]]; then
+            run python3 scripts/check_coverage_floor.py
+        fi
         ;;
     *)
         usage
