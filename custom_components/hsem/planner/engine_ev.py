@@ -218,6 +218,7 @@ def _build_and_inject_for_ev(
     min_pwr_w: float,
     deadline: datetime | None,
     base_includes: bool,
+    current_session_removed_from_base: bool,
     allow_past_target: bool,
     label: str,
     now: datetime,
@@ -285,6 +286,13 @@ def _build_and_inject_for_ev(
         ev_plan=plan,
         base_load_includes_ev=base_includes,
     )
+    if current_session_removed_from_base:
+        for i, slot in enumerate(slots):
+            if as_tz(slot.start, now.tzinfo) <= now < as_tz(slot.end, now.tzinfo):
+                # The accepted live-house projection already excludes this EV,
+                # so its current-slot demand is separate planner load even when
+                # future baseline slots still contain it.
+                inj[i] = raw[i]
     for i in range(len(slots)):
         combined_ev_injected_load[i] += inj[i]
     if plan.state not in ("not_connected", "smart_charging_disabled", "fully_charged"):

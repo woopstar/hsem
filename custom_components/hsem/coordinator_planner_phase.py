@@ -124,14 +124,14 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
 
         # Collect session EV charge power for session-aware MILP (issue #615).
         ev_session_kw: dict[str, float] = {}
-        if live.ev.is_charging and live.ev.power_w:
-            ev_session_kw["ev"] = (live.ev.power_w or 0.0) / 1000.0
+        if live.ev.is_charging and live.ev.power_w is not None:
+            ev_session_kw["ev"] = live.ev.power_w / 1000.0
         if (
             cfg.ev_second_enabled
             and live.ev_second.is_charging
-            and live.ev_second.power_w
+            and live.ev_second.power_w is not None
         ):
-            ev_session_kw["ev_second"] = (live.ev_second.power_w or 0.0) / 1000.0
+            ev_session_kw["ev_second"] = live.ev_second.power_w / 1000.0
 
         # Seed the rolling live-power window from this cycle's immutable
         # snapshot (issue #797). The dedicated fast timer

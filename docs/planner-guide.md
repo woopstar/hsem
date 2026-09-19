@@ -335,36 +335,36 @@ and can schedule forced battery discharge that displaces PV export.
 
 All fields are prefixed `ev_planned_load_`.
 
-| Field                                    | Default        | Description                                                                                                                                                                                             |
-| ---------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ev_planned_load_enabled`                | `False`        | Enable EV planned load integration for the primary EV                                                                                                                                                   |
-| `ev_planned_load_connected`              | `False`        | Whether a vehicle is currently plugged in                                                                                                                                                               |
-| `ev_planned_load_smart_charging_enabled` | `True`         | Whether smart EV charging scheduling is permitted                                                                                                                                                       |
-| `ev_planned_load_current_soc_pct`        | `0.0`          | Current EV battery SoC (%)                                                                                                                                                                              |
-| `ev_planned_load_target_soc_pct`         | `80.0`         | Target SoC the EV must reach by the deadline (%)                                                                                                                                                        |
-| `ev_planned_load_battery_capacity_kwh`   | `0.0`          | EV battery nameplate capacity (kWh)                                                                                                                                                                     |
-| `ev_planned_load_charger_power_kw`       | `0.0`          | Charger AC output power (kW)                                                                                                                                                                            |
-| `ev_planned_load_charger_efficiency_pct` | `100.0`        | Charger efficiency (%) — energy delivered to EV / AC draw                                                                                                                                               |
-| `ev_planned_load_deadline`               | `None`         | Timezone-aware datetime by which charging must be complete                                                                                                                                              |
-| `ev_planned_load_base_load_includes_ev`  | Auto (derived) | Automatically derived from the `hsem_house_power_includes_ev_charger_power` setting in the EV charger config step. When that is `True`, this is `True` (EV load already in the house consumption data). |
+| Field                                    | Default        | Description                                                                                                                                                                                |
+| ---------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ev_planned_load_enabled`                | `False`        | Enable EV planned load integration for the primary EV                                                                                                                                      |
+| `ev_planned_load_connected`              | `False`        | Whether a vehicle is currently plugged in                                                                                                                                                  |
+| `ev_planned_load_smart_charging_enabled` | `True`         | Whether smart EV charging scheduling is permitted                                                                                                                                          |
+| `ev_planned_load_current_soc_pct`        | `0.0`          | Current EV battery SoC (%)                                                                                                                                                                 |
+| `ev_planned_load_target_soc_pct`         | `80.0`         | Target SoC the EV must reach by the deadline (%)                                                                                                                                           |
+| `ev_planned_load_battery_capacity_kwh`   | `0.0`          | EV battery nameplate capacity (kWh)                                                                                                                                                        |
+| `ev_planned_load_charger_power_kw`       | `0.0`          | Charger AC output power (kW)                                                                                                                                                               |
+| `ev_planned_load_charger_efficiency_pct` | `100.0`        | Charger efficiency (%) — energy delivered to EV / AC draw                                                                                                                                  |
+| `ev_planned_load_deadline`               | `None`         | Timezone-aware datetime by which charging must be complete                                                                                                                                 |
+| `ev_planned_load_base_load_includes_ev`  | Auto (derived) | Whether this EV remains embedded in the normalized planner baseline. An EV with configured power telemetry is removed by HSEM history preprocessing even when the raw CT includes EV load. |
 
 ### EV planned load — second EV
 
 All fields are prefixed `ev_second_planned_load_`. The schema is identical to the
 primary EV fields above:
 
-| Field                                           | Default        | Description                                                                                                                |
-| ----------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `ev_second_planned_load_enabled`                | `False`        | Enable EV planned load integration for the second EV                                                                       |
-| `ev_second_planned_load_connected`              | `False`        | Whether a second vehicle is currently plugged in                                                                           |
-| `ev_second_planned_load_smart_charging_enabled` | `True`         | Smart charging permission                                                                                                  |
-| `ev_second_planned_load_current_soc_pct`        | `0.0`          | Current second EV battery SoC (%)                                                                                          |
-| `ev_second_planned_load_target_soc_pct`         | `80.0`         | Target SoC (%)                                                                                                             |
-| `ev_second_planned_load_battery_capacity_kwh`   | `0.0`          | Second EV battery nameplate capacity (kWh)                                                                                 |
-| `ev_second_planned_load_charger_power_kw`       | `0.0`          | Charger AC output power (kW)                                                                                               |
-| `ev_second_planned_load_charger_efficiency_pct` | `100.0`        | Charger efficiency (%)                                                                                                     |
-| `ev_second_planned_load_deadline`               | `None`         | Timezone-aware charging deadline                                                                                           |
-| `ev_second_planned_load_base_load_includes_ev`  | Auto (derived) | Automatically derived from the global `hsem_house_power_includes_ev_charger_power` setting — same value as the primary EV. |
+| Field                                           | Default        | Description                                                                                                     |
+| ----------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------- |
+| `ev_second_planned_load_enabled`                | `False`        | Enable EV planned load integration for the second EV                                                            |
+| `ev_second_planned_load_connected`              | `False`        | Whether a second vehicle is currently plugged in                                                                |
+| `ev_second_planned_load_smart_charging_enabled` | `True`         | Smart charging permission                                                                                       |
+| `ev_second_planned_load_current_soc_pct`        | `0.0`          | Current second EV battery SoC (%)                                                                               |
+| `ev_second_planned_load_target_soc_pct`         | `80.0`         | Target SoC (%)                                                                                                  |
+| `ev_second_planned_load_battery_capacity_kwh`   | `0.0`          | Second EV battery nameplate capacity (kWh)                                                                      |
+| `ev_second_planned_load_charger_power_kw`       | `0.0`          | Charger AC output power (kW)                                                                                    |
+| `ev_second_planned_load_charger_efficiency_pct` | `100.0`        | Charger efficiency (%)                                                                                          |
+| `ev_second_planned_load_deadline`               | `None`         | Timezone-aware charging deadline                                                                                |
+| `ev_second_planned_load_base_load_includes_ev`  | Auto (derived) | Same normalized-baseline contract for the second EV, derived independently so two EVs may use mixed accounting. |
 
 ---
 
@@ -391,8 +391,8 @@ Each `PlannedSlot` in the output list covers one time interval and carries:
 | `grid_export_kwh`                    | kWh          | Grid export this slot                                                                                                                                    |
 | `estimated_battery_soc`              | %            | Estimated SoC at end of slot                                                                                                                             |
 | `estimated_battery_capacity`         | kWh          | Usable remaining capacity at end of slot                                                                                                                 |
-| `ev_planned_load_kwh`                | kWh          | **Extra** EV AC load added to net consumption (zero when `base_load_includes_ev = True`)                                                                 |
-| `ev_accounted_load_kwh`              | kWh          | EV AC load already included in the house consumption sensor (non-zero when `base_load_includes_ev = True`)                                               |
+| `ev_planned_load_kwh`                | kWh          | EV AC load separate from the normalized planner baseline and therefore added to net consumption                                                          |
+| `ev_accounted_load_kwh`              | kWh          | EV AC load still embedded in the normalized planner baseline and subtracted once to recover pure-house demand                                            |
 | `ev_total_planned_load_kwh`          | kWh          | Total planned EV AC load: `ev_planned_load_kwh + ev_accounted_load_kwh`. Non-zero whenever EV charging is planned, regardless of `base_load_includes_ev` |
 | `ev_charger_calculated_power`        | W            | Primary EV's executable whole-amp AC command; zero means no HSEM authority                                                                               |
 | `ev_second_charger_calculated_power` | W            | Second EV's executable whole-amp AC command                                                                                                              |
@@ -633,11 +633,11 @@ of the home battery planner output. The one-pass design prevents circular depend
 
 Three fields capture EV load intent precisely:
 
-| Field                       | Meaning                                                                                                                                            |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ev_planned_load_kwh`       | Extra EV AC load **added to net consumption** — only the portion not already in `avg_house_consumption`. Zero when `base_load_includes_ev = True`. |
-| `ev_accounted_load_kwh`     | EV AC load **already included** in the house consumption sensor. Non-zero when `base_load_includes_ev = True`.                                     |
-| `ev_total_planned_load_kwh` | Total planned EV AC load: `ev_planned_load_kwh + ev_accounted_load_kwh`. Always non-zero when EV charging is planned.                              |
+| Field                       | Meaning                                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `ev_planned_load_kwh`       | Extra EV AC load **added to net consumption** — per-EV contributions not embedded in normalized `avg_house_consumption`. |
+| `ev_accounted_load_kwh`     | EV AC load still embedded in the normalized planner baseline and subtracted once to recover pure-house demand.           |
+| `ev_total_planned_load_kwh` | Total planned EV AC load: `ev_planned_load_kwh + ev_accounted_load_kwh`. Always non-zero when EV charging is planned.    |
 
 ### Net load formula with EV
 
@@ -648,9 +648,11 @@ effective_net_load_kwh
     − solcast_pv_estimate
 ```
 
-Only `ev_planned_load_kwh` is added. When `base_load_includes_ev = True`,
-`ev_planned_load_kwh` is `0.0`; the EV load is already captured in
-`avg_house_consumption` and must not be added a second time.
+Only `ev_planned_load_kwh` is added. `ev_accounted_load_kwh` identifies the
+portion still embedded in `avg_house_consumption`; both MILP reconstruction and
+SoC simulation subtract that portion once to recover pure-house demand. A
+current live session already removed by preprocessing is classified as planned,
+not accounted, so it is never subtracted twice.
 
 ### Slot selection strategy
 
@@ -705,18 +707,27 @@ slot_remaining_hours = remaining_minutes_in_slot(now, slot_end) / 60.0
 max_charge_this_slot = charger_power_kw × slot_remaining_hours × (efficiency / 100)
 ```
 
-### Double-count prevention (base_load_includes_ev)
+### Raw meter versus normalized baseline
 
-When the house consumption sensor already includes EV charger power
-(e.g. the CT clamp is upstream of the EVSE), set `base_load_includes_ev = True`
-for that EV.
+The CT-position option answers whether the **raw live house meter** includes EV
+power. It does not directly answer whether the **normalized planner baseline**
+contains a particular EV:
 
-- `ev_planned_load_kwh` is **not** added to net consumption for that EV.
-- The load is captured in `ev_accounted_load_kwh` instead.
-- `ev_total_planned_load_kwh` is still set and non-zero, so diagnostics,
-  logs, and the `ev_smart_charging` label all reflect the planned EV activity.
+- HSEM utility-meter/history sensors subtract each EV with a configured power
+  entity before accumulating house-load averages.
+- Therefore that EV uses `base_load_includes_ev = False`, even with an upstream
+  CT, and its load is carried in `ev_planned_load_kwh`.
+- An EV without removable telemetry may remain embedded and uses
+  `ev_accounted_load_kwh`.
+- Primary and second EVs are classified independently. Mixed planned/accounted
+  contributions are valid in one slot.
+- For the current slot, accepted live injection records exactly which measured
+  sessions it removed. Only those EV contributions move out of accounted load.
+  Missing telemetry is not treated as 0 W and cannot prove removal.
 
-This prevents double-counting while keeping full observability.
+`ev_total_planned_load_kwh` remains the sum of both fields for diagnostics. The
+planner does not clamp a negative inferred house load; such a value indicates a
+broken accounting contract that tests must expose.
 
 ### EV plan states
 

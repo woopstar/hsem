@@ -75,10 +75,9 @@ class PlannedSlot:
             (stored as its string value so the output stays framework-free)
             or ``None`` if no decision has been made.
         ev_planned_load_kwh:
-            Extra EV AC load that must be added to base house consumption for
-            planner math.  Zero when ``base_load_includes_ev`` is True (EV
-            load is already captured in ``avg_house_consumption``) or when no
-            EV is scheduled to charge in this slot.  Used in the net
+            Extra EV AC load that must be added to normalized house consumption
+            for planner math. Contains per-EV contributions not embedded in
+            ``avg_house_consumption``. Used in the net
             consumption formula::
 
                 estimated_net_consumption_kwh
@@ -86,10 +85,9 @@ class PlannedSlot:
                       - solcast_pv_estimate_kwh
 
         ev_accounted_load_kwh:
-            EV AC load that is planned for the slot but is **already
-            accounted for** by the house consumption sensor.  Non-zero only
-            when ``base_load_includes_ev`` is True.  Must **not** be added
-            again to ``estimated_net_consumption``.
+            EV AC load still embedded in the normalized planner house baseline.
+            Subtract once to recover pure-house demand; do **not** add it again
+            to ``estimated_net_consumption``.
 
         ev_total_planned_load_kwh:
             Total EV AC load planned for this slot, regardless of whether it

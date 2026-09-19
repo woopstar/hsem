@@ -30,6 +30,8 @@ def _build_ev_configs_for_milp(
     inp: PlannerInput,
     slots: list,
     now: datetime,
+    *,
+    current_session_removed_from_base: tuple[bool, bool] = (False, False),
 ) -> list[EVConfig] | None:
     """Build EVConfig list for the MILP from PlannerInput EV fields.
 
@@ -153,6 +155,9 @@ def _build_ev_configs_for_milp(
         session_charge_kw = (
             inp.ev_second_session_charge_kw if is_second else inp.ev_session_charge_kw
         )
+        session_removed_from_base = current_session_removed_from_base[
+            1 if is_second else 0
+        ]
         has_live_session = session_charge_kw is not None and session_charge_kw > 1e-9
 
         if not enabled and not has_live_session:
@@ -358,6 +363,7 @@ def _build_ev_configs_for_milp(
                 is_second=is_second,
                 session_charge_kw=session_charge_kw,
                 fixed_session_only=fixed_session_only,
+                current_session_removed_from_base=session_removed_from_base,
             )
         )
 

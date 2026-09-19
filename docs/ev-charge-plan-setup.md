@@ -130,9 +130,16 @@ All other fields have sensible defaults (target SoC 80 %, deadline 07:00, effici
 
 ## Double-counting
 
-The planner's `base_load_includes_ev` flag is automatically derived from the
-`hsem_house_power_includes_ev_charger_power` setting in the EV charger config step.
-You do **not** need to set it separately.
+`hsem_house_power_includes_ev_charger_power` describes the **raw live house
+meter** and is still configured from the CT position. The planner separately
+derives, per EV, whether that EV remains in the **normalized historical house
+baseline**. You do **not** configure this internal baseline flag separately.
+
+When an EV power entity is configured, HSEM subtracts that EV before its
+utility-meter/history sensors accumulate rolling house averages. That EV is
+therefore separate planner demand even if the raw meter includes it. If a
+configured power entity is temporarily unavailable, HSEM pauses history
+accumulation rather than treating the missing reading as 0 W.
 
 **How your CT clamp position determines the setting in the EV step:**
 
@@ -150,16 +157,23 @@ flowchart TD
 
 ### Net load formula
 
-The planner's net load with EV is:
+The planner classifies each EV contribution as either separate/planned or still
+embedded/accounted:
 
 $$
-\mathrm{net\_load}[t] = \mathrm{house\_load}[t] - \mathrm{pv}[t] + \left\{
-\begin{array}{ll}
-0 & \text{if } \mathrm{base\_load\_includes\_ev} \\
-\mathrm{ev\_load}[t] & \text{otherwise}
-\end{array}
-\right.
+\mathrm{pure\_house}[t]
+= \mathrm{avg\_house}[t] - \mathrm{ev\_accounted}[t]
 $$
+
+$$
+\mathrm{net\_load}[t]
+= \mathrm{avg\_house}[t] + \mathrm{ev\_planned}[t] - \mathrm{pv}[t]
+$$
+
+With two EVs, one contribution may be planned while the other is accounted.
+For the current slot, HSEM records removal per EV when an authoritative live
+reading has already been normalized. It never subtracts that session again and
+does not clamp a negative inferred house load to hide an accounting error.
 
 ### Quick test
 
@@ -175,8 +189,9 @@ If you have a second EV and have enabled it in the EV charger step, a second ide
 step — **EV 2 Optimal Charging Plan** — will appear immediately after the first.
 All fields are the same; just use the second car's sensors and config values.
 
-The two EV plans are independent. Their per-slot loads are **summed** into
-`ev_planned_load_kwh` on each planner slot before net consumption is calculated.
+The two EV plans are independent. Their per-slot loads are summed into
+`ev_total_planned_load_kwh`; each contribution lands in `ev_planned_load_kwh` or
+`ev_accounted_load_kwh` according to that EV's normalized-baseline contract.
 
 ---
 
@@ -387,10 +402,11 @@ Either:
 
 ### EV is charging but home battery also charges from solar
 
-Check `base_load_includes_ev`. If your house consumption sensor already includes EV
-power (CT clamp upstream of the EVSE), this should be `True`. If it is `False` and
-the sensor already includes EV power, HSEM double-counts the load and the battery
-planner sees a larger surplus than actually exists.
+Check the raw CT-position setting and the configured EV power entity. With an
+upstream CT, HSEM needs authoritative per-EV power telemetry to normalize live
+and historical house demand. The internal `base_load_includes_ev` value is
+derived automatically per EV; it should not be edited or inferred directly from
+the CT position.
 
 ### EV always charges from grid, never from solar
 

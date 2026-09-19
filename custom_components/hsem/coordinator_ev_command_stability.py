@@ -57,6 +57,7 @@ from custom_components.hsem.models.hourly_recommendation import HourlyRecommenda
 from custom_components.hsem.models.live_state import EVLiveState, LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.datetime_utils import slot_contains, utc_key
+from custom_components.hsem.utils.ev_accounting import normalized_baseline_includes_ev
 from custom_components.hsem.utils.logger import async_log
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.phase_power import (
@@ -284,7 +285,7 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
             return
 
         specs = self._resolve_ev_command_specs(cfg, live)
-        old_total_ev_kwh = max(float(slot.ev_total_planned_load_kwh), 0.0)
+        old_planned_ev_kwh = max(float(slot.ev_planned_load_kwh), 0.0)
         budget_w = ev_site_power_budget_w(self._config_entry, live)
         published: dict[str, float] = {}
 
@@ -320,11 +321,28 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
             primary_w=published.get("ev", 0.0),
             second_w=published.get("ev_second", 0.0),
             remaining_hours=remaining_hours,
-            old_total_ev_kwh=old_total_ev_kwh,
-            base_load_includes_ev=bool(
-                get_config_value(
-                    self._config_entry, "hsem_house_power_includes_ev_charger_power"
-                )
+            old_planned_ev_kwh=old_planned_ev_kwh,
+            primary_base_load_includes_ev=normalized_baseline_includes_ev(
+                raw_house_meter_includes_ev=bool(
+                    get_config_value(
+                        self._config_entry,
+                        "hsem_house_power_includes_ev_charger_power",
+                    )
+                ),
+                ev_power_entity=get_config_value(
+                    self._config_entry, "hsem_ev_charger_power"
+                ),
+            ),
+            second_base_load_includes_ev=normalized_baseline_includes_ev(
+                raw_house_meter_includes_ev=bool(
+                    get_config_value(
+                        self._config_entry,
+                        "hsem_house_power_includes_ev_charger_power",
+                    )
+                ),
+                ev_power_entity=get_config_value(
+                    self._config_entry, "hsem_ev_second_charger_power"
+                ),
             ),
         )
 

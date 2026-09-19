@@ -30,12 +30,12 @@ class HourlyRecommendation:
         solcast_pv_estimate_kwh: Forecast PV production (kWh).
         estimated_net_consumption_kwh: avg_consumption + ev_planned_load_kwh - pv_estimate (kWh).
         ev_planned_load_kwh: Extra EV AC load added to net consumption (kWh, ≥ 0).
-            Combined injected load from primary and second EV.  Zero when EV
-            planned load integration is disabled, the EV is not scheduled to
-            charge, or ``base_load_includes_ev=True`` (EV already in base load).
-        ev_accounted_load_kwh: EV AC load already included in the house
-            consumption sensor (kWh, ≥ 0).  Non-zero only when
-            ``base_load_includes_ev=True``.  Not added to net consumption.
+            ev_planned_load_kwh:
+            Combined primary/second-EV AC load not embedded in the normalized
+            planner house baseline. Added to net consumption.
+        ev_accounted_load_kwh: EV AC load still embedded in the normalized
+            planner house baseline (kWh, ≥ 0). Subtracted once to recover
+            pure-house demand and not added again to net consumption.
         ev_total_planned_load_kwh: Total EV AC load planned for this slot
             (kWh, ≥ 0).  Equals ``ev_planned_load_kwh + ev_accounted_load_kwh``.
             Use this for diagnostics and UI — it is non-zero whenever EV

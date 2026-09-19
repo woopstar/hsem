@@ -32,6 +32,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.planner.ev_load_accounting import split_house_and_ev_load
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
@@ -186,12 +187,9 @@ def simulate_soc(
         #   We must strip it out so the battery's net demand is pure house only.
         #   house_load = avg_house_consumption - ev_accounted_load_kwh
         #   ev_load    = ev_planned_load_kwh (0.0) + ev_accounted_load_kwh
-        ev_accounted = slot.ev_accounted_load_kwh  # already in avg_house_consumption
-        ev_injected = (
-            slot.ev_planned_load_kwh
-        )  # extra, not yet in avg_house_consumption
-        ev_load = ev_injected + ev_accounted  # total AC EV draw → grid/PV only
-        house_load = slot.avg_house_consumption_kwh - ev_accounted  # pure house load
+        ev_accounted = max(slot.ev_accounted_load_kwh, 0.0)
+        ev_injected = max(slot.ev_planned_load_kwh, 0.0)
+        house_load, ev_load = split_house_and_ev_load(slot)
 
         # --- Enforce charge ceiling on pre-scheduled charge ---
         # The charge scheduler may have set batteries_charged without knowing

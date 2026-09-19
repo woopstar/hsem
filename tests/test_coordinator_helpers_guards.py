@@ -22,6 +22,7 @@ from custom_components.hsem.coordinator_helpers import (
     apply_load_forecast_hold,
     ev_site_power_budget_w,
     load_forecast_signatures_match,
+    write_ev_slot_commands,
 )
 from custom_components.hsem.models.live_state import LiveState
 from tests.test_coordinator_tracking_forecast import _rec
@@ -62,6 +63,26 @@ class TestEvSitePowerBudget:
         )
 
         assert budget == pytest.approx(25 * 3 * 230.0 - 2_300.0)
+
+
+def test_write_ev_slot_commands_preserves_two_ev_mixed_accounting() -> None:
+    """Command stability must not collapse per-EV baseline semantics."""
+    slot = _rec(_SLOT_START, _SLOT_END)
+
+    write_ev_slot_commands(
+        slot,
+        primary_w=4_000.0,
+        second_w=2_000.0,
+        remaining_hours=0.25,
+        old_planned_ev_kwh=0.0,
+        primary_base_load_includes_ev=False,
+        second_base_load_includes_ev=True,
+    )
+
+    assert slot.ev_planned_load_kwh == pytest.approx(1.0)
+    assert slot.ev_accounted_load_kwh == pytest.approx(0.5)
+    assert slot.ev_total_planned_load_kwh == pytest.approx(1.5)
+    assert slot.grid_import_kwh == pytest.approx(1.0)
 
 
 class TestApplyCurrentEvPowerOverride:
