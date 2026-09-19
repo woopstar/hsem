@@ -55,6 +55,7 @@ from custom_components.hsem.utils.ha_helpers import (
 from custom_components.hsem.utils.huawei import extract_tou_periods
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.phase_power import EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_force_working_mode_selector_key,
 )
@@ -133,6 +134,29 @@ async def async_collect_live_state(
             )
             _LOGGER.warning(
                 "Sensor read failed for entity_id=%s (label=%s): %s: %s",
+                entity_id,
+                label or entity_id,
+                type(exc).__name__,
+                repr(exc),
+            )
+            return None
+
+    def _read_optional(
+        entity_id: str | None,
+        conv_type: str | None = None,
+        decimals: int = 3,
+        label: str = "",
+    ) -> Any:  # NOSONAR -- return type varies by conv_type
+        """Read optional safety telemetry without degrading the cycle."""
+        if not entity_id:
+            return None
+        try:
+            return ha_get_entity_state_and_convert(
+                sensor, entity_id, conv_type, decimals
+            )
+        except (HomeAssistantError, ValueError, TypeError, AttributeError) as exc:
+            _LOGGER.debug(
+                "Optional sensor read failed for entity_id=%s (label=%s): %s: %s",
                 entity_id,
                 label or entity_id,
                 type(exc).__name__,
@@ -330,10 +354,18 @@ async def async_collect_live_state(
         )
     state.huawei_batteries_max_discharge_power_w = max_discharge_w
 
-    # Live phase-aware charging limiter inputs (issue #831). Non-critical:
-    # the feature is opt-in and the limiter itself fails closed when any of
-    # these is missing, so a missing reading here does not enter degraded
-    # mode on its own.
+    # Live phase safety inputs (issues #831 and #1083). Non-critical: both
+    # consumers fail closed when any phase is missing, so an unavailable
+    # reading here does not enter degraded mode on its own.
+    switchable_phase_safety_needed = (
+        cfg.ev_planned_load_enabled
+        and cfg.ev_planned_load_charger_phase_topology
+        == EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
+    ) or (
+        cfg.ev_second_planned_load_enabled
+        and cfg.ev_second_planned_load_charger_phase_topology
+        == EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
+    )
     if cfg.phase_aware_charging_enabled:
         state.huawei_batteries_grid_charge_max_power_w = convert_to_float(
             _read(
@@ -342,29 +374,31 @@ async def async_collect_live_state(
                 label="grid_charge_maximum_power",
             )
         )
+    if cfg.phase_aware_charging_enabled or switchable_phase_safety_needed:
         state.grid_phase_power_w = (
             read_normalized_float(
                 sensor,
                 cfg.huawei_solar_power_meter_phase_a_active_power,
-                _read,
+                _read_optional,
                 UnitOfPower.WATT,
                 label="power_meter_phase_a_active_power",
             ),
             read_normalized_float(
                 sensor,
                 cfg.huawei_solar_power_meter_phase_b_active_power,
-                _read,
+                _read_optional,
                 UnitOfPower.WATT,
                 label="power_meter_phase_b_active_power",
             ),
             read_normalized_float(
                 sensor,
                 cfg.huawei_solar_power_meter_phase_c_active_power,
-                _read,
+                _read_optional,
                 UnitOfPower.WATT,
                 label="power_meter_phase_c_active_power",
             ),
         )
+    if cfg.phase_aware_charging_enabled:
         state.huawei_batteries_charge_discharge_power_w = convert_to_float(
             _read(
                 cfg.huawei_solar_batteries_charge_discharge_power,

@@ -13,9 +13,13 @@ step shrinks continuously as the slot elapses — so the live slot's amps is a
 routinely within a rounding error of each other on cost, which means a 0.3 %
 SoC update can flip the published command by 2–3 A for a fraction of a cent.
 
-Two corrections are applied here, both purely at the **command layer**:
+Three corrections are applied here, all purely at the **command layer**:
 
-1. **Ceiling deadband** — hold the previous command unless the plan asks to
+1. **Phase-mode hysteresis** — while a managed switchable charger is actively
+   charging below target, keep an executable command in its current phase mode
+   instead of forcing a disruptive one-/three-phase reconnect. Target energy,
+   deadline feasibility, fuse safety, and material economics always bypass it.
+2. **Ceiling deadband** — hold the previous command unless the plan asks to
    *lower* it by at least ``command_deadband_a``, or holding would cost more
    than
    :data:`~custom_components.hsem.const.EV_COMMAND_DEADBAND_COST_BYPASS_FRACTION`
@@ -23,7 +27,7 @@ Two corrections are applied here, both purely at the **command layer**:
    value is a ceiling an external controller (or the charger's own surplus
    logic) ramps *within*, so only a downward move can force the charger to
    reduce.  Raising the ceiling is always published immediately.
-2. **Slot-tail stop suppression** — in the last ``stub_floor_minutes`` of a
+3. **Slot-tail stop suppression** — in the last ``stub_floor_minutes`` of a
    slot, do not publish a zero command while the EV still has unmet need.  A
    few seconds of remaining slot cannot hold enough energy to clear the
    charger minimum, so the plan correctly allocates it nothing — but a 0 W
@@ -59,18 +63,25 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.datetime_utils import slot_contains, utc_key
 from custom_components.hsem.utils.ev_accounting import normalized_baseline_includes_ev
 from custom_components.hsem.utils.logger import async_log
-from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.misc import clamp_efficiency, get_config_value
 from custom_components.hsem.utils.phase_power import (
     EV_TOPOLOGY_SINGLE_PHASE,
     EV_TOPOLOGY_THREE_PHASE_BALANCED,
     EV_TOPOLOGY_THREE_PHASE_SWITCHABLE,
+    PHASE_COUNT,
     charger_current_to_power_w,
     charger_max_power_to_current_a,
     charger_power_to_current_a,
     ev_min_start_current_a,
+    phase_powers_valid,
+    switchable_command_phase_count,
     switchable_power_to_current_and_power_w,
 )
-from custom_components.hsem.utils.units import GRID_PHASE_VOLTAGE, slot_duration_hours
+from custom_components.hsem.utils.units import (
+    GRID_PHASE_VOLTAGE,
+    ev_ac_to_dc_kwh,
+    slot_duration_hours,
+)
 
 
 @dataclass(frozen=True)
@@ -90,6 +101,14 @@ class _EvCommandSpec:
     capacity_kwh: float
     target_soc_pct: float
     deadline: datetime | None
+    charger_efficiency: float = 1.0
+    main_fuse_amps: float = 0.0
+    main_fuse_phases: int = 3
+    grid_phase_power_w: tuple[float | None, float | None, float | None] = (
+        None,
+        None,
+        None,
+    )
     #: Whether this EV may charge past its target SoC from PV surplus.
     allow_charge_past_target: bool = False
 
@@ -117,6 +136,7 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
             charger_power_kw,
             min_power_w,
             capacity_kwh,
+            charger_efficiency_pct,
             target_soc_pct,
             deadline,
             allow_charge_past_target,
@@ -132,6 +152,7 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
                 cfg.ev_planned_load_charger_power_kw,
                 cfg.ev_planned_load_charger_min_power_w,
                 cfg.ev_planned_load_battery_capacity_kwh,
+                cfg.ev_planned_load_charger_efficiency_pct,
                 live.ev_planned_load_target_soc_pct,
                 live.ev_planned_load_deadline,
                 cfg.ev.allow_charge_past_target_soc,
@@ -147,6 +168,7 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
                 cfg.ev_second_planned_load_charger_power_kw,
                 cfg.ev_second_planned_load_charger_min_power_w,
                 cfg.ev_second_planned_load_battery_capacity_kwh,
+                cfg.ev_second_planned_load_charger_efficiency_pct,
                 live.ev_second_planned_load_target_soc_pct,
                 live.ev_second_planned_load_deadline,
                 cfg.ev_second.allow_charge_past_target_soc,
@@ -175,6 +197,10 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
                     managed=ev_is_managed(cfg, live, is_second=is_second),
                     ev_live=ev_live,
                     capacity_kwh=max(float(capacity_kwh or 0.0), 0.0),
+                    charger_efficiency=clamp_efficiency(charger_efficiency_pct),
+                    main_fuse_amps=max(float(cfg.main_fuse_amps or 0.0), 0.0),
+                    main_fuse_phases=max(int(cfg.main_fuse_phases or 0), 0),
+                    grid_phase_power_w=live.grid_phase_power_w,
                     target_soc_pct=float(target_soc_pct or 0.0),
                     deadline=deadline,
                     allow_charge_past_target=bool(allow_charge_past_target),
@@ -193,15 +219,10 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
         ``False`` on missing telemetry — the planner refuses to plan an EV
         with an unavailable SoC anyway (issue #988), so its plan is zero.
         """
-        if not spec.allow_charge_past_target or spec.capacity_kwh <= 1e-9:
+        if not spec.allow_charge_past_target:
             return False
-        current_kwh = self._ev_effective_energy_kwh(spec.ev_live, spec.capacity_kwh)
-        if current_kwh is None:
-            return False
-        target_kwh = (
-            max(min(spec.target_soc_pct, 100.0), 0.0) / 100.0 * spec.capacity_kwh
-        )
-        return current_kwh + 1e-9 >= target_kwh
+        remaining_target_kwh = self._remaining_target_kwh(spec)
+        return remaining_target_kwh is not None and remaining_target_kwh <= 1e-9
 
     def _ev_has_unmet_need(self, spec: _EvCommandSpec, now: datetime) -> bool:
         """Return whether this EV still needs energy before its deadline.
@@ -216,13 +237,20 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
                 return False
         except TypeError, ValueError:
             return False
+        remaining_target_kwh = self._remaining_target_kwh(spec)
+        return remaining_target_kwh is not None and remaining_target_kwh > 1e-9
+
+    def _remaining_target_kwh(self, spec: _EvCommandSpec) -> float | None:
+        """Return proven DC-side energy still needed to reach the EV target."""
+        if spec.capacity_kwh <= 1e-9:
+            return None
         current_kwh = self._ev_effective_energy_kwh(spec.ev_live, spec.capacity_kwh)
         if current_kwh is None:
-            return False
+            return None
         target_kwh = (
             max(min(spec.target_soc_pct, 100.0), 0.0) / 100.0 * spec.capacity_kwh
         )
-        return current_kwh + 1e-9 < target_kwh
+        return max(target_kwh - current_kwh, 0.0)
 
     @staticmethod
     def _holding_cost_exceeds_bypass(
@@ -248,11 +276,14 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
             return False
         held_kwh = held_w * remaining_hours / 1000.0
         planned_kwh = planned_w * remaining_hours / 1000.0
-        planned_cost = planned_kwh * price_now
-        if planned_cost <= 1e-9:
+        if planned_kwh <= 1e-9:
             return False
+        planned_cost_magnitude = abs(planned_kwh * price_now)
         extra_cost = (held_kwh - planned_kwh) * (price_now - price_alt)
-        return extra_cost > EV_COMMAND_DEADBAND_COST_BYPASS_FRACTION * planned_cost
+        return (
+            extra_cost
+            > EV_COMMAND_DEADBAND_COST_BYPASS_FRACTION * planned_cost_magnitude
+        )
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -421,6 +452,127 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
                 return float(item.import_price)
         return None
 
+    def _future_planned_ev_energy_kwh(
+        self,
+        *,
+        spec: _EvCommandSpec,
+        slot: HourlyRecommendation,
+    ) -> float:
+        """Return accepted-plan DC energy after this slot and before deadline."""
+        if spec.deadline is None:
+            return 0.0
+        slot_end = utc_key(slot.end)
+        deadline = utc_key(spec.deadline)
+        total_kwh = 0.0
+        for item in self._hourly_recommendations:
+            start = max(utc_key(item.start), slot_end)
+            end = min(utc_key(item.end), deadline)
+            hours = slot_duration_hours(start, end)
+            if hours <= 1e-9:
+                continue
+            power_w = self._planned_command_w(item, spec.is_second)
+            total_kwh += ev_ac_to_dc_kwh(
+                power_w * hours / 1000.0,
+                spec.charger_efficiency,
+            )
+        return total_kwh
+
+    @staticmethod
+    def _one_phase_hold_is_phase_safe(spec: _EvCommandSpec, held_w: float) -> bool:
+        """Return whether live per-phase telemetry proves a one-phase hold safe."""
+        if spec.main_fuse_amps <= 1e-9:
+            return True
+        if spec.main_fuse_phases != PHASE_COUNT or not phase_powers_valid(
+            spec.grid_phase_power_w
+        ):
+            return False
+        additional_w = max(held_w - max(float(spec.ev_live.power_w or 0.0), 0.0), 0.0)
+        phase_limit_w = spec.main_fuse_amps * GRID_PHASE_VOLTAGE
+        return max(spec.grid_phase_power_w) + additional_w <= phase_limit_w + 1e-9
+
+    def _phase_mode_hold_command_w(
+        self,
+        *,
+        spec: _EvCommandSpec,
+        slot: HourlyRecommendation,
+        now: datetime,
+        planned_w: float,
+        previous_w: float,
+        remaining_hours: float,
+    ) -> float | None:
+        """Return a safe same-mode command for a disruptive phase crossing."""
+        if (
+            spec.topology != EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
+            or spec.rated_current_a <= 0
+            or not spec.ev_live.is_charging
+            or not self._ev_has_unmet_need(spec, now)
+        ):
+            return None
+
+        previous_phases = switchable_command_phase_count(
+            previous_w, spec.rated_current_a
+        )
+        planned_phases = switchable_command_phase_count(planned_w, spec.rated_current_a)
+        if previous_phases == planned_phases:
+            return None
+
+        if previous_phases == PHASE_COUNT:
+            held_w = charger_current_to_power_w(
+                spec.min_current_a, EV_TOPOLOGY_THREE_PHASE_BALANCED
+            )
+        else:
+            held_w = previous_w
+        held_w = self._quantise_to_whole_amps(min(held_w, previous_w), spec)
+        if (
+            held_w <= 1e-9
+            or switchable_command_phase_count(held_w, spec.rated_current_a)
+            != previous_phases
+        ):
+            return None
+
+        if previous_phases == 1 and not self._one_phase_hold_is_phase_safe(
+            spec, held_w
+        ):
+            return None
+
+        remaining_target_kwh = self._remaining_target_kwh(spec)
+        if remaining_target_kwh is None or spec.deadline is None:
+            return None
+        try:
+            deadline_hours = max(
+                (utc_key(spec.deadline) - utc_key(now)).total_seconds() / 3600.0,
+                0.0,
+            )
+        except TypeError, ValueError:
+            return None
+
+        held_current_kwh = ev_ac_to_dc_kwh(
+            held_w * min(remaining_hours, deadline_hours) / 1000.0,
+            spec.charger_efficiency,
+        )
+        # A same-mode hold must never deliver more than the remaining target.
+        if held_current_kwh > remaining_target_kwh + 1e-9:
+            return None
+
+        max_reachable_kwh = held_current_kwh + self._future_planned_ev_energy_kwh(
+            spec=spec,
+            slot=slot,
+        )
+        # Do not preserve one-phase mode when its lower current-slot delivery
+        # cannot be recovered by the accepted plan's executable future commands.
+        if max_reachable_kwh + 1e-9 < remaining_target_kwh:
+            return None
+
+        if self._holding_cost_exceeds_bypass(
+            held_w=held_w,
+            planned_w=planned_w,
+            remaining_hours=remaining_hours,
+            price_now=float(slot.import_price),
+            price_alt=self._next_ev_slot_price(slot, spec.is_second),
+        ):
+            return None
+        return held_w
+
     def _decide_command_w(
         self,
         *,
@@ -460,6 +612,25 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
 
         if previous_w <= 1e-9 or spec.deadband_a <= 0.0:
             return planned_w
+
+        phase_crossing = (
+            spec.topology == EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
+            and spec.rated_current_a > 0
+            and switchable_command_phase_count(previous_w, spec.rated_current_a)
+            != switchable_command_phase_count(planned_w, spec.rated_current_a)
+        )
+        if phase_crossing:
+            phase_hold_w = self._phase_mode_hold_command_w(
+                spec=spec,
+                slot=slot,
+                now=now,
+                planned_w=planned_w,
+                previous_w=previous_w,
+                remaining_hours=remaining_hours,
+            )
+            # A crossing rejected by any hard guard must not fall through to
+            # the ordinary amp deadband and be held there accidentally.
+            return planned_w if phase_hold_w is None else phase_hold_w
 
         planned_a = charger_power_to_current_a(
             planned_w, spec.topology, rated_current_a=spec.rated_current_a or None

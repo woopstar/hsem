@@ -3724,13 +3724,15 @@ Two corrections are applied in
 `coordinator_ev_command_stability.py`, invoked from
 `_run_planner_phase` **after** every other post-plan override:
 
-| Mechanism                  | Setting                                              | Default |
-| -------------------------- | ---------------------------------------------------- | ------- |
-| Ceiling deadband           | `hsem_ev_planned_load_command_deadband_a` (0–5 A)    | 3 A     |
-| Slot-tail stop suppression | `hsem_ev_planned_load_stub_floor_minutes` (0–10 min) | 2 min   |
+| Mechanism                        | Setting                                              | Default |
+| -------------------------------- | ---------------------------------------------------- | ------- |
+| Switchable phase-mode hysteresis | Uses the ceiling-deadband enable/disable setting     | enabled |
+| Ceiling deadband                 | `hsem_ev_planned_load_command_deadband_a` (0–5 A)    | 3 A     |
+| Slot-tail stop suppression       | `hsem_ev_planned_load_stub_floor_minutes` (0–10 min) | 2 min   |
 
-Both have `hsem_ev_second_planned_load_*` counterparts. Setting either to 0
-reproduces the pre-feature behaviour exactly.
+Both configurable settings have `hsem_ev_second_planned_load_*` counterparts.
+Setting the deadband to 0 also disables phase-mode hysteresis, while setting the
+stub floor to 0 disables stop suppression.
 
 **The deadband is deliberately asymmetric.** `ev_charger_calculated_power` is
 a _ceiling_ an external current controller (or the charger's own PV-surplus
@@ -3747,6 +3749,32 @@ EV's load, so the honest cost of holding is that energy delta priced at the
 _difference_ between the two slots' import prices; when it exceeds
 `EV_COMMAND_DEADBAND_COST_BYPASS_FRACTION` (5 %, mirroring the plan-level
 hysteresis default) of the live slot's own EV cost, the change is published.
+
+**Switchable phase-mode hysteresis** (issue #1083) runs before the ordinary amp
+comparison. A `three_phase_switchable` charger may implement a `1φ ↔ 3φ`
+command change as a simulated unplug/replug, so an active managed session with
+proven unmet target energy keeps an executable command in its current mode
+when the economic benefit is immaterial. The retained command never increases
+the previous ceiling: a `3φ → 1φ` plan uses the executable three-phase minimum,
+and a `1φ → 3φ` plan retains at most the previous one-phase command. It is
+therefore no less phase-safe than the already-running state, and the existing
+live aggregate fuse clamp remains authoritative afterward.
+
+The phase hold fails closed and the fresh plan wins when current mode or target
+need cannot be proven, the session is not actively charging, the retained
+command would exceed remaining target energy, or its lower delivery cannot be
+recovered by the accepted plan's executable future commands before the
+deadline. An inverse `1φ → 3φ` hold also requires complete live Huawei
+power-meter phase telemetry proving that the retained one-phase ceiling remains
+below the fuse; the collector reads these entities whenever an enabled
+switchable EV needs phase proof, independently of the battery phase-aware
+charging toggle. Aggregate headroom alone is insufficient because lower total
+Watts can still overload one phase. The same material-cost bypass used by the amp deadband also
+applies, using the magnitude of the live-slot planned cost so zero and negative
+prices cannot trap a materially worse inverse hold. Any crossing rejected by
+one of these guards is terminal for this layer; it cannot fall through and be
+re-held by the ordinary amp comparison. The final command is still clamped to
+live fuse headroom, charger rating, and executable whole amps.
 
 **Charge-past-target EVs are never held** (issue #1015). A past-target EV
 (`allow_charge_past_target_soc` on and effective SoC at or above target) may
@@ -3783,8 +3811,15 @@ can never publish something the site cannot carry.
 #### Invariants for tests
 
 - A reduction smaller than the deadband holds the previous command.
-- A reduction at or beyond the deadband is published immediately.
-- An _increase_ is never held, at any deadband value.
+- A reduction at or beyond the deadband is published immediately unless it is
+  a safely retained `three_phase_switchable` phase crossing.
+- An _increase_ is never held except for a safely retained inverse
+  `1φ → 3φ` phase crossing.
+- Active below-target switchable sessions retain their current phase mode only
+  when the retained command is executable, target-compatible, deadline-feasible,
+  fuse-safe, and not materially more expensive.
+- A safety-, target-, deadline-, management-, or economics-rejected phase hold
+  follows the fresh plan and cannot be re-held by the ordinary amp deadband.
 - Deadband 0 and stub-floor 0 reproduce pre-feature pass-through exactly.
 - A hold never exceeds the live fuse budget or the charger's nameplate current
   (snapped via `charger_max_power_to_current_a`, so 11.0 kW three-phase stays
