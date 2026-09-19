@@ -264,6 +264,24 @@ def ev_min_start_current_a(power_w: float, topology: str | None) -> int:
     )
 
 
+def switchable_command_phase_count(power_w: float, rated_current_a: int) -> int:
+    """Return the phase count selected by a switchable charger command.
+
+    The rated current defines the one-phase ceiling. Commands above that
+    boundary require balanced three-phase mode; zero, invalid, and commands at
+    or below the boundary remain one-phase. This is the canonical mode test for
+    command stability and OCPP ``numberPhases`` publication.
+    """
+    if (
+        isinstance(rated_current_a, int)
+        and rated_current_a > 0
+        and math.isfinite(power_w)
+        and power_w > GRID_PHASE_VOLTAGE * rated_current_a + 1e-9
+    ):
+        return PHASE_COUNT
+    return 1
+
+
 def switchable_power_to_current_and_power_w(
     power_w: float,
     rated_current_a: int,

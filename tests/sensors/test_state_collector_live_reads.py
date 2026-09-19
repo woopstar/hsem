@@ -24,6 +24,7 @@ from custom_components.hsem.custom_sensors.state_collector import (
 )
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.utils.phase_power import EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
 
 _MODULE = "custom_components.hsem.custom_sensors.state_collector"
 
@@ -165,6 +166,50 @@ class TestOptionalLiveInputs:
         state = await _collect(cfg, values={"number.grid_charge_max": 5000.0})
 
         assert state.huawei_batteries_grid_charge_max_power_w is None
+
+    @pytest.mark.asyncio
+    async def test_switchable_ev_reads_phase_safety_without_battery_limiter(
+        self,
+    ) -> None:
+        """A switchable EV obtains phase proof independently of battery limiting."""
+        cfg = _full_cfg()
+        cfg.phase_aware_charging_enabled = False
+        cfg.ev_planned_load_enabled = True
+        cfg.ev_planned_load_charger_phase_topology = EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
+
+        state = await _collect(
+            cfg,
+            values={
+                "sensor.phase_a": 1000.0,
+                "sensor.phase_b": 2000.0,
+                "sensor.phase_c": 3000.0,
+            },
+        )
+
+        assert state.grid_phase_power_w == (
+            pytest.approx(1000.0),
+            pytest.approx(2000.0),
+            pytest.approx(3000.0),
+        )
+        assert state.huawei_batteries_grid_charge_max_power_w is None
+        assert state.huawei_batteries_charge_discharge_power_w is None
+
+    @pytest.mark.asyncio
+    async def test_missing_switchable_phase_inputs_do_not_degrade_cycle(self) -> None:
+        """Absent optional phase proof rejects only the hold, not the plan."""
+        cfg = _full_cfg()
+        cfg.phase_aware_charging_enabled = False
+        cfg.huawei_solar_power_meter_phase_a_active_power = None
+        cfg.huawei_solar_power_meter_phase_b_active_power = None
+        cfg.huawei_solar_power_meter_phase_c_active_power = None
+        baseline = await _collect(cfg)
+
+        cfg.ev_planned_load_enabled = True
+        cfg.ev_planned_load_charger_phase_topology = EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
+        state = await _collect(cfg)
+
+        assert state.grid_phase_power_w == (None, None, None)
+        assert state.missing_entities_list == baseline.missing_entities_list
 
     @pytest.mark.asyncio
     async def test_the_cumulative_energy_meters_are_normalised(self) -> None:

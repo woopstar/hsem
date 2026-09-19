@@ -15,6 +15,7 @@ from custom_components.hsem.coordinator_cycle import CoordinatorCycleMixin
 from custom_components.hsem.coordinator_ev_command_stability import (
     CoordinatorEvCommandStabilityMixin,
 )
+from custom_components.hsem.coordinator_helpers import ocpp_charge_target
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import EVLiveState, LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
@@ -538,3 +539,223 @@ def test_switchable_minimum_is_the_single_phase_floor() -> None:
         harness, SLOT_START + timedelta(minutes=1), _cfg_switchable(), _live()
     )
     assert published == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Auto-phase-switching chargers (issue #1083): disruptive-mode hysteresis
+# ---------------------------------------------------------------------------
+
+
+def test_active_three_to_one_phase_transition_keeps_three_phase_mode() -> None:
+    """Near-equal prices keep an active go-e session in three-phase mode."""
+    now = SLOT_START + timedelta(minutes=5)
+    live_slot = _rec(import_price=0.279, ev_power_w=1840.0)
+    next_slot = _rec(
+        start=SLOT_END,
+        end=SLOT_END + timedelta(hours=1),
+        import_price=0.273,
+        ev_power_w=6900.0,
+    )
+    harness = _Harness([live_slot, next_slot])
+    harness._ev_last_command_w["ev"] = 11_040.0
+    live = _live(soc_pct=73.7)
+    live.ev_planned_load_deadline = SLOT_START + timedelta(hours=2, minutes=30)
+
+    published = _run(harness, now, _cfg_switchable(), live)
+
+    assert published == pytest.approx(4140.0)
+    target_kw, amps, phases = ocpp_charge_target(
+        published, "three_phase_switchable", rated_current_a=16
+    )
+    assert target_kw == pytest.approx(4.14)
+    assert amps == 6
+    assert phases == 3
+    expected_kwh = round(published * (SLOT_END - now).total_seconds() / 3_600_000, 3)
+    assert live_slot.ev_charger_calculated_power == pytest.approx(published)
+    assert live_slot.ev_total_planned_load_kwh == pytest.approx(expected_kwh)
+    assert live_slot.ev_accounted_load_kwh == pytest.approx(expected_kwh)
+    assert live_slot.ev_planned_load_kwh == pytest.approx(0.0)
+
+
+def test_active_one_to_three_phase_transition_keeps_one_phase_mode() -> None:
+    """A feasible inverse crossing does not flap an active session to three phases."""
+    rec = _rec(ev_power_w=4140.0)
+    next_slot = _rec(
+        start=SLOT_END,
+        end=SLOT_END + timedelta(minutes=15),
+        ev_power_w=6900.0,
+    )
+    harness = _Harness([rec, next_slot])
+    harness._ev_last_command_w["ev"] = 1840.0
+    live = _live(soc_pct=79.0)
+    live.ev.power_w = 1840.0
+    live.grid_phase_power_w = (3000.0, 3200.0, 3400.0)
+
+    published = _run(
+        harness,
+        SLOT_START + timedelta(minutes=5),
+        _cfg_switchable(main_fuse_amps=25.0),
+        live,
+    )
+
+    assert published == pytest.approx(1840.0)
+    _, amps, phases = ocpp_charge_target(
+        published, "three_phase_switchable", rated_current_a=16
+    )
+    assert amps == 8
+    assert phases == 1
+
+
+def test_inverse_phase_hold_yields_when_phase_telemetry_is_missing() -> None:
+    """A configured fuse without complete phase readings fails closed."""
+    rec = _rec(ev_power_w=4140.0)
+    next_slot = _rec(
+        start=SLOT_END,
+        end=SLOT_END + timedelta(minutes=15),
+        ev_power_w=6900.0,
+    )
+    harness = _Harness([rec, next_slot])
+    harness._ev_last_command_w["ev"] = 1840.0
+    live = _live(soc_pct=79.0)
+    live.ev.power_w = 1840.0
+
+    assert _run(
+        harness,
+        SLOT_START + timedelta(minutes=5),
+        _cfg_switchable(main_fuse_amps=25.0),
+        live,
+    ) == pytest.approx(4140.0)
+
+
+def test_inverse_phase_hold_yields_without_per_phase_safety_proof() -> None:
+    """An inverse hold cannot replace a phase-safe plan without live proof."""
+    rec = _rec(ev_power_w=4140.0)
+    next_slot = _rec(
+        start=SLOT_END,
+        end=SLOT_END + timedelta(minutes=15),
+        ev_power_w=6900.0,
+    )
+    harness = _Harness([rec, next_slot])
+    harness._ev_last_command_w["ev"] = 1840.0
+    live = _live(soc_pct=79.0)
+    live.ev.power_w = 1840.0
+    live.grid_phase_power_w = (5900.0, 3200.0, 3400.0)
+
+    assert _run(
+        harness,
+        SLOT_START + timedelta(minutes=5),
+        _cfg_switchable(main_fuse_amps=25.0),
+        live,
+    ) == pytest.approx(4140.0)
+
+
+def test_idle_switchable_session_follows_phase_transition() -> None:
+    """Phase hysteresis applies only while the charger is actively charging."""
+    rec = _rec(ev_power_w=1840.0)
+    harness = _Harness([rec])
+    harness._ev_last_command_w["ev"] = 11_040.0
+
+    published = _run(
+        harness,
+        SLOT_START + timedelta(minutes=5),
+        _cfg_switchable(),
+        _live(is_charging=False),
+    )
+
+    assert published == pytest.approx(1840.0)
+
+
+def test_phase_hold_yields_to_live_fuse_headroom() -> None:
+    """Fuse clamping can force the observed three-to-one transition immediately."""
+    rec = _rec(ev_power_w=1840.0)
+    next_slot = _rec(
+        start=SLOT_END,
+        end=SLOT_END + timedelta(hours=1),
+        ev_power_w=6900.0,
+    )
+    harness = _Harness([rec, next_slot])
+    harness._ev_last_command_w["ev"] = 11_040.0
+    live = _live(soc_pct=73.7, house_w=25_070.0)
+    live.ev_planned_load_deadline = SLOT_START + timedelta(hours=2, minutes=30)
+
+    published = _run(
+        harness, SLOT_START + timedelta(minutes=5), _cfg_switchable(), live
+    )
+
+    assert published == pytest.approx(1840.0)
+    _, amps, phases = ocpp_charge_target(
+        published, "three_phase_switchable", rated_current_a=16
+    )
+    assert amps == 8
+    assert phases == 1
+
+
+def test_material_phase_transition_savings_bypass_hold() -> None:
+    """A materially cheaper alternative slot permits the planned phase transition."""
+    now = SLOT_START + timedelta(minutes=5)
+    live_slot = _rec(import_price=1.0, ev_power_w=1840.0)
+    next_slot = _rec(
+        start=SLOT_END,
+        end=SLOT_END + timedelta(hours=1),
+        import_price=0.05,
+        ev_power_w=6900.0,
+    )
+    harness = _Harness([live_slot, next_slot])
+    harness._ev_last_command_w["ev"] = 11_040.0
+    live = _live(soc_pct=73.7)
+    live.ev_planned_load_deadline = SLOT_START + timedelta(hours=2, minutes=30)
+
+    assert _run(harness, now, _cfg_switchable(), live) == pytest.approx(1840.0)
+
+
+def test_free_current_slot_bypasses_inverse_hold_for_material_savings() -> None:
+    """Free current energy is not shifted later merely to retain one phase."""
+    now = SLOT_START + timedelta(minutes=5)
+    rec = _rec(import_price=0.0, ev_power_w=4140.0)
+    next_slot = _rec(
+        start=SLOT_END,
+        end=SLOT_END + timedelta(minutes=15),
+        import_price=1.0,
+        ev_power_w=6900.0,
+    )
+    harness = _Harness([rec, next_slot])
+    harness._ev_last_command_w["ev"] = 1840.0
+    live = _live(soc_pct=79.0)
+    live.ev.power_w = 1840.0
+    live.grid_phase_power_w = (3000.0, 3200.0, 3400.0)
+
+    assert _run(
+        harness, now, _cfg_switchable(main_fuse_amps=25.0), live
+    ) == pytest.approx(4140.0)
+
+
+def test_phase_hold_yields_to_target_overshoot_protection() -> None:
+    """The minimum three-phase hold cannot exceed the remaining target energy."""
+    rec = _rec(ev_power_w=1840.0)
+    harness = _Harness([rec])
+    harness._ev_last_command_w["ev"] = 11_040.0
+
+    published = _run(
+        harness,
+        SLOT_START + timedelta(minutes=5),
+        _cfg_switchable(),
+        _live(soc_pct=79.5),
+    )
+
+    assert published == pytest.approx(1840.0)
+
+
+def test_inverse_phase_hold_yields_when_deadline_would_become_infeasible() -> None:
+    """One-phase retention cannot sacrifice a physically reachable deadline."""
+    rec = _rec(ev_power_w=4140.0)
+    harness = _Harness([rec])
+    harness._ev_last_command_w["ev"] = 1840.0
+
+    published = _run(
+        harness,
+        SLOT_START + timedelta(minutes=5),
+        _cfg_switchable(),
+        _live(soc_pct=75.0),
+    )
+
+    assert published == pytest.approx(4140.0)

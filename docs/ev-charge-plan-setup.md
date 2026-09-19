@@ -885,11 +885,34 @@ both modes exactly: the planner's amp lattice contains the one-phase steps
 (`a × 230 V`) and the three-phase steps (`a × 690 V`), never the
 unexecutable gap between them (e.g. 3681–4139 W for a 16 A charger), and
 the hard per-phase fuse rows check the one-phase mode as a full single-phase
-load and the three-phase mode as a balanced third per phase. The published
-amp ceiling converts mode-aware: at or below `230 V × rated amps` it is a
-one-phase command, above it a three-phase command. Configure **Charger Min
-Power** as the single-phase minimum (`1380` W) and **EV Charger Power** as
-the three-phase nameplate (`11.0` kW → `16 A`).
+load and the three-phase mode as a balanced third per phase.
+
+During an active, managed session below target, HSEM avoids crossing this mode
+boundary for a negligible optimisation because chargers such as go-e implement
+the change as a brief simulated unplug/replug. Instead it publishes the closest
+non-increasing executable command in the current mode: for example, a planned
+`1.84 kW / 8 A / 1φ` reduction from `11.04 kW / 16 A / 3φ` is held at the
+three-phase minimum (`4.14 kW / 6 A / 3φ`) when safe. The inverse boundary is
+stabilised too, preventing repeated one-/three-phase flapping.
+
+Safety and charging intent always win. HSEM follows the fresh phase transition
+when the same-mode command would exceed the remaining target energy, cannot be
+recovered by the accepted plan's executable future commands before the deadline,
+exceed live fuse headroom or the charger rating, or lose a material price benefit
+(including free/negative-price opportunities). An inverse one-phase hold also
+requires complete live Huawei power-meter phase readings proving that the
+retained ceiling is fuse-safe; HSEM collects these automatically for an enabled
+`three_phase_switchable` EV because aggregate Watts alone are not enough.
+Disconnection, disabled smart
+charging, a stopped session, and charge-past-target PV-only charging also bypass
+the hold immediately. The published Watts, whole amps, OCPP `numberPhases`, EV
+slot energy, grid flow, and cost are then rewritten from that one final command,
+so diagnostics and accounting remain coherent.
+
+The published amp ceiling converts mode-aware: at or below
+`230 V × rated amps` it is a one-phase command, above it a three-phase command.
+Configure **Charger Min Power** as the single-phase minimum (`1380` W) and
+**EV Charger Power** as the three-phase nameplate (`11.0` kW → `16 A`).
 
 > Sources: [go-eCharger API v2 discussion #137](https://github.com/goecharger/go-eCharger-API-v2/discussions/137),
 > [Huawei SCharger product page](https://solar.huawei.com/en/products/scharger-7ks-s0-22kt-s0/),
