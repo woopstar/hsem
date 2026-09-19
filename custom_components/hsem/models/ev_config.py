@@ -42,10 +42,10 @@ class EVConfig:
             last slot that can be used to meet the target.  Slots beyond this
             index may still charge but the target must be met by this slot.
             ``None`` means no deadline (skip the deadline soft constraint).
-        base_load_includes_ev: When ``True``, EV charging power is already
-            captured in the house consumption sensor.  The MILP will mark
-            the EV load as accounted rather than planned (affects how the
-            results are written to ``PlannedSlot`` fields).
+        base_load_includes_ev: When ``True``, this EV's charging power remains
+            embedded in the normalized planner house baseline. This is separate
+            from the raw live-meter CT position because HSEM history sensors
+            remove EVs that have configured power telemetry.
         deadline_margin_kwh: Extra energy budgeted above ``target_kwh`` for
             the deadline soft-goal and target-cap constraints, so normal
             execution-layer friction (anti-flap windows, min-power floors,
@@ -122,10 +122,9 @@ class EVConfig:
     #: Only meaningful when ``force_max_discharge_power`` is True; zero is
     #: fail-closed (treated as no permission).
     max_discharge_power_w: float = 0.0
-    #: When True, the live current-slot house projection has already
-    #: subtracted this EV's active session from ``avg_house_consumption_kwh``
-    #: (either because the sensor excludes EV load or because injection
-    #: removed the known session).  Prevents the MILP ``net_load`` rebuild
+    #: When True, accepted live current-slot injection subtracted this EV's
+    #: measured active session from ``avg_house_consumption_kwh``. Prevents
+    #: the MILP ``net_load`` rebuild
     #: from subtracting the heuristic accounted value a second time and
     #: inventing PV headroom that does not exist.
     current_session_removed_from_base: bool = False

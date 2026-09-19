@@ -454,7 +454,8 @@ def test_hold_updates_slot_energy_and_cost_coherently() -> None:
     remaining_hours = (SLOT_END - now).total_seconds() / 3600.0
     expected_kwh = round(published * remaining_hours / 1000.0, 3)
     assert rec.ev_total_planned_load_kwh == pytest.approx(expected_kwh)
-    # The default config counts EV draw inside the house forecast.
+    # Without a configured EV power entity, an EV-inclusive raw meter leaves
+    # this contribution embedded in the normalized planner baseline.
     assert rec.ev_accounted_load_kwh == pytest.approx(expected_kwh)
     assert rec.ev_planned_load_kwh == pytest.approx(0.0)
     assert rec.estimated_cost_currency == pytest.approx(

@@ -461,7 +461,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         len(missing_inputs),
     )
     # Step 1b — inject live solar and consumption into the current slot
-    _inject_live_data_into_current_slot(slots, inp, now)
+    live_ev_removal = _inject_live_data_into_current_slot(slots, inp, now)
 
     # Step 2 — EV planned load injection
     ev_cp: EVChargingPlan | None = None
@@ -486,6 +486,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             min_pwr_w=inp.ev_planned_load_charger_min_power_w,
             deadline=inp.ev_planned_load_deadline,
             base_includes=inp.ev_planned_load_base_load_includes_ev,
+            current_session_removed_from_base=live_ev_removal.primary,
             allow_past_target=inp.ev_planned_allow_charge_past_target_soc,
             label="primary",
             now=now,
@@ -511,6 +512,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             min_pwr_w=inp.ev_second_planned_load_charger_min_power_w,
             deadline=inp.ev_second_planned_load_deadline,
             base_includes=inp.ev_second_planned_load_base_load_includes_ev,
+            current_session_removed_from_base=live_ev_removal.second,
             allow_past_target=inp.ev_second_allow_charge_past_target_soc,
             label="second",
             now=now,
@@ -619,7 +621,15 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # in the selector before scoring, so we don't run it on the baseline here.
 
     # Build EV configs for MILP co-optimisation (when EVs are active)
-    ev_configs = _build_ev_configs_for_milp(inp, slots, now)
+    ev_configs = _build_ev_configs_for_milp(
+        inp,
+        slots,
+        now,
+        current_session_removed_from_base=(
+            live_ev_removal.primary,
+            live_ev_removal.second,
+        ),
+    )
     candidates, winner, candidate_rejected, hysteresis_result = _select_candidate(
         slots,
         inp,

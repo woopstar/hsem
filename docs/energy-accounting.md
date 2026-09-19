@@ -100,11 +100,16 @@ Where $charger\\_efficiency = charger\\_efficiency\\_pct / 100$.
 
 ### Three-field EV load model
 
-| Field                       | Formula                                  | Meaning                         |
-| --------------------------- | ---------------------------------------- | ------------------------------- |
-| `ev_planned_load_kwh`       | Sum of EV AC loads NOT in house load     | Added to net consumption        |
-| `ev_accounted_load_kwh`     | Sum of EV AC loads already in house load | NOT added to net consumption    |
-| `ev_total_planned_load_kwh` | `ev_planned + ev_accounted`              | Total EV activity (diagnostics) |
+| Field                       | Formula                                                           | Meaning                                                       |
+| --------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------- |
+| `ev_planned_load_kwh`       | EV AC contributions not embedded in the normalized house baseline | Added to net consumption                                      |
+| `ev_accounted_load_kwh`     | EV AC contributions still embedded in the normalized baseline     | Subtracted once to recover pure-house demand; not added again |
+| `ev_total_planned_load_kwh` | `ev_planned + ev_accounted`                                       | Total EV activity (diagnostics)                               |
+
+The raw CT position and normalized baseline are separate contracts. HSEM history
+preprocessing removes each EV with configured power telemetry, and accepted
+current-slot live normalization records removal per EV. Mixed two-EV accounting
+is valid; missing telemetry is not equivalent to a genuine 0 W reading.
 
 ### Net surplus filtering
 

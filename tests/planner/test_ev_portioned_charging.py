@@ -394,15 +394,24 @@ def test_ev_discharge_permission_reaches_both_milp_configs() -> None:
         ev_second_planned_load_max_discharge_power_w=5_000.0,
     )
 
-    configs = _build_ev_configs_for_milp(inp, slots, _NOW)
+    configs = _build_ev_configs_for_milp(
+        inp,
+        slots,
+        _NOW,
+        current_session_removed_from_base=(True, False),
+    )
 
     assert configs is not None
     assert {
-        ev.is_second: (ev.force_max_discharge_power, ev.max_discharge_power_w)
+        ev.is_second: (
+            ev.force_max_discharge_power,
+            ev.max_discharge_power_w,
+            ev.current_session_removed_from_base,
+        )
         for ev in configs
     } == {
-        False: (False, 2_400.0),
-        True: (True, 5_000.0),
+        False: (False, 2_400.0, True),
+        True: (True, 5_000.0, False),
     }
 
 

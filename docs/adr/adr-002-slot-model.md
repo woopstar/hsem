@@ -50,8 +50,8 @@ We adopt an **explicit per-slot record** model. Every slot in the horizon is a
 - `solcast_pv_estimate_kwh` — Solcast forecast (decayed for future days)
 - `import_price_kwh` / `export_price_kwh` — full currency/kWh rate
 - `tariff_cost_kwh` — optional grid tariff
-- `ev_planned_load_kwh` — extra EV AC load not in house load
-- `ev_accounted_load_kwh` — EV AC load already in house load
+- `ev_planned_load_kwh` — EV AC load not embedded in normalized house baseline
+- `ev_accounted_load_kwh` — EV AC load still embedded in normalized house baseline
 - `ev_total_planned_load_kwh` — sum of both EV fields
 
 ### Planning decisions (mutable during pipeline)

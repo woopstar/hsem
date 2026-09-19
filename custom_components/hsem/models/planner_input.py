@@ -119,8 +119,9 @@ class PlannerInput:
         months_winter:
             Month numbers (1-12) classified as winter.
         house_power_includes_ev:
-            Whether the house-consumption sensor already includes EV charger
-            power.  Affects net-consumption calculation.
+            Whether the raw live house meter includes EV charger power. Used
+            only to reconcile instantaneous current-slot measurements; it does
+            not describe the normalized historical planner baseline.
     """
 
     # --- temporal context ---
@@ -260,6 +261,8 @@ class PlannerInput:
     #: Electrical topology of the primary charger (see ``utils/phase_power``).
     ev_planned_load_charger_phase_topology: str = "single_phase"
     ev_planned_load_deadline: datetime | None = None
+    #: Whether primary-EV draw remains embedded in the normalized historical
+    #: planner baseline after HSEM preprocessing.
     ev_planned_load_base_load_includes_ev: bool = False
     #: When True, the EV may continue charging past its target SoC using
     #: surplus PV that would otherwise be curtailed (e.g. battery full,
@@ -299,6 +302,8 @@ class PlannerInput:
     #: Electrical topology of the second charger (see ``utils/phase_power``).
     ev_second_planned_load_charger_phase_topology: str = "single_phase"
     ev_second_planned_load_deadline: datetime | None = None
+    #: Whether second-EV draw remains embedded in the normalized historical
+    #: planner baseline after HSEM preprocessing.
     ev_second_planned_load_base_load_includes_ev: bool = False
     #: Same as ev_planned_allow_charge_past_target_soc, for the second EV.
     ev_second_allow_charge_past_target_soc: bool = False

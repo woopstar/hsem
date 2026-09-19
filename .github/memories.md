@@ -49,6 +49,7 @@ cycle are durable; stale generations must not publish.
 | `cost_function.py`        | Scores a candidate plan — source of truth for cost math                                                                                                                   |
 | `soc_simulation.py`       | Simulates battery SoC forward through a slot plan                                                                                                                         |
 | `ev_planner.py`           | EV-specific planning logic                                                                                                                                                |
+| `ev_load_accounting.py`   | Canonical pure-house/EV split for normalized planner slot loads                                                                                                           |
 
 ### ML layer (`custom_components/hsem/ml/`)
 
@@ -74,6 +75,7 @@ cycle are durable; stale generations must not publish.
 | `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                    |
 | `weekday_profile.py`    | Weekday/weekend split house load EWMA profiles                                                     |
 | `ev_mode_resolver.py`   | Auto-Full EV charging on negative electricity prices                                               |
+| `ev_accounting.py`      | Raw CT versus per-EV normalized-baseline accounting helper                                         |
 | `unit_normalize.py`     | Generic sensor unit normalization via HA's `unit_conversion` converters (issue #945)               |
 
 ---
@@ -162,6 +164,19 @@ dc_kwh  = ev_ac_to_dc_kwh(ac_kwh, eff)   # energy delivered to the EV battery
 
 EV charger efficiency **percentage** → fraction uses the same
 `clamp_efficiency()` as battery efficiency (never `max(pct, 1.0) / 100.0` inline).
+
+### EV raw meter versus normalized baseline (issue #1080)
+
+`PlannerInput.house_power_includes_ev` describes only the raw live CT position.
+The per-EV `base_load_includes_ev` fields describe whether that EV remains
+embedded in normalized planner house averages. HSEM history sensors remove each
+EV with configured power telemetry before accumulation, so an upstream CT does
+not imply that configured EV remains in the planner baseline. Current-slot live
+removal is tracked per EV through `EVConfig.current_session_removed_from_base`;
+never use a site-wide `any(...)` shortcut. `ev_planned_load_kwh` contains
+normalized-out contributions, `ev_accounted_load_kwh` contains contributions
+still embedded, and both MILP and SoC simulation recover pure house as
+`avg_house_consumption_kwh - ev_accounted_load_kwh` without clamping.
 
 ### Partly elapsed live slot (issue #1012)
 

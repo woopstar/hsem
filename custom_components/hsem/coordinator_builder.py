@@ -32,6 +32,7 @@ from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.conversion import convert_to_float, convert_to_int
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
+from custom_components.hsem.utils.ev_accounting import normalized_baseline_includes_ev
 from custom_components.hsem.utils.live_power import LivePowerEstimate
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
@@ -379,8 +380,9 @@ def build_planner_input(
         )
         or 1380.0,
         ev_planned_load_deadline=live.ev_planned_load_deadline,
-        ev_planned_load_base_load_includes_ev=bool(
-            cfg.house_power_includes_ev_charger_power
+        ev_planned_load_base_load_includes_ev=normalized_baseline_includes_ev(
+            raw_house_meter_includes_ev=bool(cfg.house_power_includes_ev_charger_power),
+            ev_power_entity=cfg.ev.power_entity,
         ),
         ev_planned_load_charger_phase_topology=(
             cfg.ev_planned_load_charger_phase_topology
@@ -431,8 +433,9 @@ def build_planner_input(
         )
         or 1380.0,
         ev_second_planned_load_deadline=live.ev_second_planned_load_deadline,
-        ev_second_planned_load_base_load_includes_ev=bool(
-            cfg.house_power_includes_ev_charger_power
+        ev_second_planned_load_base_load_includes_ev=normalized_baseline_includes_ev(
+            raw_house_meter_includes_ev=bool(cfg.house_power_includes_ev_charger_power),
+            ev_power_entity=cfg.ev_second.power_entity,
         ),
         ev_second_planned_load_charger_phase_topology=(
             cfg.ev_second_planned_load_charger_phase_topology
