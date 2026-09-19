@@ -155,7 +155,10 @@ Applied to the current slot immediately before hardware writes, using live senso
    override — the planner's original recommendation stands. See
    `custom_sensors/recommendation_resolver.py`, `planner_allocated_ev`.
 
-4. Battery energy > remaining discharge-schedule need → `batteries_discharge_mode`
+No fixed-schedule capacity override exists. The former
+`batteries_schedules_remaining_capacity_needed` rule was removed with the inert
+battery-schedule feature (#860/#873); the planner's current recommendation is
+kept when none of the three runtime rules above fires.
 
 ### Invariants for tests
 
