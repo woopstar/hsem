@@ -62,21 +62,21 @@ cycle are durable; stale generations must not publish.
 
 ### Utils layer (`custom_components/hsem/utils/`)
 
-| File                    | Responsibility                                                                       |
-| ----------------------- | ------------------------------------------------------------------------------------ |
-| `recommendations.py`    | `Recommendations` enum + canonical `DISCHARGE_RECS` and `CHARGE_RECS` frozensets     |
-| `misc.py`               | Shared math helpers: `clamp_efficiency()`, `calculate_recommended_threshold()`, etc. |
-| `sensornames.py`        | All HA entity name constants — never hardcode sensor names elsewhere                 |
-| `prices.py`             | Price lookup, grid fee calculation, spot price helpers                               |
-| `huawei.py`             | Huawei Solar inverter API helpers                                                    |
-| `logger.py`             | `HSEM_LOGGER` — rotating file handler, `propagate=False`                             |
-| `solar_corrector.py`    | Per-hour PV forecast accuracy auto-correction (issue #602)                           |
-| `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill computation)                 |
-| `capacity_learner.py`   | Battery usable capacity auto-detection from BMS readings                             |
-| `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                      |
-| `weekday_profile.py`    | Weekday/weekend split house load EWMA profiles                                       |
-| `ev_mode_resolver.py`   | Auto-Full EV charging on negative electricity prices                                 |
-| `unit_normalize.py`     | Generic sensor unit normalization via HA's `unit_conversion` converters (issue #945) |
+| File                    | Responsibility                                                                                     |
+| ----------------------- | -------------------------------------------------------------------------------------------------- |
+| `recommendations.py`    | `Recommendations` enum + canonical `DISCHARGE_RECS`, `CHARGE_RECS`, and `SENTINEL_RECS` frozensets |
+| `misc.py`               | Shared math helpers: `clamp_efficiency()`, `calculate_recommended_threshold()`, etc.               |
+| `sensornames.py`        | All HA entity name constants — never hardcode sensor names elsewhere                               |
+| `prices.py`             | Price lookup, grid fee calculation, spot price helpers                                             |
+| `huawei.py`             | Huawei Solar inverter API helpers                                                                  |
+| `logger.py`             | `HSEM_LOGGER` — rotating file handler, `propagate=False`                                           |
+| `solar_corrector.py`    | Per-hour PV forecast accuracy auto-correction (issue #602)                                         |
+| `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill computation)                               |
+| `capacity_learner.py`   | Battery usable capacity auto-detection from BMS readings                                           |
+| `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                    |
+| `weekday_profile.py`    | Weekday/weekend split house load EWMA profiles                                                     |
+| `ev_mode_resolver.py`   | Auto-Full EV charging on negative electricity prices                                               |
+| `unit_normalize.py`     | Generic sensor unit normalization via HA's `unit_conversion` converters (issue #945)               |
 
 ---
 
@@ -94,9 +94,17 @@ charge_eff = clamp_efficiency(charge_efficiency_pct)   # returns fraction 0.01-1
 
 ```python
 # ALWAYS import from utils/recommendations.py — never redefine locally
-from custom_components.hsem.utils.recommendations import DISCHARGE_RECS, CHARGE_RECS
+from custom_components.hsem.utils.recommendations import (
+    CHARGE_RECS,
+    DISCHARGE_RECS,
+    SENTINEL_RECS,
+)
 if slot.recommendation in DISCHARGE_RECS:
     ...
+
+# SENTINEL_RECS contains enum members for the genuinely inert planner states:
+# TimePassed and MissingInputEntities. Strict BatteriesWaitMode is actionable
+# and must not be treated as a sentinel.
 ```
 
 ### Recommended threshold
@@ -1925,13 +1933,13 @@ Test: `tests/test_coordinator_tracking_solar_corrector.py::test_restored_solar_c
 1. `planner/soc_simulation.py` relabels **only** `force_batteries_discharge` / `force_export` to `batteries_wait_mode` when the simulated discharge is zero — `batteries_discharge_mode` deliberately keeps its label because it is the user's configured window, not a forced action. So a discharge window whose re-solved `batteries_discharged_kwh` rounds below `PLANNED_ENERGY_ROUNDING_KWH` (0.001 kWh) keeps the discharge label _and_ satisfies the derived hold, without the plan ever having decided to hold.
 2. `batteries_discharge_mode` executes as `MaximizeSelfConsumption`, where this cap is a **ceiling the firmware ramps within** from live house load — not a setpoint. Writing 0 W there disables the exact behaviour the mode exists for and contradicts the `Recommendations` enum's own contract for it ("discharge battery to cover house load").
 
-**Why nothing damped it:** the published recommendation never changed, and both existing hysteresis layers key off a _recommendation_ change — plan-level hysteresis (#372) stabilises candidate selection, window hysteresis (#315) holds the current slot's label (and `window_hysteresis.py::_rec_category` lets any transition involving a neutral recommendation through immediately anyway). Nothing guarded this final actuator boundary.
+**Why nothing damped it:** the published recommendation never changed, and both existing hysteresis layers key off a _recommendation_ change — plan-level hysteresis (#372) stabilises candidate selection and window hysteresis (#315/#1075) holds current-slot label changes, including strict wait-mode transitions. Nothing guarded this final actuator boundary because the label itself did not change.
 
 **Fix:** new `applier_caps._primary_battery_cap_hold(rec)` — `_primary_battery_hold(rec)` **and** the recommendation is not `batteries_discharge_mode` — used for the discharge-cap decision in `applier.py` only. `_primary_battery_hold()` itself is unchanged and keeps its meaning for `_held_planned_export_is_authoritative()` and the `batteries_wait_mode` working-mode branch (where the two are identical anyway, so that branch is untouched). Every other 0 W path is independent of the hold and keeps immediate precedence: EV permission gating (#797), the planned-EV rate cap and phase-headroom reservation (#816), the solar-charge-only cap (#922), the wait-mode reserve floor (#954), the `current_required_battery_kwh` SoC guard (#592), and the read-only/degraded gates. `force_batteries_discharge` / `force_export` already bypassed this branch entirely.
 
 **Two alternatives considered and rejected, worth knowing if this resurfaces:**
 
-- _Relabel `batteries_discharge_mode` → `batteries_wait_mode` when the solved discharge is zero_ (the reporter's third suggestion, and the symmetrical-looking change to `soc_simulation.py`). Fixes the dashboard-vs-hardware contradiction but **not** the churn: window hysteresis explicitly does not hold transitions to a neutral recommendation, so the label — and therefore the register — would still flip every replan. It also changes planner semantics and ripples into the charge/discharge schedulers.
+- _Relabel `batteries_discharge_mode` → `batteries_wait_mode` when the solved discharge is zero_ (the reporter's third suggestion, and the symmetrical-looking change to `soc_simulation.py`). Issue #1075 later made strict wait-mode transitions subject to window hysteresis, but this alternative still changes planner semantics and ripples into the charge/discharge schedulers rather than fixing the invalid cap-hold derivation at its source.
 - _A slot-scoped actuator latch_ (freeze the current slot's hold decision at slot entry, mirroring `_ev_held_slot_start` / `coordinator_ev_command_stability.py`). Works, but adds cross-cycle state to the applier to damp the output of a mis-derivation instead of removing the wrong input. Keep this option in mind only if a future report shows oscillation on a slot whose _recommendation_ genuinely changes each replan — that is the case the latch would cover and this fix does not.
 
 **`applier.py` size gotcha:** the file was at 29 859 bytes against the 30 KB hard limit, so the helper and its full rationale live in `applier_caps.py` (8.5 KB) and `applier.py` carries a one-line comment plus the call. It is now 29 915 bytes — anything further in that file needs a split first.
