@@ -18,13 +18,15 @@ the candidate set, and the mathematical models behind each strategy.
 ## Why multiple candidates?
 
 Battery scheduling is a sequential decision problem under uncertainty (prices,
-PV, and load are forecasts, not certainties). A single heuristic strategy may
-miss the global optimum under certain market conditions. By evaluating multiple
-independent strategies and picking the cheapest valid one, the planner:
+PV, and load are forecasts, not certainties). HSEM uses one authoritative MILP
+to solve the global optimisation problem and retains two independent baselines:
 
-- Captures more of the available arbitrage value
-- Degrades gracefully when forecasts are wrong
-- Provides explainable alternative plans for debugging
+- `no_action` provides an explainable diagnostic cost floor;
+- `passive` provides a fail-closed PV-only fallback;
+- `milp` captures the available arbitrage value while respecting physical and safety constraints.
+
+The separate candidates also make validation and failure handling explicit without
+reintroducing the retired heuristic strategy family.
 
 ---
 
@@ -99,8 +101,9 @@ without any grid-based scheduling.
 ## MILP global optimisation
 
 The MILP solver (`planner/milp_optimizer.py`) uses scipy's HiGHS to find the
-globally optimal charge/discharge schedule. This is the **primary planner** —
-the MILP solution is preferred over all heuristic candidates.
+globally optimal charge/discharge schedule. The MILP is the sole active
+optimisation candidate; `no_action` is diagnostic and `passive` is the
+defensive fallback.
 
 See [MILP Optimization](milp-optimization.md) for the full LP formulation,
 variable layout, constraints, solver pipeline, and post-processing flow.

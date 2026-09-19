@@ -1,6 +1,6 @@
 # HSEM MILP Optimization
 
-The MILP solver (`planner/milp_optimizer.py`) finds the globally optimal battery charge/discharge schedule using scipy's HiGHS linear programming solver. It is the **primary planner** — heuristic candidates are generated alongside it for benchmarking and fallback, but the MILP solution is preferred whenever scipy is available. `scipy`/`numpy` are declared in `manifest.json`'s `requirements`, so Home Assistant installs them automatically on setup; the "unavailable" fallback below is a defensive path, not the expected steady state.
+The MILP solver (`planner/milp_optimizer.py`) finds the globally optimal battery charge/discharge schedule using scipy's HiGHS linear programming solver. It is the **sole optimisation authority**. The only accompanying candidates are `no_action` (diagnostic only) and `passive` (fail-closed PV-only fallback); the former heuristic candidate family is retired. `scipy`/`numpy` are declared in `manifest.json`'s requirements, so Home Assistant installs them automatically on setup; the "unavailable" fallback below is a defensive path, not the expected steady state.
 
 ---
 
@@ -178,6 +178,31 @@ Where:
 | $p_{\mathrm{fuse}}$ | Fuse penalty cost: $\max(p_{\mathrm{imp}}) \times 100$ (same magnitude as SoC) |
 | $p_{\mathrm{ev\_pen}}^{(v)}$ | EV deadline penalty for EV v: $\max(p_{\mathrm{imp}}) \cdot \max(\mathrm{energy\_needed}, 1.0) \cdot 10$ |
 | $\beta_{\mathrm{ev}}^{(v)}$ | EV charge-past-target benefit for EV v: `future_value_per_kwh` — avoided-future-import valuation (issue #630), or a $0.0001$ per kWh AC fallback tiebreaker when no future price data is available |
+
+### Grid-charge break-even
+
+There is no fixed-schedule `min_price_difference` constraint in the MILP. The
+solver chooses grid charging only when its full-horizon objective improves. For
+a simple charge-now/discharge-later comparison, one stored kWh is profitable
+when:
+
+$$
+p_{discharge} \eta_{discharge}
+> \frac{p_{charge}}{\eta_{charge}} + \alpha
+$$
+
+or equivalently:
+
+$$
+p_{discharge}
+> \frac{p_{charge}/\eta_{charge} + \alpha}{\eta_{discharge}}
+$$
+
+The formula includes the actual AC energy needed to store one kWh, the AC energy
+delivered by one discharged kWh, and cycle wear. A raw price spread that only
+matches $\alpha$ is insufficient because it ignores both conversion losses.
+Terminal-SoC valuation and export opportunity cost remain part of the complete
+objective and can change the global result.
 
 Plus EV pre-deadline benefit (undiscounted, per EV $v$ with deadline, slots $t \leq D_v$):
 
@@ -533,7 +558,7 @@ After the MILP (or baseline) winner is selected, the engine runs a final pass ov
 
 ## Fallback
 
-If `scipy` is unavailable, `usable_kwh ≤ 0`, or the solver fails (crash, timeout, or non-success status), `solve_milp()` returns `None`. The engine silently drops the MILP candidate and the heuristic candidates compete as normal. Since `scipy`/`numpy` are declared `manifest.json` requirements, Home Assistant installs them for every user on setup — `scipy unavailable` should now only occur if the environment's package installation itself failed, not as routine behavior. Pickup is be measured via the `hsem_plan_origin` metric: `milp` when the LP succeeds, `rule_based` otherwise.
+If `scipy` is unavailable, `usable_kwh ≤ 0`, or the solver fails (crash, timeout, or non-success status), `solve_milp()` returns `None`. The engine drops the MILP candidate and fails closed to the `passive` PV-only candidate; `no_action` remains diagnostic and cannot win. Since `scipy`/`numpy` are declared `manifest.json` requirements, Home Assistant installs them for every user on setup; `scipy unavailable` should now only occur if the environment's package installation itself failed, not as routine behavior. Plan origin is exposed as `milp` for a successful solve and `rule_based` for the defensive fallback.
 
 ---
 

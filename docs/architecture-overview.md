@@ -114,7 +114,7 @@ HA-dependent sensor entities that consume coordinator data.
 | `planner/slot_price_population.py` | Populates per-slot prices incl. missing-price estimation       |
 | `planner/charge_scheduler.py`      | Assigns charge recommendations (planner/charging/ sub-package) |
 | `planner/discharge_scheduler.py`   | Assigns discharge recommendations                              |
-| `planner/candidate_generator.py`   | Generates 8+ candidate strategies                              |
+| `planner/candidate_generator.py`   | Generates diagnostic baselines and the authoritative MILP plan |
 | `planner/candidate_selector.py`    | Scores, validates, picks best candidate                        |
 | `planner/cost_function.py`         | 8-term cost function (money + selector)                        |
 | `planner/soc_simulation.py`        | Forward battery SoC simulation                                 |
@@ -164,7 +164,6 @@ flowchart TD
     B[Collect live HA entity states\nstate_collector]
     C[Build SensorConfig from config entry]
     D[Generate recommendation time-slots]
-    E[Build battery-schedule objects]
     F[Populate weighted house-consumption averages]
     G[Populate electricity prices and Solcast PV estimates]
 
@@ -175,30 +174,29 @@ flowchart TD
         H4[Mark time-passed slots]
         H5[Populate battery capacity]
         H6[Populate net consumption\npass 1 without EV]
-        H7[Apply discharge schedules]
-        H8[Apply charge schedules and arbitrage]
-        H9[Apply excess export]
-        H10[Apply seasonal optimisation]
-        H11[Build EV charging plan\nfrom net surplus]
-        H12[Populate net consumption\npass 2 with EV]
-        H13[Generate 8+ candidate plans]
-        H14[Simulate SoC for each candidate]
-        H15[Score all candidates]
-        H16[Apply plan-level hysteresis]
-        H17[Select best candidate]
-        H18[Apply EV load labelling\nlayer 2]
-        H19[Build explanation]
+        H7[Apply opportunistic charge labels]
+        H8[Apply excess export]
+        H9[Apply seasonal optimisation]
+        H10[Build EV charging plan\nfrom net surplus]
+        H11[Populate net consumption\npass 2 with EV]
+        H12[Generate no-action, passive, and MILP candidates]
+        H13[Simulate and validate candidates]
+        H14[Score candidates]
+        H15[Apply plan-level hysteresis]
+        H16[Select best valid candidate]
+        H17[Apply EV load labelling\nlayer 2]
+        H18[Build explanation]
 
-        H1 --> H2 --> H3 --> H4 --> H5 --> H6 --> H7 --> H8 --> H9 --> H10
-        H10 --> H11 --> H12 --> H13 --> H14 --> H15 --> H16 --> H17 --> H18 --> H19
+        H1 --> H2 --> H3 --> H4 --> H5 --> H6 --> H7 --> H8 --> H9
+        H9 --> H10 --> H11 --> H12 --> H13 --> H14 --> H15 --> H16 --> H17 --> H18
     end
 
     I[Resolve current slot recommendation\nruntime resolver]
     J[Accumulate forecast vs actual data]
     K[Package CoordinatorData and notify subscribers]
 
-    A --> B --> C --> D --> E --> F --> G --> H1
-    H19 --> I --> J --> K
+    A --> B --> C --> D --> F --> G --> H1
+    H18 --> I --> J --> K
 ```
 
 ---
@@ -225,17 +223,20 @@ This split prevents the selector from preferring plans that look cheap only beca
 
 ### 3. MILP global optimisation
 
-Battery scheduling is globally an NP-hard combinatorial problem. HSEM solves it with:
+HSEM uses scipy's HiGHS solver as the sole optimisation authority. Candidate
+generation retains only:
 
-- A rule-based heuristic (8+ candidate strategies) for fast, reliable daily use
-- An LP solver (scipy's HiGHS) that finds the globally optimal solution when available
-- The MILP winner can reinforce or replace the heuristic winner
+- `no_action`, a diagnostic cost floor that cannot win;
+- `passive`, a fail-closed PV-only fallback;
+- `milp`, the globally optimal battery/grid/PV plan, extended with managed EV variables when active.
+
+The former heuristic candidate family was retired once MILP-only mode became authoritative.
 
 ### 4. Three-layer recommendation system
 
 Recommendations are assigned in three consecutive layers, each with strict priority rules:
 
-- **Layer 1** — Planner engine: discharge schedules → charge schedules → excess export → seasonal fill
+- **Layer 1** — Planner engine: opportunistic charge → excess export → seasonal fill
 - **Layer 2** — EV labelling: post-simulation re-label of EV-charging slots
 - **Layer 3** — Runtime resolver: current-slot overrides based on live sensor data
 
