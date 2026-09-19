@@ -282,6 +282,9 @@ Each `BatteryScheduleInput` defines:
 
 HSEM charges the battery **before** a discharge window so it is full when high prices arrive.
 The pre-charge window ends at `schedule.start` and is sized to fill the battery from current SoC.
+A planning run inside `[schedule.start, schedule.end)` retains that active occurrence,
+including cross-midnight windows after midnight. Only its remaining slots contribute
+to the discharge need used by pre-charge planning.
 
 ### Excess export and grid controls
 
@@ -441,6 +444,9 @@ recommendation it is not changed by later rules in the same layer.
 | Priority | Condition                                                               | Recommendation             |
 | -------- | ----------------------------------------------------------------------- | -------------------------- |
 | 1        | Slot falls inside a configured discharge window and price spread is met | `batteries_discharge_mode` |
+
+An in-progress occurrence remains active until its end boundary; elapsed slots
+are omitted from its capacity need while remaining slots keep the discharge label.
 
 **Charge schedule windows** (`apply_charge_schedules`) — for each discharge window, eligible pre-charge slots are filled in order:
 
