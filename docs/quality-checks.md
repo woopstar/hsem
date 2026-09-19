@@ -26,16 +26,23 @@ This document describes the static quality tools available in HSEM and how to ru
 This runs ruff format, ruff check, and prettier (markdown/YAML/JSON). Must pass before a PR
 can be opened.
 
-### Verify formatting without writing (CI mode)
+### Verify formatting and lint without writing (CI mode)
 
 ```bash
 ./scripts/quality.sh format-check
 ```
 
-Same prettier invocation and pinned version as `lint`, but `--check` instead of
-`--write`, so it never mutates the tree. This is what the GitHub Actions
-workflow calls — the version and the command live only in `scripts/quality.sh`,
-so CI, the pre-commit hook and a local run can never drift apart.
+The non-mutating counterpart of `lint`: `ruff format --check`, `ruff check`
+(no `--fix`) and prettier `--check`. It never touches the tree, so a violation
+fails instead of being quietly repaired.
+
+This is the target that actually gates formatting and lint in CI. `lint` and
+`all` both _fix_ in place, which means that in an ephemeral CI container they
+can never fail on anything auto-fixable — the fix is applied, the tree is
+discarded, and the run goes green. `format-check` is what the GitHub Actions
+workflow calls, and the pinned prettier version and every invocation live only
+in `scripts/quality.sh`, so CI, the pre-commit hook and a local run cannot
+drift apart.
 
 ### Run mypy type checking
 
@@ -83,7 +90,8 @@ flowchart TD
     B --> C[./scripts/quality.sh typing]
     C --> D[./scripts/quality.sh quality]
     D --> E[./scripts/quality.sh test]
-    E --> F{All pass?}
+    E --> E2[./scripts/quality.sh format-check]
+    E2 --> F{All pass?}
     F -->|Yes| G[Open PR]
     F -->|No| H[Fix issues] --> B
 ```
@@ -139,13 +147,20 @@ If in doubt, **add to the whitelist** rather than deleting.
 
 ## CI Integration
 
-Pyright and Vulture run in CI as the `quality` job in `.github/workflows/lint-and-test.yml`.
-Both are currently set to `continue-on-error: true` (staged rollout) to avoid blocking
-PRs until the warning baseline is fully resolved.
+`.github/workflows/lint-and-test.yml` runs the checks in two jobs:
 
-**Next steps to harden CI:**
+- **`validate`** calls `./scripts/quality.sh format-check`, which verifies
+  `ruff format`, `ruff check` and prettier without writing. This is what gates
+  formatting and lint — `lint` and `all` fix in place, so in an ephemeral CI
+  container they cannot fail on anything auto-fixable.
+- **`quality`** runs `./scripts/quality.sh all` in the devcontainer, covering
+  typing (mypy), static quality (pyright + vulture), translations and the test
+  suite with its per-module coverage floor.
 
-1. Resolve the remaining `CoordinatorEntity` invariance warnings (requires HA framework fix
-   or a type-ignore comment on each `super().__init__()` call).
-2. Set `continue-on-error: false` in the CI workflow once the warning count is zero.
-3. Run `./scripts/quality.sh quality` to verify no regressions before PRs.
+Nothing is set to `continue-on-error`; every check blocks the job on failure.
+
+**Known gap:** `main` has no branch protection, so no check is _required_ to
+merge. A failing check shows red on the PR and blocks anyone following the
+documented workflow, but auto-merge (e.g. Dependabot) can still merge past it.
+Making the `validate` and `quality` jobs required status checks would close
+that loop.

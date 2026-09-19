@@ -66,7 +66,7 @@ Commands:
   lint      Format and lint code (ruff format + ruff check + prettier --write)
   typing    Type check with mypy
   quality   Static quality checks (pyright + vulture)
-  format-check  Verify prettier formatting without writing (used by CI)
+  format-check  Verify ruff format, ruff lint and prettier without writing (used by CI)
   translations  Validate en/da/de/es translation files stay in sync
   skylos    Run Skylos static analysis (experimental, not in 'all')
   test      Run tests with pytest and coverage
@@ -95,6 +95,8 @@ case "${1:-}" in
         run python -m vulture custom_components/hsem vulture_whitelist.py --min-confidence 0 || true
         ;;
     format-check)
+        run ruff format --check .
+        run ruff check .
         prettier_run --check
         ;;
     translations)
@@ -123,6 +125,7 @@ case "${1:-}" in
     all)
         echo "=== Lint ==="
         run ruff format .
+        run ruff check . --fix
         prettier_run --write
         echo ""
         echo "=== Type Check ==="
