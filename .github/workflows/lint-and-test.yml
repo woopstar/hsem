@@ -37,9 +37,14 @@ jobs:
         with:
           scandir: "./scripts"
 
-      - name: Check Prettier formatting
-        # Goes through quality.sh so the version and invocation live in one
-        # place; see PRETTIER_VERSION there.
+      # format-check verifies ruff as well as prettier, so this job needs ruff.
+      # Pinned via requirements_lint.txt so CI and the devcontainer agree.
+      - name: Install lint tooling
+        run: python3 -m pip install --disable-pip-version-check -r requirements_lint.txt
+
+      - name: Check formatting and lint
+        # Goes through quality.sh so the versions and invocations live in one
+        # place; see PRETTIER_VERSION there and requirements_lint.txt for ruff.
         run: ./scripts/quality.sh format-check
 
   quality:
