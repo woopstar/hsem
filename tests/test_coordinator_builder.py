@@ -7,6 +7,7 @@ discharge-cap feedback loop (issue #592, beta7).
 from __future__ import annotations
 
 import pytest
+import voluptuous as vol
 
 from custom_components.hsem.coordinator_builder import (
     _resolve_max_discharge_power_w,
@@ -15,6 +16,7 @@ from custom_components.hsem.coordinator_builder import (
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.utils.ev_accounting import normalized_baseline_includes_ev
 
 
 class TestResolveMaxDischargePowerW:
@@ -84,6 +86,77 @@ def test_builder_prefers_bounded_effective_ev_soc() -> None:
 
     assert planner_input.ev_planned_load_enabled is True
     assert planner_input.ev_planned_load_current_soc_pct == pytest.approx(45.5)
+
+
+class TestNormalizedEvBaselineAccounting:
+    """Raw CT inclusion and normalized planner-baseline inclusion are distinct."""
+
+    @staticmethod
+    def _build(cfg: SensorConfig) -> PlannerInput:
+        return build_planner_input(
+            cfg=cfg,
+            live=LiveState(),
+            hourly_recommendations=[],
+            batteries_schedules=[],
+            previous_winner_name=None,
+            previous_winner_score=0.0,
+        )
+
+    def test_undefined_optional_power_entity_is_not_configured(self) -> None:
+        assert (
+            normalized_baseline_includes_ev(
+                raw_house_meter_includes_ev=True,
+                ev_power_entity=vol.UNDEFINED,
+            )
+            is True
+        )
+
+    def test_configured_ev_power_is_removed_from_inclusive_baseline(self) -> None:
+        cfg = SensorConfig()
+        cfg.house_power_includes_ev_charger_power = True
+        cfg.ev.power_entity = "sensor.ev_power"
+
+        planner_input = self._build(cfg)
+
+        assert planner_input.house_power_includes_ev is True
+        assert planner_input.ev_planned_load_base_load_includes_ev is False
+
+    def test_two_ev_baseline_accounting_is_independent(self) -> None:
+        cfg = SensorConfig()
+        cfg.house_power_includes_ev_charger_power = True
+        cfg.ev.power_entity = "sensor.ev_power"
+        cfg.ev_second.power_entity = None
+
+        planner_input = self._build(cfg)
+
+        assert planner_input.ev_planned_load_base_load_includes_ev is False
+        assert planner_input.ev_second_planned_load_base_load_includes_ev is True
+
+    def test_ev_exclusive_raw_meter_keeps_both_baselines_exclusive(self) -> None:
+        cfg = SensorConfig()
+        cfg.house_power_includes_ev_charger_power = False
+
+        planner_input = self._build(cfg)
+
+        assert planner_input.ev_planned_load_base_load_includes_ev is False
+        assert planner_input.ev_second_planned_load_base_load_includes_ev is False
+
+    def test_session_zero_is_distinct_from_missing(self) -> None:
+        cfg = SensorConfig()
+
+        known_zero = build_planner_input(
+            cfg=cfg,
+            live=LiveState(),
+            hourly_recommendations=[],
+            batteries_schedules=[],
+            previous_winner_name=None,
+            previous_winner_score=0.0,
+            ev_session_kw={"ev": 0.0},
+        )
+        missing = self._build(cfg)
+
+        assert known_zero.ev_session_charge_kw == pytest.approx(0.0)
+        assert missing.ev_session_charge_kw is None
 
 
 class TestFalsyZeroPreservation:

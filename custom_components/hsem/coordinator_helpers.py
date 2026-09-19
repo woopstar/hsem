@@ -24,6 +24,7 @@ from custom_components.hsem.planner.ev_planner import (
     rebuild_ev_plan_from_slots,
 )
 from custom_components.hsem.utils.datetime_utils import slot_contains, utc_key
+from custom_components.hsem.utils.ev_accounting import normalized_baseline_includes_ev
 from custom_components.hsem.utils.logger import async_log
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.phase_power import charger_power_to_current_a
@@ -111,8 +112,9 @@ def write_ev_slot_commands(
     primary_w: float,
     second_w: float,
     remaining_hours: float,
-    old_total_ev_kwh: float,
-    base_load_includes_ev: bool,
+    old_planned_ev_kwh: float,
+    primary_base_load_includes_ev: bool,
+    second_base_load_includes_ev: bool,
 ) -> None:
     """Publish EV charger commands onto a slot with coherent accounting.
 
@@ -133,18 +135,29 @@ def write_ev_slot_commands(
         second_w: Second charger AC command in Watts.
         remaining_hours: Hours left in the slot, used to convert the command
             into the energy the slot will actually carry.
-        old_total_ev_kwh: The slot's EV load before this write, so the grid
-            flow can be corrected by the delta rather than recomputed.
-        base_load_includes_ev: True when the house consumption forecast already
-            contains EV draw, which decides whether the load lands in
-            ``ev_accounted_load_kwh`` or ``ev_planned_load_kwh``.
+        old_planned_ev_kwh: The slot's separate EV load before this write, so
+            grid flow can be corrected only by demand not already embedded in
+            the normalized house baseline.
+        primary_base_load_includes_ev: Whether primary-EV draw remains in the
+            normalized planner baseline.
+        second_base_load_includes_ev: Whether second-EV draw remains in the
+            normalized planner baseline.
     """
     slot.ev_charger_calculated_power = round(primary_w)
     slot.ev_second_charger_calculated_power = round(second_w)
-    new_total_ev_kwh = round((primary_w + second_w) * remaining_hours / 1000.0, 3)
+    primary_kwh = max(primary_w, 0.0) * remaining_hours / 1000.0
+    second_kwh = max(second_w, 0.0) * remaining_hours / 1000.0
+    new_total_ev_kwh = round(primary_kwh + second_kwh, 3)
     slot.ev_total_planned_load_kwh = new_total_ev_kwh
-    slot.ev_accounted_load_kwh = new_total_ev_kwh if base_load_includes_ev else 0.0
-    slot.ev_planned_load_kwh = 0.0 if base_load_includes_ev else new_total_ev_kwh
+    slot.ev_accounted_load_kwh = round(
+        (primary_kwh if primary_base_load_includes_ev else 0.0)
+        + (second_kwh if second_base_load_includes_ev else 0.0),
+        3,
+    )
+    slot.ev_planned_load_kwh = round(
+        new_total_ev_kwh - slot.ev_accounted_load_kwh,
+        3,
+    )
     slot.estimated_net_consumption_kwh = round(
         slot.avg_house_consumption_kwh
         + slot.ev_planned_load_kwh
@@ -154,8 +167,8 @@ def write_ev_slot_commands(
     net_grid_kwh = (
         slot.grid_import_kwh
         - slot.grid_export_kwh
-        + new_total_ev_kwh
-        - old_total_ev_kwh
+        + slot.ev_planned_load_kwh
+        - old_planned_ev_kwh
     )
     slot.grid_import_kwh = round(max(net_grid_kwh, 0.0), 3)
     slot.grid_export_kwh = round(max(-net_grid_kwh, 0.0), 3)
@@ -278,7 +291,7 @@ def apply_current_ev_power_override(
     if remaining_hours <= 1e-9:
         return
 
-    old_total_ev_kwh = max(float(slot.ev_total_planned_load_kwh), 0.0)
+    old_planned_ev_kwh = max(float(slot.ev_planned_load_kwh), 0.0)
     primary_w = max(float(slot.ev_charger_calculated_power), 0.0)
     second_w = max(float(slot.ev_second_charger_calculated_power), 0.0)
     primary_max_w = max(
@@ -322,9 +335,24 @@ def apply_current_ev_power_override(
         primary_w=primary_w,
         second_w=second_w,
         remaining_hours=remaining_hours,
-        old_total_ev_kwh=old_total_ev_kwh,
-        base_load_includes_ev=bool(
-            get_config_value(config_entry, "hsem_house_power_includes_ev_charger_power")
+        old_planned_ev_kwh=old_planned_ev_kwh,
+        primary_base_load_includes_ev=normalized_baseline_includes_ev(
+            raw_house_meter_includes_ev=bool(
+                get_config_value(
+                    config_entry, "hsem_house_power_includes_ev_charger_power"
+                )
+            ),
+            ev_power_entity=get_config_value(config_entry, "hsem_ev_charger_power"),
+        ),
+        second_base_load_includes_ev=normalized_baseline_includes_ev(
+            raw_house_meter_includes_ev=bool(
+                get_config_value(
+                    config_entry, "hsem_house_power_includes_ev_charger_power"
+                )
+            ),
+            ev_power_entity=get_config_value(
+                config_entry, "hsem_ev_second_charger_power"
+            ),
         ),
     )
     if primary_w > 1e-9 or second_w > 1e-9:

@@ -12,6 +12,7 @@ import numpy as np
 
 from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.utils.datetime_utils import slot_contains
 from custom_components.hsem.utils.units import ev_dc_to_ac_kwh, timedelta_to_hours
 
 
@@ -59,8 +60,18 @@ def _write_ev_power_fields_to_slots(
                 continue
             # AC load = DC / charger_eff (grid/PV draw)
             ac_load = round(ev_dc_to_ac_kwh(ev_dc_kwh, ev.charger_efficiency), 3)
-            # Accumulate into slot EV fields (additive for multiple EVs)
-            if ev.base_load_includes_ev:
+            # Accumulate into slot EV fields (additive for multiple EVs).
+            # Current live injection may have removed only this EV from an
+            # otherwise inclusive baseline; keep that provenance per EV.
+            load_is_accounted = ev.base_load_includes_ev and not (
+                ev.current_session_removed_from_base
+                and slot_contains(
+                    out_slots[slot_i].start,
+                    out_slots[slot_i].end,
+                    now,
+                )
+            )
+            if load_is_accounted:
                 out_slots[slot_i].ev_accounted_load_kwh += ac_load
             else:
                 out_slots[slot_i].ev_planned_load_kwh += ac_load
@@ -158,7 +169,7 @@ def _write_ev_power_fields_to_slots(
                 # zero command.  (Whatever was placed forward above is now
                 # counted at its new slot instead, so this slot's own
                 # contribution must still go to zero either way.)
-                if ev.base_load_includes_ev:
+                if load_is_accounted:
                     out_slots[slot_i].ev_accounted_load_kwh = round(
                         max(out_slots[slot_i].ev_accounted_load_kwh - ac_load, 0.0),
                         3,

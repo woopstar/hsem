@@ -470,13 +470,28 @@ allocation from the recommendation label and net demand.
 
 ### EV charging fields written to slots
 
-| Field                                | Source                                                |
-| ------------------------------------ | ----------------------------------------------------- |
-| `ev_planned_load_kwh`                | AC load added when `base_load_includes_ev` is `False` |
-| `ev_accounted_load_kwh`              | AC load when already captured in house consumption    |
-| `ev_total_planned_load_kwh`          | Total AC load (sum of planned + accounted)            |
-| `ev_charger_calculated_power`        | Target AC power (W) for primary EV                    |
-| `ev_second_charger_calculated_power` | Target AC power (W) for second EV                     |
+The raw CT-position flag applies only to current live-meter reconciliation.
+Before MILP construction, HSEM derives `base_load_includes_ev` independently per
+EV from the normalized house baseline: configured EV power telemetry is removed
+by HSEM history preprocessing, so that EV is not embedded even when the raw CT
+is upstream of the EVSE. Current-slot live injection additionally records which
+measured sessions it actually removed. The MILP net-load rebuild, writeout, and
+SoC simulation all use this same per-EV split; no site-wide `any(...)` shortcut
+is valid for two-EV accounting.
+
+| Field                                | Source                                                                  |
+| ------------------------------------ | ----------------------------------------------------------------------- |
+| `ev_planned_load_kwh`                | Sum of EV AC contributions not embedded in normalized house consumption |
+| `ev_accounted_load_kwh`              | Sum of EV AC contributions still embedded in normalized house demand    |
+| `ev_total_planned_load_kwh`          | Total AC load (sum of planned + accounted)                              |
+| `ev_charger_calculated_power`        | Target AC power (W) for primary EV                                      |
+| `ev_second_charger_calculated_power` | Target AC power (W) for second EV                                       |
+
+The pure-house load used for battery discharge is
+`avg_house_consumption_kwh - ev_accounted_load_kwh`; it is not clamped to zero.
+This lets the battery cover genuine house demand while an EV charges, subject to
+the existing permission and positive per-EV discharge ceiling, while EV demand
+itself remains grid/PV supplied.
 
 ### Engine-level post-processing (after winner selection)
 

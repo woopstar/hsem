@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 
 from custom_components.hsem.models.data_quality import DataQuality
@@ -20,6 +21,14 @@ from custom_components.hsem.utils.logger import log_planner
 #: Covers ordinary sampling skew between the two meters; a real disagreement
 #: (a house meter lagging an 11 kW EV ramp) is orders of magnitude larger.
 _HOUSE_MINUS_EV_TOLERANCE_W = 200.0
+
+
+@dataclass(frozen=True)
+class LiveEvBaselineRemoval:
+    """Per-EV provenance for accepted current-slot live-house normalization."""
+
+    primary: bool = False
+    second: bool = False
 
 
 def _parse_now(now_iso: str) -> datetime:
@@ -143,7 +152,7 @@ def _inject_live_data_into_current_slot(
     slots: list,
     inp: PlannerInput,
     now: datetime,
-) -> None:
+) -> LiveEvBaselineRemoval:
     """Replace forecast PV and consumption in the current slot with live measurements.
 
     The current (partially-elapsed) slot's ``solcast_pv_estimate_kwh`` and
@@ -161,8 +170,13 @@ def _inject_live_data_into_current_slot(
         slots: Fully populated slot list (after ``_populate_slots``).
         inp: Planner input containing live power readings.
         now: Timezone-aware current datetime.
+
+    Returns:
+        Per-EV flags indicating which measured active sessions were actually
+        removed from the accepted current-slot house projection.
     """
     slot_hours = inp.interval_minutes / 60.0
+    removal = LiveEvBaselineRemoval()
 
     for slot in slots:
         s_start = as_tz(slot.start, now.tzinfo)
@@ -199,16 +213,18 @@ def _inject_live_data_into_current_slot(
                 # house load does not triple between slots (issue #592).
                 live_house_w = inp.live_house_consumption_w
                 if inp.house_power_includes_ev:
-                    ev_ac_w = 0.0
-                    if (
+                    primary_removed = (
                         inp.ev_session_charge_kw is not None
                         and inp.ev_session_charge_kw > 1e-9
-                    ):
-                        ev_ac_w += inp.ev_session_charge_kw * 1000.0
-                    if (
+                    )
+                    second_removed = (
                         inp.ev_second_session_charge_kw is not None
                         and inp.ev_second_session_charge_kw > 1e-9
-                    ):
+                    )
+                    ev_ac_w = 0.0
+                    if primary_removed and inp.ev_session_charge_kw is not None:
+                        ev_ac_w += inp.ev_session_charge_kw * 1000.0
+                    if second_removed and inp.ev_second_session_charge_kw is not None:
                         ev_ac_w += inp.ev_second_session_charge_kw * 1000.0
                     remainder_w = live_house_w - ev_ac_w
                     if remainder_w < -_HOUSE_MINUS_EV_TOLERANCE_W:
@@ -230,8 +246,12 @@ def _inject_live_data_into_current_slot(
                             live_house_w,
                             ev_ac_w,
                         )
-                        break
+                        return removal
                     live_house_w = max(remainder_w, 0.0)
+                    removal = LiveEvBaselineRemoval(
+                        primary=primary_removed,
+                        second=second_removed,
+                    )
 
                 live_load_kwh = (live_house_w / 1000.0) * slot_hours
 
@@ -275,3 +295,5 @@ def _inject_live_data_into_current_slot(
             # inflated by unmeasured EV load when no EV power sensor is
             # configured, so the historical windows are the only clean source.
             break
+
+    return removal

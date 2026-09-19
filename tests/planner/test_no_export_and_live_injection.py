@@ -148,6 +148,7 @@ class _Inp:
         includes_ev: bool = True,
         live_house_available: bool | None = None,
         ev_kw: float | None = None,
+        ev_second_kw: float | None = None,
     ) -> None:
         self.interval_minutes = 60
         self.live_solar_production_w = live_solar_w
@@ -155,7 +156,7 @@ class _Inp:
         self.live_house_consumption_available = live_house_available
         self.house_power_includes_ev = includes_ev
         self.ev_session_charge_kw = ev_kw
-        self.ev_second_session_charge_kw = None
+        self.ev_second_session_charge_kw = ev_second_kw
 
 
 def _current_slot(forecast_kwh: float) -> PlannedSlot:
@@ -192,8 +193,33 @@ def test_live_injection_subtracts_known_ev_power():
     slot = _current_slot(forecast_kwh=0.4)
     # House CT reads 4.0 kW total, EV sensor reports 3.6 kW → 0.4 kW house.
     inp = _Inp(live_house_w=4000.0, ev_kw=3.6)
-    _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
+    removal = _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
     assert slot.avg_house_consumption_kwh == pytest.approx(0.4)
+    assert removal.primary is True
+    assert removal.second is False
+
+
+def test_live_injection_tracks_two_ev_removal_independently():
+    """Only measured positive sessions are marked removed from the baseline."""
+    slot = _current_slot(forecast_kwh=0.4)
+    inp = _Inp(live_house_w=4400.0, ev_kw=3.6, ev_second_kw=0.0)
+
+    removal = _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
+
+    assert slot.avg_house_consumption_kwh == pytest.approx(0.8)
+    assert removal.primary is True
+    assert removal.second is False
+
+
+def test_live_injection_marks_both_positive_ev_sessions_removed():
+    slot = _current_slot(forecast_kwh=0.4)
+    inp = _Inp(live_house_w=7100.0, ev_kw=3.6, ev_second_kw=2.7)
+
+    removal = _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
+
+    assert slot.avg_house_consumption_kwh == pytest.approx(0.8)
+    assert removal.primary is True
+    assert removal.second is True
 
 
 def test_live_injection_keeps_forecast_when_ev_draw_exceeds_house_reading():
@@ -206,8 +232,10 @@ def test_live_injection_keeps_forecast_when_ev_draw_exceeds_house_reading():
     """
     slot = _current_slot(forecast_kwh=0.513)
     inp = _Inp(live_house_w=2400.0, ev_kw=10.87)
-    _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
+    removal = _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
     assert slot.avg_house_consumption_kwh == pytest.approx(0.513)
+    assert removal.primary is False
+    assert removal.second is False
 
 
 def test_live_injection_still_uses_live_pv_when_house_readings_disagree():
@@ -242,9 +270,11 @@ def test_explicit_unavailable_house_preserves_current_forecast():
     slot = _current_slot(forecast_kwh=0.4)
     inp = _Inp(live_house_w=4000.0, live_house_available=False)
 
-    _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
+    removal = _inject_live_data_into_current_slot([slot], inp, _NOW)  # type: ignore[arg-type]
 
     assert slot.avg_house_consumption_kwh == pytest.approx(0.4)
+    assert removal.primary is False
+    assert removal.second is False
 
 
 def test_explicit_available_zero_house_overwrites_current_forecast():
