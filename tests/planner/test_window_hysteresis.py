@@ -1,17 +1,16 @@
-"""Tests for window-level hysteresis (issue #315).
+"""Tests for window-level hysteresis (issues #315 and #1075).
 
-Window-level hysteresis prevents rapid toggling between any non-neutral
-recommendations.  When the current slot's recommendation changes and the
+Window-level hysteresis prevents rapid toggling between actionable
+recommendations. When the current slot's recommendation changes and the
 previous recommendation has been in effect for less than the configured
 hold time, the previous recommendation is kept.
 
 Acceptance criteria
 -------------------
 1. All actionable recommendation flips are held within the hold window,
-   including within-category flips (e.g. ev_smart_charging ↔
-   batteries_charge_solar, batteries_charge_grid ↔ batteries_charge_solar).
+   including strict wait mode and within-category flips.
 2. Minimum hold time is configurable.
-3. Neutral recommendations (wait_mode, time_passed, None) do not trigger hold.
+3. Inert recommendations (time_passed, missing_input_entities, None) are exempt.
 4. Feature disabled (0 min) always allows the switch.
 5. First run (no previous state) always accepts the new recommendation.
 """
@@ -19,6 +18,7 @@ Acceptance criteria
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from custom_components.hsem.planner.charge_scheduler import apply_window_hysteresis
@@ -251,30 +251,66 @@ class TestWindowHysteresis:
         )
 
     # ------------------------------------------------------------------
-    # Neutral recommendations
+    # Wait-mode and inert transitions
     # ------------------------------------------------------------------
 
-    def test_charge_to_neutral_no_hold(self):
-        """Charge→neutral must not hold."""
-        slots = _make_slots(
-            Recommendations.BatteriesWaitMode.value,
-        )
+    def test_discharge_to_wait_within_hold_is_suppressed_and_logged(self):
+        """Strict wait mode is actionable and must not bypass the hold timer."""
+        slots = _make_slots(Recommendations.BatteriesWaitMode.value)
+
+        with patch(
+            "custom_components.hsem.planner.window_hysteresis.log_planner"
+        ) as mock_log:
+            rec, _ = apply_window_hysteresis(
+                slots,
+                _NOW,
+                window_hysteresis_minutes=10,
+                previous_current_recommendation=Recommendations.BatteriesDischargeMode.value,
+                previous_current_slot_start=_NOW - timedelta(minutes=8, seconds=19),
+            )
+
+        assert rec == Recommendations.BatteriesDischargeMode.value
+        assert slots[0].recommendation == Recommendations.BatteriesDischargeMode.value
+        mock_log.assert_called_once()
+        assert "[window_hysteresis] Holding" in mock_log.call_args.args[1]
+
+    def test_wait_to_discharge_within_hold_is_suppressed(self):
+        """The wait-mode hold is symmetric in the reverse direction."""
+        slots = _make_slots(Recommendations.BatteriesDischargeMode.value)
+
         rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
-            window_hysteresis_minutes=30,
-            previous_current_recommendation=Recommendations.BatteriesChargeGrid.value,
-            previous_current_slot_start=_NOW - timedelta(minutes=2),
-        )
-        assert rec == Recommendations.BatteriesWaitMode.value, (
-            "Charge→neutral must not be held"
+            window_hysteresis_minutes=10,
+            previous_current_recommendation=Recommendations.BatteriesWaitMode.value,
+            previous_current_slot_start=_NOW - timedelta(minutes=5),
         )
 
-    def test_discharge_to_neutral_no_hold(self):
-        """Discharge→neutral must not hold."""
-        slots = _make_slots(
-            None,
-        )
+        assert rec == Recommendations.BatteriesWaitMode.value
+        assert slots[0].recommendation == Recommendations.BatteriesWaitMode.value
+
+    def test_discharge_to_wait_after_hold_is_allowed_and_logged(self):
+        """An expired wait-mode hold uses the normal visible allow branch."""
+        slots = _make_slots(Recommendations.BatteriesWaitMode.value)
+
+        with patch(
+            "custom_components.hsem.planner.window_hysteresis.log_planner"
+        ) as mock_log:
+            rec, _ = apply_window_hysteresis(
+                slots,
+                _NOW,
+                window_hysteresis_minutes=10,
+                previous_current_recommendation=Recommendations.BatteriesDischargeMode.value,
+                previous_current_slot_start=_NOW - timedelta(minutes=15),
+            )
+
+        assert rec == Recommendations.BatteriesWaitMode.value
+        mock_log.assert_called_once()
+        assert "[window_hysteresis] Allowing" in mock_log.call_args.args[1]
+
+    def test_discharge_to_none_is_never_held(self):
+        """A missing recommendation is inert and must pass through immediately."""
+        slots = _make_slots(None)
         rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
@@ -282,13 +318,11 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.BatteriesDischargeMode.value,
             previous_current_slot_start=_NOW - timedelta(minutes=2),
         )
-        assert rec is None, "Discharge→neutral must not be held"
+        assert rec is None
 
-    def test_neutral_to_charge_no_hold(self):
-        """Neutral→charge must not hold."""
-        slots = _make_slots(
-            Recommendations.BatteriesChargeGrid.value,
-        )
+    def test_time_passed_to_charge_is_never_held(self):
+        """The time-passed sentinel is inert in either transition direction."""
+        slots = _make_slots(Recommendations.BatteriesChargeGrid.value)
         rec, _ = apply_window_hysteresis(
             slots,
             _NOW,
@@ -296,9 +330,19 @@ class TestWindowHysteresis:
             previous_current_recommendation=Recommendations.TimePassed.value,
             previous_current_slot_start=_NOW - timedelta(minutes=2),
         )
-        assert rec == Recommendations.BatteriesChargeGrid.value, (
-            "Neutral→charge must not be held"
+        assert rec == Recommendations.BatteriesChargeGrid.value
+
+    def test_discharge_to_missing_inputs_is_never_held(self):
+        """The missing-input sentinel remains exempt from hysteresis."""
+        slots = _make_slots(Recommendations.MissingInputEntities.value)
+        rec, _ = apply_window_hysteresis(
+            slots,
+            _NOW,
+            window_hysteresis_minutes=30,
+            previous_current_recommendation=Recommendations.BatteriesDischargeMode.value,
+            previous_current_slot_start=_NOW - timedelta(minutes=2),
         )
+        assert rec == Recommendations.MissingInputEntities.value
 
     # ------------------------------------------------------------------
     # Feature disabled

@@ -215,6 +215,53 @@ async def _write_and_verify_ok(entity_id, desired, writer, reader, **kwargs):  #
     )
 
 
+class TestWaitModeSafetyPrecedence:
+    """Safety-driven holds remain independent of recommendation hysteresis."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("read_only", "degraded_mode"),
+        ((True, DegradedMode.OK), (False, DegradedMode.Error)),
+    )
+    async def test_write_gate_precedes_primary_cap_hold(
+        self,
+        read_only: bool,
+        degraded_mode: DegradedMode,
+    ) -> None:
+        """Read-only and degraded-error gates block before cap-hold evaluation."""
+        sensor = _sensor()
+        cfg = _cfg()
+        cfg.read_only = read_only
+        live = _live(working_mode=WorkingModes.TimeOfUse.value)
+        live._degraded_mode = degraded_mode
+
+        with (
+            patch(
+                "custom_components.hsem.custom_sensors.applier._primary_battery_cap_hold",
+                side_effect=AssertionError("cap hold must not be evaluated"),
+            ),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_set_select_option",
+                new_callable=AsyncMock,
+            ) as mock_select,
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_set_number_value",
+                new_callable=AsyncMock,
+            ) as mock_number,
+        ):
+            await async_apply_battery_settings(
+                sensor,
+                cfg,
+                live,
+                _wait_rec(),
+                5.0,
+                wait_mode_reserve_kwh=1.0,
+            )
+
+        mock_select.assert_not_awaited()
+        mock_number.assert_not_awaited()
+
+
 class TestWaitModeReserveNoneFallsBackToStrictWait:
     """``wait_mode_reserve_kwh=None`` must fall back to the same behaviour
     ``batteries_wait_mode_behavior == "strict"`` would produce for this slot
@@ -380,6 +427,45 @@ class TestWaitModeReserveGatesSelfConsumption:
         ):
             await async_apply_battery_settings(
                 sensor, cfg, live, rec, 5.0, wait_mode_reserve_kwh=1.0
+            )
+
+        mock_select.assert_any_await(sensor, "select.wm", WorkingModes.TimeOfUse.value)
+        mock_number.assert_any_await(sensor, "number.maxdis", 0)
+
+    @pytest.mark.asyncio
+    async def test_reserve_floor_forces_zero_independently_of_cap_hold(self) -> None:
+        """The SoC reserve floor keeps immediate precedence over cap-hold state."""
+        sensor = _sensor()
+        cfg = _cfg()
+        live = _live(working_mode=WorkingModes.MaximizeSelfConsumption.value)
+        live.battery_current_capacity_kwh = 1.0
+
+        with (
+            patch(
+                "custom_components.hsem.custom_sensors.applier._primary_battery_cap_hold",
+                return_value=False,
+            ),
+            patch(_LOGGER_PATCH, new_callable=MagicMock),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_write_and_verify",
+                side_effect=_write_and_verify_ok,
+            ),
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_set_select_option",
+                new_callable=AsyncMock,
+            ) as mock_select,
+            patch(
+                "custom_components.hsem.custom_sensors.applier.async_set_number_value",
+                new_callable=AsyncMock,
+            ) as mock_number,
+        ):
+            await async_apply_battery_settings(
+                sensor,
+                cfg,
+                live,
+                _wait_rec(),
+                5.0,
+                wait_mode_reserve_kwh=1.0,
             )
 
         mock_select.assert_any_await(sensor, "select.wm", WorkingModes.TimeOfUse.value)
