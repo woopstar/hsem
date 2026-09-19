@@ -33,9 +33,10 @@ from custom_components.hsem.utils.phase_power import (
     PHASE_COUNT,
     charger_power_to_current_a,
     normalize_ev_phase_topology,
+    switchable_command_phase_count,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
-from custom_components.hsem.utils.units import GRID_PHASE_VOLTAGE, slot_duration_hours
+from custom_components.hsem.utils.units import slot_duration_hours
 
 # ---------------------------------------------------------------------------
 # Lightweight slot for dynamic floor bridge computation
@@ -217,13 +218,11 @@ def ocpp_charge_target(
     normalized = normalize_ev_phase_topology(topology)
     number_phases: int | None
     if normalized == EV_TOPOLOGY_THREE_PHASE_SWITCHABLE:
-        if (
-            rated_current_a
-            and safe_power_w <= GRID_PHASE_VOLTAGE * rated_current_a + 1e-9
-        ):
-            number_phases = 1
-        else:
-            number_phases = 3
+        number_phases = (
+            switchable_command_phase_count(safe_power_w, rated_current_a)
+            if rated_current_a
+            else PHASE_COUNT
+        )
     elif normalized == EV_TOPOLOGY_THREE_PHASE_BALANCED:
         number_phases = PHASE_COUNT
     else:

@@ -878,10 +878,10 @@ EV plan while leaving the hold pointing at energy that plan no longer
 reserves — the exact class of bug PR #783 fixed, reintroduced through a
 different door.
 
-This is orthogonal to the amp deadband / slot-tail stop suppression in
-`coordinator_ev_command_stability.py` — that layer still runs afterward as a
-defense-in-depth execution-layer smoother (see "EV charger command
-stability" in `docs/planner-spec.md`), but with the current slot's rate now
+This is orthogonal to the phase-mode hysteresis / amp deadband / slot-tail stop
+suppression in `coordinator_ev_command_stability.py` — that layer still runs
+afterward as a defense-in-depth execution-layer smoother (see "EV charger
+command stability" in `docs/planner-spec.md`), but with the current slot's rate now
 stable by construction it typically has nothing left to damp for this class
 of churn. Do not fix this class of bug there — see that section's own
 docstring for why a deadband structurally cannot catch a spike-to-max or a

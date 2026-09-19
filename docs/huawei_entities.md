@@ -94,25 +94,25 @@
 
 ### sensor entities
 
-| Friendly name        | Entity ID                                 | Unit  | Used by HSEM                                                         |
-| -------------------- | ----------------------------------------- | ----- | -------------------------------------------------------------------- |
-| A-B line voltage     | `sensor.power_meter_a_b_line_voltage`     | V     | —                                                                    |
-| Active power         | `sensor.power_meter_active_power`         | W     | —                                                                    |
-| B-C line voltage     | `sensor.power_meter_b_c_line_voltage`     | V     | —                                                                    |
-| C-A line voltage     | `sensor.power_meter_c_a_line_voltage`     | V     | —                                                                    |
-| Consumption          | `sensor.power_meter_consumption`          | kWh   | —                                                                    |
-| Exported             | `sensor.power_meter_exported`             | kWh   | —                                                                    |
-| Frequency            | `sensor.power_meter_frequency`            | Hz    | —                                                                    |
-| Meter status         | `sensor.power_meter_meter_status`         | —     | —                                                                    |
-| Phase A active power | `sensor.power_meter_phase_a_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_a_active_power` (issue #831) |
-| Phase A current      | `sensor.power_meter_current`              | A     | —                                                                    |
-| Phase A voltage      | `sensor.power_meter_phase_a_voltage`      | V     | —                                                                    |
-| Phase B active power | `sensor.power_meter_phase_b_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_b_active_power` (issue #831) |
-| Phase B current      | `sensor.power_meter_current_2`            | A     | —                                                                    |
-| Phase B voltage      | `sensor.power_meter_phase_b_voltage`      | V     | —                                                                    |
-| Phase C active power | `sensor.power_meter_phase_c_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_c_active_power` (issue #831) |
-| Phase C current      | `sensor.power_meter_current_3`            | A     | —                                                                    |
-| Phase C voltage      | `sensor.power_meter_phase_c_voltage`      | V     | —                                                                    |
-| Power factor         | `sensor.power_meter_power_factor`         | —     | —                                                                    |
-| Reactive energy      | `sensor.power_meter_reactive_energy`      | kvarh | —                                                                    |
-| Reactive power       | `sensor.power_meter_reactive_power`       | var   | —                                                                    |
+| Friendly name        | Entity ID                                 | Unit  | Used by HSEM                                                                 |
+| -------------------- | ----------------------------------------- | ----- | ---------------------------------------------------------------------------- |
+| A-B line voltage     | `sensor.power_meter_a_b_line_voltage`     | V     | —                                                                            |
+| Active power         | `sensor.power_meter_active_power`         | W     | —                                                                            |
+| B-C line voltage     | `sensor.power_meter_b_c_line_voltage`     | V     | —                                                                            |
+| C-A line voltage     | `sensor.power_meter_c_a_line_voltage`     | V     | —                                                                            |
+| Consumption          | `sensor.power_meter_consumption`          | kWh   | —                                                                            |
+| Exported             | `sensor.power_meter_exported`             | kWh   | —                                                                            |
+| Frequency            | `sensor.power_meter_frequency`            | Hz    | —                                                                            |
+| Meter status         | `sensor.power_meter_meter_status`         | —     | —                                                                            |
+| Phase A active power | `sensor.power_meter_phase_a_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_a_active_power` (issues #831, #1083) |
+| Phase A current      | `sensor.power_meter_current`              | A     | —                                                                            |
+| Phase A voltage      | `sensor.power_meter_phase_a_voltage`      | V     | —                                                                            |
+| Phase B active power | `sensor.power_meter_phase_b_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_b_active_power` (issues #831, #1083) |
+| Phase B current      | `sensor.power_meter_current_2`            | A     | —                                                                            |
+| Phase B voltage      | `sensor.power_meter_phase_b_voltage`      | V     | —                                                                            |
+| Phase C active power | `sensor.power_meter_phase_c_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_c_active_power` (issues #831, #1083) |
+| Phase C current      | `sensor.power_meter_current_3`            | A     | —                                                                            |
+| Phase C voltage      | `sensor.power_meter_phase_c_voltage`      | V     | —                                                                            |
+| Power factor         | `sensor.power_meter_power_factor`         | —     | —                                                                            |
+| Reactive energy      | `sensor.power_meter_reactive_energy`      | kvarh | —                                                                            |
+| Reactive power       | `sensor.power_meter_reactive_power`       | var   | —                                                                            |
