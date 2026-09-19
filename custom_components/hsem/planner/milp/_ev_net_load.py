@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from custom_components.hsem.planner.ev_load_accounting import split_house_and_ev_load
 from custom_components.hsem.planner.milp._ev_amp_lattice import ev_has_live_session
-from custom_components.hsem.utils.datetime_utils import slot_contains
 from custom_components.hsem.utils.logger import log_planner
 
 if TYPE_CHECKING:
@@ -70,20 +70,17 @@ def resolve_active_evs_and_net_load(
             active_net_load: list[float] = []
             for slot_i in future_idx:
                 slot = slots[slot_i]
+                # Pre-MILP slot population has already classified each EV
+                # contribution per baseline provenance, including current-slot
+                # live removal. Subtract exactly the aggregate that remains
+                # accounted; applying EVConfig flags again would erase a second,
+                # still-embedded EV in mixed two-charger cases.
                 accounted_to_remove = max(slot.ev_accounted_load_kwh, 0.0)
-                if slot_contains(slot.start, slot.end, now) and any(
-                    ev.current_session_removed_from_base for ev in active_evs
-                ):
-                    # Live injection already turned avg_house into a pure-house
-                    # current-slot projection by subtracting every known session.
-                    # The heuristic accounted value may use a different power,
-                    # so subtracting any of it again would invent PV headroom.
-                    accounted_to_remove = 0.0
-                active_net_load.append(
-                    slot.avg_house_consumption_kwh
-                    - accounted_to_remove
-                    - slot.solcast_pv_estimate_kwh
+                house_load, _ev_load = split_house_and_ev_load(
+                    slot,
+                    accounted_load_kwh=accounted_to_remove,
                 )
+                active_net_load.append(house_load - slot.solcast_pv_estimate_kwh)
             net_load = np.asarray(active_net_load, dtype=float)
             pv_avail = np.maximum(-net_load, 0.0)
             base_load = np.maximum(net_load, 0.0)

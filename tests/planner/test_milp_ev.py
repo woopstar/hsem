@@ -1449,19 +1449,20 @@ def test_ev_accounted_load_subtracted_from_net_load_no_double_count():
 
 
 def test_ev_accounted_load_not_subtracted_when_session_already_removed():
-    """When current_session_removed_from_base=True, accounted load is NOT subtracted again.
+    """Production classification keeps a removed current session separate.
 
     The current slot's avg_house_consumption_kwh has already been stripped
-    of the live session by injection.  Subtracting ev_accounted_load_kwh
-    would over-correct and invent phantom PV headroom.  The guard ensures
-    the MILP sees the already-pure house projection.
+    of the live session by injection, and the EV contribution has moved from
+    accounted to planned load. Future slots retain the baseline contract.
     """
     slots = _build_slots(
         4, start_hour=14, import_price=0.30, pv_kwh=1.0, consumption_kwh=2.0
     )
     # Current slot (14:00) already has the session removed by live injection,
-    # so its avg_house is the pure-house value (2.0) — no further subtraction.
-    for s in slots:
+    # so its avg_house is pure house and EV demand is separate/planned.
+    slots[0].ev_planned_load_kwh = 1.5
+    slots[0].ev_total_planned_load_kwh = 1.5
+    for s in slots[1:]:
         s.ev_accounted_load_kwh = 1.5
         s.ev_total_planned_load_kwh = 1.5
 

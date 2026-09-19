@@ -115,9 +115,10 @@ positive per-charger command is treated as permission to display the EV
 label; this keeps the label off-authoritative even while stale live power
 is still being measured.
 
-`base_load_includes_ev` is automatically derived from the
-`hsem_house_power_includes_ev_charger_power` setting in the EV charger config step.
-There is no separate user input for it.
+`hsem_house_power_includes_ev_charger_power` describes only the raw live CT
+position. `base_load_includes_ev` separately describes whether a specific EV
+remains embedded in the normalized planner baseline after HSEM preprocessing.
+There is no separate user input for the planner field.
 
 - `batteries_charge_solar` → `ev_smart_charging`
 - `batteries_wait_mode` → `ev_smart_charging`
@@ -3346,11 +3347,23 @@ published verbatim.
 
 ## EV planned load integration
 
-`base_load_includes_ev` is automatically derived from the
-`hsem_house_power_includes_ev_charger_power` setting in the EV charger config step.
-When the house consumption sensor includes EV charger power, `base_load_includes_ev`
-is `True` (EV load is already in the base consumption averages). Otherwise it is `False`.
-There is no separate user-facing configuration for this field.
+The raw CT-position setting and normalized planner baseline are separate
+contracts:
+
+- `house_power_includes_ev` mirrors
+  `hsem_house_power_includes_ev_charger_power` and applies only to raw live-meter
+  reconciliation in the current slot.
+- `base_load_includes_ev` is derived independently per EV. It is `True` only
+  when that EV can still be embedded in `avg_house_consumption_kwh` after HSEM
+  preprocessing.
+- HSEM's generated utility-meter/history sensors subtract every EV with a
+  configured power entity before accumulating rolling averages. Such an EV has
+  `base_load_includes_ev = False` even when the raw CT is upstream of the EVSE.
+- A configured but temporarily unavailable EV power entity does not become
+  zero and does not flip the contract; history accumulation pauses until the
+  input is authoritative again.
+
+There is no separate user-facing configuration for the normalized-baseline field.
 
 ### EV load field semantics
 
@@ -3358,8 +3371,8 @@ Three per-slot fields capture EV load intent precisely:
 
 | Field                                | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ev_planned_load_kwh`                | Extra EV AC load **added to net consumption** — only the portion not already in `avg_house_consumption`. Zero when `base_load_includes_ev = True`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `ev_accounted_load_kwh`              | EV AC load **already included** in the house consumption sensor. Non-zero when `base_load_includes_ev = True`. Must not be added to net consumption again.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `ev_planned_load_kwh`                | Extra EV AC load **added to net consumption** — the sum of per-EV contributions not embedded in the normalized `avg_house_consumption` baseline.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `ev_accounted_load_kwh`              | EV AC load still embedded in the normalized planner baseline. Must be subtracted once to recover pure-house demand and must not be added to net consumption again.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `ev_total_planned_load_kwh`          | Total planned EV AC load regardless of accounting mode: `ev_planned_load_kwh + ev_accounted_load_kwh`. Always non-zero when any EV charging is planned.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `ev_charger_calculated_power`        | Target AC power (W) for the primary EV charger during this slot. For **future** slots: `round((ac_load_kwh / slot_duration_hours) × 1000)` using the full slot width, re-derived every solve. For the **current** slot: the rate is decided **once**, the first time the slot is seen as current (or the first time its allocation goes from zero to non-zero), using whatever time genuinely remains at that instant — then **held** for the rest of the slot regardless of how the live clock or a re-solve's raw energy÷time ratio would otherwise move it (issue #957; see "Current-slot EV power hold" below). Zero when no charging is planned. |
 | `ev_second_charger_calculated_power` | Same as above, for the second EV.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -3380,11 +3393,20 @@ ev_accounted_load_kwh    = summed EV AC load (primary + second)
 ev_total_planned_load_kwh = summed EV AC load
 ```
 
-Multiple EVs are always **summed**, never overwritten:
+Multiple EVs are always **summed**, never overwritten, and may use mixed
+accounting in the same slot:
 
 ```text
+ev_planned_load_kwh = sum(EV contributions not embedded in baseline)
+ev_accounted_load_kwh = sum(EV contributions still embedded in baseline)
 ev_total_planned_load_kwh = primary_ev_ac_load + second_ev_ac_load
 ```
+
+For the current slot, live injection records removal per EV. If an accepted
+EV-inclusive live-house reading has already had one active session removed,
+that EV's current contribution is planned/separate even if its future-slot
+baseline contract is accounted/embedded. Another EV that was not removed stays
+accounted. Site-wide `any(...)` shortcuts are forbidden.
 
 ### Net load formula with EV
 
@@ -3396,8 +3418,16 @@ effective_net_load_kwh
 ```
 
 Only `ev_planned_load_kwh` (the extra, non-accounted portion) is added.
-Using `ev_total_planned_load_kwh` when `base_load_includes_ev = True` would
-double-count the EV load.
+Pure-house demand used by both the MILP and SoC simulation is:
+
+```text
+pure_house_load_kwh = avg_house_consumption_kwh - ev_accounted_load_kwh
+```
+
+The subtraction is not clamped to zero: a negative result exposes a broken
+accounting contract instead of silently erasing genuine house demand. Using
+`ev_total_planned_load_kwh` as extra demand would double-count embedded EV load;
+subtracting a normalized-out EV again would reproduce the opposite defect.
 
 ### Design invariants
 
@@ -3433,9 +3463,11 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
    the existing slot total, never overwrite it (`+=` not `=`). This ensures
    primary and second EV loads are summed when they share a slot.
 
-5. **No double-counting**: When `base_load_includes_ev = True` for an EV, its
-   planned load must NOT be added to `ev_planned_load_kwh`. It is captured in
-   `ev_accounted_load_kwh` instead.
+5. **No double subtraction or counting**: Each EV contribution lands in
+   exactly one field. A contribution still embedded in the normalized baseline
+   is `ev_accounted_load_kwh`; a normalized-out contribution is
+   `ev_planned_load_kwh`. Current-slot live removal overrides only that EV and
+   only that slot.
 
 6. **Partial current slot**: The currently active slot must be scaled by
    remaining slot duration, not the full slot width.
@@ -3613,11 +3645,16 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
 - When EV is at or above target SoC (`current_soc >= target_soc`),
   all EV load fields are `0.0` (early return `"fully_charged"`).
   Charge-past-target is handled exclusively by the MILP.
-- When `base_load_includes_ev = True`:
-  - `ev_planned_load_kwh == 0.0` for all slots.
-  - `ev_accounted_load_kwh > 0` for charging slots.
-  - `ev_total_planned_load_kwh == ev_accounted_load_kwh`.
-  - Net consumption is not affected by the EV (no double-count).
+- When one EV remains embedded in the normalized baseline and was not removed
+  from the current live projection, its contribution is accounted, not planned.
+- When current-slot live injection already removed an EV session, that EV's
+  current contribution is planned/separate and is not subtracted again.
+- Two-EV slots may contain both planned and accounted load; per-EV accounting
+  must survive MILP writeout and command-stability rewrites.
+- Missing EV power telemetry remains distinct from a genuine 0 W reading and
+  cannot prove that a session was removed from the baseline.
+- Pure-house demand remains positive for the reported 0.082 kWh house / 0.628
+  kWh EV shape and is not clamped to hide an accounting error.
 - `ev_total_planned_load_kwh == ev_planned_load_kwh + ev_accounted_load_kwh` for every slot.
 - Net surplus slots are allocated before grid-import slots.
 - `sum(ev_total_planned_load_kwh over all slots)` equals `total_kwh_needed` (±charger rounding).
