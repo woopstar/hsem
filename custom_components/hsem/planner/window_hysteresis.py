@@ -10,6 +10,8 @@ from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.recommendations import (
     CHARGE_RECS as _CHARGE_RECS,
     DISCHARGE_RECS as _DISCHARGE_RECS,
+    SENTINEL_RECS,
+    Recommendations,
 )
 
 # ---------------------------------------------------------------------------
@@ -34,9 +36,9 @@ def apply_window_hysteresis(
     and the previous recommendation has been in place for less than
     ``window_hysteresis_minutes``, the previous recommendation is kept.
 
-    Neutral recommendations (``batteries_wait_mode``, ``time_passed``,
-    ``missing_input_entities``, ``None``) are never held — only actionable
-    recommendations are subject to the hold timer.
+    Inert recommendations (``time_passed``, ``missing_input_entities``,
+    ``None``) are never held. Actionable recommendations, including strict
+    ``batteries_wait_mode``, are subject to the hold timer.
 
     Args:
         slots:
@@ -82,11 +84,11 @@ def apply_window_hysteresis(
     if previous_current_recommendation is None or previous_current_slot_start is None:
         return new_rec, new_start
 
-    # Neutral recommendations never trigger a hold — if the new or previous
-    # recommendation is neutral, allow the transition immediately.
+    # Inert planner-state sentinels never trigger a hold. Strict wait mode is
+    # actionable and must continue through the normal hold/allow log branches.
     new_category = _rec_category(new_rec)
     prev_category = _rec_category(previous_current_recommendation)
-    if new_category == "neutral" or prev_category == "neutral":
+    if new_category == "inert" or prev_category == "inert":
         return new_rec, new_start
 
     # If the recommendation hasn't changed at all, no hold needed
@@ -125,8 +127,15 @@ def apply_window_hysteresis(
 def _rec_category(rec: str | None) -> str:
     """Classify a recommendation into a category.
 
-    Returns ``"charge"``, ``"discharge"``, or ``"neutral"``.
+    Returns ``"charge"``, ``"discharge"``, ``"inert"``, or ``"neutral"``.
     """
+    if rec is None:
+        return "inert"
+    try:
+        if Recommendations(rec) in SENTINEL_RECS:
+            return "inert"
+    except ValueError:
+        pass
     if rec in _CHARGE_RECS:
         return "charge"
     if rec in _DISCHARGE_RECS:

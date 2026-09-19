@@ -138,3 +138,11 @@ CHARGE_RECS: frozenset[str] = frozenset(
     }
 )
 """All modes where the battery charges (or EV charging suppresses discharge)."""
+
+SENTINEL_RECS: frozenset[Recommendations] = frozenset(
+    {
+        Recommendations.TimePassed,
+        Recommendations.MissingInputEntities,
+    }
+)
+"""Inert planner-state sentinels that never represent a hardware action."""

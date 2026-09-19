@@ -2136,19 +2136,20 @@ belongs to a different _category_ than the previous recommendation, and the
 new category has been in effect for less than the configured hold time,
 the previous recommendation is kept.
 
-Two categories are defined:
+Recommendation classifications are:
 
 - **Charge-type**: `batteries_charge_grid`, `batteries_charge_solar`,
   `ev_smart_charging`
 - **Discharge-type**: `batteries_discharge_mode`,
   `force_batteries_discharge`, `force_export`
-- **Neutral**: `batteries_wait_mode`, `time_passed`,
-  `missing_input_entities`, `None`
+- **Actionable neutral**: `batteries_wait_mode`
+- **Inert**: `time_passed`, `missing_input_entities`, `None`
 
 All actionable recommendation changes are held within the hold window,
-including within-category flips such as `batteries_charge_solar` ↔
-`ev_smart_charging`. Only transitions to/from neutral pass through
-immediately.
+including transitions into and out of strict `batteries_wait_mode` and
+within-category flips such as `batteries_charge_solar` ↔
+`ev_smart_charging`. Only transitions to/from inert planner-state sentinels
+pass through immediately.
 
 The hold time is configured by `planner_window_hysteresis_minutes`
 (default: 10). When set to a positive integer, any recommendation
@@ -2171,9 +2172,13 @@ to the `hourly_recommendations` list and ultimately to hardware writes.
 - Any actionable recommendation change within the hold time keeps the
   previous recommendation (including within-category flips such as
   `ev_smart_charging` ↔ `batteries_charge_solar`).
-- Transitions to/from neutral are never held.
+- Transitions into and out of `batteries_wait_mode` are held symmetrically.
 - Changes after the hold time expires switch to the new recommendation.
-- Neutral recommendations never trigger hold behaviour.
+- Inert recommendations (`time_passed`, `missing_input_entities`, `None`)
+  never trigger hold behaviour.
+- Safety-driven battery holds (SoC reserve floor, read-only, and degraded-mode
+  gates) retain immediate precedence in the hardware applier and are not
+  delayed by recommendation hysteresis.
 - Feature disabled (hold minutes = 0) always allows the switch.
 
 ## No-action baseline
