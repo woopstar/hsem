@@ -21,7 +21,7 @@ from custom_components.hsem.utils.recommendations import (
     DISCHARGE_RECS as _DISCHARGE_RECS,
     Recommendations,
 )
-from custom_components.hsem.utils.time_windows import next_window_start_dt
+from custom_components.hsem.utils.time_windows import window_containing_or_next
 from custom_components.hsem.utils.units import is_material_planned_energy_kwh
 
 # ---------------------------------------------------------------------------
@@ -64,24 +64,16 @@ def apply_discharge_schedules(
         horizon_end = as_tz(future_slots[-1].end, now.tzinfo)
 
         # Collect all occurrences of this schedule window within the horizon.
-        # Start from the first upcoming occurrence and advance one day at a time.
-        # Each occurrence is stored so apply_charge_schedules can schedule
-        # pre-charge independently per window occurrence.
-        window_start_abs = next_window_start_dt(now, sched.start)
+        # Start from the active occurrence when now is inside the window;
+        # otherwise start from the next occurrence. Each occurrence is stored so
+        # apply_charge_schedules can schedule pre-charge independently per window.
+        window_start_abs, window_end_abs = window_containing_or_next(
+            now, sched.start, sched.end
+        )
         occurrences: list[tuple[datetime, datetime, float, float]] = []
         sched_total_net = 0.0
 
         while window_start_abs < horizon_end:
-            if sched.end > sched.start:
-                window_end_abs = datetime.combine(
-                    window_start_abs.date(), sched.end
-                ).replace(tzinfo=now.tzinfo)
-            else:
-                # Cross-midnight discharge window
-                window_end_abs = datetime.combine(
-                    (window_start_abs + timedelta(days=1)).date(), sched.end
-                ).replace(tzinfo=now.tzinfo)
-
             for slot in slots:
                 slot_start = as_tz(slot.start, now.tzinfo)
                 slot_end = as_tz(slot.end, now.tzinfo)
@@ -132,8 +124,9 @@ def apply_discharge_schedules(
             )
             sched_total_net += occ_net
 
-            # Advance to the same window start on the following calendar day
+            # Advance to the same window on the following calendar day.
             window_start_abs += timedelta(days=1)
+            window_end_abs += timedelta(days=1)
 
         # _occurrences: per-day data consumed by apply_charge_schedules
         sched._occurrences = occurrences

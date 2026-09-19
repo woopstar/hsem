@@ -59,6 +59,12 @@ in the same layer must not change it.
 
 1. Slot falls inside a configured discharge window and price spread is met → `batteries_discharge_mode`
 
+If the planning run occurs inside a configured window's half-open interval
+`[start, end)`, the active occurrence remains in the plan. Elapsed slots are
+excluded, and the occurrence's required capacity is calculated from only the
+remaining slots. This rule also applies to cross-midnight windows whose active
+occurrence started on the previous calendar day.
+
 **Charge schedule windows** (before each discharge window):
 
 1. Import price < 0 → `batteries_charge_grid`
