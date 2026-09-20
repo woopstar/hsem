@@ -9,7 +9,8 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from custom_components.hsem.models.live_state import EVLiveState
+from custom_components.hsem.coordinator_helpers import ev_management_enabled
+from custom_components.hsem.models.live_state import EVLiveState, LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.recommendations import Recommendations
@@ -103,6 +104,20 @@ def _ev_is_active_or_planned(
         ev.is_charging
         or _is_positive_finite_number(ev.power_w)
         or _is_positive_finite_number(planned_power_w)
+    )
+
+
+def _ev_uses_managed_ocpp(
+    cfg: SensorConfig,
+    live: LiveState,
+    *,
+    is_second: bool,
+) -> bool:
+    """Return whether HSEM owns this EV through its built-in OCPP server."""
+    return bool(
+        cfg.ocpp_enabled
+        and (not is_second or cfg.ocpp_second_enabled)
+        and ev_management_enabled(cfg, live, is_second=is_second)
     )
 
 
