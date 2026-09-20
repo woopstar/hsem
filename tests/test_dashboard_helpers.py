@@ -10,10 +10,12 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
+from jinja2 import Environment
 
 from homeassistant.components import websocket_api
 from homeassistant.components.lovelace import dashboard as lovelace_dashboard
@@ -32,6 +34,21 @@ from custom_components.hsem.utils.dashboard import (
 )
 
 _MODULE = "custom_components.hsem.utils.dashboard"
+
+
+def _find_multiple_entity_rows(value: Any) -> list[dict[str, Any]]:
+    """Return every Multiple Entity Row configuration in nested YAML data."""
+    if type(value) is dict:
+        rows = [value] if value.get("type") == "custom:multiple-entity-row" else []
+        for nested in value.values():
+            rows.extend(_find_multiple_entity_rows(nested))
+        return rows
+    if type(value) is list:
+        rows = []
+        for nested in value:
+            rows.extend(_find_multiple_entity_rows(nested))
+        return rows
+    return []
 
 
 @pytest.fixture
@@ -67,6 +84,69 @@ class TestBundledDashboardPath:
 
         assert path.name == "dashboard_en.yaml"
         assert path.is_file()
+
+    def test_ev_economics_uses_dynamic_multiple_entity_rows(self) -> None:
+        """Both EV cards group arbitrary deadline labels and round deltas."""
+        dashboard_text = _bundled_dashboard_path().read_text(encoding="utf-8")
+
+        assert yaml.safe_load(dashboard_text) is not None
+        assert dashboard_text.count("type: custom:multiple-entity-row") == 2
+        assert "title: EV Charging Economics" in dashboard_text
+        assert "title: EV 2 Charging Economics" in dashboard_text
+        assert dashboard_text.count("state: ready") >= 2
+        assert dashboard_text.count("groupby('deadline_label')") == 2
+        assert dashboard_text.count("p.delta_from_previous | round(2)") == 2
+        assert dashboard_text.count("~ 'Next ' ~ label ~ ': '") == 2
+        assert "selectattr('deadline_label', 'eq'" not in dashboard_text
+        assert "white-space: pre-line" not in dashboard_text
+        assert "output.lines | join" not in dashboard_text
+
+    def test_ev_economics_template_has_clean_single_line_output(self) -> None:
+        """Dynamic labels render without embedded newlines or indentation."""
+        dashboard = yaml.safe_load(
+            _bundled_dashboard_path().read_text(encoding="utf-8")
+        )
+        rows = _find_multiple_entity_rows(dashboard)
+        template = rows[0]["entities"][0]["template"]
+        points = [
+            {
+                "deadline_label": "09:30",
+                "target_soc_pct": 80.0,
+                "total_cost": 1.2345,
+                "delta_from_previous": None,
+                "feasible": True,
+            },
+            {
+                "deadline_label": "09:30",
+                "target_soc_pct": 100.0,
+                "total_cost": 4.5678,
+                "delta_from_previous": 3.3333,
+                "feasible": False,
+            },
+            {
+                "deadline_label": "22:15",
+                "target_soc_pct": 100.0,
+                "total_cost": 2.2222,
+                "delta_from_previous": None,
+                "feasible": True,
+            },
+        ]
+
+        rendered = (
+            Environment(autoescape=False)
+            .from_string(template)
+            .render(
+                entity="sensor.hsem_ev_soc_economics",
+                state_attr=lambda _entity, _attribute: points,
+            )
+        )
+
+        assert rendered == (
+            "Next 09:30: 80.0%: 1.2345 ✓  ·  "
+            "100.0%: 4.5678 (+3.33) ⚠  |  "
+            "Next 22:15: 100.0%: 2.2222 ✓"
+        )
+        assert "\n" not in rendered
 
 
 class TestActiveDashboardsCollection:

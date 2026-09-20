@@ -328,9 +328,9 @@ class TestComputeEvSocEconomics:
         for targets in targets_per_label.values():
             assert targets == [50.0, 60.0, 70.0, 80.0, 100.0]
 
-    def test_targets_at_or_below_current_soc_cost_zero_no_solve(self):
-        """Targets <= current SoC cost 0.0 and skip run_planner() entirely."""
-        base_input = _make_planner_input(current_soc=80.0)
+    def test_targets_below_current_soc_are_removed(self):
+        """Targets below the car's actual SoC are absent from the result."""
+        base_input = _make_planner_input(current_soc=83.0)
         call_count = 0
         from custom_components.hsem.planner import ev_soc_economics as mod
 
@@ -348,19 +348,38 @@ class TestComputeEvSocEconomics:
             result = compute_ev_soc_economics(
                 base_input,
                 is_second=False,
-                current_soc_pct=80.0,
+                current_soc_pct=83.0,
                 capacity_kwh=77.0,
                 max_charge_kw=11.0,
                 now=datetime(2024, 6, 15, 14, 0, tzinfo=UTC),
                 soc_targets=(50.0, 60.0, 70.0, 80.0, 100.0),
             )
 
-        # Only the 100% target (per deadline) is above current SoC (80%).
         assert call_count == 2
-        already_met = [p for p in result.points if p.target_soc_pct <= 80.0]
-        assert already_met
-        for p in already_met:
-            assert p.total_cost == pytest.approx(0.0)
+        assert [point.target_soc_pct for point in result.points] == [100.0, 100.0]
+
+    def test_target_equal_to_current_soc_remains_without_solve(self):
+        """A target equal to actual SoC remains as the zero-cost baseline."""
+        base_input = _make_planner_input(current_soc=80.0)
+        with patch(
+            "custom_components.hsem.planner.ev_soc_economics.run_planner"
+        ) as mock_run:
+            result = compute_ev_soc_economics(
+                base_input,
+                is_second=False,
+                current_soc_pct=80.0,
+                capacity_kwh=77.0,
+                max_charge_kw=11.0,
+                now=datetime(2024, 6, 15, 14, 0, tzinfo=UTC),
+                soc_targets=(70.0, 80.0),
+            )
+
+        assert len(result.points) == 2
+        assert all(
+            point.target_soc_pct == pytest.approx(80.0) for point in result.points
+        )
+        assert all(point.total_cost == pytest.approx(0.0) for point in result.points)
+        mock_run.assert_not_called()
 
     def test_monotonic_cost_per_deadline_column(self):
         """Cost is monotonically non-decreasing within a deadline column."""
