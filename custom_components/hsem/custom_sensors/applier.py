@@ -43,6 +43,7 @@ from custom_components.hsem.custom_sensors.applier_caps import (  # noqa: F401
     _configured_battery_device_ids,
     _ev_is_active_or_planned,
     _ev_phase_headroom_reservation_w,
+    _ev_uses_managed_ocpp,
     _fmt_live_power_w,
     _held_planned_export_is_authoritative,
     _planned_ev_discharge_cap_w,
@@ -186,6 +187,7 @@ async def async_apply_battery_settings(
     # Permission-on-but-ceiling-0 EVs fail closed (issue #991) — used below
     # for a distinct cap_reason and a latched warning naming both settings.
     zero_ceiling_evs = _zero_ceiling_ev_names(relevant_evs)
+
     # A genuine batteries_charge_solar slot is solar-charge-only: the MILP
     # expects the grid to cover any house-load deficit, not the battery.
     # Huawei's own MaximizeSelfConsumption firmware behaviour follows live
@@ -276,16 +278,14 @@ async def async_apply_battery_settings(
                     # The 0 W ceiling, not the plan, forced this cap to
                     # zero (issue #991).
                     cap_reason = _zero_ceiling_cap_reason(zero_ceiling_evs)
-                # Phase-headroom reservation (issue #816): when an EV is
-                # live charging but the planned power is 0 (or lower), the
-                # OCPP anti-flap stop window means the charger hasn't
-                # stopped yet. Reserve headroom for the still-running EV
-                # draw to prevent a transient phase-fuse overload.
+                # Only managed OCPP chargers can be in HSEM's anti-flap
+                # ramp-down window; external grid draw is not reserved (#1086).
                 total_reservation_w = sum(
                     _ev_phase_headroom_reservation_w(
                         ev=ev, planned_power_w=planned_power_w
                     )
-                    for _, ev, planned_power_w in relevant_evs
+                    for name, ev, planned_power_w in relevant_evs
+                    if _ev_uses_managed_ocpp(cfg, live, is_second=name == "second")
                 )
                 if total_reservation_w > 0 and cap_w > 0:
                     reserved_cap_w = max(cap_w - total_reservation_w, 0)

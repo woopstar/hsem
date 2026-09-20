@@ -86,12 +86,14 @@ def _rec(
     discharged_kwh: float = 1.5,
     charged_kwh: float = 0.0,
     ev_power_w: float = 0.0,
+    ev_second_power_w: float = 0.0,
+    slot_minutes: int = 60,
 ) -> HourlyRecommendation:
-    """Return a one-hour recommendation slot."""
+    """Return a recommendation slot with configurable duration."""
     zero = 0.0
     return HourlyRecommendation(
         start=_NOW,
-        end=_NOW + timedelta(hours=1),
+        end=_NOW + timedelta(minutes=slot_minutes),
         recommendation=recommendation,
         avg_house_consumption_kwh=0.5,
         avg_house_consumption_1d_kwh=zero,
@@ -110,6 +112,7 @@ def _rec(
         import_price=0.20,
         solcast_pv_estimate_kwh=zero,
         ev_charger_calculated_power=ev_power_w,
+        ev_second_charger_calculated_power=ev_second_power_w,
     )
 
 
@@ -199,22 +202,52 @@ class TestDischargeCapStep:
         assert summary.overall_status is ApplyStatus.FAILED
 
     @pytest.mark.asyncio
-    async def test_a_live_ev_draw_reserves_phase_headroom_from_the_cap(self) -> None:
-        """An EV that has not ramped down yet eats the whole discharge cap."""
+    async def test_an_external_ev_draw_does_not_reserve_phase_headroom(self) -> None:
+        """An unmanaged grid-only EV must not suppress planned house discharge."""
+        cfg = _cfg()
+        cfg.ocpp_enabled = True
         live = _live()
-        # Start at the rated cap so the reservation-driven 0 W is a real change.
+        live.huawei_batteries_max_discharge_power_w = 0
+        live.ev.is_charging = True
+        live.ev.is_connected = True
+        live.ev.power_w = 3705.0
+        live.ev.force_max_discharge_power = True
+        live.ev.max_discharge_power_w = 5000
+
+        summary = await _apply(
+            cfg,
+            live,
+            _rec(
+                Recommendations.BatteriesDischargeMode.value,
+                discharged_kwh=0.054,
+                ev_power_w=0.0,
+                slot_minutes=15,
+            ),
+        )
+
+        cap_write = next(r for r in summary.results if r.entity_id == _DISCHARGE_ENTITY)
+        assert cap_write.desired == 216
+
+    @pytest.mark.asyncio
+    async def test_a_managed_ocpp_ev_draw_reserves_phase_headroom(self) -> None:
+        """A managed OCPP EV that has not ramped down eats the discharge cap."""
+        cfg = _cfg()
+        cfg.ocpp_enabled = True
+        cfg.ev_planned_load_enabled = True
+        live = _live()
         live.huawei_batteries_max_discharge_power_w = 2500
         live.ev.is_charging = True
         live.ev.is_connected = True
         live.ev.power_w = 7400.0
         live.ev.force_max_discharge_power = True
         live.ev.max_discharge_power_w = 5000
+        live.ev_planned_load_smart_charging_enabled = True
 
         with patch(f"{_MODULE}._LOGGER") as logger:
             summary = await _apply(
-                _cfg(),
+                cfg,
                 live,
-                # Planned EV power 0 W while the charger still draws 7.4 kW.
+                # Planned EV power 0 W while the managed charger still draws 7.4 kW.
                 _rec(Recommendations.BatteriesDischargeMode.value, ev_power_w=0.0),
             )
 
@@ -224,6 +257,65 @@ class TestDischargeCapStep:
             "phase-headroom reservation reduced cap" in str(call.args[0])
             for call in logger.debug.call_args_list
         )
+
+    @pytest.mark.asyncio
+    async def test_an_external_second_ev_draw_does_not_reserve_phase_headroom(
+        self,
+    ) -> None:
+        """The secondary unmanaged EV path also preserves house discharge."""
+        cfg = _cfg()
+        cfg.ocpp_second_enabled = True
+        cfg.ev_second_planned_load_enabled = True
+        live = _live()
+        live.huawei_batteries_max_discharge_power_w = 0
+        live.ev_second.is_charging = True
+        live.ev_second.is_connected = True
+        live.ev_second.power_w = 3705.0
+        live.ev_second.force_max_discharge_power = True
+        live.ev_second.max_discharge_power_w = 5000
+        live.ev_second_planned_load_smart_charging_enabled = True
+
+        summary = await _apply(
+            cfg,
+            live,
+            _rec(
+                Recommendations.BatteriesDischargeMode.value,
+                discharged_kwh=0.054,
+                ev_second_power_w=0.0,
+                slot_minutes=15,
+            ),
+        )
+
+        cap_write = next(r for r in summary.results if r.entity_id == _DISCHARGE_ENTITY)
+        assert cap_write.desired == 216
+
+    @pytest.mark.asyncio
+    async def test_a_managed_second_ocpp_ev_draw_reserves_phase_headroom(self) -> None:
+        """The secondary managed OCPP path applies the same transition guard."""
+        cfg = _cfg()
+        cfg.ocpp_enabled = True
+        cfg.ocpp_second_enabled = True
+        cfg.ev_second_planned_load_enabled = True
+        live = _live()
+        live.huawei_batteries_max_discharge_power_w = 2500
+        live.ev_second.is_charging = True
+        live.ev_second.is_connected = True
+        live.ev_second.power_w = 7400.0
+        live.ev_second.force_max_discharge_power = True
+        live.ev_second.max_discharge_power_w = 5000
+        live.ev_second_planned_load_smart_charging_enabled = True
+
+        summary = await _apply(
+            cfg,
+            live,
+            _rec(
+                Recommendations.BatteriesDischargeMode.value,
+                ev_second_power_w=0.0,
+            ),
+        )
+
+        cap_write = next(r for r in summary.results if r.entity_id == _DISCHARGE_ENTITY)
+        assert cap_write.desired == 0
 
 
 class TestWorkingModeSelection:
