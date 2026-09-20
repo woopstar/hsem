@@ -1667,6 +1667,8 @@ fraction inline.
 
 **Fix:** `_ev_phase_headroom_reservation_w()` in `applier_caps.py` computes the reservation: when an EV is live charging but the planned power is 0 (or lower), the reservation is the difference between live and planned draw. The Huawei discharge cap in `applier.py` subtracts the total reservation from the planned cap, preventing the overload.
 
+**Ownership boundary (issue #1086):** apply that reservation only when the corresponding built-in OCPP server is enabled and `ev_management_enabled()` says HSEM owns the charger command. An externally controlled EV with planned `0 W` is not ramping down from an HSEM command — HSEM has no command for it — so its live grid draw must not suppress the planner's battery discharge for house load. The broader EV discharge permission and configured ceiling still apply to every active/planned EV.
+
 **Pattern:** Same class of race as Ambilights/hsem-ambilights#32 (PowMr-vs-Huawei), but locally between OCPP EV charger and Huawei battery. The upstream fix tracked `_active_secondary_slot` and `_active_secondary_current_retarget_downward`; the local fix uses live-vs-planned power difference, which is simpler and doesn't require cross-component state tracking.
 
 **Key insight:** The MILP planner's per-phase fuse constraint already allocates headroom correctly, but the **hardware writes** don't happen instantaneously. The reservation bridges the gap between the planner's solved state and the live hardware state during transitions.

@@ -234,6 +234,14 @@ PV surplus. **It never draws from the house battery.** This means:
   imported from the grid.
 - `batteries_discharged` is therefore independent of `ev_planned_load_kwh`.
 
+At execution time, the #816 live-minus-planned phase-headroom reservation applies
+only to a charger HSEM manages through its built-in OCPP server. A managed charger
+may still be drawing above a newly reduced command during the anti-flap ramp-down
+window, so temporarily reducing the Huawei discharge cap prevents a phase-fuse
+transient. For an externally controlled charger, planned `0 W` means HSEM has no
+actuator command; its live grid draw must not reduce the planned battery discharge
+to house load (issue #1086).
+
 Battery and grid flows must satisfy:
 
 ```text
