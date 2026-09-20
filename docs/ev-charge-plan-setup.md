@@ -424,8 +424,13 @@ _economics_ (how many amps are worth drawing this slot) while the charger or an
 external controller keeps _final authority_ and may only ramp within that ceiling.
 The one exception is the built-in OCPP server — when `hsem_ocpp_enabled` is on,
 HSEM dispatches `SetChargingProfile` and the value is a real setpoint (with its own
-anti-flap start/stop windows and a 50 W material-change filter). The requested
-amperage is derived from the same command and phase topology backing
+anti-flap start/stop windows and a 50 W material-change filter). While a managed
+OCPP charger ramps down toward a lower command, HSEM temporarily reserves its
+still-live draw from the Huawei battery discharge cap to avoid a phase-fuse
+transient. This reservation never applies to an externally controlled charger:
+for that charger, a planned `0 W` means HSEM has no command, so its grid draw
+must not suppress planned battery discharge for house load (issue #1086).
+The requested amperage is derived from the same command and phase topology backing
 `sensor.hsem_ev_charger_current_limit` — never a flat default — via
 `coordinator_helpers.ocpp_charge_target()` (issue #886), and is exposed for
 diagnostics as `requested_current_a` on `sensor.hsem_ocpp_charger_status`.
