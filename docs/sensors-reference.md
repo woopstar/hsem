@@ -376,9 +376,11 @@ Diagnostic sensors displaying the EV charging plan details.
 
 ## EV SoC economics sensors
 
-Diagnostic sensors exposing the real-money cost of charging each EV to
-50/60/70/80/100 % SoC by the next occurrence of 08:00 and by the next
-occurrence of 17:00 (issue #903). Each combination is computed by
+Diagnostic sensors exposing the real-money cost of charging each EV to the
+configured 50/60/70/80/100 % SoC targets that are at or above the car's
+actual SoC, by the next occurrence of 08:00 and by the next occurrence of
+17:00 (issue #903). Lower targets are omitted from the table. Each retained
+combination is computed by
 re-running the pure planner engine (`run_planner()`) on a clone of the
 coordinator's last-used planner input with only that EV's target-SoC and
 deadline overridden — no other input changes, so the cost reflects "what
@@ -407,22 +409,22 @@ recompute is up to ~8 extra `run_planner()` solves per EV.
 
 **Key attributes:**
 
-| Attribute         | Description                                                       |
-| ----------------- | ----------------------------------------------------------------- |
-| `current_soc_pct` | EV's current SoC at computation time                              |
-| `points`          | Flat list of cost/feasibility entries, one per (target, deadline) |
+| Attribute         | Description                                                                                          |
+| ----------------- | ---------------------------------------------------------------------------------------------------- |
+| `current_soc_pct` | EV's current SoC at computation time                                                                 |
+| `points`          | Flat list of cost/feasibility entries for targets at or above actual SoC, one per (target, deadline) |
 
 Each entry in `points` has:
 
-| Field                 | Description                                                                                                             |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `target_soc_pct`      | Target SoC evaluated (50/60/70/80/100)                                                                                  |
-| `deadline_label`      | `"08:00"` or `"17:00"`                                                                                                  |
-| `deadline`            | ISO-8601 deadline datetime actually used                                                                                |
-| `total_cost`          | Real-money cost of reaching this target by this deadline (`0.0` when the target is already met — no solve is triggered) |
-| `feasible`            | Whether the charger's rated power can physically reach this target by this deadline, independent of price               |
-| `delta_from_previous` | Cost delta vs. the previous (lower) target in the same deadline column (`null` for the first target)                    |
-| `delta_per_10pct`     | `delta_from_previous` normalised to cost per 10 percentage points of SoC (`null` for the first target)                  |
+| Field                 | Description                                                                                                            |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `target_soc_pct`      | Retained target SoC evaluated (50/60/70/80/100); targets below actual SoC are omitted                                  |
+| `deadline_label`      | `"08:00"` or `"17:00"`                                                                                                 |
+| `deadline`            | ISO-8601 deadline datetime actually used                                                                               |
+| `total_cost`          | Real-money cost of reaching this target by this deadline (`0.0` when target equals actual SoC — no solve is triggered) |
+| `feasible`            | Whether the charger's rated power can physically reach this target by this deadline, independent of price              |
+| `delta_from_previous` | Cost delta vs. the previous (lower) target in the same deadline column (`null` for the first target)                   |
+| `delta_per_10pct`     | `delta_from_previous` normalised to cost per 10 percentage points of SoC (`null` for the first target)                 |
 
 `points` is deliberately flat (not pre-grouped by deadline) — group it by
 `deadline_label` (e.g. via a Jinja `groupby` filter) for display.

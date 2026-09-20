@@ -232,24 +232,37 @@ views:
           - type: conditional
             conditions:
               - entity: sensor.hsem_ev_soc_economics
-                state_not: unavailable
+                state: ready
             grid_options:
               columns: full
             card:
-              type: markdown
+              type: entities
               title: EV Charging Economics
-              content: >
-                {% set pts = state_attr('sensor.hsem_ev_soc_economics', 'points') or [] %}
-                {% for label, rows in pts | groupby('deadline_label') %}
-                **{{ label }}**
-
-                | Target SoC | Cost | +Δ vs previous | Feasible |
-                | --- | --- | --- | --- |
-                {% for p in rows %}
-                | {{ p.target_soc_pct }}% | {{ p.total_cost }} | {{ p.delta_from_previous if p.delta_from_previous is not none else '—' }} | {{ '✅' if p.feasible else '⚠️' }} |
-                {% endfor %}
-
-                {% endfor %}
+              show_header_toggle: false
+              entities:
+                - type: custom:multiple-entity-row
+                  entity: sensor.hsem_ev_soc_economics
+                  name: Cost by deadline
+                  icon: mdi:clock-outline
+                  show_state: false
+                  column: true
+                  wrap: true
+                  entities:
+                    - name: Target · cost (Δ) · feasible
+                      template: >-
+                        {% set groups = (state_attr(entity, 'points') or []) | groupby('deadline_label') -%}
+                        {% if groups | length == 0 -%}
+                          No target above current SoC
+                        {% else -%}
+                          {% for label, rows in groups -%}
+                            {{- ('  |  ' if not loop.first else '') ~ 'Next ' ~ label ~ ': ' -}}
+                            {% for p in rows -%}
+                              {% set delta = ' (' ~ ('+' if p.delta_from_previous >= 0 else '') ~ (p.delta_from_previous | round(2)) ~ ')' if p.delta_from_previous is not none else '' -%}
+                              {% set status = '✓' if p.feasible else '⚠' -%}
+                              {{- ('  ·  ' if not loop.first else '') ~ p.target_soc_pct ~ '%: ' ~ p.total_cost ~ delta ~ ' ' ~ status -}}
+                            {%- endfor %}
+                          {%- endfor %}
+                        {%- endif %}
           - type: conditional
             conditions:
               - entity: sensor.hsem_ev_second_optimal_charging_plan
@@ -317,24 +330,37 @@ views:
           - type: conditional
             conditions:
               - entity: sensor.hsem_ev_second_soc_economics
-                state_not: unavailable
+                state: ready
             grid_options:
               columns: full
             card:
-              type: markdown
+              type: entities
               title: EV 2 Charging Economics
-              content: >
-                {% set pts = state_attr('sensor.hsem_ev_second_soc_economics', 'points') or [] %}
-                {% for label, rows in pts | groupby('deadline_label') %}
-                **{{ label }}**
-
-                | Target SoC | Cost | +Δ vs previous | Feasible |
-                | --- | --- | --- | --- |
-                {% for p in rows %}
-                | {{ p.target_soc_pct }}% | {{ p.total_cost }} | {{ p.delta_from_previous if p.delta_from_previous is not none else '—' }} | {{ '✅' if p.feasible else '⚠️' }} |
-                {% endfor %}
-
-                {% endfor %}
+              show_header_toggle: false
+              entities:
+                - type: custom:multiple-entity-row
+                  entity: sensor.hsem_ev_second_soc_economics
+                  name: Cost by deadline
+                  icon: mdi:clock-outline
+                  show_state: false
+                  column: true
+                  wrap: true
+                  entities:
+                    - name: Target · cost (Δ) · feasible
+                      template: >-
+                        {% set groups = (state_attr(entity, 'points') or []) | groupby('deadline_label') -%}
+                        {% if groups | length == 0 -%}
+                          No target above current SoC
+                        {% else -%}
+                          {% for label, rows in groups -%}
+                            {{- ('  |  ' if not loop.first else '') ~ 'Next ' ~ label ~ ': ' -}}
+                            {% for p in rows -%}
+                              {% set delta = ' (' ~ ('+' if p.delta_from_previous >= 0 else '') ~ (p.delta_from_previous | round(2)) ~ ')' if p.delta_from_previous is not none else '' -%}
+                              {% set status = '✓' if p.feasible else '⚠' -%}
+                              {{- ('  ·  ' if not loop.first else '') ~ p.target_soc_pct ~ '%: ' ~ p.total_cost ~ delta ~ ' ' ~ status -}}
+                            {%- endfor %}
+                          {%- endfor %}
+                        {%- endif %}
       - type: grid
         cards:
           - type: heading

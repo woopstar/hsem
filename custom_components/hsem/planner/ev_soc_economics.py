@@ -66,7 +66,8 @@ class EVSoCEconomicsPoint:
         deadline: Timezone-aware deadline datetime actually used.
         total_cost: Real-money cost of reaching this target by this
             deadline, read from ``PlannerOutput.plan_cost.total_cost``.
-            ``0.0`` when the target is already met (no solve is triggered).
+            ``0.0`` when the target equals the current SoC (no solve is
+            triggered).
         feasible: Whether the charger's rated power can physically reach
             this target by this deadline, independent of price.
         delta_from_previous: Cost delta vs. the previous (lower) target in
@@ -95,10 +96,11 @@ class EVSoCEconomicsResult:
         current_soc_pct: EV's current SoC at computation time, or ``None``
             when unavailable (issue #988) — the result is then an empty
             ``STATE_UNAVAILABLE`` table, never computed from a fabricated 0 %.
-        points: Flat list of :class:`EVSoCEconomicsPoint`, one per
-            (target_soc_pct, deadline_label) combination.  Deliberately flat
-            (not pre-grouped by deadline) — Jinja's ``groupby`` filter and
-            any future consumer can group it either way.
+        points: Flat list of :class:`EVSoCEconomicsPoint`, one per retained
+            (target_soc_pct, deadline_label) combination. Targets below the
+            current SoC are omitted. Deliberately flat (not pre-grouped by
+            deadline) — Jinja's ``groupby`` filter and any future consumer
+            can group it either way.
     """
 
     state: str = STATE_UNAVAILABLE
@@ -168,8 +170,9 @@ def compute_ev_soc_economics(
     - SoC unavailable (``None``) → ``STATE_UNAVAILABLE`` with empty points
       (issue #988) — the table is never computed from a fabricated 0 %.
 
-    Targets at or below ``current_soc_pct`` cost ``0.0`` and do not trigger
-    a ``run_planner()`` solve.
+    Targets below ``current_soc_pct`` are omitted. A target equal to the
+    current SoC remains visible with cost ``0.0`` and does not trigger a
+    ``run_planner()`` solve.
 
     Args:
         base_input: The coordinator's last-used planner input, used as the
@@ -186,9 +189,9 @@ def compute_ev_soc_economics(
             :data:`DEFAULT_SOC_TARGETS` (50/60/70/80/100 %).
 
     Returns:
-        An :class:`EVSoCEconomicsResult` with one point per
-        (target, deadline) combination, or an empty-``points`` result when a
-        guard clause short-circuits.
+        An :class:`EVSoCEconomicsResult` with one point per retained
+        (target, deadline) combination at or above the current SoC, or an
+        empty-``points`` result when a guard clause short-circuits.
     """
     targets = tuple(soc_targets) if soc_targets is not None else DEFAULT_SOC_TARGETS
 
@@ -243,6 +246,9 @@ def compute_ev_soc_economics(
         previous_target: float | None = None
 
         for target in targets:
+            if target < current_soc_pct - 1e-9:
+                continue
+
             energy_needed_kwh = max(
                 (target - current_soc_pct) / 100.0 * capacity_kwh, 0.0
             )
