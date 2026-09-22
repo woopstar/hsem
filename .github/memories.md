@@ -1012,13 +1012,22 @@ against `docs/planner-spec.md`.
   costs, so a fabricated zero manufactures savings rather than cancelling);
   alignment goes through `datetime_utils.slot_key()` so a UTC export matches a
   `+02:00` plan and both folds of an autumn repeated hour stay distinct; and a
-  slot-width mismatch **raises** rather than resampling. Absent-means-zero is
-  opt-in per series via `fill_absent_with_zero()` and named in the report —
-  `HistoryReader` drops zero deltas, so PV is genuinely absent overnight.
-- Accumulator→slot-delta conversion **delegates to
-  `HistoryReader._compute_slot_deltas`**. Do not reimplement it: meter resets,
-  recorder gaps, implausible deltas and DST folds are all handled there, and a
-  second copy would quietly disagree.
+  slot-width mismatch **raises** rather than resampling.
+- Accumulator→slot energy uses **step-function boundary sampling**
+  (`slot_energy_from_readings`: value in force at slot end minus value in force
+  at slot start), **not** `HistoryReader._compute_slot_deltas`. HA records a
+  state only on change, so a flat meter has no rows; the ML routine discards
+  zero slots and any slot whose predecessor had no reading — right for "what did
+  the house consume", wrong for actuals, where it drops the first slot after
+  every quiet stretch (import after an export afternoon, battery discharge
+  after idle). Only `MAX_SLOT_KWH` is shared. Do not "DRY" this back onto the
+  ML routine.
+- Flat-vs-outage is decided **across all exported entities**: any slot
+  overlapping a silence longer than `max_silence` (default 10 min) in the union
+  of every entity's readings is unobserved. `unavailable`/`unknown` rows are kept
+  as `None`, never dropped, so a last good value cannot bridge an outage. A
+  sparse meter exported without a chatty heartbeat (house load) stays missing on
+  its flat stretches, by design.
 - Corpus discovery reads `*.json` and `*.jsonl` (an HA append log), from the
   committed dir plus `HSEM_BACKTEST_CORPUS`. `HSEM_BACKTEST_MAX_CYCLES`
   (default 25) caps cycles per file so a three-week log cannot blow the test

@@ -265,13 +265,43 @@ python3 scripts/build_actuals.py history.json \
     --slot-minutes 15 --out actuals.json
 ```
 
-Energy series must be `TOTAL_INCREASING` accumulators; they are integrated into
-per-slot deltas by **`HistoryReader._compute_slot_deltas`** — the same routine
-the ML layer uses, reused rather than reimplemented so the harness cannot form a
-second opinion about meter resets, recorder gaps or DST folds. Value series
-(battery SoC, prices) are sampled once per slot instead.
+Energy series must be cumulative kWh accumulators — Riemann `integration`
+sensors are ideal. Instantaneous power sensors will not work.
 
-`unknown`/`unavailable` states are skipped, never parsed as numbers.
+Home Assistant records a state only when it _changes_, so a meter that sat flat
+through a six-hour export afternoon has no history rows in those six hours.
+Energy is therefore taken from the value **in force** at each slot boundary:
+
+$$
+E_{slot} = V(t_{end}) - V(t_{start}), \qquad V(t) = \text{last reading at or before } t
+$$
+
+A slot in which nothing flowed comes out `0.0`, and the first slot after a
+quiet stretch keeps its full energy. Neither needs a reading _inside_ the slot.
+
+This is deliberately **not** `HistoryReader._compute_slot_deltas`, which the ML
+layer uses. That routine answers a different question — how much did the house
+consume? — and correctly discards zero slots and any slot whose predecessor had
+no reading. For actuals both are real observations: measured against a meter
+that imports 06:00–09:00 and again from 15:07, it drops the 15:00 slot's
+0.09 kWh outright. The plausibility cap (`MAX_SLOT_KWH`) is shared.
+
+A slot is **missing** — never zero — when a boundary falls before the first
+reading or inside an `unavailable` stretch, when the meter went down (a reset),
+or when the delta exceeds the cap. `unknown`/`unavailable` states are kept as
+gaps, not dropped: dropping the row would let the previous value carry straight
+across the outage.
+
+**Include a chatty entity in every export.** A flat meter and a stopped recorder
+look identical on one sensor. Across all of them they do not — a running system
+keeps reporting something, an outage silences everything at once. Any slot
+overlapping a silence longer than `--max-silence-minutes` (default 10) across
+every exported entity is treated as unobserved. House load is the natural
+heartbeat; exported alone, a sparse meter's flat stretches stay missing because
+nothing can prove they were real.
+
+Value series (battery SoC) take the value in force at the slot start, so a SoC
+that sits at 100 % for an hour is present in every slot of that hour.
 
 ### The actuals file format
 
@@ -345,15 +375,12 @@ telemetry (issues #988, #1056), and it matters more here: regret is a
 _difference_ of two costs, so a fabricated zero does not cancel out — it
 manufactures savings.
 
-`HistoryReader` drops zero deltas, so PV is genuinely absent overnight rather
-than present-and-zero. Where absence really does mean zero, say so:
-
-```python
-actuals.fill_absent_with_zero("pv_produced")
-```
-
-The alignment report then names the series under `zero-filled by request`. The
-danger was never zero-filling; it was zero-filling _silently_.
+Because zero slots are observations, a file built by `build_actuals.py` needs
+no zero-filling: overnight PV is already `0.0`, and absence means the value
+genuinely could not be established. For a hand-built file or a source that omits
+zeros, `actuals.fill_absent_with_zero("pv_produced")` exists, and the alignment
+report names every series it was applied to. The danger was never zero-filling;
+it was zero-filling _silently_.
 
 **Alignment is by canonical slot key.** Both sides go through
 `datetime_utils.slot_key()`, so a UTC export lines up with a `+02:00` plan, and

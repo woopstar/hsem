@@ -3,19 +3,26 @@
 Thin command-line front end for ``tests/backtest/actuals.py``; see
 ``docs/backtest-harness.md`` for the workflow and the file format.
 
-Capture the history first, for example::
+Capture the history first (``minimal_response`` and ``no_attributes`` keep the
+response small; the parser handles both)::
 
-    curl -H "Authorization: Bearer $HA_TOKEN" \
-      "$HA_URL/api/history/period/2026-09-01T00:00:00+02:00?end_time=2026-09-22T00:00:00+02:00&filter_entity_id=sensor.pv_energy,sensor.house_energy" \
-      > history.json
+    curl -sG -H "Authorization: Bearer $HA_TOKEN" \
+      --data-urlencode "end_time=2026-09-22T00:00:00+02:00" \
+      --data-urlencode "filter_entity_id=sensor.pv_energy,sensor.house_energy" \
+      --data minimal_response --data no_attributes \
+      "$HA_URL/api/history/period/2026-09-21T00:00:00+02:00" > history.json
 
-Then convert it::
+Then convert every history file in one call, so day boundaries are stitched::
 
-    python3 scripts/build_actuals.py history.json \
+    python3 scripts/build_actuals.py history-*.json \
         --map sensor.pv_energy=pv_produced \
         --map sensor.house_energy=house_load \
         --slot-minutes 15 \
         --out actuals.json
+
+Export at least one chatty entity (house load is ideal) with every run: the
+outage check needs *something* reporting to tell a flat meter from a stopped
+recorder.
 """
 
 from __future__ import annotations
@@ -23,7 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -91,6 +98,15 @@ def main(argv: list[str] | None = None) -> int:
             "and is dropped. Defaults to the latest reading seen."
         ),
     )
+    parser.add_argument(
+        "--max-silence-minutes",
+        type=int,
+        default=10,
+        help=(
+            "Longest silence across all exported entities before the slots it "
+            "overlaps are treated as a recorder outage (default: 10)."
+        ),
+    )
     parser.add_argument("--out", required=True, metavar="PATH")
     args = parser.parse_args(argv)
 
@@ -114,7 +130,13 @@ def main(argv: list[str] | None = None) -> int:
     else:
         raise SystemExit("no usable readings found in the history export")
 
-    payload = build_actuals_payload(readings, mapping, now, args.slot_minutes)
+    payload = build_actuals_payload(
+        readings,
+        mapping,
+        now,
+        args.slot_minutes,
+        max_silence=timedelta(minutes=args.max_silence_minutes),
+    )
     Path(args.out).write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )

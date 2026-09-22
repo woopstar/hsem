@@ -19,7 +19,8 @@ from tests.backtest.actuals import (
     build_actuals_payload,
     load_actuals,
     readings_from_ha_history,
-    slot_deltas_from_readings,
+    slot_energy_from_readings,
+    slot_values_from_readings,
 )
 
 _CEST = timezone(timedelta(hours=2))
@@ -316,42 +317,162 @@ class TestSlotActualsProperties:
         assert not rows[0].is_scorable
 
 
-class TestSlotDeltasFromReadings:
-    """Raw accumulator readings are converted by the shipped routine."""
+def _minutes(offset: int) -> datetime:
+    """Return ``_START`` shifted by *offset* minutes."""
+    return _START + timedelta(minutes=offset)
 
-    def test_monotonic_readings_become_per_slot_deltas(self) -> None:
-        readings = [
-            (_START + timedelta(minutes=5 * i), 100.0 + 0.1 * i) for i in range(24)
+
+def _ramp(
+    first: int, last: int, start_value: float, per_minute: float
+) -> list[tuple[datetime, float | None]]:
+    """Accumulator readings every minute over ``[first, last)``."""
+    return [
+        (_minutes(m), round(start_value + per_minute * (m - first + 1), 6))
+        for m in range(first, last)
+    ]
+
+
+def _heartbeat(last: int) -> list[tuple[datetime, float | None]]:
+    """A chatty entity reporting every minute — proof the recorder was running."""
+    return _ramp(0, last, 50.0, 0.005)
+
+
+def _energy(
+    readings: dict[str, list[tuple[datetime, float | None]]],
+    now_minutes: int,
+    entity: str = "sensor.meter",
+    **kwargs: Any,
+) -> dict[str, float]:
+    """Build a payload for one mapped meter; return energy keyed by local HH:MM."""
+    payload = build_actuals_payload(
+        readings, {entity: "grid_import"}, _minutes(now_minutes), 15, **kwargs
+    )
+    return {
+        datetime.fromisoformat(stamp).astimezone(_CEST).strftime("%H:%M"): value
+        for stamp, value in payload["slot_energy_kwh"].get("grid_import", [])
+    }
+
+
+class TestSlotEnergy:
+    """Energy comes from the value in force at each slot boundary."""
+
+    def test_steady_flow_becomes_per_slot_energy(self) -> None:
+        got = _energy({"sensor.meter": _ramp(0, 120, 100.0, 0.01)}, 120)
+        assert got["00:15"] == pytest.approx(0.15)
+        assert got["01:30"] == pytest.approx(0.15)
+
+    def test_a_flat_meter_is_zero_not_absent(self) -> None:
+        """No rows because nothing changed is an observation, not a gap."""
+        meter = _ramp(0, 30, 100.0, 0.01)  # moves until 00:30, then flat
+        got = _energy({"sensor.meter": meter, "sensor.house": _heartbeat(120)}, 120)
+        assert got["00:45"] == pytest.approx(0.0)
+        assert got["01:30"] == pytest.approx(0.0)
+
+    def test_first_slot_after_a_quiet_stretch_keeps_its_energy(self) -> None:
+        """The case the ML layer's delta routine drops: no reading in the prior slot."""
+        meter = _ramp(0, 30, 100.0, 0.01) + _ramp(97, 120, 100.3, 0.01)
+        got = _energy({"sensor.meter": meter, "sensor.house": _heartbeat(120)}, 120)
+        # 01:37..01:44 inclusive is 8 increments, plus the 01:45 reading at the boundary.
+        assert got["01:30"] == pytest.approx(0.09)
+        assert got["01:15"] == pytest.approx(0.0)
+
+    def test_total_energy_is_conserved(self) -> None:
+        meter = _ramp(0, 30, 100.0, 0.01) + _ramp(97, 120, 100.3, 0.01)
+        got = _energy({"sensor.meter": meter, "sensor.house": _heartbeat(120)}, 120)
+        recorded = sum(got.values())
+        truth = meter[-1][1] - meter[0][1]  # type: ignore[operator]
+        assert recorded == pytest.approx(truth, abs=1e-6)
+
+    def test_meter_reset_slot_is_absent_and_the_next_one_recovers(self) -> None:
+        meter = _ramp(0, 20, 100.0, 0.01) + _ramp(20, 60, 0.0, 0.01)
+        got = _energy({"sensor.meter": meter}, 60)
+        assert "00:15" not in got  # contains the drop from 100.2 to 0.01
+        assert got["00:30"] == pytest.approx(0.15)
+
+    def test_implausible_delta_is_absent(self) -> None:
+        meter = _ramp(0, 20, 100.0, 0.01) + _ramp(20, 60, 200.0, 0.01)
+        got = _energy({"sensor.meter": meter}, 60)
+        assert "00:15" not in got  # a 100 kWh jump in 15 minutes
+        assert got["00:30"] == pytest.approx(0.15)
+
+    def test_unavailable_stretch_is_absent_not_bridged(self) -> None:
+        meter: list[tuple[datetime, float | None]] = [
+            *_ramp(0, 20, 100.0, 0.01),
+            (_minutes(20), None),
+            *_ramp(50, 90, 100.5, 0.01),
         ]
-        deltas = slot_deltas_from_readings(readings, _START + timedelta(hours=3), 15)
-        assert deltas
-        assert all(value == pytest.approx(0.3, abs=1e-6) for value in deltas.values())
+        got = _energy({"sensor.meter": meter, "sensor.house": _heartbeat(90)}, 90)
+        assert "00:15" not in got  # ends inside the unavailable stretch
+        assert "00:30" not in got
+        assert "00:45" not in got  # starts inside it
+        assert got["01:00"] == pytest.approx(0.15)
 
-    def test_a_recorder_gap_does_not_become_one_oversized_slot(self) -> None:
-        """Delegated behaviour, asserted here because the harness relies on it."""
-        early = [(_START + timedelta(minutes=5 * i), 100.0 + 0.1 * i) for i in range(6)]
-        late = [
-            (_START + timedelta(hours=4, minutes=5 * i), 200.0 + 0.1 * i)
-            for i in range(6)
+    def test_recorder_silence_is_unobserved_even_though_the_meter_is_flat(
+        self,
+    ) -> None:
+        """A flat meter and a stopped recorder only differ across all entities."""
+        house = _ramp(0, 30, 50.0, 0.005) + _ramp(90, 150, 50.2, 0.005)
+        meter = _ramp(0, 30, 100.0, 0.01) + _ramp(90, 150, 100.3, 0.01)
+        got = _energy({"sensor.meter": meter, "sensor.house": house}, 150)
+        for hhmm in ("00:30", "00:45", "01:00", "01:15"):
+            assert hhmm not in got, f"{hhmm} spans the outage"
+        assert got["01:45"] == pytest.approx(0.15)
+
+    def test_max_silence_is_configurable(self) -> None:
+        """A 21-minute silence is an outage at 10 minutes' tolerance, not at 30."""
+        house = _ramp(0, 30, 50.0, 0.005) + _ramp(50, 120, 50.2, 0.005)
+        meter = _ramp(0, 30, 100.0, 0.01)  # flat after 00:29
+        readings = {"sensor.meter": meter, "sensor.house": house}
+        assert "00:30" not in _energy(readings, 120)
+        relaxed = _energy(readings, 120, max_silence=timedelta(minutes=30))
+        assert relaxed["00:30"] == pytest.approx(0.0)
+
+    def test_silence_is_judged_across_all_entities(self) -> None:
+        """One entity pausing is not an outage while another keeps reporting."""
+        house = _ramp(0, 30, 50.0, 0.005) + _ramp(50, 120, 50.2, 0.005)
+        meter = _ramp(0, 120, 100.0, 0.01)
+        got = _energy({"sensor.meter": meter, "sensor.house": house}, 120)
+        assert got["00:30"] == pytest.approx(0.15)
+
+    def test_slot_before_the_first_reading_is_absent(self) -> None:
+        meter = _ramp(20, 60, 100.0, 0.01)
+        got = _energy({"sensor.meter": meter, "sensor.house": _heartbeat(60)}, 60)
+        assert "00:00" not in got
+        assert "00:15" not in got  # its start boundary predates the first reading
+
+    def test_incomplete_slot_is_dropped(self) -> None:
+        got = _energy({"sensor.meter": _ramp(0, 60, 100.0, 0.01)}, 52)
+        assert "00:30" in got
+        assert "00:45" not in got  # still running at 00:52
+
+    def test_keys_are_canonical_utc(self) -> None:
+        keys = [_minutes(15 * i).astimezone(UTC) for i in range(4)]
+        energy = slot_energy_from_readings(_ramp(0, 90, 100.0, 0.01), keys, 15)
+        assert energy
+        assert all(key.tzinfo is UTC for key in energy)
+
+
+class TestSlotValues:
+    """A level is the value in force at the slot start."""
+
+    def test_level_carries_forward_between_changes(self) -> None:
+        soc: list[tuple[datetime, float | None]] = [
+            (_minutes(0), 80.0),
+            (_minutes(60), 70.0),
         ]
-        deltas = slot_deltas_from_readings(
-            early + late, _START + timedelta(hours=9), 15
-        )
-        assert all(value < 1.0 for value in deltas.values())
+        keys = [_minutes(15 * i).astimezone(UTC) for i in range(6)]
+        values = slot_values_from_readings(soc, keys)
+        assert [values[k] for k in keys] == [80.0, 80.0, 80.0, 80.0, 70.0, 70.0]
 
-    def test_flat_accumulator_yields_no_slots(self) -> None:
-        """A zero delta is absent, not zero — which is why zero-fill is explicit."""
-        readings = [(_START + timedelta(minutes=5 * i), 100.0) for i in range(24)]
-        assert (
-            slot_deltas_from_readings(readings, _START + timedelta(hours=3), 15) == {}
-        )
-
-    def test_deltas_key_on_the_canonical_slot_key(self) -> None:
-        readings = [
-            (_START + timedelta(minutes=5 * i), 100.0 + 0.1 * i) for i in range(12)
+    def test_unavailable_level_is_absent(self) -> None:
+        soc: list[tuple[datetime, float | None]] = [
+            (_minutes(0), 80.0),
+            (_minutes(20), None),
         ]
-        deltas = slot_deltas_from_readings(readings, _START + timedelta(hours=2), 15)
-        assert all(key.tzinfo is UTC for key in deltas)
+        keys = [_minutes(15 * i).astimezone(UTC) for i in range(3)]
+        values = slot_values_from_readings(soc, keys)
+        assert keys[0] in values and keys[1] in values
+        assert keys[2] not in values
 
 
 def _history_block(
@@ -382,12 +503,15 @@ class TestHaHistoryParsing:
         assert list(readings) == ["sensor.pv"]
         assert len(readings["sensor.pv"]) == 3
 
-    @pytest.mark.parametrize("bad", ["unknown", "unavailable", "", "none", "n/a"])
-    def test_non_numeric_states_are_skipped(self, bad: str) -> None:
+    @pytest.mark.parametrize(
+        "bad", ["unknown", "unavailable", "", "none", "n/a", "nan", "inf"]
+    )
+    def test_non_numeric_states_are_kept_as_gaps(self, bad: str) -> None:
+        """Dropping the row would let the previous value bridge the gap."""
         readings = readings_from_ha_history(
             [_history_block("sensor.pv", ["1.0", bad, "3.0"])]
         )
-        assert [v for _t, v in readings["sensor.pv"]] == [1.0, 3.0]
+        assert [v for _t, v in readings["sensor.pv"]] == [1.0, None, 3.0]
 
     def test_readings_come_back_sorted(self) -> None:
         block = _history_block("sensor.pv", ["1.0", "2.0", "3.0"])
@@ -422,7 +546,7 @@ class TestHaHistoryParsing:
 class TestBuildActualsPayload:
     """The built payload must be loadable and honest about gaps."""
 
-    def _readings(self) -> dict[str, list[tuple[datetime, float]]]:
+    def _readings(self) -> dict[str, list[tuple[datetime, float | None]]]:
         return readings_from_ha_history(
             [
                 _history_block(

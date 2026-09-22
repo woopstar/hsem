@@ -19,24 +19,30 @@ This is the same rule the planner itself follows for telemetry (issues #988 and
 actual as ``0.0`` would make a plan's realized cost look better than it was, and
 regret is a *difference* of two costs, so the error does not cancel.
 
-``HistoryReader`` drops zero deltas, so a series like PV is genuinely absent
-overnight rather than present-and-zero.  Where absence really does mean zero,
-say so explicitly with :meth:`Actuals.fill_absent_with_zero` — never by
-defaulting.
+Zero is an observation
+----------------------
+Home Assistant records a state only when it changes, so an accumulator that
+did not move for six hours has no history rows in those six hours.  Energy is
+therefore taken from the value *in force* at each slot boundary, and a slot in
+which nothing flowed is ``0.0`` — an observation, not a gap.  What makes that
+safe is the outage check in :func:`build_actuals_payload`: a flat stretch and a
+recorder outage look identical on one sensor, but not across all of them.
 """
 
 from __future__ import annotations
 
 import json
+import math
+from bisect import bisect_right
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from custom_components.hsem.ml.history_reader import HistoryReader
+from custom_components.hsem.ml.history_reader import MAX_SLOT_KWH
 from custom_components.hsem.models.planned_slot import PlannedSlot
-from custom_components.hsem.utils.datetime_utils import slot_key
+from custom_components.hsem.utils.datetime_utils import slot_key, utc_key
 
 __all__ = [
     "ACTUALS_SCHEMA",
@@ -46,10 +52,12 @@ __all__ = [
     "AlignmentReport",
     "SlotActuals",
     "align_to_slots",
+    "DEFAULT_MAX_SILENCE",
     "build_actuals_payload",
     "load_actuals",
     "readings_from_ha_history",
-    "slot_deltas_from_readings",
+    "slot_energy_from_readings",
+    "slot_values_from_readings",
 ]
 
 #: Version tag every actuals file must carry, so a format change is loud.
@@ -244,11 +252,13 @@ class Actuals:
     def fill_absent_with_zero(self, *series: str) -> None:
         """Declare that an absent observation means zero for *series*.
 
-        ``HistoryReader`` drops zero deltas, so a PV series is genuinely absent
-        overnight rather than present-and-zero.  Treating that as missing would
-        make a night unscorable; treating it as zero *by default* would hide a
-        real export failure.  So it is neither — it is this call, which the
-        alignment report then names.
+        Rarely the right call for a file built by :func:`build_actuals_payload`:
+        there, a slot in which nothing flowed is already ``0.0``, and absence
+        means the value could not be established — an outage, a meter reset, a
+        slot before the sensor's first reading.  Zero-filling those hides
+        exactly what the report exists to show.  It is for hand-built files, or
+        sources that genuinely omit zeros; the alignment report names every
+        series it was applied to.
 
         Args:
             *series: Series names, from :data:`ENERGY_SERIES` or
@@ -272,34 +282,6 @@ class Actuals:
         if series in self.zero_filled:
             return 0.0
         return None
-
-
-def slot_deltas_from_readings(
-    readings: Sequence[tuple[datetime, float]],
-    now: datetime,
-    slot_minutes: int,
-) -> dict[datetime, float]:
-    """Turn raw accumulator readings into per-slot energy keyed by slot key.
-
-    Delegates the hard part to ``HistoryReader._compute_slot_deltas`` rather
-    than reimplementing it.  That routine already handles meter resets, gaps
-    that must not become one oversized slot, implausible deltas, and DST folds
-    — duplicating any of it here would give the harness a second, quietly
-    diverging opinion about what a slot's energy was.
-
-    Args:
-        readings: ``(timestamp, accumulator_value)`` pairs, as the HA history
-            API returns them for a ``TOTAL_INCREASING`` sensor.
-        now: The moment the export was taken.  The slot containing it is
-            incomplete and is dropped.
-        slot_minutes: Slot width in minutes.
-
-    Returns:
-        A mapping of canonical slot key to energy in kWh.  Slots with a zero
-        or unusable delta are absent, not zero.
-    """
-    rows = HistoryReader._compute_slot_deltas(list(readings), now, slot_minutes)
-    return {slot_key(start, slot_minutes): kwh for start, _index, kwh in rows}
 
 
 def _series_from_pairs(
@@ -456,100 +438,246 @@ def align_to_slots(
 # Building an actuals file from a Home Assistant history export
 # ---------------------------------------------------------------------------
 
-#: State strings the recorder uses for "no reading", which must never be
-#: parsed as a number.  A sensor that was unavailable produced no observation.
+#: State strings the recorder uses for "no reading".  They are kept, as a
+#: ``None`` value, rather than dropped: an unavailable sensor is a *known* gap,
+#: and the slots it spans must come out missing instead of being bridged by
+#: carrying the last good value across them.
 _NON_NUMERIC_STATES: frozenset[str] = frozenset({"unknown", "unavailable", "none", ""})
+
+#: Longest silence across *every* exported entity before the slots it overlaps
+#: are treated as unobserved.  A running system reports constantly — house load
+#: changes by the second — so ten quiet minutes means the recorder was not
+#: running, not that nothing happened.
+DEFAULT_MAX_SILENCE = timedelta(minutes=10)
+
+#: Tolerance for "the accumulator went down", i.e. a meter reset.
+_RESET_EPS = 1e-9
+
+#: One recorded state: when, and its value — ``None`` while unavailable.
+Reading = tuple[datetime, float | None]
 
 
 def readings_from_ha_history(
     blocks: Sequence[Sequence[dict[str, Any]]],
-) -> dict[str, list[tuple[datetime, float]]]:
+) -> dict[str, list[Reading]]:
     """Parse a Home Assistant ``/api/history/period`` response into readings.
 
     The response is a list of per-entity blocks.  With ``minimal_response`` the
     entries after the first carry only ``state`` and a timestamp, so the
     entity id is taken from the block's first entry.
 
-    Non-numeric states (``unknown``, ``unavailable``) are skipped rather than
-    coerced: an unavailable sensor produced no observation, and turning that
-    into a number is the exact mistake this module exists to prevent.
+    Non-numeric states (``unknown``, ``unavailable``) are kept as ``None``,
+    never coerced to a number and never silently dropped: an unavailable
+    stretch is a known gap, and dropping the row would let the previous value
+    carry straight across it.
 
     Args:
         blocks: The decoded history response.
 
     Returns:
-        Per entity id, its ``(timestamp, value)`` readings sorted oldest-first.
+        Per entity id, its readings sorted oldest-first by physical instant.
     """
-    readings: dict[str, list[tuple[datetime, float]]] = {}
+    readings: dict[str, list[Reading]] = {}
     for block in blocks:
         entity_id = ""
         for entry in block:
             entity_id = entry.get("entity_id") or entity_id
             if not entity_id:
                 continue
-            state = str(entry.get("state", "")).strip()
-            if state.lower() in _NON_NUMERIC_STATES:
-                continue
             stamp = entry.get("last_changed") or entry.get("last_updated")
             if not stamp:
                 continue
-            try:
-                value = float(state)
-            except ValueError:
-                continue
+            state = str(entry.get("state", "")).strip()
+            value: float | None = None
+            if state.lower() not in _NON_NUMERIC_STATES:
+                try:
+                    parsed = float(state)
+                except ValueError:
+                    parsed = math.nan
+                value = parsed if math.isfinite(parsed) else None
             readings.setdefault(entity_id, []).append(
                 (datetime.fromisoformat(str(stamp)), value)
             )
     for rows in readings.values():
-        rows.sort(key=lambda row: row[0])
+        rows.sort(key=lambda row: utc_key(row[0]))
     return readings
 
 
-def _sampled_by_slot(
-    readings: Sequence[tuple[datetime, float]], slot_minutes: int
-) -> dict[datetime, float]:
-    """Reduce level readings to one value per slot — the earliest in the slot.
+def _step_series(
+    readings: Sequence[Reading],
+) -> tuple[list[datetime], list[float | None]]:
+    """Split readings into parallel UTC-time and value lists for bisection."""
+    ordered = sorted(readings, key=lambda row: utc_key(row[0]))
+    return [utc_key(t) for t, _v in ordered], [v for _t, v in ordered]
 
-    A level (battery SoC, a price) is sampled *at* the slot start, so the
-    reading that best represents the slot is the first one inside it.
+
+def _value_at(
+    times: list[datetime], values: list[float | None], at: datetime
+) -> float | None:
+    """Return the value in force at *at*: the last reading at or before it.
+
+    Home Assistant writes a state only when it changes, so a sensor that has
+    not moved for hours has no rows in those hours — its value persisted.
+
+    Returns:
+        ``None`` before the first reading, and while the reading in force was
+        unavailable.
+    """
+    index = bisect_right(times, utc_key(at)) - 1
+    return values[index] if index >= 0 else None
+
+
+def _slot_keys(first: datetime, now: datetime, slot_minutes: int) -> list[datetime]:
+    """Return every *complete* slot from the one containing *first* up to *now*."""
+    step = timedelta(minutes=slot_minutes)
+    key = slot_key(first, slot_minutes)
+    end = utc_key(now)
+    keys: list[datetime] = []
+    while key + step <= end:
+        keys.append(key)
+        key += step
+    return keys
+
+
+def _observed_slots(
+    event_times: Sequence[datetime],
+    keys: Sequence[datetime],
+    slot_minutes: int,
+    now: datetime,
+    max_silence: timedelta,
+) -> set[datetime]:
+    """Return the slots during which Home Assistant was demonstrably recording.
+
+    A flat accumulator and a recorder outage are indistinguishable on one
+    sensor: both leave no rows.  Across every exported entity they are not — a
+    running system keeps reporting *something*, while an outage silences
+    everything at once.  A slot overlapping any silence longer than
+    *max_silence* (including the tail up to *now*), or starting before the
+    first event, is unobserved.
 
     Args:
-        readings: ``(timestamp, value)`` pairs, in any order.
+        event_times: Every reading's timestamp, from every entity, UTC-sorted.
+        keys: Candidate slot keys.
+        slot_minutes: Slot width in minutes.
+        now: The moment the export was taken.
+        max_silence: Longest tolerated gap between consecutive events.
+
+    Returns:
+        The subset of *keys* that can be trusted.
+    """
+    if not event_times:
+        return set()
+    step = timedelta(minutes=slot_minutes)
+    gaps = [
+        (a, b)
+        for a, b in zip(event_times, event_times[1:], strict=False)
+        if b - a > max_silence
+    ]
+    end = utc_key(now)
+    if end - event_times[-1] > max_silence:
+        gaps.append((event_times[-1], end))
+    first = event_times[0]
+    return {
+        key
+        for key in keys
+        if key >= first and not any(a < key + step and b > key for a, b in gaps)
+    }
+
+
+def slot_energy_from_readings(
+    readings: Sequence[Reading],
+    keys: Sequence[datetime],
+    slot_minutes: int,
+) -> dict[datetime, float]:
+    """Per-slot energy from an accumulator, via the value in force at each boundary.
+
+    A slot's energy is ``value(slot end) − value(slot start)``.  A slot in
+    which the accumulator did not move is ``0.0``, and the first slot after a
+    quiet stretch keeps its full energy — neither needs a reading *inside* the
+    slot, which is what makes this different from the ML layer's
+    ``HistoryReader._compute_slot_deltas``.  That routine answers a different
+    question (what did the house consume?) and correctly discards zero slots
+    and any slot whose predecessor had no reading; for actuals, both are real
+    observations.
+
+    A slot is missing, never zero, when either boundary falls before the first
+    reading or inside an unavailable stretch, when the accumulator went down (a
+    meter reset), or when the delta exceeds ``MAX_SLOT_KWH`` — the same
+    plausibility cap the ML reader applies.
+
+    Args:
+        readings: One accumulator's readings; ``None`` values mark
+            unavailability.
+        keys: The slot keys to evaluate — normally already restricted to
+            observed slots.
         slot_minutes: Slot width in minutes.
 
     Returns:
-        A mapping of canonical slot key to the earliest value in that slot.
+        Canonical slot key to energy in kWh, for every slot that could be
+        established.
     """
-    best: dict[datetime, tuple[datetime, float]] = {}
-    for timestamp, value in readings:
-        key = slot_key(timestamp, slot_minutes)
-        current = best.get(key)
-        if current is None or timestamp < current[0]:
-            best[key] = (timestamp, value)
-    return {key: value for key, (_stamp, value) in best.items()}
+    times, values = _step_series(readings)
+    step = timedelta(minutes=slot_minutes)
+    energy: dict[datetime, float] = {}
+    for key in keys:
+        start = _value_at(times, values, key)
+        end = _value_at(times, values, key + step)
+        if start is None or end is None:
+            continue
+        delta = end - start
+        if delta < -_RESET_EPS or delta > MAX_SLOT_KWH:
+            continue
+        # Integration sensors resolve to 6 decimals; strip float noise to match.
+        energy[key] = round(max(delta, 0.0), 6)
+    return energy
+
+
+def slot_values_from_readings(
+    readings: Sequence[Reading], keys: Sequence[datetime]
+) -> dict[datetime, float]:
+    """Per-slot level — the value in force at each slot start.
+
+    Battery SoC moves in whole-percent steps and can sit unchanged for an hour;
+    requiring a reading inside every slot would leave most of them empty.
+
+    Args:
+        readings: One level sensor's readings; ``None`` marks unavailability.
+        keys: The slot keys to sample.
+
+    Returns:
+        Canonical slot key to value, for every slot with a known value.
+    """
+    times, values = _step_series(readings)
+    sampled: dict[datetime, float] = {}
+    for key in keys:
+        value = _value_at(times, values, key)
+        if value is not None:
+            sampled[key] = value
+    return sampled
 
 
 def build_actuals_payload(
-    readings: dict[str, list[tuple[datetime, float]]],
+    readings: dict[str, list[Reading]],
     mapping: dict[str, str],
     now: datetime,
     slot_minutes: int,
+    max_silence: timedelta = DEFAULT_MAX_SILENCE,
 ) -> dict[str, Any]:
     """Assemble an ``hsem-actuals-1`` payload from raw entity readings.
 
-    Energy series are integrated into per-slot deltas via
-    :func:`slot_deltas_from_readings`; value series are sampled per slot.
-    Entities named in *mapping* with no usable readings are simply absent from
-    the result — which the alignment report will show as zero coverage rather
-    than as zeroes.
+    Every entity in *readings* — mapped or not — contributes to the outage
+    check, so exporting a chatty sensor alongside the sparse ones (house load
+    is ideal) is what lets a flat import meter be read as a genuine zero.
+    Slots that fail the check are absent from every series.
 
     Args:
-        readings: Per entity id, its ``(timestamp, value)`` readings.
+        readings: Per entity id, its readings.
         mapping: Entity id to series name, from :data:`ENERGY_SERIES` or
             :data:`VALUE_SERIES`.
-        now: The moment the export was taken; the slot containing it is
-            incomplete and is dropped from energy series.
+        now: The moment the export was taken; only slots that ended by then
+            are emitted.
         slot_minutes: Slot width in minutes.
+        max_silence: Longest tolerated silence across all entities.
 
     Returns:
         A JSON-serialisable payload ready for :func:`load_actuals`.
@@ -557,16 +685,20 @@ def build_actuals_payload(
     Raises:
         KeyError: If *mapping* names a series this module does not recognise.
     """
+    event_times = sorted(utc_key(t) for rows in readings.values() for t, _v in rows)
+    keys = _slot_keys(event_times[0], now, slot_minutes) if event_times else []
+    observed = _observed_slots(event_times, keys, slot_minutes, now, max_silence)
+    live = [key for key in keys if key in observed]
+
     energy: dict[str, dict[str, float]] = {}
     values: dict[str, dict[str, float]] = {}
     for entity_id, series in mapping.items():
+        rows = readings.get(entity_id, [])
         if series in ENERGY_SERIES:
-            keyed = slot_deltas_from_readings(
-                readings.get(entity_id, []), now, slot_minutes
-            )
+            keyed = slot_energy_from_readings(rows, live, slot_minutes)
             target = energy
         elif series in VALUE_SERIES:
-            keyed = _sampled_by_slot(readings.get(entity_id, []), slot_minutes)
+            keyed = slot_values_from_readings(rows, live)
             target = values
         else:
             raise KeyError(f"unknown actuals series: {series!r}")
