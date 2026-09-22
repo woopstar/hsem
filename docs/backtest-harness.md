@@ -12,10 +12,15 @@ function and the forecasts are worth their complexity.
 
 The harness is built in two stages.
 
-| Stage                              | Answers                                               | Needs                        | Status                     |
-| ---------------------------------- | ----------------------------------------------------- | ---------------------------- | -------------------------- |
-| **1 — replay** (`tests/backtest/`) | Does the planner hold the spec on _real_ inputs?      | recorded `planner_input`s    | **implemented**            |
-| **2 — scoring** (savings + regret) | Was the plan any good, and whose fault when it isn't? | recorded **actuals** as well | design only, no corpus yet |
+| Stage                                 | Answers                                               | Status                           |
+| ------------------------------------- | ----------------------------------------------------- | -------------------------------- |
+| **1 — replay**                        | Does the planner hold the spec on _real_ inputs?      | **implemented**                  |
+| **2a — collection + actuals loading** | Can realized outcomes be lined up with the plan?      | **implemented**                  |
+| **2b — scoring** (savings + regret)   | Was the plan any good, and whose fault when it isn't? | not implemented — needs a corpus |
+
+Stage 2b is deliberately not built yet. Scoring code written before there is
+data to run it on would answer the alignment and attribution questions below
+by guessing. Stage 2a exists so the collection clock can start now.
 
 ---
 
@@ -55,8 +60,11 @@ flowchart LR
 | --------------------------------- | ------------------------------------------------------------------- |
 | `tests/backtest/replay.py`        | Rebuild a `PlannerInput` from a dump; report anything it cannot map |
 | `tests/backtest/invariants.py`    | Check one `(input, output)` pair against `planner-spec.md`          |
+| `tests/backtest/actuals.py`       | Load realized outcomes and align them to planner slots              |
+| `tests/backtest/conftest.py`      | Corpus discovery, including a private out-of-repo corpus            |
 | `tests/backtest/corpus/`          | Committed, redacted dumps — so CI needs no live Home Assistant      |
-| `scripts/replay_planner_input.py` | Command-line front end over both                                    |
+| `scripts/replay_planner_input.py` | Command-line front end for replay                                   |
+| `scripts/build_actuals.py`        | Turn an HA history export into an actuals file                      |
 
 ### What the shim has to rebuild
 
@@ -119,8 +127,7 @@ diagnostics download that nests the same payload under `data`.
 
 - **One cycle, interactively** — call the `hsem.export_diagnostics` service, or
   download diagnostics from the HSEM device page.
-- **Many cycles** — an HA automation calling `hsem.export_diagnostics` each
-  cycle and appending to a file, roughly 2.5 MB/day at 5-minute cycles.
+- **Many cycles** — see [Collecting a corpus](#collecting-a-corpus) below.
 
 `hsem.log` is **not** a corpus. It carries derived per-slot traces
 (`[soc_sim]`, `[avg]`, `[pop]`) but no `planner_input`, so nothing in it can be
@@ -130,6 +137,20 @@ replayed.
 
 See `tests/backtest/corpus/README.md`. In short: read the dump before you
 commit it, and regenerate it through the current code so it round-trips.
+
+The committed corpus is a _sample_. A real collection run is roughly 2.6 MB/day
+and is nobody's business but yours, so keep it out of the repo and point the
+harness at it:
+
+```bash
+HSEM_BACKTEST_CORPUS=~/hsem-corpus pytest tests/backtest/ -q
+```
+
+Both `*.json` (one cycle) and `*.jsonl` (an append log, one cycle per line) are
+discovered. At most `HSEM_BACKTEST_MAX_CYCLES` cycles (default 25) are read from
+any one file — a three-week log holds thousands at ~0.15 s each, which would
+blow the per-test timeout with no explanation. Raise it when that is what you
+want.
 
 ---
 
@@ -176,12 +197,165 @@ not a check.
 
 ---
 
-## Stage 2 — savings and regret (not implemented)
+## Collecting a corpus
 
-Stage 1 replays _forecasts_: `planner_input` carries `solcast_slots` and
-`consumption_averages`, never what actually happened. Scoring a plan needs
-realized PV, house load, prices and battery SoC, which no dump contains. Until
-a corpus of actuals exists, Stage 2 stays a design.
+Both halves are file dumps. No live connection is needed for either.
+
+### Inputs — one dump per planner cycle
+
+Declare a file notifier in `configuration.yaml`:
+
+```yaml
+notify:
+  - platform: file
+    name: hsem_corpus
+    filename: hsem-corpus.jsonl
+    timestamp: false
+```
+
+Then append a dump whenever the planner republishes:
+
+```yaml
+automation:
+  - alias: HSEM backtest corpus
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+    actions:
+      - action: hsem.export_diagnostics
+        response_variable: dump
+      - action: notify.send_message
+        target:
+          entity_id: notify.hsem_corpus
+        data:
+          message: "{{ dump | to_json }}"
+```
+
+Trigger on a time pattern rather than on a state change: the working-mode sensor
+only changes when the _recommendation_ changes, so state-triggered collection
+silently skips every cycle that reached the same conclusion — which is most of
+them, and exactly the stable stretches a baseline needs. Match the interval to
+your configured HSEM update interval. On Home Assistant older than 2024.8 use
+`service: notify.hsem_corpus` in place of the `notify.send_message` block.
+
+That produces JSON Lines — one cycle per line, ~9 KB of `planner_input` each,
+roughly 2.6 MB/day at 5-minute cycles. `iter_dumps()` reads it directly, so the
+file needs no post-processing.
+
+### Actuals — one history export
+
+Realized outcomes come from the recorder. The history REST API is the
+documented path:
+
+```bash
+curl -H "Authorization: Bearer $HA_TOKEN" \
+  "$HA_URL/api/history/period/2026-09-01T00:00:00+02:00?end_time=2026-09-22T00:00:00+02:00&filter_entity_id=sensor.pv_energy,sensor.house_energy,sensor.grid_import_energy,sensor.grid_export_energy,sensor.battery_soc" \
+  > history.json
+```
+
+Convert it to the actuals format, mapping each entity onto a series:
+
+```bash
+python3 scripts/build_actuals.py history.json \
+    --map sensor.pv_energy=pv_produced \
+    --map sensor.house_energy=house_load \
+    --map sensor.grid_import_energy=grid_import \
+    --map sensor.grid_export_energy=grid_export \
+    --map sensor.battery_soc=battery_soc_pct \
+    --slot-minutes 15 --out actuals.json
+```
+
+Energy series must be `TOTAL_INCREASING` accumulators; they are integrated into
+per-slot deltas by **`HistoryReader._compute_slot_deltas`** — the same routine
+the ML layer uses, reused rather than reimplemented so the harness cannot form a
+second opinion about meter resets, recorder gaps or DST folds. Value series
+(battery SoC, prices) are sampled once per slot instead.
+
+`unknown`/`unavailable` states are skipped, never parsed as numbers.
+
+### The actuals file format
+
+```json
+{
+  "schema": "hsem-actuals-1",
+  "slot_minutes": 15,
+  "slot_energy_kwh": {
+    "pv_produced": [["2026-09-14T10:00:00+00:00", 1.02]],
+    "house_load": [["2026-09-14T10:00:00+00:00", 0.31]],
+    "grid_import": [["2026-09-14T10:00:00+00:00", 0.0]],
+    "grid_export": [["2026-09-14T10:00:00+00:00", 0.71]]
+  },
+  "slot_values": {
+    "battery_soc_pct": [["2026-09-14T10:00:00+00:00", 96.2]],
+    "import_price": [["2026-09-14T10:00:00+00:00", 2.138]],
+    "export_price": [["2026-09-14T10:00:00+00:00", 1.695]]
+  }
+}
+```
+
+`slot_energy_kwh` holds integrated per-slot energy; `slot_values` holds one
+scalar per slot. An unrecognised series name is reported and ignored rather
+than silently accepted. The `schema` tag is mandatory so a format change is
+loud.
+
+---
+
+## Loading and aligning actuals
+
+```python
+from tests.backtest.actuals import align_to_slots, load_actuals
+
+actuals = load_actuals("actuals.json")
+rows, report = align_to_slots(actuals, planner_output.slots)
+print(report.describe())
+```
+
+```text
+aligned 192 slot(s); 40 scorable (partial)
+  pv_produced: 40/192
+  house_load: 40/192
+  grid_import: 40/192
+  grid_export: 40/192
+  battery_soc_pct: 40/192
+  import_price: 40/192
+  export_price: 40/192
+  covered 2026-09-14T00:00:00+02:00 → 2026-09-14T09:45:00+02:00
+```
+
+Coverage is reported first because "how many slots can I actually score?" is the
+question any scoring pass has to answer before it reports a number.
+
+### Three rules the loader enforces
+
+**Missing is not zero.** Every field on `SlotActuals` is `float | None`, and an
+unobserved slot stays `None`. This is the same rule the planner follows for
+telemetry (issues #988, #1056), and it matters more here: regret is a
+_difference_ of two costs, so a fabricated zero does not cancel out — it
+manufactures savings.
+
+`HistoryReader` drops zero deltas, so PV is genuinely absent overnight rather
+than present-and-zero. Where absence really does mean zero, say so:
+
+```python
+actuals.fill_absent_with_zero("pv_produced")
+```
+
+The alignment report then names the series under `zero-filled by request`. The
+danger was never zero-filling; it was zero-filling _silently_.
+
+**Alignment is by canonical slot key.** Both sides go through
+`datetime_utils.slot_key()`, so a UTC export lines up with a `+02:00` plan, and
+the two folds of an autumn repeated hour stay distinct instead of collapsing
+onto each other. Wall-clock matching would pass every test except the one night
+a year it matters.
+
+**A slot-width mismatch raises.** Actuals exported at 60 minutes will not align
+to a 15-minute plan. Resampling changes what a scoring pass measures, so it is
+refused rather than performed quietly.
+
+---
+
+## Stage 2b — savings and regret (not implemented)
 
 ### Two comparisons
 
@@ -201,34 +375,21 @@ indistinguishable today:
 
 Those are completely different fixes.
 
-### Collecting actuals
-
-`ml/history_reader.py` already reads HA recorder history at slot resolution and
-is the natural source:
-
-- `read_energy_history(entity_id, days=…, slot_minutes=15)` →
-  `(datetime, slot_index, energy_kwh)` per-slot deltas from a
-  `TOTAL_INCREASING` accumulator — grid import/export and PV production;
-- `read_today_actuals(entity_id, slot_minutes=15)` → completed slots only, keyed
-  by canonical UTC slot start;
-- `read_instantaneous_history(...)` → battery SoC, which is a level rather than
-  an accumulator.
-
-A one-off recorder or long-term-statistics export covers months in one go, so
-no live connection is needed for either half of the corpus.
-
 ### Open design questions
+
+These need real paired data to answer, which is why Stage 2b waits.
 
 1. **Alignment.** Dump cadence (~5 min) does not match slot width (15 min), and
    several dumps fall inside one slot. Which cycle's plan is the one being
    scored — the first in the slot, or the one the applier last wrote?
 2. **Attribution.** Realized grid flows reflect what the _hardware_ did,
    including manual overrides, degraded mode and write failures. The apply
-   result is already in the dump (`apply_result`); scored days probably have to
-   exclude cycles where it reports a failed or blocked write.
-3. **Oracle scope.** A perfect-foresight oracle over a 48 h horizon needs
-   48 h of actuals _after_ the cycle, so the last two days of any corpus can
-   never be scored.
+   result is already in every dump (`apply_result`), so scored days can exclude
+   cycles where it reports a failed or blocked write — but "exclude" versus
+   "annotate" is a judgement call that changes the headline number.
+3. **Oracle scope.** A perfect-foresight oracle over a 48 h horizon needs 48 h of
+   actuals _after_ the cycle, so the last two days of any corpus can never be
+   scored.
 
 Home Assistant's `mcp_server` integration was evaluated for collection and
 rejected: it exposes Assist-oriented tools returning a plain-text snapshot

@@ -23,6 +23,7 @@ numbers that look real and are not.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass, fields
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +39,7 @@ from custom_components.hsem.models.solcast_slot import SolcastSlot
 __all__ = [
     "DATETIME_FIELDS",
     "ReplayReport",
+    "iter_dumps",
     "load_dump",
     "load_planner_input",
     "planner_input_from_dict",
@@ -240,6 +242,37 @@ def load_dump(path: str | Path) -> dict[str, Any]:
     return dict(payload)
 
 
+def iter_dumps(path: str | Path) -> Iterator[dict[str, Any]]:
+    """Yield every diagnostics payload in a corpus file.
+
+    Two shapes are supported, because collection produces both:
+
+    * ``.json`` — one cycle per file, as downloaded from HA diagnostics or
+      returned by the ``hsem.export_diagnostics`` service.
+    * ``.jsonl`` — one cycle per line, which is what an HA automation appending
+      each cycle to a notify-file target produces.  Blank lines are skipped so
+      a partially flushed log still reads.
+
+    Args:
+        path: Path to the corpus file.
+
+    Yields:
+        Each HSEM payload, already unwrapped to carry ``planner_input`` at its
+        top level.
+    """
+    source = Path(path)
+    if source.suffix != ".jsonl":
+        yield load_dump(source)
+        return
+    with source.open(encoding="utf-8") as handle:
+        for line in handle:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            raw = json.loads(stripped)
+            yield dict(raw.get("data", raw))
+
+
 def load_planner_input(path: str | Path) -> tuple[PlannerInput, ReplayReport]:
     """Load a diagnostics dump and rebuild the planner input it recorded.
 
@@ -248,6 +281,9 @@ def load_planner_input(path: str | Path) -> tuple[PlannerInput, ReplayReport]:
             download (wrapped in a top-level ``data`` key) or the
             ``hsem.export_diagnostics`` service response.
 
+    Only the first cycle of a multi-cycle ``.jsonl`` file is read; use
+    :func:`iter_dumps` to walk all of them.
+
     Returns:
         The rebuilt :class:`PlannerInput` and a :class:`ReplayReport`
         describing anything the shim could not map.
@@ -255,4 +291,4 @@ def load_planner_input(path: str | Path) -> tuple[PlannerInput, ReplayReport]:
     Raises:
         KeyError: If the file carries no ``planner_input`` section.
     """
-    return planner_input_from_dict(load_dump(path))
+    return planner_input_from_dict(next(iter_dumps(path)))

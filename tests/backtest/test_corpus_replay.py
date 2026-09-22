@@ -17,7 +17,7 @@ import pytest
 from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.planner.engine_core import run_planner
 from custom_components.hsem.utils.diagnostics import build_diagnostics_dump
-from tests.backtest.conftest import corpus_paths
+from tests.backtest.conftest import corpus_paths, replayed_cycles
 from tests.backtest.invariants import check_invariants, format_violations
 from tests.backtest.replay import load_planner_input, planner_input_from_dict
 
@@ -50,34 +50,37 @@ class TestCorpusReplay:
 
     def test_dump_replays_losslessly(self, corpus_dump: Path) -> None:
         """A corpus entry that no longer round-trips is drift, not a nuisance."""
-        _, report = load_planner_input(corpus_dump)
-        assert report.is_faithful, (
-            f"{corpus_dump.name} no longer round-trips onto the current "
-            f"PlannerInput:\n{report.describe()}\n"
-            f"Regenerate it — see tests/backtest/corpus/README.md"
-        )
+        cycles = 0
+        for index, _planner_input, report in replayed_cycles(corpus_dump):
+            cycles += 1
+            assert report.is_faithful, (
+                f"{corpus_dump.name} cycle {index} no longer round-trips onto "
+                f"the current PlannerInput:\n{report.describe()}\n"
+                f"Regenerate it — see tests/backtest/corpus/README.md"
+            )
+        assert cycles, f"{corpus_dump.name} carries no cycles"
 
     def test_replay_produces_a_plan(self, corpus_dump: Path) -> None:
-        planner_input, _ = load_planner_input(corpus_dump)
-        out = run_planner(planner_input)
-        assert out.slots
-        assert out.winner_name
-        assert out.plan_cost is not None
+        for _index, planner_input, _report in replayed_cycles(corpus_dump):
+            out = run_planner(planner_input)
+            assert out.slots
+            assert out.winner_name
+            assert out.plan_cost is not None
 
     def test_spec_invariants_hold(self, corpus_dump: Path) -> None:
-        """The ``docs/planner-spec.md`` invariants, against a real input."""
-        planner_input, _ = load_planner_input(corpus_dump)
-        out = run_planner(planner_input)
-        violations = check_invariants(planner_input, out)
-        assert not violations, (
-            f"{corpus_dump.name} violates the planner spec:\n"
-            f"{format_violations(violations)}"
-        )
+        """The ``docs/planner-spec.md`` invariants, against real inputs."""
+        for index, planner_input, _report in replayed_cycles(corpus_dump):
+            out = run_planner(planner_input)
+            violations = check_invariants(planner_input, out)
+            assert not violations, (
+                f"{corpus_dump.name} cycle {index} violates the planner spec:\n"
+                f"{format_violations(violations)}"
+            )
 
     def test_replay_is_deterministic(self, corpus_dump: Path) -> None:
         """Same input, same process, same plan — twice."""
-        planner_input, _ = load_planner_input(corpus_dump)
-        _assert_same_plan(run_planner(planner_input), run_planner(planner_input))
+        for _index, planner_input, _report in replayed_cycles(corpus_dump):
+            _assert_same_plan(run_planner(planner_input), run_planner(planner_input))
 
     def test_serialise_reload_reproduces_an_identical_plan(
         self, corpus_dump: Path, tmp_path: Path

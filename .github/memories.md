@@ -1007,9 +1007,28 @@ against `docs/planner-spec.md`.
   afternoon dump otherwise), and the no-action comparison uses `score`, not
   `total_cost` — a correct plan can spend more money in-horizon and win by
   leaving the battery fuller.
-- Stage 2 (savings vs a no-action baseline, regret vs a perfect-foresight
+- `tests/backtest/actuals.py` loads realized outcomes and aligns them to slots.
+  Three rules it must keep: **missing stays `None`** (regret is a difference of
+  costs, so a fabricated zero manufactures savings rather than cancelling);
+  alignment goes through `datetime_utils.slot_key()` so a UTC export matches a
+  `+02:00` plan and both folds of an autumn repeated hour stay distinct; and a
+  slot-width mismatch **raises** rather than resampling. Absent-means-zero is
+  opt-in per series via `fill_absent_with_zero()` and named in the report —
+  `HistoryReader` drops zero deltas, so PV is genuinely absent overnight.
+- Accumulator→slot-delta conversion **delegates to
+  `HistoryReader._compute_slot_deltas`**. Do not reimplement it: meter resets,
+  recorder gaps, implausible deltas and DST folds are all handled there, and a
+  second copy would quietly disagree.
+- Corpus discovery reads `*.json` and `*.jsonl` (an HA append log), from the
+  committed dir plus `HSEM_BACKTEST_CORPUS`. `HSEM_BACKTEST_MAX_CYCLES`
+  (default 25) caps cycles per file so a three-week log cannot blow the test
+  timeout. Collection must be **time-pattern triggered**, not state-triggered:
+  the working-mode sensor only changes when the recommendation changes, so
+  state triggers skip exactly the stable stretches a baseline needs.
+- Stage 2b (savings vs a no-action baseline, regret vs a perfect-foresight
   oracle) is designed in `docs/backtest-harness.md` but **not implemented**: it
-  needs realized PV/load/price/SoC actuals, and no corpus of those exists yet.
+  needs a corpus of paired inputs and actuals, and three open questions
+  (alignment, attribution, oracle scope) need real data to answer.
 - `hsem.log` is not a corpus — derived `[soc_sim]`/`[avg]`/`[pop]` traces, no
   `planner_input`.
 
