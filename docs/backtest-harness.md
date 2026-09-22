@@ -283,12 +283,12 @@ second opinion about meter resets, recorder gaps or DST folds. Value series
     "pv_produced": [["2026-09-14T10:00:00+00:00", 1.02]],
     "house_load": [["2026-09-14T10:00:00+00:00", 0.31]],
     "grid_import": [["2026-09-14T10:00:00+00:00", 0.0]],
-    "grid_export": [["2026-09-14T10:00:00+00:00", 0.71]]
+    "grid_export": [["2026-09-14T10:00:00+00:00", 0.71]],
+    "battery_charged": [["2026-09-14T10:00:00+00:00", 0.0]],
+    "battery_discharged": [["2026-09-14T10:00:00+00:00", 0.0]]
   },
   "slot_values": {
-    "battery_soc_pct": [["2026-09-14T10:00:00+00:00", 96.2]],
-    "import_price": [["2026-09-14T10:00:00+00:00", 2.138]],
-    "export_price": [["2026-09-14T10:00:00+00:00", 1.695]]
+    "battery_soc_pct": [["2026-09-14T10:00:00+00:00", 96.2]]
   }
 }
 ```
@@ -297,6 +297,18 @@ second opinion about meter resets, recorder gaps or DST folds. Value series
 scalar per slot. An unrecognised series name is reported and ignored rather
 than silently accepted. The `schema` tag is mandatory so a format change is
 loud.
+
+`battery_charged` / `battery_discharged` are optional but worth having: they
+measure what the battery actually did, instead of inferring it from SoC deltas
+under assumed efficiencies.
+
+**Prices are normally absent, and that is correct.** Day-ahead prices are
+published in advance and never revised, so the price the planner optimised
+against _is_ the realized price — and it already lives on the dump's
+`price_points`, including HSEM's grid fees. A raw spot-price sensor carries no
+fees, so exporting one would introduce a systematic offset that scores as
+regret. `import_price`/`export_price` exist for a market where that assumption
+fails; `is_scorable` does not require them.
 
 ---
 

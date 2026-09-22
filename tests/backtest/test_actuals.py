@@ -264,7 +264,7 @@ class TestExplicitZeroFill:
 class TestSlotActualsProperties:
     """Scorability is a property of the row, and has to be explicit."""
 
-    def test_energy_without_prices_is_not_scorable(self) -> None:
+    def test_nothing_observed_is_not_scorable(self) -> None:
         slots = _slots(1)
         row = align_to_slots(
             Actuals(
@@ -275,7 +275,35 @@ class TestSlotActualsProperties:
         )[0][0]
         assert not row.has_energy_balance
         assert not row.has_prices
+        assert not row.has_battery_flows
         assert not row.is_scorable
+
+    def test_scorability_does_not_require_prices(self, tmp_path: Path) -> None:
+        """Prices come from the dump, not the actuals — see has_prices."""
+        slots = _slots(4)
+        payload = _payload(slots)
+        payload["slot_values"].pop("import_price")
+        payload["slot_values"].pop("export_price")
+        rows, report = align_to_slots(load_actuals(_write(tmp_path, payload)), slots)
+        assert not rows[0].has_prices
+        assert rows[0].has_energy_balance
+        assert rows[0].is_scorable
+        assert report.scorable_slots == 4
+
+    def test_realized_battery_flows_are_optional_but_reported(
+        self, tmp_path: Path
+    ) -> None:
+        slots = _slots(4)
+        payload = _payload(slots)
+        rows, _ = align_to_slots(load_actuals(_write(tmp_path, payload)), slots)
+        assert rows[0].has_battery_flows
+        assert rows[0].battery_charged_kwh is not None
+
+        payload["slot_energy_kwh"].pop("battery_charged")
+        payload["slot_energy_kwh"].pop("battery_discharged")
+        rows, _ = align_to_slots(load_actuals(_write(tmp_path, payload)), slots)
+        assert not rows[0].has_battery_flows
+        assert rows[0].is_scorable
 
     def test_partial_energy_is_not_a_balance(self, tmp_path: Path) -> None:
         slots = _slots(2)

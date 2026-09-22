@@ -61,6 +61,8 @@ ENERGY_SERIES: tuple[str, ...] = (
     "house_load",
     "grid_import",
     "grid_export",
+    "battery_charged",
+    "battery_discharged",
 )
 
 #: Series recorded as one scalar per slot — a level sampled at the slot start,
@@ -86,8 +88,11 @@ class SlotActuals:
         house_load_kwh: Realized house consumption.
         grid_import_kwh: Realized grid import.
         grid_export_kwh: Realized grid export.
+        battery_charged_kwh: Realized energy charged into the battery.
+        battery_discharged_kwh: Realized energy discharged from the battery.
         battery_soc_pct: Battery state of charge sampled at the slot start.
-        import_price: Realized import price for the slot.
+        import_price: Realized import price for the slot.  Usually absent —
+            see :attr:`has_prices`.
         export_price: Realized export price for the slot.
     """
 
@@ -97,6 +102,8 @@ class SlotActuals:
     house_load_kwh: float | None = None
     grid_import_kwh: float | None = None
     grid_export_kwh: float | None = None
+    battery_charged_kwh: float | None = None
+    battery_discharged_kwh: float | None = None
     battery_soc_pct: float | None = None
     import_price: float | None = None
     export_price: float | None = None
@@ -107,7 +114,9 @@ class SlotActuals:
 
         A slot missing any of them cannot be scored: the realized cost of a
         slot is a function of its grid flows, and its regret additionally needs
-        the PV and load an oracle would have optimised against.
+        the PV and load an oracle would have optimised against.  The realized
+        battery flows are *not* required here — they sharpen the comparison but
+        a plan can be scored without them.
         """
         return None not in (
             self.pv_produced_kwh,
@@ -118,13 +127,37 @@ class SlotActuals:
 
     @property
     def has_prices(self) -> bool:
-        """Return ``True`` when both realized prices were observed."""
+        """Return ``True`` when both realized prices were observed.
+
+        Normally ``False``, and that is correct: day-ahead prices are published
+        in advance and never revised, so the price the planner optimised
+        against *is* the realized price and already lives on the dump's
+        ``price_points`` — including HSEM's grid fees, which a raw spot-price
+        sensor does not carry.  Exporting prices separately would introduce a
+        systematic offset that scores as regret.  These fields exist for a
+        market where that assumption fails.
+        """
         return self.import_price is not None and self.export_price is not None
 
     @property
+    def has_battery_flows(self) -> bool:
+        """Return ``True`` when realized battery charge and discharge were seen.
+
+        Optional, but it is the difference between measuring what the battery
+        did and inferring it from SoC deltas under assumed efficiencies.
+        """
+        return (
+            self.battery_charged_kwh is not None
+            and self.battery_discharged_kwh is not None
+        )
+
+    @property
     def is_scorable(self) -> bool:
-        """Return ``True`` when this slot carries everything scoring needs."""
-        return self.has_energy_balance and self.has_prices
+        """Return ``True`` when this slot carries everything scoring needs.
+
+        Prices are deliberately not required — see :attr:`has_prices`.
+        """
+        return self.has_energy_balance
 
 
 @dataclass(frozen=True)
@@ -399,6 +432,8 @@ def align_to_slots(
                 house_load_kwh=observed["house_load"],
                 grid_import_kwh=observed["grid_import"],
                 grid_export_kwh=observed["grid_export"],
+                battery_charged_kwh=observed["battery_charged"],
+                battery_discharged_kwh=observed["battery_discharged"],
                 battery_soc_pct=observed["battery_soc_pct"],
                 import_price=observed["import_price"],
                 export_price=observed["export_price"],
