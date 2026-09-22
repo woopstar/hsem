@@ -979,6 +979,39 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
 - Run `pytest tests/` before every PR.
 - Run `./scripts/quality.sh lint` then `./scripts/quality.sh quality` before every commit.
 - Use `pytest.approx()` for all float comparisons in tests.
+- Fixtures cannot contain input combinations nobody thought of. When a planner
+  bug reaches production, add the diagnostics dump to `tests/backtest/corpus/`
+  as well as writing the unit regression test — see the backtest harness below.
+
+---
+
+## Planner Backtest Harness (issue #1037)
+
+`tests/backtest/` replays recorded production cycles offline and checks them
+against `docs/planner-spec.md`.
+
+- `tests/backtest/replay.py` is the **inverse** of
+  `utils/diagnostics.py::_planner_input_to_dict`. Add or remove a
+  `PlannerInput` field and the two must be grepped together — the corpus stops
+  round-tripping when they disagree, which is what
+  `ReplayReport.is_faithful` asserts.
+- Datetime fields are discovered from `PlannerInput`'s own annotations, not
+  hard-coded. Do not replace that with a literal list.
+- `tests/backtest/invariants.py::check_invariants` returns violations, never
+  raises, and delegates the label/energy contract to the shipped
+  `plan_consistency.check_plan_self_consistency` so the harness cannot drift
+  from the gate users run.
+- Two things the checks must keep doing, both learned from real dumps:
+  `time_passed`/`missing_input_entities` slots are never simulated and must be
+  skipped for SoC and terminal-SoC checks (69 false positives on a 48 h
+  afternoon dump otherwise), and the no-action comparison uses `score`, not
+  `total_cost` — a correct plan can spend more money in-horizon and win by
+  leaving the battery fuller.
+- Stage 2 (savings vs a no-action baseline, regret vs a perfect-foresight
+  oracle) is designed in `docs/backtest-harness.md` but **not implemented**: it
+  needs realized PV/load/price/SoC actuals, and no corpus of those exists yet.
+- `hsem.log` is not a corpus — derived `[soc_sim]`/`[avg]`/`[pop]` traces, no
+  `planner_input`.
 
 ---
 

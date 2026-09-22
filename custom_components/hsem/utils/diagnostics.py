@@ -152,6 +152,11 @@ def _planner_input_to_dict(inp: PlannerInput) -> dict[str, Any]:
     ``solar_corrector`` object is replaced with a placeholder because it is
     not serialisable and is not needed to reproduce planner logic offline.
 
+    The inverse lives in ``tests/backtest/replay.py`` (issue #1037), which
+    replays a recorded cycle offline.  Grep both together when a
+    ``PlannerInput`` field is added or removed: the backtest corpus stops
+    round-tripping when they disagree.
+
     Args:
         inp: The planner input to serialise.
 

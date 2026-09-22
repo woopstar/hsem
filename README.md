@@ -166,6 +166,7 @@ Full documentation is available on the **[HSEM Wiki](https://github.com/woopstar
 - **[Consumption Prediction](docs/consumption-prediction.md)** — ML ridge regression with DOW + DOY + temperature features
 - **[MILP Optimization](docs/milp-optimization.md)** — LP formulation, EV co-optimisation, session-aware demand
 - **[Forecast Accuracy Tracking](docs/forecast-accuracy-tracking.md)** — Solar correction and prediction accuracy
+- **[Planner Backtest Harness](docs/backtest-harness.md)** — Replay recorded production cycles offline against the planner spec
 - **[Troubleshooting Guide](https://github.com/woopstar/hsem/wiki/troubleshooting-guide)** — Diagnose and fix common problems
 - **[All Documentation](docs/index.md)** — Full index of all documentation files
 

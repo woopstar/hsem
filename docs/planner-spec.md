@@ -2792,6 +2792,11 @@ True`) before the write, and is released only once
 
 Add tests for these invariants:
 
+> Many of them are also checked mechanically against recorded production
+> cycles by `tests/backtest/` — see
+> [Planner Backtest Harness](backtest-harness.md) for which ones, and for how
+> to add a dump to the corpus.
+
 - Energy balance holds for every slot.
 - SoC never leaves configured bounds.
 - Forced discharge changes SoC and cost.
