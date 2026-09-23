@@ -64,6 +64,7 @@ flowchart LR
 | `tests/backtest/conftest.py`      | Corpus discovery, including a private out-of-repo corpus            |
 | `tests/backtest/corpus/`          | Committed, redacted dumps — so CI needs no live Home Assistant      |
 | `scripts/replay_planner_input.py` | Command-line front end for replay                                   |
+| `scripts/collect_actuals.sh`      | One command: fetch a week of history, convert, verify               |
 | `scripts/build_actuals.py`        | Turn an HA history export into an actuals file                      |
 
 ### What the shim has to rebuild
@@ -244,64 +245,41 @@ file needs no post-processing.
 
 ### Actuals — one history export
 
-Realized outcomes come from the recorder. The history REST API is the
-documented path:
+`scripts/collect_actuals.sh` does the whole loop — fetch, convert, verify:
 
 ```bash
-curl -H "Authorization: Bearer $HA_TOKEN" \
-  "$HA_URL/api/history/period/2026-09-01T00:00:00+02:00?end_time=2026-09-22T00:00:00+02:00&filter_entity_id=sensor.pv_energy,sensor.house_energy,sensor.grid_import_energy,sensor.grid_export_energy,sensor.battery_soc" \
-  > history.json
+export HA_URL=http://homeassistant.local:8123
+export HA_TOKEN=<long-lived access token>
+export TZ=Europe/Copenhagen          # must match Home Assistant's timezone
+
+./scripts/collect_actuals.sh --days 7 --verify
 ```
 
-Convert it to the actuals format, mapping each entity onto a series:
+It downloads one file per complete day into `~/hsem-actuals/raw/`, skipping days
+it already has, then converts **every** raw file in one pass so day boundaries
+are stitched. Re-run it weekly; it is idempotent.
+
+Set `HSEM_ARCHIVE_ENTITIES` to a comma-separated list of extras — EV charger
+power, EV SoC, phase meters, the working-mode sensor. They are downloaded but
+not converted: the recorder purges, so they cannot be fetched later, and they
+give the outage check more evidence to work with.
+
+The seven mapped entities default to the names used by the common HSEM
+template package. Override any of them with `HSEM_GRID_IMPORT_ENTITY`,
+`HSEM_PV_ENTITY`, `HSEM_HOUSE_LOAD_ENTITY` and friends — see `MAPPING` at the
+top of the script. Map `house_load` to the **EV-excluded** meter: the planner's
+baseline is EV-normalized, so an EV-inclusive meter double-counts against
+`ev_planned_load_kwh`.
+
+Under the hood it calls `scripts/build_actuals.py`, which you can drive
+directly for one-off exports:
 
 ```bash
-python3 scripts/build_actuals.py history.json \
-    --map sensor.pv_energy=pv_produced \
-    --map sensor.house_energy=house_load \
-    --map sensor.grid_import_energy=grid_import \
-    --map sensor.grid_export_energy=grid_export \
-    --map sensor.battery_soc=battery_soc_pct \
+python3 scripts/build_actuals.py history-*.json \
+    --map sensor.energy_import_ps=grid_import \
+    --map sensor.batteries_state_of_capacity=battery_soc_pct \
     --slot-minutes 15 --out actuals.json
 ```
-
-Energy series must be cumulative kWh accumulators — Riemann `integration`
-sensors are ideal. Instantaneous power sensors will not work.
-
-Home Assistant records a state only when it _changes_, so a meter that sat flat
-through a six-hour export afternoon has no history rows in those six hours.
-Energy is therefore taken from the value **in force** at each slot boundary:
-
-$$
-E_{slot} = V(t_{end}) - V(t_{start}), \qquad V(t) = \text{last reading at or before } t
-$$
-
-A slot in which nothing flowed comes out `0.0`, and the first slot after a
-quiet stretch keeps its full energy. Neither needs a reading _inside_ the slot.
-
-This is deliberately **not** `HistoryReader._compute_slot_deltas`, which the ML
-layer uses. That routine answers a different question — how much did the house
-consume? — and correctly discards zero slots and any slot whose predecessor had
-no reading. For actuals both are real observations: measured against a meter
-that imports 06:00–09:00 and again from 15:07, it drops the 15:00 slot's
-0.09 kWh outright. The plausibility cap (`MAX_SLOT_KWH`) is shared.
-
-A slot is **missing** — never zero — when a boundary falls before the first
-reading or inside an `unavailable` stretch, when the meter went down (a reset),
-or when the delta exceeds the cap. `unknown`/`unavailable` states are kept as
-gaps, not dropped: dropping the row would let the previous value carry straight
-across the outage.
-
-**Include a chatty entity in every export.** A flat meter and a stopped recorder
-look identical on one sensor. Across all of them they do not — a running system
-keeps reporting something, an outage silences everything at once. Any slot
-overlapping a silence longer than `--max-silence-minutes` (default 10) across
-every exported entity is treated as unobserved. House load is the natural
-heartbeat; exported alone, a sparse meter's flat stretches stay missing because
-nothing can prove they were real.
-
-Value series (battery SoC) take the value in force at the slot start, so a SoC
-that sits at 100 % for an hour is present in every slot of that hour.
 
 ### The actuals file format
 
