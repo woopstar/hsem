@@ -734,6 +734,11 @@ def build_actuals_payload(
 #: rounding.  Currency per kWh.
 PRICE_OFFSET_TOLERANCE = 0.005
 
+#: Fraction of normally distributed samples expected beyond three standard
+#: deviations.  Used to tell "some slots are wrong" from "this is what 96
+#: samples of noise look like".
+_THREE_SIGMA_RATE = 0.0027
+
 
 @dataclass(frozen=True)
 class PriceComparison:
@@ -755,9 +760,13 @@ class PriceComparison:
             hour, which cancels intra-hour structure.
         worst_diff: Largest single-slot gap.
         outliers: Slots more than three spreads from the mean difference.  A
-            handful of these with no systematic offset means specific slots are
+            run of these with no systematic offset means specific slots are
             wrong -- a stale price, a gap in the source -- which a mean over a
-            whole day would otherwise absorb.
+            whole day would otherwise absorb.  Always reported; only treated as
+            a fault when it exceeds what chance explains, since three-sigma
+            samples occur at a known rate.
+        worst_at: Start of the slot holding :attr:`worst_diff`, so it can be
+            looked at rather than guessed about.
         plan_is_hourly: Whether the plan repeats one price across each hour.
         actuals_are_subhourly: Whether the recorded prices vary within an hour.
         verdict: One line naming what the numbers show.
@@ -769,6 +778,7 @@ class PriceComparison:
     hourly_max_diff: float
     worst_diff: float
     outliers: int
+    worst_at: datetime | None
     plan_is_hourly: bool
     actuals_are_subhourly: bool
     verdict: str
@@ -780,8 +790,9 @@ class PriceComparison:
         return (
             f"prices: {self.slots} slot(s) compared against the plan\n"
             f"  mean diff {self.mean_diff:+.4f}/kWh  (spread {self.stdev_diff:.4f})\n"
-            f"  worst single slot {self.worst_diff:.4f}/kWh, "
-            f"{self.outliers} outlier(s)\n"
+            f"  worst single slot {self.worst_diff:.4f}/kWh"
+            f"{' at ' + self.worst_at.strftime('%Y-%m-%d %H:%M') if self.worst_at else ''}"
+            f", {self.outliers} outlier(s)\n"
             f"  hourly-averaged worst gap {self.hourly_max_diff:.4f}/kWh\n"
             f"  {self.verdict}"
         )
@@ -814,15 +825,16 @@ def compare_prices(
     ]
     if not paired:
         return PriceComparison(
-            0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0,
-            False,
-            False,
-            "no overlapping slots carry prices -- re-run with --refresh",
+            slots=0,
+            mean_diff=0.0,
+            stdev_diff=0.0,
+            hourly_max_diff=0.0,
+            worst_diff=0.0,
+            outliers=0,
+            worst_at=None,
+            plan_is_hourly=False,
+            actuals_are_subhourly=False,
+            verdict="no overlapping slots carry prices -- re-run with --refresh",
         )
 
     diffs = [actual - planned for _t, actual, planned in paired]
@@ -853,17 +865,22 @@ def compare_prices(
     standard_error = stdev / len(diffs) ** 0.5
     significant = abs(mean_diff) > tolerance and abs(mean_diff) > 3 * standard_error
 
-    worst_diff = max(abs(d) for d in diffs)
+    worst_index = max(range(len(diffs)), key=lambda i: abs(diffs[i]))
+    worst_diff = abs(diffs[worst_index])
+    worst_at = paired[worst_index][0]
     outliers = (
         sum(1 for d in diffs if abs(d - mean_diff) > 3 * stdev) if stdev > 0 else 0
     )
+    # Three-sigma samples occur at a known rate, so a lone one in a hundred
+    # slots is what noise looks like, not a fault.  Require a clear excess.
+    outliers_beyond_chance = outliers > max(2, 3 * _THREE_SIGMA_RATE * len(diffs))
 
     if significant:
         verdict = (
             f"systematic offset of {mean_diff:+.4f}/kWh -- a fee or tariff the "
             f"two sides do not share. Do not score until resolved."
         )
-    elif outliers:
+    elif outliers_beyond_chance:
         # Checked before the granularity and spread cases: a day-long mean
         # absorbs a handful of wrong slots, so without this they read as noise.
         verdict = (
@@ -884,13 +901,14 @@ def compare_prices(
     else:
         verdict = "consistent: same prices, slot for slot."
     return PriceComparison(
-        len(paired),
-        mean_diff,
-        stdev,
-        hourly_max,
-        worst_diff,
-        outliers,
-        plan_is_hourly,
-        actuals_are_subhourly,
-        verdict,
+        slots=len(paired),
+        mean_diff=mean_diff,
+        stdev_diff=stdev,
+        hourly_max_diff=hourly_max,
+        worst_diff=worst_diff,
+        outliers=outliers,
+        worst_at=worst_at,
+        plan_is_hourly=plan_is_hourly,
+        actuals_are_subhourly=actuals_are_subhourly,
+        verdict=verdict,
     )

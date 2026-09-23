@@ -696,6 +696,28 @@ class TestComparePrices:
         assert result.worst_diff == pytest.approx(0.5)
         assert "individual" in result.verdict
 
+    def test_a_lone_outlier_is_reported_but_not_a_verdict(self) -> None:
+        """Three-sigma samples happen; one in ninety-odd is not a fault.
+
+        The intra-hour offsets sum to zero, as real hours do across a day --
+        repeating a single hour's pattern would be a constant bias, not noise,
+        and the check rightly calls that an offset.
+        """
+        plan = 2.2040
+        shape = [-0.06, 0.10, 0.08, -0.12]
+        measured = [(plan + d, plan) for _ in range(23) for d in shape]
+        measured.append((plan + 0.48, plan))
+        result = compare_prices(*_priced(measured))
+        assert result.outliers == 1
+        assert "individual" not in result.verdict
+        assert "hourly prices while the export is" in result.verdict
+        assert "1 outlier(s)" in result.describe()
+
+    def test_the_worst_slot_is_named(self) -> None:
+        result = compare_prices(*_priced([(2.0, 2.0), (2.0, 2.0), (2.9, 2.0)]))
+        assert result.worst_at == _minutes(30)
+        assert "at 2026-09-14 00:30" in result.describe()
+
     def test_granularity_noise_produces_no_outliers(self) -> None:
         plan = 2.2040
         measured = [(2.1438, plan), (2.3009, plan), (2.2829, plan), (2.1722, plan)] * 8
