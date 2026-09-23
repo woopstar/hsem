@@ -1034,6 +1034,13 @@ against `docs/planner-spec.md`.
   timeout. Collection must be **time-pattern triggered**, not state-triggered:
   the working-mode sensor only changes when the recommendation changes, so
   state triggers skip exactly the stable stretches a baseline needs.
+- **The dump's prices are not always the realized prices.** `price_points` holds
+  what the planner _used_; beyond the ~13:00 day-ahead publication horizon that
+  is the #1002 estimate (same hour, nearest earlier day), flagged by
+  `data_quality.tomorrow_price_missing_hours` / `day2_price_missing_hours`.
+  Scoring against it would hide genuine price-forecast error. Take the realized
+  price from a _later_ dump covering the same slot — fees included — never from
+  a raw spot sensor, which has no fees and would score as a constant offset.
 - Stage 2b (savings vs a no-action baseline, regret vs a perfect-foresight
   oracle) is designed in `docs/backtest-harness.md` but **not implemented**: it
   needs a corpus of paired inputs and actuals, and three open questions

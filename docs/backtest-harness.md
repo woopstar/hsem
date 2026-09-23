@@ -310,13 +310,16 @@ loud.
 measure what the battery actually did, instead of inferring it from SoC deltas
 under assumed efficiencies.
 
-**Prices are normally absent, and that is correct.** Day-ahead prices are
-published in advance and never revised, so the price the planner optimised
-against _is_ the realized price — and it already lives on the dump's
-`price_points`, including HSEM's grid fees. A raw spot-price sensor carries no
+**Prices are normally absent, and that is correct.** They live on the dump's
+`price_points`, including HSEM's grid fees, and the plan, the baseline and the
+oracle must all be scored at the same number or the comparison measures the
+price difference rather than the decision. A raw spot-price sensor carries no
 fees, so exporting one would introduce a systematic offset that scores as
-regret. `import_price`/`export_price` exist for a market where that assumption
-fails; `is_scorable` does not require them.
+regret. `is_scorable` does not require these fields.
+
+They are not simply "the price the planner used", though: beyond the day-ahead
+publication horizon that is an estimate, not the realized price — see open
+question 4 under Stage 2b.
 
 ---
 
@@ -407,6 +410,17 @@ These need real paired data to answer, which is why Stage 2b waits.
 3. **Oracle scope.** A perfect-foresight oracle over a 48 h horizon needs 48 h of
    actuals _after_ the cycle, so the last two days of any corpus can never be
    scored.
+4. **Which price is the realized price.** A dump carries the price the planner
+   _used_, which is not always the price that applied. Day-ahead prices publish
+   around 13:00, so a morning cycle's second day has none, and `populate_prices`
+   fills those hours from the nearest earlier day (issue #1002). Scoring against
+   that measures the planner as if its estimate were the truth, hiding genuine
+   price-forecast error. The corpus solves this without a separate export: for
+   any slot there is a later cycle whose `price_points` carry the published
+   price _with_ HSEM's fees, so realized prices come from a dump taken near the
+   slot, not from the cycle being scored.
+   `data_quality.tomorrow_price_missing_hours` and `day2_price_missing_hours`
+   mark exactly which hours need it.
 
 Home Assistant's `mcp_server` integration was evaluated for collection and
 rejected: it exposes Assist-oriented tools returning a plain-text snapshot
