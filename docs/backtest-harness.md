@@ -264,8 +264,9 @@ power, EV SoC, phase meters, the working-mode sensor. They are downloaded but
 not converted: the recorder purges, so they cannot be fetched later, and they
 give the outage check more evidence to work with.
 
-The seven mapped entities default to the names used by the common HSEM
-template package. Override any of them with `HSEM_GRID_IMPORT_ENTITY`,
+The nine mapped entities — four energy meters, realized battery charge and
+discharge, battery SoC and the two price sensors — default to the names used by
+the common HSEM template package. Override any of them with `HSEM_GRID_IMPORT_ENTITY`,
 `HSEM_PV_ENTITY`, `HSEM_HOUSE_LOAD_ENTITY` and friends — see `MAPPING` at the
 top of the script. Map `house_load` to the **EV-excluded** meter: the planner's
 baseline is EV-normalized, so an EV-inclusive meter double-counts against
@@ -310,16 +311,27 @@ loud.
 measure what the battery actually did, instead of inferring it from SoC deltas
 under assumed efficiencies.
 
-**Prices are normally absent, and that is correct.** They live on the dump's
-`price_points`, including HSEM's grid fees, and the plan, the baseline and the
-oracle must all be scored at the same number or the comparison measures the
-price difference rather than the decision. A raw spot-price sensor carries no
-fees, so exporting one would introduce a systematic offset that scores as
-regret. `is_scorable` does not require these fields.
+**Export prices when your price sensor is the one the planner reads.** HSEM
+takes its prices straight from the configured import/export price sensors — it
+adds no grid fee of its own — so their recorded state is the price a slot was
+settled at. Recording them makes realized cost computable across the whole
+recorder window without a matching dump, which is what lets savings be measured
+over months while regret waits for paired data.
 
-They are not simply "the price the planner used", though: beyond the day-ahead
-publication horizon that is an estimate, not the realized price — see open
-question 4 under Stage 2b.
+Confirm rather than assume, per installation:
+
+- the sensor must already carry tariffs (Energi Data Service does; a bare spot
+  feed does not);
+- `hsem_export_fee_per_kwh`, when set, is subtracted from the export price by
+  the planner and must be subtracted here too.
+
+`collect_actuals.sh --verify` checks both, comparing every overlapping slot
+against a dump's own `price_points`. Anything other than `0 mismatched` means
+the sensor is not what the plan was settled at, and scoring would book the
+difference as regret.
+
+`is_scorable` does not require prices: an energy-only export still supports
+every comparison that does not need money.
 
 ---
 
@@ -414,13 +426,13 @@ These need real paired data to answer, which is why Stage 2b waits.
    _used_, which is not always the price that applied. Day-ahead prices publish
    around 13:00, so a morning cycle's second day has none, and `populate_prices`
    fills those hours from the nearest earlier day (issue #1002). Scoring against
-   that measures the planner as if its estimate were the truth, hiding genuine
-   price-forecast error. The corpus solves this without a separate export: for
-   any slot there is a later cycle whose `price_points` carry the published
-   price _with_ HSEM's fees, so realized prices come from a dump taken near the
-   slot, not from the cycle being scored.
-   `data_quality.tomorrow_price_missing_hours` and `day2_price_missing_hours`
-   mark exactly which hours need it.
+   that measures the planner as if its own estimate were the truth, hiding
+   genuine price-forecast error —
+   `data_quality.tomorrow_price_missing_hours` marks exactly which hours.
+   The realized price comes from the price sensor's recorded state instead
+   (exported as `import_price`/`export_price`), or equivalently from any later
+   dump covering the same slot. What a scoring pass must not do is read it off
+   the cycle being scored.
 
 Home Assistant's `mcp_server` integration was evaluated for collection and
 rejected: it exposes Assist-oriented tools returning a plain-text snapshot

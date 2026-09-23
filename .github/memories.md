@@ -1038,9 +1038,14 @@ against `docs/planner-spec.md`.
   what the planner _used_; beyond the ~13:00 day-ahead publication horizon that
   is the #1002 estimate (same hour, nearest earlier day), flagged by
   `data_quality.tomorrow_price_missing_hours` / `day2_price_missing_hours`.
-  Scoring against it would hide genuine price-forecast error. Take the realized
-  price from a _later_ dump covering the same slot — fees included — never from
-  a raw spot sensor, which has no fees and would score as a constant offset.
+  Never read a realized price off the cycle being scored.
+- **HSEM adds no grid fee of its own on import** — it uses the price sensor's
+  state directly (`const.py` has only `hsem_export_fee_per_kwh`, default 0.0).
+  So the price sensor's recorded state _is_ the settled price, and exporting it
+  makes realized cost computable for the whole recorder window with no matching
+  dump. Verified on a real install: `import_electricity_price_state` equalled
+  the plan slot's `import_price` exactly. `collect_actuals.sh --verify` proves
+  it per install rather than assuming.
 - Stage 2b (savings vs a no-action baseline, regret vs a perfect-foresight
   oracle) is designed in `docs/backtest-harness.md` but **not implemented**: it
   needs a corpus of paired inputs and actuals, and three open questions

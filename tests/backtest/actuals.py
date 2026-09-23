@@ -137,13 +137,20 @@ class SlotActuals:
     def has_prices(self) -> bool:
         """Return ``True`` when both realized prices were observed.
 
-        Normally ``False``, and that is correct: day-ahead prices are published
-        in advance and never revised, so the price the planner optimised
-        against *is* the realized price and already lives on the dump's
-        ``price_points`` — including HSEM's grid fees, which a raw spot-price
-        sensor does not carry.  Exporting prices separately would introduce a
-        systematic offset that scores as regret.  These fields exist for a
-        market where that assumption fails.
+        Worth having: the planner reads its prices straight from the configured
+        price sensors, so those sensors' recorded state *is* the price a slot
+        was settled at.  Exporting them makes realized cost computable for the
+        whole recorder window, with no matching dump needed.
+
+        Two things to confirm for a given installation rather than assume.  The
+        sensor must already include tariffs (Energi Data Service does; a bare
+        spot feed does not), and ``hsem_export_fee_per_kwh``, if set, is
+        subtracted from the export price by the planner and must be subtracted
+        here too.  ``collect_actuals.sh --verify`` cross-checks both against a
+        dump's own ``price_points`` on overlapping slots.
+
+        Not required by :attr:`is_scorable`: an energy-only export still
+        supports every comparison that does not need money.
         """
         return self.import_price is not None and self.export_price is not None
 
