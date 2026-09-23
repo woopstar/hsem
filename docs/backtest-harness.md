@@ -326,9 +326,22 @@ Confirm rather than assume, per installation:
   the planner and must be subtracted here too.
 
 `collect_actuals.sh --verify` checks both, comparing every overlapping slot
-against a dump's own `price_points`. Anything other than `0 mismatched` means
-the sensor is not what the plan was settled at, and scoring would book the
-difference as regret.
+against a dump's own `price_points` and naming _why_ they differ:
+
+| Verdict                        | Meaning                                                                                                           |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| same prices, slot for slot     | Nothing to do.                                                                                                    |
+| systematic offset              | A fee or tariff one side has and the other does not. **Do not score.**                                            |
+| _n_ slot(s) outside the spread | Individual prices are wrong — a stale value, a source gap, or a sensor that writes just after the boundary.       |
+| plan hourly, export sub-hourly | Expected against a cycle from before the market moved to 15-minute periods. Re-check against a contemporary dump. |
+
+The distinction that matters is between a _mean_ difference and a _spread_. A
+fee is identical on every slot, so its mean stands clear of its own spread; a
+granularity difference averages to nothing but is wide. Judging the mean against
+a fixed tolerance alone calls a short sample a fee, so the check tests whether
+the mean is significant against its standard error, and separately counts slots
+more than three spreads out — because a day-long mean otherwise absorbs a
+handful of badly wrong slots.
 
 `is_scorable` does not require prices: an energy-only export still supports
 every comparison that does not need money.

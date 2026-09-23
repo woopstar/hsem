@@ -180,7 +180,7 @@ import sys
 
 sys.path.insert(0, os.getcwd())
 from custom_components.hsem.planner.engine_core import run_planner
-from tests.backtest.actuals import align_to_slots, load_actuals
+from tests.backtest.actuals import align_to_slots, compare_prices, load_actuals
 from tests.backtest.replay import load_planner_input
 
 inp, _ = load_planner_input("tests/backtest/corpus/cycle-2026-09-14-1721.json")
@@ -189,21 +189,11 @@ rows, report = align_to_slots(load_actuals(os.environ["ACTUALS_PATH"]), slots)
 print(report.describe())
 
 # The planner reads its prices from the same sensors this export records, so on
-# overlapping slots the two must agree exactly.  A mismatch means the recorded
-# state is not the price the plan was settled at -- a fee, the wrong entity, or
-# a revision -- and scoring would book that difference as regret.
-pairs = [
-    (row.import_price, slot.price.import_price, row.export_price, slot.price.export_price)
-    for row, slot in zip(rows, slots, strict=False)
-    if row.import_price is not None and row.export_price is not None
-]
-if not pairs:
-    print("\nprices: no overlapping slots carry prices -- re-run with --refresh")
-else:
-    worst = max(max(abs(a - b), abs(c - d)) for a, b, c, d in pairs)
-    bad = sum(1 for a, b, c, d in pairs if abs(a - b) > 1e-6 or abs(c - d) > 1e-6)
-    print(f"\nprices: {len(pairs)} slot(s) compared against the plan, "
-          f"{bad} mismatched, worst delta {worst:.6f}")
+# overlapping slots they should describe the same money.  They may legitimately
+# differ in granularity -- an hourly-era plan against a 15-minute export -- so
+# the comparison names *why* they differ rather than just that they do.
+print()
+print(compare_prices(rows, slots).describe())
 PY
 fi
 

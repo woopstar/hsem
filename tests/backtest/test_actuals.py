@@ -17,6 +17,7 @@ from tests.backtest.actuals import (
     Actuals,
     align_to_slots,
     build_actuals_payload,
+    compare_prices,
     load_actuals,
     readings_from_ha_history,
     slot_energy_from_readings,
@@ -605,3 +606,106 @@ class TestBuildActualsPayload:
         payload = build_actuals_payload({}, {"sensor.pv": "pv_produced"}, _START, 15)
         actuals = load_actuals(_write(tmp_path, payload))
         assert actuals.energy_kwh == {}
+
+
+def _priced(
+    prices: list[tuple[float, float]],
+) -> tuple[list[Any], list[PlannedSlot]]:
+    """Return aligned rows and plan slots carrying ``(actual, planned)`` prices."""
+    from custom_components.hsem.utils.prices import SlotPrice
+    from tests.backtest.actuals import SlotActuals
+
+    rows, slots = [], []
+    for i, (actual, planned) in enumerate(prices):
+        start, end = _minutes(15 * i), _minutes(15 * (i + 1))
+        rows.append(SlotActuals(start=start, end=end, import_price=actual))
+        slots.append(
+            PlannedSlot(start=start, end=end, price=SlotPrice(planned, planned))
+        )
+    return rows, slots
+
+
+class TestComparePrices:
+    """The cross-check must name *why* prices differ, not just that they do."""
+
+    def test_identical_prices_are_consistent(self) -> None:
+        result = compare_prices(*_priced([(2.0, 2.0), (2.1, 2.1), (2.2, 2.2)]))
+        assert result.slots == 3
+        assert result.mean_diff == pytest.approx(0.0)
+        assert "slot for slot" in result.verdict
+
+    def test_constant_fee_is_called_an_offset(self) -> None:
+        result = compare_prices(*_priced([(2.25, 2.0), (2.35, 2.1), (2.45, 2.2)]))
+        assert result.mean_diff == pytest.approx(0.25)
+        assert "systematic offset" in result.verdict
+        assert "Do not score" in result.verdict
+
+    def test_hourly_plan_against_subhourly_export_is_consistent(self) -> None:
+        """The real case, using measured values from a 2026-09-15 export."""
+        measured = [
+            (2.1438, 2.2040),
+            (2.3009, 2.2040),
+            (2.2829, 2.2040),
+            (2.1722, 2.2040),
+            (2.0445, 2.1030),
+            (2.2230, 2.1030),
+            (2.1033, 2.1030),
+            (2.0646, 2.1030),
+            (2.0067, 2.0120),
+            (2.0235, 2.0120),
+            (1.9984, 2.0120),
+            (2.0092, 2.0120),
+        ]
+        result = compare_prices(*_priced(measured))
+        assert result.plan_is_hourly
+        assert result.actuals_are_subhourly
+        assert result.stdev_diff > 0.05  # wide
+        assert "hourly prices while the export is" in result.verdict
+        # Averaging per hour cancels most of the intra-hour structure.
+        assert result.hourly_max_diff < 0.025
+
+    def test_a_small_sample_of_granularity_noise_is_not_called_a_fee(self) -> None:
+        """One hour is too little to distinguish noise from an offset."""
+        plan = 2.2040
+        result = compare_prices(
+            *_priced([(2.1438, plan), (2.3009, plan), (2.2829, plan), (2.1722, plan)])
+        )
+        assert "systematic offset" not in result.verdict
+
+    def test_a_small_constant_fee_is_still_caught(self) -> None:
+        """A fee has no spread, so even a slight one stands clear of noise."""
+        result = compare_prices(*_priced([(2.02, 2.0), (2.12, 2.1), (2.22, 2.2)]))
+        assert result.mean_diff == pytest.approx(0.02)
+        assert "systematic offset" in result.verdict
+
+    def test_matching_means_with_wrong_slots_is_flagged(self) -> None:
+        """Equal averages must not hide a per-slot disagreement."""
+        result = compare_prices(
+            *_priced([(2.5, 2.0), (2.0, 2.5), (2.5, 2.0), (2.0, 2.5)])
+        )
+        assert result.mean_diff == pytest.approx(0.0)
+        assert not result.plan_is_hourly
+        assert "timing offset" in result.verdict
+
+    def test_a_few_wrong_prices_are_named_not_absorbed(self) -> None:
+        """A day-long mean hides four bad slots; the outlier count must not."""
+        measured = [(2.0 + 0.001 * i, 2.0 + 0.001 * i) for i in range(92)]
+        measured += [(2.5, 2.0), (2.5, 2.0), (2.5, 2.0), (2.5, 2.0)]
+        result = compare_prices(*_priced(measured))
+        assert result.outliers == 4
+        assert result.worst_diff == pytest.approx(0.5)
+        assert "individual" in result.verdict
+
+    def test_granularity_noise_produces_no_outliers(self) -> None:
+        plan = 2.2040
+        measured = [(2.1438, plan), (2.3009, plan), (2.2829, plan), (2.1722, plan)] * 8
+        result = compare_prices(*_priced(measured))
+        assert result.outliers == 0
+
+    def test_no_prices_is_reported_not_crashed(self) -> None:
+        rows, slots = _priced([(2.0, 2.0)])
+        rows[0] = type(rows[0])(start=rows[0].start, end=rows[0].end)
+        result = compare_prices(rows, slots)
+        assert result.slots == 0
+        assert "--refresh" in result.verdict
+        assert "prices:" in result.describe()

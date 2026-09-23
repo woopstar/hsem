@@ -46,12 +46,14 @@ from custom_components.hsem.utils.datetime_utils import slot_key, utc_key
 
 __all__ = [
     "ACTUALS_SCHEMA",
+    "PriceComparison",
     "ENERGY_SERIES",
     "VALUE_SERIES",
     "Actuals",
     "AlignmentReport",
     "SlotActuals",
     "align_to_slots",
+    "compare_prices",
     "DEFAULT_MAX_SILENCE",
     "build_actuals_payload",
     "load_actuals",
@@ -722,3 +724,173 @@ def build_actuals_payload(
             name: sorted(rows.items()) for name, rows in sorted(values.items())
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Cross-checking realized prices against the plan
+# ---------------------------------------------------------------------------
+
+#: A settled price this far from the plan's is a fee or tariff difference, not
+#: rounding.  Currency per kWh.
+PRICE_OFFSET_TOLERANCE = 0.005
+
+
+@dataclass(frozen=True)
+class PriceComparison:
+    """How a dump's prices relate to the prices actually recorded.
+
+    The planner reads its prices from the same sensors an actuals export
+    records, so on overlapping slots they should describe the same money.  They
+    can legitimately differ in *granularity* — a plan built when the market
+    published hourly prices carries one value per hour, while a 15-minute
+    export varies within it — and that is not an error.  A constant gap is.
+
+    Attributes:
+        slots: Overlapping slots that carried a price on both sides.
+        mean_diff: Mean of ``actual - plan``.  Near zero unless a fee differs.
+        stdev_diff: Spread of that difference.  Large with equal means is the
+            signature of a granularity difference; a fee shows the opposite,
+            a clear mean with almost no spread.
+        hourly_max_diff: Largest gap once both sides are averaged per clock
+            hour, which cancels intra-hour structure.
+        worst_diff: Largest single-slot gap.
+        outliers: Slots more than three spreads from the mean difference.  A
+            handful of these with no systematic offset means specific slots are
+            wrong -- a stale price, a gap in the source -- which a mean over a
+            whole day would otherwise absorb.
+        plan_is_hourly: Whether the plan repeats one price across each hour.
+        actuals_are_subhourly: Whether the recorded prices vary within an hour.
+        verdict: One line naming what the numbers show.
+    """
+
+    slots: int
+    mean_diff: float
+    stdev_diff: float
+    hourly_max_diff: float
+    worst_diff: float
+    outliers: int
+    plan_is_hourly: bool
+    actuals_are_subhourly: bool
+    verdict: str
+
+    def describe(self) -> str:
+        """Render the comparison for an analysis script."""
+        if not self.slots:
+            return f"prices: {self.verdict}"
+        return (
+            f"prices: {self.slots} slot(s) compared against the plan\n"
+            f"  mean diff {self.mean_diff:+.4f}/kWh  (spread {self.stdev_diff:.4f})\n"
+            f"  worst single slot {self.worst_diff:.4f}/kWh, "
+            f"{self.outliers} outlier(s)\n"
+            f"  hourly-averaged worst gap {self.hourly_max_diff:.4f}/kWh\n"
+            f"  {self.verdict}"
+        )
+
+
+def _constant_within_hours(by_hour: dict[datetime, list[float]]) -> bool:
+    """Return ``True`` when every hour's values are identical."""
+    return all(max(vals) - min(vals) <= 1e-9 for vals in by_hour.values())
+
+
+def compare_prices(
+    rows: Sequence[SlotActuals],
+    slots: Sequence[PlannedSlot],
+    tolerance: float = PRICE_OFFSET_TOLERANCE,
+) -> PriceComparison:
+    """Compare recorded prices against the prices a plan was built on.
+
+    Args:
+        rows: Aligned actuals, as returned by :func:`align_to_slots`.
+        slots: The plan's slots, in the same order.
+        tolerance: Largest mean difference treated as agreement.
+
+    Returns:
+        A :class:`PriceComparison` describing the relationship.
+    """
+    paired = [
+        (row.start, row.import_price, slot.price.import_price)
+        for row, slot in zip(rows, slots, strict=False)
+        if row.import_price is not None
+    ]
+    if not paired:
+        return PriceComparison(
+            0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0,
+            False,
+            False,
+            "no overlapping slots carry prices -- re-run with --refresh",
+        )
+
+    diffs = [actual - planned for _t, actual, planned in paired]
+    mean_diff = sum(diffs) / len(diffs)
+    variance = sum((d - mean_diff) ** 2 for d in diffs) / len(diffs)
+    stdev = variance**0.5
+
+    actual_by_hour: dict[datetime, list[float]] = {}
+    plan_by_hour: dict[datetime, list[float]] = {}
+    for start, actual, planned in paired:
+        hour = start.replace(minute=0, second=0, microsecond=0)
+        actual_by_hour.setdefault(hour, []).append(actual)
+        plan_by_hour.setdefault(hour, []).append(planned)
+    hourly_max = max(
+        abs(
+            sum(actual_by_hour[h]) / len(actual_by_hour[h])
+            - sum(plan_by_hour[h]) / len(plan_by_hour[h])
+        )
+        for h in actual_by_hour
+    )
+
+    plan_is_hourly = _constant_within_hours(plan_by_hour)
+    actuals_are_subhourly = not _constant_within_hours(actual_by_hour)
+
+    # A fee is the same on every slot, so its mean stands far clear of its own
+    # spread.  Granularity noise averages to nothing but is wide, so judging the
+    # mean against a fixed tolerance alone would call a short sample a fee.
+    standard_error = stdev / len(diffs) ** 0.5
+    significant = abs(mean_diff) > tolerance and abs(mean_diff) > 3 * standard_error
+
+    worst_diff = max(abs(d) for d in diffs)
+    outliers = (
+        sum(1 for d in diffs if abs(d - mean_diff) > 3 * stdev) if stdev > 0 else 0
+    )
+
+    if significant:
+        verdict = (
+            f"systematic offset of {mean_diff:+.4f}/kWh -- a fee or tariff the "
+            f"two sides do not share. Do not score until resolved."
+        )
+    elif outliers:
+        # Checked before the granularity and spread cases: a day-long mean
+        # absorbs a handful of wrong slots, so without this they read as noise.
+        verdict = (
+            f"{outliers} slot(s) sit far outside the spread (worst "
+            f"{worst_diff:.4f}/kWh) with no systematic offset -- individual "
+            f"prices are wrong, not the whole series."
+        )
+    elif plan_is_hourly and actuals_are_subhourly:
+        verdict = (
+            "consistent: the plan carries hourly prices while the export is "
+            "sub-hourly. Expected against a cycle from before the market moved "
+            "to 15-minute periods; verify against a contemporary dump."
+        )
+    elif stdev > tolerance:
+        verdict = (
+            "means agree but slots do not -- check for a timing offset before scoring."
+        )
+    else:
+        verdict = "consistent: same prices, slot for slot."
+    return PriceComparison(
+        len(paired),
+        mean_diff,
+        stdev,
+        hourly_max,
+        worst_diff,
+        outliers,
+        plan_is_hourly,
+        actuals_are_subhourly,
+        verdict,
+    )
