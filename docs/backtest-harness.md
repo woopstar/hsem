@@ -225,19 +225,24 @@ automation:
     actions:
       - action: hsem.export_diagnostics
         response_variable: dump
-      - action: notify.send_message
-        target:
-          entity_id: notify.hsem_corpus
+      - action: notify.hsem_corpus
         data:
           message: "{{ dump | to_json }}"
 ```
 
-Trigger on a time pattern rather than on a state change: the working-mode sensor
-only changes when the _recommendation_ changes, so state-triggered collection
-silently skips every cycle that reached the same conclusion — which is most of
-them, and exactly the stable stretches a baseline needs. Match the interval to
-your configured HSEM update interval. On Home Assistant older than 2024.8 use
-`service: notify.hsem_corpus` in place of the `notify.send_message` block.
+Two things that are easy to get wrong here.
+
+**Call `notify.hsem_corpus` as a service, not an entity.** The legacy YAML
+`notify:` platform above registers a _service_; it creates no entity, so
+`notify.send_message` with `target.entity_id` fails and the file is never
+written. Use the entity form only if you add the File integration through the
+UI instead of the YAML block.
+
+**Trigger on a time pattern, not a state change.** The working-mode sensor only
+changes when the _recommendation_ changes, so state-triggered collection
+silently skips every cycle that reached the same conclusion — most of them, and
+exactly the stable stretches a baseline needs. Match the interval to your
+configured HSEM update interval.
 
 That produces JSON Lines — one cycle per line, ~9 KB of `planner_input` each,
 roughly 2.6 MB/day at 5-minute cycles. `iter_dumps()` reads it directly, so the

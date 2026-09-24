@@ -124,9 +124,17 @@ def redact_dict(data: dict[str, Any]) -> dict[str, Any]:
 def _serialise_value(value: Any) -> Any:
     """Recursively make a value JSON-safe.
 
-    Handles ``datetime`` / ``date`` objects and plain containers.  Non-serialisable
-    objects are replaced with their repr string so the dump never crashes a
-    service response.
+    Handles ``datetime`` / ``date`` objects and plain containers, and coerces
+    scalars to *exact* built-in types.  That last part is not cosmetic: the MILP
+    runs on SciPy, so costs arrive as ``numpy.float64``.  Python's ``json``
+    accepts those silently because they subclass ``float``, but Home Assistant
+    serialises service responses with ``orjson``, which dispatches on exact type
+    and raises ``Type is not JSON serializable: numpy.float64`` — breaking
+    ``hsem.export_diagnostics`` for every caller while every ``json``-based test
+    passes.
+
+    Anything still not JSON-native becomes its repr, so a dump degrades to a
+    readable string rather than crashing a service response.
 
     Args:
         value: Any value from a dataclass ``asdict()`` result.
@@ -138,11 +146,25 @@ def _serialise_value(value: Any) -> Any:
         return value.isoformat()
     if isinstance(value, dict):
         return {k: _serialise_value(v) for k, v in value.items()}
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return [_serialise_value(item) for item in value]
-    if isinstance(value, tuple):
-        return [_serialise_value(item) for item in value]
-    return value
+    if value is None or type(value) in (str, bool, int, float):
+        return value
+    # bool before int: bool subclasses int, and True must stay True.
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return float(value)
+    # NumPy integer scalars do not subclass int; every NumPy scalar has .item().
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return _serialise_value(item())
+        except TypeError, ValueError:
+            return repr(value)
+    return repr(value)
 
 
 def _planner_input_to_dict(inp: PlannerInput) -> dict[str, Any]:
@@ -355,17 +377,27 @@ def build_diagnostics_dump(
             for easier triage.
 
     Returns:
-        A JSON-safe dictionary with keys ``hsem_version``, ``planner_input``,
-        ``planner_output``, and ``apply_result``.
+        A JSON-safe dictionary with keys ``hsem_version``, ``dump_timestamp``,
+        ``planner_input``, ``planner_output``, and ``apply_result``.  Every
+        scalar is an exact built-in type, so ``orjson`` — which Home Assistant
+        uses for service responses — can encode it.
     """
     input_dict = _planner_input_to_dict(planner_input)
     # Redact any entity-id strings that snuck into the extra dict.
     input_dict = redact_dict(input_dict)
 
-    return {
-        "hsem_version": integration_version or STATE_UNKNOWN,
-        "dump_timestamp": dt_util.now().isoformat(),
-        "planner_input": input_dict,
-        "planner_output": _planner_output_summary(planner_output),
-        "apply_result": _apply_summary_to_dict(apply_summary),
-    }
+    # Serialise the whole dump, not just the input: the planner output and the
+    # apply summary carry SciPy scalars too, and a caller that hits one gets a
+    # failed service call rather than a partial dump.
+    return cast(
+        dict[str, Any],
+        _serialise_value(
+            {
+                "hsem_version": integration_version or STATE_UNKNOWN,
+                "dump_timestamp": dt_util.now().isoformat(),
+                "planner_input": input_dict,
+                "planner_output": _planner_output_summary(planner_output),
+                "apply_result": _apply_summary_to_dict(apply_summary),
+            }
+        ),
+    )

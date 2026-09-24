@@ -17,6 +17,7 @@ from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.diagnostics import (
     _REDACTED,
+    _serialise_value,
     build_diagnostics_dump,
     redact_dict,
 )
@@ -221,3 +222,80 @@ class TestApplySummarySerialization:
         dump = build_diagnostics_dump(inp, out, summary)
         assert dump["apply_result"]["results"] == []
         assert dump["apply_result"]["overall_status"] == "skipped"
+
+
+class TestOrjsonSerialisable:
+    """Home Assistant encodes service responses with orjson, not json.
+
+    ``json`` accepts a ``numpy.float64`` because it subclasses ``float``;
+    ``orjson`` dispatches on exact type and refuses it. The MILP runs on SciPy,
+    so plan costs arrive as NumPy scalars and ``hsem.export_diagnostics`` failed
+    for every caller while every ``json``-based test passed.
+    """
+
+    @staticmethod
+    def _scalars(node: object, path: str = "") -> list[tuple[str, type]]:
+        """Return every non-built-in scalar in a dump, with its path."""
+        if isinstance(node, dict):
+            return [
+                item
+                for key, value in node.items()
+                for item in TestOrjsonSerialisable._scalars(value, f"{path}.{key}")
+            ]
+        if isinstance(node, list):
+            return [
+                item
+                for index, value in enumerate(node)
+                for item in TestOrjsonSerialisable._scalars(value, f"{path}[{index}]")
+            ]
+        if type(node) in (str, int, float, bool, type(None)):
+            return []
+        return [(path, type(node))]
+
+    def test_real_dump_encodes_with_orjson(self) -> None:
+        orjson = pytest.importorskip("orjson")
+        planner_input = make_summer_day_input()
+        dump = build_diagnostics_dump(
+            planner_input, run_planner(planner_input), None, integration_version="t"
+        )
+        orjson.dumps(dump)
+
+    def test_real_dump_has_only_builtin_scalars(self) -> None:
+        planner_input = make_summer_day_input()
+        dump = build_diagnostics_dump(
+            planner_input, run_planner(planner_input), None, integration_version="t"
+        )
+        assert self._scalars(dump) == []
+
+    def test_float_subclass_is_narrowed_to_exact_float(self) -> None:
+        """A float subclass must not survive, whether or not NumPy is installed."""
+
+        class Measured(float):
+            pass
+
+        result = _serialise_value({"cost": Measured(1.5)})
+        assert type(result["cost"]) is float
+        assert result["cost"] == pytest.approx(1.5)
+
+    def test_numpy_scalars_are_narrowed(self) -> None:
+        numpy = pytest.importorskip("numpy")
+        result = _serialise_value(
+            {"f": numpy.float64(2.5), "i": numpy.int64(7), "b": numpy.bool_(True)}
+        )
+        assert type(result["f"]) is float
+        assert type(result["i"]) is int
+        assert type(result["b"]) is bool
+
+    def test_bool_survives_as_bool_not_int(self) -> None:
+        result = _serialise_value({"on": True, "count": 3})
+        assert result["on"] is True
+        assert type(result["count"]) is int
+
+    def test_unserialisable_object_degrades_to_repr(self) -> None:
+        """A dump must never crash a service call."""
+
+        class Opaque:
+            def __repr__(self) -> str:
+                return "<opaque>"
+
+        assert _serialise_value({"x": Opaque()}) == {"x": "<opaque>"}
