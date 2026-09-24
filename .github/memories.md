@@ -71,6 +71,7 @@ cycle are durable; stale generations must not publish.
 | `logger.py`             | `HSEM_LOGGER` — rotating file handler, `propagate=False`                                           |
 | `solar_corrector.py`    | Per-hour PV forecast accuracy auto-correction (issue #602)                                         |
 | `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill computation)                               |
+| `soc_bounds.py`         | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094)  |
 | `capacity_learner.py`   | Battery usable capacity auto-detection from BMS readings                                           |
 | `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                    |
 | `weekday_profile.py`    | Weekday/weekend split house load EWMA profiles                                                     |

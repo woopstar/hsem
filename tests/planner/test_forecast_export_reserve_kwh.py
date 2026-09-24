@@ -75,6 +75,25 @@ def test_dynamic_floor_at_or_above_target_reserves_nothing() -> None:
     assert _forecast_export_reserve_kwh(inp, usable_kwh=9.0) == pytest.approx(0.0)
 
 
+def test_unreached_dynamic_floor_measures_reserve_from_live_soc() -> None:
+    """Below the dynamic floor, the origin is the live SoC, not the floor (#1094).
+
+    Hardware floor 5 %, reserve target 5 + 10 = 15 %, dynamic floor 75.74 %
+    but the battery is at 11 %.  The engine's model origin is the live 11 %,
+    so the reserve must protect the 4 points up to the target (0.4 kWh).
+    Measuring from the unreached 75.74 % floor would protect nothing.
+    """
+    inp = _input(
+        battery_rated_capacity_kwh=10.0,
+        battery_end_of_discharge_soc_pct=5.0,
+        battery_max_soc_pct=100.0,
+        battery_forecast_reserve_pct=10.0,
+        dynamic_discharge_floor_pct=75.74,
+        battery_soc_pct=11.0,
+    )
+    assert _forecast_export_reserve_kwh(inp, usable_kwh=8.9) == pytest.approx(0.4)
+
+
 def test_result_clamped_to_usable_capacity() -> None:
     """The reserve can never exceed the model's usable capacity."""
     inp = _input(

@@ -142,6 +142,15 @@ the battery retains enough energy to cover the gap. Without this guard,
 the planner would discharge to the configured floor every night, forcing
 morning grid imports when solar is scarce.
 
+The floor is also the origin of the planner's battery model: planned
+capacity is measured in kWh above it, and the planned SoC is
+`floor + capacity`. When the battery is already **below** the dynamic floor
+(for example 11 % against a 75.74 % bridge reserve), the planner uses the live
+SoC as that origin instead. The battery still cannot discharge (it starts
+with 0 kWh above the origin), but the plan reports the real SoC rather than
+the unreached floor, and it can plan charging into the battery's full
+remaining headroom (issue #1094).
+
 ### Consumption prediction
 
 HSEM predicts house load for each slot. Two modes are available (toggled via

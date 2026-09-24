@@ -112,7 +112,7 @@ Each entry in the `hourly_recommendations` list is a dictionary with these keys:
 | `estimated_cost_currency`            | float             | Estimated grid cost for the slot (local currency)     |
 | `batteries_charged_kwh`              | float             | Energy scheduled to charge into battery (kWh)         |
 | `batteries_discharged_kwh`           | float             | Energy drawn from battery by SoC simulation (kWh)     |
-| `estimated_battery_capacity_kwh`     | float             | Remaining usable battery energy at slot end (kWh)     |
+| `estimated_battery_capacity_kwh`     | float             | kWh above the effective discharge floor at slot end   |
 | `estimated_battery_soc_pct`          | float             | Simulated absolute SoC at slot end (0–100 %)          |
 | `grid_import_kwh`                    | float             | Energy imported from grid (kWh)                       |
 | `grid_export_kwh`                    | float             | Energy exported to grid (kWh)                         |
@@ -464,6 +464,8 @@ Snapshot of the battery state of charge with optional learned capacity tracking.
 ## Dynamic discharge floor
 
 Controls and reports the effective discharge floor SoC, which the planner uses as a minimum battery SoC when the dynamic floor feature is enabled.
+
+The sensor reports the bridge reserve itself. When the live battery SoC is below it, the planner measures its battery model from the live SoC instead, so `estimated_battery_soc_pct` in the plan starts at the inverter's reading, not at this sensor's value (issue #1094).
 
 **Entities:**
 

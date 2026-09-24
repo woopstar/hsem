@@ -2856,8 +2856,8 @@ exceeds forecast; direct PV export is unaffected.
 the configured percentage into model kWh:
 
 ```text
-target_soc_pct     = min(hardware_floor_pct + configured_pct, maximum_soc_pct)
-effective_floor_pct = clamp(dynamic_floor_pct, hardware_floor_pct, maximum_soc_pct)
+target_soc_pct      = min(hardware_floor_pct + configured_pct, maximum_soc_pct)
+effective_floor_pct = resolve_soc_bounds_pct(...)  # see "Dynamic discharge floor normalization"
 reserve_kwh         = rated_kwh * max(target_soc_pct - effective_floor_pct, 0) / 100
 reserve_kwh         = min(reserve_kwh, usable_kwh)
 ```
@@ -2865,6 +2865,8 @@ reserve_kwh         = min(reserve_kwh, usable_kwh)
 Only the remaining distance from the _effective_ (dynamic-floor-aware) origin
 to the configured target is protected, so a dynamic discharge floor already
 raised above the hardware floor is never double-counted against this reserve.
+The origin is resolved by the same function as the engine's model capacity,
+so a dynamic floor capped at the live SoC (issue #1094) moves both together.
 
 The MILP (`planner/milp/_export_reserve.py`) enforces this with one row per
 slot, independent of the checkpoint-reserve rows, active whenever
@@ -2883,24 +2885,60 @@ for self-consumption. Diagnostics expose
 
 #### Dynamic discharge floor normalization
 
-`_resolve_effective_discharge_floor_pct()` (`planner/engine_core.py`)
-normalizes the hardware floor, the dynamic discharge floor, and the
-configured maximum SoC into one finite, bounded triple before any of them
-reach `usable_capacity`, `CostWeights`, or candidate selection:
+`resolve_soc_bounds_pct()` (`utils/soc_bounds.py`, called by
+`_resolve_effective_discharge_floor_pct()` in `planner/engine_core.py` and by
+`_forecast_export_reserve_kwh()` in `planner/candidate_generator.py`)
+normalizes the hardware floor, the dynamic discharge floor, the live SoC, and
+the configured maximum SoC into one finite, bounded triple before any of them
+reach `usable_capacity`, `CostWeights`, the forecast export reserve, or
+candidate selection:
 
 ```text
-hardware_floor_pct = clamp(battery_end_of_discharge_soc_pct, 0, 100)
+hardware_floor_pct  = clamp(battery_end_of_discharge_soc_pct, 0, 100)
 maximum_soc_pct     = clamp(battery_max_soc_pct, hardware_floor_pct, 100)
-effective_floor_pct = clamp(dynamic_discharge_floor_pct or hardware_floor_pct,
-                             hardware_floor_pct, maximum_soc_pct)
+dynamic_floor_pct   = min(dynamic_discharge_floor_pct or hardware_floor_pct,
+                          battery_soc_pct)            # issue #1094
+effective_floor_pct = clamp(dynamic_floor_pct, hardware_floor_pct, maximum_soc_pct)
 ```
 
-This closes a latent gap where a stale or oversized dynamic-floor estimate
-could produce an effective floor above the battery's own ceiling
+A missing or non-finite value falls back as follows: hardware floor → `0`,
+maximum → `100`, dynamic floor → the hardware floor, live SoC → no cap.
+
+The upper clamp closes a latent gap where a stale or oversized dynamic-floor
+estimate could produce an effective floor above the battery's own ceiling
 (`effective_floor_pct > maximum_soc_pct`), which would make the SoC bounds
 fed to `usable_capacity` and the MILP internally inconsistent. For a
 well-formed configuration (hardware floor and max SoC already within
 `[0, 100]` and consistent with each other) this is behaviour-preserving.
+
+**Live-SoC cap (issue #1094).** `effective_floor_pct` is the origin of the
+whole battery model: `usable_kwh` and `current_kwh` are measured above it,
+and `simulate_soc()` converts kWh back to absolute SoC as
+`effective_floor_pct + estimated_battery_capacity_kwh / rated_kwh × 100`.
+The dynamic floor is a bridge reserve ("do not discharge below this"), not a
+statement of where the battery is. Before the cap, a battery below that
+reserve (reported case: live 11 %, floor 75.74 %) was clamped to 0 kWh above
+an origin it had never reached, so the plan:
+
+- published `estimated_battery_soc_pct = 75.74` next to
+  `estimated_battery_capacity_kwh = 0.0` while the inverter read 11 %, and
+  offset the whole SoC trajectory by the floor-to-SoC gap;
+- limited charge headroom to `rated × (maximum − floor)` (2.43 kWh on a
+  10 kWh pack), called the battery full at a real ~35 %, and exported PV
+  surplus the battery could have stored — the opposite of what a reserve
+  meant to keep more energy on hand should do.
+
+Capping the dynamic floor at the live SoC keeps the discharge semantics
+unchanged: the battery still cannot discharge below its current level (it
+starts at 0 kWh above the origin, and capacity is `>= 0`), and each replan
+recomputes the origin from the fresh live SoC — so while the battery stays
+below the reserve, the current slot (the only slot that is executed) can
+never discharge. Energy the plan charges above the live SoC is dischargeable
+in the plan, exactly as it was before within the smaller headroom. What
+changes is that the published SoC matches the inverter and the charge
+headroom is the battery's real `rated × (maximum − live SoC)`. The
+coordinator's `sensor.hsem_effective_discharge_floor` keeps reporting the
+uncapped bridge reserve.
 
 #### Invariants for tests
 
@@ -2912,6 +2950,13 @@ well-formed configuration (hardware floor and max SoC already within
   points twice.
 - `hardware_floor_pct <= effective_floor_pct <= maximum_soc_pct` always holds,
   even with a stale or out-of-range dynamic-floor estimate.
+- `effective_floor_pct <= max(battery_soc_pct, hardware_floor_pct)` whenever
+  the live SoC is finite — the model origin is never a SoC the battery has not
+  reached (issue #1094).
+- For every non-past slot,
+  `estimated_battery_soc_pct == effective_floor_pct + estimated_battery_capacity_kwh / rated_kwh × 100`,
+  so the published SoC and capacity always describe the same battery, and a
+  battery below the dynamic floor reports its live SoC, not the floor.
 - A genuine `0` value for `battery_soc_pct`, `battery_end_of_discharge_soc_pct`,
   `excess_export_discharge_buffer_pct`, or `battery_forecast_reserve_pct` must
   survive config plumbing unchanged — it must never be silently replaced by a
@@ -3006,7 +3051,9 @@ Where `safety_margin` is a self-learning multiplier that starts at **1.15**
 steps down by 0.02 after 7 consecutive days where actual SoC stayed
 comfortably above the floor (`DynamicDischargeFloor.correct_margin()`,
 `utils/dynamic_floor.py`). The floor is never lower than the
-hardware-configured minimum SoC.
+hardware-configured minimum SoC. When the live SoC is already below the
+floor, the planner uses the live SoC as its model origin instead (see
+_Dynamic discharge floor normalization_, issue #1094).
 
 The bridge scan (`DynamicDischargeFloor.compute_floor()`,
 `utils/dynamic_floor.py`) is bounded to a `hours_ahead` look-ahead window
