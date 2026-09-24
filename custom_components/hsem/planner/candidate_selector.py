@@ -210,6 +210,7 @@ def select_best_candidate(  # NOSONAR
         # apply_optimization_strategy only fills slots that are still None,
         # so it will never overwrite the LP's decisions — it just provides
         # sensible defaults for idle slots where the LP took no action.
+        # On the MILP candidate those defaults are a hold (issue #1041).
         # concentrate_discharge_on_expensive_slots acts on DISCHARGE_RECS,
         # which *includes* the LP's own discharge slots — so unlike the
         # seasonal fill it is not inherently safe for the MILP's results
@@ -234,6 +235,7 @@ def select_best_candidate(  # NOSONAR
             required_capacity,
             months_winter,
             export_min_price=export_min_price,
+            unassigned_slots_are_lp_decisions=(candidate.name == CANDIDATE_MILP),
         )
         # Concentrate discharge on expensive slots (per-candidate)
         concentrate_discharge_on_expensive_slots(

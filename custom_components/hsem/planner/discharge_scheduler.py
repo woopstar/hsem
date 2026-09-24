@@ -436,7 +436,8 @@ def concentrate_discharge_on_expensive_slots(
     *every* slot in a discharge window as ``BatteriesDischargeMode``, but
     the battery can only cover a fraction of them.  Without concentration
     the SoC simulation greedily discharges in the *first* (cheapest) slots
-    and runs out before the most expensive ones.
+    and runs out before the most expensive ones.  A no-op on the MILP
+    candidate since issue #1041.
 
     This function ranks all ``BatteriesDischargeMode`` slots by import price
     (descending) and clears the recommendation on the cheapest slots that
@@ -614,6 +615,7 @@ def apply_optimization_strategy(
     required_capacity: float,
     months_winter: list[int],
     export_min_price: float = 0.0,
+    unassigned_slots_are_lp_decisions: bool = False,
 ) -> None:
     """Apply seasonal optimization logic to remaining unassigned slots.
 
@@ -625,7 +627,8 @@ def apply_optimization_strategy(
     3. Future forced export pending and battery above required → ``BatteriesWaitMode``
     4. Slot's month is a winter month → ``BatteriesWaitMode``
     5. Slot's month is a summer month with solar → ``BatteriesChargeSolar``;
-       else ``BatteriesDischargeMode``
+       else ``BatteriesDischargeMode`` (``BatteriesWaitMode`` under
+       ``unassigned_slots_are_lp_decisions``)
 
     The seasonal check (steps 4–5) uses each slot's own calendar month
     (derived from ``rec.start``), not the month of ``now``.  This means a
@@ -643,6 +646,9 @@ def apply_optimization_strategy(
             ``ForceExport``.  Slots where export price is below this
             threshold are not marked for export even if export > import.
             Defaults to ``0.0`` (any positive export price qualifies).
+        unassigned_slots_are_lp_decisions: ``True`` for the MILP candidate,
+            where an unassigned slot is one the LP declined to act in; step 5
+            then holds the battery (issue #1041).
     """
     log_planner(
         "debug",
@@ -719,5 +725,8 @@ def apply_optimization_strategy(
             # BatteriesChargeSolar (issue #720).
             if rec.estimated_net_consumption_kwh < 0.0:
                 rec.recommendation = Recommendations.BatteriesChargeSolar.value
+            elif unassigned_slots_are_lp_decisions:
+                # The LP declined this slot; MSC would drain it (#1041).
+                rec.recommendation = Recommendations.BatteriesWaitMode.value
             else:
                 rec.recommendation = Recommendations.BatteriesDischargeMode.value
