@@ -197,7 +197,8 @@
           "hsem_huawei_solar_inverter_active_power_control": "Huawei-vekselretter aktiv effektkontrolsensor",
           "hsem_huawei_solar_batteries_forcible_charge": "Tvungen Opladning",
           "hsem_huawei_solar_batteries_charge_discharge_power": "Huawei batteri op-/afladningseffekt-sensor",
-          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Huawei-batterier maksimal netopladningseffekt (W)"
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Huawei-batterier maksimal netopladningseffekt (W)",
+          "hsem_huawei_solar_device_id_tou_controller": "Huawei TOU-controllerenhed"
         },
         "data_description": {
           "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0-100). Energi lagret i batteriet = inputenergi × denne faktor. Typiske lithium-batterier opnår 95-98%. Standard: 98%.",
@@ -222,7 +223,8 @@
           "hsem_huawei_solar_inverter_active_power_control": "Vælg den sensor, der styrer aktiv effektudgang for din Huawei-vekselretter.",
           "hsem_huawei_solar_batteries_forcible_charge": "Vælg sensoren der angiver om tvungen opladning er aktiv.",
           "hsem_huawei_solar_batteries_charge_discharge_power": "Vælg sensoren, der rapporterer den fortegnsbestemte øjeblikkelige batteri op-/afladningseffekt (positiv = opladning, negativ = afladning). Kræves af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at fjerne Huaweis eget bidrag fra det live faseøjebliksbillede, før rådighedsmargenen beregnes. Valgfrit — kræves kun når fasebevidst opladning er aktiveret.",
-          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Vælg tal-enheden, der sætter Huaweis maksimale loft for netopladningseffekt (W). Skrives af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at holde netfinansieret opladning under hovedsikringens per-fase-grænse. Valgfrit — kræves kun når fasebevidst opladning er aktiveret."
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Vælg tal-enheden, der sætter Huaweis maksimale loft for netopladningseffekt (W). Skrives af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at holde netfinansieret opladning under hovedsikringens per-fase-grænse. Valgfrit — kræves kun når fasebevidst opladning er aktiveret.",
+          "hsem_huawei_solar_device_id_tou_controller": "Valgfri controller, der ejer de konfigurerede TOU-perioder, f.eks. EMMA. Lad feltet være tomt for at skrive TOU-perioder til de konfigurerede batterienheder."
         },
         "description": "Konfigurer arbejdstilstanden for Huawei-solcellebatterier.",
         "title": "Huawei Solar-sensorer"
@@ -669,7 +671,8 @@
           "hsem_huawei_solar_device_id_inverter_2": "Huawei-vekselretter 2 enhed",
           "hsem_huawei_solar_inverter_active_power_control": "Huawei-vekselretter aktiv effektkontrolsensor",
           "hsem_huawei_solar_batteries_charge_discharge_power": "Huawei batteri op-/afladningseffekt-sensor",
-          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Huawei-batterier maksimal netopladningseffekt (W)"
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Huawei-batterier maksimal netopladningseffekt (W)",
+          "hsem_huawei_solar_device_id_tou_controller": "Huawei TOU-controllerenhed"
         },
         "data_description": {
           "hsem_batteries_charge_efficiency": "Angiv batteriets opladningseffektivitet som en procentdel (0-100). Energi lagret i batteriet = inputenergi × denne faktor. Typiske lithium-batterier opnår 95-98%. Standard: 98%.",
@@ -694,7 +697,8 @@
           "hsem_huawei_solar_device_id_inverter_2": "Vælg din sekundære Huawei-vekselretterenhed, hvis relevant.",
           "hsem_huawei_solar_inverter_active_power_control": "Vælg den sensor, der styrer aktiv effektudgang for din Huawei-vekselretter.",
           "hsem_huawei_solar_batteries_charge_discharge_power": "Vælg sensoren, der rapporterer den fortegnsbestemte øjeblikkelige batteri op-/afladningseffekt (positiv = opladning, negativ = afladning). Kræves af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at fjerne Huaweis eget bidrag fra det live faseøjebliksbillede, før rådighedsmargenen beregnes. Valgfrit — kræves kun når fasebevidst opladning er aktiveret.",
-          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Vælg tal-enheden, der sætter Huaweis maksimale loft for netopladningseffekt (W). Skrives af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at holde netfinansieret opladning under hovedsikringens per-fase-grænse. Valgfrit — kræves kun når fasebevidst opladning er aktiveret."
+          "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Vælg tal-enheden, der sætter Huaweis maksimale loft for netopladningseffekt (W). Skrives af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at holde netfinansieret opladning under hovedsikringens per-fase-grænse. Valgfrit — kræves kun når fasebevidst opladning er aktiveret.",
+          "hsem_huawei_solar_device_id_tou_controller": "Valgfri controller, der ejer de konfigurerede TOU-perioder, f.eks. EMMA. Lad feltet være tomt for at skrive TOU-perioder til de konfigurerede batterienheder."
         },
         "description": "Konfigurer arbejdstilstanden for Huawei-solcellebatterier.",
         "title": "Huawei Solar-sensorer"

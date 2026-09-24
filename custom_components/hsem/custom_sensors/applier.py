@@ -96,7 +96,11 @@ from custom_components.hsem.utils.misc import (
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import slot_duration_hours
 from custom_components.hsem.utils.wait_mode_behavior import WaitModeBehavior
-from custom_components.hsem.utils.workingmodes import ExcessPvUseInTou, WorkingModes
+from custom_components.hsem.utils.workingmodes import (
+    ExcessPvUseInTou,
+    WorkingModes,
+    resolve_working_mode_option,
+)
 
 
 async def async_apply_battery_settings(
@@ -603,23 +607,27 @@ async def async_apply_battery_settings(
         != generate_hash(str(live.tou_periods.periods))
     ):
         tou_entity = cfg.huawei_solar_batteries_tou_charging_and_discharging_periods
-        battery_device_ids = _configured_battery_device_ids(cfg)
-        if tou_entity is None or not battery_device_ids:
+        tou_device_ids = (
+            [cfg.huawei_solar_device_id_tou_controller]
+            if cfg.huawei_solar_device_id_tou_controller
+            else _configured_battery_device_ids(cfg)
+        )
+        if tou_entity is None or not tou_device_ids:
             _LOGGER.debug(
                 "TOU entity or battery device ID not configured; skipping write.",
                 "warning",
             )
             return summary
         _te: str = tou_entity  # narrowed for closure
-        for battery_device_id in battery_device_ids:
+        for tou_device_id in tou_device_ids:
 
             async def _write_tou(
-                _dev: str = battery_device_id,
+                _dev: str = tou_device_id,
             ) -> None:
                 await async_set_tou_periods(sensor, _dev, tou_modes)
 
             result = await async_write_and_verify(
-                entity_id=f"{_te}:{battery_device_id}",
+                entity_id=f"{_te}:{tou_device_id}",
                 desired=list(tou_modes),
                 writer=_write_tou,
                 reader=lambda: _read_tou_periods(sensor, _te),
@@ -633,7 +641,7 @@ async def async_apply_battery_settings(
                 _LOGGER.debug(
                     "TOU period write FAILED for device %s. Blocking further "
                     "battery writes this cycle.",
-                    battery_device_id,
+                    tou_device_id,
                 )
                 return summary
 
@@ -645,11 +653,30 @@ async def async_apply_battery_settings(
                 "Working mode entity not configured; skipping write.", "warning"
             )
             return summary
+        state = sensor.hass.states.get(mode_entity)
+        raw_options = state.attributes.get("options") if state is not None else None
+        options = (
+            raw_options
+            if isinstance(raw_options, (list, tuple, set, frozenset))
+            and all(isinstance(option, str) for option in raw_options)
+            else None
+        )
+        resolved_working_mode = resolve_working_mode_option(working_mode, options)
+        if resolved_working_mode is None:
+            _LOGGER.debug(
+                "Selected working-mode entity %s does not support %s; skipping write.",
+                mode_entity,
+                working_mode,
+                "error",
+            )
+            return summary
+        if live.huawei_batteries_working_mode == resolved_working_mode:
+            return summary
         _me: str = mode_entity  # narrowed for closure
         mode_result = await async_write_and_verify(
             entity_id=_me,
-            desired=working_mode,
-            writer=lambda: async_set_select_option(sensor, _me, working_mode),
+            desired=resolved_working_mode,
+            writer=lambda: async_set_select_option(sensor, _me, resolved_working_mode),
             reader=lambda: _read_select_state(sensor, _me),
         )
         summary.results.append(mode_result)

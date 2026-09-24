@@ -225,7 +225,8 @@
           "hsem_huawei_solar_device_id_batteries_2": "Huawei-Batteriegerät 2",
           "hsem_huawei_solar_device_id_inverter_1": "Huawei-Wechselrichter 1 Gerät",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei-Wechselrichter 2 Gerät",
-          "hsem_huawei_solar_inverter_active_power_control": "Huawei-Wechselrichter Wirkleistungssteuerung-Sensor"
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei-Wechselrichter Wirkleistungssteuerung-Sensor",
+          "hsem_huawei_solar_device_id_tou_controller": "Huawei-TOU-Steuergerät"
         },
         "data_description": {
           "hsem_batteries_charge_efficiency": "Gib die Ladeeffizienz deiner Batterie in Prozent an (0–100). Die in der Batterie gespeicherte Energie entspricht der eingehenden Energie multipliziert mit diesem Faktor. Typische Lithium-Batterien erreichen 95–98 %. Standard ist 98 %.",
@@ -250,7 +251,8 @@
           "hsem_huawei_solar_device_id_batteries_2": "Wähle dein sekundäres Huawei-Batteriegerät, falls zutreffend.",
           "hsem_huawei_solar_device_id_inverter_1": "Wähle dein primäres Huawei-Wechselrichtergerät.",
           "hsem_huawei_solar_device_id_inverter_2": "Wähle dein sekundäres Huawei-Wechselrichtergerät, falls zutreffend.",
-          "hsem_huawei_solar_inverter_active_power_control": "Wähle den Sensor, der die Wirkleistungsabgabe deines Huawei-Wechselrichters steuert."
+          "hsem_huawei_solar_inverter_active_power_control": "Wähle den Sensor, der die Wirkleistungsabgabe deines Huawei-Wechselrichters steuert.",
+          "hsem_huawei_solar_device_id_tou_controller": "Optionaler Controller, dem die konfigurierten TOU-Zeiträume gehören, z. B. EMMA. Leer lassen, um TOU-Zeiträume auf die konfigurierten Batteriegeräte zu schreiben."
         },
         "description": "Konfiguriere den Arbeitsmodus für Huawei-Solarbatterien.",
         "title": "Huawei Solar-Sensoren"
@@ -697,7 +699,8 @@
           "hsem_huawei_solar_device_id_batteries_2": "Huawei-Batteriegerät 2",
           "hsem_huawei_solar_device_id_inverter_1": "Huawei-Wechselrichter 1 Gerät",
           "hsem_huawei_solar_device_id_inverter_2": "Huawei-Wechselrichter 2 Gerät",
-          "hsem_huawei_solar_inverter_active_power_control": "Huawei-Wechselrichter Wirkleistungssteuerung-Sensor"
+          "hsem_huawei_solar_inverter_active_power_control": "Huawei-Wechselrichter Wirkleistungssteuerung-Sensor",
+          "hsem_huawei_solar_device_id_tou_controller": "Huawei-TOU-Steuergerät"
         },
         "data_description": {
           "hsem_batteries_charge_efficiency": "Gib die Ladeeffizienz deiner Batterie in Prozent an (0–100). Die in der Batterie gespeicherte Energie entspricht der eingehenden Energie multipliziert mit diesem Faktor. Typische Lithium-Batterien erreichen 95–98 %. Standard ist 98 %.",
@@ -722,7 +725,8 @@
           "hsem_huawei_solar_device_id_batteries_2": "Wähle dein sekundäres Huawei-Batteriegerät, falls zutreffend.",
           "hsem_huawei_solar_device_id_inverter_1": "Wähle dein primäres Huawei-Wechselrichtergerät.",
           "hsem_huawei_solar_device_id_inverter_2": "Wähle dein sekundäres Huawei-Wechselrichtergerät, falls zutreffend.",
-          "hsem_huawei_solar_inverter_active_power_control": "Wähle den Sensor, der die Wirkleistungsabgabe deines Huawei-Wechselrichters steuert."
+          "hsem_huawei_solar_inverter_active_power_control": "Wähle den Sensor, der die Wirkleistungsabgabe deines Huawei-Wechselrichters steuert.",
+          "hsem_huawei_solar_device_id_tou_controller": "Optionaler Controller, dem die konfigurierten TOU-Zeiträume gehören, z. B. EMMA. Leer lassen, um TOU-Zeiträume auf die konfigurierten Batteriegeräte zu schreiben."
         },
         "description": "Konfiguriere den Arbeitsmodus für Huawei-Solarbatterien.",
         "title": "Huawei Solar-Sensoren"
