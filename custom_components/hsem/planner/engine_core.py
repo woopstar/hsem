@@ -8,7 +8,6 @@ directly testable with plain ``pytest`` without a running HA instance.
 
 from __future__ import annotations
 
-import math
 from datetime import datetime
 
 from custom_components.hsem.models.ev_config import EVConfig
@@ -76,6 +75,7 @@ from custom_components.hsem.utils.misc import (
     resolve_cycle_cost,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
+from custom_components.hsem.utils.soc_bounds import resolve_soc_bounds_pct
 from custom_components.hsem.utils.units import (
     max_energy_per_slot_kwh,
     slot_duration_hours,
@@ -87,30 +87,16 @@ def _resolve_effective_discharge_floor_pct(
 ) -> tuple[float, float, float]:
     """Return finite ``(hardware, effective, maximum)`` SoC bounds in percent.
 
-    The dynamic floor shares the same absolute-SoC frame as Huawei's hardware
-    floor and the configured maximum SoC. Normalize all three limits before
-    deriving model capacity so a stale or oversized bridge estimate cannot
-    create an impossible floor above the battery ceiling.
+    Thin adapter over :func:`resolve_soc_bounds_pct`, which normalizes the
+    three limits (issue #807) and caps the dynamic floor at the live SoC so
+    the model origin is never a SoC the battery has not reached (issue #1094).
     """
-
-    def _finite(value: float | None, fallback: float) -> float:
-        try:
-            converted = float(value) if value is not None else fallback
-        except TypeError, ValueError:
-            return fallback
-        return converted if math.isfinite(converted) else fallback
-
-    hardware_floor = min(
-        max(_finite(inp.battery_end_of_discharge_soc_pct, 0.0), 0.0),
-        100.0,
+    return resolve_soc_bounds_pct(
+        inp.battery_end_of_discharge_soc_pct,
+        inp.battery_max_soc_pct,
+        inp.dynamic_discharge_floor_pct,
+        inp.battery_soc_pct,
     )
-    maximum_soc = min(
-        max(_finite(inp.battery_max_soc_pct, 100.0), hardware_floor),
-        100.0,
-    )
-    dynamic_floor = _finite(inp.dynamic_discharge_floor_pct, hardware_floor)
-    effective_floor = min(max(dynamic_floor, hardware_floor), maximum_soc)
-    return hardware_floor, effective_floor, maximum_soc
 
 
 def _schedule_slots(
@@ -372,7 +358,8 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # Dynamic discharge floor (issue #600): when enabled and higher than the
     # configured minimum, use it as the effective discharge floor.  This
     # reduces usable capacity and current capacity above the floor, which
-    # naturally limits export and preserves reserve energy.
+    # naturally limits export and preserves reserve energy.  A floor the
+    # battery has not reached yet is capped at the live SoC (issue #1094).
     (
         _hardware_eod_soc,
         _effective_eod_soc,
@@ -381,9 +368,12 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     if _effective_eod_soc > _hardware_eod_soc + 1e-9:
         log_planner(
             "debug",
-            "[core] Dynamic discharge floor active: %.1f%% (configured min: %.1f%%)",
+            "[core] Dynamic discharge floor active: %.1f%% (configured min: %.1f%%, "
+            "requested: %s, live SoC: %.1f%%)",
             _effective_eod_soc,
             _hardware_eod_soc,
+            inp.dynamic_discharge_floor_pct,
+            inp.battery_soc_pct,
         )
     usable_kwh, current_kwh = usable_capacity(
         inp.battery_rated_capacity_kwh,

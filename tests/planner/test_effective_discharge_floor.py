@@ -66,17 +66,38 @@ def test_stale_dynamic_floor_above_ceiling_is_clamped_to_maximum_soc() -> None:
     floor was set directly to ``dynamic_discharge_floor_pct`` with no upper
     bound, so a value above ``battery_max_soc_pct`` created an impossible
     floor (min_soc > max_soc) for the cost model and MILP bounds.
+
+    The live SoC sits above the ceiling here so the live-SoC cap (issue
+    #1094) does not bind first and the ceiling clamp is what is exercised.
     """
     inp = _input(
         battery_end_of_discharge_soc_pct=10.0,
         battery_max_soc_pct=90.0,
         dynamic_discharge_floor_pct=150.0,
+        battery_soc_pct=95.0,
     )
     hardware, effective, maximum = _resolve_effective_discharge_floor_pct(inp)
     assert hardware == pytest.approx(10.0)
     assert maximum == pytest.approx(90.0)
     assert effective == pytest.approx(90.0)
     assert effective <= maximum
+
+
+def test_dynamic_floor_above_live_soc_is_capped_at_live_soc() -> None:
+    """An unreached dynamic floor is not the model origin (issue #1094).
+
+    The reporter's inverter read 11 % while the dynamic floor was 75.74 %.
+    With the floor as origin, the plan published 75.74 % SoC next to 0.0 kWh
+    and believed only 2.43 kWh of charge headroom remained.
+    """
+    inp = _input(
+        battery_end_of_discharge_soc_pct=5.0,
+        battery_max_soc_pct=100.0,
+        dynamic_discharge_floor_pct=75.74,
+        battery_soc_pct=11.0,
+    )
+    hardware, effective, maximum = _resolve_effective_discharge_floor_pct(inp)
+    assert (hardware, effective, maximum) == pytest.approx((5.0, 11.0, 100.0))
 
 
 def test_hardware_floor_is_clamped_to_valid_percent_range() -> None:

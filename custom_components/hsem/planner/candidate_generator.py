@@ -40,7 +40,6 @@ unused in issue #897.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -69,6 +68,7 @@ from custom_components.hsem.utils.recommendations import (
     CHARGE_RECS as _CHARGE_RECS,
     DISCHARGE_RECS as _DISCHARGE_RECS,
 )
+from custom_components.hsem.utils.soc_bounds import finite_or, resolve_soc_bounds_pct
 
 # ---------------------------------------------------------------------------
 # Candidate name constants — shared with selector so both sides speak the
@@ -95,38 +95,23 @@ def _forecast_export_reserve_kwh(inp: PlannerInput, usable_kwh: float) -> float:
     Huawei hardware end-of-discharge limit. The MILP inventory origin may
     already be raised by the dynamic discharge floor, so only the remaining
     distance from that effective floor to the configured target is protected.
+    The origin comes from the same resolver as the engine's model capacity, so
+    both agree when the live SoC caps the dynamic floor (issue #1094).
     """
-
-    def _finite(value: float | None, default: float) -> float:
-        if value is None:
-            return default
-        try:
-            parsed = float(value)
-        except TypeError, ValueError:
-            return default
-        return parsed if math.isfinite(parsed) else default
-
-    model_usable_kwh = max(_finite(usable_kwh, 0.0), 0.0)
-    rated_kwh = max(_finite(inp.battery_rated_capacity_kwh, 0.0), 0.0)
+    model_usable_kwh = max(finite_or(usable_kwh, 0.0), 0.0)
+    rated_kwh = max(finite_or(inp.battery_rated_capacity_kwh, 0.0), 0.0)
     if model_usable_kwh <= 1e-9 or rated_kwh <= 1e-9:
         return 0.0
 
-    hardware_floor_pct = min(
-        max(_finite(inp.battery_end_of_discharge_soc_pct, 0.0), 0.0),
-        100.0,
-    )
-    maximum_soc_pct = min(
-        max(_finite(inp.battery_max_soc_pct, 100.0), hardware_floor_pct),
-        100.0,
-    )
-    dynamic_floor_pct = _finite(
+    hardware_floor_pct, effective_floor_pct, maximum_soc_pct = resolve_soc_bounds_pct(
+        inp.battery_end_of_discharge_soc_pct,
+        inp.battery_max_soc_pct,
         inp.dynamic_discharge_floor_pct,
-        hardware_floor_pct,
+        inp.battery_soc_pct,
     )
-    effective_floor_pct = min(
-        max(dynamic_floor_pct, hardware_floor_pct), maximum_soc_pct
+    configured_pct = min(
+        max(finite_or(inp.battery_forecast_reserve_pct, 0.0), 0.0), 50.0
     )
-    configured_pct = min(max(_finite(inp.battery_forecast_reserve_pct, 0.0), 0.0), 50.0)
     target_soc_pct = min(hardware_floor_pct + configured_pct, maximum_soc_pct)
     reserve_kwh = rated_kwh * max(target_soc_pct - effective_floor_pct, 0.0) / 100.0
     return min(reserve_kwh, model_usable_kwh)
