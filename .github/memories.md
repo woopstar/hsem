@@ -1385,6 +1385,36 @@ Regression tests: `tests/test_avg_sensor_negative_guard.py`.
 
 ---
 
+## Recorder Footprint — Write on Change, Never Record Volatile Attributes (issue #1099)
+
+HA's recorder inserts a `states` row **and** a new `state_attributes` row
+whenever the state or _any_ attribute changes — including attributes listed
+in `_unrecorded_attributes` (those are only stripped from the stored JSON).
+The 96 `HSEMAvgSensor` instances used to write every 30 s poll with a fresh
+`last_updated`, producing ~3,200 rows/day each for a value that changes about
+once a day; `HSEMForecastAccuracySensor` recorded a ~9 KB
+`_forecast_tracker_data` blob every cycle.
+
+Canonical rules:
+
+- **Write on change.** A sensor whose value changes rarely must skip
+  `async_write_ha_state()` when the published values are unchanged (compare
+  floats with an epsilon), and must only bump `last_updated` on a real write.
+  `HSEMAvgSensor._async_handle_update` is the reference implementation.
+- **Never record volatile timestamps or persistence blobs.** List
+  `last_updated`-style timestamps and restore payloads
+  (`_forecast_tracker_data`, `measurements`, …) in `_unrecorded_attributes`.
+- **Restore does not need the recorder.** `RestoreEntity` stores the full
+  state object in `.storage/core.restore_state`, independent of
+  `_unrecorded_attributes`. Never justify recording an attribute with
+  "it is needed for restore".
+- **Do not poll** a sensor that already has a timer or state listener.
+
+Regression tests: `tests/test_recorder_footprint.py`. User guidance:
+`docs/troubleshooting-guide.md` §8.
+
+---
+
 ## Solar-Charge Mislabel at Zero PV (issue #720 follow-up)
 
 `apply_optimization_strategy` used `NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH`

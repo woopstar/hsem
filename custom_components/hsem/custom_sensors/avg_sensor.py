@@ -6,6 +6,13 @@ expected house consumption per hour block.
 
 Created dynamically by :class:`HSEMHouseConsumptionPowerSensor` for each
 hour block and average period (1, 3, 7, or 14 days).
+
+Recorder footprint (issue #1099): the published average changes roughly once
+per day, when an hour block completes.  The sensor therefore only writes its
+state when the average or the stored measurements change, and keeps the
+volatile ``last_updated`` timestamp and the ``measurements`` dict out of the
+recorder.  Restart restore is unaffected — ``RestoreEntity`` persists the
+full state object independently of ``_unrecorded_attributes``.
 """
 
 from __future__ import annotations
@@ -32,6 +39,25 @@ from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.ha_helpers import ha_get_entity_state_and_convert
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
+#: Tolerance for deciding whether a published kWh value actually changed.
+_CHANGE_EPSILON = 1e-9
+
+
+def _float_changed(previous: float | None, current: float | None) -> bool:
+    """Return True when two optional kWh values differ beyond the epsilon."""
+    if previous is None or current is None:
+        return (previous is None) != (current is None)
+    return abs(previous - current) > _CHANGE_EPSILON
+
+
+def _measurements_changed(
+    previous: dict[str, float], current: dict[str, float]
+) -> bool:
+    """Return True when the per-day measurement dicts differ."""
+    if previous.keys() != current.keys():
+        return True
+    return any(_float_changed(previous[day], current[day]) for day in current)
+
 
 class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
     """Rolling N-day average of a utility-meter energy reading (kWh)."""
@@ -39,9 +65,18 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
     _attr_icon = "mdi:calculator"
     _attr_has_entity_name = True
 
-    # Exclude all attributes from recording except state, last_updated and measurements
+    # Only the state is recorded. ``last_updated`` and ``measurements`` are
+    # restored from RestoreEntity storage, not the recorder (issue #1099).
     _unrecorded_attributes = frozenset(
-        ["tracked_entity", "average", "hour_start", "hour_end", "unique_id"]
+        [
+            "tracked_entity",
+            "average",
+            "hour_start",
+            "hour_end",
+            "unique_id",
+            "last_updated",
+            "measurements",
+        ]
     )
 
     def __init__(
@@ -83,6 +118,9 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         self._tracked_entities: set[str] = set()
         # Unsubscribe callbacks registered by async_track_* helpers.
         self._unsub_callbacks: list = []
+        # Set once the first state has been written this session; later
+        # writes happen only when the published values change.
+        self._state_written = False
 
     @property
     @override
@@ -131,7 +169,8 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
     @property
     @override
     def should_poll(self) -> bool:
-        return True
+        """Do not poll — the 5-minute timer and meter listener drive updates."""
+        return False
 
     @property
     @override
@@ -230,7 +269,15 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
                 self._tracked_entities.add(self._tracked_entity)
 
     async def _async_handle_update(self, event: Any | None = None) -> None:
-        """Handle updates to the source sensor."""
+        """Handle updates to the source sensor.
+
+        The state is only written when the average or the measurements
+        changed since the last write (plus once per session), so no-op
+        ticks do not create recorder rows (issue #1099).
+        """
+        previous_state = self._state
+        previous_measurements = dict(self._measurements or {})
+
         # No completed measurements means unavailable, not measured zero.
         # A non-empty measurement set whose average is genuinely 0.0 remains
         # available and is published as zero below.
@@ -250,7 +297,17 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
             if count > 0:
                 self._state = round(total / count, 2)
 
+        if (
+            self._state_written
+            and not _float_changed(previous_state, self._state)
+            and not _measurements_changed(
+                previous_measurements, self._measurements or {}
+            )
+        ):
+            return
+
         self._last_updated = now.isoformat()
+        self._state_written = True
 
         # Trigger an update in Home Assistant
         self.async_write_ha_state()

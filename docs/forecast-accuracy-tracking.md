@@ -336,7 +336,11 @@ The forecast tracker data survives HA restarts using the standard
    `_forecast_tracker_data` key containing the bounded record list from
    `tracker.to_persistence_dict()`.
 
-2. **HA's recorder** automatically stores these attributes in its database.
+2. **`RestoreEntity`** stores the last state object, including these
+   attributes, in `.storage/core.restore_state`. This is independent of
+   the recorder database: `_forecast_tracker_data` is listed in the
+   sensor's `_unrecorded_attributes`, so the ~9 KB blob is **not** written
+   to the recorder on every cycle (issue #1099).
 
 3. **On restart**, `async_added_to_hass` calls `async_get_last_state()`
    to retrieve the previous state, extracts `_forecast_tracker_data`, and
