@@ -1,121 +1,108 @@
-"""Rebuild a :class:`PlannerInput` from an HSEM diagnostics dump.
+"""Replay an HSEM diagnostics dump through the current planner.
 
-Measurement support for issue #1036.  ``hsem.export_diagnostics`` (and the HA
-diagnostics download) serialise the planner input via
-``utils/diagnostics.py::_planner_input_to_dict``; this is the inverse, so a real
-production cycle can be replayed offline against the current code.
-
-Not imported by the integration — this is an analysis tool.
+Thin command-line front end for the Stage 1 backtest harness.  The
+reconstruction shim itself lives in ``tests/backtest/replay.py`` (see
+``docs/backtest-harness.md``); this script only adds argument parsing and
+reporting so a real production dump can be inspected without writing a test.
 
 Usage::
 
-    from scripts.replay_planner_input import load_planner_input
-    inp, report = load_planner_input("logs/extati-diagnostics.json")
+    python3 scripts/replay_planner_input.py logs/extati-diagnostics.json
+    python3 scripts/replay_planner_input.py logs/extati-diagnostics.json \
+        --regenerate tests/backtest/corpus/cycle.json
 """
 
 from __future__ import annotations
 
+import argparse
 import json
-from dataclasses import dataclass, fields
+import sys
 from pathlib import Path
-from typing import Any
 
-from custom_components.hsem.models.hourly_consumption_average import (
-    HourlyConsumptionAverage,
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from custom_components.hsem.planner.engine_core import run_planner  # noqa: E402
+from custom_components.hsem.utils.diagnostics import (  # noqa: E402
+    build_diagnostics_dump,
 )
-from custom_components.hsem.models.planner_input import PlannerInput
-from custom_components.hsem.models.price_point import PricePoint
-from custom_components.hsem.models.solcast_slot import SolcastSlot
-
-_NESTED: dict[str, Any] = {
-    "consumption_averages": HourlyConsumptionAverage,
-    "price_points": PricePoint,
-    "solcast_slots": SolcastSlot,
-}
+from tests.backtest.invariants import (  # noqa: E402
+    check_invariants,
+    format_violations,
+)
+from tests.backtest.replay import load_planner_input  # noqa: E402
 
 
-@dataclass
-class ReplayReport:
-    """What the shim had to drop or default when rebuilding the input.
+def _integration_version() -> str:
+    """Return the version of the code doing the replay.
 
-    A dump is only a faithful replay if this is empty.  Fields the dump carries
-    but the current ``PlannerInput`` no longer defines (or vice versa) are
-    recorded rather than silently ignored, because a replay that quietly drops
-    inputs would produce numbers that look real and are not.
-
-    Attributes:
-        dropped: Keys present in the dump but absent from ``PlannerInput``.
-        missing: ``PlannerInput`` fields the dump did not carry (left at their
-            dataclass defaults).
-        dropped_nested: Per nested list, keys dropped from each element.
-        source_version: ``hsem_version`` recorded in the dump.
-        dump_timestamp: When the dump was taken.
-    """
-
-    dropped: list[str]
-    missing: list[str]
-    dropped_nested: dict[str, list[str]]
-    source_version: str
-    dump_timestamp: str
-
-    @property
-    def is_faithful(self) -> bool:
-        """True when every dump field mapped onto a current input field."""
-        return not self.dropped and not self.missing and not self.dropped_nested
-
-
-def _build_nested(cls: Any, rows: list[dict[str, Any]]) -> tuple[list[Any], list[str]]:
-    """Rebuild one nested dataclass list, reporting keys the class lacks."""
-    known = {f.name for f in fields(cls)}
-    dropped = sorted({k for row in rows for k in row if k not in known})
-    built = [cls(**{k: v for k, v in row.items() if k in known}) for row in rows]
-    return built, dropped
-
-
-def load_planner_input(path: str | Path) -> tuple[PlannerInput, ReplayReport]:
-    """Load a diagnostics dump and rebuild the planner input it recorded.
-
-    Args:
-        path: Path to a diagnostics JSON file — either the HA diagnostics
-            download (wrapped in a top-level ``data`` key) or the
-            ``hsem.export_diagnostics`` service response.
+    A regenerated corpus entry is emitted by *this* checkout, not by whatever
+    version produced the source dump, so that is what the dump records.  The
+    originating cycle's version stays visible in the replay report and in
+    ``tests/backtest/corpus/README.md``.
 
     Returns:
-        The rebuilt :class:`PlannerInput` and a :class:`ReplayReport` describing
-        anything the shim could not map.
-
-    Raises:
-        KeyError: If the file carries no ``planner_input`` section.
+        The ``version`` field of the integration manifest.
     """
-    raw = json.loads(Path(path).read_text())
-    payload = raw.get("data", raw)
-    dump = payload["planner_input"]
+    manifest = _REPO_ROOT / "custom_components" / "hsem" / "manifest.json"
+    return str(json.loads(manifest.read_text(encoding="utf-8"))["version"])
 
-    known = {f.name for f in fields(PlannerInput)}
-    dropped = sorted(k for k in dump if k not in known)
-    missing = sorted(k for k in known if k not in dump)
 
-    kwargs: dict[str, Any] = {}
-    dropped_nested: dict[str, list[str]] = {}
-    for key, value in dump.items():
-        if key not in known:
-            continue
-        if key in _NESTED and isinstance(value, list):
-            built, nested_dropped = _build_nested(_NESTED[key], value)
-            kwargs[key] = built
-            if nested_dropped:
-                dropped_nested[key] = nested_dropped
-        else:
-            kwargs[key] = value
+def main(argv: list[str] | None = None) -> int:
+    """Replay a dump, report replay fidelity and invariant violations.
 
-    # The solar corrector is a runtime object the dump deliberately nulls out.
-    kwargs["solar_corrector"] = None
+    Args:
+        argv: Command-line arguments, defaulting to ``sys.argv[1:]``.
 
-    report = ReplayReport(
-        dropped=dropped,
-        missing=missing,
-        dropped_nested=dropped_nested,
-        source_version=str(payload.get("hsem_version", "unknown")),
-        dump_timestamp=str(payload.get("dump_timestamp", "unknown")),
+    Returns:
+        ``0`` when the replay found no invariant violations, ``1`` otherwise.
+    """
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("dump", help="Path to a diagnostics JSON file")
+    parser.add_argument(
+        "--regenerate",
+        metavar="PATH",
+        help=(
+            "Re-emit the replayed cycle as a current-schema diagnostics dump. "
+            "Used to refresh tests/backtest/corpus/ after a PlannerInput "
+            "field is added or removed."
+        ),
     )
-    return PlannerInput(**kwargs), report
+    args = parser.parse_args(argv)
+
+    planner_input, report = load_planner_input(args.dump)
+    print(report.describe())
+
+    planner_output = run_planner(planner_input)
+    print(
+        f"replayed {len(planner_output.slots)} slots  "
+        f"winner={planner_output.winner_name!r}  "
+        f"terminal_soc={planner_output.battery_soc_at_end:.1f}%"
+    )
+
+    violations = check_invariants(planner_input, planner_output)
+    print(f"invariants: {len(violations)} violation(s)")
+    print(format_violations(violations))
+
+    if args.regenerate:
+        regenerated = build_diagnostics_dump(
+            planner_input,
+            planner_output,
+            None,
+            integration_version=_integration_version(),
+        )
+        # Keep the source cycle's timestamp rather than "now", so regenerating
+        # an unchanged corpus entry produces an unchanged file.
+        regenerated["dump_timestamp"] = report.dump_timestamp
+        Path(args.regenerate).write_text(
+            json.dumps(regenerated, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(f"wrote {args.regenerate}")
+
+    return 1 if violations else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

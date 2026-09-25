@@ -1,0 +1,467 @@
+# Planner Backtest Harness
+
+> Issue [#1037](https://github.com/woopstar/hsem/issues/1037) — measure whether
+> plans are economically good, not merely self-consistent.
+
+HSEM's test suite proves the planner is **self-consistent**: it obeys
+`planner-spec.md`, holds its invariants, and does not contradict itself.
+Nothing in it proves the planner is **economically good** — that the plans it
+produces are close to the best achievable from the same inputs. Those are
+different questions, and only the second one says whether the MILP, the cost
+function and the forecasts are worth their complexity.
+
+The harness is built in two stages.
+
+| Stage                                 | Answers                                               | Status                           |
+| ------------------------------------- | ----------------------------------------------------- | -------------------------------- |
+| **1 — replay**                        | Does the planner hold the spec on _real_ inputs?      | **implemented**                  |
+| **2a — collection + actuals loading** | Can realized outcomes be lined up with the plan?      | **implemented**                  |
+| **2b — scoring** (savings + regret)   | Was the plan any good, and whose fault when it isn't? | not implemented — needs a corpus |
+
+Stage 2b is deliberately not built yet. Scoring code written before there is
+data to run it on would answer the alignment and attribution questions below
+by guessing. Stage 2a exists so the collection clock can start now.
+
+---
+
+## Why Stage 1 is worth having on its own
+
+Every other planner test runs on synthetic fixtures, and a fixture can only
+contain input combinations someone thought to write down. Issue #1032 shipped a
+label/energy contradiction to v6.3.2 while the whole fixture suite passed,
+because no fixture reproduced the production input that caused it. Replaying
+recorded cycles puts the spec invariants in front of inputs nobody designed.
+
+---
+
+## How Stage 1 works
+
+`run_planner(inp: PlannerInput) -> PlannerOutput`
+(`planner/engine_core.py`) is a pure function over one dataclass, and
+`hsem.export_diagnostics` already serialises that dataclass — `asdict()`, with
+only `solar_corrector` nulled, which its own docstring records as "not needed
+to reproduce planner logic offline". So a dump is a replayable input.
+
+```mermaid
+flowchart LR
+    A[hsem.export_diagnostics] -->|JSON| B[corpus dump]
+    B --> C[replay.py<br/>planner_input_from_dict]
+    C --> D[PlannerInput]
+    D --> E[run_planner]
+    E --> F[PlannerOutput]
+    D --> G[invariants.py<br/>check_invariants]
+    F --> G
+    G --> H{violations?}
+    H -->|none| I[cycle holds the spec]
+    H -->|any| J[named, per-slot failure report]
+```
+
+| Module                            | Responsibility                                                      |
+| --------------------------------- | ------------------------------------------------------------------- |
+| `tests/backtest/replay.py`        | Rebuild a `PlannerInput` from a dump; report anything it cannot map |
+| `tests/backtest/invariants.py`    | Check one `(input, output)` pair against `planner-spec.md`          |
+| `tests/backtest/actuals.py`       | Load realized outcomes and align them to planner slots              |
+| `tests/backtest/conftest.py`      | Corpus discovery, including a private out-of-repo corpus            |
+| `tests/backtest/corpus/`          | Committed, redacted dumps — so CI needs no live Home Assistant      |
+| `scripts/replay_planner_input.py` | Command-line front end for replay                                   |
+| `scripts/collect_actuals.sh`      | One command: fetch a week of history, convert, verify               |
+| `scripts/build_actuals.py`        | Turn an HA history export into an actuals file                      |
+
+### What the shim has to rebuild
+
+`asdict()` plus JSON flattens three things that do not survive on their own:
+
+1. the nested `HourlyConsumptionAverage` / `PricePoint` / `SolcastSlot` lists,
+   which come back as plain dicts;
+2. the `datetime` fields (EV deadlines and charger-power holds), which come
+   back as ISO-8601 strings — the field set is derived from `PlannerInput`'s
+   own annotations, so a datetime field added later is handled without
+   touching the shim;
+3. `solar_corrector`, pinned back to `None`.
+
+Anything else is reported on `ReplayReport` rather than dropped quietly:
+
+| Field                 | Meaning                                                    |
+| --------------------- | ---------------------------------------------------------- |
+| `dropped`             | The dump has it; `PlannerInput` no longer defines it       |
+| `missing`             | `PlannerInput` defines it; the dump predates it            |
+| `dropped_nested`      | Same, per element of a nested list                         |
+| `malformed_datetimes` | Not `None` and not a parseable ISO-8601 string             |
+| `is_faithful`         | All four empty — the only state in which a replay is exact |
+
+A replay that silently loses an input produces numbers that look real and are
+not, which is why `is_faithful` is asserted rather than reported.
+
+---
+
+## Running it
+
+The harness is part of the normal suite:
+
+```bash
+./scripts/quality.sh test
+python -m pytest tests/backtest/ -q        # just the harness
+```
+
+To replay a dump that is **not** in the corpus — for example a diagnostics
+download attached to a bug report:
+
+```bash
+python3 scripts/replay_planner_input.py path/to/diagnostics.json
+```
+
+```text
+hsem_version=6.3.2 dumped=2026-09-14T17:24:38.517328+02:00
+faithful=False
+  dropped (dump has, PlannerInput lacks): ['battery_schedules', 'extra']
+  missing (defaulted): ['live_solar_production_available']
+replayed 192 slots  winner='milp'  terminal_soc=100.0%
+invariants: 0 violation(s)
+no invariant violations
+```
+
+Exit status is `1` when any invariant failed, so it composes in a shell. Both
+dump shapes load: the `hsem.export_diagnostics` service response, and the HA
+diagnostics download that nests the same payload under `data`.
+
+### Capturing a dump
+
+- **One cycle, interactively** — call the `hsem.export_diagnostics` service, or
+  download diagnostics from the HSEM device page.
+- **Many cycles** — see [Collecting a corpus](#collecting-a-corpus) below.
+
+`hsem.log` is **not** a corpus. It carries derived per-slot traces
+(`[soc_sim]`, `[avg]`, `[pop]`) but no `planner_input`, so nothing in it can be
+replayed.
+
+### Adding to the corpus
+
+See `tests/backtest/corpus/README.md`. In short: read the dump before you
+commit it, and regenerate it through the current code so it round-trips.
+
+The committed corpus is a _sample_. A real collection run is roughly 2.6 MB/day
+and is nobody's business but yours, so keep it out of the repo and point the
+harness at it:
+
+```bash
+HSEM_BACKTEST_CORPUS=~/hsem-corpus pytest tests/backtest/ -q
+```
+
+Both `*.json` (one cycle) and `*.jsonl` (an append log, one cycle per line) are
+discovered. At most `HSEM_BACKTEST_MAX_CYCLES` cycles (default 25) are read from
+any one file — a three-week log holds thousands at ~0.15 s each, which would
+blow the per-test timeout with no explanation. Raise it when that is what you
+want.
+
+---
+
+## What Stage 1 checks
+
+Each check restates one bullet from `planner-spec.md`. Violations are returned,
+not raised, so one replay reports all of its problems at once.
+
+| Invariant                         | Rule                                                                |
+| --------------------------------- | ------------------------------------------------------------------- |
+| `slot_count`                      | `(interval_length_hours × 60) ÷ interval_minutes` slots             |
+| `slots_contiguous`                | Each slot ends exactly where the next begins                        |
+| `energy_balance`                  | `net = house + ev_planned − pv`, every slot                         |
+| `soc_bounds`                      | Simulated SoC stays within the effective floor and ceiling          |
+| `non_negative_flows`              | No negative charge, discharge, import or export                     |
+| `grid_direction_exclusive`        | No slot both imports and exports materially                         |
+| `battery_direction_exclusive`     | No slot both charges and discharges materially                      |
+| `export_attribution`              | Battery-origin export + direct-PV export = total export             |
+| `known_recommendation`            | Every slot carries a real `Recommendations` value                   |
+| `plan_self_consistency`           | Label and energy agree (delegates to the shipped #1035 gate)        |
+| `winner_cost_identity`            | Published `total_cost`/`score` equal the winning candidate's        |
+| `winner_slots_identity`           | Published slots are the winner's slots — no post-selection mutation |
+| `winner_present`                  | The winner is among the candidates that were scored                 |
+| `winner_not_worse_than_no_action` | The winner's **score** beats the no-action baseline's               |
+| `terminal_soc_reported`           | `battery_soc_at_end` matches the simulated trajectory               |
+| `missing_price_reported`          | A zero-price day is reported by `DataQuality`, not planned as free  |
+
+Two deliberate exclusions:
+
+- **State sentinels are skipped** where it matters. `time_passed` and
+  `missing_input_entities` slots are never simulated, so their SoC and energy
+  fields stay at their defaults; asserting bounds on them would report ~69
+  false violations on a mid-afternoon 48 h dump.
+- **`winner_not_worse_than_no_action` compares `score`, not `total_cost`.** The
+  selector minimises `score`. A plan may spend more money inside the horizon
+  and still be correct because it leaves the battery fuller — on the corpus
+  cycle the winner's `total_cost` is _worse_ than no-action's by 4.28 DKK while
+  its `score` is better by 5.84. Asserting on `total_cost` would fail a correct
+  plan.
+
+`tests/backtest/test_invariant_detection.py` breaks each invariant on purpose
+and asserts the matching check reports it, because a check that cannot fail is
+not a check.
+
+---
+
+## Collecting a corpus
+
+Both halves are file dumps. No live connection is needed for either.
+
+### Inputs — one dump per planner cycle
+
+Declare a file notifier in `configuration.yaml`:
+
+```yaml
+notify:
+  - platform: file
+    name: hsem_corpus
+    filename: hsem-corpus.jsonl
+    timestamp: false
+```
+
+Then append a dump whenever the planner republishes:
+
+```yaml
+automation:
+  - alias: HSEM backtest corpus
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+    actions:
+      - action: hsem.export_diagnostics
+        response_variable: dump
+      - action: notify.hsem_corpus
+        data:
+          message: "{{ dump | to_json }}"
+```
+
+Two things that are easy to get wrong here.
+
+**Call `notify.hsem_corpus` as a service, not an entity.** The legacy YAML
+`notify:` platform above registers a _service_; it creates no entity, so
+`notify.send_message` with `target.entity_id` fails and the file is never
+written. Use the entity form only if you add the File integration through the
+UI instead of the YAML block.
+
+**Trigger on a time pattern, not a state change.** The working-mode sensor only
+changes when the _recommendation_ changes, so state-triggered collection
+silently skips every cycle that reached the same conclusion — most of them, and
+exactly the stable stretches a baseline needs. Match the interval to your
+configured HSEM update interval.
+
+That produces JSON Lines — one cycle per line, ~9 KB of `planner_input` each,
+roughly 2.6 MB/day at 5-minute cycles. `iter_dumps()` reads it directly, so the
+file needs no post-processing.
+
+### Actuals — one history export
+
+`scripts/collect_actuals.sh` does the whole loop — fetch, convert, verify:
+
+```bash
+export HA_URL=http://homeassistant.local:8123
+export HA_TOKEN=<long-lived access token>
+export TZ=Europe/Copenhagen          # must match Home Assistant's timezone
+
+./scripts/collect_actuals.sh --days 7 --verify
+```
+
+It downloads one file per complete day into `~/hsem-actuals/raw/`, skipping days
+it already has, then converts **every** raw file in one pass so day boundaries
+are stitched. Re-run it weekly; it is idempotent.
+
+Set `HSEM_ARCHIVE_ENTITIES` to a comma-separated list of extras — EV charger
+power, EV SoC, phase meters, the working-mode sensor. They are downloaded but
+not converted: the recorder purges, so they cannot be fetched later, and they
+give the outage check more evidence to work with.
+
+The nine mapped entities — four energy meters, realized battery charge and
+discharge, battery SoC and the two price sensors — default to the names used by
+the common HSEM template package. Override any of them with `HSEM_GRID_IMPORT_ENTITY`,
+`HSEM_PV_ENTITY`, `HSEM_HOUSE_LOAD_ENTITY` and friends — see `MAPPING` at the
+top of the script. Map `house_load` to the **EV-excluded** meter: the planner's
+baseline is EV-normalized, so an EV-inclusive meter double-counts against
+`ev_planned_load_kwh`.
+
+Under the hood it calls `scripts/build_actuals.py`, which you can drive
+directly for one-off exports:
+
+```bash
+python3 scripts/build_actuals.py history-*.json \
+    --map sensor.energy_import_ps=grid_import \
+    --map sensor.batteries_state_of_capacity=battery_soc_pct \
+    --slot-minutes 15 --out actuals.json
+```
+
+### The actuals file format
+
+```json
+{
+  "schema": "hsem-actuals-1",
+  "slot_minutes": 15,
+  "slot_energy_kwh": {
+    "pv_produced": [["2026-09-14T10:00:00+00:00", 1.02]],
+    "house_load": [["2026-09-14T10:00:00+00:00", 0.31]],
+    "grid_import": [["2026-09-14T10:00:00+00:00", 0.0]],
+    "grid_export": [["2026-09-14T10:00:00+00:00", 0.71]],
+    "battery_charged": [["2026-09-14T10:00:00+00:00", 0.0]],
+    "battery_discharged": [["2026-09-14T10:00:00+00:00", 0.0]]
+  },
+  "slot_values": {
+    "battery_soc_pct": [["2026-09-14T10:00:00+00:00", 96.2]]
+  }
+}
+```
+
+`slot_energy_kwh` holds integrated per-slot energy; `slot_values` holds one
+scalar per slot. An unrecognised series name is reported and ignored rather
+than silently accepted. The `schema` tag is mandatory so a format change is
+loud.
+
+`battery_charged` / `battery_discharged` are optional but worth having: they
+measure what the battery actually did, instead of inferring it from SoC deltas
+under assumed efficiencies.
+
+**Export prices when your price sensor is the one the planner reads.** HSEM
+takes its prices straight from the configured import/export price sensors — it
+adds no grid fee of its own — so their recorded state is the price a slot was
+settled at. Recording them makes realized cost computable across the whole
+recorder window without a matching dump, which is what lets savings be measured
+over months while regret waits for paired data.
+
+Confirm rather than assume, per installation:
+
+- the sensor must already carry tariffs (Energi Data Service does; a bare spot
+  feed does not);
+- `hsem_export_fee_per_kwh`, when set, is subtracted from the export price by
+  the planner and must be subtracted here too.
+
+`collect_actuals.sh --verify` checks both, comparing every overlapping slot
+against a dump's own `price_points` and naming _why_ they differ:
+
+| Verdict                        | Meaning                                                                                                           |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| same prices, slot for slot     | Nothing to do.                                                                                                    |
+| systematic offset              | A fee or tariff one side has and the other does not. **Do not score.**                                            |
+| _n_ slot(s) outside the spread | Individual prices are wrong — a stale value, a source gap, or a sensor that writes just after the boundary.       |
+| plan hourly, export sub-hourly | Expected against a cycle from before the market moved to 15-minute periods. Re-check against a contemporary dump. |
+
+The distinction that matters is between a _mean_ difference and a _spread_. A
+fee is identical on every slot, so its mean stands clear of its own spread; a
+granularity difference averages to nothing but is wide. Judging the mean against
+a fixed tolerance alone calls a short sample a fee, so the check tests whether
+the mean is significant against its standard error, and separately counts slots
+more than three spreads out — because a day-long mean otherwise absorbs a
+handful of badly wrong slots.
+
+`is_scorable` does not require prices: an energy-only export still supports
+every comparison that does not need money.
+
+---
+
+## Loading and aligning actuals
+
+```python
+from tests.backtest.actuals import align_to_slots, load_actuals
+
+actuals = load_actuals("actuals.json")
+rows, report = align_to_slots(actuals, planner_output.slots)
+print(report.describe())
+```
+
+```text
+aligned 192 slot(s); 40 scorable (partial)
+  pv_produced: 40/192
+  house_load: 40/192
+  grid_import: 40/192
+  grid_export: 40/192
+  battery_soc_pct: 40/192
+  import_price: 40/192
+  export_price: 40/192
+  covered 2026-09-14T00:00:00+02:00 → 2026-09-14T09:45:00+02:00
+```
+
+Coverage is reported first because "how many slots can I actually score?" is the
+question any scoring pass has to answer before it reports a number.
+
+### Three rules the loader enforces
+
+**Missing is not zero.** Every field on `SlotActuals` is `float | None`, and an
+unobserved slot stays `None`. This is the same rule the planner follows for
+telemetry (issues #988, #1056), and it matters more here: regret is a
+_difference_ of two costs, so a fabricated zero does not cancel out — it
+manufactures savings.
+
+Because zero slots are observations, a file built by `build_actuals.py` needs
+no zero-filling: overnight PV is already `0.0`, and absence means the value
+genuinely could not be established. For a hand-built file or a source that omits
+zeros, `actuals.fill_absent_with_zero("pv_produced")` exists, and the alignment
+report names every series it was applied to. The danger was never zero-filling;
+it was zero-filling _silently_.
+
+**Alignment is by canonical slot key.** Both sides go through
+`datetime_utils.slot_key()`, so a UTC export lines up with a `+02:00` plan, and
+the two folds of an autumn repeated hour stay distinct instead of collapsing
+onto each other. Wall-clock matching would pass every test except the one night
+a year it matters.
+
+**A slot-width mismatch raises.** Actuals exported at 60 minutes will not align
+to a 15-minute plan. Resampling changes what a scoring pass measures, so it is
+refused rather than performed quietly.
+
+---
+
+## Stage 2b — savings and regret (not implemented)
+
+### Two comparisons
+
+| Comparison                                                                              | Measures    |
+| --------------------------------------------------------------------------------------- | ----------- |
+| plan vs **no-action baseline**                                                          | **savings** |
+| plan vs **perfect-foresight oracle** — the same MILP, actuals substituted for forecasts | **regret**  |
+
+Savings say what the integration delivered. **Regret is the metric worth
+building this for**, because it separates two failure modes that are
+indistinguishable today:
+
+- the oracle beats us mainly on PV-variable days → the **forecasts** are the
+  problem (Solcast handling, solar correction);
+- the oracle beats us even where forecasts were near-perfect → the **optimizer**
+  is the problem (MILP formulation or cost function).
+
+Those are completely different fixes.
+
+### Open design questions
+
+These need real paired data to answer, which is why Stage 2b waits.
+
+1. **Alignment.** Dump cadence (~5 min) does not match slot width (15 min), and
+   several dumps fall inside one slot. Which cycle's plan is the one being
+   scored — the first in the slot, or the one the applier last wrote?
+2. **Attribution.** Realized grid flows reflect what the _hardware_ did,
+   including manual overrides, degraded mode and write failures. The apply
+   result is already in every dump (`apply_result`), so scored days can exclude
+   cycles where it reports a failed or blocked write — but "exclude" versus
+   "annotate" is a judgement call that changes the headline number.
+3. **Oracle scope.** A perfect-foresight oracle over a 48 h horizon needs 48 h of
+   actuals _after_ the cycle, so the last two days of any corpus can never be
+   scored.
+4. **Which price is the realized price.** A dump carries the price the planner
+   _used_, which is not always the price that applied. Day-ahead prices publish
+   around 13:00, so a morning cycle's second day has none, and `populate_prices`
+   fills those hours from the nearest earlier day (issue #1002). Scoring against
+   that measures the planner as if its own estimate were the truth, hiding
+   genuine price-forecast error —
+   `data_quality.tomorrow_price_missing_hours` marks exactly which hours.
+   The realized price comes from the price sensor's recorded state instead
+   (exported as `import_price`/`export_price`), or equivalently from any later
+   dump covering the same slot. What a scoring pass must not do is read it off
+   the cycle being scored.
+
+Home Assistant's `mcp_server` integration was evaluated for collection and
+rejected: it exposes Assist-oriented tools returning a plain-text snapshot
+rather than raw entity attributes, only for entities exposed to Assist, and
+backtesting needs historical series rather than live polling anyway.
+
+---
+
+## Related
+
+- [Planner Specification](planner-spec.md) — the invariants this checks
+- [Architecture Overview](architecture-overview.md) — where the planner sits
+- [Services Reference](services-reference.md) — `hsem.export_diagnostics`
+- [Quality Checks](quality-checks.md) — how the suite is run in CI

@@ -980,6 +980,79 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
 - Run `pytest tests/` before every PR.
 - Run `./scripts/quality.sh lint` then `./scripts/quality.sh quality` before every commit.
 - Use `pytest.approx()` for all float comparisons in tests.
+- Fixtures cannot contain input combinations nobody thought of. When a planner
+  bug reaches production, add the diagnostics dump to `tests/backtest/corpus/`
+  as well as writing the unit regression test — see the backtest harness below.
+
+---
+
+## Planner Backtest Harness (issue #1037)
+
+`tests/backtest/` replays recorded production cycles offline and checks them
+against `docs/planner-spec.md`.
+
+- `tests/backtest/replay.py` is the **inverse** of
+  `utils/diagnostics.py::_planner_input_to_dict`. Add or remove a
+  `PlannerInput` field and the two must be grepped together — the corpus stops
+  round-tripping when they disagree, which is what
+  `ReplayReport.is_faithful` asserts.
+- Datetime fields are discovered from `PlannerInput`'s own annotations, not
+  hard-coded. Do not replace that with a literal list.
+- `tests/backtest/invariants.py::check_invariants` returns violations, never
+  raises, and delegates the label/energy contract to the shipped
+  `plan_consistency.check_plan_self_consistency` so the harness cannot drift
+  from the gate users run.
+- Two things the checks must keep doing, both learned from real dumps:
+  `time_passed`/`missing_input_entities` slots are never simulated and must be
+  skipped for SoC and terminal-SoC checks (69 false positives on a 48 h
+  afternoon dump otherwise), and the no-action comparison uses `score`, not
+  `total_cost` — a correct plan can spend more money in-horizon and win by
+  leaving the battery fuller.
+- `tests/backtest/actuals.py` loads realized outcomes and aligns them to slots.
+  Three rules it must keep: **missing stays `None`** (regret is a difference of
+  costs, so a fabricated zero manufactures savings rather than cancelling);
+  alignment goes through `datetime_utils.slot_key()` so a UTC export matches a
+  `+02:00` plan and both folds of an autumn repeated hour stay distinct; and a
+  slot-width mismatch **raises** rather than resampling.
+- Accumulator→slot energy uses **step-function boundary sampling**
+  (`slot_energy_from_readings`: value in force at slot end minus value in force
+  at slot start), **not** `HistoryReader._compute_slot_deltas`. HA records a
+  state only on change, so a flat meter has no rows; the ML routine discards
+  zero slots and any slot whose predecessor had no reading — right for "what did
+  the house consume", wrong for actuals, where it drops the first slot after
+  every quiet stretch (import after an export afternoon, battery discharge
+  after idle). Only `MAX_SLOT_KWH` is shared. Do not "DRY" this back onto the
+  ML routine.
+- Flat-vs-outage is decided **across all exported entities**: any slot
+  overlapping a silence longer than `max_silence` (default 10 min) in the union
+  of every entity's readings is unobserved. `unavailable`/`unknown` rows are kept
+  as `None`, never dropped, so a last good value cannot bridge an outage. A
+  sparse meter exported without a chatty heartbeat (house load) stays missing on
+  its flat stretches, by design.
+- Corpus discovery reads `*.json` and `*.jsonl` (an HA append log), from the
+  committed dir plus `HSEM_BACKTEST_CORPUS`. `HSEM_BACKTEST_MAX_CYCLES`
+  (default 25) caps cycles per file so a three-week log cannot blow the test
+  timeout. Collection must be **time-pattern triggered**, not state-triggered:
+  the working-mode sensor only changes when the recommendation changes, so
+  state triggers skip exactly the stable stretches a baseline needs.
+- **The dump's prices are not always the realized prices.** `price_points` holds
+  what the planner _used_; beyond the ~13:00 day-ahead publication horizon that
+  is the #1002 estimate (same hour, nearest earlier day), flagged by
+  `data_quality.tomorrow_price_missing_hours` / `day2_price_missing_hours`.
+  Never read a realized price off the cycle being scored.
+- **HSEM adds no grid fee of its own on import** — it uses the price sensor's
+  state directly (`const.py` has only `hsem_export_fee_per_kwh`, default 0.0).
+  So the price sensor's recorded state _is_ the settled price, and exporting it
+  makes realized cost computable for the whole recorder window with no matching
+  dump. Verified on a real install: `import_electricity_price_state` equalled
+  the plan slot's `import_price` exactly. `collect_actuals.sh --verify` proves
+  it per install rather than assuming.
+- Stage 2b (savings vs a no-action baseline, regret vs a perfect-foresight
+  oracle) is designed in `docs/backtest-harness.md` but **not implemented**: it
+  needs a corpus of paired inputs and actuals, and three open questions
+  (alignment, attribution, oracle scope) need real data to answer.
+- `hsem.log` is not a corpus — derived `[soc_sim]`/`[avg]`/`[pop]` traces, no
+  `planner_input`.
 
 ---
 

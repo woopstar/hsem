@@ -9,3 +9,4 @@
 # from 2026-08-17 onward).
 fixes:
   - "hsem/::custom_components/hsem/"
+comment: false

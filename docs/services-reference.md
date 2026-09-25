@@ -188,13 +188,13 @@ are redacted for safe sharing in issue reports.
 
 **Response:** A dict with the following structure:
 
-| Key                   | Type   | Description                          |
-| --------------------- | ------ | ------------------------------------ |
-| `integration_version` | `str`  | HSEM version from `manifest.json`    |
-| `planner_input`       | `dict` | Latest `PlannerInput` (redacted)     |
-| `planner_output`      | `dict` | Latest `PlannerOutput` (redacted)    |
-| `hardware_writes`     | `dict` | Latest hardware write status summary |
-| `timestamp`           | `str`  | ISO-8601 timestamp of the dump       |
+| Key              | Type   | Description                               |
+| ---------------- | ------ | ----------------------------------------- |
+| `hsem_version`   | `str`  | HSEM version from `manifest.json`         |
+| `dump_timestamp` | `str`  | ISO-8601 timestamp of the dump            |
+| `planner_input`  | `dict` | Latest `PlannerInput` (redacted)          |
+| `planner_output` | `dict` | Latest `PlannerOutput` summary (redacted) |
+| `apply_result`   | `dict` | Latest hardware write status summary      |
 
 **Example:**
 
@@ -202,6 +202,18 @@ are redacted for safe sharing in issue reports.
 service: hsem.export_diagnostics
 response_variable: diagnostics_result
 ```
+
+**Replaying a dump.** `planner_input` is a complete, lossless serialisation of
+the planner's input, so a dump can be re-run offline against any checkout:
+
+```bash
+python3 scripts/replay_planner_input.py path/to/diagnostics.json
+```
+
+This reports whether the dump still round-trips onto the current
+`PlannerInput`, and checks the resulting plan against the invariants in
+[the planner specification](planner-spec.md). See
+[Planner Backtest Harness](backtest-harness.md).
 
 ---
 
