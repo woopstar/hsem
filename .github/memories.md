@@ -1385,6 +1385,39 @@ Regression tests: `tests/test_avg_sensor_negative_guard.py`.
 
 ---
 
+## Avg Sensor Must Not Store Unobserved Blocks as Zero (issue #1101)
+
+After HA downtime across an hour block, the daily utility meter fires its
+overdue reset on restart (`last_reset` = restart time, value `0`). The old
+clock-only `block_complete` check then stored `0.0` as a real sample. That
+dragged the 1d/3d/7d/14d averages down for up to 14 days and broke the
+missing-not-zero rule (#988/#1056).
+
+Canonical rule: `_block_observed(last_reset, session_started_at, block_start)`
+in `avg_sensor.py` must be true before storing a sample. Both of these must
+hold, within `_BLOCK_RESET_TOLERANCE` (5 min):
+
+- the tracked meter's `last_reset` attribute equals `block_start`
+  (`measurement_date` @ `hour_start`, local tz)
+- the current session (`_session_started_at`, set in
+  `async_added_to_hass`) started no later than `block_start`
+
+The session check covers the case where the meter reset on time and HA then
+crashed mid-block. A blocked sample is skipped with a debug log. Existing
+measurements are never removed, and a genuine observed `0.0` is still stored.
+Blocks completed before a normal restart were already stored by the old
+session and survive via restore.
+
+The `Energy (Integral)` sensors are lifetime running totals and never reset.
+Only the utility meter's per-block difference matters. Wiping the recorder DB
+does not reset any of these sensors: they restore from
+`.storage/core.restore_state` (see `docs/troubleshooting-guide.md` →
+System recovery steps).
+
+Regression tests: `tests/test_avg_sensor_unobserved_block.py`.
+
+---
+
 ## Recorder Footprint — Write on Change, Never Record Volatile Attributes (issue #1099)
 
 HA's recorder inserts a `states` row **and** a new `state_attributes` row

@@ -13,19 +13,32 @@ state when the average or the stored measurements change, and keeps the
 volatile ``last_updated`` timestamp and the ``measurements`` dict out of the
 recorder.  Restart restore is unaffected — ``RestoreEntity`` persists the
 full state object independently of ``_unrecorded_attributes``.
+
+Unobserved blocks (issue #1101): a sample is only stored when the block was
+observed end to end — the tracked utility meter's ``last_reset`` matches the
+block start *and* this Home Assistant session was already running at the
+block start.  After downtime the meter fires its missed daily reset on
+restart and reads ``0``; a block interrupted by downtime holds only part of
+the hour.  Neither is a measurement, so both are skipped and the previous
+valid days remain in the window.
 """
 
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from typing import Any, override
 
 import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
+from homeassistant.components.sensor.const import (
+    ATTR_LAST_RESET,
+    SensorDeviceClass,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import (
     async_track_state_change_event,
@@ -41,6 +54,70 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
 #: Tolerance for deciding whether a published kWh value actually changed.
 _CHANGE_EPSILON = 1e-9
+
+#: Maximum drift between an hour block's start and the tracked utility
+#: meter's ``last_reset`` for the reading to count as an observation of the
+#: whole block.  Absorbs reset-callback latency and a quick restart across
+#: the block boundary (issue #1101).
+_BLOCK_RESET_TOLERANCE = timedelta(minutes=5)
+
+
+def _meter_last_reset(hass: HomeAssistant, entity_id: str | None) -> Any:
+    """Return the raw ``last_reset`` attribute of the tracked utility meter."""
+    if not entity_id:
+        return None
+    state = hass.states.get(entity_id)
+    if state is None:
+        return None
+    return state.attributes.get(ATTR_LAST_RESET)
+
+
+def _block_observed(
+    last_reset: Any,
+    session_started_at: datetime | None,
+    block_start: datetime,
+) -> bool:
+    """Return True when the given hour block was observed end to end.
+
+    Two conditions must hold (issue #1101):
+
+    - **The meter reset at the block start.**  The daily utility meter resets
+      at ``hour_start``; its reading covers the block only when that reset
+      happened at ``block_start`` (within :data:`_BLOCK_RESET_TOLERANCE`).  A
+      later reset is a missed reset fired on restart (unobserved or partial
+      block); an earlier one means the value belongs to a previous day.
+    - **Home Assistant was running since the block start.**  A session that
+      started after ``block_start`` cannot have seen the whole block — the
+      meter may have reset on time and then stopped counting when HA went
+      down mid-block.  A fully observed block from an earlier session was
+      already stored by that session's post-block ticks.
+
+    A missing or unparseable ``last_reset`` or an unknown session start
+    cannot be verified and is rejected (fail-closed, missing ≠ zero).
+
+    Args:
+        last_reset: Raw ``last_reset`` attribute (ISO string or datetime).
+        session_started_at: When this sensor started its current HA session.
+        block_start: Timezone-aware start of the block being sampled.
+
+    Returns:
+        True when the reading may be stored as that block's sample.
+    """
+    if session_started_at is None or (
+        dt_util.as_utc(session_started_at)
+        > dt_util.as_utc(block_start) + _BLOCK_RESET_TOLERANCE
+    ):
+        return False
+    if isinstance(last_reset, datetime):
+        parsed: datetime | None = last_reset
+    elif isinstance(last_reset, str):
+        parsed = dt_util.parse_datetime(last_reset)
+    else:
+        return False
+    if parsed is None:
+        return False
+    drift = abs(dt_util.as_utc(parsed) - dt_util.as_utc(block_start))
+    return drift <= _BLOCK_RESET_TOLERANCE
 
 
 def _float_changed(previous: float | None, current: float | None) -> bool:
@@ -121,6 +198,9 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         # Set once the first state has been written this session; later
         # writes happen only when the published values change.
         self._state_written = False
+        # When this HA session started tracking; blocks that began before it
+        # were not (fully) observed and are never stored (issue #1101).
+        self._session_started_at: datetime | None = None
 
     @property
     @override
@@ -198,6 +278,7 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
     @override
     async def async_added_to_hass(self) -> None:
         """Handle when sensor is added to Home Assistant."""
+        self._session_started_at = dt_util.now()
 
         # Get the last state of the sensor
         old_state = await self.async_get_last_state()
@@ -328,6 +409,12 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         complete, i.e. when ``now.hour >= hour_end``.  For overnight blocks
         (``hour_end < hour_start``, e.g. 23→00) the block closes at
         midnight, so any time after the block started counts as complete.
+
+        A complete block is additionally only stored when it was observed end
+        to end (see :func:`_block_observed`, issue #1101).  Otherwise — e.g.
+        Home Assistant was down and the missed reset fired on restart,
+        publishing ``0`` — the sample is skipped without touching existing
+        measurements.
         """
         now = dt_util.now()
 
@@ -371,14 +458,16 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
 
             if block_complete:
                 value = round(float(utility_meter_value), 2)
+                block_start = datetime.combine(
+                    measurement_date, time(hour=self._hour_start), tzinfo=now.tzinfo
+                )
+                last_reset = _meter_last_reset(self.hass, self._tracked_entity)
                 # A misconfigured tracked utility meter (e.g. net-consumption
                 # accounting) can report a negative or non-finite reading.
                 # Storing that as the day's sample would poison a rolling
                 # window that may not roll over for days — reject it instead
                 # (issue #938).
-                if math.isfinite(value) and value >= 0.0:
-                    self._measurements[measurement_date.isoformat()] = value
-                else:
+                if not math.isfinite(value) or value < 0.0:
                     _LOGGER.warning(
                         "Rejected non-finite/negative utility-meter reading for "
                         "entity_id=%s on %s: %s",
@@ -386,6 +475,24 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
                         measurement_date.isoformat(),
                         value,
                     )
+                elif not _block_observed(
+                    last_reset, self._session_started_at, block_start
+                ):
+                    # Unobserved or partial block (issue #1101): storing it
+                    # would publish HA downtime as a measured zero.
+                    _LOGGER.debug(
+                        "Skipping unobserved block sample for entity_id=%s on %s: "
+                        "value=%s last_reset=%s session_started_at=%s "
+                        "block_start=%s",
+                        self._tracked_entity,
+                        measurement_date.isoformat(),
+                        value,
+                        last_reset,
+                        self._session_started_at,
+                        block_start.isoformat(),
+                    )
+                else:
+                    self._measurements[measurement_date.isoformat()] = value
 
         if self._measurements is not None and len(self._measurements) > self._average:
             await self._async_cleanup_old_measurements()
