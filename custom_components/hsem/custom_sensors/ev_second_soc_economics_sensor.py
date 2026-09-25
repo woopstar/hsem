@@ -20,6 +20,9 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.custom_sensors.ev_soc_economics_sensor import (
+    EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES,
+)
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.sensornames.ev import (
@@ -49,6 +52,7 @@ class HSEMEVSecondSoCEconomicsSensor(
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = sorted(_VALID_STATES)
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _unrecorded_attributes = EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES
 
     def __init__(
         self,

@@ -52,6 +52,10 @@ _VALID_STATES = {
     STATE_UNAVAILABLE,
 }
 
+#: The cost table is recomputed every cycle and only read from the live
+#: state (dashboard ``groupby``) — never recorded (issue #1099).
+EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES = frozenset({"points"})
+
 
 class HSEMEVSoCEconomicsSensor(
     HSEMCoordinatorEntity,
@@ -71,6 +75,7 @@ class HSEMEVSoCEconomicsSensor(
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = sorted(_VALID_STATES)
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _unrecorded_attributes = EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES
 
     def __init__(
         self,

@@ -51,6 +51,9 @@ class HSEMNextUpdateSensor(
     _attr_has_entity_name = True
     _attr_translation_key = "next_update"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    # Cycle heartbeat — already the recorded state of the Last Updated
+    # sensor, so recording it here too only duplicates it (issue #1099).
+    _unrecorded_attributes = frozenset({"last_updated"})
 
     def __init__(
         self,

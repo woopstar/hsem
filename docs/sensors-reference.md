@@ -19,6 +19,49 @@ HSEM exposes these entity types:
 
 ---
 
+## Recorder footprint
+
+All attributes below are always available on the **live** state
+(`state_attr()`, dashboards, automations). To keep the Home Assistant
+database small (issue #1099), HSEM records only small scalar attributes.
+Lists, dicts, per-slot timestamps and restore payloads are listed in each
+sensor's `_unrecorded_attributes` and never reach the recorder:
+
+| Sensor                                         | Not recorded                                                                |
+| ---------------------------------------------- | --------------------------------------------------------------------------- |
+| `sensor.hsem_workingmode_sensor`               | all attributes                                                              |
+| `sensor.hsem_plan_explanation_sensor`          | `rejected_plans`, `constraints`, `current_slot_start`, `current_slot_end`   |
+| `sensor.hsem_ev_*optimal_charging_plan`        | `charging_slots`, `planned_load_by_slot`, `data_quality`                    |
+| `sensor.hsem_ev_*soc_economics`                | `points`                                                                    |
+| `sensor.hsem_ev_*charger_current_limit`        | `schedule`                                                                  |
+| `sensor.hsem_solar_confidence_sensor`          | `hour_factors`, `processed_through`, `_solar_corrector_data`                |
+| `sensor.hsem_forecast_accuracy_sensor`         | `_forecast_tracker_data`                                                    |
+| `sensor.hsem_prediction_accuracy`              | `action_mix`                                                                |
+| `sensor.hsem_savings_tracker`                  | `daily`                                                                     |
+| `sensor.hsem_daily_plan_vs_actual`             | `today`, `yesterday`, `history`                                             |
+| Export income / import cost / net grid balance | `today`, `last_7_days`, `last_30_days`, `this_month`, `this_year`, `daily`  |
+| `sensor.hsem_applier_status_sensor`            | `last_apply_details`, `failed_entities`, `unverified_entities`              |
+| `sensor.hsem_ocpp_*charger_status`             | all attributes                                                              |
+| `sensor.hsem_ocpp_*charger_sessions`           | `sessions`                                                                  |
+| `sensor.hsem_next_update_sensor`               | `last_updated` (recorded as the state of `sensor.hsem_last_updated_sensor`) |
+| `sensor.hsem_house_consumption_energy_avg_*`   | all except the state (`measurements`, `last_updated`, …)                    |
+| `sensor.hsem_house_consumption_power_*`        | all except the state                                                        |
+
+State values are always recorded, so history graphs and long-term
+statistics of the sensor states are unaffected. Restart restore reads
+`RestoreEntity` storage (`.storage/core.restore_state`), which keeps every
+attribute regardless of this list.
+
+**`last_updated` attributes.** On the per-hour consumption sensors,
+`last_updated` is the time the published value last changed. On the
+working mode sensor and `sensor.hsem_next_update_sensor` it is the
+coordinator heartbeat (time of the last completed update cycle), the same
+value as the `sensor.hsem_last_updated_sensor` state. For "when did this
+value last change" on any entity, use Home Assistant's built-in
+`last_changed` (`{{ states.sensor.x.last_changed }}`).
+
+---
+
 ## Devices (issue #875)
 
 Entities are split across 7 Home Assistant devices instead of one, so each
@@ -263,6 +306,12 @@ All three use `total` because signed prices may make their values decrease.
 - `sensor.hsem_export_income` — Cumulative export revenue
 - `sensor.hsem_import_cost` — Cumulative import cost
 - `sensor.hsem_net_grid_balance` — Export income minus import cost
+
+**Attributes (all three):** `today`, `last_7_days`, `last_30_days`,
+`this_month`, `this_year` (each `{import_cost, export_income, net_balance}`)
+and `daily` — the newest 90 daily records, oldest first. The tracker keeps
+366 completed days in `hsem_financial_history.json` so the `this_year`
+rollup is always complete; older days are pruned at midnight and on load.
 
 ### `sensor.hsem_export_income`
 

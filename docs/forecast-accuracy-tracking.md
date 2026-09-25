@@ -336,7 +336,11 @@ The forecast tracker data survives HA restarts using the standard
    `_forecast_tracker_data` key containing the bounded record list from
    `tracker.to_persistence_dict()`.
 
-2. **HA's recorder** automatically stores these attributes in its database.
+2. **`RestoreEntity`** stores the last state object, including these
+   attributes, in `.storage/core.restore_state`. This is independent of
+   the recorder database: `_forecast_tracker_data` is listed in the
+   sensor's `_unrecorded_attributes`, so the ~9 KB blob is **not** written
+   to the recorder on every cycle (issue #1099).
 
 3. **On restart**, `async_added_to_hass` calls `async_get_last_state()`
    to retrieve the previous state, extracts `_forecast_tracker_data`, and
@@ -350,7 +354,8 @@ The forecast tracker data survives HA restarts using the standard
 The `SolarForecastCorrector` (issue #602) persists separately, via
 `HSEMSolarConfidenceSensor` (`custom_sensors/solar_confidence_sensor.py`)
 using the same `RestoreEntity` pattern: its `extra_state_attributes` include
-`_solar_corrector_data` (`corrector.to_dict()`), and `async_added_to_hass`
+`_solar_corrector_data` (`corrector.to_dict()`, likewise excluded from the
+recorder via `_unrecorded_attributes`), and `async_added_to_hass`
 restores it with `corrector.load_from_dict(data, restored_at=hsem_now())`.
 That payload includes the `processed_through` watermark — the newest
 forecast-tracker slot start the corrector has already learned from — so

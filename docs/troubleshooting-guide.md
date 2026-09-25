@@ -613,6 +613,61 @@ correct. HSEM writes that cap deliberately in several situations:
 
 ---
 
+## 8. Home Assistant database growing large
+
+### Symptoms
+
+- `home-assistant_v2.db` grows by gigabytes; backups get slow.
+- HSEM entities such as `sensor.hsem_house_consumption_energy_avg_*` or
+  `sensor.hsem_forecast_accuracy_sensor` rank high in a per-entity
+  `states` / `state_attributes` size query.
+
+### Checks & likely causes
+
+- **HSEM version before the issue #1099 fix.** The 96 rolling-average
+  sensors wrote a new state (with a fresh `last_updated` timestamp and the
+  full `measurements` dict) every 30 s, and coordinator sensors recorded
+  their large structured attributes (rejected plans, EV charging slots,
+  cost tables, daily histories, restore blobs) on every cycle. Upgrade;
+  afterwards each average sensor writes only a few rows per day and the
+  coordinator sensors record only small scalar attributes (see
+  [Sensors reference → Recorder footprint](sensors-reference.md#recorder-footprint)).
+- **Retention.** Compare the oldest `states` row with your
+  `purge_keep_days`. If history is much older, auto-purge is not running —
+  check `home-assistant.log` for recorder errors and run `recorder.purge`.
+
+### Which HSEM entities can be excluded from the recorder
+
+HSEM never reads the recorder **history** of its own sensors. Restart
+restore uses `RestoreEntity` storage (`.storage/core.restore_state`), which
+is independent of the recorder. These can be excluded safely — you only lose
+their history graphs:
+
+```yaml
+recorder:
+  purge_keep_days: 15 # must be >= ML history days (default 14)
+  exclude:
+    entity_globs:
+      - sensor.hsem_house_consumption_power_*
+      - sensor.hsem_house_consumption_energy_integral_*
+      - sensor.hsem_house_consumption_energy_*_utility_meter
+      - sensor.hsem_house_consumption_energy_avg_*
+    entities:
+      - sensor.hsem_forecast_accuracy_sensor
+```
+
+**Do not exclude** the entities configured as ML energy, grid import
+energy, grid export energy, outdoor temperature or weather forecast. ML
+consumption prediction reads their recorder history (up to 90 days), and
+`purge_keep_days` must be at least `hsem_ml_consumption_history_days`.
+
+To delete existing rows after adding the excludes, call
+`recorder.purge_entities` with the same globs and `keep_days: 0`, then
+repack the database (`recorder.purge` with `repack: true`, or `VACUUM` with
+HA stopped for very large SQLite files).
+
+---
+
 ## When to check the logs
 
 ### HSEM log (`hsem.log`)

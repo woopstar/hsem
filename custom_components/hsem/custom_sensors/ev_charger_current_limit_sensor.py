@@ -62,7 +62,7 @@ from custom_components.hsem.utils.sensornames.ev import (
 
 #: Number of future slots published in the forward-schedule attribute.
 #: Enough to cover a full overnight or working-day charge without making
-#: the attribute unwieldy for the recorder.
+#: the attribute unwieldy.
 _SCHEDULE_SLOTS = 24
 
 
@@ -85,6 +85,9 @@ class HSEMEVChargerCurrentLimitSensorBase(
     _attr_device_class = SensorDeviceClass.CURRENT
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
     _attr_state_class = SensorStateClass.MEASUREMENT
+    # The forward schedule shifts every slot and is only read from the live
+    # state; the amp state itself is recorded (issue #1099).
+    _unrecorded_attributes = frozenset({"schedule"})
     _is_second: bool = False
 
     def __init__(

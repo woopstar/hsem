@@ -1385,6 +1385,64 @@ Regression tests: `tests/test_avg_sensor_negative_guard.py`.
 
 ---
 
+## Recorder Footprint — Write on Change, Never Record Volatile Attributes (issue #1099)
+
+HA's recorder inserts a `states` row **and** a new `state_attributes` row
+whenever the state or _any_ attribute changes — including attributes listed
+in `_unrecorded_attributes` (those are only stripped from the stored JSON).
+The 96 `HSEMAvgSensor` instances used to write every 30 s poll with a fresh
+`last_updated`, producing ~3,200 rows/day each for a value that changes about
+once a day; `HSEMForecastAccuracySensor` recorded a ~9 KB
+`_forecast_tracker_data` blob every cycle.
+
+Canonical rules:
+
+- **Write on change.** A sensor whose value changes rarely must skip
+  `async_write_ha_state()` when the published values are unchanged (compare
+  floats with an epsilon), and must only bump `last_updated` on a real write.
+  `HSEMAvgSensor._async_handle_update` is the reference implementation.
+- **Never record volatile timestamps or persistence blobs.** List
+  `last_updated`-style timestamps and restore payloads
+  (`_forecast_tracker_data`, `measurements`, …) in `_unrecorded_attributes`.
+- **Restore does not need the recorder.** `RestoreEntity` stores the full
+  state object in `.storage/core.restore_state`, independent of
+  `_unrecorded_attributes`. Never justify recording an attribute with
+  "it is needed for restore".
+- **Do not poll** a sensor that already has a timer or state listener.
+- **Record small scalars only.** Every coordinator sensor that publishes a
+  list, dict, per-slot timestamp or restore blob lists it in
+  `_unrecorded_attributes` (plan explanation, EV plans, EV SoC economics,
+  EV current limit, solar confidence, forecast/prediction accuracy,
+  savings, daily plan-vs-actual, financial, applier status, OCPP sessions).
+  Sensors with dynamic attribute keys (OCPP status) and the working mode
+  sensor use `MATCH_ALL`. Dashboards are unaffected: apexcharts
+  `data_generator` reads the live `entity.attributes`, never history.
+  Shared sets live next to the primary sensor
+  (`EV_PLAN_UNRECORDED_ATTRIBUTES`, `EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES`)
+  and are imported by the second-EV sensor.
+- **`last_updated` has two meanings — keep them separate.** Sensor-owned
+  timestamps (avg + power sensors) mean "published value last changed".
+  The coordinator heartbeat (`CoordinatorData.last_updated`, shown on the
+  working mode and next-update sensors and as the Last Updated sensor's
+  state) means "last completed cycle" and must stay that way — it is the
+  liveness signal. For value-change time use HA's native `last_changed`.
+
+- **Bound every per-day history.** `FinancialTracker.daily_log` was never
+  pruned and grew by one entry per day forever (also in the history file
+  and all three financial sensors' `daily` attribute). It is now capped at
+  `MAX_DAILY_LOG_DAYS = 366` (enough for `this_year`) on every rollover and
+  in `from_dict`; the `daily` attribute publishes the newest
+  `SENSOR_DAILY_DAYS = 90`. Tests:
+  `tests/models/test_financial_tracker_retention.py`.
+
+Regression tests: `tests/test_recorder_footprint.py`,
+`tests/test_recorder_footprint_coordinator_sensors.py` (generic guard: the
+recorded subset contains no list/dict/`_`-prefixed values and is < 2 KB).
+User guidance: `docs/troubleshooting-guide.md` §8,
+`docs/sensors-reference.md` §Recorder footprint.
+
+---
+
 ## Solar-Charge Mislabel at Zero PV (issue #720 follow-up)
 
 `apply_optimization_strategy` used `NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH`
