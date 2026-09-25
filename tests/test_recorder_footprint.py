@@ -55,13 +55,18 @@ def _ready_sensor(average: int = 3) -> HSEMAvgSensor:
 
 
 async def _tick(sensor: HSEMAvgSensor, now: datetime, meter_value: float) -> None:
-    """Run one update cycle at ``now`` with the utility meter at ``meter_value``."""
+    """Run one update cycle at ``now`` with the utility meter at ``meter_value``.
+
+    The meter is assumed to have observed the block; the observed-block
+    guard (issue #1101) is tested in ``test_avg_sensor_unobserved_block.py``.
+    """
     with (
         patch(f"{_AVG_MODULE}.dt_util.now", return_value=now),
         patch(
             f"{_AVG_MODULE}.ha_get_entity_state_and_convert",
             return_value=meter_value,
         ),
+        patch(f"{_AVG_MODULE}._block_observed", return_value=True),
     ):
         await sensor._async_handle_update()
 

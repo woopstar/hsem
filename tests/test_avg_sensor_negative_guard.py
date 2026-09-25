@@ -45,6 +45,7 @@ def _make_sensor(
 ) -> MagicMock:
     sensor = MagicMock(spec=HSEMAvgSensor)
     sensor.hass = MagicMock()
+    sensor._session_started_at = None  # observed-block guard is patched in _store
     sensor._tracked_entity = "sensor.daily_kwh"
     sensor._measurements = measurements if measurements is not None else {}
     sensor._average = average
@@ -54,7 +55,12 @@ def _make_sensor(
     return sensor
 
 
+_OBSERVED_BLOCK = "custom_components.hsem.custom_sensors.avg_sensor._block_observed"
+
+
 async def _store(sensor: MagicMock, now: datetime, meter_value: float) -> None:
+    # The meter always observed the block here; the observed-block guard
+    # (issue #1101) is tested in tests/test_avg_sensor_unobserved_block.py.
     with (
         patch(
             "custom_components.hsem.custom_sensors.avg_sensor.dt_util.now",
@@ -65,6 +71,7 @@ async def _store(sensor: MagicMock, now: datetime, meter_value: float) -> None:
             ".ha_get_entity_state_and_convert",
             return_value=meter_value,
         ),
+        patch(_OBSERVED_BLOCK, return_value=True),
     ):
         await HSEMAvgSensor._async_store_utility_meter_value(sensor)
 
@@ -238,6 +245,7 @@ class TestRecoveryAfterCorrection:
                 ".ha_get_entity_state_and_convert",
                 return_value=0.35,
             ),
+            patch(_OBSERVED_BLOCK, return_value=True),
         ):
             await sensor._async_handle_update()
         assert sensor.state == pytest.approx(0.35)

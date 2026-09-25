@@ -110,6 +110,15 @@ zero-load forecast.
   completed hour block stores a valid sample and `load_forecast_ready`
   recovers on the next cycle — it does not wait for a multi-day window to
   age out the bad entry.
+- **Home Assistant was down across one or more hour blocks:** on restart each
+  missed `…_utility_meter` runs its overdue daily reset and shows `0 kWh`.
+  The rolling-average sensors only store a block they observed end to end:
+  the meter's `last_reset` must match the block start, and HA must have been
+  running since that block started (issue #1101). A block missed by downtime,
+  or cut short by it, is skipped. The window keeps its previous valid days
+  instead of recording a fake `0`. The `Energy (Integral)` sensors are
+  lifetime running totals (e.g. `1.164 kWh`) and are not the hourly value.
+  Only the utility meter's per-block difference is used.
 
 ---
 
@@ -730,6 +739,33 @@ If you've checked everything and HSEM still doesn't work:
 
 6. **Check for known issues:** Review open issues at
    [github.com/woopstar/hsem/issues](https://github.com/woopstar/hsem/issues).
+
+7. **Reset the house-consumption history:** wiping the recorder database
+   does **not** reset HSEM's hour-block sensors. The integral totals,
+   utility meters and rolling-average `measurements` are restored from
+   `.storage/core.restore_state`, not from the database. To reset them:
+
+   1. Stop Home Assistant. HA rewrites `core.restore_state` while running and
+      on shutdown, so an edit made while it runs is overwritten.
+   2. Back up `.storage/core.restore_state`, then remove only the HSEM
+      hour-block entries. Do not delete the whole file. It also holds the
+      restored state of every other integration (other utility meters and
+      integrals, `input_*` helpers, …).
+
+      ```bash
+      jq '.data |= map(select(.state.entity_id | startswith("sensor.hsem_house_consumption_") | not))' \
+        core.restore_state > core.restore_state.new && mv core.restore_state.new core.restore_state
+      ```
+
+   3. Start Home Assistant. Until each hour block has completed once (up to
+      24 h), its average sensors are `unavailable`. `load_forecast_ready` is
+      `false`, and automatic mode holds `batteries_wait_mode` during that
+      time, unless ML consumption prediction is enabled and has enough
+      recorder history.
+
+   HSEM's own tracker files (`.storage/hsem_*_history.json`: prediction,
+   financial, savings, daily) are separate. Delete them only to reset those
+   statistics as well.
 
 ---
 
