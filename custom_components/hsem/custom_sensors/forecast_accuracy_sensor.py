@@ -19,7 +19,10 @@ are exposed as flat state attributes, plus:
 - ``restored_unfinalised_count`` — number of restored slots whose lifecycle
   was not finalised before the previous HA session ended.
 - ``_forecast_tracker_data`` — serialised tracker record list (not displayed
-  in UI; used internally to restore state across HA restarts).
+  in UI; used internally to restore state across HA restarts).  Excluded
+  from the recorder via ``_unrecorded_attributes`` (issue #1099): restore
+  reads it from ``RestoreEntity`` storage (``.storage/core.restore_state``),
+  which is independent of the recorder database.
 
 The sensor is a *diagnostic* entity (``EntityCategory.DIAGNOSTIC``).
 """
@@ -64,6 +67,10 @@ class HSEMForecastAccuracySensor(
     _attr_has_entity_name = True
     _attr_translation_key = "forecast_accuracy"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    # The ~9 KB persistence blob changes every cycle and is only needed for
+    # RestoreEntity, never for history (issue #1099).
+    _unrecorded_attributes = frozenset({"_forecast_tracker_data"})
 
     def __init__(
         self,
@@ -125,8 +132,9 @@ class HSEMForecastAccuracySensor(
         """Return diagnostic attributes for the sensor.
 
         Includes the serialised tracker record list under
-        ``_forecast_tracker_data`` so that the Home Assistant recorder
-        persists it and it can be restored on restart.
+        ``_forecast_tracker_data`` so that ``RestoreEntity`` persists it and
+        it can be restored on restart.  The attribute is excluded from the
+        recorder database (``_unrecorded_attributes``).
         """
         data: CoordinatorData | None = self.coordinator.data
         if data is None:

@@ -80,6 +80,11 @@ class HSEMApplierStatusSensor(
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = sorted(_VALID_STATES)
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    # Per-write detail lists are diagnostic snapshots, never history; the
+    # status state and ``total_writes`` stay recorded (issue #1099).
+    _unrecorded_attributes = frozenset(
+        {"last_apply_details", "failed_entities", "unverified_entities"}
+    )
 
     def __init__(
         self,
