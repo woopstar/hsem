@@ -18,7 +18,8 @@ Each sensor exposes period attributes:
 - ``last_30_days`` — sum over the last 30 calendar days.
 - ``this_month`` — sum over the current calendar month.
 - ``this_year`` — sum over the current calendar year.
-- ``daily`` — list of ``{date, import_cost, export_income, net_balance}`` records.
+- ``daily`` — list of ``{date, import_cost, export_income, net_balance}`` records
+  for the last 90 days (the tracker keeps 366 days for the yearly rollup).
 """
 
 from __future__ import annotations

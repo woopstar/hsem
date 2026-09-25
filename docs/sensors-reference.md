@@ -307,6 +307,12 @@ All three use `total` because signed prices may make their values decrease.
 - `sensor.hsem_import_cost` — Cumulative import cost
 - `sensor.hsem_net_grid_balance` — Export income minus import cost
 
+**Attributes (all three):** `today`, `last_7_days`, `last_30_days`,
+`this_month`, `this_year` (each `{import_cost, export_income, net_balance}`)
+and `daily` — the newest 90 daily records, oldest first. The tracker keeps
+366 completed days in `hsem_financial_history.json` so the `this_year`
+rollup is always complete; older days are pruned at midnight and on load.
+
 ### `sensor.hsem_export_income`
 
 | Property         | Value                                      |

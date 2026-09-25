@@ -1427,6 +1427,14 @@ Canonical rules:
   state) means "last completed cycle" and must stay that way — it is the
   liveness signal. For value-change time use HA's native `last_changed`.
 
+- **Bound every per-day history.** `FinancialTracker.daily_log` was never
+  pruned and grew by one entry per day forever (also in the history file
+  and all three financial sensors' `daily` attribute). It is now capped at
+  `MAX_DAILY_LOG_DAYS = 366` (enough for `this_year`) on every rollover and
+  in `from_dict`; the `daily` attribute publishes the newest
+  `SENSOR_DAILY_DAYS = 90`. Tests:
+  `tests/models/test_financial_tracker_retention.py`.
+
 Regression tests: `tests/test_recorder_footprint.py`,
 `tests/test_recorder_footprint_coordinator_sensors.py` (generic guard: the
 recorded subset contains no list/dict/`_`-prefixed values and is < 2 KB).
