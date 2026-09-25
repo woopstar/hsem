@@ -52,6 +52,8 @@ class HSEMPredictionAccuracySensor(
     _attr_has_entity_name = True
     _attr_translation_key = "prediction_accuracy"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    # Structured values are read from the live state only (issue #1099).
+    _unrecorded_attributes = frozenset({"action_mix"})
 
     def __init__(
         self,

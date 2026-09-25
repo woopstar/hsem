@@ -66,6 +66,11 @@ class _FinancialSensorMixin(
 
     _attr_icon = "mdi:cash-multiple"
     _attr_has_entity_name = True
+    # All three sensors publish the same period rollups and the full daily
+    # log; the totals live in the state and statistics (issue #1099).
+    _unrecorded_attributes = frozenset(
+        {"today", "last_7_days", "last_30_days", "this_month", "this_year", "daily"}
+    )
 
     def __init__(
         self,

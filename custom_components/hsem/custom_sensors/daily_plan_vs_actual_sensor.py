@@ -59,6 +59,9 @@ class HSEMDailyPlanVsActualSensor(
     _attr_has_entity_name = True
     _attr_translation_key = "daily_plan_vs_actual"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    # Daily records live in the JSON history file; only the live state is
+    # read by dashboards (issue #1099).
+    _unrecorded_attributes = frozenset({"today", "yesterday", "history"})
 
     def __init__(
         self,

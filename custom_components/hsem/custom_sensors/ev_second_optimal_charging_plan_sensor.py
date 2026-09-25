@@ -20,6 +20,9 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.custom_sensors.ev_optimal_charging_plan_sensor import (
+    EV_PLAN_UNRECORDED_ATTRIBUTES,
+)
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.sensornames.ev import (
@@ -51,6 +54,7 @@ class HSEMEVSecondOptimalChargingPlanSensor(
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = sorted(_VALID_STATES)
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _unrecorded_attributes = EV_PLAN_UNRECORDED_ATTRIBUTES
 
     def __init__(
         self,

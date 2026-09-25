@@ -354,7 +354,8 @@ The forecast tracker data survives HA restarts using the standard
 The `SolarForecastCorrector` (issue #602) persists separately, via
 `HSEMSolarConfidenceSensor` (`custom_sensors/solar_confidence_sensor.py`)
 using the same `RestoreEntity` pattern: its `extra_state_attributes` include
-`_solar_corrector_data` (`corrector.to_dict()`), and `async_added_to_hass`
+`_solar_corrector_data` (`corrector.to_dict()`, likewise excluded from the
+recorder via `_unrecorded_attributes`), and `async_added_to_hass`
 restores it with `corrector.load_from_dict(data, restored_at=hsem_now())`.
 That payload includes the `processed_through` watermark — the newest
 forecast-tracker slot start the corrector has already learned from — so

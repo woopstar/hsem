@@ -14,6 +14,11 @@ Attributes
   already learned from, or ``None`` before any slot has been processed.
 - ``_solar_corrector_data`` — Serialised corrector state for reboot persistence.
 
+``hour_factors``, ``processed_through`` and ``_solar_corrector_data`` are
+excluded from the recorder (issue #1099).  Restore reads
+``_solar_corrector_data`` from ``RestoreEntity`` storage, which is
+independent of the recorder database.
+
 The sensor is a *diagnostic* entity (``EntityCategory.DIAGNOSTIC``).
 """
 
@@ -59,6 +64,11 @@ class HSEMSolarConfidenceSensor(
     _attr_has_entity_name = True
     _attr_translation_key = "solar_confidence"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    # The restore blob and per-hour structures are never needed as history.
+    _unrecorded_attributes = frozenset(
+        {"_solar_corrector_data", "hour_factors", "processed_through"}
+    )
 
     def __init__(
         self,

@@ -626,9 +626,12 @@ correct. HSEM writes that cap deliberately in several situations:
 
 - **HSEM version before the issue #1099 fix.** The 96 rolling-average
   sensors wrote a new state (with a fresh `last_updated` timestamp and the
-  full `measurements` dict) every 30 s, and the forecast accuracy sensor
-  recorded a ~9 KB restore blob every cycle. Upgrade; afterwards each
-  average sensor writes only a few rows per day.
+  full `measurements` dict) every 30 s, and coordinator sensors recorded
+  their large structured attributes (rejected plans, EV charging slots,
+  cost tables, daily histories, restore blobs) on every cycle. Upgrade;
+  afterwards each average sensor writes only a few rows per day and the
+  coordinator sensors record only small scalar attributes (see
+  [Sensors reference → Recorder footprint](sensors-reference.md#recorder-footprint)).
 - **Retention.** Compare the oldest `states` row with your
   `purge_keep_days`. If history is much older, auto-purge is not running —
   check `home-assistant.log` for recorder errors and run `recorder.purge`.

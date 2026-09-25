@@ -1409,9 +1409,29 @@ Canonical rules:
   `_unrecorded_attributes`. Never justify recording an attribute with
   "it is needed for restore".
 - **Do not poll** a sensor that already has a timer or state listener.
+- **Record small scalars only.** Every coordinator sensor that publishes a
+  list, dict, per-slot timestamp or restore blob lists it in
+  `_unrecorded_attributes` (plan explanation, EV plans, EV SoC economics,
+  EV current limit, solar confidence, forecast/prediction accuracy,
+  savings, daily plan-vs-actual, financial, applier status, OCPP sessions).
+  Sensors with dynamic attribute keys (OCPP status) and the working mode
+  sensor use `MATCH_ALL`. Dashboards are unaffected: apexcharts
+  `data_generator` reads the live `entity.attributes`, never history.
+  Shared sets live next to the primary sensor
+  (`EV_PLAN_UNRECORDED_ATTRIBUTES`, `EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES`)
+  and are imported by the second-EV sensor.
+- **`last_updated` has two meanings — keep them separate.** Sensor-owned
+  timestamps (avg + power sensors) mean "published value last changed".
+  The coordinator heartbeat (`CoordinatorData.last_updated`, shown on the
+  working mode and next-update sensors and as the Last Updated sensor's
+  state) means "last completed cycle" and must stay that way — it is the
+  liveness signal. For value-change time use HA's native `last_changed`.
 
-Regression tests: `tests/test_recorder_footprint.py`. User guidance:
-`docs/troubleshooting-guide.md` §8.
+Regression tests: `tests/test_recorder_footprint.py`,
+`tests/test_recorder_footprint_coordinator_sensors.py` (generic guard: the
+recorded subset contains no list/dict/`_`-prefixed values and is < 2 KB).
+User guidance: `docs/troubleshooting-guide.md` §8,
+`docs/sensors-reference.md` §Recorder footprint.
 
 ---
 
