@@ -242,6 +242,39 @@ def load_dump(path: str | Path) -> dict[str, Any]:
     return dict(payload)
 
 
+def _decode_line(
+    source: Path, number: int, text: str, *, final: bool
+) -> dict[str, Any] | None:
+    """Decode one append-log line, tolerating only a truncated final line.
+
+    Args:
+        source: The corpus file, for error messages.
+        number: 1-based line number, for error messages.
+        text: The stripped line, known to start with ``{``.
+        final: Whether this is the last dump line in the file.
+
+    Returns:
+        The unwrapped payload, or ``None`` for a truncated final line.
+
+    Raises:
+        ValueError: If a line other than the last fails to parse.  A corrupt
+            dump in the middle of a corpus is data loss worth stopping for, not
+            something to skip quietly.
+    """
+    try:
+        raw = json.loads(text)
+    except json.JSONDecodeError as err:
+        if final:
+            # Copying a file Home Assistant is still appending to catches the
+            # last write half-flushed.  That is expected, not corruption.
+            return None
+        raise ValueError(
+            f"{source}:{number}: corrupt dump in the middle of the corpus "
+            f"({err.msg} at column {err.colno})"
+        ) from err
+    return dict(raw.get("data", raw))
+
+
 def iter_dumps(path: str | Path) -> Iterator[dict[str, Any]]:
     """Yield every diagnostics payload in a corpus file.
 
@@ -249,9 +282,15 @@ def iter_dumps(path: str | Path) -> Iterator[dict[str, Any]]:
 
     * ``.json`` — one cycle per file, as downloaded from HA diagnostics or
       returned by the ``hsem.export_diagnostics`` service.
-    * ``.jsonl`` — one cycle per line, which is what an HA automation appending
-      each cycle to a notify-file target produces.  Blank lines are skipped so
-      a partially flushed log still reads.
+    * ``.jsonl`` — one cycle per line, as written by an HA automation appending
+      each cycle through the ``file`` notify platform.
+
+    That platform writes a header when it creates the file —
+    ``Home Assistant notifications (Log started: …)`` and a rule of dashes — so
+    lines that are not JSON objects are skipped, as are blank lines.  A
+    truncated *last* line is skipped too: copying a file Home Assistant is still
+    appending to routinely catches the final write half-flushed.  A corrupt
+    line anywhere else raises, because that is lost data.
 
     Args:
         path: Path to the corpus file.
@@ -259,18 +298,30 @@ def iter_dumps(path: str | Path) -> Iterator[dict[str, Any]]:
     Yields:
         Each HSEM payload, already unwrapped to carry ``planner_input`` at its
         top level.
+
+    Raises:
+        ValueError: If a ``.jsonl`` line other than the last is corrupt.
     """
     source = Path(path)
     if source.suffix != ".jsonl":
         yield load_dump(source)
         return
     with source.open(encoding="utf-8") as handle:
-        for line in handle:
+        # One line of lookahead: only the final dump line may be truncated.
+        pending: tuple[int, str] | None = None
+        for number, line in enumerate(handle, start=1):
             stripped = line.strip()
-            if not stripped:
+            if not stripped.startswith("{"):
                 continue
-            raw = json.loads(stripped)
-            yield dict(raw.get("data", raw))
+            if pending is not None:
+                decoded = _decode_line(source, *pending, final=False)
+                if decoded is not None:
+                    yield decoded
+            pending = (number, stripped)
+        if pending is not None:
+            decoded = _decode_line(source, *pending, final=True)
+            if decoded is not None:
+                yield decoded
 
 
 def load_planner_input(path: str | Path) -> tuple[PlannerInput, ReplayReport]:

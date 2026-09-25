@@ -19,7 +19,11 @@ from custom_components.hsem.planner.engine_core import run_planner
 from custom_components.hsem.utils.diagnostics import build_diagnostics_dump
 from tests.backtest.conftest import corpus_paths, replayed_cycles
 from tests.backtest.invariants import check_invariants, format_violations
-from tests.backtest.replay import load_planner_input, planner_input_from_dict
+from tests.backtest.replay import (
+    iter_dumps,
+    load_planner_input,
+    planner_input_from_dict,
+)
 
 
 def _assert_same_plan(a: PlannerOutput, b: PlannerOutput) -> None:
@@ -105,14 +109,16 @@ class TestCorpusReplay:
         _assert_same_plan(run_planner(reloaded), first)
 
     def test_dump_carries_no_entity_ids(self, corpus_dump: Path) -> None:
-        """Committed dumps must stay redacted — they are a real home."""
+        """Corpus dumps must stay redacted — each one is a real home.
+
+        ``**REDACTED**`` markers are fine and expected in a live corpus: they
+        are redaction working.  What must never appear is a raw entity id.
+        """
         text = corpus_dump.read_text(encoding="utf-8")
-        payload = json.loads(text)
-        assert "**REDACTED**" not in text
         for domain in ("sensor.", "binary_sensor.", "input_number.", "switch."):
             assert domain not in text, f"{corpus_dump.name} leaks {domain}* ids"
         # The shim only ever reads planner_input; make sure it is really there.
-        assert "planner_input" in payload.get("data", payload)
+        assert "planner_input" in next(iter_dumps(corpus_dump))
 
 
 class TestCorpusCoverage:

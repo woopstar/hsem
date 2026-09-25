@@ -244,9 +244,25 @@ silently skips every cycle that reached the same conclusion — most of them, an
 exactly the stable stretches a baseline needs. Match the interval to your
 configured HSEM update interval.
 
-That produces JSON Lines — one cycle per line, ~9 KB of `planner_input` each,
-roughly 2.6 MB/day at 5-minute cycles. `iter_dumps()` reads it directly, so the
-file needs no post-processing.
+That produces JSON Lines — one cycle per line. `iter_dumps()` reads it
+directly, so the file needs no post-processing: the header the `file` platform
+writes when it creates the log (`Home Assistant notifications (Log started: …)`
+and a rule of dashes) is skipped, as is a truncated last line from copying the
+file mid-write. A corrupt line anywhere else raises, because that is lost data.
+
+Budget more than the `planner_input` alone suggests: each line is the whole
+dump, planner output included — about 120 KB, or roughly 35 MB/day at
+5-minute cycles.
+
+To replay a whole corpus rather than the default first 25 cycles per file,
+raise both the cap and pytest's per-test timeout — a real cycle takes a few
+hundred milliseconds, and the determinism and round-trip tests run each one
+twice:
+
+```bash
+HSEM_BACKTEST_CORPUS=~/hsem-actuals/corpus HSEM_BACKTEST_MAX_CYCLES=1000 \
+    python -m pytest tests/backtest/ -q --timeout=1800
+```
 
 ### Actuals — one history export
 

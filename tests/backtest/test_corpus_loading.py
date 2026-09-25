@@ -65,6 +65,45 @@ class TestIterDumps:
         path = _jsonl(tmp_path, [_payload(15), _payload(30)], blanks=True)
         assert len(list(iter_dumps(path))) == 2
 
+    def test_file_notifier_header_is_skipped(self, tmp_path: Path) -> None:
+        """The ``file`` notify platform opens every log with a two-line header."""
+        path = tmp_path / "corpus.jsonl"
+        path.write_text(
+            "Home Assistant notifications "
+            "(Log started: 2026-09-24T06:00:00.284516+00:00)\n"
+            + "-" * 80
+            + "\n"
+            + json.dumps(_payload(15))
+            + "\n"
+            + json.dumps(_payload(30))
+            + "\n",
+            encoding="utf-8",
+        )
+        dumps = list(iter_dumps(path))
+        assert [d["planner_input"]["interval_minutes"] for d in dumps] == [15, 30]
+
+    def test_truncated_final_line_is_skipped(self, tmp_path: Path) -> None:
+        """Copying a file HA is still writing catches the last line half-done."""
+        path = tmp_path / "corpus.jsonl"
+        whole = json.dumps(_payload(15))
+        path.write_text(whole + "\n" + json.dumps(_payload(30))[:200], encoding="utf-8")
+        assert len(list(iter_dumps(path))) == 1
+
+    def test_corrupt_line_mid_corpus_raises(self, tmp_path: Path) -> None:
+        """Lost data in the middle is not something to skip quietly."""
+        path = tmp_path / "corpus.jsonl"
+        path.write_text(
+            json.dumps(_payload(15))
+            + "\n"
+            + json.dumps(_payload(30))[:200]
+            + "\n"
+            + json.dumps(_payload(60))
+            + "\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match=r"corpus\.jsonl:2: corrupt dump"):
+            list(iter_dumps(path))
+
     def test_jsonl_lines_may_carry_the_ha_data_wrapper(self, tmp_path: Path) -> None:
         path = _jsonl(tmp_path, [{"data": _payload(15)}])
         assert next(iter_dumps(path))["planner_input"]["interval_minutes"] == 15
