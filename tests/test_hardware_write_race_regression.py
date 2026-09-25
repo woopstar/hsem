@@ -91,7 +91,13 @@ def _make_fake_hass() -> tuple[MagicMock, _MutableFakeStates]:
             _EXCESS_PV_ENTITY: ("fed_to_grid", {}),
             _WORKING_MODE_ENTITY: (
                 WorkingModes.MaximizeSelfConsumption.value,
-                {},
+                {
+                    "options": [
+                        WorkingModes.TimeOfUse.value,
+                        WorkingModes.MaximizeSelfConsumption.value,
+                        WorkingModes.FullyFedToGrid.value,
+                    ]
+                },
             ),
             _TOU_ENTITY: ("active", {}),
         }
@@ -291,3 +297,45 @@ class TestBatteriesChargeGridSurvivesLivePowerTickRace:
         assert len(working_mode_results) == 1
         assert working_mode_results[0].status == ApplyStatus.OK
         assert working_mode_results[0].actual == WorkingModes.TimeOfUse.value
+
+
+class TestEmmaControlRouting:
+    """Verify that an EMMA controller can own TOU while LUNA remains supported."""
+
+    @pytest.mark.asyncio
+    async def test_emma_options_and_tou_controller_are_used(self) -> None:
+        """TOU writes and mode values follow the selected EMMA entities."""
+        hass, states = _make_fake_hass()
+        states.set(
+            _WORKING_MODE_ENTITY,
+            "maximum_self_consumption",
+            {"options": ["time_of_use", "maximum_self_consumption"]},
+        )
+        cfg = _make_cfg()
+        cfg.huawei_solar_device_id_tou_controller = "emma_controller"
+        live = _make_live()
+        live.huawei_batteries_working_mode = "maximum_self_consumption"
+        data = CoordinatorData(cfg=cfg, live=live, hourly_recommendation=_make_rec())
+        sensor = _make_sensor(hass, data)
+
+        async def _no_sleep(*_args: Any, **_kwargs: Any) -> None:
+            return None
+
+        with patch(
+            "custom_components.hsem.utils.inverter_verify.asyncio.sleep",
+            new=_no_sleep,
+        ):
+            sensor._handle_coordinator_update()
+            assert sensor._update_task is not None
+            await asyncio.wait_for(sensor._update_task, timeout=5.0)
+
+        tou_calls = [
+            call
+            for call in hass.services.async_call.await_args_list
+            if call.args[:2] == ("huawei_solar", "set_tou_periods")
+        ]
+        assert len(tou_calls) == 1
+        assert tou_calls[0].args[2]["device_id"] == "emma_controller"
+        working_mode_state = states.get(_WORKING_MODE_ENTITY)
+        assert working_mode_state is not None
+        assert working_mode_state.state == "time_of_use"

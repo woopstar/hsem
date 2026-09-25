@@ -63,6 +63,9 @@ class SensorConfig:
         huawei_solar_device_id_inverter_2: Device ID for inverter 2 (optional).
         huawei_solar_device_id_batteries: Device ID for the primary battery pack.
         huawei_solar_device_id_batteries_2: Device ID for the secondary battery pack (optional).
+        huawei_solar_device_id_tou_controller: Optional device ID that owns the
+            selected TOU periods entity (for example EMMA). When unset, HSEM
+            writes TOU periods to the configured battery device(s).
         huawei_solar_batteries_working_mode: Entity ID for working mode select.
         huawei_solar_batteries_end_of_discharge_soc: Entity ID for EoD SoC number.
         huawei_solar_batteries_state_of_capacity: Entity ID for SoC sensor.
@@ -156,6 +159,9 @@ class SensorConfig:
     huawei_solar_device_id_inverter_2: str | None = None
     huawei_solar_device_id_batteries: str | None = None
     huawei_solar_device_id_batteries_2: str | None = None
+    #: Optional device owning the configured TOU periods entity (for example EMMA).
+    #: When absent, HSEM preserves the legacy battery-device routing.
+    huawei_solar_device_id_tou_controller: str | None = None
 
     # Huawei Solar entity IDs
     huawei_solar_batteries_working_mode: str | None = None

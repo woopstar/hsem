@@ -225,7 +225,8 @@
           "hsem_huawei_solar_device_id_batteries_2": "Dispositivo de baterías Huawei 2",
           "hsem_huawei_solar_device_id_inverter_1": "Dispositivo del inversor Huawei 1",
           "hsem_huawei_solar_device_id_inverter_2": "Dispositivo del inversor Huawei 2",
-          "hsem_huawei_solar_inverter_active_power_control": "Sensor de control de potencia activa del inversor Huawei"
+          "hsem_huawei_solar_inverter_active_power_control": "Sensor de control de potencia activa del inversor Huawei",
+          "hsem_huawei_solar_device_id_tou_controller": "Dispositivo controlador TOU de Huawei"
         },
         "data_description": {
           "hsem_batteries_charge_efficiency": "Especifica la eficiencia de carga de tu batería como porcentaje (0-100). La energía almacenada en la batería equivale a la energía de entrada multiplicada por este factor. Las baterías de litio habituales alcanzan un 95-98 %. Predeterminado: 98 %.",
@@ -250,7 +251,8 @@
           "hsem_huawei_solar_device_id_batteries_2": "Selecciona tu dispositivo de batería Huawei secundario, si corresponde.",
           "hsem_huawei_solar_device_id_inverter_1": "Selecciona tu dispositivo de inversor Huawei principal.",
           "hsem_huawei_solar_device_id_inverter_2": "Selecciona tu dispositivo de inversor Huawei secundario, si corresponde.",
-          "hsem_huawei_solar_inverter_active_power_control": "Selecciona el sensor que controla la salida de potencia activa de tu inversor Huawei."
+          "hsem_huawei_solar_inverter_active_power_control": "Selecciona el sensor que controla la salida de potencia activa de tu inversor Huawei.",
+          "hsem_huawei_solar_device_id_tou_controller": "Controlador opcional que gestiona los periodos TOU configurados, como EMMA. Déjelo vacío para escribir los periodos TOU en los dispositivos de batería configurados."
         },
         "description": "Configura el modo de funcionamiento de las baterías solares Huawei.",
         "title": "Sensores de Huawei Solar"
@@ -697,7 +699,8 @@
           "hsem_huawei_solar_device_id_batteries_2": "Dispositivo de baterías Huawei 2",
           "hsem_huawei_solar_device_id_inverter_1": "Dispositivo del inversor Huawei 1",
           "hsem_huawei_solar_device_id_inverter_2": "Dispositivo del inversor Huawei 2",
-          "hsem_huawei_solar_inverter_active_power_control": "Sensor de control de potencia activa del inversor Huawei"
+          "hsem_huawei_solar_inverter_active_power_control": "Sensor de control de potencia activa del inversor Huawei",
+          "hsem_huawei_solar_device_id_tou_controller": "Dispositivo controlador TOU de Huawei"
         },
         "data_description": {
           "hsem_batteries_charge_efficiency": "Especifica la eficiencia de carga de tu batería como porcentaje (0-100). La energía almacenada en la batería equivale a la energía de entrada multiplicada por este factor. Las baterías de litio habituales alcanzan un 95-98 %. Predeterminado: 98 %.",
@@ -722,7 +725,8 @@
           "hsem_huawei_solar_device_id_batteries_2": "Selecciona tu dispositivo de batería Huawei secundario, si corresponde.",
           "hsem_huawei_solar_device_id_inverter_1": "Selecciona tu dispositivo de inversor Huawei principal.",
           "hsem_huawei_solar_device_id_inverter_2": "Selecciona tu dispositivo de inversor Huawei secundario, si corresponde.",
-          "hsem_huawei_solar_inverter_active_power_control": "Selecciona el sensor que controla la salida de potencia activa de tu inversor Huawei."
+          "hsem_huawei_solar_inverter_active_power_control": "Selecciona el sensor que controla la salida de potencia activa de tu inversor Huawei.",
+          "hsem_huawei_solar_device_id_tou_controller": "Controlador opcional que gestiona los periodos TOU configurados, como EMMA. Déjelo vacío para escribir los periodos TOU en los dispositivos de batería configurados."
         },
         "description": "Configura el modo de funcionamiento de las baterías solares Huawei.",
         "title": "Sensores de Huawei Solar"
