@@ -275,6 +275,16 @@ charger's own connector status) as ground truth: an EV with management enabled
 stays managed while the charger reports a car, and a planned zero stays enforced.
 Never write a 0 A profile onto a connector with no car (issue #920 standing block).
 
+`management_enabled=False` with a zero target is an explicit hand-back (issue
+#1105). `update_charge_target` handles it first, before the gate and flap state
+machine: `_relinquish_charger_control()` clears HSEM's profile IDs once and
+resets the anti-flap bookkeeping to `Idle`, with **no** 0 A profile and **no**
+`RemoteStopTransaction`, even mid-session. It only fires while
+`_holds_charger_control()` is true (flap non-idle, zero held, gate pending, or a
+last-sent current), so it is idempotent and never touches a charger HSEM never
+commanded. A positive target (force charge with smart charging off) still
+commands normally.
+
 ### Sensor unit normalization (issue #945)
 
 ```python
