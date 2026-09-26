@@ -770,6 +770,15 @@ only when the EV is genuinely unmanaged: the planned-load feature is off,
 smart charging is switched off, or the car is unplugged. While unmanaged,
 HSEM neither enforces a zero nor stops a locally started session.
 
+**Switching smart charging off hands the charger back immediately, even
+mid-session (issue #1105).** If HSEM is charging the car when you turn
+`switch.hsem_ev_smart_charging` (or the second-EV switch, or the planned-load
+feature) off, HSEM clears its own charging profiles on the next cycle. It
+does **not** send a 0 A limit or `RemoteStopTransaction` first, and it does
+not wait for the stop window. The session keeps running under the charger's
+own control (typically full power from grid). Force charge still commands the
+charger while smart charging is off; HSEM releases it once force charge ends.
+
 **"Unplugged" is decided by the charger, not by a single Home Assistant
 reading** (issue #1018). The car-connected entity can blip to `False` for one
 cycle while the car stays plugged in. While the feature and smart charging
