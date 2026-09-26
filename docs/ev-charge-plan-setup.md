@@ -273,6 +273,15 @@ reflect the forced session.
 Use this for ad-hoc "charge now" scenarios (e.g. unexpected trip) without
 enabling the full smart-charging schedule.
 
+**Force charge works while the house-load forecast is not ready (issue
+#1103).** If the load forecast is unavailable (for example after the
+`sensor.hsem_house_consumption_energy_avg_*` restore state is lost), HSEM
+publishes a strict storage hold and a managed EV normally gets an enforced
+0 A OCPP profile. Force charge is applied _after_ that hold, so the current
+slot still commands the charger's maximum power (fuse-limited) and the OCPP
+target stays above 0 A. The home battery stays held (no plan-derived
+charge or discharge). Smart-charging plans still need a ready load forecast.
+
 **The switch auto-disables when the EV disconnects (issue #900).** If the
 EV is unplugged while force-charge-now is on, HSEM resets the switch to off
 as soon as the disconnect is detected, instead of leaving it armed. This

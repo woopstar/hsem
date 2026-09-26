@@ -24,11 +24,10 @@ from custom_components.hsem.coordinator_helpers import (
     _SimpleSlot,
     _StaleUpdateCycle,
     apply_current_ev_power_override,
-    apply_force_charge_now,
+    apply_force_charge_overrides,
     apply_load_forecast_hold,
     live_demand_contradicts_zero_profile,
     load_forecast_signatures_match,
-    reset_force_charge_on_disconnect,
 )
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import (
@@ -298,38 +297,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                     live=live,
                 )
 
-        # 8c. Auto-disable force-charge-now on EV disconnect (issue #900).
-        # Must run before the force-charge-now override below so a
-        # disconnect and reset in the same cycle never leaves a stale
-        # forced-charge slot.
-        reset_force_charge_on_disconnect(
-            hass=self.hass,
-            config_entry=self._config_entry,
-            was_connected=getattr(self, "_last_plan_ev_connected", None),
-            is_connected=live.ev.is_connected,
-            option_key="hsem_ev_force_charge_now",
-            ev_label="EV1",
-        )
-        reset_force_charge_on_disconnect(
-            hass=self.hass,
-            config_entry=self._config_entry,
-            was_connected=getattr(self, "_last_plan_ev_second_connected", None),
-            is_connected=live.ev_second.is_connected,
-            option_key="hsem_ev_second_force_charge_now",
-            ev_label="EV2",
-        )
-
-        # 8d. Force-charge-now override.
-        apply_force_charge_now(
-            config_entry=self._config_entry,
-            hourly_recommendations=self._hourly_recommendations,
-            ev_plan=self._ev_charging_plan,
-            ev_second_plan=self._ev_second_charging_plan,
-            now=now,
-            live=live,
-        )
-
-        # 8e. Load-forecast fail-closed hold.
+        # 8c. Load-forecast fail-closed hold.
         if not consumption_ok or live_demand_contradicts_zero_profile(
             self._hourly_recommendations, live, now
         ):
@@ -347,7 +315,21 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                     consumption_ok,
                 )
 
-        # 8f. EV charger command stability — damp integer-lattice churn and
+        # 8d. Disconnect auto-reset (issue #900) + force-charge-now. Runs after
+        # the hold so the user override survives it (issue #1103).
+        apply_force_charge_overrides(
+            hass=self.hass,
+            config_entry=self._config_entry,
+            hourly_recommendations=self._hourly_recommendations,
+            ev_plan=self._ev_charging_plan,
+            ev_second_plan=self._ev_second_charging_plan,
+            now=now,
+            live=live,
+            was_connected=getattr(self, "_last_plan_ev_connected", None),
+            was_second_connected=getattr(self, "_last_plan_ev_second_connected", None),
+        )
+
+        # 8e. EV charger command stability — damp integer-lattice churn and
         # suppress a slot-tail stop.  Runs last so it smooths the command that
         # every earlier override has already had its say on.
         self._apply_ev_command_stability(now, live, cfg)

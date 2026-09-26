@@ -17,13 +17,14 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 
 ### Coordinator layer (`custom_components/hsem/`)
 
-| File                      | Responsibility                                                   |
-| ------------------------- | ---------------------------------------------------------------- |
-| `coordinator.py`          | HA lifecycle and collect/populate/plan/publication orchestration |
-| `coordinator_data.py`     | Atomic `CoordinatorData` snapshot exposed to entities            |
-| `coordinator_helpers.py`  | Pure override, strict-hold, and load-readiness/signature helpers |
-| `coordinator_tracking.py` | Forecast, daily, financial, and savings accumulation             |
-| `entity_availability.py`  | Per-input unavailable/recovery transition tracking and logging   |
+| File                       | Responsibility                                                              |
+| -------------------------- | --------------------------------------------------------------------------- |
+| `coordinator.py`           | HA lifecycle and collect/populate/plan/publication orchestration            |
+| `coordinator_data.py`      | Atomic `CoordinatorData` snapshot exposed to entities                       |
+| `coordinator_helpers.py`   | Pure override, strict-hold, and load-readiness/signature helpers            |
+| `coordinator_load_hold.py` | Non-planner load-forecast safety hold + force-charge re-apply (issue #1103) |
+| `coordinator_tracking.py`  | Forecast, daily, financial, and savings accumulation                        |
+| `entity_availability.py`   | Per-input unavailable/recovery transition tracking and logging              |
 
 Load-average availability must remain explicit: unknown/non-finite values are
 missing, genuine finite zero is valid, and contradictory zero load above 50 W
@@ -386,7 +387,8 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 - Current oversized files (as of 2026-09-18):
   - `coordinator_planner_phase.py` — 32,040 bytes (over 30 KB)
   - `coordinator_tracking.py` — 31,036 bytes (over 30 KB)
-  - `coordinator_cycle.py` — 33,713 bytes (over 30 KB)
+  - `coordinator_cycle.py` — 33,025 bytes (over 30 KB; the #1103 hold path
+    was extracted to `coordinator_load_hold.py` so it did not grow)
   - `custom_sensors/working_mode_sensor.py` — 32,933 bytes (over 30 KB)
   - `planner/candidate_selector.py` — 31,401 bytes (over 30 KB)
 - Resolved in issue #1057: EV deadline parsing moved from `state_collector.py`
@@ -887,6 +889,28 @@ stable by construction it typically has nothing left to damp for this class
 of churn. Do not fix this class of bug there — see that section's own
 docstring for why a deadband structurally cannot catch a spike-to-max or a
 same-cycle large drop.
+
+## Force Charge Must Run After the Load-Forecast Hold (Issue #1103)
+
+`set_strict_storage_hold()` zeroes the EV command fields too, and on a managed
+EV that becomes an enforced 0 A OCPP profile. Force-charge-now is a user
+override, so it must always be applied **after** `apply_load_forecast_hold()`.
+Use `coordinator_helpers.apply_force_charge_overrides(...)`: it runs the
+issue #900 disconnect auto-reset and then `apply_force_charge_now()`. It is
+called from both hold sites:
+
+- `coordinator_planner_phase.py` step 8d, after the 8c load-forecast hold and
+  before 8e command stability.
+- `coordinator_load_hold.py::_apply_load_forecast_safety_hold`, called from
+  `coordinator_cycle.py::_async_run_update_cycle` on the non-planner hold path
+  (the planner phase is skipped while `consumption_ok` is false). No plan is
+  accepted there, so that path advances `_last_plan_ev_connected` /
+  `_last_plan_ev_second_connected` itself to keep the disconnect reset working.
+
+The override writes EV fields only through `write_ev_slot_commands()`, so
+`batteries_charged_kwh` / `batteries_discharged_kwh` stay zero and the applier
+still derives a primary-battery hold (0 W discharge cap). Never add EV-field
+carve-outs to `set_strict_storage_hold()`. Ordering is the contract.
 
 ## EV Pre-Deadline Target Cap (Issue #636 — Overcharge Fix)
 

@@ -23,7 +23,6 @@ from custom_components.hsem.coordinator_builder import (
 from custom_components.hsem.coordinator_data import CoordinatorData
 from custom_components.hsem.coordinator_helpers import (
     _StaleUpdateCycle,
-    apply_load_forecast_hold,
     assess_load_forecast,
     ocpp_charge_target,
     ocpp_management_flags,
@@ -47,7 +46,6 @@ from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F40
     build_sensor_config,
 )
 from custom_components.hsem.models.live_state import EVLiveState, LiveState
-from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.models.sensor_config import SensorConfig
@@ -513,26 +511,10 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             if prediction_record_added:
                 await persist_all_trackers(self, only=["_prediction_tracker"])
 
-            load_hold = apply_load_forecast_hold(
-                self._hourly_recommendations,
-                live,
-                now,
-                load_forecast_ready=consumption_ok,
-            )
+            # Strict storage hold + force-charge-now (coordinator_load_hold.py).
+            load_hold = self._apply_load_forecast_safety_hold(now, live, consumption_ok)
             if load_hold is not None:
-                reason = self._last_load_forecast_readiness_reason
-                assert reason is not None
-                self._hourly_recommendation = load_hold
                 state = load_hold.recommendation
-                self._plan_explanation = PlanExplanation(
-                    selected_strategy="safety_hold",
-                    winner_name="safety_hold",
-                    summary=(
-                        "Battery held because the house-load forecast is not "
-                        f"ready ({reason})."
-                    ),
-                    constraints=[f"load_forecast:{reason}"],
-                )
 
             fresh_plan = False
             planner_output_to_commit: PlannerOutput | None = None

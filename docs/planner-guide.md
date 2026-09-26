@@ -1141,7 +1141,9 @@ A complete zero forecast is accepted while finite live house demand is at most
 forecast is unsafe, automatic mode does not run or reuse an optimized plan; it
 publishes a strict current-slot `batteries_wait_mode` with primary charge,
 discharge, import, and export motion cleared. Manual force mode remains higher
-authority. Recovery or a material future-load change forces a fresh solve, and
+authority. An EV force-charge-now override still applies on top of the hold: the
+forced EV charges at its fuse-limited maximum while the home battery stays held
+(issue #1103). Recovery or a material future-load change forces a fresh solve, and
 the reuse baseline advances only after successful publication.
 
 Registered state events received during a solve advance a coordinator generation.

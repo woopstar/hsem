@@ -168,6 +168,12 @@ class CoordinatorSharedState(_Base):
 
     async def _run_planner_phase(self, *args: Any, **kwargs: Any) -> Any: ...
 
+    # Method provided by CoordinatorLoadHoldMixin.
+    def _apply_load_forecast_safety_hold(
+        self, now: datetime, live: LiveState, load_forecast_ready: bool
+    ) -> HourlyRecommendation | None:
+        raise NotImplementedError
+
     # Method provided by CoordinatorEvSoCEconomicsMixin.
     async def _maybe_compute_ev_soc_economics(
         self, now: datetime, captured_generation: int, *, force: bool = False
