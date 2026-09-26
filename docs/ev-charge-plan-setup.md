@@ -280,7 +280,19 @@ publishes a strict storage hold and a managed EV normally gets an enforced
 0 A OCPP profile. Force charge is applied _after_ that hold, so the current
 slot still commands the charger's maximum power (fuse-limited) and the OCPP
 target stays above 0 A. The home battery stays held (no plan-derived
-charge or discharge). Smart-charging plans still need a ready load forecast.
+charge or discharge).
+
+**Smart charging keeps working while the load forecast is not ready (issue
+#1106).** During that hold HSEM builds an EV-only fallback plan for each EV
+with smart charging on. Because the house load is unknown, the fallback is
+**grid-only**: it charges in the cheapest import slots before your deadline and
+assumes no solar surplus, so it may miss free PV but never counts on solar the
+house is already using. Slots without a published price yet are estimated from
+the same time on an earlier day, never treated as free. The home battery stays
+held throughout. `sensor.hsem_ev_optimal_charging_plan` shows the fallback plan
+with `data_quality.mode: ev_only_fallback` and the `load_forecast` reason. The
+normal co-optimised plan takes over as soon as the forecast recovers. An unknown
+EV SoC still means no charging, and force charge still overrides the fallback.
 
 **The switch auto-disables when the EV disconnects (issue #900).** If the
 EV is unplugged while force-charge-now is on, HSEM resets the switch to off

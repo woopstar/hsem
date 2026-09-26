@@ -17,14 +17,14 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 
 ### Coordinator layer (`custom_components/hsem/`)
 
-| File                       | Responsibility                                                              |
-| -------------------------- | --------------------------------------------------------------------------- |
-| `coordinator.py`           | HA lifecycle and collect/populate/plan/publication orchestration            |
-| `coordinator_data.py`      | Atomic `CoordinatorData` snapshot exposed to entities                       |
-| `coordinator_helpers.py`   | Pure override, strict-hold, and load-readiness/signature helpers            |
-| `coordinator_load_hold.py` | Non-planner load-forecast safety hold + force-charge re-apply (issue #1103) |
-| `coordinator_tracking.py`  | Forecast, daily, financial, and savings accumulation                        |
-| `entity_availability.py`   | Per-input unavailable/recovery transition tracking and logging              |
+| File                       | Responsibility                                                                                                       |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `coordinator.py`           | HA lifecycle and collect/populate/plan/publication orchestration                                                     |
+| `coordinator_data.py`      | Atomic `CoordinatorData` snapshot exposed to entities                                                                |
+| `coordinator_helpers.py`   | Pure override, strict-hold, and load-readiness/signature helpers                                                     |
+| `coordinator_load_hold.py` | Non-planner load-forecast safety hold, grid-only EV-only fallback (issue #1106), force-charge re-apply (issue #1103) |
+| `coordinator_tracking.py`  | Forecast, daily, financial, and savings accumulation                                                                 |
+| `entity_availability.py`   | Per-input unavailable/recovery transition tracking and logging                                                       |
 
 Load-average availability must remain explicit: unknown/non-finite values are
 missing, genuine finite zero is valid, and contradictory zero load above 50 W
@@ -921,6 +921,18 @@ The override writes EV fields only through `write_ev_slot_commands()`, so
 `batteries_charged_kwh` / `batteries_discharged_kwh` stay zero and the applier
 still derives a primary-battery hold (0 W discharge cap). Never add EV-field
 carve-outs to `set_strict_storage_hold()`. Ordering is the contract.
+
+**EV-only fallback during the hold (issue #1106).** On the non-planner hold path
+the order is: strict hold, then `planner/ev_fallback.py::build_ev_only_fallback_plan`
+per enabled EV (grid-only, `slot_net_surplus_kwh = 0`, cheapest import slots via
+`build_ev_charging_plan`), then force charge, then
+`_apply_ev_command_stability()`, then the current slot's label follows the final
+command. `estimate_unpriced_tail()` applies the issue #1002 missing-price rule to
+coordinator slots, because they have no "price missing" flag (an unpublished
+price reads `0.0`). `finalize_fallback_plan()` rebuilds the published plan from
+the final commands and re-prices every slot as grid import, because
+`rebuild_ev_plan_from_slots()` would credit PV surplus against an unknown house
+load. Never credit PV surplus on this path.
 
 ## EV Pre-Deadline Target Cap (Issue #636 — Overcharge Fix)
 
