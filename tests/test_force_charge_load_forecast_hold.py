@@ -302,22 +302,7 @@ class TestNonPlannerCycleHold:
     """With the forecast not ready the planner is skipped, yet force still wins."""
 
     @staticmethod
-    def _coordinator(
-        force: bool,
-    ) -> tuple[HSEMDataUpdateCoordinator, list[CoordinatorData], MagicMock]:
-        entry = make_fake_config_entry(
-            {
-                "hsem_read_only": True,
-                "hsem_ocpp_enabled": True,
-                **_EV_OPTIONS,
-                "hsem_ev_force_charge_now": force,
-            }
-        )
-        coordinator = make_real_coordinator(
-            hass=make_fake_hass(dict(_BASE_ENTITY_STATES)), config_entry=entry
-        )
-        published: list[CoordinatorData] = []
-        coordinator.async_set_updated_data = published.append  # type: ignore[method-assign, assignment]  # test monkey-patch
+    def _server() -> MagicMock:
         server = MagicMock()
         server.charger_sessions = {}
         server.is_listening = True
@@ -325,6 +310,29 @@ class TestNonPlannerCycleHold:
         server.anti_flap_state = "idle"
         server.is_stalled = False
         server.update_charge_target = AsyncMock()
+        return server
+
+    @classmethod
+    def _coordinator(
+        cls,
+        force: bool,
+        extra: dict[str, Any] | None = None,
+    ) -> tuple[HSEMDataUpdateCoordinator, list[CoordinatorData], MagicMock]:
+        entry = make_fake_config_entry(
+            {
+                "hsem_read_only": True,
+                "hsem_ocpp_enabled": True,
+                **_EV_OPTIONS,
+                "hsem_ev_force_charge_now": force,
+                **(extra or {}),
+            }
+        )
+        coordinator = make_real_coordinator(
+            hass=make_fake_hass(dict(_BASE_ENTITY_STATES)), config_entry=entry
+        )
+        published: list[CoordinatorData] = []
+        coordinator.async_set_updated_data = published.append  # type: ignore[method-assign, assignment]  # test monkey-patch
+        server = cls._server()
         coordinator._ocpp_server = server
         return coordinator, published, server
 
@@ -358,6 +366,44 @@ class TestNonPlannerCycleHold:
         assert call.args[1] == pytest.approx(_CHARGER_KW)
         assert call.kwargs["max_current_a"] > 0
         assert call.kwargs["managed"] is True
+
+    @pytest.mark.asyncio
+    async def test_forced_second_ev_gets_a_positive_ocpp_target(self) -> None:
+        """EV2 force charge reaches the second OCPP server; EV1 stays at 0 A."""
+        coordinator, published, primary = self._coordinator(
+            force=False,
+            extra={
+                "hsem_ocpp_second_enabled": True,
+                "hsem_ev_second_planned_load_enabled": True,
+                "hsem_ev_second_smart_charging": True,
+                "hsem_ev_second_force_charge_now": True,
+                "hsem_ev_second_planned_load_charger_power_kw": 7.0,
+                "hsem_ev_second_planned_load_charger_phase_topology": (
+                    "three_phase_balanced"
+                ),
+            },
+        )
+        second = self._server()
+        coordinator._ocpp_second_server = second
+
+        await self._run_unready_cycle(coordinator)
+
+        data = published[-1]
+        assert data.plan_explanation.winner_name == "safety_hold"
+        current = data.hourly_recommendation
+        assert current is not None
+        assert current.ev_charger_calculated_power == pytest.approx(0.0)
+        assert current.ev_second_charger_calculated_power == pytest.approx(7000.0)
+        assert current.batteries_charged_kwh == pytest.approx(0.0)
+        assert current.batteries_discharged_kwh == pytest.approx(0.0)
+        primary_call = primary.update_charge_target.await_args
+        assert primary_call is not None
+        assert primary_call.args[1] == pytest.approx(0.0)
+        second_call = second.update_charge_target.await_args
+        assert second_call is not None
+        assert second_call.args[1] == pytest.approx(7.0)
+        assert second_call.kwargs["max_current_a"] > 0
+        assert second_call.kwargs["managed"] is True
 
     @pytest.mark.asyncio
     async def test_force_off_keeps_the_enforced_zero_ocpp_target(self) -> None:
