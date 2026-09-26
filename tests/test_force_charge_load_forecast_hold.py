@@ -356,14 +356,18 @@ class TestNonPlannerCycleHold:
         assert data.plan_explanation.winner_name == "safety_hold"
         current = data.hourly_recommendation
         assert current is not None
-        assert current.ev_charger_calculated_power == pytest.approx(_CHARGER_W)
+        # The hold path runs command stability too (issue #1106), so the
+        # forced command is published at whole amps, as in the planner phase.
+        assert current.ev_charger_calculated_power == pytest.approx(
+            _CHARGER_WHOLE_AMP_W
+        )
         assert current.batteries_charged_kwh == pytest.approx(0.0)
         assert current.batteries_discharged_kwh == pytest.approx(0.0)
         assert data.state == _EV
         server.update_charge_target.assert_awaited_once()
         call = server.update_charge_target.await_args
         assert call is not None
-        assert call.args[1] == pytest.approx(_CHARGER_KW)
+        assert call.args[1] == pytest.approx(_CHARGER_WHOLE_AMP_W / 1000.0)
         assert call.kwargs["max_current_a"] > 0
         assert call.kwargs["managed"] is True
 
@@ -393,7 +397,8 @@ class TestNonPlannerCycleHold:
         current = data.hourly_recommendation
         assert current is not None
         assert current.ev_charger_calculated_power == pytest.approx(0.0)
-        assert current.ev_second_charger_calculated_power == pytest.approx(7000.0)
+        # 7 kW three-phase quantises to 10 A x 3 x 230 V.
+        assert current.ev_second_charger_calculated_power == pytest.approx(6900.0)
         assert current.batteries_charged_kwh == pytest.approx(0.0)
         assert current.batteries_discharged_kwh == pytest.approx(0.0)
         primary_call = primary.update_charge_target.await_args
@@ -401,7 +406,7 @@ class TestNonPlannerCycleHold:
         assert primary_call.args[1] == pytest.approx(0.0)
         second_call = second.update_charge_target.await_args
         assert second_call is not None
-        assert second_call.args[1] == pytest.approx(7.0)
+        assert second_call.args[1] == pytest.approx(6.9)
         assert second_call.kwargs["max_current_a"] > 0
         assert second_call.kwargs["managed"] is True
 

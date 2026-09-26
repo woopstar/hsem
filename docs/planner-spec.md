@@ -2974,6 +2974,50 @@ fuse-limited maximum with coherent EV load, grid-import, and cost accounting,
 and is labelled `ev_smart_charging`. Primary-battery charge and discharge stay
 zero. The issue #900 disconnect auto-reset runs first on both paths.
 
+#### EV-only smart-charging fallback (issue #1106)
+
+On the non-planner hold path, each EV whose planned-load feature is enabled
+follows an **EV-only fallback plan** (`planner/ev_fallback.py`, applied by
+`coordinator_load_hold.py`). The house load is unknown, so the fallback is
+**grid-only**: `slot_net_surplus_kwh = 0` for every slot, and
+`build_ev_charging_plan` selects the cheapest import slots before the
+effective deadline. The EV planner's guard states apply unchanged: feature off,
+not connected, or smart charging off produce no allocation, an unknown SoC
+produces `unavailable` with no allocation (issue #988), and an EV at or above
+target produces `fully_charged`.
+
+Trailing slots without a published price read `0.0` on the coordinator slots.
+The fallback estimates them with the issue #1002 rule: the same local-time price
+from the nearest earlier day, else the highest known price. An unpublished price
+is never planned as free.
+
+Order on the hold path:
+
+1. `set_strict_storage_hold()` on the current slot.
+2. Fallback commands written through `write_ev_slot_commands()` for every
+   commanded slot. The current slot is clamped to `ev_site_power_budget_w()`,
+   which both EVs share.
+3. Disconnect auto-reset + force-charge-now (force wins over the fallback).
+4. `_apply_ev_command_stability()` (whole-amp quantisation, deadband, fuse clamp).
+5. The current slot is labelled `ev_smart_charging` only while the final command
+   is non-zero, otherwise `batteries_wait_mode`.
+6. The published `EVChargingPlan` is rebuilt from the final slot commands, with
+   every slot priced as grid import and `data_quality` carrying
+   `mode: ev_only_fallback` and the `load_forecast` reason.
+
+Invariants:
+
+- Primary-battery `batteries_charged_kwh` and `batteries_discharged_kwh` stay
+  zero in every slot the fallback writes.
+- The current-slot EV command never exceeds the charger rating or the live fuse
+  budget, and is zero below the charger minimum.
+- No fallback slot is credited with PV surplus.
+- The plan sensor, the charger command, and the slot's EV energy/grid/cost
+  fields come from the same snapshot (design invariant 13).
+- The plan explanation stays `safety_hold`, with an `ev_only_fallback`
+  constraint while a fallback plan is published.
+- Recovery still forces a fresh MILP solve, which replaces the fallback.
+
 The accepted-plan load signature contains each future slot's start and all five
 finite load values. Recovery or a material correction forces a fresh same-slot
 solve. Only successful publication advances the signature baseline and clears

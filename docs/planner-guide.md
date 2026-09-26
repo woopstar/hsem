@@ -1143,8 +1143,11 @@ publishes a strict current-slot `batteries_wait_mode` with primary charge,
 discharge, import, and export motion cleared. Manual force mode remains higher
 authority. An EV force-charge-now override still applies on top of the hold: the
 forced EV charges at its fuse-limited maximum while the home battery stays held
-(issue #1103). Recovery or a material future-load change forces a fresh solve, and
-the reuse baseline advances only after successful publication.
+(issue #1103). A managed EV on smart charging follows a grid-only EV-only
+fallback plan during the hold: the cheapest import slots before its deadline,
+with no PV surplus credited because the house load is unknown (issue #1106).
+Recovery or a material future-load change forces a fresh solve, and the reuse
+baseline advances only after successful publication.
 
 Registered state events received during a solve advance a coordinator generation.
 The stale cycle is discarded before publication and one durable follow-up cycle
