@@ -506,6 +506,57 @@ def reset_force_charge_on_disconnect(
     return True
 
 
+def apply_force_charge_overrides(
+    *,
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    hourly_recommendations: list[HourlyRecommendation],
+    ev_plan: EVChargingPlan | None,
+    ev_second_plan: EVChargingPlan | None,
+    now: datetime,
+    live: LiveState,
+    was_connected: bool | None,
+    was_second_connected: bool | None,
+) -> None:
+    """Auto-reset force-charge-now on disconnect, then apply the override.
+
+    Canonical entry point for both the planner phase and the load-forecast
+    hold path. Force charge is an explicit user override, so it must run
+    *after* :func:`apply_load_forecast_hold` (issue #1103): the strict hold
+    clears primary-storage motion and the planned EV command, and this then
+    re-publishes only the forced EV command. The home battery stays held —
+    its charge/discharge energy remains zero.
+
+    The disconnect reset runs first (issue #900) so a disconnect and reset in
+    the same cycle never leaves a stale forced-charge slot.
+    """
+    for previous, current, option_key, ev_label in (
+        (was_connected, live.ev.is_connected, "hsem_ev_force_charge_now", "EV1"),
+        (
+            was_second_connected,
+            live.ev_second.is_connected,
+            "hsem_ev_second_force_charge_now",
+            "EV2",
+        ),
+    ):
+        reset_force_charge_on_disconnect(
+            hass=hass,
+            config_entry=config_entry,
+            was_connected=previous,
+            is_connected=current,
+            option_key=option_key,
+            ev_label=ev_label,
+        )
+    apply_force_charge_now(
+        config_entry=config_entry,
+        hourly_recommendations=hourly_recommendations,
+        ev_plan=ev_plan,
+        ev_second_plan=ev_second_plan,
+        now=now,
+        live=live,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Load-forecast fail-closed hold helper
 # ---------------------------------------------------------------------------

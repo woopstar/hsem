@@ -2967,6 +2967,13 @@ charge/discharge and grid import/export motion cleared. Manual force mode remain
 higher authority, and the coordinator retries at the one-minute pending-data
 interval.
 
+The hold also clears the planned EV command, but an active EV force-charge-now
+override is applied _after_ it, both inside the planner phase and on the
+non-planner hold path (issue #1103). The forced slot then carries the charger's
+fuse-limited maximum with coherent EV load, grid-import, and cost accounting,
+and is labelled `ev_smart_charging`. Primary-battery charge and discharge stay
+zero. The issue #900 disconnect auto-reset runs first on both paths.
+
 The accepted-plan load signature contains each future slot's start and all five
 finite load values. Recovery or a material correction forces a fresh same-slot
 solve. Only successful publication advances the signature baseline and clears

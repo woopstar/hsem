@@ -64,6 +64,7 @@ from custom_components.hsem.coordinator_live_power import (
     LIVE_POWER_WINDOW_SECONDS,
     CoordinatorLivePowerMixin,
 )
+from custom_components.hsem.coordinator_load_hold import CoordinatorLoadHoldMixin
 from custom_components.hsem.coordinator_planner_phase import (
     CoordinatorPlannerPhaseMixin,
 )
@@ -126,6 +127,7 @@ _MAX_FAILED_UPDATE_RETRIES = 2
 class HSEMDataUpdateCoordinator(
     CoordinatorLifecycleMixin,
     CoordinatorCycleMixin,
+    CoordinatorLoadHoldMixin,
     CoordinatorPlannerPhaseMixin,
     CoordinatorLivePowerMixin,
     CoordinatorEvDeadlinePacingMixin,
