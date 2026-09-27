@@ -17,10 +17,8 @@ from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.phase_power import (
-    EV_TOPOLOGY_THREE_PHASE_BALANCED,
-    EV_TOPOLOGY_THREE_PHASE_SWITCHABLE,
     charger_current_to_power_w,
-    charger_max_power_to_current_a,
+    charger_rated_power_w,
     ev_min_start_current_a,
     normalize_ev_phase_topology,
 )
@@ -180,20 +178,11 @@ def _build_ev_configs_for_milp(
         session_power_kw = max(float(session_charge_kw or 0.0), 0.0)
         # An auto-phase-switching charger (issue #1001) starts on ONE phase
         # but its nameplate is the THREE-phase rating: recover the rated
-        # power on the three-phase basis and the minimum on the single-phase
-        # basis (charger_current_to_power_w's switchable semantics).
-        rated_basis_topology = (
-            EV_TOPOLOGY_THREE_PHASE_BALANCED
-            if phase_topology == EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
-            else phase_topology
-        )
-        configured_max_current_a = charger_max_power_to_current_a(
-            max(float(pwr), 0.0) * 1000.0,
-            phase_topology,
-        )
-        configured_max_power_w = charger_current_to_power_w(
-            configured_max_current_a,
-            rated_basis_topology,
+        # power on the three-phase basis (charger_rated_power_w) and the
+        # minimum on the single-phase basis (charger_current_to_power_w's
+        # switchable semantics).
+        configured_max_power_w = charger_rated_power_w(
+            max(float(pwr), 0.0) * 1000.0, phase_topology
         )
         effective_min_power_w = charger_current_to_power_w(
             ev_min_start_current_a(min_pwr_w, phase_topology),

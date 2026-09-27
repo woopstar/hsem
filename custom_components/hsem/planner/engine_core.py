@@ -455,6 +455,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             combined_ev_raw_load=combined_ev_raw,
             combined_ev_injected_load=combined_ev_inj,
             warnings=warnings,
+            phase_topology=inp.ev_planned_load_charger_phase_topology,
         )
     if inp.ev_second_planned_load_enabled:
         ev2_cp = _build_and_inject_for_ev(
@@ -481,6 +482,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             combined_ev_raw_load=combined_ev_raw,
             combined_ev_injected_load=combined_ev_inj,
             warnings=warnings,
+            phase_topology=inp.ev_second_planned_load_charger_phase_topology,
         )
     for i, s in enumerate(slots):
         s.ev_planned_load_kwh = combined_ev_inj[i]

@@ -231,6 +231,30 @@ def charger_max_power_to_current_a(
     return int(math.floor(power_w / step_power_w + 0.5))
 
 
+def charger_rated_power_w(power_w: float, topology: str | None) -> float:
+    """Return the executable AC nameplate power for a configured rating.
+
+    Snaps the approximate configured charger power to its whole-amp nameplate
+    (:func:`charger_max_power_to_current_a`) and converts it back to Watts, so
+    11.0 kW balanced three-phase becomes 16 A / 11 040 W.  A
+    ``three_phase_switchable`` nameplate is its three-phase rating, so the
+    conversion back uses the balanced three-phase basis.
+
+    Every site that turns a configured charger power into a command ceiling
+    must use this, never ``power_kw * 1000``: the raw value sits just below
+    the nameplate, and whole-amp quantisation then floors it one amp low
+    (issue #1112).
+    """
+    rated_basis_topology = (
+        EV_TOPOLOGY_THREE_PHASE_BALANCED
+        if topology == EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
+        else topology
+    )
+    return charger_current_to_power_w(
+        charger_max_power_to_current_a(power_w, topology), rated_basis_topology
+    )
+
+
 def charger_min_power_to_current_a(
     power_w: float,
     topology: str | None,

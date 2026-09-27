@@ -54,9 +54,10 @@ _NOW = _SLOT_START + timedelta(minutes=5)
 _WAIT = Recommendations.BatteriesWaitMode.value
 _EV = Recommendations.EVSmartCharging.value
 _CHARGER_KW = 11.0
-_CHARGER_W = _CHARGER_KW * 1000.0
-# Command stability publishes whole amps: 15 A x 3 x 230 V.
-_CHARGER_WHOLE_AMP_W = 15 * 3 * 230.0
+# The configured 11.0 kW is the 16 A three-phase nameplate (issue #1112).
+_CHARGER_W = 16 * 3 * 230.0
+# Command stability publishes whole amps; the nameplate is already whole.
+_CHARGER_WHOLE_AMP_W = _CHARGER_W
 _PLANNER_MODULE = "custom_components.hsem.coordinator_planner_phase"
 _CYCLE_MODULE = "custom_components.hsem.coordinator_cycle"
 _LOAD_FORECAST_MODULE = "custom_components.hsem.coordinator_load_forecast"
@@ -173,7 +174,9 @@ class TestForceChargeAfterStrictHold:
         current = self._hold_then_force(entry, live)
 
         assert current.ev_charger_calculated_power == pytest.approx(0.0)
-        assert current.ev_second_charger_calculated_power == pytest.approx(7000.0)
+        # 7.0 kW on the default single-phase topology is the 30 A nameplate
+        # (issue #1112): 30 A x 230 V = 6900 W.
+        assert current.ev_second_charger_calculated_power == pytest.approx(6900.0)
 
     def test_disconnect_resets_the_switch_and_keeps_zero(self) -> None:
         entry = _config_entry(True)
