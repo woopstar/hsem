@@ -266,7 +266,10 @@ can be profitable or free.
 Toggling `switch.hsem_ev_force_charge_now` (or
 `switch.hsem_ev_second_force_charge_now` for the second EV) immediately
 overrides the current slot to charge the EV at its maximum configured AC
-power (`hsem_ev_planned_load_charger_power_kw`).
+power (`hsem_ev_planned_load_charger_power_kw`), snapped to the charger's
+whole-amp nameplate for its phase topology: `11.0 kW` balanced three-phase
+charges at `16 A / 11.04 kW`, not `15 A / 10.35 kW` (issue #1112). The live
+main-fuse headroom can still lower it.
 
 **Force charge works even when smart charging is disabled.** When
 `switch.hsem_ev_smart_charging` is off the EV planner normally returns
