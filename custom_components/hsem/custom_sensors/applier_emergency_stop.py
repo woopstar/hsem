@@ -45,7 +45,10 @@ from custom_components.hsem.utils.inverter_verify import (
 )
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.recommendations import Recommendations
-from custom_components.hsem.utils.workingmodes import WorkingModes
+from custom_components.hsem.utils.workingmodes import (
+    WorkingModes,
+    canonical_working_mode,
+)
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.hourly_recommendation import (
@@ -72,7 +75,9 @@ def primary_grid_charge_is_known_disarmed(live: LiveState) -> bool:
     ):
         return True
 
-    working_mode = live.huawei_batteries_working_mode
+    # Canonicalise so EMMA's ``time_of_use`` is not mistaken for a non-TOU
+    # (disarmed) state.
+    working_mode = canonical_working_mode(live.huawei_batteries_working_mode)
     if isinstance(working_mode, str) and working_mode != WorkingModes.TimeOfUse.value:
         return True
 

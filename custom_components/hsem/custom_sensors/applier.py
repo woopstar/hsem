@@ -41,6 +41,7 @@ from custom_components.hsem.const import (
 )
 from custom_components.hsem.custom_sensors.applier_caps import (  # noqa: F401
     _configured_battery_device_ids,
+    _desired_excess_pv_use,
     _ev_is_active_or_planned,
     _ev_phase_headroom_reservation_w,
     _ev_uses_managed_ocpp,
@@ -49,6 +50,7 @@ from custom_components.hsem.custom_sensors.applier_caps import (  # noqa: F401
     _planned_ev_discharge_cap_w,
     _primary_battery_cap_hold,
     _primary_battery_hold,
+    _tou_device_ids,
     _wait_mode_self_consumption_cap_w,
     _warn_on_zero_ceiling_evs,
     _zero_ceiling_cap_reason,
@@ -66,6 +68,9 @@ from custom_components.hsem.custom_sensors.applier_state_readers import (  # noq
     _read_number_state,
     _read_select_state,
     _read_tou_periods,
+)
+from custom_components.hsem.custom_sensors.applier_working_mode import (
+    _resolve_working_mode_write,
 )
 from custom_components.hsem.custom_sensors.phase_charge_limiter import (
     build_phase_aware_charge_commands,
@@ -96,7 +101,10 @@ from custom_components.hsem.utils.misc import (
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import slot_duration_hours
 from custom_components.hsem.utils.wait_mode_behavior import WaitModeBehavior
-from custom_components.hsem.utils.workingmodes import ExcessPvUseInTou, WorkingModes
+from custom_components.hsem.utils.workingmodes import (
+    WorkingModes,
+    canonical_working_mode,
+)
 
 
 async def async_apply_battery_settings(
@@ -540,33 +548,10 @@ async def async_apply_battery_settings(
         wait_mode_reserve_active
         and working_mode == WorkingModes.MaximizeSelfConsumption.value
     )
-
-    # Excess PV use in TOU — fed_to_grid for the two explicit export modes and
-    # when a held idle slot carries a material, authoritative solved export
-    # (issue #797); charge otherwise.  A plain wait slot with no solved
-    # export is not itself an export decision, so routing surplus there
-    # would sell energy nobody decided to sell — only held_planned_export
-    # (which already requires primary_battery_hold) grants that for
-    # BatteriesWaitMode/EVSmartCharging.  Wait-mode self-consumption keeps
-    # excess PV in the battery so the surplus above the reserve can be used
-    # for household self-consumption; it takes priority over a plain hold
-    # (issue #954), so it may now apply to a held slot too.
-    export_is_intended = (
-        recommendation
-        in (
-            Recommendations.ForceExport.value,
-            Recommendations.ForceBatteriesDischarge.value,
-        )
-        or held_planned_export
-    )
-    desired_excess = (
-        ExcessPvUseInTou.Charge.value
-        if wait_mode_self_consumption
-        else (
-            ExcessPvUseInTou.FedToGrid.value
-            if export_is_intended
-            else ExcessPvUseInTou.Charge.value
-        )
+    desired_excess = _desired_excess_pv_use(
+        recommendation,
+        wait_mode_self_consumption=wait_mode_self_consumption,
+        held_planned_export=held_planned_export,
     )
     if live.huawei_batteries_excess_pv_use_in_tou != desired_excess:
         excess_entity = cfg.huawei_solar_batteries_excess_pv_energy_use_in_tou
@@ -603,23 +588,23 @@ async def async_apply_battery_settings(
         != generate_hash(str(live.tou_periods.periods))
     ):
         tou_entity = cfg.huawei_solar_batteries_tou_charging_and_discharging_periods
-        battery_device_ids = _configured_battery_device_ids(cfg)
-        if tou_entity is None or not battery_device_ids:
+        tou_device_ids = _tou_device_ids(cfg)
+        if tou_entity is None or not tou_device_ids:
             _LOGGER.debug(
                 "TOU entity or battery device ID not configured; skipping write.",
                 "warning",
             )
             return summary
         _te: str = tou_entity  # narrowed for closure
-        for battery_device_id in battery_device_ids:
+        for tou_device_id in tou_device_ids:
 
             async def _write_tou(
-                _dev: str = battery_device_id,
+                _dev: str = tou_device_id,
             ) -> None:
                 await async_set_tou_periods(sensor, _dev, tou_modes)
 
             result = await async_write_and_verify(
-                entity_id=f"{_te}:{battery_device_id}",
+                entity_id=f"{_te}:{tou_device_id}",
                 desired=list(tou_modes),
                 writer=_write_tou,
                 reader=lambda: _read_tou_periods(sensor, _te),
@@ -633,12 +618,16 @@ async def async_apply_battery_settings(
                 _LOGGER.debug(
                     "TOU period write FAILED for device %s. Blocking further "
                     "battery writes this cycle.",
-                    battery_device_id,
+                    tou_device_id,
                 )
                 return summary
 
-    # Working mode
-    if working_mode and live.huawei_batteries_working_mode != working_mode:
+    # Working mode — the intent is written as whichever option value the
+    # configured select advertises (direct LUNA vs. EMMA-managed).
+    if (
+        working_mode
+        and canonical_working_mode(live.huawei_batteries_working_mode) != working_mode
+    ):
         mode_entity = cfg.huawei_solar_batteries_working_mode
         if mode_entity is None:
             _LOGGER.debug(
@@ -646,10 +635,17 @@ async def async_apply_battery_settings(
             )
             return summary
         _me: str = mode_entity  # narrowed for closure
+        option = _resolve_working_mode_write(
+            sensor, _me, working_mode, live.huawei_batteries_working_mode
+        )
+        if not isinstance(option, str):
+            summary.results.append(option)
+            return summary
+        _opt: str = option  # narrowed for closure
         mode_result = await async_write_and_verify(
             entity_id=_me,
-            desired=working_mode,
-            writer=lambda: async_set_select_option(sensor, _me, working_mode),
+            desired=_opt,
+            writer=lambda: async_set_select_option(sensor, _me, _opt),
             reader=lambda: _read_select_state(sensor, _me),
         )
         summary.results.append(mode_result)
