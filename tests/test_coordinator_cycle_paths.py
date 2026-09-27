@@ -21,6 +21,9 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.coordinator_data import CoordinatorData
 from custom_components.hsem.coordinator_helpers import LoadForecastReadiness
+from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
+    ConsumptionPopulation,
+)
 from custom_components.hsem.custom_sensors.ocpp_flap_state import FlapState
 from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
@@ -34,6 +37,7 @@ from tests.test_ha_mock_integration import (
 )
 
 _MODULE = "custom_components.hsem.coordinator_cycle"
+_LOAD_FORECAST_MODULE = "custom_components.hsem.coordinator_load_forecast"
 _FORCE_MODE_ENTITY = "select.hsem_force_working_mode"
 
 
@@ -135,8 +139,8 @@ class TestWorkingStateSelection:
         coordinator, published = _coordinator()
 
         with patch(
-            f"{_MODULE}.populate_avg_house_consumption_from_snapshot",
-            return_value=False,
+            f"{_LOAD_FORECAST_MODULE}.populate_avg_house_consumption_from_snapshot",
+            return_value=ConsumptionPopulation(ok=False),
         ):
             await _run_cycle(coordinator)
 
@@ -154,8 +158,8 @@ class TestWorkingStateSelection:
         ready = LoadForecastReadiness(ready=True, reason=None, signature=())
 
         with (
-            patch(f"{_MODULE}.assess_load_forecast", return_value=ready),
-            patch(f"{_MODULE}.async_log", log),
+            patch(f"{_LOAD_FORECAST_MODULE}.assess_load_forecast", return_value=ready),
+            patch(f"{_LOAD_FORECAST_MODULE}.async_log", log),
         ):
             await _run_cycle(coordinator)
 

@@ -17,14 +17,16 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 
 ### Coordinator layer (`custom_components/hsem/`)
 
-| File                       | Responsibility                                                                                                       |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `coordinator.py`           | HA lifecycle and collect/populate/plan/publication orchestration                                                     |
-| `coordinator_data.py`      | Atomic `CoordinatorData` snapshot exposed to entities                                                                |
-| `coordinator_helpers.py`   | Pure override, strict-hold, and load-readiness/signature helpers                                                     |
-| `coordinator_load_hold.py` | Non-planner load-forecast safety hold, grid-only EV-only fallback (issue #1106), force-charge re-apply (issue #1103) |
-| `coordinator_tracking.py`  | Forecast, daily, financial, and savings accumulation                                                                 |
-| `entity_availability.py`   | Per-input unavailable/recovery transition tracking and logging                                                       |
+| File                                  | Responsibility                                                                                                       |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `coordinator.py`                      | HA lifecycle and collect/populate/plan/publication orchestration                                                     |
+| `coordinator_data.py`                 | Atomic `CoordinatorData` snapshot exposed to entities                                                                |
+| `coordinator_helpers.py`              | Pure override, strict-hold, and load-readiness/signature helpers                                                     |
+| `coordinator_load_forecast.py`        | ML/avg consumption population, load readiness, missing/estimated-hour diagnostics (issue #1110)                      |
+| `coordinator_load_hold.py`            | Non-planner load-forecast safety hold, grid-only EV-only fallback (issue #1106), force-charge re-apply (issue #1103) |
+| `coordinator_tracking.py`             | Forecast, daily, financial, and savings accumulation                                                                 |
+| `entity_availability.py`              | Per-input unavailable/recovery transition tracking and logging                                                       |
+| `custom_sensors/block_observation.py` | Avg-sensor downtime tracking: heartbeat, unobserved intervals, `block_observed()` (issues #1101/#1110)               |
 
 Load-average availability must remain explicit: unknown/non-finite values are
 missing, genuine finite zero is valid, and contradictory zero load above 50 W
@@ -395,12 +397,16 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
   development (context window, diff size, review latency).
 - If a file exceeds either limit, split it before adding more features.
 - Current oversized files (as of 2026-09-18):
+
   - `coordinator_planner_phase.py` — 32,040 bytes (over 30 KB)
   - `coordinator_tracking.py` — 31,036 bytes (over 30 KB)
-  - `coordinator_cycle.py` — 33,025 bytes (over 30 KB; the #1103 hold path
-    was extracted to `coordinator_load_hold.py` so it did not grow)
+
   - `custom_sensors/working_mode_sensor.py` — 32,933 bytes (over 30 KB)
   - `planner/candidate_selector.py` — 31,401 bytes (over 30 KB)
+
+- Resolved in issue #1110: the load-forecast population/readiness block moved
+  from `coordinator_cycle.py` to `coordinator_load_forecast.py` (cycle now
+  ~28.5 KB).
 - Resolved in issue #1057: EV deadline parsing moved from `state_collector.py`
   to `custom_sensors/ev_deadline.py`, bringing the collector below 30 KB.
 - Check before every PR:
@@ -1439,20 +1445,32 @@ clock-only `block_complete` check then stored `0.0` as a real sample. That
 dragged the 1d/3d/7d/14d averages down for up to 14 days and broke the
 missing-not-zero rule (#988/#1056).
 
-Canonical rule: `_block_observed(last_reset, session_started_at, block_start)`
-in `avg_sensor.py` must be true before storing a sample. Both of these must
-hold, within `_BLOCK_RESET_TOLERANCE` (5 min):
+Canonical rule: `block_observed(last_reset, unobserved, block_start, block_end)`
+in `custom_sensors/block_observation.py` must be true before storing a sample.
+Both of these must hold, within `BLOCK_RESET_TOLERANCE` (5 min):
 
 - the tracked meter's `last_reset` attribute equals `block_start`
   (`measurement_date` @ `hour_start`, local tz)
-- the current session (`_session_started_at`, set in
-  `async_added_to_hass`) started no later than `block_start`
+- the sensor's **unobserved (downtime) intervals** overlap the block by at
+  most the tolerance in total
 
-The session check covers the case where the meter reset on time and HA then
+The downtime check covers the case where the meter reset on time and HA then
 crashed mid-block. A blocked sample is skipped with a debug log. Existing
 measurements are never removed, and a genuine observed `0.0` is still stored.
-Blocks completed before a normal restart were already stored by the old
-session and survive via restore.
+
+**Issue #1110 — never use "session started before the block".** The first
+#1101 fix did exactly that, and it discarded every block that a restart or
+HSEM reload touched. That included restarts after the block but before the
+5-min storage tick, and restarts lasting seconds. Reporter: 11.64 kWh (09-10)
+and 2.15 kWh (17-18) metered with on-time resets, both skipped, and
+`source_unavailable` for over 24 h. Downtime is measured instead:
+`HSEMAvgSensor.extra_restore_state_data` persists `last_alive` + bounded
+`unobserved` intervals (48 h, max 32). On `async_added_to_hass`,
+`restore_unobserved()` adds `(last_alive, session_start)`. HA reads the
+heartbeat on stop, on entity removal, and every 15 min, so a crash
+overestimates the downtime by at most 15 min (fail-safe). No heartbeat
+(upgrade, unreadable) means `[(epoch, session_start)]`, which is the old
+strict rule.
 
 The `Energy (Integral)` sensors are lifetime running totals and never reset.
 Only the utility meter's per-block difference matters. Wiping the recorder DB
@@ -1461,6 +1479,23 @@ does not reset any of these sensors: they restore from
 System recovery steps).
 
 Regression tests: `tests/test_avg_sensor_unobserved_block.py`.
+
+### Missing hour blocks do not block the whole plan (issue #1110)
+
+`populate_avg_house_consumption_from_snapshot()` returns a
+`ConsumptionPopulation(ok, missing_hours, estimated_hours)`, never a bool. It
+inspects all 24 hours. At most `MAX_ESTIMATED_LOAD_HOURS` (4) hours without
+any value are filled by `estimate_missing_hours()`, which takes the per-window
+**max** of the nearest measured hour on each side (circular day). That is
+conservative, and never zero. More missing hours, an unregistered entity, or
+unset/zero weights still fail closed (`source_unavailable`). The coordinator
+mixin `coordinator_load_forecast.py` (extracted from `coordinator_cycle.py`)
+publishes `data_quality.load_forecast_missing_hours` /
+`load_forecast_estimated_hours` via `_published_data_quality()` (estimated
+hours make `is_complete` false) and logs a `[load] No stored consumption
+sample for hour block(s) …` warning once per change. Tests:
+`tests/sensors/test_populator_bailouts.py::TestMissingHourEstimate`,
+`tests/test_coordinator_load_forecast.py`.
 
 ---
 

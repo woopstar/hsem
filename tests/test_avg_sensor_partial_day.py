@@ -38,7 +38,7 @@ def _make_sensor(
 ) -> MagicMock:
     sensor = MagicMock(spec=HSEMAvgSensor)
     sensor.hass = MagicMock()
-    sensor._session_started_at = None  # observed-block guard is patched in _store
+    sensor._unobserved = None  # observed-block guard is patched in _store
     sensor._tracked_entity = "sensor.daily_kwh"
     sensor._measurements = measurements if measurements is not None else {}
     sensor._average = 14
