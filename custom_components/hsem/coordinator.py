@@ -64,9 +64,15 @@ from custom_components.hsem.coordinator_live_power import (
     LIVE_POWER_WINDOW_SECONDS,
     CoordinatorLivePowerMixin,
 )
+from custom_components.hsem.coordinator_load_forecast import (
+    CoordinatorLoadForecastMixin,
+)
 from custom_components.hsem.coordinator_load_hold import CoordinatorLoadHoldMixin
 from custom_components.hsem.coordinator_planner_phase import (
     CoordinatorPlannerPhaseMixin,
+)
+from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
+    ConsumptionPopulation,
 )
 from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
@@ -127,6 +133,7 @@ _MAX_FAILED_UPDATE_RETRIES = 2
 class HSEMDataUpdateCoordinator(
     CoordinatorLifecycleMixin,
     CoordinatorCycleMixin,
+    CoordinatorLoadForecastMixin,
     CoordinatorLoadHoldMixin,
     CoordinatorPlannerPhaseMixin,
     CoordinatorLivePowerMixin,
@@ -266,6 +273,12 @@ class HSEMDataUpdateCoordinator(
         self._current_load_forecast_signature: LoadForecastSignature | None = None
         self._load_forecast_recovery_replan_pending: bool = False
         self._last_load_forecast_readiness_reason: str | None = None
+        # Missing/estimated hour blocks of the last population (issue #1110).
+        self._load_forecast_population = ConsumptionPopulation(ok=False)
+        self._last_load_forecast_gaps: tuple[tuple[int, ...], tuple[int, ...]] = (
+            (),
+            (),
+        )
         # EV planned-load config that affects planner optimisation.
         self._last_plan_ev_target_soc: float | None = None
         self._last_plan_ev_smart_charging: bool | None = None

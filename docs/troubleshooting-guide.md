@@ -112,11 +112,22 @@ zero-load forecast.
   age out the bad entry.
 - **Home Assistant was down across one or more hour blocks:** on restart each
   missed `…_utility_meter` runs its overdue daily reset and shows `0 kWh`.
-  The rolling-average sensors only store a block they observed end to end:
-  the meter's `last_reset` must match the block start, and HA must have been
-  running since that block started (issue #1101). A block missed by downtime,
-  or cut short by it, is skipped. The window keeps its previous valid days
-  instead of recording a fake `0`. The `Energy (Integral)` sensors are
+  The rolling-average sensors only store a block they observed end to end.
+  The meter's `last_reset` must match the block start, and HA must have been
+  down for no more than 5 minutes inside that block (issue #1101). A block
+  missed by downtime, or cut short by it, is skipped. The window keeps its
+  previous valid days instead of recording a fake `0`. Downtime is measured
+  from a heartbeat each average sensor persists, so a quick restart or HSEM
+  reload inside or right after a block keeps the block (issue #1110). The
+  first restart after upgrading has no heartbeat yet and applies the older
+  strict rule once.
+- **Some hours stay `unavailable` after a reset or a crash:** check
+  `data_quality.load_forecast_missing_hours`. Up to 4 missing hours are
+  planned with a conservative estimate (listed in
+  `load_forecast_estimated_hours`, logged once as `[load] No stored
+consumption sample for hour block(s) …`). More missing hours hold the
+  battery until enough blocks complete once. Each listed block recovers
+  after its hour next passes with HA running. The `Energy (Integral)` sensors are
   lifetime running totals (e.g. `1.164 kWh`) and are not the hourly value.
   Only the utility meter's per-block difference is used.
 
@@ -758,10 +769,12 @@ If you've checked everything and HSEM still doesn't work:
       ```
 
    3. Start Home Assistant. Until each hour block has completed once (up to
-      24 h), its average sensors are `unavailable`. `load_forecast_ready` is
-      `false`, and automatic mode holds `batteries_wait_mode` during that
-      time, unless ML consumption prediction is enabled and has enough
-      recorder history.
+      24 h), its average sensors are `unavailable`. While more than 4 hours
+      are missing, `load_forecast_ready` is `false` and automatic mode holds
+      `batteries_wait_mode`, unless ML consumption prediction is enabled and
+      has enough recorder history. With 4 or fewer missing hours HSEM plans
+      with a conservative estimate for them (see
+      `data_quality.load_forecast_estimated_hours`).
 
    HSEM's own tracker files (`.storage/hsem_*_history.json`: prediction,
    financial, savings, daily) are separate. Delete them only to reset those

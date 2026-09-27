@@ -61,6 +61,9 @@ from custom_components.hsem.custom_sensors.force_mode_sensor import HSEMForceMod
 from custom_components.hsem.custom_sensors.hardware_writes_sensor import (
     HSEMHardwareWritesSensor,
 )
+from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
+    ConsumptionPopulation,
+)
 from custom_components.hsem.custom_sensors.last_updated_sensor import (
     HSEMLastUpdatedSensor,
 )
@@ -2134,9 +2137,9 @@ def _patch_all_ha_helpers():
                 return_value=None,
             ),
             patch(
-                "custom_components.hsem.coordinator_cycle"
+                "custom_components.hsem.coordinator_load_forecast"
                 ".populate_avg_house_consumption_from_snapshot",
-                return_value=True,
+                return_value=ConsumptionPopulation(ok=True),
             ),
             patch(
                 "custom_components.hsem.coordinator_cycle"

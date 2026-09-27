@@ -208,7 +208,8 @@ class TestSnapshotPopulation:
             recs, snapshot, cfg, eid_cache, entry_id="test_entry_id"
         )
 
-        assert result is True
+        assert result.ok is True
+        assert result.estimated_hours == ()
         for _h, rec in enumerate(recs):
             assert rec.avg_house_consumption_kwh > 0.0
             assert rec.avg_house_consumption_1d_kwh > 0.0

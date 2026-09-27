@@ -2961,6 +2961,36 @@ non-finite values, and negative values fail closed. A complete identically-zero
 profile remains valid while finite live house demand is at most 50 W; above
 50 W it reports `zero_forecast_with_live_demand`.
 
+#### Hour blocks without a stored sample (issue #1110)
+
+A young rolling window holds at most one sample per hour block, so a single
+block the average sensors could not store leaves that hour `unavailable` for
+a full day. The avg populator inspects all 24 hours and collects every hour
+with a missing window. When there are at most `MAX_ESTIMATED_LOAD_HOURS` (4)
+such hours, each window of a missing hour $h$ is estimated from the nearest
+measured hour before ($b$) and after ($a$) on the circular day:
+
+$$
+\hat{v}_{w}(h) = \max\left(v_{w}(b),\ v_{w}(a)\right), \quad w \in \{1d, 3d, 7d, 14d\}
+$$
+
+The estimate then goes through the normal weighted blend. It is never below
+a measured neighbour and never zero-by-absence. More missing hours, an
+unregistered average entity, or unset or all-zero weights still fail closed
+with `source_unavailable`.
+
+The gap is always surfaced. `DataQuality.load_forecast_missing_hours` lists
+every hour without a value, `DataQuality.load_forecast_estimated_hours` lists
+the hours that were estimated, and any estimated hour makes
+`DataQuality.is_complete` false. A warning naming the hours is logged once
+per change.
+
+The average sensors store a completed block only when the meter reset at the
+block start and Home Assistant was down for at most 5 minutes inside the
+block. That downtime is measured from a persisted heartbeat, not from the
+session start (issues #1101/#1110). A quick restart therefore never creates
+a gap.
+
 When the profile is not ready, automatic mode must not run or reuse an optimized
 plan. It publishes a strict current-slot `batteries_wait_mode` with primary
 charge/discharge and grid import/export motion cleared. Manual force mode remains
@@ -3217,7 +3247,9 @@ carry the day+2 gap lists for horizons spanning three or more calendar days.
 future profile value cannot safely support a solve.
 `DataQuality.load_forecast_reason` contains the machine-readable cause and is
 `None` when ready. Load readiness participates in `DataQuality.is_complete`
-alongside price and PV completeness.
+alongside price and PV completeness. `DataQuality.load_forecast_missing_hours`
+and `DataQuality.load_forecast_estimated_hours` name the hour blocks without
+a stored sample; estimated hours also make `is_complete` false (issue #1110).
 
 ### Discharge concentration across days
 

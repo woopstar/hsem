@@ -16,6 +16,8 @@ from unittest.mock import patch
 import pytest
 
 from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
+    MAX_ESTIMATED_LOAD_HOURS,
+    estimate_missing_hours,
     populate_avg_house_consumption_from_snapshot,
 )
 from custom_components.hsem.custom_sensors.hourly_data_populator.prices_solcast import (
@@ -125,7 +127,7 @@ class TestConsumptionPopulatorBailouts:
                 entry_id=_ENTRY_ID,
             )
 
-        assert populated is False
+        assert populated.ok is False
         assert any(call.args[0] == "warning" for call in log.call_args_list)
 
     def test_an_unregistered_average_sensor_aborts_the_cycle(self) -> None:
@@ -141,13 +143,88 @@ class TestConsumptionPopulatorBailouts:
             entry_id=_ENTRY_ID,
         )
 
-        assert populated is False
+        assert populated.ok is False
 
-    def test_a_registered_sensor_without_state_aborts_the_cycle(self) -> None:
-        """An entity that exists but reports nothing is not a zero reading."""
+    def test_too_many_hours_without_state_abort_the_cycle(self) -> None:
+        """More than the estimate limit of unavailable hours fails closed."""
         cache, values = _cache_and_values()
-        # Drop one window of one hour from the snapshot.
+        gap = list(range(MAX_ESTIMATED_LOAD_HOURS + 1))
+        for hour in gap:
+            del values[f"sensor.energy_avg_{hour:02d}_7d"]
+        recs = _recs()
+
+        populated = populate_avg_house_consumption_from_snapshot(
+            recs,
+            StateSnapshot(live=LiveState(), energy_average_values=values),
+            _cfg(),
+            cache,
+            entry_id=_ENTRY_ID,
+        )
+
+        assert populated.ok is False
+        assert populated.missing_hours == tuple(gap)
+        assert populated.estimated_hours == ()
+
+
+class TestMissingHourEstimate:
+    """Hour blocks without a stored sample (issue #1110)."""
+
+    def test_reporter_gaps_are_estimated_not_zero(self) -> None:
+        """Hours 9 and 17 unavailable, the rest measured: plan with estimates."""
+        cache, values = _cache_and_values()
+        measured = {8: 7.45, 9: None, 10: 7.41, 16: 1.78, 17: None, 18: 1.72}
+        for hour, kwh in measured.items():
+            for days in (1, 3, 7, 14):
+                eid = f"sensor.energy_avg_{hour:02d}_{days}d"
+                if kwh is None:
+                    del values[eid]
+                else:
+                    values[eid] = kwh
+        recs = _recs()
+
+        populated = populate_avg_house_consumption_from_snapshot(
+            recs,
+            StateSnapshot(live=LiveState(), energy_average_values=values),
+            _cfg(),
+            cache,
+            entry_id=_ENTRY_ID,
+        )
+
+        assert populated.ok is True
+        assert populated.missing_hours == (9, 17)
+        assert populated.estimated_hours == (9, 17)
+        # Conservative: the larger measured neighbour, never zero.
+        assert recs[9].avg_house_consumption_1d_kwh == pytest.approx(7.45)
+        assert recs[17].avg_house_consumption_1d_kwh == pytest.approx(1.78)
+        assert recs[9].avg_house_consumption_kwh > 0.0
+        assert recs[17].avg_house_consumption_kwh > 0.0
+        # Measured hours are untouched.
+        assert recs[10].avg_house_consumption_1d_kwh == pytest.approx(7.41)
+
+    def test_one_missing_window_estimates_the_hour(self) -> None:
+        """An entity that exists but reports nothing is not a zero reading."""
+        cache, values = _cache_and_values(value=0.8)
         del values["sensor.energy_avg_05_7d"]
+        recs = _recs()
+
+        populated = populate_avg_house_consumption_from_snapshot(
+            recs,
+            StateSnapshot(live=LiveState(), energy_average_values=values),
+            _cfg(),
+            cache,
+            entry_id=_ENTRY_ID,
+        )
+
+        assert populated.ok is True
+        assert populated.estimated_hours == (5,)
+        assert recs[5].avg_house_consumption_7d_kwh == pytest.approx(0.8)
+
+    def test_limit_is_inclusive(self) -> None:
+        cache, values = _cache_and_values()
+        gap = list(range(MAX_ESTIMATED_LOAD_HOURS))
+        for hour in gap:
+            for days in (1, 3, 7, 14):
+                del values[f"sensor.energy_avg_{hour:02d}_{days}d"]
 
         populated = populate_avg_house_consumption_from_snapshot(
             _recs(),
@@ -157,7 +234,22 @@ class TestConsumptionPopulatorBailouts:
             entry_id=_ENTRY_ID,
         )
 
-        assert populated is False
+        assert populated.ok is True
+        assert populated.estimated_hours == tuple(gap)
+
+    def test_estimate_wraps_around_midnight(self) -> None:
+        measured = {h: (float(h), float(h), float(h), float(h)) for h in range(1, 23)}
+        estimates = estimate_missing_hours(measured, [0, 23])
+        # Hour 0 neighbours 22 (before, wrapping) and 1 (after).
+        assert estimates[0] == (22.0, 22.0, 22.0, 22.0)
+        assert estimates[23] == (22.0, 22.0, 22.0, 22.0)
+
+    def test_estimate_takes_per_window_max(self) -> None:
+        measured = {3: (1.0, 5.0, 0.2, 0.3), 5: (2.0, 1.0, 0.4, 0.1)}
+        assert estimate_missing_hours(measured, [4]) == {4: (2.0, 5.0, 0.4, 0.3)}
+
+    def test_nothing_measured_gives_no_estimate(self) -> None:
+        assert estimate_missing_hours({}, [1, 2]) == {}
 
     def test_weights_that_all_sum_to_zero_abort_the_cycle(self) -> None:
         """Zeroed weights cannot produce an average, so no plan is attempted."""
@@ -171,7 +263,7 @@ class TestConsumptionPopulatorBailouts:
             entry_id=_ENTRY_ID,
         )
 
-        assert populated is False
+        assert populated.ok is False
 
 
 class TestDetectIntervalMinutes:

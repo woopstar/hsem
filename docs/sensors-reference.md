@@ -937,6 +937,8 @@ input-completeness report. Example structure:
   "is_complete": false,
   "load_forecast_ready": false,
   "load_forecast_reason": "zero_forecast_with_live_demand",
+  "load_forecast_missing_hours": [],
+  "load_forecast_estimated_hours": [],
   "horizon_has_tomorrow": true,
   "horizon_days": 2,
   "tomorrow_price_missing_hours": [],
@@ -953,3 +955,11 @@ future value is missing, non-finite, or negative. A complete zero profile is
 valid while live house demand is at most 50 W; above that threshold the reason
 is `zero_forecast_with_live_demand`. `is_complete` requires both load readiness
 and complete price/PV inputs.
+
+`load_forecast_missing_hours` lists the hour blocks whose rolling-average
+sensors have no stored sample yet. Up to 4 such hours are planned with a
+conservative estimate (the larger of the nearest measured hours on each side)
+and listed in `load_forecast_estimated_hours`. `is_complete` stays false
+while any hour is estimated. With more missing hours the forecast is not
+ready (`source_unavailable`) and the missing hours are still listed
+(issue #1110).

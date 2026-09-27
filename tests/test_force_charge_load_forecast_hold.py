@@ -31,6 +31,9 @@ from custom_components.hsem.coordinator_helpers import (
     apply_load_forecast_hold,
     live_demand_contradicts_zero_profile,
 )
+from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
+    ConsumptionPopulation,
+)
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planned_slot import PlannedSlot
@@ -56,6 +59,7 @@ _CHARGER_W = _CHARGER_KW * 1000.0
 _CHARGER_WHOLE_AMP_W = 15 * 3 * 230.0
 _PLANNER_MODULE = "custom_components.hsem.coordinator_planner_phase"
 _CYCLE_MODULE = "custom_components.hsem.coordinator_cycle"
+_LOAD_FORECAST_MODULE = "custom_components.hsem.coordinator_load_forecast"
 
 # 3 x 25 A x 230 V = 17.25 kW fuse budget, comfortably above one 11 kW charger.
 _EV_OPTIONS: dict[str, Any] = {
@@ -340,8 +344,8 @@ class TestNonPlannerCycleHold:
         with (
             _patch_all_ha_helpers(),
             patch(
-                f"{_CYCLE_MODULE}.populate_avg_house_consumption_from_snapshot",
-                return_value=False,
+                f"{_LOAD_FORECAST_MODULE}.populate_avg_house_consumption_from_snapshot",
+                return_value=ConsumptionPopulation(ok=False),
             ),
         ):
             await coordinator._async_run_update_cycle()

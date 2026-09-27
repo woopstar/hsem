@@ -27,6 +27,9 @@ import pytest
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.coordinator_data import CoordinatorData
 from custom_components.hsem.coordinator_load_hold import EV_ONLY_FALLBACK_CONSTRAINT
+from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
+    ConsumptionPopulation,
+)
 from custom_components.hsem.planner.ev_fallback import (
     EV_ONLY_FALLBACK_MODE,
     EvFallbackSlot,
@@ -48,6 +51,7 @@ _SLOT = timedelta(minutes=15)
 _START = datetime(2026, 9, 26, 20, 0, tzinfo=UTC)
 _NOW = _START + timedelta(minutes=5)
 _CYCLE_MODULE = "custom_components.hsem.coordinator_cycle"
+_LOAD_FORECAST_MODULE = "custom_components.hsem.coordinator_load_forecast"
 _WAIT = Recommendations.BatteriesWaitMode.value
 _EV = Recommendations.EVSmartCharging.value
 
@@ -267,8 +271,8 @@ async def _run_unready_cycle(
     with (
         _patch_all_ha_helpers(),
         patch(
-            f"{_CYCLE_MODULE}.populate_avg_house_consumption_from_snapshot",
-            return_value=False,
+            f"{_LOAD_FORECAST_MODULE}.populate_avg_house_consumption_from_snapshot",
+            return_value=ConsumptionPopulation(ok=False),
         ),
         patch(
             f"{_CYCLE_MODULE}.populate_price_and_solcast_from_snapshot",

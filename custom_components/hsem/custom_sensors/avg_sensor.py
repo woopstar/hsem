@@ -14,13 +14,14 @@ volatile ``last_updated`` timestamp and the ``measurements`` dict out of the
 recorder.  Restart restore is unaffected — ``RestoreEntity`` persists the
 full state object independently of ``_unrecorded_attributes``.
 
-Unobserved blocks (issue #1101): a sample is only stored when the block was
-observed end to end — the tracked utility meter's ``last_reset`` matches the
-block start *and* this Home Assistant session was already running at the
-block start.  After downtime the meter fires its missed daily reset on
-restart and reads ``0``; a block interrupted by downtime holds only part of
-the hour.  Neither is a measurement, so both are skipped and the previous
-valid days remain in the window.
+Unobserved blocks (issues #1101 and #1110): a sample is only stored when the
+block was observed end to end. The tracked utility meter's ``last_reset`` must
+match the block start, *and* Home Assistant must have been down for no more
+than the tolerance inside the block (see :mod:`.block_observation`). After
+downtime the meter fires its missed daily reset on restart and reads ``0``,
+and a block interrupted by real downtime holds only part of the hour. Neither
+is a measurement, so both are skipped and the previous valid days remain in
+the window. A quick restart or reload keeps the block.
 """
 
 from __future__ import annotations
@@ -46,6 +47,15 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.restore_state import RestoreEntity
 
+from custom_components.hsem.custom_sensors.block_observation import (
+    BLOCK_RESET_TOLERANCE,
+    AvgSensorExtraData,
+    Interval,
+    block_observed,
+    prune_unobserved,
+    restore_unobserved,
+    unobserved_overlap,
+)
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.conversion import convert_to_float
@@ -55,11 +65,14 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 #: Tolerance for deciding whether a published kWh value actually changed.
 _CHANGE_EPSILON = 1e-9
 
-#: Maximum drift between an hour block's start and the tracked utility
-#: meter's ``last_reset`` for the reading to count as an observation of the
-#: whole block.  Absorbs reset-callback latency and a quick restart across
-#: the block boundary (issue #1101).
-_BLOCK_RESET_TOLERANCE = timedelta(minutes=5)
+#: Re-exported for existing callers; see :mod:`.block_observation`.
+_BLOCK_RESET_TOLERANCE = BLOCK_RESET_TOLERANCE
+
+#: Module-level alias so tests can patch the observation guard in one place.
+_block_observed = block_observed
+
+#: Length of every hour block.
+_BLOCK_LENGTH = timedelta(hours=1)
 
 
 def _meter_last_reset(hass: HomeAssistant, entity_id: str | None) -> Any:
@@ -70,54 +83,6 @@ def _meter_last_reset(hass: HomeAssistant, entity_id: str | None) -> Any:
     if state is None:
         return None
     return state.attributes.get(ATTR_LAST_RESET)
-
-
-def _block_observed(
-    last_reset: Any,
-    session_started_at: datetime | None,
-    block_start: datetime,
-) -> bool:
-    """Return True when the given hour block was observed end to end.
-
-    Two conditions must hold (issue #1101):
-
-    - **The meter reset at the block start.**  The daily utility meter resets
-      at ``hour_start``; its reading covers the block only when that reset
-      happened at ``block_start`` (within :data:`_BLOCK_RESET_TOLERANCE`).  A
-      later reset is a missed reset fired on restart (unobserved or partial
-      block); an earlier one means the value belongs to a previous day.
-    - **Home Assistant was running since the block start.**  A session that
-      started after ``block_start`` cannot have seen the whole block — the
-      meter may have reset on time and then stopped counting when HA went
-      down mid-block.  A fully observed block from an earlier session was
-      already stored by that session's post-block ticks.
-
-    A missing or unparseable ``last_reset`` or an unknown session start
-    cannot be verified and is rejected (fail-closed, missing ≠ zero).
-
-    Args:
-        last_reset: Raw ``last_reset`` attribute (ISO string or datetime).
-        session_started_at: When this sensor started its current HA session.
-        block_start: Timezone-aware start of the block being sampled.
-
-    Returns:
-        True when the reading may be stored as that block's sample.
-    """
-    if session_started_at is None or (
-        dt_util.as_utc(session_started_at)
-        > dt_util.as_utc(block_start) + _BLOCK_RESET_TOLERANCE
-    ):
-        return False
-    if isinstance(last_reset, datetime):
-        parsed: datetime | None = last_reset
-    elif isinstance(last_reset, str):
-        parsed = dt_util.parse_datetime(last_reset)
-    else:
-        return False
-    if parsed is None:
-        return False
-    drift = abs(dt_util.as_utc(parsed) - dt_util.as_utc(block_start))
-    return drift <= _BLOCK_RESET_TOLERANCE
 
 
 def _float_changed(previous: float | None, current: float | None) -> bool:
@@ -198,9 +163,22 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         # Set once the first state has been written this session; later
         # writes happen only when the published values change.
         self._state_written = False
-        # When this HA session started tracking; blocks that began before it
-        # were not (fully) observed and are never stored (issue #1101).
-        self._session_started_at: datetime | None = None
+        # Intervals during which Home Assistant was not running this sensor.
+        # ``None`` until the sensor joins HA; blocks overlapping these by more
+        # than the tolerance are never stored (issues #1101 and #1110).
+        self._unobserved: list[Interval] | None = None
+
+    @property
+    @override
+    def extra_restore_state_data(self) -> AvgSensorExtraData:
+        """Persist the heartbeat and unobserved intervals (issue #1110).
+
+        Read by Home Assistant on every restore-state dump (stop, entity
+        removal, and every 15 minutes), so ``last_alive`` is when this
+        sensor was last known to be running.
+        """
+        now = dt_util.utcnow()
+        return AvgSensorExtraData(now, prune_unobserved(self._unobserved or [], now))
 
     @property
     @override
@@ -278,7 +256,11 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
     @override
     async def async_added_to_hass(self) -> None:
         """Handle when sensor is added to Home Assistant."""
-        self._session_started_at = dt_util.now()
+        session_started_at = dt_util.now()
+        extra = await self.async_get_last_extra_data()
+        self._unobserved = restore_unobserved(
+            extra.as_dict() if extra is not None else None, session_started_at
+        )
 
         # Get the last state of the sensor
         old_state = await self.async_get_last_state()
@@ -411,10 +393,10 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         midnight, so any time after the block started counts as complete.
 
         A complete block is additionally only stored when it was observed end
-        to end (see :func:`_block_observed`, issue #1101).  Otherwise — e.g.
-        Home Assistant was down and the missed reset fired on restart,
-        publishing ``0`` — the sample is skipped without touching existing
-        measurements.
+        to end (see :func:`.block_observation.block_observed`, issues #1101
+        and #1110). Otherwise — e.g. Home Assistant was down and the missed
+        reset fired on restart, publishing ``0`` — the sample is skipped
+        without touching existing measurements.
         """
         now = dt_util.now()
 
@@ -461,6 +443,7 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
                 block_start = datetime.combine(
                     measurement_date, time(hour=self._hour_start), tzinfo=now.tzinfo
                 )
+                block_end = dt_util.as_utc(block_start) + _BLOCK_LENGTH
                 last_reset = _meter_last_reset(self.hass, self._tracked_entity)
                 # A misconfigured tracked utility meter (e.g. net-consumption
                 # accounting) can report a negative or non-finite reading.
@@ -476,19 +459,25 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
                         value,
                     )
                 elif not _block_observed(
-                    last_reset, self._session_started_at, block_start
+                    last_reset, self._unobserved, block_start, block_end
                 ):
                     # Unobserved or partial block (issue #1101): storing it
                     # would publish HA downtime as a measured zero.
                     _LOGGER.debug(
                         "Skipping unobserved block sample for entity_id=%s on %s: "
-                        "value=%s last_reset=%s session_started_at=%s "
+                        "value=%s last_reset=%s unobserved_in_block=%s "
                         "block_start=%s",
                         self._tracked_entity,
                         measurement_date.isoformat(),
                         value,
                         last_reset,
-                        self._session_started_at,
+                        (
+                            None
+                            if self._unobserved is None
+                            else unobserved_overlap(
+                                self._unobserved, block_start, block_end
+                            )
+                        ),
                         block_start.isoformat(),
                     )
                 else:

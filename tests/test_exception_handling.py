@@ -721,7 +721,7 @@ class TestAvgSensorReadFailure:
         sensor.hass.states.get.return_value = MagicMock(
             attributes={"last_reset": "2024-06-15T14:00:00+00:00"}
         )
-        sensor._session_started_at = datetime(2024, 6, 15, 9, 0, tzinfo=UTC)
+        sensor._unobserved = []
         sensor._tracked_entity = "sensor.daily_kwh"
         sensor._measurements = {}
         sensor._average = 14

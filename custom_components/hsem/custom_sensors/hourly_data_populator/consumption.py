@@ -3,9 +3,19 @@
 Populates per-slot weighted average house consumption fields on
 :class:`HourlyRecommendation` slots from HA energy average sensors (async)
 or from a pre-collected :class:`StateSnapshot` (snapshot).
+
+Missing hour blocks (issue #1110): a block the average sensors have never
+stored a sample for is ``unavailable``. While the rolling window is young
+each hour has at most one sample, so a single lost block used to block the
+whole plan for a day. Up to :data:`MAX_ESTIMATED_LOAD_HOURS` such hours are
+now filled with a conservative estimate: per window, the larger value of the
+nearest measured hour on each side. It is never zero and never below a
+measured neighbour. More missing hours still fail closed.
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
@@ -19,6 +29,69 @@ from custom_components.hsem.utils.sensornames.energy import (
     get_energy_average_sensor_unique_id,
 )
 
+#: Maximum number of hour blocks without any stored sample that may be
+#: filled with a conservative neighbour estimate (issue #1110). Above this
+#: the profile is too thin to plan on and population fails closed.
+MAX_ESTIMATED_LOAD_HOURS = 4
+
+_WindowValues = tuple[float, float, float, float]
+
+
+@dataclass(frozen=True)
+class ConsumptionPopulation:
+    """Outcome of one house-consumption population pass.
+
+    Attributes:
+        ok: True when every slot received a load estimate.
+        missing_hours: Hours (0-23) whose average sensors reported no value.
+        estimated_hours: Missing hours that were filled with the neighbour
+            estimate. Empty when ``ok`` is False.
+    """
+
+    ok: bool
+    missing_hours: tuple[int, ...] = ()
+    estimated_hours: tuple[int, ...] = ()
+
+
+def estimate_missing_hours(
+    measured: dict[int, _WindowValues], missing: list[int]
+) -> dict[int, _WindowValues]:
+    """Fill missing hours with the per-window max of the nearest measured hours.
+
+    The day is treated as a circle, so hour 0 neighbours hour 23. Taking the
+    larger neighbour errs towards reserving battery energy for house load.
+
+    Args:
+        measured: Window values ``(1d, 3d, 7d, 14d)`` per measured hour.
+        missing: Hours to estimate.
+
+    Returns:
+        Estimated window values per missing hour, or an empty dict when no
+        hour was measured at all.
+    """
+    if not measured:
+        return {}
+    estimates: dict[int, _WindowValues] = {}
+    for hour in missing:
+        before = next(
+            measured[(hour - step) % 24]
+            for step in range(1, 25)
+            if (hour - step) % 24 in measured
+        )
+        after = next(
+            measured[(hour + step) % 24]
+            for step in range(1, 25)
+            if (hour + step) % 24 in measured
+        )
+        estimates[hour] = (
+            max(before[0], after[0]),
+            max(before[1], after[1]),
+            max(before[2], after[2]),
+            max(before[3], after[3]),
+        )
+    return estimates
+
+
 # ---------------------------------------------------------------------------
 # Snapshot-based average consumption population
 # ---------------------------------------------------------------------------
@@ -30,17 +103,21 @@ def populate_avg_house_consumption_from_snapshot(
     cfg: SensorConfig,
     energy_average_entity_id_cache: dict[str, str],
     entry_id: str,
-) -> bool:
+) -> ConsumptionPopulation:
     """Populate per-slot house consumption averages from a pre-collected snapshot.
 
     Synchronous — uses :attr:`StateSnapshot.energy_average_values` which was
     populated by :func:`~state_collector.async_collect_all_states`.
 
     The energy average sensors are HSEM's own entities.  When they are not yet
-    registered or not reporting state (e.g. during the very first coordinator
-    cycle) the function simply returns ``False``.  The caller **must not** treat
-    this as a ``missing_input_entities`` error — it is a transient condition
-    that resolves on the next cycle once the sensors are available.
+    registered (e.g. during the very first coordinator cycle) the function
+    fails closed.  The caller **must not** treat this as a
+    ``missing_input_entities`` error — it is a transient condition that
+    resolves on the next cycle once the sensors are available.
+
+    Every hour is inspected; an hour whose sensors report no value is
+    collected in ``missing_hours``.  Up to :data:`MAX_ESTIMATED_LOAD_HOURS`
+    missing hours are filled via :func:`estimate_missing_hours` (issue #1110).
 
     Args:
         recommendations: Mutable list of recommendation slots to update.
@@ -50,9 +127,11 @@ def populate_avg_house_consumption_from_snapshot(
             populated during snapshot collection.
 
     Returns:
-        ``True`` when all 24 hours were populated.  ``False`` when one or more
-        sensors are not yet ready — the caller should retry on the next cycle
-        **without** flagging ``missing_input_entities``.
+        A :class:`ConsumptionPopulation`.  ``ok`` is False when a weight is
+        unset or all weights are zero, an average sensor is not registered,
+        or more than :data:`MAX_ESTIMATED_LOAD_HOURS` hours have no value —
+        the caller should retry on the next cycle **without** flagging
+        ``missing_input_entities``.
     """
     w1 = cfg.house_consumption_energy_weight_1d
     w3 = cfg.house_consumption_energy_weight_3d
@@ -66,10 +145,16 @@ def populate_avg_house_consumption_from_snapshot(
                 "[avg] snapshot populator: weight %s is None, returning False",
                 _name,
             )
-            return False
+            return ConsumptionPopulation(ok=False)
 
     scale_to_interval = 60.0 / cfg.recommendation_interval_minutes
     w_total_config = int(w1) + int(w3) + int(w7) + int(w14)
+    if w_total_config == 0:
+        log_planner("debug", "[avg] all weights sum to 0, returning False")
+        return ConsumptionPopulation(ok=False)
+
+    measured: dict[int, _WindowValues] = {}
+    missing: list[int] = []
 
     for h in range(24):
         hour_end = (h + 1) % 24
@@ -116,7 +201,7 @@ def populate_avg_house_consumption_from_snapshot(
                 eid_7d,
                 eid_14d,
             )
-            return False
+            return ConsumptionPopulation(ok=False)
 
         v1 = snapshot.energy_average_values.get(eid_1d)
         v3 = snapshot.energy_average_values.get(eid_3d)
@@ -133,11 +218,11 @@ def populate_avg_house_consumption_from_snapshot(
             v14,
         )
 
-        if None in (v1, v3, v7, v14):
+        if v1 is None or v3 is None or v7 is None or v14 is None:
             log_planner(
                 "debug",
                 "[avg] hour %d: values missing in snapshot for eids "
-                "(1d=%s=%s, 3d=%s=%s, 7d=%s=%s, 14d=%s=%s), returning False",
+                "(1d=%s=%s, 3d=%s=%s, 7d=%s=%s, 14d=%s=%s)",
                 h,
                 eid_1d,
                 v1,
@@ -148,21 +233,33 @@ def populate_avg_house_consumption_from_snapshot(
                 eid_14d,
                 v14,
             )
-            return False
+            missing.append(h)
+            continue
 
-        # Narrow types for pyright: the None check above guarantees all
-        # values are float at this point.
-        assert v1 is not None and v3 is not None and v7 is not None and v14 is not None
+        measured[h] = (v1, v3, v7, v14)
 
-        # At this point all values are float
-        if w_total_config == 0:
-            log_planner(
-                "debug",
-                "[avg] hour %d: all weights sum to 0, returning False",
-                h,
-            )
-            return False
+    if len(missing) > MAX_ESTIMATED_LOAD_HOURS:
+        log_planner(
+            "debug",
+            "[avg] %d hour(s) without values (%s) exceed the estimate limit %d, "
+            "returning False",
+            len(missing),
+            missing,
+            MAX_ESTIMATED_LOAD_HOURS,
+        )
+        return ConsumptionPopulation(ok=False, missing_hours=tuple(missing))
 
+    estimates = estimate_missing_hours(measured, missing)
+    for h, values in estimates.items():
+        log_planner(
+            "debug",
+            "[avg] hour %d: no stored sample, estimated from neighbours "
+            "(1d=%s, 3d=%s, 7d=%s, 14d=%s)",
+            h,
+            *values,
+        )
+
+    for h, (v1, v3, v7, v14) in sorted({**measured, **estimates}.items()):
         avg, _ = weighted_avg_consumption(
             v1,
             v3,
@@ -192,9 +289,13 @@ def populate_avg_house_consumption_from_snapshot(
 
     log_planner(
         "debug",
-        "[avg] snapshot populator: returning True after processing 24 hours",
+        "[avg] snapshot populator: returning True after processing 24 hours "
+        "(estimated=%s)",
+        missing,
     )
-    return True
+    return ConsumptionPopulation(
+        ok=True, missing_hours=tuple(missing), estimated_hours=tuple(missing)
+    )
 
 
 # _compute_weighted_average has been removed. The canonical implementation lives
