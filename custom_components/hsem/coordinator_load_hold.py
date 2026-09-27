@@ -39,6 +39,10 @@ from custom_components.hsem.planner.ev_planner_models import (
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.datetime_utils import slot_contains, utc_key
 from custom_components.hsem.utils.ev_accounting import normalized_baseline_includes_ev
+from custom_components.hsem.utils.phase_power import (
+    charger_rated_power_w,
+    normalize_ev_phase_topology,
+)
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import slot_duration_hours
 
@@ -159,6 +163,7 @@ class CoordinatorLoadHoldMixin(CoordinatorSharedState):
             deadline = live.ev_second_planned_load_deadline
             capacity = cfg.ev_second_planned_load_battery_capacity_kwh
             power = cfg.ev_second_planned_load_charger_power_kw
+            topology = cfg.ev_second_planned_load_charger_phase_topology
             efficiency = cfg.ev_second_planned_load_charger_efficiency_pct
             min_power = cfg.ev_second_planned_load_charger_min_power_w
         else:
@@ -171,6 +176,7 @@ class CoordinatorLoadHoldMixin(CoordinatorSharedState):
             deadline = live.ev_planned_load_deadline
             capacity = cfg.ev_planned_load_battery_capacity_kwh
             power = cfg.ev_planned_load_charger_power_kw
+            topology = cfg.ev_planned_load_charger_phase_topology
             efficiency = cfg.ev_planned_load_charger_efficiency_pct
             min_power = cfg.ev_planned_load_charger_min_power_w
         if not enabled:
@@ -185,7 +191,12 @@ class CoordinatorLoadHoldMixin(CoordinatorSharedState):
             current_soc_pct=soc,
             target_soc_pct=convert_to_float(target) or 80.0,
             battery_capacity_kwh=convert_to_float(capacity) or 0.0,
-            charger_power_kw=convert_to_float(power) or 0.0,
+            # Whole-amp nameplate, never raw kW (issue #1112).
+            charger_power_kw=charger_rated_power_w(
+                max(convert_to_float(power) or 0.0, 0.0) * 1000.0,
+                normalize_ev_phase_topology(topology),
+            )
+            / 1000.0,
             charger_efficiency_pct=convert_to_float(efficiency) or 100.0,
             charger_min_power_w=convert_to_float(min_power) or 1380.0,
             deadline=deadline,

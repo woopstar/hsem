@@ -32,6 +32,7 @@ from custom_components.hsem.utils.phase_power import (
     EV_TOPOLOGY_THREE_PHASE_SWITCHABLE,
     PHASE_COUNT,
     charger_power_to_current_a,
+    charger_rated_power_w,
     normalize_ev_phase_topology,
     switchable_command_phase_count,
 )
@@ -301,6 +302,21 @@ def ocpp_management_flags(
 # ---------------------------------------------------------------------------
 
 
+def _configured_charger_rated_power_w(config_entry: ConfigEntry, prefix: str) -> float:
+    """Return one charger's whole-amp nameplate power from its config.
+
+    ``prefix`` is ``hsem_ev_planned_load`` or ``hsem_ev_second_planned_load``.
+    """
+    power_kw = max(
+        float(get_config_value(config_entry, f"{prefix}_charger_power_kw") or 0.0),
+        0.0,
+    )
+    topology = normalize_ev_phase_topology(
+        get_config_value(config_entry, f"{prefix}_charger_phase_topology")
+    )
+    return charger_rated_power_w(power_kw * 1000.0, topology)
+
+
 def apply_current_ev_power_override(
     *,
     config_entry: ConfigEntry,
@@ -332,23 +348,11 @@ def apply_current_ev_power_override(
     old_planned_ev_kwh = max(float(slot.ev_planned_load_kwh), 0.0)
     primary_w = max(float(slot.ev_charger_calculated_power), 0.0)
     second_w = max(float(slot.ev_second_charger_calculated_power), 0.0)
-    primary_max_w = max(
-        float(
-            get_config_value(config_entry, "hsem_ev_planned_load_charger_power_kw")
-            or 0.0
-        )
-        * 1000.0,
-        0.0,
+    primary_max_w = _configured_charger_rated_power_w(
+        config_entry, "hsem_ev_planned_load"
     )
-    second_max_w = max(
-        float(
-            get_config_value(
-                config_entry, "hsem_ev_second_planned_load_charger_power_kw"
-            )
-            or 0.0
-        )
-        * 1000.0,
-        0.0,
+    second_max_w = _configured_charger_rated_power_w(
+        config_entry, "hsem_ev_second_planned_load"
     )
     if live is not None:
         if override_primary and live.ev.is_connected is False:

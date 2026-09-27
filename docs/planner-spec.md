@@ -3000,7 +3000,7 @@ interval.
 The hold also clears the planned EV command, but an active EV force-charge-now
 override is applied _after_ it, both inside the planner phase and on the
 non-planner hold path (issue #1103). The forced slot then carries the charger's
-fuse-limited maximum with coherent EV load, grid-import, and cost accounting,
+fuse-limited whole-amp nameplate (issue #1112) with coherent EV load, grid-import, and cost accounting,
 and is labelled `ev_smart_charging`. Primary-battery charge and discharge stay
 zero. The issue #900 disconnect auto-reset runs first on both paths.
 
@@ -3807,6 +3807,13 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
   than the horizon cap, `plan.data_quality["deadline_clamped"] is True`
   and `plan.data_quality["effective_deadline"]` holds the ISO-format clamp.
 - Partial slot: current slot load ≤ `charger_power_kw × remaining_minutes / 60`.
+- Charger nameplate (issue #1112): every EV command ceiling — MILP
+  `EVConfig`, the heuristic `EVChargingPlan.charger_power_kw`, the EV-only
+  fallback input, and force-charge-now — is
+  `charger_rated_power_w(configured_kw × 1000, topology)`: the configured
+  power snapped to its whole-amp nameplate (three-phase basis for
+  `three_phase_switchable`). Never raw `kW × 1000`. 11.0 kW balanced
+  three-phase is 16 A / 11 040 W, and survives whole-amp flooring unchanged.
 - When EV consumes all net surplus, home battery `batteries_charged == 0.0` in that slot.
 - `winner.cost == final_output.cost` still holds when EV load is active (no post-selection mutation).
 - Both `ev_charging_plan` and `ev_second_charging_plan` on `PlannerOutput` are `None` when disabled.

@@ -12,6 +12,10 @@ from custom_components.hsem.planner.ev_planner import (
 )
 from custom_components.hsem.utils.datetime_utils import as_tz, utc_key
 from custom_components.hsem.utils.logger import log_planner
+from custom_components.hsem.utils.phase_power import (
+    charger_rated_power_w,
+    normalize_ev_phase_topology,
+)
 
 
 def _compute_ev_charger_power(
@@ -230,10 +234,24 @@ def _build_and_inject_for_ev(
     combined_ev_raw_load: list[float],
     combined_ev_injected_load: list[float],
     warnings: list[str],
+    phase_topology: str | None = None,
 ) -> EVChargingPlan | None:
-    """Build an EV charging plan and accumulate its loads."""
+    """Build an EV charging plan and accumulate its loads.
+
+    ``pwr_kw`` is snapped to the charger's whole-amp nameplate for
+    ``phase_topology`` (issue #1112), the same envelope the MILP uses, so the
+    per-slot command cap in :func:`_compute_ev_charger_power` is never one
+    amp below the charger's real rating.
+    """
     if not enabled:
         return None
+    pwr_kw = (
+        charger_rated_power_w(
+            max(float(pwr_kw), 0.0) * 1000.0,
+            normalize_ev_phase_topology(phase_topology),
+        )
+        / 1000.0
+    )
     log_planner(
         "debug",
         "[core] _build_and_inject_for_ev  label=%s  connected=%s  smart=%s  "

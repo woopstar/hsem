@@ -30,6 +30,7 @@ from custom_components.hsem.coordinator_load_hold import EV_ONLY_FALLBACK_CONSTR
 from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
     ConsumptionPopulation,
 )
+from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.planner.ev_fallback import (
     EV_ONLY_FALLBACK_MODE,
     EvFallbackSlot,
@@ -90,6 +91,22 @@ def _inp(**overrides: Any) -> EVPlannerInput:
 
 def _selected_starts(result: Any) -> list[datetime]:
     return [s.start for s in result.plan.charging_slots]
+
+
+@pytest.mark.parametrize("is_second", [False, True])
+def test_fallback_input_uses_whole_amp_nameplate(is_second: bool) -> None:
+    """The fallback caps at 16 A / 11.04 kW, not a raw 11.0 kW (issue #1112)."""
+    coordinator = make_real_coordinator()
+    cfg = coordinator._cfg
+    prefix = "ev_second_planned_load" if is_second else "ev_planned_load"
+    setattr(cfg, f"{prefix}_enabled", True)
+    setattr(cfg, f"{prefix}_charger_power_kw", 11.0)
+    setattr(cfg, f"{prefix}_charger_phase_topology", "three_phase_balanced")
+
+    inp = coordinator._fallback_input(_NOW, LiveState(), is_second=is_second)
+
+    assert inp is not None
+    assert inp.charger_power_kw == pytest.approx(11.04)
 
 
 class TestFallbackPlan:
@@ -406,8 +423,9 @@ class TestHoldPathFallback:
 
         current = published[-1].hourly_recommendation
         assert current is not None
-        assert current.ev_charger_calculated_power == pytest.approx(10350.0)
-        assert _target_kw(primary) == pytest.approx(10.35)
+        # 11 kW three-phase is the 16 A nameplate, not 15 A (issue #1112).
+        assert current.ev_charger_calculated_power == pytest.approx(11040.0)
+        assert _target_kw(primary) == pytest.approx(11.04)
         assert current.batteries_charged_kwh == pytest.approx(0.0)
 
     @pytest.mark.asyncio
