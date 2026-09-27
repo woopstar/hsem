@@ -2,6 +2,12 @@
 
 Defines the three inverter operating modes that HSEM can switch between, plus
 the excess-PV routing options HSEM writes alongside them.
+
+``WorkingModes`` values are HSEM's canonical *intents* (the direct-LUNA option
+strings).  EMMA-managed installations expose the same modes under different
+select option values; :func:`resolve_working_mode_option` maps an intent to the
+value a given select entity supports, and :func:`canonical_working_mode` maps a
+live option back to its intent.
 """
 
 from collections.abc import Iterable
@@ -54,6 +60,26 @@ def resolve_working_mode_option(mode: str, options: Iterable[str] | None) -> str
             if option in supported
         ),
         None,
+    )
+
+
+def canonical_working_mode(option: str | None) -> str | None:
+    """Map a live select option (LUNA or EMMA) back to its ``WorkingModes`` value.
+
+    Use this before comparing a live working-mode state against a
+    ``WorkingModes`` intent, so EMMA's ``time_of_use`` is recognised as
+    ``WorkingModes.TimeOfUse``.  Unknown options (e.g. ``adaptive``) are
+    returned unchanged so they never compare equal to an HSEM intent.
+    """
+    if option is None:
+        return None
+    return next(
+        (
+            mode
+            for mode, aliases in _WORKING_MODE_OPTION_ALIASES.items()
+            if option in aliases
+        ),
+        option,
     )
 
 

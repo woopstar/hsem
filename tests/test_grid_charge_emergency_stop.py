@@ -133,6 +133,17 @@ class TestPrimaryGridChargeIsKnownDisarmed:
         live.huawei_batteries_working_mode = WorkingModes.MaximizeSelfConsumption.value
         assert primary_grid_charge_is_known_disarmed(live) is True
 
+    def test_emma_time_of_use_is_not_mistaken_for_disarmed(self):
+        """EMMA reports TOU as ``time_of_use``; an armed charge stays armed."""
+        live = _armed_live()
+        live.huawei_batteries_working_mode = "time_of_use"
+        assert primary_grid_charge_is_known_disarmed(live) is False
+
+    def test_emma_self_consumption_is_disarmed(self):
+        live = _armed_live()
+        live.huawei_batteries_working_mode = "maximum_self_consumption"
+        assert primary_grid_charge_is_known_disarmed(live) is True
+
     def test_tou_periods_not_matching_force_charge_is_disarmed(self):
         live = _armed_live()
         live.tou_periods.periods = ["06:00-09:00/1234567/+"]

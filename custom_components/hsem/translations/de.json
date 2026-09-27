@@ -252,7 +252,7 @@
           "hsem_huawei_solar_device_id_inverter_1": "Wähle dein primäres Huawei-Wechselrichtergerät.",
           "hsem_huawei_solar_device_id_inverter_2": "Wähle dein sekundäres Huawei-Wechselrichtergerät, falls zutreffend.",
           "hsem_huawei_solar_inverter_active_power_control": "Wähle den Sensor, der die Wirkleistungsabgabe deines Huawei-Wechselrichters steuert.",
-          "hsem_huawei_solar_device_id_tou_controller": "Optionaler Controller, dem die konfigurierten TOU-Zeiträume gehören, z. B. EMMA. Leer lassen, um TOU-Zeiträume auf die konfigurierten Batteriegeräte zu schreiben."
+          "hsem_huawei_solar_device_id_tou_controller": "Wähle dein EMMA-Gerät, wenn eine EMMA deine Batterien steuert. HSEM sendet die TOU-Zeiträume dann an die EMMA statt an die Batteriegeräte; wähle oben außerdem die EMMA-Entitäten für Arbeitsmodus und TOU-Zeiträume. Lass das Feld leer bei direkter Steuerung von LUNA2000-Batterien."
         },
         "description": "Konfiguriere den Arbeitsmodus für Huawei-Solarbatterien.",
         "title": "Huawei Solar-Sensoren"
@@ -726,7 +726,7 @@
           "hsem_huawei_solar_device_id_inverter_1": "Wähle dein primäres Huawei-Wechselrichtergerät.",
           "hsem_huawei_solar_device_id_inverter_2": "Wähle dein sekundäres Huawei-Wechselrichtergerät, falls zutreffend.",
           "hsem_huawei_solar_inverter_active_power_control": "Wähle den Sensor, der die Wirkleistungsabgabe deines Huawei-Wechselrichters steuert.",
-          "hsem_huawei_solar_device_id_tou_controller": "Optionaler Controller, dem die konfigurierten TOU-Zeiträume gehören, z. B. EMMA. Leer lassen, um TOU-Zeiträume auf die konfigurierten Batteriegeräte zu schreiben."
+          "hsem_huawei_solar_device_id_tou_controller": "Wähle dein EMMA-Gerät, wenn eine EMMA deine Batterien steuert. HSEM sendet die TOU-Zeiträume dann an die EMMA statt an die Batteriegeräte; wähle oben außerdem die EMMA-Entitäten für Arbeitsmodus und TOU-Zeiträume. Lass das Feld leer bei direkter Steuerung von LUNA2000-Batterien."
         },
         "description": "Konfiguriere den Arbeitsmodus für Huawei-Solarbatterien.",
         "title": "Huawei Solar-Sensoren"

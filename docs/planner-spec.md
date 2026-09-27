@@ -2758,7 +2758,9 @@ downward-only exception to that block:
    live telemetry does not already prove the charge is stopped
    (`primary_grid_charge_is_known_disarmed()`: a verified cap ≤ 0 W, a
    working mode other than `TimeOfUse`, or TOU periods that no longer match
-   the force-charge schedule).
+   the force-charge schedule). The live working mode is canonicalised with
+   `canonical_working_mode()` first, so an EMMA-managed system reporting
+   `time_of_use` is still recognised as TOU (not as disarmed).
 3. **The write.** `async_emergency_disable_grid_charge()` writes exactly
    `0` to `hsem_huawei_solar_batteries_grid_charge_maximum_power` via the
    same write-and-verify primitive as every other applier write. It never

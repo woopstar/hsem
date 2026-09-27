@@ -89,6 +89,30 @@ def _read_select_state(
     return str(state.state)
 
 
+def _read_select_options(
+    sensor: Any, entity_id: str | None
+) -> list[str] | None:  # NOSONAR -- HA internal type; circular import risk
+    """Read the ``options`` attribute advertised by a select entity.
+
+    Args:
+        sensor: HSEM sensor instance with a ``hass`` attribute.
+        entity_id: HA entity ID to read.
+
+    Returns:
+        The advertised option strings, or ``None`` when the entity is missing
+        or does not expose a well-formed list of string options.
+    """
+    if not entity_id:
+        return None
+    state = sensor.hass.states.get(entity_id)
+    raw_options = state.attributes.get("options") if state is not None else None
+    if not isinstance(raw_options, list | tuple) or not all(
+        isinstance(option, str) for option in raw_options
+    ):
+        return None
+    return list(raw_options)
+
+
 def _parse_power_control_pct(state: str | None) -> int | None:
     """Parse the inverter active power control state string into a numeric value.
 

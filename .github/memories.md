@@ -970,6 +970,27 @@ When adding a new sensor/entity from the inverter:
 Never hardcode entity IDs — always use `sensornames.py` constants.
 Always check `docs/huawei_entities.md` before looking elsewhere.
 
+### LUNA2000 vs. EMMA working-mode options (PR #1098, related #408)
+
+- `WorkingModes` values are HSEM _intents_ (the LUNA2000 option strings).
+  EMMA's select uses `time_of_use` / `maximum_self_consumption` instead.
+- **Writes:** resolve the intent against the configured select's advertised
+  `options` with `utils/workingmodes.py::resolve_working_mode_option()`
+  (options read via `applier_state_readers._read_select_options()`). No
+  matching option → a `FAILED` `ApplyResult` is recorded (surfaced by the
+  applier status sensor), never a silent skip.
+- **Comparisons:** never compare `live.huawei_batteries_working_mode` to a
+  `WorkingModes` value directly — wrap it in `canonical_working_mode()`
+  first (applier idempotency guard and
+  `primary_grid_charge_is_known_disarmed()` both do). A raw comparison would
+  treat EMMA's `time_of_use` as non-TOU.
+- **TOU routing:** `applier_caps._tou_device_ids()` — when
+  `hsem_huawei_solar_device_id_tou_controller` (EMMA) is set, TOU periods go
+  only to that device (upstream `set_tou_periods` rejects battery devices
+  when an EMMA exists); otherwise the legacy battery-device routing is kept.
+- Forcible charge/discharge still targets battery devices — upstream
+  `huawei_solar` keeps those services on the battery schema even with EMMA.
+
 ---
 
 ## Testing Rules

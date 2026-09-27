@@ -170,12 +170,13 @@ class TestHuaweiSolarValidator:
             "number.missing_discharge_power"
         )
         user_input["hsem_huawei_solar_device_id_batteries_2"] = "missing_battery"
+        user_input["hsem_huawei_solar_device_id_tou_controller"] = "missing_emma"
 
         async def entity_exists(_hass: Any, entity_id: str) -> bool:
             return entity_id != "number.missing_discharge_power"
 
         async def device_exists(_hass: Any, device_id: str) -> bool:
-            return device_id != "missing_battery"
+            return device_id not in {"missing_battery", "missing_emma"}
 
         with (
             patch(f"{_CONFIG_VALIDATOR_MODULE}.async_entity_exists", entity_exists),
@@ -188,6 +189,7 @@ class TestHuaweiSolarValidator:
                 "entity_not_found"
             ),
             "hsem_huawei_solar_device_id_batteries_2": "device_not_found",
+            "hsem_huawei_solar_device_id_tou_controller": "device_not_found",
         }
 
     @pytest.mark.asyncio
