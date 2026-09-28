@@ -19,6 +19,7 @@ from custom_components.hsem.coordinator_helpers import ocpp_charge_target
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import EVLiveState, LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
+from tests.phase_fixtures import watts
 
 SLOT_START = datetime(2026, 8, 30, 16, 30, tzinfo=UTC)
 SLOT_END = datetime(2026, 8, 30, 16, 45, tzinfo=UTC)
@@ -589,7 +590,7 @@ def test_active_one_to_three_phase_transition_keeps_one_phase_mode() -> None:
     harness._ev_last_command_w["ev"] = 1840.0
     live = _live(soc_pct=79.0)
     live.ev.power_w = 1840.0
-    live.grid_phase_power_w = (3000.0, 3200.0, 3400.0)
+    live.grid_phase_readings = watts(3000.0, 3200.0, 3400.0)
 
     published = _run(
         harness,
@@ -639,7 +640,7 @@ def test_inverse_phase_hold_yields_without_per_phase_safety_proof() -> None:
     harness._ev_last_command_w["ev"] = 1840.0
     live = _live(soc_pct=79.0)
     live.ev.power_w = 1840.0
-    live.grid_phase_power_w = (5900.0, 3200.0, 3400.0)
+    live.grid_phase_readings = watts(5900.0, 3200.0, 3400.0)
 
     assert _run(
         harness,
@@ -722,7 +723,7 @@ def test_free_current_slot_bypasses_inverse_hold_for_material_savings() -> None:
     harness._ev_last_command_w["ev"] = 1840.0
     live = _live(soc_pct=79.0)
     live.ev.power_w = 1840.0
-    live.grid_phase_power_w = (3000.0, 3200.0, 3400.0)
+    live.grid_phase_readings = watts(3000.0, 3200.0, 3400.0)
 
     assert _run(
         harness, now, _cfg_switchable(main_fuse_amps=25.0), live

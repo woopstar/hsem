@@ -219,6 +219,15 @@ def build_sensor_config(
             config_entry, "hsem_huawei_solar_power_meter_phase_c_active_power"
         )
     )
+    cfg.huawei_solar_power_meter_phase_a_voltage = _optional_entity(
+        get_config_value(config_entry, "hsem_huawei_solar_power_meter_phase_a_voltage")
+    )
+    cfg.huawei_solar_power_meter_phase_b_voltage = _optional_entity(
+        get_config_value(config_entry, "hsem_huawei_solar_power_meter_phase_b_voltage")
+    )
+    cfg.huawei_solar_power_meter_phase_c_voltage = _optional_entity(
+        get_config_value(config_entry, "hsem_huawei_solar_power_meter_phase_c_voltage")
+    )
 
     # Power meters
     cfg.house_consumption_power = get_config_value(

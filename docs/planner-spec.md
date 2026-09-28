@@ -1515,6 +1515,15 @@ max_grid_import_per_slot_kwh = main_fuse_amps * 230 * phases / 1000 * (interval_
 where `phases` is the electrical phase count (1 or 3, default 3).
 This assumes balanced load at 230 V phase-to-neutral per phase.
 
+This planning-time model stays in energy terms at a fixed 230 V, unit power
+factor (issue #1119): it plans against a _forecast_, not a measurement, so it
+is an approximation of the fuse current. At a lower real voltage or a power
+factor below 1 the same energy draws more current than the model assumes. The
+live checks in _Live phase-aware grid-charge safety limiter_ and the
+switchable phase-mode hold compare measured per-phase **current** against
+`main_fuse_amps` immediately before each hardware write, and are the
+authoritative guard.
+
 The diagnostic soft row is paired with a hard no-worsening row:
 
 ```text
@@ -2616,10 +2625,47 @@ guard and `apply_excess_export()` exactly as before.
 is a **runtime** correction layered on top of the MILP's planning-time
 phase-fuse constraint (`planner/milp/_phase_fuse.py`). The MILP uses a
 forecast at solve time; this limiter uses the newest live per-phase
-power-meter snapshot immediately before the Huawei grid-charge hardware
+meter snapshot immediately before the Huawei grid-charge hardware
 write, so an appliance load change since the plan was solved cannot push a
 phase over the main fuse rating. Huawei-only (no PowMr/secondary inverter
 in this repository).
+
+#### Live phase inputs are compared in amps (issue #1119)
+
+A main fuse trips on per-phase current, so the live checks work in amps.
+Each of the three phase fields
+(`hsem_huawei_solar_power_meter_phase_{a,b,c}_active_power`) may be a power
+sensor or a current sensor; `custom_sensors/phase_inputs.py` keeps each
+reading's unit family on `LiveState.grid_phase_readings` as a `PhaseReading`:
+
+| Declared unit                       | Reading              | Current used for the fuse check |
+| ----------------------------------- | -------------------- | ------------------------------- |
+| Power (`W`, `kW`, …)                | Signed W, import > 0 | `P / V_phase`                   |
+| Current (`A`, `mA`, …)              | A                    | `\|I\|` (always import)         |
+| Missing or anything else (`var`, …) | `None`               | — (fails closed)                |
+
+- **Current readings are magnitudes.** Home Assistant's `current` device
+  class has no sign convention, and a reversed CT would report import as
+  negative, so a current reading never earns export headroom. Only a signed
+  power reading does.
+- **Voltage.** `V_phase` is the live per-phase voltage from the optional
+  `hsem_huawei_solar_power_meter_phase_{a,b,c}_voltage` sensors
+  (`LiveState.grid_phase_voltage_v`) when it lies within 90–264 V (IEC 60038
+  nominal 100–240 V, ±10 %), otherwise the 230 V nominal
+  (`utils/phase_power.phase_voltage_v`). With no voltage sensor configured a
+  power reading is checked exactly as before #1119, so existing W
+  configurations are unchanged. Additional load being checked (battery AC
+  power, EV command) is converted at the same per-phase voltage.
+- **Fail closed.** A reading with a missing or unrecognised unit is
+  `None`, with a WARNING naming the entity and unit at most once per hour per
+  entity and unit (`PHASE_UNIT_WARNING_INTERVAL_S`). Before #1119 such a
+  reading was passed through as Watts, so a 16 A sensor was read as 16 W and
+  the guard was silently disabled.
+- **One shared helper.** Both live checks call
+  `utils/phase_power.phase_fuse_headroom_a()`, which returns each phase's
+  remaining current before `main_fuse_amps` (or `None` when any phase is
+  unusable), and `phase_headroom_power_w()` to turn that headroom back into
+  Watts at the same voltage. The limiter and the EV hold cannot diverge.
 
 Disabled by default (`cfg.phase_aware_charging_enabled = False`) — fully
 backward compatible. When disabled, or when the current recommendation is
@@ -2634,11 +2680,16 @@ desired_charge_power_w = min(
     batteries_charged_kwh * 1000 / slot_hours,
     live.huawei_batteries_max_charge_power_w,
 )
-base_phase_power_w[i] = measured_phase_power_w[i] - battery_actual_site_w / 3
-ac_headroom_w = 3 * max(min(fuse_limit_w - base_phase_power_w[i] for i in 0..2), 0)
+base_phase_current_a[i] = measured_phase_current_a[i] - (battery_actual_site_w / 3) / V[i]
+headroom_a[i] = main_fuse_amps - base_phase_current_a[i]
+ac_headroom_w = 3 * max(min(headroom_a[i] * V[i] for i in 0..2), 0)
 dc_limit_w = ac_headroom_w * charge_efficiency
 primary_charge_power_w = floor_to_100w(min(desired_charge_power_w, dc_limit_w))
 ```
+
+`measured_phase_current_a` and `V` follow the table above. With power
+readings and no voltage sensors (`V = 230`), this is algebraically identical
+to the pre-#1119 Watts formula.
 
 `battery_actual_site_w` converts the live signed battery
 charge/discharge-power reading (`STORAGE_CHARGE_DISCHARGE_POWER`; positive
@@ -2655,7 +2706,8 @@ slot is a grid-charge slot, and any of:
 
 - `main_fuse_phases != 3` or `main_fuse_amps <= 0` (not a valid
   three-phase supply)
-- any of the three live phase-power readings is missing or non-finite
+- any of the three live phase readings is missing, non-finite, or in a unit
+  that is neither power nor current
 - the live battery charge/discharge-power reading is missing or
   non-finite
 
@@ -2665,8 +2717,14 @@ slot is a grid-charge slot, and any of:
   behaviour — fully backward compatible.
 - The written command never exceeds the plan's own desired charge power
   for the slot.
-- The written command never causes `predicted_phase_power_w` to exceed
-  `main_fuse_amps * 230 V` on any phase (within the 100 W flooring step).
+- The written command never causes `predicted_phase_current_a` to exceed
+  `main_fuse_amps` on any phase (within the 100 W flooring step).
+- A current reading of `-I` yields exactly the same command as `+I`: an
+  unsigned current source never gains export headroom.
+- 16 A measured on every phase of a 35 A fuse leaves 19 A of headroom per
+  phase, never the ≈ 8 kW a Watts interpretation of "16" would give.
+- A power reading at a lower live voltage never yields a larger command
+  than the same reading at 230 V.
 - Removing the battery's own live contribution from the phase snapshot
   never reduces the computed headroom below what an idle battery at the
   same appliance load would receive.
@@ -3914,11 +3972,14 @@ The phase hold fails closed and the fresh plan wins when current mode or target
 need cannot be proven, the session is not actively charging, the retained
 command would exceed remaining target energy, or its lower delivery cannot be
 recovered by the accepted plan's executable future commands before the
-deadline. An inverse `1φ → 3φ` hold also requires complete live Huawei
-power-meter phase telemetry proving that the retained one-phase ceiling remains
-below the fuse; the collector reads these entities whenever an enabled
-switchable EV needs phase proof, independently of the battery phase-aware
-charging toggle. Aggregate headroom alone is insufficient because lower total
+deadline. An inverse `1φ → 3φ` hold also requires complete live per-phase
+telemetry proving that the retained one-phase ceiling remains below the fuse;
+the collector reads these entities whenever an enabled switchable EV needs
+phase proof, independently of the battery phase-aware charging toggle. The
+proof is in amps through the same `phase_fuse_headroom_a()` helper as the
+grid-charge limiter (issue #1119): the added one-phase current at each phase's
+voltage must fit every phase's headroom, and any unusable phase reading
+rejects the hold. Aggregate headroom alone is insufficient because lower total
 Watts can still overload one phase. The same material-cost bypass used by the amp deadband also
 applies, using the magnitude of the live-slot planned cost so zero and negative
 prices cannot trap a materially worse inverse hold. Any crossing rejected by

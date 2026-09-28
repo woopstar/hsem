@@ -364,7 +364,8 @@ class HSEMWorkingModeSensor(
             "batteries_excess_export_discharge_buffer": cfg.batteries_excess_export_discharge_buffer,
             "main_fuse_amps": cfg.main_fuse_amps,
             "phase_aware_charging_enabled": cfg.phase_aware_charging_enabled,
-            "grid_phase_power_w": live.grid_phase_power_w,
+            "grid_phase_readings": live.grid_phase_readings,
+            "grid_phase_voltage_v": live.grid_phase_voltage_v,
             "huawei_batteries_grid_charge_max_power_w": live.huawei_batteries_grid_charge_max_power_w,
             "primary_grid_charge_owned": self._primary_grid_charge_owned,
         }

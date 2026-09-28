@@ -18,6 +18,7 @@ import pytest
 from homeassistant.const import UnitOfEnergy, UnitOfPower
 
 from custom_components.hsem.utils.ha_helpers import (
+    entity_unit,
     normalize_entity_float,
     read_normalized_float,
 )
@@ -198,3 +199,21 @@ class TestReadNormalizedFloat:
         assert calls == [
             (("sensor.house", "float"), {"label": "house_consumption_power"})
         ]
+
+
+class TestEntityUnit:
+    """The declared unit lookup shared by every live-unit consumer."""
+
+    def test_declared_unit_is_returned(self) -> None:
+        assert entity_unit(MagicMock(hass=_hass("A")), "sensor.phase_a") == "A"
+
+    def test_undeclared_unit_is_none(self) -> None:
+        assert entity_unit(MagicMock(hass=_hass(None)), "sensor.phase_a") is None
+
+    def test_missing_entity_is_none(self) -> None:
+        hass = MagicMock()
+        hass.states.get.return_value = None
+        assert entity_unit(MagicMock(hass=hass), "sensor.phase_a") is None
+
+    def test_missing_hass_is_none(self) -> None:
+        assert entity_unit(object(), "sensor.phase_a") is None

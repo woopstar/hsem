@@ -32,6 +32,7 @@ from custom_components.hsem.utils.inverter_verify import (
     CycleApplySummary,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
+from tests.phase_fixtures import watts
 
 _NOW = datetime(2026, 8, 27, 12, 0, tzinfo=UTC)
 
@@ -139,7 +140,7 @@ class TestFeedbackFreeFloor:
         # ramped down to 5900 W so far. If the limiter subtracted only the
         # low live reading, it would think there is more headroom than
         # physically exists.
-        live.grid_phase_power_w = (
+        live.grid_phase_readings = watts(
             700.0 + 8900.0 / 3,
             1200.0 + 8900.0 / 3,
             1700.0 + 8900.0 / 3,
@@ -169,7 +170,7 @@ class TestFeedbackFreeFloor:
         """The reference only matters when it exceeds the live reading."""
         cfg = _config()
         live = LiveState()
-        live.grid_phase_power_w = (700.0, 1200.0, 1700.0)
+        live.grid_phase_readings = watts(700.0, 1200.0, 1700.0)
         live.huawei_batteries_charge_discharge_power_w = 5000.0
 
         with_low_reference = build_phase_aware_charge_commands(
@@ -190,7 +191,7 @@ class TestFeedbackFreeFloor:
     def test_timed_out_transition_fails_closed(self):
         cfg = _config()
         live = LiveState()
-        live.grid_phase_power_w = (700.0, 1200.0, 1700.0)
+        live.grid_phase_readings = watts(700.0, 1200.0, 1700.0)
         live.huawei_batteries_charge_discharge_power_w = 0.0
 
         commands = build_phase_aware_charge_commands(

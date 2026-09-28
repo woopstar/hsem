@@ -14,7 +14,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from homeassistant.const import UnitOfEnergy, UnitOfPower
+from homeassistant.const import (
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
+    UnitOfEnergy,
+    UnitOfPower,
+)
 from homeassistant.core import State
 
 from custom_components.hsem.custom_sensors.state_collector import (
@@ -24,7 +29,10 @@ from custom_components.hsem.custom_sensors.state_collector import (
 )
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
-from custom_components.hsem.utils.phase_power import EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
+from custom_components.hsem.utils.phase_power import (
+    EV_TOPOLOGY_THREE_PHASE_SWITCHABLE,
+    PhaseReading,
+)
 
 _MODULE = "custom_components.hsem.custom_sensors.state_collector"
 
@@ -103,6 +111,19 @@ async def _collect(
     return state
 
 
+def _assert_phase_readings(
+    readings: tuple[PhaseReading | None, ...],
+    expected: list[tuple[float, str]],
+) -> None:
+    """Assert each phase reading's value (approximately) and unit family."""
+    assert [reading.unit if reading else None for reading in readings] == [
+        unit for _, unit in expected
+    ]
+    assert [reading.value if reading else None for reading in readings] == (
+        pytest.approx([value for value, _ in expected])
+    )
+
+
 class TestOptionalLiveInputs:
     """A configured optional input is read; an unconfigured one is not."""
 
@@ -146,14 +167,21 @@ class TestOptionalLiveInputs:
                 "sensor.phase_c": 3000.0,
                 "sensor.battery_power": -1500.0,
             },
-            units={"sensor.phase_b": UnitOfPower.KILO_WATT},
+            units={
+                "sensor.phase_a": UnitOfPower.WATT,
+                "sensor.phase_b": UnitOfPower.KILO_WATT,
+                "sensor.phase_c": UnitOfPower.WATT,
+            },
         )
 
         assert state.huawei_batteries_grid_charge_max_power_w == pytest.approx(5000.0)
-        assert state.grid_phase_power_w == (
-            pytest.approx(1000.0),
-            pytest.approx(2000.0),
-            pytest.approx(3000.0),
+        _assert_phase_readings(
+            state.grid_phase_readings,
+            [
+                (1000.0, UnitOfPower.WATT),
+                (2000.0, UnitOfPower.WATT),
+                (3000.0, UnitOfPower.WATT),
+            ],
         )
         assert state.huawei_batteries_charge_discharge_power_w == pytest.approx(-1500.0)
 
@@ -184,12 +212,19 @@ class TestOptionalLiveInputs:
                 "sensor.phase_b": 2000.0,
                 "sensor.phase_c": 3000.0,
             },
+            units=dict.fromkeys(
+                ("sensor.phase_a", "sensor.phase_b", "sensor.phase_c"),
+                UnitOfPower.WATT,
+            ),
         )
 
-        assert state.grid_phase_power_w == (
-            pytest.approx(1000.0),
-            pytest.approx(2000.0),
-            pytest.approx(3000.0),
+        _assert_phase_readings(
+            state.grid_phase_readings,
+            [
+                (1000.0, UnitOfPower.WATT),
+                (2000.0, UnitOfPower.WATT),
+                (3000.0, UnitOfPower.WATT),
+            ],
         )
         assert state.huawei_batteries_grid_charge_max_power_w is None
         assert state.huawei_batteries_charge_discharge_power_w is None
@@ -208,7 +243,60 @@ class TestOptionalLiveInputs:
         cfg.ev_planned_load_charger_phase_topology = EV_TOPOLOGY_THREE_PHASE_SWITCHABLE
         state = await _collect(cfg)
 
-        assert state.grid_phase_power_w == (None, None, None)
+        assert state.grid_phase_readings == (None, None, None)
+        assert state.missing_entities_list == baseline.missing_entities_list
+
+    @pytest.mark.asyncio
+    async def test_current_sensors_and_phase_voltages_are_read(self) -> None:
+        """A current sensor stays in amps; voltages are normalised to volts."""
+        cfg = _full_cfg()
+        cfg.huawei_solar_power_meter_phase_a_voltage = "sensor.voltage_a"
+
+        state = await _collect(
+            cfg,
+            values={
+                "sensor.phase_a": 16.0,
+                "sensor.phase_b": 16.5,
+                "sensor.phase_c": 2300.0,
+                "sensor.voltage_a": 228.0,
+            },
+            units={
+                "sensor.phase_a": UnitOfElectricCurrent.AMPERE,
+                "sensor.phase_b": UnitOfElectricCurrent.AMPERE,
+                "sensor.phase_c": UnitOfPower.WATT,
+                "sensor.voltage_a": UnitOfElectricPotential.VOLT,
+            },
+        )
+
+        _assert_phase_readings(
+            state.grid_phase_readings,
+            [
+                (16.0, UnitOfElectricCurrent.AMPERE),
+                (16.5, UnitOfElectricCurrent.AMPERE),
+                (2300.0, UnitOfPower.WATT),
+            ],
+        )
+        assert state.grid_phase_voltage_v == (pytest.approx(228.0), None, None)
+
+    @pytest.mark.asyncio
+    async def test_an_uninterpretable_phase_unit_fails_closed_quietly(self) -> None:
+        """16 A is never read as 16 W, and the cycle itself is not degraded."""
+        values = {"sensor.phase_a": 16.0, "sensor.phase_b": 1.0, "sensor.phase_c": 1.0}
+        watts_only = dict.fromkeys(
+            ("sensor.phase_b", "sensor.phase_c"), UnitOfPower.WATT
+        )
+        baseline = await _collect(
+            _full_cfg(),
+            values=values,
+            units={**watts_only, "sensor.phase_a": UnitOfPower.WATT},
+        )
+
+        state = await _collect(
+            _full_cfg(), values=values, units={**watts_only, "sensor.phase_a": "var"}
+        )
+
+        assert state.grid_phase_readings[0] is None
+        assert state.grid_phase_readings[1] == PhaseReading(1.0, UnitOfPower.WATT)
         assert state.missing_entities_list == baseline.missing_entities_list
 
     @pytest.mark.asyncio

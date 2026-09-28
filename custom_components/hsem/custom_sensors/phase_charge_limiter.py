@@ -5,7 +5,8 @@ This is intentionally a runtime correction on top of the horizon MILP: the
 MILP's phase-fuse constraint (``planner/milp/_phase_fuse.py``) uses a
 forecast at solve time, while this module uses the newest live phase-meter
 snapshot immediately before the hardware write, so it protects against
-appliance changes since the plan was solved.
+appliance changes since the plan was solved. Each phase may be measured as
+power or current; the fuse is compared in amps (issue #1119).
 
 Huawei-only — this repository has no secondary/PowMr inverter.
 """
@@ -22,7 +23,7 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.phase_power import (
     PhaseChargeLimits,
     compute_phase_charge_limits,
-    phase_powers_valid,
+    phase_readings_valid,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import slot_duration_hours
@@ -120,9 +121,11 @@ def build_phase_aware_charge_commands(
             rec, "main-fuse configuration is not a valid three-phase supply"
         )
 
-    if not phase_powers_valid(live.grid_phase_power_w):
+    if not phase_readings_valid(live.grid_phase_readings):
         return _blocked_commands(
-            rec, "one or more grid phase-power readings are unavailable"
+            rec,
+            "one or more grid phase readings are unavailable or not in a "
+            "power or current unit",
         )
 
     battery_power_w = live.huawei_batteries_charge_discharge_power_w
@@ -158,7 +161,8 @@ def build_phase_aware_charge_commands(
             )
 
     limits = compute_phase_charge_limits(
-        measured_phase_power_w=live.grid_phase_power_w,
+        measured_phase=live.grid_phase_readings,
+        phase_voltages_v=live.grid_phase_voltage_v,
         fuse_amps=float(cfg.main_fuse_amps),
         desired_charge_power_w=desired_charge_power_w,
         battery_actual_power_w=effective_battery_power_w,
