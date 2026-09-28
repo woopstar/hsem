@@ -30,6 +30,7 @@ from custom_components.hsem.utils.phase_power import (
     charger_power_to_current_a,
     ev_min_start_current_a,
 )
+from custom_components.hsem.utils.units import remaining_slot_fraction
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
@@ -437,3 +438,71 @@ def target_cap_activation_quantum_dc(
         ),
         default=0.0,
     )
+
+
+def full_slot_executable_shortfall_dc(
+    ev: EVConfig,
+    spec: EvAmpSpec | None,
+    *,
+    shortfall_dc: float,
+    d: int,
+    available_slot_hours: np.ndarray,  # type: ignore[type-arg]
+    slot_hours: float,
+    max_overshoot_dc: float,
+) -> float | None:
+    """Return the deadline need snapped up to a whole-amp energy full slots hit.
+
+    A whole-amp charger delivers ``amps × one_amp_dc`` per full-width slot,
+    so a deadline need that falls between two lattice points leaves a
+    residual that full slots cannot close. A partly elapsed live slot has a
+    finer lattice (``one_amp_dc`` scaled by the minutes that remain), so it
+    can close that residual. Priced at the deadline penalty, closing it is
+    worth more than any real price spread, and the solver moved deferrable
+    EV energy into the dearer live slot whenever it ran mid-slot (issue
+    #1117). Requiring the smallest total that full slots can deliver exactly
+    removes that advantage: the live slot then has to displace at least one
+    whole future amp-step of energy, so it only wins when it is genuinely
+    cheaper.
+
+    ``T`` amp-slots of one-phase current are executable in ``k`` full slots
+    when ``k·min ≤ T ≤ k·rated``. Returns ``None`` (keep the exact need) when
+    the EV has no runnable amp lattice, no full-width slot precedes the
+    deadline (a deadline in the live slot keeps its own lattice, issue
+    #845), or no executable total lies within ``max_overshoot_dc`` of the
+    need or within what the pre-deadline slots can deliver.
+    """
+    if (
+        spec is None
+        or not spec.managed
+        or not spec.runnable
+        or shortfall_dc <= 1e-9
+        or slot_hours <= 1e-9
+    ):
+        return None
+    fractions = [
+        remaining_slot_fraction(float(available_slot_hours[k]), slot_hours)
+        for k in range(d + 1)
+    ]
+    full_slots = sum(1 for fraction in fractions if fraction >= 1.0 - 1e-9)
+    # One-phase-mode amp for a switchable charger, matching its amp1 column.
+    one_amp_dc = (
+        charger_current_to_power_w(1, ev.charger_phase_topology)
+        * slot_hours
+        * ev.charger_efficiency
+        / 1000.0
+    )
+    if full_slots == 0 or one_amp_dc <= 1e-12:
+        return None
+    reachable_dc = ev.max_charge_per_slot * sum(fractions)
+    need_amp_slots = max(math.ceil(shortfall_dc / one_amp_dc - 1e-9), 1)
+    limit_amp_slots = math.floor(
+        min(shortfall_dc + max_overshoot_dc, reachable_dc) / one_amp_dc + 1e-9
+    )
+    for total in range(need_amp_slots, limit_amp_slots + 1):
+        slots_needed = math.ceil(total / spec.rated_current_a)
+        if (
+            slots_needed <= full_slots
+            and slots_needed * spec.minimum_current_a <= total
+        ):
+            return total * one_amp_dc
+    return None
