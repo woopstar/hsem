@@ -82,7 +82,7 @@ cycle are durable; stale generations must not publish.
 | `weekday_profile.py`    | Weekday/weekend split house load EWMA profiles                                                     |
 | `ev_mode_resolver.py`   | Auto-Full EV charging on negative electricity prices                                               |
 | `ev_accounting.py`      | Raw CT versus per-EV normalized-baseline accounting helper                                         |
-| `unit_normalize.py`     | Generic sensor unit normalization via HA's `unit_conversion` converters (issue #945)               |
+| `unit_normalize.py`     | Generic sensor unit normalization via HA's `unit_conversion` converters (issues #945, #1119)       |
 
 ---
 
@@ -185,6 +185,29 @@ max_kwh = fuse_max_energy_per_slot_kwh(amps, phases, slot_hours)
 
 Used by BOTH the MILP grid-import constraint and the post-hoc EV/battery
 throttle so the optimiser and the safety clamp never disagree.
+
+### Live per-phase fuse checks are in amps (issue #1119)
+
+```python
+# ALWAYS use these for a LIVE per-phase fuse check — never compare phase
+# Watts with main_fuse_amps * GRID_PHASE_VOLTAGE inline.
+from custom_components.hsem.utils.phase_power import (
+    phase_fuse_headroom_a,   # per-phase amps left before the fuse, or None
+    phase_headroom_power_w,  # amp headroom -> W at the same phase voltage
+)
+```
+
+The Huawei grid-charge limiter and the switchable-EV one-phase hold both go
+through these, so they cannot diverge. Live phase inputs are
+`LiveState.grid_phase_readings` (`PhaseReading(value, unit)`, unit `W` or
+`A`) plus optional `grid_phase_voltage_v`; read them only via
+`custom_sensors/phase_inputs.py::read_grid_phase_inputs()`. A current
+reading is always used as `|I|` (no sign convention in HA, reversed CTs), so
+only a signed W reading earns export headroom. A missing or foreign unit is
+`None` (fail closed) — never pass it through as Watts; 16 A read as 16 W is
+the bug #1119 fixed. The MILP's planning-time fuse model
+(`planner/milp/_phase_fuse.py`, `fuse_max_energy_per_slot_kwh`) deliberately
+stays in energy terms at 230 V.
 
 ### EV charger DC ↔ AC conversion
 
@@ -337,13 +360,25 @@ value = read_normalized_float(self, entity_id, _read, canonical_unit, label=labe
 ```
 
 Both delegate to `normalize_to_unit()` after resolving `entity_id`'s
-`unit_of_measurement` via `self.hass.states.get(entity_id)`. Wired into
-(issue #946): `custom_sensors/state_collector.py` — house/solar/Huawei
-phase power meters (`UnitOfPower.WATT`) and grid import/export/PV energy
+unit via `utils/ha_helpers.py::entity_unit()`. Wired into
+(issue #946): `custom_sensors/state_collector.py` — house/solar power meters
+(`UnitOfPower.WATT`) and grid import/export/PV energy
 meters (`UnitOfEnergy.KILO_WATT_HOUR`); and
 `coordinator_live_power.py::_read_live_power_number()` — the fast-timer
 house/solar power samples (`UnitOfPower.WATT`), independently of the
 full-cycle `state_collector.py` read.
+
+**Safety inputs must not use the pass-through.** `normalize_to_unit()`
+returns the raw value for an unknown unit, which is fine for a forecast input
+but silently disabled the live fuse guard (issue #1119). A field that accepts
+more than one quantity, or that feeds a safety check, uses
+`normalize_to_unit_family(value, unit, (canonical_a, canonical_b))` instead:
+it returns `(value, canonical_unit)` or `None` for a missing/foreign unit. The
+live phase inputs (power or current) use it in `custom_sensors/phase_inputs.py`;
+phase voltages still use `read_normalized_float(..., UnitOfElectricPotential.VOLT)`
+because a bad voltage falls back to 230 V rather than blocking.
+`ElectricCurrentConverter` and `ElectricPotentialConverter` are registered in
+`_CONVERTER_CLASSES`.
 
 `utils/conversion.py::normalize_ev_power_w()` (issue #592) is intentionally
 **not** migrated onto this utility — its plausibility checks (implausibly
@@ -1988,6 +2023,8 @@ a unit renegotiation at the same wattage re-publishes the profile.
 - Cancelled and cleared in `async_will_remove_from_hass()` — a config-entry reload can never strand a transition or leak its deadline task.
 
 Tests: `tests/test_phase_charge_limiter.py` (limiter core + Part 2 applier integration), `tests/test_phase_charge_transition_safety.py` (Part 3 transition/deadline logic, 18 tests mirroring the fork's coverage style but Huawei-only).
+
+**Issue #1119 update:** the limiter now compares in amps. `compute_phase_charge_limits()` takes `measured_phase: PhaseReadings` + `phase_voltages_v`, delegates the fuse comparison to `phase_fuse_headroom_a()`, and returns `predicted_phase_current_a` (was `predicted_phase_power_w`). `phase_powers_valid()` became `phase_readings_valid()`. With W readings and no voltage sensor the result is algebraically identical to the old Watts formula. Test builders for readings live in `tests/phase_fixtures.py` (`watts()`, `amps()`); #1119's own tests are `tests/test_phase_fuse_amps.py`.
 
 ## Error-Mode Grid-Charge Emergency Stop (issue #840, follow-up to #831)
 

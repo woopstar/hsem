@@ -287,6 +287,18 @@ class TestBuildSensorConfig:
         assert cfg.huawei_solar_power_meter_phase_b_active_power is None
         assert cfg.huawei_solar_power_meter_phase_c_active_power is None
 
+    def test_power_meter_phase_voltage_entities_are_read(self):
+        """Optional live phase voltages (issue #1119) default to None."""
+        cfg = build_sensor_config(
+            _make_config_entry(
+                hsem_huawei_solar_power_meter_phase_a_voltage="sensor.voltage_a",
+                hsem_huawei_solar_power_meter_phase_c_voltage="sensor.voltage_c",
+            )
+        )
+        assert cfg.huawei_solar_power_meter_phase_a_voltage == "sensor.voltage_a"
+        assert cfg.huawei_solar_power_meter_phase_b_voltage is None
+        assert cfg.huawei_solar_power_meter_phase_c_voltage == "sensor.voltage_c"
+
 
 # ---------------------------------------------------------------------------
 # _compute_battery_capacities

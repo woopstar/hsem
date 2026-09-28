@@ -34,6 +34,8 @@ from __future__ import annotations
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util.unit_conversion import (
     BaseUnitConverter,
+    ElectricCurrentConverter,
+    ElectricPotentialConverter,
     EnergyConverter,
     PowerConverter,
     SpeedConverter,
@@ -50,6 +52,8 @@ _CONVERTER_CLASSES: tuple[type[BaseUnitConverter], ...] = (
     PowerConverter,
     EnergyConverter,
     SpeedConverter,
+    ElectricCurrentConverter,
+    ElectricPotentialConverter,
 )
 
 # Maps every unit string each converter recognises to that converter class,
@@ -74,8 +78,9 @@ def normalize_to_unit(
 
     Delegates to Home Assistant's own ``unit_conversion`` converters
     (:class:`TemperatureConverter`, :class:`PowerConverter`,
-    :class:`EnergyConverter`, :class:`SpeedConverter`) rather than
-    hand-rolled per-unit multipliers.
+    :class:`EnergyConverter`, :class:`SpeedConverter`,
+    :class:`ElectricCurrentConverter`, :class:`ElectricPotentialConverter`)
+    rather than hand-rolled per-unit multipliers.
 
     Args:
         value: The raw numeric reading, or ``None`` when unavailable.
@@ -147,3 +152,39 @@ def normalize_to_unit(
         )
 
     return converted
+
+
+def normalize_to_unit_family(
+    value: float | None,
+    source_unit: str | None,
+    canonical_units: tuple[str, ...],
+) -> tuple[float, str] | None:
+    """Convert *value* to whichever of *canonical_units* shares its unit family.
+
+    Unlike :func:`normalize_to_unit`, this never passes a reading through
+    unconverted. A safety input that accepts more than one quantity (for
+    example power *or* current, issue #1119) must know which one it holds,
+    so a missing, unrecognised or unconvertible unit returns ``None`` and
+    the caller can fail closed.
+
+    Args:
+        value: The raw numeric reading, or ``None`` when unavailable.
+        source_unit: The entity's declared ``unit_of_measurement``.
+        canonical_units: Accepted canonical units, one per unit family
+            (e.g. ``(UnitOfPower.WATT, UnitOfElectricCurrent.AMPERE)``).
+
+    Returns:
+        ``(converted_value, canonical_unit)`` for the first family that
+        recognises *source_unit*, or ``None``.
+    """
+    if value is None or not source_unit:
+        return None
+    for canonical_unit in canonical_units:
+        converter = _CONVERTER_BY_UNIT.get(canonical_unit)
+        if converter is None or source_unit not in converter.VALID_UNITS:
+            continue
+        try:
+            return converter.convert(value, source_unit, canonical_unit), canonical_unit
+        except HomeAssistantError:
+            return None
+    return None

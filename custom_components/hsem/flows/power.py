@@ -3,13 +3,17 @@
 Allows the user to select the Home Assistant entities for house
 consumption power and solar production power, the main fuse rating,
 and the optional live per-phase grid-charge safety limiter (issue #831):
-three Huawei power-meter phase sensors plus the enable toggle. The
-limiter's own grid-charge-maximum-power write entity is configured in the
+three per-phase power or current sensors (issue #1119), three optional
+per-phase voltage sensors, plus the enable toggle. The limiter's own
+grid-charge-maximum-power write entity is configured in the
 ``huawei_solar`` step alongside the other Huawei number entities.
 """
 
+from typing import Any
+
 import voluptuous as vol
 
+from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfElectricCurrent, UnitOfPower
 from homeassistant.core import HomeAssistant
@@ -17,6 +21,39 @@ from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import async_validate_entity_ids
 from custom_components.hsem.utils.misc import get_config_value
+
+# A main fuse trips on current, so each live phase field accepts a power or a
+# current sensor (issue #1119); anything else could not be compared with the
+# fuse rating and would be treated as unavailable at runtime.
+_PHASE_READING_SELECTOR: dict[str, Any] = {
+    "entity": {
+        "domain": "sensor",
+        "device_class": [SensorDeviceClass.POWER, SensorDeviceClass.CURRENT],
+    }
+}
+_PHASE_VOLTAGE_SELECTOR: dict[str, Any] = {
+    "entity": {"domain": "sensor", "device_class": SensorDeviceClass.VOLTAGE}
+}
+_PHASE_READING_FIELDS = tuple(
+    f"hsem_huawei_solar_power_meter_phase_{phase}_active_power" for phase in "abc"
+)
+_PHASE_VOLTAGE_FIELDS = tuple(
+    f"hsem_huawei_solar_power_meter_phase_{phase}_voltage" for phase in "abc"
+)
+
+
+def _optional_entity_fields(
+    config_entry: ConfigEntry | None,
+    keys: tuple[str, ...],
+    selector_config: dict[str, Any],
+) -> dict[vol.Marker, Any]:
+    """Return optional entity-picker fields sharing one selector config."""
+    return {
+        vol.Optional(key, default=get_config_value(config_entry, key)): selector(
+            selector_config
+        )
+        for key in keys
+    }
 
 
 async def get_power_step_schema(
@@ -80,24 +117,12 @@ async def get_power_step_schema(
                     config_entry, "hsem_phase_aware_charging_enabled"
                 ),
             ): selector({"boolean": {}}),
-            vol.Optional(
-                "hsem_huawei_solar_power_meter_phase_a_active_power",
-                default=get_config_value(
-                    config_entry, "hsem_huawei_solar_power_meter_phase_a_active_power"
-                ),
-            ): selector({"entity": {"domain": "sensor"}}),
-            vol.Optional(
-                "hsem_huawei_solar_power_meter_phase_b_active_power",
-                default=get_config_value(
-                    config_entry, "hsem_huawei_solar_power_meter_phase_b_active_power"
-                ),
-            ): selector({"entity": {"domain": "sensor"}}),
-            vol.Optional(
-                "hsem_huawei_solar_power_meter_phase_c_active_power",
-                default=get_config_value(
-                    config_entry, "hsem_huawei_solar_power_meter_phase_c_active_power"
-                ),
-            ): selector({"entity": {"domain": "sensor"}}),
+            **_optional_entity_fields(
+                config_entry, _PHASE_READING_FIELDS, _PHASE_READING_SELECTOR
+            ),
+            **_optional_entity_fields(
+                config_entry, _PHASE_VOLTAGE_FIELDS, _PHASE_VOLTAGE_SELECTOR
+            ),
         }
     )
 
@@ -113,9 +138,5 @@ async def validate_power_step_input(
             "hsem_house_consumption_power",
             "hsem_solar_production_power",
         ],
-        optional_fields=[
-            "hsem_huawei_solar_power_meter_phase_a_active_power",
-            "hsem_huawei_solar_power_meter_phase_b_active_power",
-            "hsem_huawei_solar_power_meter_phase_c_active_power",
-        ],
+        optional_fields=[*_PHASE_READING_FIELDS, *_PHASE_VOLTAGE_FIELDS],
     )

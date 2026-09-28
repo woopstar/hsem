@@ -111,6 +111,9 @@ def configured_entity_references(cfg: SensorConfig) -> tuple[EntityReference, ..
             "huawei_solar_power_meter_phase_a_active_power",
             "huawei_solar_power_meter_phase_b_active_power",
             "huawei_solar_power_meter_phase_c_active_power",
+            "huawei_solar_power_meter_phase_a_voltage",
+            "huawei_solar_power_meter_phase_b_voltage",
+            "huawei_solar_power_meter_phase_c_voltage",
         ):
             add(f"hsem_{field_name}", getattr(cfg, field_name))
 

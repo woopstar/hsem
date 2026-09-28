@@ -11,11 +11,24 @@ from unittest.mock import patch
 
 import pytest
 
-from homeassistant.const import UnitOfSpeed, UnitOfTemperature
+from homeassistant.const import (
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
+    UnitOfPower,
+    UnitOfSpeed,
+    UnitOfTemperature,
+)
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.util.unit_conversion import SpeedConverter, TemperatureConverter
+from homeassistant.util.unit_conversion import (
+    PowerConverter,
+    SpeedConverter,
+    TemperatureConverter,
+)
 
-from custom_components.hsem.utils.unit_normalize import normalize_to_unit
+from custom_components.hsem.utils.unit_normalize import (
+    normalize_to_unit,
+    normalize_to_unit_family,
+)
 
 # ---------------------------------------------------------------------------
 # Temperature (°C / °F / K)
@@ -174,3 +187,70 @@ class TestFallbackBehaviour:
                 label="temperature",
             )
         assert result == pytest.approx(21.5)
+
+
+# ---------------------------------------------------------------------------
+# Power-or-current family detection (issue #1119)
+# ---------------------------------------------------------------------------
+
+_POWER_OR_CURRENT = (UnitOfPower.WATT, UnitOfElectricCurrent.AMPERE)
+
+
+class TestNormalizeToUnitFamily:
+    """A multi-quantity input keeps its family or is rejected outright."""
+
+    @pytest.mark.parametrize(
+        ("value", "unit", "expected"),
+        [
+            (16.0, UnitOfElectricCurrent.AMPERE, (16.0, UnitOfElectricCurrent.AMPERE)),
+            (
+                500.0,
+                UnitOfElectricCurrent.MILLIAMPERE,
+                (0.5, UnitOfElectricCurrent.AMPERE),
+            ),
+            (2300.0, UnitOfPower.WATT, (2300.0, UnitOfPower.WATT)),
+            (2.3, UnitOfPower.KILO_WATT, (2300.0, UnitOfPower.WATT)),
+        ],
+    )
+    def test_a_recognised_unit_converts_within_its_family(
+        self, value: float, unit: str, expected: tuple[float, str]
+    ) -> None:
+        result = normalize_to_unit_family(value, unit, _POWER_OR_CURRENT)
+
+        assert result is not None
+        assert result[0] == pytest.approx(expected[0])
+        assert result[1] == expected[1]
+
+    @pytest.mark.parametrize(
+        "unit", [None, "", "var", "VA", UnitOfElectricPotential.VOLT, "bogus"]
+    )
+    def test_a_missing_or_foreign_unit_is_rejected(self, unit: str | None) -> None:
+        """Never pass a reading through as if it were already canonical."""
+        assert normalize_to_unit_family(16.0, unit, _POWER_OR_CURRENT) is None
+
+    def test_a_missing_value_is_rejected(self) -> None:
+        assert (
+            normalize_to_unit_family(None, UnitOfPower.WATT, _POWER_OR_CURRENT) is None
+        )
+
+    def test_a_converter_error_is_rejected(self) -> None:
+        with patch.object(
+            PowerConverter, "convert", side_effect=HomeAssistantError("boom")
+        ):
+            result = normalize_to_unit_family(
+                2.3, UnitOfPower.KILO_WATT, _POWER_OR_CURRENT
+            )
+        assert result is None
+
+    def test_an_unknown_canonical_unit_is_skipped(self) -> None:
+        assert normalize_to_unit_family(1.0, UnitOfPower.WATT, ("furlongs",)) is None
+
+
+class TestElectricPotentialNormalization:
+    """Phase voltage sensors normalise to volts (issue #1119)."""
+
+    def test_kilovolts_to_volts(self) -> None:
+        result = normalize_to_unit(
+            0.231, UnitOfElectricPotential.KILOVOLT, UnitOfElectricPotential.VOLT
+        )
+        assert result == pytest.approx(231.0)

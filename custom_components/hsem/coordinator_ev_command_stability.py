@@ -69,11 +69,14 @@ from custom_components.hsem.utils.phase_power import (
     EV_TOPOLOGY_THREE_PHASE_BALANCED,
     EV_TOPOLOGY_THREE_PHASE_SWITCHABLE,
     PHASE_COUNT,
+    PhaseReadings,
+    PhaseVoltages,
     charger_current_to_power_w,
     charger_max_power_to_current_a,
     charger_power_to_current_a,
     ev_min_start_current_a,
-    phase_powers_valid,
+    phase_fuse_headroom_a,
+    phase_headroom_power_w,
     switchable_command_phase_count,
     switchable_power_to_current_and_power_w,
 )
@@ -104,11 +107,8 @@ class _EvCommandSpec:
     charger_efficiency: float = 1.0
     main_fuse_amps: float = 0.0
     main_fuse_phases: int = 3
-    grid_phase_power_w: tuple[float | None, float | None, float | None] = (
-        None,
-        None,
-        None,
-    )
+    grid_phase_readings: PhaseReadings = (None, None, None)
+    grid_phase_voltage_v: PhaseVoltages = (None, None, None)
     #: Whether this EV may charge past its target SoC from PV surplus.
     allow_charge_past_target: bool = False
 
@@ -200,7 +200,8 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
                     charger_efficiency=clamp_efficiency(charger_efficiency_pct),
                     main_fuse_amps=max(float(cfg.main_fuse_amps or 0.0), 0.0),
                     main_fuse_phases=max(int(cfg.main_fuse_phases or 0), 0),
-                    grid_phase_power_w=live.grid_phase_power_w,
+                    grid_phase_readings=live.grid_phase_readings,
+                    grid_phase_voltage_v=live.grid_phase_voltage_v,
                     target_soc_pct=float(target_soc_pct or 0.0),
                     deadline=deadline,
                     allow_charge_past_target=bool(allow_charge_past_target),
@@ -479,16 +480,23 @@ class CoordinatorEvCommandStabilityMixin(CoordinatorSharedState):
 
     @staticmethod
     def _one_phase_hold_is_phase_safe(spec: _EvCommandSpec, held_w: float) -> bool:
-        """Return whether live per-phase telemetry proves a one-phase hold safe."""
+        """Return whether live per-phase telemetry proves a one-phase hold safe.
+
+        The one-phase load may land on any phase, so every phase must carry
+        the added current within the fuse (compared in amps, issue #1119).
+        """
         if spec.main_fuse_amps <= 1e-9:
             return True
-        if spec.main_fuse_phases != PHASE_COUNT or not phase_powers_valid(
-            spec.grid_phase_power_w
-        ):
+        if spec.main_fuse_phases != PHASE_COUNT:
+            return False
+        headroom_a = phase_fuse_headroom_a(
+            spec.grid_phase_readings, spec.grid_phase_voltage_v, spec.main_fuse_amps
+        )
+        if headroom_a is None:
             return False
         additional_w = max(held_w - max(float(spec.ev_live.power_w or 0.0), 0.0), 0.0)
-        phase_limit_w = spec.main_fuse_amps * GRID_PHASE_VOLTAGE
-        return max(spec.grid_phase_power_w) + additional_w <= phase_limit_w + 1e-9
+        headroom_w = phase_headroom_power_w(headroom_a, spec.grid_phase_voltage_v)
+        return additional_w <= min(headroom_w) + 1e-9
 
     def _phase_mode_hold_command_w(
         self,
