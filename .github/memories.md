@@ -1288,6 +1288,17 @@ Regression tests: `test_milp_defers_charging_to_cheap_slots_when_future_pv_excee
 and `test_milp_charges_now_when_no_future_surplus_exceeds_headroom` in
 `tests/planner/test_milp_optimizer.py`.
 
+**Do not drop the #694 cap on no-PV slots (issue #1118).** It looks
+unjustified there, since grid charging forgoes no export. But the per-slot
+terminal premiums are not cycle-neutral: the #638 credit `R − p_imp` is not
+cancelled when the energy is discharged at a slot priced at or above `R`.
+The cap is what stops the LP from grid-charging at mid prices and
+exporting at the peak at a real loss. A replay showed that gating the cap
+on PV surplus was net harmful. The profitable no-PV cycle it blocks is
+tracked by a strict xfail in `tests/planner/test_terminal_soc_grid_cycles.py`.
+The real fix is a cycle-neutral terminal term (net `Σ(ec − ed)` at one
+price), not a per-slot tweak.
+
 ---
 
 ## EV Discharge Cap Must Not Feed Back Into the Planner (issue #592, beta7)
