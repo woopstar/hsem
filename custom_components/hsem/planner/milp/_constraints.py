@@ -229,6 +229,7 @@ def _build_constraints(
         session_slots_set=session_slots_set,
         charge_eff=charge_eff,
         _has_session_demand=_has_session_demand,
+        ev_amp_plan=ev_amp_plan,
     )
 
     # ------------------------------------------------------------------

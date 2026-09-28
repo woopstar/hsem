@@ -314,10 +314,13 @@ def test_two_evs_cooptimized():
 
 @_pytestmark_scipy
 def test_ev_soc_upper_bound_respected():
-    """EV SoC never exceeds capacity_kwh.
+    """EV charge fills the capacity and stops at the next whole-amp point.
 
     Setup: EV with small capacity (10 kWh) but large target.
-    The MILP should cap charging at the capacity bound.
+    The MILP caps charging at the capacity bound, which it may overshoot by
+    less than one whole-amp step: the car ends the charge itself when full,
+    so the plan takes the smallest executable point at or above the
+    headroom instead of stopping short of it (issue #1117).
     """
     slots = _build_slots(10, start_hour=14, import_price=0.05)
     ev = EVConfig(
@@ -343,9 +346,12 @@ def test_ev_soc_upper_bound_respected():
     assert result is not None
     out_slots, diag = result
 
-    # Total DC charge should not exceed (capacity - initial) = 2 kWh
+    # Total DC charge fills (capacity - initial) = 2 kWh and overshoots it
+    # by less than one amp: 230 V x 1 h x 0.90 = 0.207 kWh DC.
+    one_amp_dc = 230.0 * 1.0 * 0.90 / 1000.0
     ev_total_dc = diag["ev"]["ev0"]["total_dc_kwh"]
-    assert ev_total_dc <= 2.0 + 1e-6
+    assert 2.0 - 1e-6 <= ev_total_dc < 2.0 + one_amp_dc
+    assert diag["ev"]["ev0"]["deadline_met"] is True
 
 
 @_pytestmark_scipy

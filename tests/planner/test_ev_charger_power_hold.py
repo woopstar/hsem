@@ -276,8 +276,16 @@ def _make_planner_input(
     now = datetime.fromisoformat(now_iso)
     deadline = now + timedelta(hours=8)
 
+    # The live hour is the cheapest, so the plan charges in it on price.
+    # Under flat prices it only did so because the partly elapsed slot's
+    # finer amp lattice trimmed the whole-amp overshoot (issue #1117).
     prices = [
-        PricePoint(hour=h, import_price=0.10, export_price=0.05) for h in range(24)
+        PricePoint(
+            hour=h,
+            import_price=0.05 if h == now.hour else 0.10,
+            export_price=0.05,
+        )
+        for h in range(24)
     ]
     pv = [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)]
     averages = [

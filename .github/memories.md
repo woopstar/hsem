@@ -199,6 +199,20 @@ Note: LP matrix _coefficients_ in `planner/milp/_constraints.py` and
 `_objective.py` intentionally stay as raw `1.0 / ev.charger_efficiency`
 (they are constraint coefficients, not energy conversions) — do not wrap those.
 
+**Deadline need is measured at full-slot resolution (issue #1117).** The
+live slot's whole-amp lattice is finer (`one_amp × remaining_fraction`), so
+any hard total-energy requirement between two full-slot lattice points lets it
+close a rounding residual that full slots can't. At the deadline penalty (~10×
+max price per kWh), closing that residual outweighed any price spread, and
+mid-slot replans pulled deferrable EV energy into the dearer live slot. The
+per-kWh objective coefficients were never the problem; the lattice was.
+`_ev_amp_lattice.full_slot_executable_shortfall_dc()` snaps the need up to a
+total full slots deliver exactly. The capacity row admits the target-cap
+activation quantum (the car ends the charge when full), because a 100 %
+target otherwise has no executable point at or above the need. Reproduce any
+suspected recurrence with a sweep of `now` across the live slot, not a single
+solve. `tests/planner/test_ev_mid_slot_placement.py` does exactly that.
+
 ### Aligning per-slot data with a MILP solve (issue #1015)
 
 ```python
