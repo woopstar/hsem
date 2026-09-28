@@ -25,6 +25,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.sensor.const import SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
+    MATCH_ALL,
     EntityCategory,
     UnitOfPower,
 )
@@ -174,6 +175,10 @@ class HSEMOCPPChargerStatusSensor(
     _attr_icon = "mdi:ev-station"
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    # Per-charger attributes are keyed by the dynamic charge-point id and
+    # carry live call/timestamp diagnostics, so none are recorded; the
+    # status state is (issue #1099).
+    _unrecorded_attributes = frozenset({MATCH_ALL})
 
     def __init__(
         self,
@@ -551,6 +556,9 @@ class HSEMOCPPChargerSessionsSensor(
     _attr_icon = "mdi:history"
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    # The session log is a growing list; the count is the recorded state
+    # (issue #1099).
+    _unrecorded_attributes = frozenset({"sessions"})
 
     def __init__(
         self,

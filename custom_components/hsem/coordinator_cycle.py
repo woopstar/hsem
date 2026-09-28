@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import math
-from dataclasses import replace
 from datetime import datetime
 from typing import Any
 
@@ -23,8 +22,6 @@ from custom_components.hsem.coordinator_builder import (
 from custom_components.hsem.coordinator_data import CoordinatorData
 from custom_components.hsem.coordinator_helpers import (
     _StaleUpdateCycle,
-    apply_load_forecast_hold,
-    assess_load_forecast,
     ocpp_charge_target,
     ocpp_management_flags,
 )
@@ -35,9 +32,6 @@ from custom_components.hsem.coordinator_state import (
 from custom_components.hsem.coordinator_tracking import (
     accumulate_forecast_actuals,
 )
-from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
-    populate_avg_house_consumption_from_snapshot,
-)
 from custom_components.hsem.custom_sensors.hourly_data_populator.prices_solcast import (
     populate_price_and_solcast_from_snapshot,
 )
@@ -47,7 +41,6 @@ from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F40
     build_sensor_config,
 )
 from custom_components.hsem.models.live_state import EVLiveState, LiveState
-from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.models.sensor_config import SensorConfig
@@ -178,114 +171,9 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         # 4. Populate weighted house-consumption averages.
         set_hsem_verbose(cfg.verbose_logging)
 
-        if cfg.ml_consumption_enabled:
-            from custom_components.hsem.ml.populator import (
-                populate_ml_house_consumption,
-            )
-
-            # A slow or failing ML populate must never take the whole update
-            # cycle down with it: during initial setup this cycle is awaited
-            # directly by async_setup_entry (issue #926), so an uncaught
-            # exception here would fail the entire config entry and remove
-            # every HSEM entity, not just the ML-driven ones. Fall back to
-            # the legacy avg-consumption path instead, same as a clean
-            # ``consumption_ok=False`` return, and keep any previously
-            # trained predictor so the next cycle can retry without losing
-            # its cache.
-            try:
-                (
-                    consumption_ok,
-                    self._ml_predictor,
-                ) = await populate_ml_house_consumption(
-                    self.hass,
-                    self._hourly_recommendations,
-                    cfg,
-                    self._ml_predictor,
-                )
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                async_log(
-                    "error",
-                    "[ml] populate_ml_house_consumption raised %s —"
-                    " falling back to legacy avg sensors for this cycle.",
-                    exc,
-                )
-                consumption_ok = False
-            else:
-                async_log(
-                    "debug",
-                    "[ml] populate_ml_house_consumption returned %s",
-                    consumption_ok,
-                )
-
-            if not consumption_ok:
-                async_log(
-                    "debug",
-                    "[ml] ML consumption failed — falling back to legacy avg sensors.",
-                )
-                consumption_ok = populate_avg_house_consumption_from_snapshot(
-                    self._hourly_recommendations,
-                    self._snapshot,
-                    cfg,
-                    self._avg_house_consumption_entity_id_cache,
-                    entry_id=self._config_entry.entry_id,
-                )
-        else:
-            consumption_ok = populate_avg_house_consumption_from_snapshot(
-                self._hourly_recommendations,
-                self._snapshot,
-                cfg,
-                self._avg_house_consumption_entity_id_cache,
-                entry_id=self._config_entry.entry_id,
-            )
-            async_log(
-                "debug",
-                "[avg] populate_avg_house_consumption_from_snapshot returned %s, "
-                "cache has %d entries, snapshot has %d energy_avg values",
-                consumption_ok,
-                len(self._avg_house_consumption_entity_id_cache),
-                len(self._snapshot.energy_average_values),
-            )
-
-        load_readiness = assess_load_forecast(
-            self._hourly_recommendations,
-            now,
-            population_succeeded=consumption_ok,
-            live_house_demand_w=live.house_consumption_power_w,
-        )
-        consumption_ok = load_readiness.ready
-        self._current_load_forecast_signature = load_readiness.signature
-        readiness_reason = load_readiness.reason
-        previous_reason = getattr(self, "_last_load_forecast_readiness_reason", None)
-        if consumption_ok:
-            self._data_quality = replace(
-                self._data_quality,
-                load_forecast_ready=True,
-                load_forecast_reason=None,
-            )
-            if previous_reason is not None:
-                async_log(
-                    "info",
-                    "[load] Forecast recovered (%s); a fresh plan is required.",
-                    previous_reason,
-                )
-        else:
-            assert readiness_reason is not None
-            self._load_forecast_recovery_replan_pending = True
-            self._data_quality = replace(
-                self._data_quality,
-                load_forecast_ready=False,
-                load_forecast_reason=readiness_reason,
-            )
-            if readiness_reason != previous_reason:
-                async_log(
-                    "warning",
-                    "[load] Forecast is not ready (%s); automatic control will "
-                    "publish a strict storage hold.",
-                    readiness_reason,
-                )
-        self._last_load_forecast_readiness_reason = readiness_reason
+        # ML first when enabled, else the rolling-average sensors; readiness
+        # and missing-hour diagnostics live in coordinator_load_forecast.py.
+        consumption_ok = await self._async_populate_load_forecast(cfg, live, now)
 
         # Adjust timer based on missing-entities, pending-consumption status,
         # or a physically charging EV. Missing inputs and load-forecast
@@ -513,26 +401,10 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             if prediction_record_added:
                 await persist_all_trackers(self, only=["_prediction_tracker"])
 
-            load_hold = apply_load_forecast_hold(
-                self._hourly_recommendations,
-                live,
-                now,
-                load_forecast_ready=consumption_ok,
-            )
+            # Strict storage hold + force-charge-now (coordinator_load_hold.py).
+            load_hold = self._apply_load_forecast_safety_hold(now, live, consumption_ok)
             if load_hold is not None:
-                reason = self._last_load_forecast_readiness_reason
-                assert reason is not None
-                self._hourly_recommendation = load_hold
                 state = load_hold.recommendation
-                self._plan_explanation = PlanExplanation(
-                    selected_strategy="safety_hold",
-                    winner_name="safety_hold",
-                    summary=(
-                        "Battery held because the house-load forecast is not "
-                        f"ready ({reason})."
-                    ),
-                    constraints=[f"load_forecast:{reason}"],
-                )
 
             fresh_plan = False
             planner_output_to_commit: PlannerOutput | None = None
@@ -627,7 +499,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             # flight against an older snapshot.
             apply_summary=self.data.apply_summary if self.data is not None else None,
             plan_explanation=self._plan_explanation,
-            data_quality=self._data_quality,
+            data_quality=self._published_data_quality(),
             ev_charging_plan=self._ev_charging_plan,
             ev_second_charging_plan=self._ev_second_charging_plan,
             ev_soc_economics=self._ev_soc_economics,

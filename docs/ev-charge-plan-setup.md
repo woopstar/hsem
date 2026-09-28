@@ -261,7 +261,10 @@ can be profitable or free.
 Toggling `switch.hsem_ev_force_charge_now` (or
 `switch.hsem_ev_second_force_charge_now` for the second EV) immediately
 overrides the current slot to charge the EV at its maximum configured AC
-power (`hsem_ev_planned_load_charger_power_kw`).
+power (`hsem_ev_planned_load_charger_power_kw`), snapped to the charger's
+whole-amp nameplate for its phase topology: `11.0 kW` balanced three-phase
+charges at `16 A / 11.04 kW`, not `15 A / 10.35 kW` (issue #1112). The live
+main-fuse headroom can still lower it.
 
 **Force charge works even when smart charging is disabled.** When
 `switch.hsem_ev_smart_charging` is off the EV planner normally returns
@@ -272,6 +275,27 @@ reflect the forced session.
 
 Use this for ad-hoc "charge now" scenarios (e.g. unexpected trip) without
 enabling the full smart-charging schedule.
+
+**Force charge works while the house-load forecast is not ready (issue
+#1103).** If the load forecast is unavailable (for example after the
+`sensor.hsem_house_consumption_energy_avg_*` restore state is lost), HSEM
+publishes a strict storage hold and a managed EV normally gets an enforced
+0 A OCPP profile. Force charge is applied _after_ that hold, so the current
+slot still commands the charger's maximum power (fuse-limited) and the OCPP
+target stays above 0 A. The home battery stays held (no plan-derived
+charge or discharge).
+
+**Smart charging keeps working while the load forecast is not ready (issue
+#1106).** During that hold HSEM builds an EV-only fallback plan for each EV
+with smart charging on. Because the house load is unknown, the fallback is
+**grid-only**: it charges in the cheapest import slots before your deadline and
+assumes no solar surplus, so it may miss free PV but never counts on solar the
+house is already using. Slots without a published price yet are estimated from
+the same time on an earlier day, never treated as free. The home battery stays
+held throughout. `sensor.hsem_ev_optimal_charging_plan` shows the fallback plan
+with `data_quality.mode: ev_only_fallback` and the `load_forecast` reason. The
+normal co-optimised plan takes over as soon as the forecast recovers. An unknown
+EV SoC still means no charging, and force charge still overrides the fallback.
 
 **The switch auto-disables when the EV disconnects (issue #900).** If the
 EV is unplugged while force-charge-now is on, HSEM resets the switch to off
@@ -769,6 +793,15 @@ HSEM **deliberately relinquishes control** — clearing its own profiles —
 only when the EV is genuinely unmanaged: the planned-load feature is off,
 smart charging is switched off, or the car is unplugged. While unmanaged,
 HSEM neither enforces a zero nor stops a locally started session.
+
+**Switching smart charging off hands the charger back immediately, even
+mid-session (issue #1105).** If HSEM is charging the car when you turn
+`switch.hsem_ev_smart_charging` (or the second-EV switch, or the planned-load
+feature) off, HSEM clears its own charging profiles on the next cycle. It
+does **not** send a 0 A limit or `RemoteStopTransaction` first, and it does
+not wait for the stop window. The session keeps running under the charger's
+own control (typically full power from grid). Force charge still commands the
+charger while smart charging is off; HSEM releases it once force charge ends.
 
 **"Unplugged" is decided by the charger, not by a single Home Assistant
 reading** (issue #1018). The car-connected entity can blip to `False` for one

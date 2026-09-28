@@ -46,6 +46,13 @@ class DataQuality:
         load_forecast_reason:
             Machine-readable reason the load profile was rejected, or None
             when it is ready.
+        load_forecast_missing_hours:
+            Hours (0-23) whose rolling-average consumption sensors had no
+            stored sample this cycle (issue #1110).
+        load_forecast_estimated_hours:
+            Missing hours that were filled with the conservative neighbour
+            estimate so planning could continue.  Non-empty makes
+            :attr:`is_complete` False.
     """
 
     tomorrow_price_missing_hours: list[int] = field(default_factory=list)
@@ -58,12 +65,15 @@ class DataQuality:
     horizon_days: int = 1
     load_forecast_ready: bool = True
     load_forecast_reason: str | None = None
+    load_forecast_missing_hours: list[int] = field(default_factory=list)
+    load_forecast_estimated_hours: list[int] = field(default_factory=list)
 
     @property
     def is_complete(self) -> bool:
         """Return ``True`` when no missing data was detected."""
         return self.load_forecast_ready and not (
-            self.tomorrow_price_missing_hours
+            self.load_forecast_estimated_hours
+            or self.tomorrow_price_missing_hours
             or self.tomorrow_pv_missing_hours
             or self.day2_price_missing_hours
             or self.day2_pv_missing_hours
@@ -83,6 +93,8 @@ class DataQuality:
             "horizon_days": self.horizon_days,
             "load_forecast_ready": self.load_forecast_ready,
             "load_forecast_reason": self.load_forecast_reason,
+            "load_forecast_missing_hours": sorted(self.load_forecast_missing_hours),
+            "load_forecast_estimated_hours": sorted(self.load_forecast_estimated_hours),
             "tomorrow_price_missing_hours": sorted(self.tomorrow_price_missing_hours),
             "tomorrow_pv_missing_hours": sorted(self.tomorrow_pv_missing_hours),
             "day2_price_missing_hours": sorted(self.day2_price_missing_hours),

@@ -1141,8 +1141,13 @@ A complete zero forecast is accepted while finite live house demand is at most
 forecast is unsafe, automatic mode does not run or reuse an optimized plan; it
 publishes a strict current-slot `batteries_wait_mode` with primary charge,
 discharge, import, and export motion cleared. Manual force mode remains higher
-authority. Recovery or a material future-load change forces a fresh solve, and
-the reuse baseline advances only after successful publication.
+authority. An EV force-charge-now override still applies on top of the hold: the
+forced EV charges at its fuse-limited maximum while the home battery stays held
+(issue #1103). A managed EV on smart charging follows a grid-only EV-only
+fallback plan during the hold: the cheapest import slots before its deadline,
+with no PV surplus credited because the house load is unknown (issue #1106).
+Recovery or a material future-load change forces a fresh solve, and the reuse
+baseline advances only after successful publication.
 
 Registered state events received during a solve advance a coordinator generation.
 The stale cycle is discarded before publication and one durable follow-up cycle
@@ -1248,19 +1253,21 @@ The `DataQuality` object on `PlannerOutput` reports completeness of the planning
 
 ### Fields
 
-| Field                          | Type        | Description                                                                |
-| ------------------------------ | ----------- | -------------------------------------------------------------------------- |
-| `today_price_missing_hours`    | `list[int]` | Hours (0–23) with no price data today                                      |
-| `today_pv_missing_hours`       | `list[int]` | Hours (0–23) with no PV forecast today                                     |
-| `tomorrow_price_missing_hours` | `list[int]` | Hours with no price data for tomorrow                                      |
-| `tomorrow_pv_missing_hours`    | `list[int]` | Hours with no PV forecast for tomorrow                                     |
-| `day2_price_missing_hours`     | `list[int]` | Hours with no price data for day +2 (horizons spanning 3+ calendar days)   |
-| `day2_pv_missing_hours`        | `list[int]` | Hours with no PV forecast for day +2                                       |
-| `horizon_has_tomorrow`         | `bool`      | `True` when horizon extends beyond 24 h                                    |
-| `horizon_days`                 | `int`       | Number of calendar days covered (1, 2, or 3)                               |
-| `load_forecast_ready`          | `bool`      | `True` when future load provenance and values are safe to optimize         |
-| `load_forecast_reason`         | `str/None`  | Machine-readable rejection reason, or `None` when ready                    |
-| `is_complete`                  | `bool`      | `True` when price/PV inputs are complete and `load_forecast_ready` is true |
+| Field                           | Type        | Description                                                                                            |
+| ------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------ |
+| `today_price_missing_hours`     | `list[int]` | Hours (0–23) with no price data today                                                                  |
+| `today_pv_missing_hours`        | `list[int]` | Hours (0–23) with no PV forecast today                                                                 |
+| `tomorrow_price_missing_hours`  | `list[int]` | Hours with no price data for tomorrow                                                                  |
+| `tomorrow_pv_missing_hours`     | `list[int]` | Hours with no PV forecast for tomorrow                                                                 |
+| `day2_price_missing_hours`      | `list[int]` | Hours with no price data for day +2 (horizons spanning 3+ calendar days)                               |
+| `day2_pv_missing_hours`         | `list[int]` | Hours with no PV forecast for day +2                                                                   |
+| `horizon_has_tomorrow`          | `bool`      | `True` when horizon extends beyond 24 h                                                                |
+| `horizon_days`                  | `int`       | Number of calendar days covered (1, 2, or 3)                                                           |
+| `load_forecast_ready`           | `bool`      | `True` when future load provenance and values are safe to optimize                                     |
+| `load_forecast_reason`          | `str/None`  | Machine-readable rejection reason, or `None` when ready                                                |
+| `load_forecast_missing_hours`   | `list[int]` | Hour blocks whose average sensors had no stored sample (issue #1110)                                   |
+| `load_forecast_estimated_hours` | `list[int]` | Missing hours filled with the conservative neighbour estimate                                          |
+| `is_complete`                   | `bool`      | `True` when price/PV inputs are complete, `load_forecast_ready` is true, and no load hour is estimated |
 
 ### Home Assistant attribute serialisation
 
@@ -1274,6 +1281,8 @@ directly to a sensor's `extra_state_attributes`:
   "horizon_days": 2,
   "load_forecast_ready": true,
   "load_forecast_reason": null,
+  "load_forecast_missing_hours": [],
+  "load_forecast_estimated_hours": [],
   "tomorrow_price_missing_hours": [],
   "tomorrow_pv_missing_hours": [],
   "day2_price_missing_hours": [],

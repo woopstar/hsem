@@ -51,6 +51,12 @@ _VALID_STATES = {
     "waiting",
 }
 
+#: Per-slot plan structures are rebuilt every replan and only read from the
+#: live state (dashboards, templates) — never recorded (issue #1099).
+EV_PLAN_UNRECORDED_ATTRIBUTES = frozenset(
+    {"charging_slots", "planned_load_by_slot", "data_quality"}
+)
+
 
 class HSEMEVOptimalChargingPlanSensor(
     HSEMCoordinatorEntity,
@@ -70,6 +76,7 @@ class HSEMEVOptimalChargingPlanSensor(
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = sorted(_VALID_STATES)
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _unrecorded_attributes = EV_PLAN_UNRECORDED_ATTRIBUTES
 
     def __init__(
         self,

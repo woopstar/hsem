@@ -171,7 +171,11 @@ class TestApplyCurrentEvPowerOverride:
         assert slot.ev_second_charger_calculated_power == pytest.approx(0.0)
 
     def test_connected_ev_is_raised_to_its_charger_rating(self) -> None:
-        """A plugged-in EV is pushed up to its rating within the fuse budget."""
+        """A plugged-in EV is pushed up to its rating within the fuse budget.
+
+        The rating is the whole-amp nameplate: 11 kW on the default
+        single-phase topology snaps to 48 A / 11 040 W (issue #1112).
+        """
         slot = self._slot()
         live = LiveState()
         live.ev.is_connected = True
@@ -192,7 +196,92 @@ class TestApplyCurrentEvPowerOverride:
             live=live,
         )
 
-        assert slot.ev_charger_calculated_power == pytest.approx(11_000.0)
+        assert slot.ev_charger_calculated_power == pytest.approx(11_040.0)
+
+
+class TestForceChargeNameplateCurrent:
+    """Force charge commands the whole-amp nameplate, not raw kW (issue #1112).
+
+    A raw ``11.0 kW x 1000`` ceiling is 40 W below the 16 A three-phase
+    nameplate, so whole-amp quantisation floored it to 15 A / 10 350 W.
+    """
+
+    def _run(
+        self,
+        options: dict[str, Any],
+        *,
+        override_primary: bool = True,
+        override_second: bool = False,
+        house_w: float = 0.0,
+    ) -> Any:
+        slot = _rec(_SLOT_START, _SLOT_END)
+        slot.ev_charger_calculated_power = 0.0
+        slot.ev_second_charger_calculated_power = 0.0
+        live = LiveState()
+        live.ev.is_connected = True
+        live.ev_second.is_connected = True
+        live.house_consumption_power_w = house_w
+        apply_current_ev_power_override(
+            config_entry=_entry({"hsem_main_fuse_amps": 0, **options}),
+            hourly_recommendations=[slot],
+            ev_plan=None,
+            ev_second_plan=None,
+            now=_NOW,
+            override_primary=override_primary,
+            override_second=override_second,
+            live=live,
+        )
+        return slot
+
+    @pytest.mark.parametrize(
+        ("topology", "power_kw", "expected_w"),
+        [
+            ("three_phase_balanced", 11.0, 11_040.0),
+            ("three_phase_switchable", 11.0, 11_040.0),
+            ("single_phase", 3.7, 3_680.0),
+        ],
+    )
+    def test_primary_force_charge_uses_nameplate(
+        self, topology: str, power_kw: float, expected_w: float
+    ) -> None:
+        slot = self._run(
+            {
+                "hsem_ev_planned_load_charger_power_kw": power_kw,
+                "hsem_ev_planned_load_charger_phase_topology": topology,
+            }
+        )
+
+        assert slot.ev_charger_calculated_power == pytest.approx(expected_w)
+
+    def test_second_ev_force_charge_uses_its_own_nameplate(self) -> None:
+        slot = self._run(
+            {
+                "hsem_ev_second_planned_load_charger_power_kw": 11.0,
+                "hsem_ev_second_planned_load_charger_phase_topology": (
+                    "three_phase_balanced"
+                ),
+            },
+            override_primary=False,
+            override_second=True,
+        )
+
+        assert slot.ev_second_charger_calculated_power == pytest.approx(11_040.0)
+
+    def test_main_fuse_still_clamps_below_nameplate(self) -> None:
+        """Fuse headroom wins over the nameplate: 3x16 A minus 2 kW house."""
+        slot = self._run(
+            {
+                "hsem_main_fuse_amps": 16,
+                "hsem_main_fuse_phases": 3,
+                "hsem_ev_planned_load_charger_power_kw": 11.0,
+                "hsem_ev_planned_load_charger_phase_topology": "three_phase_balanced",
+            },
+            house_w=2_000.0,
+        )
+
+        assert slot.ev_charger_calculated_power == pytest.approx(
+            16 * 3 * 230.0 - 2_000.0
+        )
 
 
 _SIGNATURE: LoadForecastSignature = (

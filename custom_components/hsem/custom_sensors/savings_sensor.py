@@ -62,6 +62,9 @@ class HSEMSavingsSensor(
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.TOTAL
+    # Up to 90 daily snapshots — persisted in the JSON history file, so they
+    # are never needed in the recorder (issue #1099).
+    _unrecorded_attributes = frozenset({"daily"})
 
     def __init__(
         self,

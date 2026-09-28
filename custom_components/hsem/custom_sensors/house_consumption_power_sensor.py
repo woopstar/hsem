@@ -74,9 +74,11 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfPower.WATT
 
-    # List all attributes to exclude from recording, except state and last_updated
+    # Only the state is recorded. ``last_updated`` changes on every write, so
+    # recording it would defeat attribute deduplication (issue #1099).
     _unrecorded_attributes = frozenset(
         [
+            "last_updated",
             "status",
             "description",
             "unique_id",

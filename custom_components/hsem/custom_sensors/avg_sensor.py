@@ -6,19 +6,40 @@ expected house consumption per hour block.
 
 Created dynamically by :class:`HSEMHouseConsumptionPowerSensor` for each
 hour block and average period (1, 3, 7, or 14 days).
+
+Recorder footprint (issue #1099): the published average changes roughly once
+per day, when an hour block completes.  The sensor therefore only writes its
+state when the average or the stored measurements change, and keeps the
+volatile ``last_updated`` timestamp and the ``measurements`` dict out of the
+recorder.  Restart restore is unaffected — ``RestoreEntity`` persists the
+full state object independently of ``_unrecorded_attributes``.
+
+Unobserved blocks (issues #1101 and #1110): a sample is only stored when the
+block was observed end to end. The tracked utility meter's ``last_reset`` must
+match the block start, *and* Home Assistant must have been down for no more
+than the tolerance inside the block (see :mod:`.block_observation`). After
+downtime the meter fires its missed daily reset on restart and reads ``0``,
+and a block interrupted by real downtime holds only part of the hour. Neither
+is a measurement, so both are skipped and the previous valid days remain in
+the window. A quick restart or reload keeps the block.
 """
 
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from typing import Any, override
 
 import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
+from homeassistant.components.sensor.const import (
+    ATTR_LAST_RESET,
+    SensorDeviceClass,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import (
     async_track_state_change_event,
@@ -26,11 +47,58 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.restore_state import RestoreEntity
 
+from custom_components.hsem.custom_sensors.block_observation import (
+    BLOCK_RESET_TOLERANCE,
+    AvgSensorExtraData,
+    Interval,
+    block_observed,
+    prune_unobserved,
+    restore_unobserved,
+    unobserved_overlap,
+)
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.ha_helpers import ha_get_entity_state_and_convert
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+
+#: Tolerance for deciding whether a published kWh value actually changed.
+_CHANGE_EPSILON = 1e-9
+
+#: Re-exported for existing callers; see :mod:`.block_observation`.
+_BLOCK_RESET_TOLERANCE = BLOCK_RESET_TOLERANCE
+
+#: Module-level alias so tests can patch the observation guard in one place.
+_block_observed = block_observed
+
+#: Length of every hour block.
+_BLOCK_LENGTH = timedelta(hours=1)
+
+
+def _meter_last_reset(hass: HomeAssistant, entity_id: str | None) -> Any:
+    """Return the raw ``last_reset`` attribute of the tracked utility meter."""
+    if not entity_id:
+        return None
+    state = hass.states.get(entity_id)
+    if state is None:
+        return None
+    return state.attributes.get(ATTR_LAST_RESET)
+
+
+def _float_changed(previous: float | None, current: float | None) -> bool:
+    """Return True when two optional kWh values differ beyond the epsilon."""
+    if previous is None or current is None:
+        return (previous is None) != (current is None)
+    return abs(previous - current) > _CHANGE_EPSILON
+
+
+def _measurements_changed(
+    previous: dict[str, float], current: dict[str, float]
+) -> bool:
+    """Return True when the per-day measurement dicts differ."""
+    if previous.keys() != current.keys():
+        return True
+    return any(_float_changed(previous[day], current[day]) for day in current)
 
 
 class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
@@ -39,9 +107,18 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
     _attr_icon = "mdi:calculator"
     _attr_has_entity_name = True
 
-    # Exclude all attributes from recording except state, last_updated and measurements
+    # Only the state is recorded. ``last_updated`` and ``measurements`` are
+    # restored from RestoreEntity storage, not the recorder (issue #1099).
     _unrecorded_attributes = frozenset(
-        ["tracked_entity", "average", "hour_start", "hour_end", "unique_id"]
+        [
+            "tracked_entity",
+            "average",
+            "hour_start",
+            "hour_end",
+            "unique_id",
+            "last_updated",
+            "measurements",
+        ]
     )
 
     def __init__(
@@ -83,6 +160,25 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         self._tracked_entities: set[str] = set()
         # Unsubscribe callbacks registered by async_track_* helpers.
         self._unsub_callbacks: list = []
+        # Set once the first state has been written this session; later
+        # writes happen only when the published values change.
+        self._state_written = False
+        # Intervals during which Home Assistant was not running this sensor.
+        # ``None`` until the sensor joins HA; blocks overlapping these by more
+        # than the tolerance are never stored (issues #1101 and #1110).
+        self._unobserved: list[Interval] | None = None
+
+    @property
+    @override
+    def extra_restore_state_data(self) -> AvgSensorExtraData:
+        """Persist the heartbeat and unobserved intervals (issue #1110).
+
+        Read by Home Assistant on every restore-state dump (stop, entity
+        removal, and every 15 minutes), so ``last_alive`` is when this
+        sensor was last known to be running.
+        """
+        now = dt_util.utcnow()
+        return AvgSensorExtraData(now, prune_unobserved(self._unobserved or [], now))
 
     @property
     @override
@@ -131,7 +227,8 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
     @property
     @override
     def should_poll(self) -> bool:
-        return True
+        """Do not poll — the 5-minute timer and meter listener drive updates."""
+        return False
 
     @property
     @override
@@ -159,6 +256,11 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
     @override
     async def async_added_to_hass(self) -> None:
         """Handle when sensor is added to Home Assistant."""
+        session_started_at = dt_util.now()
+        extra = await self.async_get_last_extra_data()
+        self._unobserved = restore_unobserved(
+            extra.as_dict() if extra is not None else None, session_started_at
+        )
 
         # Get the last state of the sensor
         old_state = await self.async_get_last_state()
@@ -230,7 +332,15 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
                 self._tracked_entities.add(self._tracked_entity)
 
     async def _async_handle_update(self, event: Any | None = None) -> None:
-        """Handle updates to the source sensor."""
+        """Handle updates to the source sensor.
+
+        The state is only written when the average or the measurements
+        changed since the last write (plus once per session), so no-op
+        ticks do not create recorder rows (issue #1099).
+        """
+        previous_state = self._state
+        previous_measurements = dict(self._measurements or {})
+
         # No completed measurements means unavailable, not measured zero.
         # A non-empty measurement set whose average is genuinely 0.0 remains
         # available and is published as zero below.
@@ -250,7 +360,17 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
             if count > 0:
                 self._state = round(total / count, 2)
 
+        if (
+            self._state_written
+            and not _float_changed(previous_state, self._state)
+            and not _measurements_changed(
+                previous_measurements, self._measurements or {}
+            )
+        ):
+            return
+
         self._last_updated = now.isoformat()
+        self._state_written = True
 
         # Trigger an update in Home Assistant
         self.async_write_ha_state()
@@ -271,6 +391,12 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         complete, i.e. when ``now.hour >= hour_end``.  For overnight blocks
         (``hour_end < hour_start``, e.g. 23→00) the block closes at
         midnight, so any time after the block started counts as complete.
+
+        A complete block is additionally only stored when it was observed end
+        to end (see :func:`.block_observation.block_observed`, issues #1101
+        and #1110). Otherwise — e.g. Home Assistant was down and the missed
+        reset fired on restart, publishing ``0`` — the sample is skipped
+        without touching existing measurements.
         """
         now = dt_util.now()
 
@@ -314,14 +440,17 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
 
             if block_complete:
                 value = round(float(utility_meter_value), 2)
+                block_start = datetime.combine(
+                    measurement_date, time(hour=self._hour_start), tzinfo=now.tzinfo
+                )
+                block_end = dt_util.as_utc(block_start) + _BLOCK_LENGTH
+                last_reset = _meter_last_reset(self.hass, self._tracked_entity)
                 # A misconfigured tracked utility meter (e.g. net-consumption
                 # accounting) can report a negative or non-finite reading.
                 # Storing that as the day's sample would poison a rolling
                 # window that may not roll over for days — reject it instead
                 # (issue #938).
-                if math.isfinite(value) and value >= 0.0:
-                    self._measurements[measurement_date.isoformat()] = value
-                else:
+                if not math.isfinite(value) or value < 0.0:
                     _LOGGER.warning(
                         "Rejected non-finite/negative utility-meter reading for "
                         "entity_id=%s on %s: %s",
@@ -329,6 +458,30 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
                         measurement_date.isoformat(),
                         value,
                     )
+                elif not _block_observed(
+                    last_reset, self._unobserved, block_start, block_end
+                ):
+                    # Unobserved or partial block (issue #1101): storing it
+                    # would publish HA downtime as a measured zero.
+                    _LOGGER.debug(
+                        "Skipping unobserved block sample for entity_id=%s on %s: "
+                        "value=%s last_reset=%s unobserved_in_block=%s "
+                        "block_start=%s",
+                        self._tracked_entity,
+                        measurement_date.isoformat(),
+                        value,
+                        last_reset,
+                        (
+                            None
+                            if self._unobserved is None
+                            else unobserved_overlap(
+                                self._unobserved, block_start, block_end
+                            )
+                        ),
+                        block_start.isoformat(),
+                    )
+                else:
+                    self._measurements[measurement_date.isoformat()] = value
 
         if self._measurements is not None and len(self._measurements) > self._average:
             await self._async_cleanup_old_measurements()

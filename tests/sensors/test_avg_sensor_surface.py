@@ -19,12 +19,16 @@ class TestPublishedSurface:
     """Identity, polling and availability are reported from local state."""
 
     def test_identity_and_polling(self) -> None:
-        """The sensor polls and carries the ids it was constructed with."""
+        """The sensor is timer/listener-driven and carries its ids.
+
+        Polling was removed in issue #1099: the 5-minute timer and the
+        tracked-meter listener already cover every update path.
+        """
         sensor = _avg_sensor()
 
         assert sensor.unique_id == "test_average"
         assert sensor.name == "Test average"
-        assert sensor.should_poll is True
+        assert sensor.should_poll is False
 
     def test_availability_follows_a_computed_state(self) -> None:
         """The sensor is unavailable until it has computed an average."""

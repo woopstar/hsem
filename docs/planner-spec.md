@@ -2758,7 +2758,9 @@ downward-only exception to that block:
    live telemetry does not already prove the charge is stopped
    (`primary_grid_charge_is_known_disarmed()`: a verified cap ≤ 0 W, a
    working mode other than `TimeOfUse`, or TOU periods that no longer match
-   the force-charge schedule).
+   the force-charge schedule). The live working mode is canonicalised with
+   `canonical_working_mode()` first, so an EMMA-managed system reporting
+   `time_of_use` is still recognised as TOU (not as disarmed).
 3. **The write.** `async_emergency_disable_grid_charge()` writes exactly
    `0` to `hsem_huawei_solar_batteries_grid_charge_maximum_power` via the
    same write-and-verify primitive as every other applier write. It never
@@ -2966,11 +2968,92 @@ non-finite values, and negative values fail closed. A complete identically-zero
 profile remains valid while finite live house demand is at most 50 W; above
 50 W it reports `zero_forecast_with_live_demand`.
 
+#### Hour blocks without a stored sample (issue #1110)
+
+A young rolling window holds at most one sample per hour block, so a single
+block the average sensors could not store leaves that hour `unavailable` for
+a full day. The avg populator inspects all 24 hours and collects every hour
+with a missing window. When there are at most `MAX_ESTIMATED_LOAD_HOURS` (4)
+such hours, each window of a missing hour $h$ is estimated from the nearest
+measured hour before ($b$) and after ($a$) on the circular day:
+
+$$
+\hat{v}_{w}(h) = \max\left(v_{w}(b),\ v_{w}(a)\right), \quad w \in \{1d, 3d, 7d, 14d\}
+$$
+
+The estimate then goes through the normal weighted blend. It is never below
+a measured neighbour and never zero-by-absence. More missing hours, an
+unregistered average entity, or unset or all-zero weights still fail closed
+with `source_unavailable`.
+
+The gap is always surfaced. `DataQuality.load_forecast_missing_hours` lists
+every hour without a value, `DataQuality.load_forecast_estimated_hours` lists
+the hours that were estimated, and any estimated hour makes
+`DataQuality.is_complete` false. A warning naming the hours is logged once
+per change.
+
+The average sensors store a completed block only when the meter reset at the
+block start and Home Assistant was down for at most 5 minutes inside the
+block. That downtime is measured from a persisted heartbeat, not from the
+session start (issues #1101/#1110). A quick restart therefore never creates
+a gap.
+
 When the profile is not ready, automatic mode must not run or reuse an optimized
 plan. It publishes a strict current-slot `batteries_wait_mode` with primary
 charge/discharge and grid import/export motion cleared. Manual force mode remains
 higher authority, and the coordinator retries at the one-minute pending-data
 interval.
+
+The hold also clears the planned EV command, but an active EV force-charge-now
+override is applied _after_ it, both inside the planner phase and on the
+non-planner hold path (issue #1103). The forced slot then carries the charger's
+fuse-limited whole-amp nameplate (issue #1112) with coherent EV load, grid-import, and cost accounting,
+and is labelled `ev_smart_charging`. Primary-battery charge and discharge stay
+zero. The issue #900 disconnect auto-reset runs first on both paths.
+
+#### EV-only smart-charging fallback (issue #1106)
+
+On the non-planner hold path, each EV whose planned-load feature is enabled
+follows an **EV-only fallback plan** (`planner/ev_fallback.py`, applied by
+`coordinator_load_hold.py`). The house load is unknown, so the fallback is
+**grid-only**: `slot_net_surplus_kwh = 0` for every slot, and
+`build_ev_charging_plan` selects the cheapest import slots before the
+effective deadline. The EV planner's guard states apply unchanged: feature off,
+not connected, or smart charging off produce no allocation, an unknown SoC
+produces `unavailable` with no allocation (issue #988), and an EV at or above
+target produces `fully_charged`.
+
+Trailing slots without a published price read `0.0` on the coordinator slots.
+The fallback estimates them with the issue #1002 rule: the same local-time price
+from the nearest earlier day, else the highest known price. An unpublished price
+is never planned as free.
+
+Order on the hold path:
+
+1. `set_strict_storage_hold()` on the current slot.
+2. Fallback commands written through `write_ev_slot_commands()` for every
+   commanded slot. The current slot is clamped to `ev_site_power_budget_w()`,
+   which both EVs share.
+3. Disconnect auto-reset + force-charge-now (force wins over the fallback).
+4. `_apply_ev_command_stability()` (whole-amp quantisation, deadband, fuse clamp).
+5. The current slot is labelled `ev_smart_charging` only while the final command
+   is non-zero, otherwise `batteries_wait_mode`.
+6. The published `EVChargingPlan` is rebuilt from the final slot commands, with
+   every slot priced as grid import and `data_quality` carrying
+   `mode: ev_only_fallback` and the `load_forecast` reason.
+
+Invariants:
+
+- Primary-battery `batteries_charged_kwh` and `batteries_discharged_kwh` stay
+  zero in every slot the fallback writes.
+- The current-slot EV command never exceeds the charger rating or the live fuse
+  budget, and is zero below the charger minimum.
+- No fallback slot is credited with PV surplus.
+- The plan sensor, the charger command, and the slot's EV energy/grid/cost
+  fields come from the same snapshot (design invariant 13).
+- The plan explanation stays `safety_hold`, with an `ev_only_fallback`
+  constraint while a fallback plan is published.
+- Recovery still forces a fresh MILP solve, which replaces the fallback.
 
 The accepted-plan load signature contains each future slot's start and all five
 finite load values. Recovery or a material correction forces a fresh same-slot
@@ -3171,7 +3254,9 @@ carry the day+2 gap lists for horizons spanning three or more calendar days.
 future profile value cannot safely support a solve.
 `DataQuality.load_forecast_reason` contains the machine-readable cause and is
 `None` when ready. Load readiness participates in `DataQuality.is_complete`
-alongside price and PV completeness.
+alongside price and PV completeness. `DataQuality.load_forecast_missing_hours`
+and `DataQuality.load_forecast_estimated_hours` name the hour blocks without
+a stored sample; estimated hours also make `is_complete` false (issue #1110).
 
 ### Discharge concentration across days
 
@@ -3729,6 +3814,13 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
   than the horizon cap, `plan.data_quality["deadline_clamped"] is True`
   and `plan.data_quality["effective_deadline"]` holds the ISO-format clamp.
 - Partial slot: current slot load ≤ `charger_power_kw × remaining_minutes / 60`.
+- Charger nameplate (issue #1112): every EV command ceiling — MILP
+  `EVConfig`, the heuristic `EVChargingPlan.charger_power_kw`, the EV-only
+  fallback input, and force-charge-now — is
+  `charger_rated_power_w(configured_kw × 1000, topology)`: the configured
+  power snapped to its whole-amp nameplate (three-phase basis for
+  `three_phase_switchable`). Never raw `kW × 1000`. 11.0 kW balanced
+  three-phase is 16 A / 11 040 W, and survives whole-amp flooring unchanged.
 - When EV consumes all net surplus, home battery `batteries_charged == 0.0` in that slot.
 - `winner.cost == final_output.cost` still holds when EV load is active (no post-selection mutation).
 - Both `ev_charging_plan` and `ev_second_charging_plan` on `PlannerOutput` are `None` when disabled.

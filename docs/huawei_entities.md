@@ -41,6 +41,30 @@
 
 ---
 
+## EMMA-managed batteries
+
+When an EMMA is present, `wlcrs/huawei_solar` hands battery control to the EMMA
+device: `huawei_solar.set_tou_periods` only accepts the EMMA `device_id`, and the
+battery device's working-mode / TOU entities are replaced by the EMMA ones below.
+The EMMA entities are not present on this installation, so they are listed by
+upstream translation key (entity IDs depend on the EMMA device name — pick them
+in the config flow rather than typing them).
+
+| Upstream translation key                     | Friendly name               | Options / format                                                                 | Used by HSEM                                                                         |
+| -------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `emma_ess_control_mode` (select)             | ESS Control Mode            | `time_of_use`, `maximum_self_consumption`, `fully_fed_to_grid`, …                | ✅ `hsem_huawei_solar_batteries_working_mode`                                        |
+| `emma_tou_preferred_use_of_surplus_pv_power` | Excess PV energy use in TOU | `charge`, `fed_to_grid`                                                          | ✅ `hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou`                         |
+| `emma_tou_periods` (sensor)                  | TOU periods                 | `Period N` attributes, same format as the LUNA2000 TOU sensor (disabled default) | ✅ `hsem_huawei_solar_batteries_tou_charging_and_discharging_periods`                |
+| EMMA device                                  | —                           | —                                                                                | ✅ `hsem_huawei_solar_device_id_tou_controller` (target of `set_tou_periods` writes) |
+
+HSEM's `WorkingModes` values are the LUNA2000 option strings. The applier maps each
+intent to whichever option the configured select advertises
+(`utils/workingmodes.py::resolve_working_mode_option`) and maps live states back
+with `canonical_working_mode()` before comparing them, so EMMA's `time_of_use` is
+treated as `WorkingModes.TimeOfUse`.
+
+---
+
 ## Inverter
 
 ### sensor entities

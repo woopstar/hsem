@@ -27,6 +27,9 @@ from custom_components.hsem.coordinator_data import CoordinatorData
 from custom_components.hsem.coordinator_helpers import (
     LoadForecastSignature,
 )
+from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
+    ConsumptionPopulation,
+)
 from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
     async_collect_all_states,
@@ -103,6 +106,8 @@ class CoordinatorSharedState(_Base):
     _interval_timer_unsub: Callable[[], None] | None
     _last_accumulation_ts: datetime | None
     _last_load_forecast_readiness_reason: str | None
+    _last_load_forecast_gaps: tuple[tuple[int, ...], tuple[int, ...]]
+    _load_forecast_population: ConsumptionPopulation
     _last_plan_ev2_deadline: datetime | None
     _last_plan_ev2_smart_charging: bool | None
     _last_plan_ev2_target_soc: float | None
@@ -167,6 +172,21 @@ class CoordinatorSharedState(_Base):
     async def _async_handle_update(self, event: Any = None) -> None: ...
 
     async def _run_planner_phase(self, *args: Any, **kwargs: Any) -> Any: ...
+
+    # Methods provided by CoordinatorLoadForecastMixin.
+    async def _async_populate_load_forecast(
+        self, cfg: SensorConfig, live: LiveState, now: datetime
+    ) -> bool:
+        raise NotImplementedError
+
+    def _published_data_quality(self) -> DataQuality:
+        raise NotImplementedError
+
+    # Method provided by CoordinatorLoadHoldMixin.
+    def _apply_load_forecast_safety_hold(
+        self, now: datetime, live: LiveState, load_forecast_ready: bool
+    ) -> HourlyRecommendation | None:
+        raise NotImplementedError
 
     # Method provided by CoordinatorEvSoCEconomicsMixin.
     async def _maybe_compute_ev_soc_economics(

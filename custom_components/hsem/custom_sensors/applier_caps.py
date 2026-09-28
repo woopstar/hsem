@@ -15,6 +15,7 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import is_material_planned_energy_kwh
+from custom_components.hsem.utils.workingmodes import ExcessPvUseInTou
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.hourly_recommendation import (
@@ -39,6 +40,54 @@ def _configured_battery_device_ids(cfg: SensorConfig) -> list[str]:
         if device_id and device_id not in device_ids:
             device_ids.append(device_id)
     return device_ids
+
+
+def _desired_excess_pv_use(
+    recommendation: str | None,
+    *,
+    wait_mode_self_consumption: bool,
+    held_planned_export: bool,
+) -> str:
+    """Return the Excess-PV-use-in-TOU option for this slot.
+
+    ``fed_to_grid`` for the two explicit export modes and when a held idle
+    slot carries a material, authoritative solved export (issue #797);
+    ``charge`` otherwise.  A plain wait slot with no solved export is not
+    itself an export decision, so routing surplus there would sell energy
+    nobody decided to sell — only ``held_planned_export`` (which already
+    requires primary_battery_hold) grants that for
+    BatteriesWaitMode/EVSmartCharging.  Wait-mode self-consumption keeps
+    excess PV in the battery so the surplus above the reserve can be used
+    for household self-consumption; it takes priority over a plain hold
+    (issue #954), so it may now apply to a held slot too.
+    """
+    if wait_mode_self_consumption:
+        return ExcessPvUseInTou.Charge.value
+    export_is_intended = (
+        recommendation
+        in (
+            Recommendations.ForceExport.value,
+            Recommendations.ForceBatteriesDischarge.value,
+        )
+        or held_planned_export
+    )
+    return (
+        ExcessPvUseInTou.FedToGrid.value
+        if export_is_intended
+        else ExcessPvUseInTou.Charge.value
+    )
+
+
+def _tou_device_ids(cfg: SensorConfig) -> list[str]:
+    """Return the device IDs that receive ``huawei_solar.set_tou_periods``.
+
+    When an EMMA manages the batteries, ``huawei_solar`` only accepts the EMMA
+    device for TOU writes, so a configured TOU controller replaces the battery
+    devices entirely. Otherwise the legacy battery-device routing is kept.
+    """
+    if cfg.huawei_solar_device_id_tou_controller:
+        return [cfg.huawei_solar_device_id_tou_controller]
+    return _configured_battery_device_ids(cfg)
 
 
 def _wait_mode_self_consumption_cap_w(

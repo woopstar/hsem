@@ -110,6 +110,26 @@ zero-load forecast.
   completed hour block stores a valid sample and `load_forecast_ready`
   recovers on the next cycle — it does not wait for a multi-day window to
   age out the bad entry.
+- **Home Assistant was down across one or more hour blocks:** on restart each
+  missed `…_utility_meter` runs its overdue daily reset and shows `0 kWh`.
+  The rolling-average sensors only store a block they observed end to end.
+  The meter's `last_reset` must match the block start, and HA must have been
+  down for no more than 5 minutes inside that block (issue #1101). A block
+  missed by downtime, or cut short by it, is skipped. The window keeps its
+  previous valid days instead of recording a fake `0`. Downtime is measured
+  from a heartbeat each average sensor persists, so a quick restart or HSEM
+  reload inside or right after a block keeps the block (issue #1110). The
+  first restart after upgrading has no heartbeat yet and applies the older
+  strict rule once.
+- **Some hours stay `unavailable` after a reset or a crash:** check
+  `data_quality.load_forecast_missing_hours`. Up to 4 missing hours are
+  planned with a conservative estimate (listed in
+  `load_forecast_estimated_hours`, logged once as `[load] No stored
+consumption sample for hour block(s) …`). More missing hours hold the
+  battery until enough blocks complete once. Each listed block recovers
+  after its hour next passes with HA running. The `Energy (Integral)` sensors are
+  lifetime running totals (e.g. `1.164 kWh`) and are not the hourly value.
+  Only the utility meter's per-block difference is used.
 
 ---
 
@@ -613,6 +633,61 @@ correct. HSEM writes that cap deliberately in several situations:
 
 ---
 
+## 8. Home Assistant database growing large
+
+### Symptoms
+
+- `home-assistant_v2.db` grows by gigabytes; backups get slow.
+- HSEM entities such as `sensor.hsem_house_consumption_energy_avg_*` or
+  `sensor.hsem_forecast_accuracy_sensor` rank high in a per-entity
+  `states` / `state_attributes` size query.
+
+### Checks & likely causes
+
+- **HSEM version before the issue #1099 fix.** The 96 rolling-average
+  sensors wrote a new state (with a fresh `last_updated` timestamp and the
+  full `measurements` dict) every 30 s, and coordinator sensors recorded
+  their large structured attributes (rejected plans, EV charging slots,
+  cost tables, daily histories, restore blobs) on every cycle. Upgrade;
+  afterwards each average sensor writes only a few rows per day and the
+  coordinator sensors record only small scalar attributes (see
+  [Sensors reference → Recorder footprint](sensors-reference.md#recorder-footprint)).
+- **Retention.** Compare the oldest `states` row with your
+  `purge_keep_days`. If history is much older, auto-purge is not running —
+  check `home-assistant.log` for recorder errors and run `recorder.purge`.
+
+### Which HSEM entities can be excluded from the recorder
+
+HSEM never reads the recorder **history** of its own sensors. Restart
+restore uses `RestoreEntity` storage (`.storage/core.restore_state`), which
+is independent of the recorder. These can be excluded safely — you only lose
+their history graphs:
+
+```yaml
+recorder:
+  purge_keep_days: 15 # must be >= ML history days (default 14)
+  exclude:
+    entity_globs:
+      - sensor.hsem_house_consumption_power_*
+      - sensor.hsem_house_consumption_energy_integral_*
+      - sensor.hsem_house_consumption_energy_*_utility_meter
+      - sensor.hsem_house_consumption_energy_avg_*
+    entities:
+      - sensor.hsem_forecast_accuracy_sensor
+```
+
+**Do not exclude** the entities configured as ML energy, grid import
+energy, grid export energy, outdoor temperature or weather forecast. ML
+consumption prediction reads their recorder history (up to 90 days), and
+`purge_keep_days` must be at least `hsem_ml_consumption_history_days`.
+
+To delete existing rows after adding the excludes, call
+`recorder.purge_entities` with the same globs and `keep_days: 0`, then
+repack the database (`recorder.purge` with `repack: true`, or `VACUUM` with
+HA stopped for very large SQLite files).
+
+---
+
 ## When to check the logs
 
 ### HSEM log (`hsem.log`)
@@ -675,6 +750,35 @@ If you've checked everything and HSEM still doesn't work:
 
 6. **Check for known issues:** Review open issues at
    [github.com/woopstar/hsem/issues](https://github.com/woopstar/hsem/issues).
+
+7. **Reset the house-consumption history:** wiping the recorder database
+   does **not** reset HSEM's hour-block sensors. The integral totals,
+   utility meters and rolling-average `measurements` are restored from
+   `.storage/core.restore_state`, not from the database. To reset them:
+
+   1. Stop Home Assistant. HA rewrites `core.restore_state` while running and
+      on shutdown, so an edit made while it runs is overwritten.
+   2. Back up `.storage/core.restore_state`, then remove only the HSEM
+      hour-block entries. Do not delete the whole file. It also holds the
+      restored state of every other integration (other utility meters and
+      integrals, `input_*` helpers, …).
+
+      ```bash
+      jq '.data |= map(select(.state.entity_id | startswith("sensor.hsem_house_consumption_") | not))' \
+        core.restore_state > core.restore_state.new && mv core.restore_state.new core.restore_state
+      ```
+
+   3. Start Home Assistant. Until each hour block has completed once (up to
+      24 h), its average sensors are `unavailable`. While more than 4 hours
+      are missing, `load_forecast_ready` is `false` and automatic mode holds
+      `batteries_wait_mode`, unless ML consumption prediction is enabled and
+      has enough recorder history. With 4 or fewer missing hours HSEM plans
+      with a conservative estimate for them (see
+      `data_quality.load_forecast_estimated_hours`).
+
+   HSEM's own tracker files (`.storage/hsem_*_history.json`: prediction,
+   financial, savings, daily) are separate. Delete them only to reset those
+   statistics as well.
 
 ---
 

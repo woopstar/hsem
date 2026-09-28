@@ -50,7 +50,9 @@ class OCPPAntiFlapMixin:
     _target_entered_at: datetime | None
     _zero_entered_at: datetime | None
     _last_sent_target: float
+    _last_sent_current_a: int
     _last_sent_unit: str
+    _last_sent_phases: int | None
     _last_profile_retry_attempt: datetime | None
     _stalled: bool
     _stall_logged: bool
@@ -133,6 +135,24 @@ class OCPPAntiFlapMixin:
         # unplug is released by the StatusNotification "Available" path.
         if management_enabled is None:
             management_enabled = managed
+        # Turning the feature or smart charging off is an explicit hand-back
+        # (issue #1105): with nothing to command, release the charger at once,
+        # even mid-session, instead of stopping the car first. A positive
+        # target (force charge with smart charging off) still commands it.
+        if (
+            not management_enabled
+            and target_w <= _SLOT_EPSILON
+            and self._holds_charger_control(session)
+        ):
+            _LOGGER.info(
+                "OCPP %s: EV management is off (flap state '%s') — releasing "
+                "the charger without stopping the session",
+                session.cpid,
+                self._flap_state,
+            )
+            await self._relinquish_charger_control(session)
+            return
+
         if management_enabled and not managed and connector_has_car(session):
             _LOGGER.debug(
                 "OCPP %s: EV reads disconnected but the connector reports '%s' "
@@ -467,6 +487,36 @@ class OCPPAntiFlapMixin:
             else "while held at an enforced zero",
         )
         self._spawn_gate_task(self._release_connect_gate(session))
+
+    def _holds_charger_control(self, session: ChargerSession) -> bool:
+        """Return whether HSEM has a profile installed or a session in flight."""
+        return (
+            self._flap_state != FlapState.Idle
+            or session.hsem_zero_profile_active
+            or session.gate_pending_plan
+            or self._last_sent_current_a >= 0
+        )
+
+    async def _relinquish_charger_control(self, session: ChargerSession) -> None:
+        """Clear HSEM's profiles and reset the state machine to ``Idle``.
+
+        Used when the user switches management off (issue #1105). Unlike the
+        stop path it sends no 0 A profile and no ``RemoteStopTransaction``:
+        the session, if any, continues under the charger's own control.
+        Resetting the last-sent bookkeeping also stops the post-
+        ``StartTransaction`` resend from re-installing an HSEM limit.
+        """
+        session.gate_pending_plan = False
+        await self._release_connect_gate(session)
+        self._flap_state = FlapState.Idle
+        self._target_entered_at = None
+        self._zero_entered_at = None
+        self._last_sent_target = -1.0
+        self._last_sent_current_a = -1
+        self._last_sent_unit = ""
+        self._last_sent_phases = None
+        self._stalled = False
+        self._stall_logged = False
 
     async def _release_connect_gate(self, session: ChargerSession) -> None:
         """Clear HSEM's own charging profiles, giving control back.

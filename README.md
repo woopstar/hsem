@@ -108,6 +108,10 @@ The following integrations work alongside HSEM but are **not required**:
 
 The [Huawei Solar integration by wlcrs](https://github.com/wlcrs/huawei_solar) provides `sensor.inverter_active_power_control` and `sensor.batteries_rated_capacity` but they are disabled by default. To use these entities, go to the device settings, select the inverter or batteries device and show hidden/disabled entities. Find the `sensor.inverter_active_power_control` and `sensor.batteries_rated_capacity` and enable them.
 
+### EMMA-managed batteries
+
+If a Huawei EMMA controls your batteries, the Huawei Solar integration only accepts TOU writes on the EMMA device. In the `huawei_solar` config step, select the EMMA as **Huawei TOU Controller Device**, and pick the EMMA's working-mode (ESS Control Mode), excess-PV-in-TOU, and TOU-periods entities (the EMMA TOU-periods sensor is disabled by default — enable it first). Leave the controller empty for direct LUNA2000 control. See [`docs/huawei_entities.md`](docs/huawei_entities.md#emma-managed-batteries).
+
 ---
 
 ## Installation

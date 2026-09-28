@@ -17,13 +17,16 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 
 ### Coordinator layer (`custom_components/hsem/`)
 
-| File                      | Responsibility                                                   |
-| ------------------------- | ---------------------------------------------------------------- |
-| `coordinator.py`          | HA lifecycle and collect/populate/plan/publication orchestration |
-| `coordinator_data.py`     | Atomic `CoordinatorData` snapshot exposed to entities            |
-| `coordinator_helpers.py`  | Pure override, strict-hold, and load-readiness/signature helpers |
-| `coordinator_tracking.py` | Forecast, daily, financial, and savings accumulation             |
-| `entity_availability.py`  | Per-input unavailable/recovery transition tracking and logging   |
+| File                                  | Responsibility                                                                                                       |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `coordinator.py`                      | HA lifecycle and collect/populate/plan/publication orchestration                                                     |
+| `coordinator_data.py`                 | Atomic `CoordinatorData` snapshot exposed to entities                                                                |
+| `coordinator_helpers.py`              | Pure override, strict-hold, and load-readiness/signature helpers                                                     |
+| `coordinator_load_forecast.py`        | ML/avg consumption population, load readiness, missing/estimated-hour diagnostics (issue #1110)                      |
+| `coordinator_load_hold.py`            | Non-planner load-forecast safety hold, grid-only EV-only fallback (issue #1106), force-charge re-apply (issue #1103) |
+| `coordinator_tracking.py`             | Forecast, daily, financial, and savings accumulation                                                                 |
+| `entity_availability.py`              | Per-input unavailable/recovery transition tracking and logging                                                       |
+| `custom_sensors/block_observation.py` | Avg-sensor downtime tracking: heartbeat, unobserved intervals, `block_observed()` (issues #1101/#1110)               |
 
 Load-average availability must remain explicit: unknown/non-finite values are
 missing, genuine finite zero is valid, and contradictory zero load above 50 W
@@ -274,6 +277,16 @@ charger's own connector status) as ground truth: an EV with management enabled
 stays managed while the charger reports a car, and a planned zero stays enforced.
 Never write a 0 A profile onto a connector with no car (issue #920 standing block).
 
+`management_enabled=False` with a zero target is an explicit hand-back (issue
+#1105). `update_charge_target` handles it first, before the gate and flap state
+machine: `_relinquish_charger_control()` clears HSEM's profile IDs once and
+resets the anti-flap bookkeeping to `Idle`, with **no** 0 A profile and **no**
+`RemoteStopTransaction`, even mid-session. It only fires while
+`_holds_charger_control()` is true (flap non-idle, zero held, gate pending, or a
+last-sent current), so it is idempotent and never touches a charger HSEM never
+commanded. A positive target (force charge with smart charging off) still
+commands normally.
+
 ### Sensor unit normalization (issue #945)
 
 ```python
@@ -384,11 +397,16 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
   development (context window, diff size, review latency).
 - If a file exceeds either limit, split it before adding more features.
 - Current oversized files (as of 2026-09-18):
+
   - `coordinator_planner_phase.py` — 32,040 bytes (over 30 KB)
   - `coordinator_tracking.py` — 31,036 bytes (over 30 KB)
-  - `coordinator_cycle.py` — 33,713 bytes (over 30 KB)
+
   - `custom_sensors/working_mode_sensor.py` — 32,933 bytes (over 30 KB)
   - `planner/candidate_selector.py` — 31,401 bytes (over 30 KB)
+
+- Resolved in issue #1110: the load-forecast population/readiness block moved
+  from `coordinator_cycle.py` to `coordinator_load_forecast.py` (cycle now
+  ~28.5 KB).
 - Resolved in issue #1057: EV deadline parsing moved from `state_collector.py`
   to `custom_sensors/ev_deadline.py`, bringing the collector below 30 KB.
 - Check before every PR:
@@ -888,6 +906,40 @@ of churn. Do not fix this class of bug there — see that section's own
 docstring for why a deadband structurally cannot catch a spike-to-max or a
 same-cycle large drop.
 
+## Force Charge Must Run After the Load-Forecast Hold (Issue #1103)
+
+`set_strict_storage_hold()` zeroes the EV command fields too, and on a managed
+EV that becomes an enforced 0 A OCPP profile. Force-charge-now is a user
+override, so it must always be applied **after** `apply_load_forecast_hold()`.
+Use `coordinator_helpers.apply_force_charge_overrides(...)`: it runs the
+issue #900 disconnect auto-reset and then `apply_force_charge_now()`. It is
+called from both hold sites:
+
+- `coordinator_planner_phase.py` step 8d, after the 8c load-forecast hold and
+  before 8e command stability.
+- `coordinator_load_hold.py::_apply_load_forecast_safety_hold`, called from
+  `coordinator_cycle.py::_async_run_update_cycle` on the non-planner hold path
+  (the planner phase is skipped while `consumption_ok` is false). No plan is
+  accepted there, so that path advances `_last_plan_ev_connected` /
+  `_last_plan_ev_second_connected` itself to keep the disconnect reset working.
+
+The override writes EV fields only through `write_ev_slot_commands()`, so
+`batteries_charged_kwh` / `batteries_discharged_kwh` stay zero and the applier
+still derives a primary-battery hold (0 W discharge cap). Never add EV-field
+carve-outs to `set_strict_storage_hold()`. Ordering is the contract.
+
+**EV-only fallback during the hold (issue #1106).** On the non-planner hold path
+the order is: strict hold, then `planner/ev_fallback.py::build_ev_only_fallback_plan`
+per enabled EV (grid-only, `slot_net_surplus_kwh = 0`, cheapest import slots via
+`build_ev_charging_plan`), then force charge, then
+`_apply_ev_command_stability()`, then the current slot's label follows the final
+command. `estimate_unpriced_tail()` applies the issue #1002 missing-price rule to
+coordinator slots, because they have no "price missing" flag (an unpublished
+price reads `0.0`). `finalize_fallback_plan()` rebuilds the published plan from
+the final commands and re-prices every slot as grid import, because
+`rebuild_ev_plan_from_slots()` would credit PV surplus against an unknown house
+load. Never credit PV surplus on this path.
+
 ## EV Pre-Deadline Target Cap (Issue #636 — Overcharge Fix)
 
 In `milp_optimizer.py`, the EV deadline benefit coefficient (`-ev_penalty_cost`)
@@ -969,6 +1021,27 @@ When adding a new sensor/entity from the inverter:
 
 Never hardcode entity IDs — always use `sensornames.py` constants.
 Always check `docs/huawei_entities.md` before looking elsewhere.
+
+### LUNA2000 vs. EMMA working-mode options (PR #1098, related #408)
+
+- `WorkingModes` values are HSEM _intents_ (the LUNA2000 option strings).
+  EMMA's select uses `time_of_use` / `maximum_self_consumption` instead.
+- **Writes:** resolve the intent against the configured select's advertised
+  `options` with `utils/workingmodes.py::resolve_working_mode_option()`
+  (options read via `applier_state_readers._read_select_options()`). No
+  matching option → a `FAILED` `ApplyResult` is recorded (surfaced by the
+  applier status sensor), never a silent skip.
+- **Comparisons:** never compare `live.huawei_batteries_working_mode` to a
+  `WorkingModes` value directly — wrap it in `canonical_working_mode()`
+  first (applier idempotency guard and
+  `primary_grid_charge_is_known_disarmed()` both do). A raw comparison would
+  treat EMMA's `time_of_use` as non-TOU.
+- **TOU routing:** `applier_caps._tou_device_ids()` — when
+  `hsem_huawei_solar_device_id_tou_controller` (EMMA) is set, TOU periods go
+  only to that device (upstream `set_tou_periods` rejects battery devices
+  when an EMMA exists); otherwise the legacy battery-device routing is kept.
+- Forcible charge/discharge still targets battery devices — upstream
+  `huawei_solar` keeps those services on the battery schema even with EMMA.
 
 ---
 
@@ -1458,6 +1531,126 @@ Regression tests: `tests/test_avg_sensor_negative_guard.py`.
 
 ---
 
+## Avg Sensor Must Not Store Unobserved Blocks as Zero (issue #1101)
+
+After HA downtime across an hour block, the daily utility meter fires its
+overdue reset on restart (`last_reset` = restart time, value `0`). The old
+clock-only `block_complete` check then stored `0.0` as a real sample. That
+dragged the 1d/3d/7d/14d averages down for up to 14 days and broke the
+missing-not-zero rule (#988/#1056).
+
+Canonical rule: `block_observed(last_reset, unobserved, block_start, block_end)`
+in `custom_sensors/block_observation.py` must be true before storing a sample.
+Both of these must hold, within `BLOCK_RESET_TOLERANCE` (5 min):
+
+- the tracked meter's `last_reset` attribute equals `block_start`
+  (`measurement_date` @ `hour_start`, local tz)
+- the sensor's **unobserved (downtime) intervals** overlap the block by at
+  most the tolerance in total
+
+The downtime check covers the case where the meter reset on time and HA then
+crashed mid-block. A blocked sample is skipped with a debug log. Existing
+measurements are never removed, and a genuine observed `0.0` is still stored.
+
+**Issue #1110 — never use "session started before the block".** The first
+#1101 fix did exactly that, and it discarded every block that a restart or
+HSEM reload touched. That included restarts after the block but before the
+5-min storage tick, and restarts lasting seconds. Reporter: 11.64 kWh (09-10)
+and 2.15 kWh (17-18) metered with on-time resets, both skipped, and
+`source_unavailable` for over 24 h. Downtime is measured instead:
+`HSEMAvgSensor.extra_restore_state_data` persists `last_alive` + bounded
+`unobserved` intervals (48 h, max 32). On `async_added_to_hass`,
+`restore_unobserved()` adds `(last_alive, session_start)`. HA reads the
+heartbeat on stop, on entity removal, and every 15 min, so a crash
+overestimates the downtime by at most 15 min (fail-safe). No heartbeat
+(upgrade, unreadable) means `[(epoch, session_start)]`, which is the old
+strict rule.
+
+The `Energy (Integral)` sensors are lifetime running totals and never reset.
+Only the utility meter's per-block difference matters. Wiping the recorder DB
+does not reset any of these sensors: they restore from
+`.storage/core.restore_state` (see `docs/troubleshooting-guide.md` →
+System recovery steps).
+
+Regression tests: `tests/test_avg_sensor_unobserved_block.py`.
+
+### Missing hour blocks do not block the whole plan (issue #1110)
+
+`populate_avg_house_consumption_from_snapshot()` returns a
+`ConsumptionPopulation(ok, missing_hours, estimated_hours)`, never a bool. It
+inspects all 24 hours. At most `MAX_ESTIMATED_LOAD_HOURS` (4) hours without
+any value are filled by `estimate_missing_hours()`, which takes the per-window
+**max** of the nearest measured hour on each side (circular day). That is
+conservative, and never zero. More missing hours, an unregistered entity, or
+unset/zero weights still fail closed (`source_unavailable`). The coordinator
+mixin `coordinator_load_forecast.py` (extracted from `coordinator_cycle.py`)
+publishes `data_quality.load_forecast_missing_hours` /
+`load_forecast_estimated_hours` via `_published_data_quality()` (estimated
+hours make `is_complete` false) and logs a `[load] No stored consumption
+sample for hour block(s) …` warning once per change. Tests:
+`tests/sensors/test_populator_bailouts.py::TestMissingHourEstimate`,
+`tests/test_coordinator_load_forecast.py`.
+
+---
+
+## Recorder Footprint — Write on Change, Never Record Volatile Attributes (issue #1099)
+
+HA's recorder inserts a `states` row **and** a new `state_attributes` row
+whenever the state or _any_ attribute changes — including attributes listed
+in `_unrecorded_attributes` (those are only stripped from the stored JSON).
+The 96 `HSEMAvgSensor` instances used to write every 30 s poll with a fresh
+`last_updated`, producing ~3,200 rows/day each for a value that changes about
+once a day; `HSEMForecastAccuracySensor` recorded a ~9 KB
+`_forecast_tracker_data` blob every cycle.
+
+Canonical rules:
+
+- **Write on change.** A sensor whose value changes rarely must skip
+  `async_write_ha_state()` when the published values are unchanged (compare
+  floats with an epsilon), and must only bump `last_updated` on a real write.
+  `HSEMAvgSensor._async_handle_update` is the reference implementation.
+- **Never record volatile timestamps or persistence blobs.** List
+  `last_updated`-style timestamps and restore payloads
+  (`_forecast_tracker_data`, `measurements`, …) in `_unrecorded_attributes`.
+- **Restore does not need the recorder.** `RestoreEntity` stores the full
+  state object in `.storage/core.restore_state`, independent of
+  `_unrecorded_attributes`. Never justify recording an attribute with
+  "it is needed for restore".
+- **Do not poll** a sensor that already has a timer or state listener.
+- **Record small scalars only.** Every coordinator sensor that publishes a
+  list, dict, per-slot timestamp or restore blob lists it in
+  `_unrecorded_attributes` (plan explanation, EV plans, EV SoC economics,
+  EV current limit, solar confidence, forecast/prediction accuracy,
+  savings, daily plan-vs-actual, financial, applier status, OCPP sessions).
+  Sensors with dynamic attribute keys (OCPP status) and the working mode
+  sensor use `MATCH_ALL`. Dashboards are unaffected: apexcharts
+  `data_generator` reads the live `entity.attributes`, never history.
+  Shared sets live next to the primary sensor
+  (`EV_PLAN_UNRECORDED_ATTRIBUTES`, `EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES`)
+  and are imported by the second-EV sensor.
+- **`last_updated` has two meanings — keep them separate.** Sensor-owned
+  timestamps (avg + power sensors) mean "published value last changed".
+  The coordinator heartbeat (`CoordinatorData.last_updated`, shown on the
+  working mode and next-update sensors and as the Last Updated sensor's
+  state) means "last completed cycle" and must stay that way — it is the
+  liveness signal. For value-change time use HA's native `last_changed`.
+
+- **Bound every per-day history.** `FinancialTracker.daily_log` was never
+  pruned and grew by one entry per day forever (also in the history file
+  and all three financial sensors' `daily` attribute). It is now capped at
+  `MAX_DAILY_LOG_DAYS = 366` (enough for `this_year`) on every rollover and
+  in `from_dict`; the `daily` attribute publishes the newest
+  `SENSOR_DAILY_DAYS = 90`. Tests:
+  `tests/models/test_financial_tracker_retention.py`.
+
+Regression tests: `tests/test_recorder_footprint.py`,
+`tests/test_recorder_footprint_coordinator_sensors.py` (generic guard: the
+recorded subset contains no list/dict/`_`-prefixed values and is < 2 KB).
+User guidance: `docs/troubleshooting-guide.md` §8,
+`docs/sensors-reference.md` §Recorder footprint.
+
+---
+
 ## Solar-Charge Mislabel at Zero PV (issue #720 follow-up)
 
 `apply_optimization_strategy` used `NEAR_ZERO_CONSUMPTION_THRESHOLD_KWH`
@@ -1537,6 +1730,14 @@ snapshot. A replan may change the command, but production must never restore an
 older watt value in isolation. Force-charge and negative-price Auto-Full use the
 same coherent accounting path, respect aggregate fuse headroom, and suppress a
 request when the corresponding EV is explicitly disconnected.
+
+**Charger ceilings are whole-amp nameplates (issue #1112).** Turn a configured
+`*_charger_power_kw` into a command ceiling only via
+`utils/phase_power.charger_rated_power_w(kw * 1000, topology)`, never
+`kw * 1000`. Raw 11.0 kW is 40 W under the 16 A three-phase nameplate, and
+whole-amp flooring then publishes 15 A / 10 350 W. Used by the MILP EV config,
+the heuristic `_build_and_inject_for_ev` (`phase_topology=`), the EV-only
+fallback input, and `apply_current_ev_power_override` (force charge, Auto-Full).
 
 ---
 

@@ -2,8 +2,15 @@
 
 Defines the three inverter operating modes that HSEM can switch between, plus
 the excess-PV routing options HSEM writes alongside them.
+
+``WorkingModes`` values are HSEM's canonical *intents* (the direct-LUNA option
+strings).  EMMA-managed installations expose the same modes under different
+select option values; :func:`resolve_working_mode_option` maps an intent to the
+value a given select entity supports, and :func:`canonical_working_mode` maps a
+live option back to its intent.
 """
 
+from collections.abc import Iterable
 from enum import Enum, StrEnum
 
 
@@ -18,6 +25,62 @@ class WorkingModes(Enum):
 
     FullyFedToGrid = "fully_fed_to_grid"
     """Fully fed to grid: all solar production is exported to the grid."""
+
+
+_WORKING_MODE_OPTION_ALIASES: dict[str, tuple[str, ...]] = {
+    WorkingModes.TimeOfUse.value: ("time_of_use_luna2000", "time_of_use"),
+    WorkingModes.MaximizeSelfConsumption.value: (
+        "maximise_self_consumption",
+        "maximum_self_consumption",
+    ),
+    WorkingModes.FullyFedToGrid.value: ("fully_fed_to_grid",),
+}
+
+
+def resolve_working_mode_option(mode: str, options: Iterable[str] | None) -> str | None:
+    """Resolve an HSEM mode intent to an option supported by the selected entity.
+
+    Huawei Solar exposes different option values for direct LUNA control and
+    EMMA-managed systems.  The selected Home Assistant ``select`` entity is
+    authoritative: choosing an option from its advertised options keeps the
+    applier independent of the physical topology.
+
+    A missing options list occurs transiently while Home Assistant starts. In
+    that case preserve the legacy value; normal write safety gates prevent
+    writes while the entity itself is unavailable.
+    """
+    if options is None:
+        return mode
+
+    supported = set(options)
+    return next(
+        (
+            option
+            for option in _WORKING_MODE_OPTION_ALIASES.get(mode, ())
+            if option in supported
+        ),
+        None,
+    )
+
+
+def canonical_working_mode(option: str | None) -> str | None:
+    """Map a live select option (LUNA or EMMA) back to its ``WorkingModes`` value.
+
+    Use this before comparing a live working-mode state against a
+    ``WorkingModes`` intent, so EMMA's ``time_of_use`` is recognised as
+    ``WorkingModes.TimeOfUse``.  Unknown options (e.g. ``adaptive``) are
+    returned unchanged so they never compare equal to an HSEM intent.
+    """
+    if option is None:
+        return None
+    return next(
+        (
+            mode
+            for mode, aliases in _WORKING_MODE_OPTION_ALIASES.items()
+            if option in aliases
+        ),
+        option,
+    )
 
 
 class ExcessPvUseInTou(StrEnum):

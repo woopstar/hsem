@@ -146,6 +146,20 @@ class TestBuildSensorConfig:
         )
         assert cfg.huawei_solar_device_id_batteries_2 is None
 
+    @pytest.mark.parametrize("value", ["", "   ", vol.UNDEFINED, None])
+    def test_tou_controller_unset_becomes_none(self, value: Any) -> None:
+        """Pre-existing entries and cleared selectors keep legacy TOU routing."""
+        cfg = build_sensor_config(
+            _make_config_entry(hsem_huawei_solar_device_id_tou_controller=value)
+        )
+        assert cfg.huawei_solar_device_id_tou_controller is None
+
+    def test_tou_controller_value_is_preserved(self) -> None:
+        cfg = build_sensor_config(
+            _make_config_entry(hsem_huawei_solar_device_id_tou_controller="emma")
+        )
+        assert cfg.huawei_solar_device_id_tou_controller == "emma"
+
     def test_inverter_2_undefined_becomes_none(self):
         cfg = build_sensor_config(
             _make_config_entry(hsem_huawei_solar_device_id_inverter_2=vol.UNDEFINED)

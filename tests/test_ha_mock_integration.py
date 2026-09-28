@@ -61,6 +61,9 @@ from custom_components.hsem.custom_sensors.force_mode_sensor import HSEMForceMod
 from custom_components.hsem.custom_sensors.hardware_writes_sensor import (
     HSEMHardwareWritesSensor,
 )
+from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
+    ConsumptionPopulation,
+)
 from custom_components.hsem.custom_sensors.last_updated_sensor import (
     HSEMLastUpdatedSensor,
 )
@@ -1128,7 +1131,8 @@ class TestDryRunCycle:
         )
 
         assert rec.recommendation == Recommendations.EVSmartCharging.value
-        assert rec.ev_charger_calculated_power == 11000.0
+        # Whole-amp nameplate: 11 kW snaps to 11 040 W (issue #1112).
+        assert rec.ev_charger_calculated_power == pytest.approx(11040.0)
         assert plan.state == "charging"
 
     def test_force_charge_second_ev_overrides_smart_charging_disabled(
@@ -1188,7 +1192,8 @@ class TestDryRunCycle:
         )
 
         assert rec.recommendation == Recommendations.EVSmartCharging.value
-        assert rec.ev_second_charger_calculated_power == 7400.0
+        # 7.4 kW single-phase snaps to the 32 A nameplate, 7360 W (issue #1112).
+        assert rec.ev_second_charger_calculated_power == pytest.approx(7360.0)
         assert plan2.state == "charging"
 
     def test_force_charge_off_leaves_plan_state_unchanged(self) -> None:
@@ -2134,9 +2139,9 @@ def _patch_all_ha_helpers():
                 return_value=None,
             ),
             patch(
-                "custom_components.hsem.coordinator_cycle"
+                "custom_components.hsem.coordinator_load_forecast"
                 ".populate_avg_house_consumption_from_snapshot",
-                return_value=True,
+                return_value=ConsumptionPopulation(ok=True),
             ),
             patch(
                 "custom_components.hsem.coordinator_cycle"

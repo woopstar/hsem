@@ -185,6 +185,9 @@ def build_sensor_config(
             config_entry, "hsem_huawei_solar_batteries_charge_discharge_power"
         )
     )
+    cfg.huawei_solar_device_id_tou_controller = _normalize_optional_device_id(
+        get_config_value(config_entry, "hsem_huawei_solar_device_id_tou_controller")
+    )
     cfg.huawei_solar_batteries_tou_charging_and_discharging_periods = get_config_value(
         config_entry,
         "hsem_huawei_solar_batteries_tou_charging_and_discharging_periods",

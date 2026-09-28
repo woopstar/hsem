@@ -13,6 +13,14 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+#: Days of daily snapshots kept in memory and in the history file. One full
+#: year (plus a leap day) is enough for every rollup, including ``this_year``.
+MAX_DAILY_LOG_DAYS = 366
+
+#: Most recent days published in the sensors' ``daily`` attribute. Matches
+#: the savings tracker's 90-day ``daily`` attribute.
+SENSOR_DAILY_DAYS = 90
+
 
 @dataclass
 class FinancialDayEntry:
@@ -60,7 +68,8 @@ class FinancialTracker:
         export_income_total: Cumulative export income (never reset).
         import_cost_today: Today's import cost (total − start-of-day).
         export_income_today: Today's export income (total − start-of-day).
-        daily_log: Dict mapping ISO date string → :class:`FinancialDayEntry`.
+        daily_log: Dict mapping ISO date string → :class:`FinancialDayEntry`,
+            bounded to the last :data:`MAX_DAILY_LOG_DAYS` days.
         today: ISO-format date string for the current tracking day.
         history_file: Path to the JSON persistence file on disk.
     """
@@ -340,19 +349,38 @@ class FinancialTracker:
         self.today = today_str
         self._today_start_import_cost = self.import_cost_total
         self._today_start_export_income = self.export_income_total
+        self._prune_daily_log()
+
+    def _prune_daily_log(self) -> None:
+        """Drop snapshots older than :data:`MAX_DAILY_LOG_DAYS` or undated.
+
+        Without this the log (and the ``daily`` attribute of all three
+        financial sensors) grew by one entry per day forever.
+        """
+        # Today's value is live, so the log holds the MAX_DAILY_LOG_DAYS
+        # completed days before the tracking date.
+        oldest_kept = self._tracking_date() - timedelta(days=MAX_DAILY_LOG_DAYS)
+        for key in list(self.daily_log):
+            try:
+                keep = date.fromisoformat(key) >= oldest_kept
+            except ValueError:
+                keep = False
+            if not keep:
+                del self.daily_log[key]
 
     # ------------------------------------------------------------------
     # Attribute export for sensors
     # ------------------------------------------------------------------
 
     def _daily_list(self) -> list[dict[str, Any]]:
-        """Return the daily log as a sorted list of ``{date, value}`` records.
+        """Return the newest :data:`SENSOR_DAILY_DAYS` daily records, oldest first.
 
         Each entry contains ``date``, ``import_cost``, ``export_income``,
         and ``net_balance`` (export_income − import_cost).
         """
+        entries = sorted(self.daily_log.values(), key=lambda e: e.date)
         result: list[dict[str, Any]] = []
-        for entry in sorted(self.daily_log.values(), key=lambda e: e.date):
+        for entry in entries[-SENSOR_DAILY_DAYS:]:
             result.append(
                 {
                     "date": entry.date,
@@ -485,6 +513,8 @@ class FinancialTracker:
                 entry = FinancialDayEntry.from_dict(entry_data)
                 if entry.date:
                     tracker.daily_log[entry.date] = entry
+        # Trim history files written before the log was bounded.
+        tracker._prune_daily_log()
 
         return tracker
 
