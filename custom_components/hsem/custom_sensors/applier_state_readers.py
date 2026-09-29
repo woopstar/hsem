@@ -11,6 +11,7 @@ from typing import Any
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 
+from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.huawei import (
     extract_tou_periods,
 )
@@ -113,11 +114,32 @@ def _read_select_options(
     return list(raw_options)
 
 
+def _is_power_measurement(state: str | None) -> bool:
+    """Return True when *state* is a bare number rather than a control mode.
+
+    The active power control sensor reports a mode string (``"Unlimited"``,
+    ``"Limited to 80%"``, ``"Limited to 100W"``). A bare number such as
+    ``"1540"`` comes from a power *measurement* — e.g. the inverter's live
+    active power, picked on EMMA systems because ``huawei_solar`` exposes no
+    active power control sensor there (issue #1120) — and says nothing about
+    the export limit, so it must never be compared with one.
+
+    Args:
+        state: Raw state of the configured active power control entity.
+
+    Returns:
+        ``True`` if the state parses as a plain number.
+    """
+    return isinstance(state, str) and convert_to_float(state) is not None
+
+
 def _parse_power_control_pct(state: str | None) -> int | None:
     """Parse the inverter active power control state string into a numeric value.
 
     Handles both percentage (``"Limited to 80%"`` → 80) and watt-based
     (``"Limited to 100W"`` → 100) formats.  ``"Unlimited"`` returns 100.
+    A bare number is a power measurement, not a limit, and returns ``None``
+    (see :func:`_is_power_measurement`).
 
     Args:
         state: Raw string from the inverter entity (e.g. ``"Unlimited"``,
@@ -127,7 +149,7 @@ def _parse_power_control_pct(state: str | None) -> int | None:
         Integer value (percentage or watts), or ``None`` if the string
         cannot be parsed.
     """
-    if not isinstance(state, str):
+    if not isinstance(state, str) or _is_power_measurement(state):
         return None
     normalized = state.strip().lower()
     # Accept any locale-independent representation of "unlimited" / no cap.
@@ -184,3 +206,43 @@ def _is_watt_limit(state: str | None) -> bool:
     # Look for a number immediately followed (with optional whitespace) by "w"
     # Single quantifier avoids polynomial backtracking from stacked greedy quantifiers
     return bool(re.search(r"\d[\d\s]*w", normalized))
+
+
+def _format_power_control_limit(value: int, is_watt: bool) -> str:
+    """Return an export limit as a unit-tagged string (``"100w"``, ``"80%"``).
+
+    The value alone is ambiguous: the negative-price block
+    (``GRID_EXPORT_LIMIT_WATT`` = 100 W) and unlimited export (100 %) share
+    the number 100, so write-and-verify compared equal and skipped the write
+    in both directions (issue #1130).  Tagging the unit keeps them apart.
+
+    Args:
+        value: Limit in watts or percent.
+        is_watt: ``True`` for a watt limit, ``False`` for a percentage.
+
+    Returns:
+        The canonical limit string, e.g. ``"100w"`` or ``"100%"``.
+    """
+    return f"{value}{'w' if is_watt else '%'}"
+
+
+def _parse_power_control_limit(state: str | None) -> str | None:
+    """Parse the active power control state into a unit-tagged limit string.
+
+    ``"Unlimited"`` → ``"100%"``, ``"Limited to 80%"`` → ``"80%"`` and
+    ``"Limited to 100W"`` → ``"100w"`` — the same form
+    :func:`_format_power_control_limit` gives a desired limit, so the two
+    compare exactly and a watt limit can never match a percentage
+    (issue #1130).
+
+    Args:
+        state: Raw string from the inverter entity.
+
+    Returns:
+        The canonical limit string, or ``None`` when *state* cannot be parsed
+        or is a bare power measurement (see :func:`_is_power_measurement`).
+    """
+    value = _parse_power_control_pct(state)
+    if value is None:
+        return None
+    return _format_power_control_limit(value, _is_watt_limit(state))

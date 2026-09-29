@@ -31,6 +31,7 @@ from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401 
 from custom_components.hsem.custom_sensors.ev_deadline import (
     resolve_ev_deadline_from_params as _resolve_ev_deadline_from_params,
 )
+from custom_components.hsem.custom_sensors.phase_inputs import read_grid_phase_inputs
 from custom_components.hsem.custom_sensors.state_collector_compute import (  # noqa: F401 — re-exported for callers
     _compute_battery_capacities,
     _compute_net_consumption,
@@ -375,28 +376,8 @@ async def async_collect_live_state(
             )
         )
     if cfg.phase_aware_charging_enabled or switchable_phase_safety_needed:
-        state.grid_phase_power_w = (
-            read_normalized_float(
-                sensor,
-                cfg.huawei_solar_power_meter_phase_a_active_power,
-                _read_optional,
-                UnitOfPower.WATT,
-                label="power_meter_phase_a_active_power",
-            ),
-            read_normalized_float(
-                sensor,
-                cfg.huawei_solar_power_meter_phase_b_active_power,
-                _read_optional,
-                UnitOfPower.WATT,
-                label="power_meter_phase_b_active_power",
-            ),
-            read_normalized_float(
-                sensor,
-                cfg.huawei_solar_power_meter_phase_c_active_power,
-                _read_optional,
-                UnitOfPower.WATT,
-                label="power_meter_phase_c_active_power",
-            ),
+        state.grid_phase_readings, state.grid_phase_voltage_v = read_grid_phase_inputs(
+            sensor, cfg, _read_optional
         )
     if cfg.phase_aware_charging_enabled:
         state.huawei_batteries_charge_discharge_power_w = convert_to_float(
@@ -419,10 +400,15 @@ async def async_collect_live_state(
             "Critical: battery rated capacity returned None (unavailable/invalid)"
         )
     state.huawei_batteries_rated_capacity_wh = rated_capacity_wh
-    _raw_apc = _read(
-        cfg.huawei_solar_inverter_active_power_control,
-        "string",
-        label="inverter_active_power_control",
+    # Optional: EMMA systems have no active power control sensor (issue #1120).
+    _raw_apc = (
+        _read(
+            cfg.huawei_solar_inverter_active_power_control,
+            "string",
+            label="inverter_active_power_control",
+        )
+        if cfg.huawei_solar_inverter_active_power_control
+        else None
     )
     state.huawei_inverter_active_power_control = (
         str(_raw_apc) if _raw_apc is not None else None

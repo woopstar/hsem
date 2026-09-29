@@ -460,8 +460,14 @@ def test_partial_current_managed_session_uses_planner_power() -> None:
 
     assert result is not None
     out, _diagnostics = result
-    # HSEM controls this charger, so no two-hour reservation is manufactured.
-    assert all(slot.ev_charger_calculated_power == 0 for slot in out[1:])
+    # HSEM controls this charger, so no two-hour reservation is manufactured
+    # from the measured 3.62 kW: the plan holds only the executable need, the
+    # 1 kWh target rounded up to the 6 A x 230 V x 1 h startup minimum.
+    total_dc = sum(slot.ev_total_planned_load_kwh for slot in out)
+    assert 1.0 <= total_dc <= 1.38 + 1e-9
+    assert all(
+        slot.ev_charger_calculated_power != pytest.approx(3620.0) for slot in out
+    )
 
 
 @_pytestmark_scipy

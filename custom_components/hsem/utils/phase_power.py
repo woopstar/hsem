@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeGuard
+from typing import TYPE_CHECKING, NamedTuple
+
+from homeassistant.const import UnitOfElectricCurrent, UnitOfPower
 
 from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.units import GRID_PHASE_VOLTAGE
@@ -36,8 +38,20 @@ PHASE_COUNT = 3
 #: directly (issue #968).
 EV_MIN_START_CURRENT_A = 6
 
-#: Signed live per-phase grid power in Watts, ``(phase_a, phase_b, phase_c)``.
+#: Per-phase power in Watts, ``(phase_a, phase_b, phase_c)``.
 PhasePowers = tuple[float, float, float]
+
+#: Per-phase current in amps, ``(phase_a, phase_b, phase_c)``.
+PhaseCurrents = tuple[float, float, float]
+
+#: Live per-phase voltage in volts; ``None`` when unconfigured or unavailable.
+PhaseVoltages = tuple[float | None, float | None, float | None]
+
+#: A live phase-to-neutral voltage outside this window is treated as a bad
+#: reading and replaced by the 230 V nominal. The bounds span IEC 60038's
+#: nominal phase voltages (100 V to 240 V) with a 10 % tolerance each way.
+PHASE_VOLTAGE_MIN_V = 90.0
+PHASE_VOLTAGE_MAX_V = 264.0
 
 #: EV charger phase topology identifiers.  ``single_phase`` is the safe
 #: default: with an unknown or single-phase charger every hard per-phase row
@@ -463,33 +477,129 @@ def fixed_session_phase_ac_kwh(
 
 
 # ---------------------------------------------------------------------------
-# Live per-phase Huawei grid-charge safety limiter (issue #831)
+# Live per-phase main-fuse checks (issues #831, #1083 and #1119)
 # ---------------------------------------------------------------------------
 #
 # Runtime correction on top of the horizon MILP: the MILP's phase-fuse
 # constraint (above) uses a forecast at solve time.  Immediately before each
 # hardware write, this section re-checks the newest live phase-meter snapshot
 # so an appliance change since the plan was solved cannot push a phase over
-# the fuse rating.  Huawei-only — this repo has no secondary/PowMr inverter.
+# the fuse rating.  The Huawei grid-charge limiter and the switchable-EV
+# one-phase hold both compare in amps through :func:`phase_fuse_headroom_a`.
+
+
+class PhaseReading(NamedTuple):
+    """One live per-phase grid reading, in the unit family its sensor reports.
+
+    A main fuse trips on current, so each phase field accepts either a power
+    or a current sensor (issue #1119). ``unit`` is ``UnitOfPower.WATT`` for a
+    power reading (signed, import positive) or ``UnitOfElectricCurrent.AMPERE``
+    for a current reading. A current reading is treated as a magnitude: Home
+    Assistant's ``current`` device class has no sign convention, and a
+    reversed CT would otherwise turn import into apparent export headroom.
+    """
+
+    value: float
+    unit: str
+
+
+#: Live per-phase grid readings; ``None`` when unconfigured, unavailable, or
+#: reported in a unit HSEM cannot interpret.
+PhaseReadings = tuple[PhaseReading | None, PhaseReading | None, PhaseReading | None]
+
+
+def phase_voltage_v(voltage_v: float | None) -> float:
+    """Return a live phase voltage when plausible, else the 230 V nominal."""
+    if (
+        voltage_v is not None
+        and math.isfinite(voltage_v)
+        and PHASE_VOLTAGE_MIN_V <= voltage_v <= PHASE_VOLTAGE_MAX_V
+    ):
+        return float(voltage_v)
+    return GRID_PHASE_VOLTAGE
+
+
+def phase_import_current_a(
+    reading: PhaseReading | None, voltage_v: float | None
+) -> float | None:
+    """Return one phase's import current in amps, or ``None`` when unusable.
+
+    A current reading is used as its magnitude, so it can never create
+    export headroom. A power reading keeps its sign and is divided by the
+    phase voltage from :func:`phase_voltage_v`.
+    """
+    if reading is None or not math.isfinite(reading.value):
+        return None
+    if reading.unit == UnitOfElectricCurrent.AMPERE:
+        return abs(reading.value)
+    if reading.unit == UnitOfPower.WATT:
+        return reading.value / phase_voltage_v(voltage_v)
+    return None
+
+
+def phase_readings_valid(readings: PhaseReadings) -> bool:
+    """Return whether all three phase readings convert to a current."""
+    return all(
+        phase_import_current_a(reading, None) is not None for reading in readings
+    )
+
+
+def phase_fuse_headroom_a(
+    readings: PhaseReadings,
+    voltages_v: PhaseVoltages,
+    fuse_amps: float,
+    *,
+    replaced_load_w: float = 0.0,
+) -> PhaseCurrents | None:
+    """Return each phase's remaining current before the main fuse, in amps.
+
+    The single amps-based fuse comparison shared by every live per-phase
+    check (issue #1119), so the grid-charge limiter and the switchable-EV
+    one-phase hold cannot diverge. A value can be negative when a phase is
+    already over the fuse rating.
+
+    Args:
+        readings: Live per-phase readings (power or current).
+        voltages_v: Live per-phase voltages; see :func:`phase_voltage_v`.
+        fuse_amps: Main fuse rating per phase, in amps.
+        replaced_load_w: AC power per phase that is already inside the
+            readings and that the caller's new command replaces (the
+            battery's own live draw). Positive values add headroom back.
+
+    Returns:
+        Headroom per phase in amps, or ``None`` when any reading is unusable.
+    """
+    headroom: list[float] = []
+    for reading, voltage in zip(readings, voltages_v, strict=True):
+        current_a = phase_import_current_a(reading, voltage)
+        if current_a is None:
+            return None
+        replaced_a = replaced_load_w / phase_voltage_v(voltage)
+        headroom.append(max(fuse_amps, 0.0) - (current_a - replaced_a))
+    return (headroom[0], headroom[1], headroom[2])
+
+
+def phase_headroom_power_w(
+    headroom_a: PhaseCurrents, voltages_v: PhaseVoltages
+) -> PhasePowers:
+    """Return the AC power each phase can still take, from its amp headroom."""
+    return (
+        headroom_a[0] * phase_voltage_v(voltages_v[0]),
+        headroom_a[1] * phase_voltage_v(voltages_v[1]),
+        headroom_a[2] * phase_voltage_v(voltages_v[2]),
+    )
 
 
 @dataclass(frozen=True)
 class PhaseChargeLimits:
-    """Safe Huawei grid-charge command derived from live per-phase power."""
+    """Safe Huawei grid-charge command derived from live per-phase readings."""
 
     primary_charge_power_w: float
     """Safe grid-charge maximum-power command (W), floored to a 100 W step."""
 
-    predicted_phase_power_w: PhasePowers
-    """Live phase power, with Huawei's own contribution removed, plus the
-    commanded charge, evenly split."""
-
-
-def phase_powers_valid(
-    values: tuple[float | None, float | None, float | None],
-) -> TypeGuard[PhasePowers]:
-    """Return whether all three signed phase readings are finite numbers."""
-    return all(value is not None and math.isfinite(value) for value in values)
+    predicted_phase_current_a: PhaseCurrents | None
+    """Live phase current, with Huawei's own contribution removed, plus the
+    commanded charge, evenly split. ``None`` when the readings are unusable."""
 
 
 def _floor_step(value: float, step: float) -> float:
@@ -501,7 +611,8 @@ def _floor_step(value: float, step: float) -> float:
 
 def compute_phase_charge_limits(
     *,
-    measured_phase_power_w: PhasePowers,
+    measured_phase: PhaseReadings,
+    phase_voltages_v: PhaseVoltages = (None, None, None),
     fuse_amps: float,
     desired_charge_power_w: float,
     battery_actual_power_w: float,
@@ -519,12 +630,14 @@ def compute_phase_charge_limits(
 
     ``battery_actual_power_w`` follows the ``STORAGE_CHARGE_DISCHARGE_POWER``
     sign convention: positive is charging, negative is discharging.  The
+    fuse is compared in amps (:func:`phase_fuse_headroom_a`), and the
+    headroom is converted back to a command at each phase's voltage.  The
     resulting command targets the rated fuse current; no intentional
     overload allowance is used.
 
     Args:
-        measured_phase_power_w: Live per-phase grid power, signed (import
-            positive), from the Huawei power meter.
+        measured_phase: Live per-phase grid readings (power or current).
+        phase_voltages_v: Live per-phase voltages; 230 V where unknown.
         fuse_amps: Main fuse rating in amps. Must be a three-phase supply;
             callers gate on ``main_fuse_phases == 3`` before calling this.
         desired_charge_power_w: The plan's requested grid-charge power (W,
@@ -535,12 +648,10 @@ def compute_phase_charge_limits(
         discharge_efficiency_pct: Battery discharge-side efficiency (0-100).
 
     Returns:
-        :class:`PhaseChargeLimits` with the safe command and the phase-power
-        frames used to compute it, for diagnostics.
+        :class:`PhaseChargeLimits` with the safe command and the predicted
+        per-phase current used to compute it, for diagnostics. The command
+        is ``0.0`` when any phase reading is unusable.
     """
-    limit_w = max(fuse_amps, 0.0) * GRID_PHASE_VOLTAGE
-    base = list(measured_phase_power_w)
-
     charge_eff = clamp_efficiency(charge_efficiency_pct)
     discharge_eff = clamp_efficiency(discharge_efficiency_pct)
     if battery_actual_power_w > 1e-9:
@@ -549,22 +660,35 @@ def compute_phase_charge_limits(
         actual_site_w = battery_actual_power_w * discharge_eff
     else:
         actual_site_w = 0.0
-    for index in range(PHASE_COUNT):
-        base[index] -= actual_site_w / PHASE_COUNT
+
+    headroom_a = phase_fuse_headroom_a(
+        measured_phase,
+        phase_voltages_v,
+        fuse_amps,
+        replaced_load_w=actual_site_w / PHASE_COUNT,
+    )
+    if headroom_a is None:
+        return PhaseChargeLimits(
+            primary_charge_power_w=0.0, predicted_phase_current_a=None
+        )
 
     desired_dc_w = max(desired_charge_power_w, 0.0)
     ac_headroom_w = PHASE_COUNT * max(
-        min(limit_w - phase_w for phase_w in base),
+        min(phase_headroom_power_w(headroom_a, phase_voltages_v)),
         0.0,
     )
     dc_limit_w = ac_headroom_w * charge_eff
     dc_target_w = _floor_step(min(desired_dc_w, dc_limit_w), 100.0)
     ac_target_w = dc_target_w / charge_eff if dc_target_w > 1e-9 else 0.0
 
+    fuse_a = max(fuse_amps, 0.0)
     predicted = tuple(
-        base[index] + ac_target_w / PHASE_COUNT for index in range(PHASE_COUNT)
+        fuse_a
+        - headroom_a[index]
+        + ac_target_w / PHASE_COUNT / phase_voltage_v(phase_voltages_v[index])
+        for index in range(PHASE_COUNT)
     )
     return PhaseChargeLimits(
         primary_charge_power_w=dc_target_w,
-        predicted_phase_power_w=predicted,  # type: ignore[arg-type]
+        predicted_phase_current_a=predicted,  # type: ignore[arg-type]
     )

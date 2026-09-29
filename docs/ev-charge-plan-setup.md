@@ -101,6 +101,11 @@ At minimum you must:
 All other fields have sensible defaults (target SoC 80 %, deadline 07:00, efficiency
 100 %, min charger power 1380 W).
 
+The EV switches, target-SoC number, deadline time and EV sensors only exist
+while **Enable EV Planned Load Integration** is `on` (issue #859). Changing
+that flag, or the OCPP enable flags, makes HSEM reload itself on save, so the
+entities appear or go away without a manual reload (issue #1139).
+
 ---
 
 ## Field reference
@@ -938,9 +943,11 @@ when the same-mode command would exceed the remaining target energy, cannot be
 recovered by the accepted plan's executable future commands before the deadline,
 exceed live fuse headroom or the charger rating, or lose a material price benefit
 (including free/negative-price opportunities). An inverse one-phase hold also
-requires complete live Huawei power-meter phase readings proving that the
-retained ceiling is fuse-safe; HSEM collects these automatically for an enabled
-`three_phase_switchable` EV because aggregate Watts alone are not enough.
+requires complete live per-phase readings (power or current, `power` config
+step) proving in amps that the retained ceiling is fuse-safe on every phase;
+HSEM collects these automatically for an enabled `three_phase_switchable` EV
+because aggregate Watts alone are not enough. A phase sensor with no unit or
+an unsupported one rejects the hold (issue #1119).
 Disconnection, disabled smart
 charging, a stopped session, and charge-past-target PV-only charging also bypass
 the hold immediately. The published Watts, whole amps, OCPP `numberPhases`, EV

@@ -339,6 +339,9 @@ returned `None`. The inverter may still have accepted the value.
 - **Fix:** Usually self-corrects on the next cycle (HSEM retries up to 3
   times per write). If persistent, the inverter entity may be slow to
   update — check Huawei Solar integration health.
+- **Expected on EMMA systems:** Huawei Solar has no active power control
+  sensor for an EMMA, so the grid export limit (`inverter:<device>` entry) is
+  always `unverified`. Battery writes still run (issue #1120).
 
 **4d. Persistent write failures**
 
@@ -702,7 +705,10 @@ Search for these patterns in `hsem.log`:
 | `[core] run_planner ABORTED — no slots generated`    | `interval_minutes` or `interval_length_hours` config error |
 | `Consumption weights sum to`                         | Weight misconfiguration                                    |
 | `MILP: SoC penalty violations`                       | Battery was overcharged at planning start                  |
-| `Hardware writes BLOCKED`                            | Error mode or read-only active                             |
+| `Hardware writes BLOCKED`                            | Error mode — critical input entities missing (warns once)  |
+| `Hardware writes SKIPPED — read_only=True`           | Read-only mode active (verbose logging only)               |
+| `write FAILED for … blocking further battery writes` | A verified inverter write failed; rest of cycle skipped    |
+| `entity not configured; skipping write`              | A Huawei write entity is not mapped (warns once)           |
 | `[selector] No eligible candidates`                  | All plans rejected during validation                       |
 | `[selector] HYSTERESIS kept previous plan`           | Plan switch suppressed by hysteresis                       |
 | `Sensor read failed for entity_id`                   | Specific entity reading error — check entity               |

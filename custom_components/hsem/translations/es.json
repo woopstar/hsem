@@ -251,8 +251,8 @@
           "hsem_huawei_solar_device_id_batteries_2": "Selecciona tu dispositivo de batería Huawei secundario, si corresponde.",
           "hsem_huawei_solar_device_id_inverter_1": "Selecciona tu dispositivo de inversor Huawei principal.",
           "hsem_huawei_solar_device_id_inverter_2": "Selecciona tu dispositivo de inversor Huawei secundario, si corresponde.",
-          "hsem_huawei_solar_inverter_active_power_control": "Selecciona el sensor que controla la salida de potencia activa de tu inversor Huawei.",
-          "hsem_huawei_solar_device_id_tou_controller": "Selecciona tu dispositivo EMMA si un EMMA gestiona tus baterías. HSEM enviará entonces los periodos TOU al EMMA en lugar de a los dispositivos de batería; selecciona también arriba las entidades del EMMA para el modo de funcionamiento y los periodos TOU. Déjalo vacío para el control directo de baterías LUNA2000."
+          "hsem_huawei_solar_inverter_active_power_control": "Selecciona el sensor de control de potencia activa de tu inversor (desactivado por defecto en Huawei Solar). HSEM lo vuelve a leer para verificar las escrituras del límite de exportación a la red. Déjalo vacío si un EMMA gestiona tu instalación: Huawei Solar no ofrece ese sensor para EMMA y el límite se escribe entonces sin verificación. No selecciones un sensor de potencia como la potencia activa del inversor.",
+          "hsem_huawei_solar_device_id_tou_controller": "Selecciona tu dispositivo EMMA si un EMMA gestiona tus baterías. HSEM enviará entonces los periodos TOU y el límite de exportación a la red al EMMA en lugar de a los dispositivos de batería e inversor; selecciona también arriba las entidades del EMMA para el modo de funcionamiento y los periodos TOU. Déjalo vacío para el control directo de baterías LUNA2000."
         },
         "description": "Configura el modo de funcionamiento de las baterías solares Huawei.",
         "title": "Sensores de Huawei Solar"
@@ -324,9 +324,12 @@
           "hsem_main_fuse_phases": "Número de fases del fusible principal",
           "hsem_max_grid_export_power_kw": "Potencia máxima de exportación a la red (kW)",
           "hsem_solar_production_power": "Sensor de potencia de producción solar",
-          "hsem_huawei_solar_power_meter_phase_a_active_power": "Sensor de potencia activa del medidor, fase A",
-          "hsem_huawei_solar_power_meter_phase_b_active_power": "Sensor de potencia activa del medidor, fase B",
-          "hsem_huawei_solar_power_meter_phase_c_active_power": "Sensor de potencia activa del medidor, fase C",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Sensor de potencia o corriente, fase A",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Sensor de potencia o corriente, fase B",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Sensor de potencia o corriente, fase C",
+          "hsem_huawei_solar_power_meter_phase_a_voltage": "Sensor de tensión, fase A (opcional)",
+          "hsem_huawei_solar_power_meter_phase_b_voltage": "Sensor de tensión, fase B (opcional)",
+          "hsem_huawei_solar_power_meter_phase_c_voltage": "Sensor de tensión, fase C (opcional)",
           "hsem_phase_aware_charging_enabled": "Activar limitador de seguridad de carga con reconocimiento de fase en tiempo real"
         },
         "data_description": {
@@ -335,9 +338,12 @@
           "hsem_main_fuse_phases": "El número de fases de tu instalación eléctrica. Las instalaciones monofásicas DEBEN configurar este valor en 1; establecer 3 en una instalación monofásica hace que la protección del fusible sea 3 veces demasiado permisiva y no proporciona un límite de seguridad real. Predeterminado: 3 (trifásico).",
           "hsem_max_grid_export_power_kw": "Potencia máxima de exportación a la red en kW: el límite de exportación del operador de red/inversor para conexiones con exportación limitada (p. ej., 5 kW). El planificador MILP nunca programará una exportación por encima de este límite, de modo que la exportación de batería y la exportación de PV compiten correctamente por el mismo límite. Ajusta a 0 para desactivar.",
           "hsem_solar_production_power": "Selecciona el sensor que mide la potencia generada por tus paneles solares.",
-          "hsem_huawei_solar_power_meter_phase_a_active_power": "Selecciona el sensor que mide la potencia activa en tiempo real en la fase A de tu medidor de potencia Huawei. Solo se requiere cuando la carga con reconocimiento de fase está activada.",
-          "hsem_huawei_solar_power_meter_phase_b_active_power": "Selecciona el sensor que mide la potencia activa en tiempo real en la fase B de tu medidor de potencia Huawei. Solo se requiere cuando la carga con reconocimiento de fase está activada.",
-          "hsem_huawei_solar_power_meter_phase_c_active_power": "Selecciona el sensor que mide la potencia activa en tiempo real en la fase C de tu medidor de potencia Huawei. Solo se requiere cuando la carga con reconocimiento de fase está activada.",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Selecciona el sensor que mide la potencia (W) o la corriente (A) en tiempo real en la fase A de tu conexión a la red, por ejemplo del medidor de potencia Huawei. El fusible principal dispara por corriente; una lectura de corriente siempre se trata como importación. Necesario para la carga con reconocimiento de fase y para mantener la fase de un cargador de VE con conmutación de fases.",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Selecciona el sensor que mide la potencia (W) o la corriente (A) en tiempo real en la fase B de tu conexión a la red, por ejemplo del medidor de potencia Huawei. El fusible principal dispara por corriente; una lectura de corriente siempre se trata como importación. Necesario para la carga con reconocimiento de fase y para mantener la fase de un cargador de VE con conmutación de fases.",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Selecciona el sensor que mide la potencia (W) o la corriente (A) en tiempo real en la fase C de tu conexión a la red, por ejemplo del medidor de potencia Huawei. El fusible principal dispara por corriente; una lectura de corriente siempre se trata como importación. Necesario para la carga con reconocimiento de fase y para mantener la fase de un cargador de VE con conmutación de fases.",
+          "hsem_huawei_solar_power_meter_phase_a_voltage": "Opcional. Selecciona el sensor que mide la tensión en tiempo real en la fase A (por ejemplo, la tensión de la fase A del medidor de potencia Huawei). Se usa para convertir una lectura de potencia de la fase A en corriente para la comprobación del fusible principal; si no se configura, se suponen 230 V.",
+          "hsem_huawei_solar_power_meter_phase_b_voltage": "Opcional. Selecciona el sensor que mide la tensión en tiempo real en la fase B (por ejemplo, la tensión de la fase B del medidor de potencia Huawei). Se usa para convertir una lectura de potencia de la fase B en corriente para la comprobación del fusible principal; si no se configura, se suponen 230 V.",
+          "hsem_huawei_solar_power_meter_phase_c_voltage": "Opcional. Selecciona el sensor que mide la tensión en tiempo real en la fase C (por ejemplo, la tensión de la fase C del medidor de potencia Huawei). Se usa para convertir una lectura de potencia de la fase C en corriente para la comprobación del fusible principal; si no se configura, se suponen 230 V.",
           "hsem_phase_aware_charging_enabled": "Activa una comprobación de seguridad en tiempo real inmediatamente antes de cada escritura de hardware de carga desde la red de Huawei (issue #831). Usa los tres sensores de fase del medidor de potencia indicados a continuación, junto con la entidad de potencia máxima de carga desde la red de Huawei (paso huawei_solar), para limitar la carga financiada por la red de modo que nunca supere el valor nominal del fusible principal en ninguna fase, incluso si la carga cambió después de resolver el plan. Requiere main_fuse_phases = 3 y las cuatro entidades configuradas. Desactivado de forma predeterminada; totalmente compatible con versiones anteriores."
         },
         "description": "Selecciona los sensores de potencia para HSEM.",
@@ -725,8 +731,8 @@
           "hsem_huawei_solar_device_id_batteries_2": "Selecciona tu dispositivo de batería Huawei secundario, si corresponde.",
           "hsem_huawei_solar_device_id_inverter_1": "Selecciona tu dispositivo de inversor Huawei principal.",
           "hsem_huawei_solar_device_id_inverter_2": "Selecciona tu dispositivo de inversor Huawei secundario, si corresponde.",
-          "hsem_huawei_solar_inverter_active_power_control": "Selecciona el sensor que controla la salida de potencia activa de tu inversor Huawei.",
-          "hsem_huawei_solar_device_id_tou_controller": "Selecciona tu dispositivo EMMA si un EMMA gestiona tus baterías. HSEM enviará entonces los periodos TOU al EMMA en lugar de a los dispositivos de batería; selecciona también arriba las entidades del EMMA para el modo de funcionamiento y los periodos TOU. Déjalo vacío para el control directo de baterías LUNA2000."
+          "hsem_huawei_solar_inverter_active_power_control": "Selecciona el sensor de control de potencia activa de tu inversor (desactivado por defecto en Huawei Solar). HSEM lo vuelve a leer para verificar las escrituras del límite de exportación a la red. Déjalo vacío si un EMMA gestiona tu instalación: Huawei Solar no ofrece ese sensor para EMMA y el límite se escribe entonces sin verificación. No selecciones un sensor de potencia como la potencia activa del inversor.",
+          "hsem_huawei_solar_device_id_tou_controller": "Selecciona tu dispositivo EMMA si un EMMA gestiona tus baterías. HSEM enviará entonces los periodos TOU y el límite de exportación a la red al EMMA en lugar de a los dispositivos de batería e inversor; selecciona también arriba las entidades del EMMA para el modo de funcionamiento y los periodos TOU. Déjalo vacío para el control directo de baterías LUNA2000."
         },
         "description": "Configura el modo de funcionamiento de las baterías solares Huawei.",
         "title": "Sensores de Huawei Solar"
@@ -798,9 +804,12 @@
           "hsem_main_fuse_phases": "Número de fases del fusible principal",
           "hsem_max_grid_export_power_kw": "Potencia máxima de exportación a la red (kW)",
           "hsem_solar_production_power": "Sensor de potencia de producción solar",
-          "hsem_huawei_solar_power_meter_phase_a_active_power": "Sensor de potencia activa del medidor, fase A",
-          "hsem_huawei_solar_power_meter_phase_b_active_power": "Sensor de potencia activa del medidor, fase B",
-          "hsem_huawei_solar_power_meter_phase_c_active_power": "Sensor de potencia activa del medidor, fase C",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Sensor de potencia o corriente, fase A",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Sensor de potencia o corriente, fase B",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Sensor de potencia o corriente, fase C",
+          "hsem_huawei_solar_power_meter_phase_a_voltage": "Sensor de tensión, fase A (opcional)",
+          "hsem_huawei_solar_power_meter_phase_b_voltage": "Sensor de tensión, fase B (opcional)",
+          "hsem_huawei_solar_power_meter_phase_c_voltage": "Sensor de tensión, fase C (opcional)",
           "hsem_phase_aware_charging_enabled": "Activar limitador de seguridad de carga con reconocimiento de fase en tiempo real"
         },
         "data_description": {
@@ -809,9 +818,12 @@
           "hsem_main_fuse_phases": "El número de fases de tu instalación eléctrica. Las instalaciones monofásicas DEBEN configurar este valor en 1; establecer 3 en una instalación monofásica hace que la protección del fusible sea 3 veces demasiado permisiva y no proporciona un límite de seguridad real. Predeterminado: 3 (trifásico).",
           "hsem_max_grid_export_power_kw": "Potencia máxima de exportación a la red en kW: el límite de exportación del operador de red/inversor para conexiones con exportación limitada (p. ej., 5 kW). El planificador MILP nunca programará una exportación por encima de este límite, de modo que la exportación de batería y la exportación de PV compiten correctamente por el mismo límite. Ajusta a 0 para desactivar.",
           "hsem_solar_production_power": "Selecciona el sensor que mide la potencia generada por tus paneles solares.",
-          "hsem_huawei_solar_power_meter_phase_a_active_power": "Selecciona el sensor que mide la potencia activa en tiempo real en la fase A de tu medidor de potencia Huawei. Solo se requiere cuando la carga con reconocimiento de fase está activada.",
-          "hsem_huawei_solar_power_meter_phase_b_active_power": "Selecciona el sensor que mide la potencia activa en tiempo real en la fase B de tu medidor de potencia Huawei. Solo se requiere cuando la carga con reconocimiento de fase está activada.",
-          "hsem_huawei_solar_power_meter_phase_c_active_power": "Selecciona el sensor que mide la potencia activa en tiempo real en la fase C de tu medidor de potencia Huawei. Solo se requiere cuando la carga con reconocimiento de fase está activada.",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Selecciona el sensor que mide la potencia (W) o la corriente (A) en tiempo real en la fase A de tu conexión a la red, por ejemplo del medidor de potencia Huawei. El fusible principal dispara por corriente; una lectura de corriente siempre se trata como importación. Necesario para la carga con reconocimiento de fase y para mantener la fase de un cargador de VE con conmutación de fases.",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Selecciona el sensor que mide la potencia (W) o la corriente (A) en tiempo real en la fase B de tu conexión a la red, por ejemplo del medidor de potencia Huawei. El fusible principal dispara por corriente; una lectura de corriente siempre se trata como importación. Necesario para la carga con reconocimiento de fase y para mantener la fase de un cargador de VE con conmutación de fases.",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Selecciona el sensor que mide la potencia (W) o la corriente (A) en tiempo real en la fase C de tu conexión a la red, por ejemplo del medidor de potencia Huawei. El fusible principal dispara por corriente; una lectura de corriente siempre se trata como importación. Necesario para la carga con reconocimiento de fase y para mantener la fase de un cargador de VE con conmutación de fases.",
+          "hsem_huawei_solar_power_meter_phase_a_voltage": "Opcional. Selecciona el sensor que mide la tensión en tiempo real en la fase A (por ejemplo, la tensión de la fase A del medidor de potencia Huawei). Se usa para convertir una lectura de potencia de la fase A en corriente para la comprobación del fusible principal; si no se configura, se suponen 230 V.",
+          "hsem_huawei_solar_power_meter_phase_b_voltage": "Opcional. Selecciona el sensor que mide la tensión en tiempo real en la fase B (por ejemplo, la tensión de la fase B del medidor de potencia Huawei). Se usa para convertir una lectura de potencia de la fase B en corriente para la comprobación del fusible principal; si no se configura, se suponen 230 V.",
+          "hsem_huawei_solar_power_meter_phase_c_voltage": "Opcional. Selecciona el sensor que mide la tensión en tiempo real en la fase C (por ejemplo, la tensión de la fase C del medidor de potencia Huawei). Se usa para convertir una lectura de potencia de la fase C en corriente para la comprobación del fusible principal; si no se configura, se suponen 230 V.",
           "hsem_phase_aware_charging_enabled": "Activa una comprobación de seguridad en tiempo real inmediatamente antes de cada escritura de hardware de carga desde la red de Huawei (issue #831). Usa los tres sensores de fase del medidor de potencia indicados a continuación, junto con la entidad de potencia máxima de carga desde la red de Huawei (paso huawei_solar), para limitar la carga financiada por la red de modo que nunca supere el valor nominal del fusible principal en ninguna fase, incluso si la carga cambió después de resolver el plan. Requiere main_fuse_phases = 3 y las cuatro entidades configuradas. Desactivado de forma predeterminada; totalmente compatible con versiones anteriores."
         },
         "description": "Selecciona los sensores de potencia para HSEM.",

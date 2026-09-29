@@ -220,11 +220,11 @@
           "hsem_huawei_solar_device_id_batteries_2": "Vælg din sekundære Huawei-batterienhed, hvis relevant.",
           "hsem_huawei_solar_device_id_inverter_1": "Vælg din primære Huawei-vekselretterenhed.",
           "hsem_huawei_solar_device_id_inverter_2": "Vælg din sekundære Huawei-vekselretterenhed, hvis relevant.",
-          "hsem_huawei_solar_inverter_active_power_control": "Vælg den sensor, der styrer aktiv effektudgang for din Huawei-vekselretter.",
+          "hsem_huawei_solar_inverter_active_power_control": "Vælg vekselretterens sensor for aktiv effektkontrol (deaktiveret som standard i Huawei Solar). HSEM læser den tilbage for at verificere skrivninger af netteksportgrænsen. Lad feltet være tomt, hvis en EMMA styrer dit anlæg: Huawei Solar har ingen sådan sensor for EMMA, og grænsen skrives så uden verificering. Vælg ikke en effektsensor som vekselretterens aktive effekt.",
           "hsem_huawei_solar_batteries_forcible_charge": "Vælg sensoren der angiver om tvungen opladning er aktiv.",
           "hsem_huawei_solar_batteries_charge_discharge_power": "Vælg sensoren, der rapporterer den fortegnsbestemte øjeblikkelige batteri op-/afladningseffekt (positiv = opladning, negativ = afladning). Kræves af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at fjerne Huaweis eget bidrag fra det live faseøjebliksbillede, før rådighedsmargenen beregnes. Valgfrit — kræves kun når fasebevidst opladning er aktiveret.",
           "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Vælg tal-enheden, der sætter Huaweis maksimale loft for netopladningseffekt (W). Skrives af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at holde netfinansieret opladning under hovedsikringens per-fase-grænse. Valgfrit — kræves kun når fasebevidst opladning er aktiveret.",
-          "hsem_huawei_solar_device_id_tou_controller": "Vælg din EMMA-enhed, hvis en EMMA styrer dine batterier. HSEM sender så TOU-perioder til EMMA'en i stedet for batterienhederne; vælg også EMMA'ens arbejdstilstands- og TOU-periode-enheder ovenfor. Lad feltet være tomt ved direkte styring af LUNA2000-batterier."
+          "hsem_huawei_solar_device_id_tou_controller": "Vælg din EMMA-enhed, hvis en EMMA styrer dine batterier. HSEM sender så TOU-perioder og netteksportgrænsen til EMMA'en i stedet for batteri- og vekselretterenhederne; vælg også EMMA'ens arbejdstilstands- og TOU-periode-enheder ovenfor. Lad feltet være tomt ved direkte styring af LUNA2000-batterier."
         },
         "description": "Konfigurer arbejdstilstanden for Huawei-solcellebatterier.",
         "title": "Huawei Solar-sensorer"
@@ -296,9 +296,12 @@
           "hsem_main_fuse_phases": "Hovedsikringens faseantal",
           "hsem_max_grid_export_power_kw": "Maks. neteksporteffekt (kW)",
           "hsem_solar_production_power": "Solproduktionseffektsensor",
-          "hsem_huawei_solar_power_meter_phase_a_active_power": "Effektmåler fase A aktiv effekt-sensor",
-          "hsem_huawei_solar_power_meter_phase_b_active_power": "Effektmåler fase B aktiv effekt-sensor",
-          "hsem_huawei_solar_power_meter_phase_c_active_power": "Effektmåler fase C aktiv effekt-sensor",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Fase A effekt- eller strømsensor",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Fase B effekt- eller strømsensor",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Fase C effekt- eller strømsensor",
+          "hsem_huawei_solar_power_meter_phase_a_voltage": "Fase A spændingssensor (valgfri)",
+          "hsem_huawei_solar_power_meter_phase_b_voltage": "Fase B spændingssensor (valgfri)",
+          "hsem_huawei_solar_power_meter_phase_c_voltage": "Fase C spændingssensor (valgfri)",
           "hsem_phase_aware_charging_enabled": "Aktiver live fasebevidst opladningssikkerhedsbegrænser"
         },
         "data_description": {
@@ -307,9 +310,12 @@
           "hsem_main_fuse_phases": "Din elinstallations faseantal.  Enfasede installationer SKAL sættes til 1 — at indstille 3 på en enfaset installation gør sikringsbeskyttelsen 3 gange for slap og giver ingen reel sikkerhedsgrænse.  Standard er 3 (trefaset).",
           "hsem_max_grid_export_power_kw": "Maksimal neteksporteffekt i kW — netoperatørens/inverterens eksportloft for eksportbegrænsede tilslutninger (f.eks. 5 kW).  MILP-planlæggeren planlægger aldrig eksport over denne grænse, så batterieksport og soleksport konkurrerer korrekt om det samme loft.  Sæt til 0 for at deaktivere.",
           "hsem_solar_production_power": "Vælg den sensor, der måler strømmen genereret af dine solpaneler.",
-          "hsem_huawei_solar_power_meter_phase_a_active_power": "Vælg sensoren, der måler live aktiv effekt på fase A af din Huawei-effektmåler. Kræves kun når fasebevidst opladning er aktiveret.",
-          "hsem_huawei_solar_power_meter_phase_b_active_power": "Vælg sensoren, der måler live aktiv effekt på fase B af din Huawei-effektmåler. Kræves kun når fasebevidst opladning er aktiveret.",
-          "hsem_huawei_solar_power_meter_phase_c_active_power": "Vælg sensoren, der måler live aktiv effekt på fase C af din Huawei-effektmåler. Kræves kun når fasebevidst opladning er aktiveret.",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Vælg sensoren, der måler live effekt (W) eller strøm (A) på fase A af din nettilslutning, f.eks. fra Huawei-effektmåleren. Hovedsikringen udløser på strøm; en strømmåling behandles altid som import. Kræves til fasebevidst opladning og til fasehold for en EV-lader med faseskift.",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Vælg sensoren, der måler live effekt (W) eller strøm (A) på fase B af din nettilslutning, f.eks. fra Huawei-effektmåleren. Hovedsikringen udløser på strøm; en strømmåling behandles altid som import. Kræves til fasebevidst opladning og til fasehold for en EV-lader med faseskift.",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Vælg sensoren, der måler live effekt (W) eller strøm (A) på fase C af din nettilslutning, f.eks. fra Huawei-effektmåleren. Hovedsikringen udløser på strøm; en strømmåling behandles altid som import. Kræves til fasebevidst opladning og til fasehold for en EV-lader med faseskift.",
+          "hsem_huawei_solar_power_meter_phase_a_voltage": "Valgfri. Vælg sensoren, der måler live spænding på fase A (f.eks. Huawei-effektmålerens fase A-spænding). Bruges til at omregne en effektmåling på fase A til strøm i hovedsikringstjekket; 230 V antages, når den ikke er angivet.",
+          "hsem_huawei_solar_power_meter_phase_b_voltage": "Valgfri. Vælg sensoren, der måler live spænding på fase B (f.eks. Huawei-effektmålerens fase B-spænding). Bruges til at omregne en effektmåling på fase B til strøm i hovedsikringstjekket; 230 V antages, når den ikke er angivet.",
+          "hsem_huawei_solar_power_meter_phase_c_voltage": "Valgfri. Vælg sensoren, der måler live spænding på fase C (f.eks. Huawei-effektmålerens fase C-spænding). Bruges til at omregne en effektmåling på fase C til strøm i hovedsikringstjekket; 230 V antages, når den ikke er angivet.",
           "hsem_phase_aware_charging_enabled": "Aktiver et live sikkerhedstjek umiddelbart før hver Huawei netopladnings-hardwareskrivning (issue #831). Bruger de tre effektmåler-fasesensorer nedenfor samt Huaweis maksimal-netopladningseffekt-enhed (huawei_solar-trinnet) til at begrænse netfinansieret opladning, så den aldrig presser nogen fase over hovedsikringens grænse, selv hvis belastningen ændrede sig efter planen blev løst. Kræver main_fuse_phases = 3 og alle fire enheder konfigureret. Deaktiveret som standard — fuldt bagudkompatibel."
         },
         "description": "Vælg effektsensorer til HSEM.",
@@ -695,10 +701,10 @@
           "hsem_huawei_solar_device_id_batteries_2": "Vælg din sekundære Huawei-batterienhed, hvis relevant.",
           "hsem_huawei_solar_device_id_inverter_1": "Vælg din primære Huawei-vekselretterenhed.",
           "hsem_huawei_solar_device_id_inverter_2": "Vælg din sekundære Huawei-vekselretterenhed, hvis relevant.",
-          "hsem_huawei_solar_inverter_active_power_control": "Vælg den sensor, der styrer aktiv effektudgang for din Huawei-vekselretter.",
+          "hsem_huawei_solar_inverter_active_power_control": "Vælg vekselretterens sensor for aktiv effektkontrol (deaktiveret som standard i Huawei Solar). HSEM læser den tilbage for at verificere skrivninger af netteksportgrænsen. Lad feltet være tomt, hvis en EMMA styrer dit anlæg: Huawei Solar har ingen sådan sensor for EMMA, og grænsen skrives så uden verificering. Vælg ikke en effektsensor som vekselretterens aktive effekt.",
           "hsem_huawei_solar_batteries_charge_discharge_power": "Vælg sensoren, der rapporterer den fortegnsbestemte øjeblikkelige batteri op-/afladningseffekt (positiv = opladning, negativ = afladning). Kræves af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at fjerne Huaweis eget bidrag fra det live faseøjebliksbillede, før rådighedsmargenen beregnes. Valgfrit — kræves kun når fasebevidst opladning er aktiveret.",
           "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Vælg tal-enheden, der sætter Huaweis maksimale loft for netopladningseffekt (W). Skrives af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at holde netfinansieret opladning under hovedsikringens per-fase-grænse. Valgfrit — kræves kun når fasebevidst opladning er aktiveret.",
-          "hsem_huawei_solar_device_id_tou_controller": "Vælg din EMMA-enhed, hvis en EMMA styrer dine batterier. HSEM sender så TOU-perioder til EMMA'en i stedet for batterienhederne; vælg også EMMA'ens arbejdstilstands- og TOU-periode-enheder ovenfor. Lad feltet være tomt ved direkte styring af LUNA2000-batterier."
+          "hsem_huawei_solar_device_id_tou_controller": "Vælg din EMMA-enhed, hvis en EMMA styrer dine batterier. HSEM sender så TOU-perioder og netteksportgrænsen til EMMA'en i stedet for batteri- og vekselretterenhederne; vælg også EMMA'ens arbejdstilstands- og TOU-periode-enheder ovenfor. Lad feltet være tomt ved direkte styring af LUNA2000-batterier."
         },
         "description": "Konfigurer arbejdstilstanden for Huawei-solcellebatterier.",
         "title": "Huawei Solar-sensorer"
@@ -742,9 +748,12 @@
           "hsem_main_fuse_phases": "Hovedsikringens faseantal",
           "hsem_max_grid_export_power_kw": "Maks. neteksporteffekt (kW)",
           "hsem_solar_production_power": "Solproduktionseffektsensor",
-          "hsem_huawei_solar_power_meter_phase_a_active_power": "Effektmåler fase A aktiv effekt-sensor",
-          "hsem_huawei_solar_power_meter_phase_b_active_power": "Effektmåler fase B aktiv effekt-sensor",
-          "hsem_huawei_solar_power_meter_phase_c_active_power": "Effektmåler fase C aktiv effekt-sensor",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Fase A effekt- eller strømsensor",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Fase B effekt- eller strømsensor",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Fase C effekt- eller strømsensor",
+          "hsem_huawei_solar_power_meter_phase_a_voltage": "Fase A spændingssensor (valgfri)",
+          "hsem_huawei_solar_power_meter_phase_b_voltage": "Fase B spændingssensor (valgfri)",
+          "hsem_huawei_solar_power_meter_phase_c_voltage": "Fase C spændingssensor (valgfri)",
           "hsem_phase_aware_charging_enabled": "Aktiver live fasebevidst opladningssikkerhedsbegrænser"
         },
         "data_description": {
@@ -753,9 +762,12 @@
           "hsem_main_fuse_phases": "Din elinstallations faseantal.  Enfasede installationer SKAL sættes til 1 — at indstille 3 på en enfaset installation gør sikringsbeskyttelsen 3 gange for slap og giver ingen reel sikkerhedsgrænse.  Standard er 3 (trefaset).",
           "hsem_max_grid_export_power_kw": "Maksimal neteksporteffekt i kW — netoperatørens/inverterens eksportloft for eksportbegrænsede tilslutninger (f.eks. 5 kW).  MILP-planlæggeren planlægger aldrig eksport over denne grænse, så batterieksport og soleksport konkurrerer korrekt om det samme loft.  Sæt til 0 for at deaktivere.",
           "hsem_solar_production_power": "Vælg den sensor, der måler strømmen genereret af dine solpaneler.",
-          "hsem_huawei_solar_power_meter_phase_a_active_power": "Vælg sensoren, der måler live aktiv effekt på fase A af din Huawei-effektmåler. Kræves kun når fasebevidst opladning er aktiveret.",
-          "hsem_huawei_solar_power_meter_phase_b_active_power": "Vælg sensoren, der måler live aktiv effekt på fase B af din Huawei-effektmåler. Kræves kun når fasebevidst opladning er aktiveret.",
-          "hsem_huawei_solar_power_meter_phase_c_active_power": "Vælg sensoren, der måler live aktiv effekt på fase C af din Huawei-effektmåler. Kræves kun når fasebevidst opladning er aktiveret.",
+          "hsem_huawei_solar_power_meter_phase_a_active_power": "Vælg sensoren, der måler live effekt (W) eller strøm (A) på fase A af din nettilslutning, f.eks. fra Huawei-effektmåleren. Hovedsikringen udløser på strøm; en strømmåling behandles altid som import. Kræves til fasebevidst opladning og til fasehold for en EV-lader med faseskift.",
+          "hsem_huawei_solar_power_meter_phase_b_active_power": "Vælg sensoren, der måler live effekt (W) eller strøm (A) på fase B af din nettilslutning, f.eks. fra Huawei-effektmåleren. Hovedsikringen udløser på strøm; en strømmåling behandles altid som import. Kræves til fasebevidst opladning og til fasehold for en EV-lader med faseskift.",
+          "hsem_huawei_solar_power_meter_phase_c_active_power": "Vælg sensoren, der måler live effekt (W) eller strøm (A) på fase C af din nettilslutning, f.eks. fra Huawei-effektmåleren. Hovedsikringen udløser på strøm; en strømmåling behandles altid som import. Kræves til fasebevidst opladning og til fasehold for en EV-lader med faseskift.",
+          "hsem_huawei_solar_power_meter_phase_a_voltage": "Valgfri. Vælg sensoren, der måler live spænding på fase A (f.eks. Huawei-effektmålerens fase A-spænding). Bruges til at omregne en effektmåling på fase A til strøm i hovedsikringstjekket; 230 V antages, når den ikke er angivet.",
+          "hsem_huawei_solar_power_meter_phase_b_voltage": "Valgfri. Vælg sensoren, der måler live spænding på fase B (f.eks. Huawei-effektmålerens fase B-spænding). Bruges til at omregne en effektmåling på fase B til strøm i hovedsikringstjekket; 230 V antages, når den ikke er angivet.",
+          "hsem_huawei_solar_power_meter_phase_c_voltage": "Valgfri. Vælg sensoren, der måler live spænding på fase C (f.eks. Huawei-effektmålerens fase C-spænding). Bruges til at omregne en effektmåling på fase C til strøm i hovedsikringstjekket; 230 V antages, når den ikke er angivet.",
           "hsem_phase_aware_charging_enabled": "Aktiver et live sikkerhedstjek umiddelbart før hver Huawei netopladnings-hardwareskrivning (issue #831). Bruger de tre effektmåler-fasesensorer nedenfor samt Huaweis maksimal-netopladningseffekt-enhed (huawei_solar-trinnet) til at begrænse netfinansieret opladning, så den aldrig presser nogen fase over hovedsikringens grænse, selv hvis belastningen ændrede sig efter planen blev løst. Kræver main_fuse_phases = 3 og alle fire enheder konfigureret. Deaktiveret som standard — fuldt bagudkompatibel."
         },
         "description": "Vælg effektsensorer til HSEM.",

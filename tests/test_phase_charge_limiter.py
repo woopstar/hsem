@@ -1,7 +1,7 @@
 """Tests for the live per-phase Huawei grid-charge safety limiter (issue #831).
 
 Covers:
-- :mod:`utils.phase_power`: :func:`phase_powers_valid` and
+- :mod:`utils.phase_power`: :func:`phase_readings_valid` and
   :func:`compute_phase_charge_limits` (the pure phase-math core).
 - :mod:`custom_sensors.phase_charge_limiter`: :func:`build_phase_aware_charge_commands`
   (the recommendation-aware wrapper used by the applier).
@@ -25,10 +25,12 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.degraded_mode import DegradedMode
 from custom_components.hsem.utils.inverter_verify import ApplyResult, ApplyStatus
 from custom_components.hsem.utils.phase_power import (
+    PhaseReading,
     compute_phase_charge_limits,
-    phase_powers_valid,
+    phase_readings_valid,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
+from tests.phase_fixtures import watts
 
 _LOGGER_PATCH = "custom_components.hsem.utils.logger.HSEM_LOGGER.debug"
 
@@ -75,25 +77,30 @@ def _config() -> SensorConfig:
 
 
 # ---------------------------------------------------------------------------
-# phase_powers_valid
+# phase_readings_valid
 # ---------------------------------------------------------------------------
 
 
-class TestPhasePowersValid:
+class TestPhaseReadingsValid:
     def test_all_finite_is_valid(self):
-        assert phase_powers_valid((700.0, 1200.0, 1700.0)) is True
+        assert phase_readings_valid(watts(700.0, 1200.0, 1700.0)) is True
 
     def test_any_none_is_invalid(self):
-        assert phase_powers_valid((700.0, None, 1700.0)) is False
+        assert phase_readings_valid(watts(700.0, None, 1700.0)) is False
 
     def test_any_nan_is_invalid(self):
-        assert phase_powers_valid((700.0, float("nan"), 1700.0)) is False
+        assert phase_readings_valid(watts(700.0, float("nan"), 1700.0)) is False
 
     def test_any_infinite_is_invalid(self):
-        assert phase_powers_valid((700.0, float("inf"), 1700.0)) is False
+        assert phase_readings_valid(watts(700.0, float("inf"), 1700.0)) is False
 
     def test_all_none_is_invalid(self):
-        assert phase_powers_valid((None, None, None)) is False
+        assert phase_readings_valid(watts(None, None, None)) is False
+
+    def test_an_unsupported_unit_is_invalid(self):
+        """Only power and current readings can be compared with the fuse."""
+        readings = (*watts(700.0, 1200.0, None)[:2], PhaseReading(1.0, "var"))
+        assert phase_readings_valid(readings) is False
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +112,7 @@ class TestComputePhaseChargeLimits:
     def test_full_charge_granted_when_headroom_available(self):
         """25 A / 3-phase fuse gives 5750 W/phase; light load leaves ample room."""
         result = compute_phase_charge_limits(
-            measured_phase_power_w=(700.0, 1200.0, 1700.0),
+            measured_phase=watts(700.0, 1200.0, 1700.0),
             fuse_amps=25.0,
             desired_charge_power_w=5000.0,
             battery_actual_power_w=0.0,
@@ -113,12 +120,13 @@ class TestComputePhaseChargeLimits:
             discharge_efficiency_pct=98.0,
         )
         assert result.primary_charge_power_w == pytest.approx(5000.0)
-        assert max(result.predicted_phase_power_w) <= 25.0 * 230.0 + 1e-6
+        assert result.predicted_phase_current_a is not None
+        assert max(result.predicted_phase_current_a) <= 25.0 + 1e-6
 
     def test_charge_throttled_when_phase_near_fuse_limit(self):
         """An appliance spike on one phase must cap the charge, not just warn."""
         result = compute_phase_charge_limits(
-            measured_phase_power_w=(700.0, 1200.0, 5500.0),
+            measured_phase=watts(700.0, 1200.0, 5500.0),
             fuse_amps=25.0,
             desired_charge_power_w=5000.0,
             battery_actual_power_w=0.0,
@@ -126,14 +134,15 @@ class TestComputePhaseChargeLimits:
             discharge_efficiency_pct=98.0,
         )
         assert result.primary_charge_power_w < 5000.0
-        assert max(result.predicted_phase_power_w) <= 25.0 * 230.0 + 1e-6
+        assert result.predicted_phase_current_a is not None
+        assert max(result.predicted_phase_current_a) <= 25.0 + 1e-6
 
     def test_own_battery_contribution_is_removed_before_headroom_check(self):
         """A battery already charging at full power must not starve itself."""
         # base_phase_power already includes ~1020 W/phase from a 3000 W charge
         # at 98% efficiency (3000 / 0.98 / 3 ≈ 1020.4 W/phase).
         result = compute_phase_charge_limits(
-            measured_phase_power_w=(1717.0, 2217.0, 2717.0),
+            measured_phase=watts(1717.0, 2217.0, 2717.0),
             fuse_amps=25.0,
             desired_charge_power_w=5000.0,
             battery_actual_power_w=3000.0,
@@ -147,7 +156,7 @@ class TestComputePhaseChargeLimits:
         # Battery discharging at 3000 W lowers the meter by ~980 W/phase
         # (3000 * 0.98 / 3 ≈ 980 W/phase), so the raw meter under-reports load.
         result = compute_phase_charge_limits(
-            measured_phase_power_w=(-280.0, 220.0, 720.0),
+            measured_phase=watts(-280.0, 220.0, 720.0),
             fuse_amps=25.0,
             desired_charge_power_w=5000.0,
             battery_actual_power_w=-3000.0,
@@ -158,7 +167,7 @@ class TestComputePhaseChargeLimits:
 
     def test_zero_fuse_amps_yields_zero_charge(self):
         result = compute_phase_charge_limits(
-            measured_phase_power_w=(0.0, 0.0, 0.0),
+            measured_phase=watts(0.0, 0.0, 0.0),
             fuse_amps=0.0,
             desired_charge_power_w=5000.0,
             battery_actual_power_w=0.0,
@@ -169,7 +178,7 @@ class TestComputePhaseChargeLimits:
 
     def test_zero_desired_charge_yields_zero_regardless_of_headroom(self):
         result = compute_phase_charge_limits(
-            measured_phase_power_w=(0.0, 0.0, 0.0),
+            measured_phase=watts(0.0, 0.0, 0.0),
             fuse_amps=25.0,
             desired_charge_power_w=0.0,
             battery_actual_power_w=0.0,
@@ -180,7 +189,7 @@ class TestComputePhaseChargeLimits:
 
     def test_command_is_floored_to_a_100w_step(self):
         result = compute_phase_charge_limits(
-            measured_phase_power_w=(700.0, 1200.0, 1700.0),
+            measured_phase=watts(700.0, 1200.0, 1700.0),
             fuse_amps=25.0,
             desired_charge_power_w=4567.0,
             battery_actual_power_w=0.0,
@@ -207,7 +216,7 @@ class TestBuildPhaseAwareChargeCommands:
     def test_non_grid_charge_slot_returns_no_override(self):
         cfg = _config()
         live = LiveState()
-        live.grid_phase_power_w = (700.0, 1200.0, 1700.0)
+        live.grid_phase_readings = watts(700.0, 1200.0, 1700.0)
         live.huawei_batteries_charge_discharge_power_w = 0.0
         commands = build_phase_aware_charge_commands(
             cfg, live, _rec(recommendation=Recommendations.BatteriesWaitMode.value)
@@ -218,7 +227,7 @@ class TestBuildPhaseAwareChargeCommands:
         cfg = _config()
         cfg.main_fuse_phases = 1
         live = LiveState()
-        live.grid_phase_power_w = (700.0, 1200.0, 1700.0)
+        live.grid_phase_readings = watts(700.0, 1200.0, 1700.0)
         live.huawei_batteries_charge_discharge_power_w = 0.0
         commands = build_phase_aware_charge_commands(cfg, live, _rec())
         assert commands.primary_grid_charge_power_w == pytest.approx(0.0)
@@ -226,7 +235,7 @@ class TestBuildPhaseAwareChargeCommands:
     def test_missing_phase_reading_fails_closed(self):
         cfg = _config()
         live = LiveState()
-        live.grid_phase_power_w = (700.0, None, 1700.0)
+        live.grid_phase_readings = watts(700.0, None, 1700.0)
         live.huawei_batteries_charge_discharge_power_w = 0.0
         commands = build_phase_aware_charge_commands(cfg, live, _rec())
         assert commands.primary_grid_charge_power_w == pytest.approx(0.0)
@@ -234,7 +243,7 @@ class TestBuildPhaseAwareChargeCommands:
     def test_missing_battery_power_fails_closed(self):
         cfg = _config()
         live = LiveState()
-        live.grid_phase_power_w = (700.0, 1200.0, 1700.0)
+        live.grid_phase_readings = watts(700.0, 1200.0, 1700.0)
         live.huawei_batteries_charge_discharge_power_w = None
         commands = build_phase_aware_charge_commands(cfg, live, _rec())
         assert commands.primary_grid_charge_power_w == pytest.approx(0.0)
@@ -242,7 +251,7 @@ class TestBuildPhaseAwareChargeCommands:
     def test_non_finite_battery_power_fails_closed(self):
         cfg = _config()
         live = LiveState()
-        live.grid_phase_power_w = (700.0, 1200.0, 1700.0)
+        live.grid_phase_readings = watts(700.0, 1200.0, 1700.0)
         live.huawei_batteries_charge_discharge_power_w = float("nan")
         commands = build_phase_aware_charge_commands(cfg, live, _rec())
         assert commands.primary_grid_charge_power_w == pytest.approx(0.0)
@@ -250,7 +259,7 @@ class TestBuildPhaseAwareChargeCommands:
     def test_valid_inputs_compute_a_safe_command(self):
         cfg = _config()
         live = LiveState()
-        live.grid_phase_power_w = (700.0, 1200.0, 1700.0)
+        live.grid_phase_readings = watts(700.0, 1200.0, 1700.0)
         live.huawei_batteries_charge_discharge_power_w = 0.0
         commands = build_phase_aware_charge_commands(
             cfg, live, _rec(batteries_charged_kwh=2.5)
@@ -262,7 +271,7 @@ class TestBuildPhaseAwareChargeCommands:
     def test_command_respects_live_max_charge_power_cap(self):
         cfg = _config()
         live = LiveState()
-        live.grid_phase_power_w = (700.0, 1200.0, 1700.0)
+        live.grid_phase_readings = watts(700.0, 1200.0, 1700.0)
         live.huawei_batteries_charge_discharge_power_w = 0.0
         live.huawei_batteries_max_charge_power_w = 2000.0
         commands = build_phase_aware_charge_commands(
@@ -274,7 +283,7 @@ class TestBuildPhaseAwareChargeCommands:
     def test_phase_spike_throttles_the_command(self):
         cfg = _config()
         live = LiveState()
-        live.grid_phase_power_w = (700.0, 1200.0, 5500.0)
+        live.grid_phase_readings = watts(700.0, 1200.0, 5500.0)
         live.huawei_batteries_charge_discharge_power_w = 0.0
         commands = build_phase_aware_charge_commands(
             cfg, live, _rec(batteries_charged_kwh=2.5)
@@ -317,7 +326,7 @@ class TestApplierWritesPhaseAwareCap:
         cfg.huawei_solar_batteries_tou_charging_and_discharging_periods = "sensor.tou"
         live = LiveState()
         live._degraded_mode = DegradedMode.OK
-        live.grid_phase_power_w = (700.0, 1200.0, 1700.0)
+        live.grid_phase_readings = watts(700.0, 1200.0, 1700.0)
         live.huawei_batteries_charge_discharge_power_w = 0.0
         live.huawei_batteries_grid_charge_max_power_w = 0.0
         live.huawei_batteries_max_discharge_power_w = 2500
@@ -351,7 +360,7 @@ class TestApplierWritesPhaseAwareCap:
         cfg.huawei_solar_batteries_tou_charging_and_discharging_periods = "sensor.tou"
         live = LiveState()
         live._degraded_mode = DegradedMode.OK
-        live.grid_phase_power_w = (700.0, 1200.0, 1700.0)
+        live.grid_phase_readings = watts(700.0, 1200.0, 1700.0)
         live.huawei_batteries_charge_discharge_power_w = 0.0
         live.huawei_batteries_grid_charge_max_power_w = 2500.0
         live.huawei_batteries_max_discharge_power_w = 2500
@@ -383,7 +392,7 @@ class TestApplierWritesPhaseAwareCap:
         cfg.huawei_solar_batteries_grid_charge_maximum_power = None
         live = LiveState()
         live._degraded_mode = DegradedMode.OK
-        live.grid_phase_power_w = (700.0, 1200.0, 1700.0)
+        live.grid_phase_readings = watts(700.0, 1200.0, 1700.0)
         live.huawei_batteries_charge_discharge_power_w = 0.0
         live.huawei_batteries_grid_charge_max_power_w = None
         live.huawei_batteries_max_discharge_power_w = 2500

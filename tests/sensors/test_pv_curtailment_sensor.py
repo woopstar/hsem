@@ -112,6 +112,10 @@ class TestIsDirectlyLimited:
         cfg.max_grid_export_power_kw = 10.0
         assert _is_directly_limited("some other value", cfg) is True
 
+    def test_a_power_reading_is_not_a_limit(self):
+        """Issue #1120: the live inverter power picked on EMMA is not a limit."""
+        assert _is_directly_limited("1540", SensorConfig()) is False
+
 
 # ===========================================================================
 # _is_derived_curtailment — unchanged fallback heuristic
@@ -147,6 +151,15 @@ class TestIsDerivedCurtailment:
         live.export_electricity_price = 0.0
         live.huawei_inverter_active_power_control = "Unlimited"
         assert _is_derived_curtailment(live) is False
+
+    def test_a_power_reading_counts_as_an_unknown_register(self):
+        """Issue #1120: a bare power reading does not veto the heuristic."""
+        live = LiveState()
+        live.solar_production_power_w = 500.0
+        live.huawei_batteries_soc_pct = 99.0
+        live.export_electricity_price = -0.01
+        live.huawei_inverter_active_power_control = "1540"
+        assert _is_derived_curtailment(live) is True
 
     def test_full_battery_blocked_export_unknown_register_is_curtailed(self):
         # Issue #925 narrowed the derived-curtailment price condition to

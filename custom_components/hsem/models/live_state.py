@@ -11,12 +11,15 @@ distinguish "entity unavailable" from "entity reported zero".
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from custom_components.hsem.utils.degraded_mode import (
     DegradedMode,
     classify_degraded_mode,
 )
+
+if TYPE_CHECKING:
+    from custom_components.hsem.utils.phase_power import PhaseReading
 
 
 @dataclass
@@ -93,8 +96,11 @@ class LiveState:
         solar_production_power_w: Instantaneous PV production in Watts.
         net_consumption_w: Computed net consumption (house − solar − EV if separate).
         net_consumption_with_ev_w: Net consumption including EV draw.
-        grid_phase_power_w: Live per-phase grid power ``(a, b, c)`` in Watts
-            (issue #831); any element is ``None`` when unavailable.
+        grid_phase_readings: Live per-phase grid readings ``(a, b, c)``,
+            power or current (issues #831, #1119); any element is ``None``
+            when unavailable or in a unit HSEM cannot interpret.
+        grid_phase_voltage_v: Live per-phase voltage ``(a, b, c)`` in volts;
+            any element is ``None`` when unconfigured or unavailable.
 
         huawei_batteries_working_mode: Working mode string (e.g. ``"TimeOfUse"``).
         huawei_batteries_soc_pct: Battery state-of-charge in percent.
@@ -148,11 +154,18 @@ class LiveState:
     net_consumption_w: float = 0.0
     net_consumption_with_ev_w: float = 0.0
 
-    #: Live per-phase grid power in Watts, ``(phase_a, phase_b, phase_c)``
-    #: (issue #831).  Any element is ``None`` when its entity is unconfigured
-    #: or its reading is unavailable/invalid — the phase-aware charging
-    #: limiter fails closed rather than guessing a missing phase.
-    grid_phase_power_w: tuple[float | None, float | None, float | None] = (
+    #: Live per-phase grid readings ``(phase_a, phase_b, phase_c)``, each a
+    #: power (W) or current (A) reading (issues #831, #1119).  Any element is
+    #: ``None`` when its entity is unconfigured, its reading is
+    #: unavailable/invalid, or its unit is missing or unrecognised — both
+    #: live fuse checks fail closed rather than guessing a missing phase.
+    grid_phase_readings: tuple[
+        PhaseReading | None, PhaseReading | None, PhaseReading | None
+    ] = (None, None, None)
+
+    #: Live per-phase voltage in volts (issue #1119), used to turn power into
+    #: current.  ``None`` falls back to the 230 V nominal.
+    grid_phase_voltage_v: tuple[float | None, float | None, float | None] = (
         None,
         None,
         None,

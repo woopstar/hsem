@@ -50,12 +50,23 @@ The EMMA entities are not present on this installation, so they are listed by
 upstream translation key (entity IDs depend on the EMMA device name — pick them
 in the config flow rather than typing them).
 
-| Upstream translation key                     | Friendly name               | Options / format                                                                 | Used by HSEM                                                                         |
-| -------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `emma_ess_control_mode` (select)             | ESS Control Mode            | `time_of_use`, `maximum_self_consumption`, `fully_fed_to_grid`, …                | ✅ `hsem_huawei_solar_batteries_working_mode`                                        |
-| `emma_tou_preferred_use_of_surplus_pv_power` | Excess PV energy use in TOU | `charge`, `fed_to_grid`                                                          | ✅ `hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou`                         |
-| `emma_tou_periods` (sensor)                  | TOU periods                 | `Period N` attributes, same format as the LUNA2000 TOU sensor (disabled default) | ✅ `hsem_huawei_solar_batteries_tou_charging_and_discharging_periods`                |
-| EMMA device                                  | —                           | —                                                                                | ✅ `hsem_huawei_solar_device_id_tou_controller` (target of `set_tou_periods` writes) |
+| Upstream translation key                     | Friendly name               | Options / format                                                                 | Used by HSEM                                                                  |
+| -------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `emma_ess_control_mode` (select)             | ESS Control Mode            | `time_of_use`, `maximum_self_consumption`, `fully_fed_to_grid`, …                | ✅ `hsem_huawei_solar_batteries_working_mode`                                 |
+| `emma_tou_preferred_use_of_surplus_pv_power` | Excess PV energy use in TOU | `charge`, `fed_to_grid`                                                          | ✅ `hsem_huawei_solar_batteries_excess_pv_energy_use_in_tou`                  |
+| `emma_tou_periods` (sensor)                  | TOU periods                 | `Period N` attributes, same format as the LUNA2000 TOU sensor (disabled default) | ✅ `hsem_huawei_solar_batteries_tou_charging_and_discharging_periods`         |
+| EMMA device                                  | —                           | —                                                                                | ✅ `hsem_huawei_solar_device_id_tou_controller` (TOU and export-limit writes) |
+
+With an EMMA, `huawei_solar` also registers `set_maximum_feed_grid_power` /
+`set_maximum_feed_grid_power_percent` against the EMMA only, so HSEM writes the
+grid export limit to the EMMA controller instead of the inverters. It does
+**not** create the inverter's `Active power control` sensor when the EMMA is
+the primary device, so leave `hsem_huawei_solar_inverter_active_power_control`
+empty: the limit is then written once per change and reported as `unverified`
+(issue #1120). Do not pick `Inverter active power` — that is a live power
+reading, not the configured limit. Known upstream limitation: EMMA watt limits
+(the negative-price block and a configured export cap) fail with a `P_max`
+read error, so those writes are reported as `failed`.
 
 HSEM's `WorkingModes` values are the LUNA2000 option strings. The applier maps each
 intent to whichever option the configured select advertises
@@ -118,25 +129,25 @@ treated as `WorkingModes.TimeOfUse`.
 
 ### sensor entities
 
-| Friendly name        | Entity ID                                 | Unit  | Used by HSEM                                                                 |
-| -------------------- | ----------------------------------------- | ----- | ---------------------------------------------------------------------------- |
-| A-B line voltage     | `sensor.power_meter_a_b_line_voltage`     | V     | —                                                                            |
-| Active power         | `sensor.power_meter_active_power`         | W     | —                                                                            |
-| B-C line voltage     | `sensor.power_meter_b_c_line_voltage`     | V     | —                                                                            |
-| C-A line voltage     | `sensor.power_meter_c_a_line_voltage`     | V     | —                                                                            |
-| Consumption          | `sensor.power_meter_consumption`          | kWh   | —                                                                            |
-| Exported             | `sensor.power_meter_exported`             | kWh   | —                                                                            |
-| Frequency            | `sensor.power_meter_frequency`            | Hz    | —                                                                            |
-| Meter status         | `sensor.power_meter_meter_status`         | —     | —                                                                            |
-| Phase A active power | `sensor.power_meter_phase_a_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_a_active_power` (issues #831, #1083) |
-| Phase A current      | `sensor.power_meter_current`              | A     | —                                                                            |
-| Phase A voltage      | `sensor.power_meter_phase_a_voltage`      | V     | —                                                                            |
-| Phase B active power | `sensor.power_meter_phase_b_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_b_active_power` (issues #831, #1083) |
-| Phase B current      | `sensor.power_meter_current_2`            | A     | —                                                                            |
-| Phase B voltage      | `sensor.power_meter_phase_b_voltage`      | V     | —                                                                            |
-| Phase C active power | `sensor.power_meter_phase_c_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_c_active_power` (issues #831, #1083) |
-| Phase C current      | `sensor.power_meter_current_3`            | A     | —                                                                            |
-| Phase C voltage      | `sensor.power_meter_phase_c_voltage`      | V     | —                                                                            |
-| Power factor         | `sensor.power_meter_power_factor`         | —     | —                                                                            |
-| Reactive energy      | `sensor.power_meter_reactive_energy`      | kvarh | —                                                                            |
-| Reactive power       | `sensor.power_meter_reactive_power`       | var   | —                                                                            |
+| Friendly name        | Entity ID                                 | Unit  | Used by HSEM                                                                           |
+| -------------------- | ----------------------------------------- | ----- | -------------------------------------------------------------------------------------- |
+| A-B line voltage     | `sensor.power_meter_a_b_line_voltage`     | V     | —                                                                                      |
+| Active power         | `sensor.power_meter_active_power`         | W     | —                                                                                      |
+| B-C line voltage     | `sensor.power_meter_b_c_line_voltage`     | V     | —                                                                                      |
+| C-A line voltage     | `sensor.power_meter_c_a_line_voltage`     | V     | —                                                                                      |
+| Consumption          | `sensor.power_meter_consumption`          | kWh   | —                                                                                      |
+| Exported             | `sensor.power_meter_exported`             | kWh   | —                                                                                      |
+| Frequency            | `sensor.power_meter_frequency`            | Hz    | —                                                                                      |
+| Meter status         | `sensor.power_meter_meter_status`         | —     | —                                                                                      |
+| Phase A active power | `sensor.power_meter_phase_a_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_a_active_power` (issues #831, #1083)           |
+| Phase A current      | `sensor.power_meter_current`              | A     | ✅ may be mapped to `hsem_huawei_solar_power_meter_phase_a_active_power` (issue #1119) |
+| Phase A voltage      | `sensor.power_meter_phase_a_voltage`      | V     | ✅ `hsem_huawei_solar_power_meter_phase_a_voltage` (issue #1119)                       |
+| Phase B active power | `sensor.power_meter_phase_b_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_b_active_power` (issues #831, #1083)           |
+| Phase B current      | `sensor.power_meter_current_2`            | A     | ✅ may be mapped to `hsem_huawei_solar_power_meter_phase_b_active_power` (issue #1119) |
+| Phase B voltage      | `sensor.power_meter_phase_b_voltage`      | V     | ✅ `hsem_huawei_solar_power_meter_phase_b_voltage` (issue #1119)                       |
+| Phase C active power | `sensor.power_meter_phase_c_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_c_active_power` (issues #831, #1083)           |
+| Phase C current      | `sensor.power_meter_current_3`            | A     | ✅ may be mapped to `hsem_huawei_solar_power_meter_phase_c_active_power` (issue #1119) |
+| Phase C voltage      | `sensor.power_meter_phase_c_voltage`      | V     | ✅ `hsem_huawei_solar_power_meter_phase_c_voltage` (issue #1119)                       |
+| Power factor         | `sensor.power_meter_power_factor`         | —     | —                                                                                      |
+| Reactive energy      | `sensor.power_meter_reactive_energy`      | kvarh | —                                                                                      |
+| Reactive power       | `sensor.power_meter_reactive_power`       | var   | —                                                                                      |

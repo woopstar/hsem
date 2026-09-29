@@ -238,6 +238,25 @@ def ha_get_entity_state_and_convert(
         )
 
 
+def entity_unit(self: Any, entity_id: str) -> str | None:
+    """Return *entity_id*'s declared ``unit_of_measurement``, or ``None``.
+
+    Args:
+        self: The calling coordinator or component instance (must expose
+            ``.hass``).
+        entity_id: The entity to look up.
+
+    Returns:
+        The unit string, or ``None`` when the entity or its unit is absent.
+    """
+    hass = getattr(self, "hass", None)
+    state_obj = hass.states.get(entity_id) if hass is not None else None
+    if state_obj is None:
+        return None
+    unit = state_obj.attributes.get("unit_of_measurement")
+    return unit if isinstance(unit, str) else None
+
+
 def normalize_entity_float(
     self: Any,
     entity_id: str | None,
@@ -270,15 +289,12 @@ def normalize_entity_float(
     """
     if value is None or entity_id is None:
         return value
-    hass = getattr(self, "hass", None)
-    state_obj = hass.states.get(entity_id) if hass is not None else None
-    unit = (
-        state_obj.attributes.get("unit_of_measurement")
-        if state_obj is not None
-        else None
-    )
     return normalize_to_unit(
-        value, unit, canonical_unit, entity_id=entity_id, label=label
+        value,
+        entity_unit(self, entity_id),
+        canonical_unit,
+        entity_id=entity_id,
+        label=label,
     )
 
 

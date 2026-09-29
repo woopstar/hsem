@@ -1169,12 +1169,20 @@ The MILP's phase-fuse constraint (`planner/milp/_phase_fuse.py`) protects
 against overload using a **forecast** at solve time. Between solve time and
 the hardware write, another appliance on a shared phase can spike load, so
 `custom_sensors/phase_charge_limiter.py` re-checks the newest live
-per-phase power-meter snapshot immediately before every Huawei grid-charge
+per-phase meter snapshot immediately before every Huawei grid-charge
 write. Huawei-only — this repository has no secondary/PowMr inverter.
+
+The fuse trips on current, so the check is done in **amps** (issue #1119).
+Each phase field may be a power sensor (W/kW) or a current sensor (A). A
+current reading is used as its magnitude, so it never counts as export; a
+power reading is divided by the live phase voltage from the optional
+per-phase voltage sensors, or by 230 V when none are configured. A phase
+whose sensor has no unit or an unsupported one (e.g. `var`) counts as
+unavailable and blocks the limiter, with a WARNING at most once an hour.
 
 Disabled by default (`hsem_phase_aware_charging_enabled = False`). When
 enabled, requires `hsem_main_fuse_phases = 3` and four entities configured:
-the three Huawei power-meter phase sensors (`power` config step) and both
+the three phase power-or-current sensors (`power` config step) and both
 the grid-charge maximum-power number and the battery charge/discharge power
 sensor (`huawei_solar` config step).
 
@@ -1191,7 +1199,7 @@ For a `batteries_charge_grid` slot, the limiter:
 **Fails closed to 0 W** (rather than leaving a stale positive cap in
 place) whenever the feature is enabled and any of the following are true
 for a grid-charge slot: `main_fuse_phases != 3`, `main_fuse_amps <= 0`, any
-phase-power reading is missing/non-finite, or the battery
+phase reading is missing/non-finite or not in a power/current unit, or the battery
 charge/discharge-power reading is missing/non-finite. When the feature is
 disabled or the slot is not a grid-charge slot, the limiter makes no
 changes and the grid-charge-maximum-power entity is left untouched.

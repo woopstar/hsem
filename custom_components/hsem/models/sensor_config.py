@@ -65,7 +65,9 @@ class SensorConfig:
         huawei_solar_device_id_batteries_2: Device ID for the secondary battery pack (optional).
         huawei_solar_device_id_tou_controller: Optional device ID that owns the
             selected TOU periods entity (for example EMMA). When unset, HSEM
-            writes TOU periods to the configured battery device(s).
+            writes TOU periods to the configured battery device(s) and the
+            grid export limit to the inverter device(s); when set, both go to
+            this device (issue #1120).
         huawei_solar_batteries_working_mode: Entity ID for working mode select.
         huawei_solar_batteries_end_of_discharge_soc: Entity ID for EoD SoC number.
         huawei_solar_batteries_state_of_capacity: Entity ID for SoC sensor.
@@ -77,12 +79,20 @@ class SensorConfig:
             maximum-power number, written by the live phase-aware charging limiter.
         huawei_solar_batteries_charge_discharge_power: Entity ID for the signed
             instantaneous battery charge/discharge power sensor.
-        huawei_solar_power_meter_phase_a_active_power: Entity ID for phase A live power.
-        huawei_solar_power_meter_phase_b_active_power: Entity ID for phase B live power.
-        huawei_solar_power_meter_phase_c_active_power: Entity ID for phase C live power.
+        huawei_solar_power_meter_phase_a_active_power: Entity ID for phase A live
+            power or current.
+        huawei_solar_power_meter_phase_b_active_power: Entity ID for phase B live
+            power or current.
+        huawei_solar_power_meter_phase_c_active_power: Entity ID for phase C live
+            power or current.
+        huawei_solar_power_meter_phase_a_voltage: Entity ID for phase A live voltage.
+        huawei_solar_power_meter_phase_b_voltage: Entity ID for phase B live voltage.
+        huawei_solar_power_meter_phase_c_voltage: Entity ID for phase C live voltage.
         huawei_solar_batteries_tou_charging_and_discharging_periods: Entity ID for TOU periods.
         huawei_solar_batteries_excess_pv_energy_use_in_tou: Entity ID for excess PV use select.
-        huawei_solar_inverter_active_power_control: Entity ID for export power control.
+        huawei_solar_inverter_active_power_control: Optional entity ID of the
+            active power control sensor that verifies export limit writes
+            (none on EMMA systems, issue #1120).
         huawei_solar_batteries_rated_capacity: Entity ID for rated battery capacity sensor.
 
         house_consumption_power: Entity ID for house power meter.
@@ -186,12 +196,17 @@ class SensorConfig:
     huawei_solar_batteries_forcible_charge: str | None = None
     huawei_solar_inverter_active_power_control: str | None = None
     huawei_solar_batteries_rated_capacity: str | None = None
-    #: Entity IDs for the three Huawei power-meter phase active-power sensors
-    #: (issue #831).  All three must be configured for the live phase-aware
-    #: charging limiter to activate.
+    #: Entity IDs for the three live per-phase grid sensors (issue #831).
+    #: Each may report power (W/kW) or current (A) (issue #1119).  All three
+    #: must be configured for the live per-phase fuse checks to pass.
     huawei_solar_power_meter_phase_a_active_power: str | None = None
     huawei_solar_power_meter_phase_b_active_power: str | None = None
     huawei_solar_power_meter_phase_c_active_power: str | None = None
+    #: Optional live per-phase voltage sensors (issue #1119), used to turn a
+    #: power reading into current; 230 V is assumed when unset.
+    huawei_solar_power_meter_phase_a_voltage: str | None = None
+    huawei_solar_power_meter_phase_b_voltage: str | None = None
+    huawei_solar_power_meter_phase_c_voltage: str | None = None
 
     # Power meters
     house_consumption_power: str | None = None

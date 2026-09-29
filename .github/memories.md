@@ -73,7 +73,7 @@ cycle are durable; stale generations must not publish.
 | `sensornames.py`        | All HA entity name constants — never hardcode sensor names elsewhere                               |
 | `prices.py`             | Price lookup, grid fee calculation, spot price helpers                                             |
 | `huawei.py`             | Huawei Solar inverter API helpers                                                                  |
-| `logger.py`             | `HSEM_LOGGER` — rotating file handler, `propagate=False`                                           |
+| `logger.py`             | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)    |
 | `solar_corrector.py`    | Per-hour PV forecast accuracy auto-correction (issue #602)                                         |
 | `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill computation)                               |
 | `soc_bounds.py`         | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094)  |
@@ -82,7 +82,7 @@ cycle are durable; stale generations must not publish.
 | `weekday_profile.py`    | Weekday/weekend split house load EWMA profiles                                                     |
 | `ev_mode_resolver.py`   | Auto-Full EV charging on negative electricity prices                                               |
 | `ev_accounting.py`      | Raw CT versus per-EV normalized-baseline accounting helper                                         |
-| `unit_normalize.py`     | Generic sensor unit normalization via HA's `unit_conversion` converters (issue #945)               |
+| `unit_normalize.py`     | Generic sensor unit normalization via HA's `unit_conversion` converters (issues #945, #1119)       |
 
 ---
 
@@ -186,6 +186,29 @@ max_kwh = fuse_max_energy_per_slot_kwh(amps, phases, slot_hours)
 Used by BOTH the MILP grid-import constraint and the post-hoc EV/battery
 throttle so the optimiser and the safety clamp never disagree.
 
+### Live per-phase fuse checks are in amps (issue #1119)
+
+```python
+# ALWAYS use these for a LIVE per-phase fuse check — never compare phase
+# Watts with main_fuse_amps * GRID_PHASE_VOLTAGE inline.
+from custom_components.hsem.utils.phase_power import (
+    phase_fuse_headroom_a,   # per-phase amps left before the fuse, or None
+    phase_headroom_power_w,  # amp headroom -> W at the same phase voltage
+)
+```
+
+The Huawei grid-charge limiter and the switchable-EV one-phase hold both go
+through these, so they cannot diverge. Live phase inputs are
+`LiveState.grid_phase_readings` (`PhaseReading(value, unit)`, unit `W` or
+`A`) plus optional `grid_phase_voltage_v`; read them only via
+`custom_sensors/phase_inputs.py::read_grid_phase_inputs()`. A current
+reading is always used as `|I|` (no sign convention in HA, reversed CTs), so
+only a signed W reading earns export headroom. A missing or foreign unit is
+`None` (fail closed) — never pass it through as Watts; 16 A read as 16 W is
+the bug #1119 fixed. The MILP's planning-time fuse model
+(`planner/milp/_phase_fuse.py`, `fuse_max_energy_per_slot_kwh`) deliberately
+stays in energy terms at 230 V.
+
 ### EV charger DC ↔ AC conversion
 
 ```python
@@ -229,6 +252,20 @@ chain silently multiplies the published command.
 Note: LP matrix _coefficients_ in `planner/milp/_constraints.py` and
 `_objective.py` intentionally stay as raw `1.0 / ev.charger_efficiency`
 (they are constraint coefficients, not energy conversions) — do not wrap those.
+
+**Deadline need is measured at full-slot resolution (issue #1117).** The
+live slot's whole-amp lattice is finer (`one_amp × remaining_fraction`), so
+any hard total-energy requirement between two full-slot lattice points lets it
+close a rounding residual that full slots can't. At the deadline penalty (~10×
+max price per kWh), closing that residual outweighed any price spread, and
+mid-slot replans pulled deferrable EV energy into the dearer live slot. The
+per-kWh objective coefficients were never the problem; the lattice was.
+`_ev_amp_lattice.full_slot_executable_shortfall_dc()` snaps the need up to a
+total full slots deliver exactly. The capacity row admits the target-cap
+activation quantum (the car ends the charge when full), because a 100 %
+target otherwise has no executable point at or above the need. Reproduce any
+suspected recurrence with a sweep of `now` across the live slot, not a single
+solve. `tests/planner/test_ev_mid_slot_placement.py` does exactly that.
 
 ### Aligning per-slot data with a MILP solve (issue #1015)
 
@@ -337,13 +374,25 @@ value = read_normalized_float(self, entity_id, _read, canonical_unit, label=labe
 ```
 
 Both delegate to `normalize_to_unit()` after resolving `entity_id`'s
-`unit_of_measurement` via `self.hass.states.get(entity_id)`. Wired into
-(issue #946): `custom_sensors/state_collector.py` — house/solar/Huawei
-phase power meters (`UnitOfPower.WATT`) and grid import/export/PV energy
+unit via `utils/ha_helpers.py::entity_unit()`. Wired into
+(issue #946): `custom_sensors/state_collector.py` — house/solar power meters
+(`UnitOfPower.WATT`) and grid import/export/PV energy
 meters (`UnitOfEnergy.KILO_WATT_HOUR`); and
 `coordinator_live_power.py::_read_live_power_number()` — the fast-timer
 house/solar power samples (`UnitOfPower.WATT`), independently of the
 full-cycle `state_collector.py` read.
+
+**Safety inputs must not use the pass-through.** `normalize_to_unit()`
+returns the raw value for an unknown unit, which is fine for a forecast input
+but silently disabled the live fuse guard (issue #1119). A field that accepts
+more than one quantity, or that feeds a safety check, uses
+`normalize_to_unit_family(value, unit, (canonical_a, canonical_b))` instead:
+it returns `(value, canonical_unit)` or `None` for a missing/foreign unit. The
+live phase inputs (power or current) use it in `custom_sensors/phase_inputs.py`;
+phase voltages still use `read_normalized_float(..., UnitOfElectricPotential.VOLT)`
+because a bad voltage falls back to 230 V rather than blocking.
+`ElectricCurrentConverter` and `ElectricPotentialConverter` are registered in
+`_CONVERTER_CLASSES`.
 
 `utils/conversion.py::normalize_ev_power_w()` (issue #592) is intentionally
 **not** migrated onto this utility — its plausibility checks (implausibly
@@ -401,7 +450,7 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
   - `coordinator_planner_phase.py` — 32,040 bytes (over 30 KB)
   - `coordinator_tracking.py` — 31,036 bytes (over 30 KB)
 
-  - `custom_sensors/working_mode_sensor.py` — 32,933 bytes (over 30 KB)
+  - `custom_sensors/working_mode_sensor.py` — 33,137 bytes (over 30 KB; +139 in #1114)
   - `planner/candidate_selector.py` — 31,401 bytes (over 30 KB)
 
 - Resolved in issue #1110: the load-forecast population/readiness block moved
@@ -564,6 +613,16 @@ It is enforced in two places:
 
 Negative export prices always override the cap and write `GRID_EXPORT_LIMIT_WATT`
 to block all export, because exporting then costs money.
+
+**Unit-aware export-limit read-back (#1130):** with no cap, the two targets
+are 100 W (the block) and 100 %, so the value alone is ambiguous. The applier
+passes `async_write_and_verify` a unit-tagged `desired`
+(`_format_power_control_limit()` → `"100w"` / `"100%"`) and a reader that
+returns the same form (`_parse_power_control_limit()`; `Unlimited` →
+`"100%"`, bare numbers → `None`). Never hand write-and-verify the bare
+`_parse_power_control_pct()` value for an export limit: `"Unlimited"`,
+`"Limited to 100%"` and `"Limited to 100W"` all parse to `100`, which made
+the pre-flight skip both transitions and let a wrong-unit read-back verify.
 
 ## MILP Grid Flow Direction Exclusivity (Issues #635 / #655 — Unbounded LP Fix)
 
@@ -1042,6 +1101,22 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
   when an EMMA exists); otherwise the legacy battery-device routing is kept.
 - Forcible charge/discharge still targets battery devices — upstream
   `huawei_solar` keeps those services on the battery schema even with EMMA.
+- **Export-limit routing (#1120):** `applier_power_control._export_limit_device_ids()`
+  sends `set_maximum_feed_grid_power*` to the EMMA controller when it is set —
+  with an EMMA, upstream registers those services against the EMMA only and
+  rejects an inverter `device_id` (`wrong_device_type`).
+- **No export-limit feedback on EMMA (#1120):** upstream creates the active
+  power control sensor only when the primary device is not an EMMA, so
+  `hsem_huawei_solar_inverter_active_power_control` is optional. A bare
+  number is a power reading, not a limit (`_is_power_measurement()`); without
+  usable feedback the limit is written via `async_write_and_verify(reader=None)`
+  — accepted → `UNVERIFIED` (battery writes proceed), every attempt errors →
+  `FAILED` (still blocks them) — and latched on the sensor so it is only
+  rewritten when the target changes.
+- **Upstream gap:** EMMA watt-limit writes (negative-price 100 W floor, the
+  configured export cap) fail upstream with `P_max` `IllegalDataValueError`,
+  because `set_maximum_feed_grid_power` validates against the inverter-only
+  `P_MAX` register. HSEM keeps failing closed on that error.
 
 ---
 
@@ -1146,6 +1221,23 @@ against `docs/planner-spec.md`.
   Always use `log_planner(level, msg, *args)` instead — it offloads file I/O to a
   thread-pool executor when a running event loop is detected, falling back to a
   direct call only when no loop is present (tests, early init). See issue #632.
+- **Never pass a log-level string to an `HSEM_LOGGER` / `_LOGGER` method** (issue
+  #1114). `_LOGGER.debug("msg", "warning")` is not a warning: `HSEM_LOGGER` is a plain
+  `logging.Logger`, so `"warning"` becomes a `%`-format argument. The record is always
+  DEBUG (dropped with verbose off) and formatting raises `TypeError: not all arguments
+converted` with verbose on, so the message is lost either way. Call the matching
+  method (`_LOGGER.warning(...)`, `_LOGGER.error(...)`). Only `async_log(level, ...)` /
+  `log_planner(level, ...)` take the level as an argument, and it is always the
+  _first_ one. `tests/test_logging_call_levels.py` AST-scans the package and fails on
+  any `*logger.<level>(...)` call with a level-string positional argument.
+- Use `%` placeholders and no trailing period in log messages; never f-strings.
+- **Per-cycle conditions** (unconfigured write entity, degraded-mode write block) use
+  `log_latched_warning(owner, key, active, msg, *args)` from `utils/logger.py`: WARNING on
+  the first active cycle, DEBUG on repeats, and the latch re-arms when the condition
+  clears. Call it on every pass (with `active=False` when the condition does not hold)
+  so the re-arm happens. The latch lives on the owning entity (`_hsem_warning_latch`).
+  The applier's verified-write aborts log at ERROR via `_log_write_failed()` in
+  `custom_sensors/applier.py`.
 
 ---
 
@@ -1360,6 +1452,17 @@ in `engine_core.run_planner` and `candidate_selector`).
 Regression tests: `test_milp_defers_charging_to_cheap_slots_when_future_pv_exceeds_headroom`
 and `test_milp_charges_now_when_no_future_surplus_exceeds_headroom` in
 `tests/planner/test_milp_optimizer.py`.
+
+**Do not drop the #694 cap on no-PV slots (issue #1118).** It looks
+unjustified there, since grid charging forgoes no export. But the per-slot
+terminal premiums are not cycle-neutral: the #638 credit `R − p_imp` is not
+cancelled when the energy is discharged at a slot priced at or above `R`.
+The cap is what stops the LP from grid-charging at mid prices and
+exporting at the peak at a real loss. A replay showed that gating the cap
+on PV surplus was net harmful. The profitable no-PV cycle it blocks is
+tracked by a strict xfail in `tests/planner/test_terminal_soc_grid_cycles.py`.
+The real fix is a cycle-neutral terminal term (net `Σ(ec − ed)` at one
+price), not a per-slot tweak.
 
 ---
 
@@ -2062,6 +2165,8 @@ a unit renegotiation at the same wattage re-publishes the profile.
 
 Tests: `tests/test_phase_charge_limiter.py` (limiter core + Part 2 applier integration), `tests/test_phase_charge_transition_safety.py` (Part 3 transition/deadline logic, 18 tests mirroring the fork's coverage style but Huawei-only).
 
+**Issue #1119 update:** the limiter now compares in amps. `compute_phase_charge_limits()` takes `measured_phase: PhaseReadings` + `phase_voltages_v`, delegates the fuse comparison to `phase_fuse_headroom_a()`, and returns `predicted_phase_current_a` (was `predicted_phase_power_w`). `phase_powers_valid()` became `phase_readings_valid()`. With W readings and no voltage sensor the result is algebraically identical to the old Watts formula. Test builders for readings live in `tests/phase_fixtures.py` (`watts()`, `amps()`); #1119's own tests are `tests/test_phase_fuse_amps.py`.
+
 ## Error-Mode Grid-Charge Emergency Stop (issue #840, follow-up to #831)
 
 **Gap left open by #831:** the Part 3 transition/deadline logic only runs while `hardware_writes_allowed()` is true. If `classify_degraded_mode()` escalates to `DegradedMode.Error` mid-cycle (e.g. a critical sensor goes unavailable) while HSEM itself is the one holding an armed grid-charge cap, `_async_apply_hardware_writes()` takes the `elif not writes_safe:` branch and simply skips all writes. The last HSEM-written cap is left live on the inverter with no further supervision until Error mode clears. #840 closes that gap with a narrow, downward-only exception that is allowed to run even in Error mode.
@@ -2237,3 +2342,15 @@ Test: `tests/test_coordinator_tracking_solar_corrector.py::test_restored_solar_c
 **`applier.py` size gotcha:** the file was at 29 859 bytes against the 30 KB hard limit, so the helper and its full rationale live in `applier_caps.py` (8.5 KB) and `applier.py` carries a one-line comment plus the call. It is now 29 915 bytes — anything further in that file needs a split first.
 
 Tests: `tests/test_discharge_mode_cap_oscillation.py` (16 tests: `_primary_battery_cap_hold()` unit coverage including the `ev_smart_charging` relabel and wait-mode cases; no 0 W write on a near-zero discharge slot; a hardware cap left at 0 W restored to rated max; the slot still runs `MaximizeSelfConsumption`; an 8-cycle replay of the reporter's timeline with the solved discharge flipping across the materiality boundary asserting **exactly one** cap write; and precedence regressions for unpermitted EV, permitted-EV rate cap, SoC reserve guard, solar-charge-only, and a genuine held Wait slot). Like #939's tests these assert the exact list of writes to the entity, not just the final value — the pre-fix behaviour passes a final-value-only assertion.
+
+## Entity Gating Needs a Targeted Reload, Never a Blanket One (issue #1139)
+
+**Entity creation is gated at platform setup (issue #859).** `switch.py`, `number.py`, `time.py` and `sensor.py` only create EV/OCPP entities when `hsem_ev_planned_load_enabled`, `hsem_ev_second_planned_load_enabled`, `hsem_ocpp_enabled` or `hsem_ocpp_second_enabled` is on. The options update listener used to only call `coordinator.async_options_updated()`, so flipping one of these in the options flow left the entity set unchanged until a manual reload (reported on 6.3.7 in #1120).
+
+**Rule:** the canonical list is `ENTITY_GATING_CONFIG_KEYS` in `__init__.py`. `async_setup_entry` stores a snapshot on `HSEMRuntimeData.entity_gating`. `async_update_options` compares the current values with it and calls `hass.config_entries.async_schedule_reload(entry.entry_id)` only when one differs. Otherwise it keeps the in-place coordinator refresh. **If you add a new platform gate, add its key to `ENTITY_GATING_CONFIG_KEYS`**, or the new entities have the same bug. `tests/test_init_options_reload.py::test_gating_keys_cover_every_platform_gate` pins the list.
+
+**Never reload on every options update.** HSEM's own switches, numbers, times and the Solcast likelihood selector save their state via `async_update_entry(options=...)`, which fires the same listener. A blanket reload would restart the integration, including the OCPP servers, on every toggle. The snapshot is also updated before scheduling the reload, so a second options write that arrives before the reload runs does not schedule another one.
+
+**Registry entries of a disabled feature are left as unavailable** (not removed like the #979 orphan clean-up), so users keep entity customisations if they re-enable. Revisit only if users ask for them to disappear.
+
+Tests: `tests/test_init_options_reload.py` (each flag on→off and off→on schedules a reload with no in-place refresh; entity-driven writes and unrelated options refresh in place; explicit default is not a change; no double reload; setup snapshot reads options→data→defaults).

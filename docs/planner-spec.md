@@ -730,10 +730,18 @@ on the first cycle after the sensor reports again.
 
 - SOC dynamics (cumulative, no discharge):
   `ev_soc[t] = ev_initial + Σ_{k≤t} ev_c[k]`
-- SOC upper bound per slot: `ev_soc[t] ≤ ev_capacity`
-- Deadline soft goal: `ev_soc[D] + ev_pen ≥ effective_target` where `D` is
-  the LP-slot index of the effective deadline and `effective_target` is
-  `ev_target` plus the configured safety margin (see below).
+- SOC upper bound per slot: `ev_soc[t] ≤ ev_capacity`. For an EV with a
+  target-cap row (below) the bound is `max(ev_capacity, ev_initial + target_cap)`:
+  a car ends the charge itself when it is full, so a deadline EV may overshoot
+  its headroom by the same activation quantum the target-cap row allows above
+  the target (issue #1117). Without this, a 100 % target has no executable
+  whole-amp point at or above the need.
+- Deadline soft goal: `Σ_{k≤D} ev_c[k] + ev_pen ≥ executable_need` where `D`
+  is the LP-slot index of the effective deadline. `executable_need` is
+  `effective_target − ev_initial`, snapped up to the full-slot whole-amp
+  lattice (see _Full-slot executable deadline need_ below), and
+  `effective_target` is `ev_target` plus the configured safety margin (see
+  below).
 - **Post-deadline zero-charge**: For EVs with a deadline and `charge_past_target=False`,
   `ev_c[t] = 0` for all `t > D`. This prevents charging after the deadline.
 - **Target-cap constraint** (issue #636, relaxed by issue #797, margin/escalation
@@ -881,6 +889,47 @@ carried a large negative `-ev_penalty_cost` coefficient mirroring the slack
 penalty; removing it let the target-cap activation-quantum relaxation above
 work without also inflating the reward for the extra energy.)
 
+**Full-slot executable deadline need** (issue #1117): a managed EV's charge
+is tied to whole-amp commands (see _Discharge permission and whole-amp
+lattice_ below). A full-width slot delivers `amps × q` of DC energy, where
+`q` is one amp (one phase for a `three_phase_switchable` charger) over a full
+slot. A partly elapsed live slot delivers `amps × q × remaining_fraction`,
+which is a finer lattice. A deadline need between two full-slot lattice points
+therefore left a residual that only the live slot could close. At
+`ev_penalty_cost` per kWh, closing it was worth more than any real price
+spread, so every mid-slot replan moved deferrable EV energy into the dearer
+live slot, and the next slot-boundary replan moved it back.
+
+The deadline soft goal therefore uses `executable_need`: the effective need
+`S = effective_target − ev_initial` snapped up to the smallest whole number of
+amp-slots `T` that full-width slots deliver exactly. `T` amp-slots are
+executable in `k` full slots when `k · min_amp ≤ T ≤ k · rated_amp`:
+
+$$executable\_need = q \cdot \min\{\,T \in \mathbb{Z} : T \ge S / q,\ \exists k \le K : k \cdot min\_amp \le T \le k \cdot rated\_amp\,\}$$
+
+where `K` is the number of full-width slots up to `D`. A live-slot
+combination must then displace at least one whole future amp-step (`q` kWh)
+of energy, so it wins only when the live slot is genuinely cheaper per kWh.
+While it is, it keeps charging for as long as its remaining minutes can
+deliver the need.
+
+`S` is kept unchanged (no snapping) when:
+
+- the EV is not managed or has no runnable amp lattice;
+- the deadline is escalated (issue #845);
+- no full-width slot precedes the deadline, for example a deadline inside the
+  live slot, which keeps the live slot's own lattice;
+- no executable total lies within one activation quantum above `S`, or
+  within what the pre-deadline slots can deliver.
+
+`executable_need − S` is always less than the target-cap activation quantum,
+so the target-cap row always admits it. At the boundary, the solver already
+picked this lattice point whenever the capacity row allowed it. What changes
+is a target at capacity: the plan now commands the whole-amp point that fills
+the car instead of stopping one amp short and paying the penalty. The
+published `deadline_met` still compares delivered energy against
+`effective_target`.
+
 ### Discharge permission and whole-amp lattice (issue #797)
 
 Huawei exposes **one global battery discharge limit**, shared by the house
@@ -1002,11 +1051,22 @@ revenue the optimiser forbade.
 - When `ev_configs=None`, behaviour is identical to the pre-#530 code
   (backward compatible).
 - EV charge per slot never exceeds `ev.max_charge_per_slot`.
-- Cumulative EV SoC never exceeds `ev.capacity_kwh`.
+- Cumulative EV SoC never exceeds `ev.capacity_kwh`, except for a deadline
+  EV (`charge_past_target=False`), which may exceed it by at most the
+  target-cap activation quantum: the car ends the charge when full (issue
+  #1117).
 - For EVs with a deadline and `charge_past_target=False`, cumulative
   pre-deadline charge `Σ_{k≤D} ev_c[k]` never exceeds
   `effective_deadline_target_kwh − initial_soc_kwh` (issue #845), or
-  `capacity_kwh − initial_soc_kwh` when `deadline_escalated` is `True`.
+  `capacity_kwh − initial_soc_kwh` when `deadline_escalated` is `True`, plus
+  one activation quantum (issue #797).
+- `executable_need` satisfies `S ≤ executable_need < S + activation_quantum`,
+  and equals `S` when no full-width slot precedes the deadline (issue #1117).
+- With identical inputs, a managed deadline EV's commands are the same
+  whether `now` is at the live slot's start or partway through it, unless
+  the live slot is genuinely cheaper per kWh or the only slot before the
+  deadline (issue #1117,
+  `tests/planner/test_ev_mid_slot_placement.py`).
 - `deadline_margin_kwh = 0.0` reproduces the pre-#845 exact-target
   behaviour exactly (`effective_deadline_target_kwh == target_kwh`).
 - When `ev.deadline_slot` is provided and the margined target is reachable,
@@ -1394,6 +1454,22 @@ to the full premium and the LP charges to store energy for future
 discharge windows. The discharge penalty is deliberately **not** capped,
 preserving the issue #638 protection against unnecessary discharging.
 
+**The cap applies to no-PV slots too (issue #1118).** In a slot without
+PV surplus the battery charges from the grid, so `p_exp[t]` is not a
+foregone export there. The cap still has to stay, because the per-slot
+premiums are not cycle-neutral. A charge at `t2` that is discharged at `t3`
+within the horizon nets `max(0, R − p_imp[t3]) − charge_premium[t2]`
+instead of zero. When `p_imp[t3] ≥ R` (the replacement window itself), the
+uncapped credit `R − p_imp[t2]` becomes a pure bonus for cycling. Dropping
+the cap on no-PV slots was replayed on a 2026-09-27-like price shape. It
+unblocked a profitable evening-discharge / night-recharge cycle, but it
+also made the LP grid-charge at mid prices and export at the peak at a
+real loss, and take evening cycles whose real spread was negative. On
+balance it was net harmful. The remaining gap, a profitable no-PV cycle
+declined because the premiums net to a penalty, needs a cycle-neutral
+terminal term (net `Σ(ec − ed)` valued at a single price) rather than a
+per-slot change. See `tests/planner/test_terminal_soc_grid_cycles.py`.
+
 **Deferred-export correction (issue #592):** the #694 cap compares charging
 against exporting in the **same slot**. When a _future_ slot carries PV
 surplus that exceeds the battery's absorption capacity
@@ -1514,6 +1590,15 @@ max_grid_import_per_slot_kwh = main_fuse_amps * 230 * phases / 1000 * (interval_
 
 where `phases` is the electrical phase count (1 or 3, default 3).
 This assumes balanced load at 230 V phase-to-neutral per phase.
+
+This planning-time model stays in energy terms at a fixed 230 V, unit power
+factor (issue #1119): it plans against a _forecast_, not a measurement, so it
+is an approximation of the fuse current. At a lower real voltage or a power
+factor below 1 the same energy draws more current than the model assumes. The
+live checks in _Live phase-aware grid-charge safety limiter_ and the
+switchable phase-mode hold compare measured per-phase **current** against
+`main_fuse_amps` immediately before each hardware write, and are the
+authoritative guard.
 
 The diagnostic soft row is paired with a hard no-worsening row:
 
@@ -2616,10 +2701,47 @@ guard and `apply_excess_export()` exactly as before.
 is a **runtime** correction layered on top of the MILP's planning-time
 phase-fuse constraint (`planner/milp/_phase_fuse.py`). The MILP uses a
 forecast at solve time; this limiter uses the newest live per-phase
-power-meter snapshot immediately before the Huawei grid-charge hardware
+meter snapshot immediately before the Huawei grid-charge hardware
 write, so an appliance load change since the plan was solved cannot push a
 phase over the main fuse rating. Huawei-only (no PowMr/secondary inverter
 in this repository).
+
+#### Live phase inputs are compared in amps (issue #1119)
+
+A main fuse trips on per-phase current, so the live checks work in amps.
+Each of the three phase fields
+(`hsem_huawei_solar_power_meter_phase_{a,b,c}_active_power`) may be a power
+sensor or a current sensor; `custom_sensors/phase_inputs.py` keeps each
+reading's unit family on `LiveState.grid_phase_readings` as a `PhaseReading`:
+
+| Declared unit                       | Reading              | Current used for the fuse check |
+| ----------------------------------- | -------------------- | ------------------------------- |
+| Power (`W`, `kW`, …)                | Signed W, import > 0 | `P / V_phase`                   |
+| Current (`A`, `mA`, …)              | A                    | `\|I\|` (always import)         |
+| Missing or anything else (`var`, …) | `None`               | — (fails closed)                |
+
+- **Current readings are magnitudes.** Home Assistant's `current` device
+  class has no sign convention, and a reversed CT would report import as
+  negative, so a current reading never earns export headroom. Only a signed
+  power reading does.
+- **Voltage.** `V_phase` is the live per-phase voltage from the optional
+  `hsem_huawei_solar_power_meter_phase_{a,b,c}_voltage` sensors
+  (`LiveState.grid_phase_voltage_v`) when it lies within 90–264 V (IEC 60038
+  nominal 100–240 V, ±10 %), otherwise the 230 V nominal
+  (`utils/phase_power.phase_voltage_v`). With no voltage sensor configured a
+  power reading is checked exactly as before #1119, so existing W
+  configurations are unchanged. Additional load being checked (battery AC
+  power, EV command) is converted at the same per-phase voltage.
+- **Fail closed.** A reading with a missing or unrecognised unit is
+  `None`, with a WARNING naming the entity and unit at most once per hour per
+  entity and unit (`PHASE_UNIT_WARNING_INTERVAL_S`). Before #1119 such a
+  reading was passed through as Watts, so a 16 A sensor was read as 16 W and
+  the guard was silently disabled.
+- **One shared helper.** Both live checks call
+  `utils/phase_power.phase_fuse_headroom_a()`, which returns each phase's
+  remaining current before `main_fuse_amps` (or `None` when any phase is
+  unusable), and `phase_headroom_power_w()` to turn that headroom back into
+  Watts at the same voltage. The limiter and the EV hold cannot diverge.
 
 Disabled by default (`cfg.phase_aware_charging_enabled = False`) — fully
 backward compatible. When disabled, or when the current recommendation is
@@ -2634,11 +2756,16 @@ desired_charge_power_w = min(
     batteries_charged_kwh * 1000 / slot_hours,
     live.huawei_batteries_max_charge_power_w,
 )
-base_phase_power_w[i] = measured_phase_power_w[i] - battery_actual_site_w / 3
-ac_headroom_w = 3 * max(min(fuse_limit_w - base_phase_power_w[i] for i in 0..2), 0)
+base_phase_current_a[i] = measured_phase_current_a[i] - (battery_actual_site_w / 3) / V[i]
+headroom_a[i] = main_fuse_amps - base_phase_current_a[i]
+ac_headroom_w = 3 * max(min(headroom_a[i] * V[i] for i in 0..2), 0)
 dc_limit_w = ac_headroom_w * charge_efficiency
 primary_charge_power_w = floor_to_100w(min(desired_charge_power_w, dc_limit_w))
 ```
+
+`measured_phase_current_a` and `V` follow the table above. With power
+readings and no voltage sensors (`V = 230`), this is algebraically identical
+to the pre-#1119 Watts formula.
 
 `battery_actual_site_w` converts the live signed battery
 charge/discharge-power reading (`STORAGE_CHARGE_DISCHARGE_POWER`; positive
@@ -2655,7 +2782,8 @@ slot is a grid-charge slot, and any of:
 
 - `main_fuse_phases != 3` or `main_fuse_amps <= 0` (not a valid
   three-phase supply)
-- any of the three live phase-power readings is missing or non-finite
+- any of the three live phase readings is missing, non-finite, or in a unit
+  that is neither power nor current
 - the live battery charge/discharge-power reading is missing or
   non-finite
 
@@ -2665,8 +2793,14 @@ slot is a grid-charge slot, and any of:
   behaviour — fully backward compatible.
 - The written command never exceeds the plan's own desired charge power
   for the slot.
-- The written command never causes `predicted_phase_power_w` to exceed
-  `main_fuse_amps * 230 V` on any phase (within the 100 W flooring step).
+- The written command never causes `predicted_phase_current_a` to exceed
+  `main_fuse_amps` on any phase (within the 100 W flooring step).
+- A current reading of `-I` yields exactly the same command as `+I`: an
+  unsigned current source never gains export headroom.
+- 16 A measured on every phase of a 35 A fuse leaves 19 A of headroom per
+  phase, never the ≈ 8 kW a Watts interpretation of "16" would give.
+- A power reading at a lower live voltage never yields a larger command
+  than the same reading at 230 V.
 - Removing the battery's own live contribution from the phase snapshot
   never reduces the computed headroom below what an idle battery at the
   same appliance load would receive.
@@ -3919,11 +4053,14 @@ The phase hold fails closed and the fresh plan wins when current mode or target
 need cannot be proven, the session is not actively charging, the retained
 command would exceed remaining target energy, or its lower delivery cannot be
 recovered by the accepted plan's executable future commands before the
-deadline. An inverse `1φ → 3φ` hold also requires complete live Huawei
-power-meter phase telemetry proving that the retained one-phase ceiling remains
-below the fuse; the collector reads these entities whenever an enabled
-switchable EV needs phase proof, independently of the battery phase-aware
-charging toggle. Aggregate headroom alone is insufficient because lower total
+deadline. An inverse `1φ → 3φ` hold also requires complete live per-phase
+telemetry proving that the retained one-phase ceiling remains below the fuse;
+the collector reads these entities whenever an enabled switchable EV needs
+phase proof, independently of the battery phase-aware charging toggle. The
+proof is in amps through the same `phase_fuse_headroom_a()` helper as the
+grid-charge limiter (issue #1119): the added one-phase current at each phase's
+voltage must fit every phase's headroom, and any unusable phase reading
+rejects the hold. Aggregate headroom alone is insufficient because lower total
 Watts can still overload one phase. The same material-cost bypass used by the amp deadband also
 applies, using the magnitude of the live-slot planned cost so zero and negative
 prices cannot trap a materially worse inverse hold. Any crossing rejected by
