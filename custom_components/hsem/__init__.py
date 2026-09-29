@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Coroutine
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
@@ -30,8 +30,21 @@ from custom_components.hsem.utils.logger import (
     async_close_hsem_logger,
     async_init_hsem_logger,
 )
+from custom_components.hsem.utils.misc import get_config_value
 
 _LOGGER = logging.getLogger(__name__)
+
+# Config keys that decide which entities the platforms create at setup
+# (issue #859): EV switches/numbers/times/sensors in switch.py, number.py,
+# time.py and sensor.py, and the OCPP charger sensors in sensor.py.  Changing
+# any of them needs a reload to add or remove entities (issue #1139).  Keep in
+# sync with the platform gates when adding a new one.
+ENTITY_GATING_CONFIG_KEYS: tuple[str, ...] = (
+    "hsem_ev_planned_load_enabled",
+    "hsem_ev_second_planned_load_enabled",
+    "hsem_ocpp_enabled",
+    "hsem_ocpp_second_enabled",
+)
 
 
 @dataclass
@@ -39,6 +52,8 @@ class HSEMRuntimeData:
     """Runtime data stored on the config entry."""
 
     coordinator: HSEMDataUpdateCoordinator
+    # Values of ENTITY_GATING_CONFIG_KEYS the platforms were set up with.
+    entity_gating: dict[str, bool] = field(default_factory=dict)
 
 
 type HSEMConfigEntry = ConfigEntry[HSEMRuntimeData]
@@ -52,6 +67,13 @@ PLATFORMS = [
     Platform.SWITCH,
     Platform.TIME,
 ]
+
+
+def _entity_gating_snapshot(entry: ConfigEntry) -> dict[str, bool]:
+    """Return the current value of every entity-gating config key."""
+    return {
+        key: bool(get_config_value(entry, key)) for key in ENTITY_GATING_CONFIG_KEYS
+    }
 
 
 def _parse_version(version_str: str) -> Version | None:
@@ -207,7 +229,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool
 
     await _run_coordinator_setup_step(coordinator.async_setup())
 
-    entry.runtime_data = HSEMRuntimeData(coordinator=coordinator)
+    entry.runtime_data = HSEMRuntimeData(
+        coordinator=coordinator,
+        entity_gating=_entity_gating_snapshot(entry),
+    )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -248,11 +273,38 @@ async def async_unload_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> boo
 
 
 async def async_update_options(hass: HomeAssistant, entry: HSEMConfigEntry) -> None:
-    """Handle options update."""
+    """Handle options update.
+
+    Reloads the entry only when an entity-gating flag changed, since the
+    platforms decide which EV/OCPP entities exist at setup (issue #1139).
+    Every other change — including the options writes HSEM's own switches,
+    numbers, times and selectors make on each toggle — is applied in place
+    via the coordinator, so the integration (and its OCPP servers) is not
+    restarted on every toggle.
+    """
     _LOGGER.debug("Options update triggered for HSEM: %s", entry.entry_id)
 
-    if entry.runtime_data is None:
+    runtime_data = entry.runtime_data
+    if runtime_data is None:
+        return
+
+    current_gating = _entity_gating_snapshot(entry)
+    if current_gating != runtime_data.entity_gating:
+        changed = sorted(
+            key
+            for key in ENTITY_GATING_CONFIG_KEYS
+            if current_gating.get(key) != runtime_data.entity_gating.get(key)
+        )
+        _LOGGER.info(
+            "HSEM entity-gating options changed (%s); reloading entry %s",
+            ", ".join(changed),
+            entry.entry_id,
+        )
+        # Record the new values so a further options write that lands before
+        # the reload runs does not schedule a second reload.
+        runtime_data.entity_gating = current_gating
+        hass.config_entries.async_schedule_reload(entry.entry_id)
         return
 
     # Notify the coordinator so it re-reads config and re-runs the pipeline.
-    await entry.runtime_data.coordinator.async_options_updated()
+    await runtime_data.coordinator.async_options_updated()
