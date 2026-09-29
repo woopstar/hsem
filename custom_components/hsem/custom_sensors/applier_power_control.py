@@ -6,12 +6,14 @@ Extracted from ``applier.py`` to satisfy the repository's 30 KB /
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from custom_components.hsem.const import (
     GRID_EXPORT_LIMIT_WATT,
 )
 from custom_components.hsem.custom_sensors.applier_state_readers import (
+    _is_power_measurement,
     _is_watt_limit,
     _parse_power_control_pct,
 )
@@ -70,6 +72,15 @@ async def async_apply_inverter_power_control(
     so that the inverter is polled after the write and the result is verified
     within tolerance.  If any write fails all retries, further writes within this
     cycle are blocked and the failure is recorded in the returned summary.
+
+    Without a usable active power control entity (none configured — the EMMA
+    case — or one reporting a bare power measurement), nothing can read the
+    limit back (issue #1120).  The limit is then written without read-back:
+    an accepted write is ``UNVERIFIED``, a write error is still ``FAILED``,
+    and an accepted limit is not rewritten until the target changes.
+
+    With an EMMA controller configured, the limit is written to the EMMA
+    instead of the inverters (see :func:`_export_limit_device_ids`).
 
     This function includes its own safety gate as defense-in-depth.  Callers
     (``working_mode_sensor``) are expected to gate writes too, but this
@@ -185,34 +196,42 @@ async def async_apply_inverter_power_control(
         live.ev_second.is_connected,
     )
 
-    current_pct = _parse_power_control_pct(live.huawei_inverter_active_power_control)
-    current_is_watt = _is_watt_limit(live.huawei_inverter_active_power_control)
+    feedback_entity = cfg.huawei_solar_inverter_active_power_control
+    feedback_state = live.huawei_inverter_active_power_control
+    if feedback_entity and _is_power_measurement(feedback_state):
+        # A power reading can never confirm a limit — treat it as no feedback.
+        _warn_measurement_feedback_once(sensor, feedback_entity, feedback_state)
+        feedback_entity = None
 
-    for inv_id in [
-        cfg.huawei_solar_device_id_inverter_1,
-        cfg.huawei_solar_device_id_inverter_2,
-    ]:
-        if inv_id is None:
+    current_pct = _parse_power_control_pct(feedback_state)
+    current_is_watt = _is_watt_limit(feedback_state)
+    target = (desired, desired_is_watt)
+    written_limits = _unverified_export_limits(sensor)
+
+    for inv_id in _export_limit_device_ids(cfg):
+        reader_fn: Callable[[], int | None] | None = None
+        if feedback_entity:
+            # Skip if the inverter already matches the desired state.
+            if (
+                current_pct is not None
+                and current_is_watt == desired_is_watt
+                and current_pct == desired
+            ):
+                continue
+            reader_fn = lambda inv=feedback_entity: _parse_power_control_pct(
+                sensor.hass.states.get(inv).state
+                if inv and sensor.hass.states.get(inv) is not None
+                else None
+            )
+        elif written_limits.get(inv_id) == target:
+            # Nothing can read the limit back, so an accepted limit is only
+            # rewritten when the target changes (issue #1120).
             continue
 
-        inv_entity = cfg.huawei_solar_inverter_active_power_control
-        reader_fn = lambda inv=inv_entity: _parse_power_control_pct(
-            sensor.hass.states.get(inv).state
-            if inv and sensor.hass.states.get(inv) is not None
-            else None
-        )
-
-        # Skip if the inverter already matches the desired state.
-        if (
-            current_pct is not None
-            and current_is_watt == desired_is_watt
-            and current_pct == desired
-        ):
-            continue
-
+        result_label = feedback_entity or f"inverter:{inv_id}"
         if desired_is_watt:
             result = await async_write_and_verify(
-                entity_id=inv_entity or f"inverter:{inv_id}",
+                entity_id=result_label,
                 desired=desired,
                 writer=lambda _id=inv_id, _w=desired: async_set_grid_export_power_watt(  # type: ignore[misc]  # mypy cannot infer lambda types with default parameters
                     sensor, _id, _w
@@ -221,7 +240,7 @@ async def async_apply_inverter_power_control(
             )
         else:
             result = await async_write_and_verify(
-                entity_id=inv_entity or f"inverter:{inv_id}",
+                entity_id=result_label,
                 desired=desired,
                 writer=lambda _id=inv_id, _pct=desired: (  # type: ignore[misc]  # mypy cannot infer lambda types with default parameters
                     async_set_grid_export_power_pct(sensor, _id, _pct)
@@ -230,6 +249,12 @@ async def async_apply_inverter_power_control(
             )
 
         summary.results.append(result)
+
+        if not feedback_entity:
+            if result.status == ApplyStatus.UNVERIFIED:
+                written_limits[inv_id] = target
+            else:
+                written_limits.pop(inv_id, None)
 
         if result.status == ApplyStatus.FAILED:
             mode = "W" if desired_is_watt else "%"
@@ -242,3 +267,65 @@ async def async_apply_inverter_power_control(
             return summary
 
     return summary
+
+
+def _export_limit_device_ids(cfg: SensorConfig) -> list[str]:
+    """Return the device IDs that receive the grid export limit writes.
+
+    When an EMMA is present, ``huawei_solar`` registers the
+    ``set_maximum_feed_grid_power*`` services against the EMMA only and
+    rejects an inverter ``device_id`` (issue #1120), so a configured EMMA
+    controller replaces the inverters — the same routing as TOU writes
+    (``applier_caps._tou_device_ids``).  Otherwise the configured inverters
+    are written.
+    """
+    if cfg.huawei_solar_device_id_tou_controller:
+        return [cfg.huawei_solar_device_id_tou_controller]
+    return [
+        device_id
+        for device_id in (
+            cfg.huawei_solar_device_id_inverter_1,
+            cfg.huawei_solar_device_id_inverter_2,
+        )
+        if device_id is not None
+    ]
+
+
+def _unverified_export_limits(
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
+) -> dict[str, tuple[int, bool]]:
+    """Return the limits accepted without read-back, per device.
+
+    Latched on the sensor as ``_unverified_export_limits`` (``(value,
+    is_watt)`` keyed by device ID) so an unverifiable limit is written once
+    per change instead of every cycle.  It lives in memory only, so the
+    limit is written again after a restart.
+    """
+    written = getattr(sensor, "_unverified_export_limits", None)
+    if not isinstance(written, dict):
+        written = {}
+        sensor._unverified_export_limits = written
+    return written
+
+
+def _warn_measurement_feedback_once(
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
+    entity_id: str,
+    state: str | None,
+) -> None:
+    """Warn once per entity that the feedback entity reports a power reading.
+
+    Latched on the sensor as ``_measurement_feedback_warned`` so the warning
+    does not repeat every cycle.
+    """
+    if getattr(sensor, "_measurement_feedback_warned", None) == entity_id:
+        return
+    sensor._measurement_feedback_warned = entity_id
+    _LOGGER.warning(
+        "%s reports %s, a power reading rather than an active power control "
+        "state, so grid export limit writes cannot be verified. Clear "
+        "hsem_huawei_solar_inverter_active_power_control if your Huawei "
+        "Solar setup has no active power control sensor (e.g. EMMA).",
+        entity_id,
+        state,
+    )

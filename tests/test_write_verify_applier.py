@@ -491,6 +491,62 @@ class TestWriteAndVerifyFailure:
         assert result.status == ApplyStatus.FAILED
 
 
+class TestWriteWithoutReadback:
+    """``reader=None``: no entity can report the value back (issue #1120)."""
+
+    @pytest.mark.asyncio
+    async def test_an_accepted_write_is_unverified_after_one_attempt(self):
+        """Nothing to compare against, so a single accepted write is enough."""
+        writer = AsyncMock()
+        result = await async_write_and_verify(
+            entity_id="inverter:emma",
+            desired=100,
+            writer=writer,
+            reader=None,
+            settle_seconds=0,
+            max_retries=3,
+        )
+        assert result.status == ApplyStatus.UNVERIFIED
+        assert result.attempts == 1
+        assert result.actual is None
+        assert result.error_message
+        writer.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_write_error_is_retried(self):
+        """A transient service error is retried like a verified write."""
+        result = await async_write_and_verify(
+            entity_id="inverter:emma",
+            desired=100,
+            writer=_make_writer(fail=True),
+            reader=None,
+            settle_seconds=0,
+            max_retries=3,
+        )
+        assert result.status == ApplyStatus.UNVERIFIED
+        assert result.attempts == 2
+
+    @pytest.mark.asyncio
+    async def test_a_write_error_on_every_attempt_is_failed(self):
+        """Unlike the read-back path, all-error is FAILED so callers fail closed."""
+
+        async def _always_fails():
+            raise RuntimeError("Failed to read registers P_max")
+
+        result = await async_write_and_verify(
+            entity_id="inverter:emma",
+            desired=8000,
+            writer=_always_fails,
+            reader=None,
+            settle_seconds=0,
+            max_retries=3,
+        )
+        assert result.status == ApplyStatus.FAILED
+        assert result.attempts == 3
+        assert result.actual is None
+        assert "P_max" in result.error_message
+
+
 # ---------------------------------------------------------------------------
 # ApplyResult dataclass
 # ---------------------------------------------------------------------------

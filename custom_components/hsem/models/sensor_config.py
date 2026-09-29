@@ -65,7 +65,9 @@ class SensorConfig:
         huawei_solar_device_id_batteries_2: Device ID for the secondary battery pack (optional).
         huawei_solar_device_id_tou_controller: Optional device ID that owns the
             selected TOU periods entity (for example EMMA). When unset, HSEM
-            writes TOU periods to the configured battery device(s).
+            writes TOU periods to the configured battery device(s) and the
+            grid export limit to the inverter device(s); when set, both go to
+            this device (issue #1120).
         huawei_solar_batteries_working_mode: Entity ID for working mode select.
         huawei_solar_batteries_end_of_discharge_soc: Entity ID for EoD SoC number.
         huawei_solar_batteries_state_of_capacity: Entity ID for SoC sensor.
@@ -88,7 +90,9 @@ class SensorConfig:
         huawei_solar_power_meter_phase_c_voltage: Entity ID for phase C live voltage.
         huawei_solar_batteries_tou_charging_and_discharging_periods: Entity ID for TOU periods.
         huawei_solar_batteries_excess_pv_energy_use_in_tou: Entity ID for excess PV use select.
-        huawei_solar_inverter_active_power_control: Entity ID for export power control.
+        huawei_solar_inverter_active_power_control: Optional entity ID of the
+            active power control sensor that verifies export limit writes
+            (none on EMMA systems, issue #1120).
         huawei_solar_batteries_rated_capacity: Entity ID for rated battery capacity sensor.
 
         house_consumption_power: Entity ID for house power meter.

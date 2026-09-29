@@ -7,7 +7,12 @@ integration tests; here we only test the deterministic helper.
 
 from __future__ import annotations
 
+import pytest
+
 from custom_components.hsem.custom_sensors.applier import _parse_power_control_pct
+from custom_components.hsem.custom_sensors.applier_state_readers import (
+    _is_power_measurement,
+)
 
 
 class TestParsePowerControlPct:
@@ -69,6 +74,32 @@ class TestParsePowerControlPct:
     def test_fractional_localized(self):
         """Localized percentage with decimal rounds correctly."""
         assert _parse_power_control_pct("Begrenzt auf 79.6 %") == 80
+
+    # --- power readings are not control states (issue #1120) ---
+
+    @pytest.mark.parametrize("state", ["1540", "0", "100", "1540.5", " 100 ", "-12"])
+    def test_a_bare_power_reading_returns_none(self, state: str) -> None:
+        """EMMA users picked the live inverter power; it is not a limit."""
+        assert _is_power_measurement(state) is True
+        assert _parse_power_control_pct(state) is None
+
+    @pytest.mark.parametrize(
+        "state",
+        [
+            "Unlimited",
+            "Limited to 80%",
+            "Limited to 100W",
+            "Zero Power",
+            "unavailable",
+            "unknown",
+            "",
+        ],
+    )
+    def test_control_states_are_not_power_readings(self, state: str) -> None:
+        assert _is_power_measurement(state) is False
+
+    def test_none_is_not_a_power_reading(self) -> None:
+        assert _is_power_measurement(None) is False
 
 
 # ---------------------------------------------------------------------------

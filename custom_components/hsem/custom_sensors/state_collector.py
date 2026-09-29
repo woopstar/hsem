@@ -400,10 +400,15 @@ async def async_collect_live_state(
             "Critical: battery rated capacity returned None (unavailable/invalid)"
         )
     state.huawei_batteries_rated_capacity_wh = rated_capacity_wh
-    _raw_apc = _read(
-        cfg.huawei_solar_inverter_active_power_control,
-        "string",
-        label="inverter_active_power_control",
+    # Optional: EMMA systems have no active power control sensor (issue #1120).
+    _raw_apc = (
+        _read(
+            cfg.huawei_solar_inverter_active_power_control,
+            "string",
+            label="inverter_active_power_control",
+        )
+        if cfg.huawei_solar_inverter_active_power_control
+        else None
     )
     state.huawei_inverter_active_power_control = (
         str(_raw_apc) if _raw_apc is not None else None

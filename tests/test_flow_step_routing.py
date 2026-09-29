@@ -29,6 +29,7 @@ from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.hsem.config_flow import HSEMConfigFlow
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, NAME
+from custom_components.hsem.flows.huawei_solar import get_huawei_solar_step_schema
 from custom_components.hsem.flows.quick_setup import (
     _DETECTION_TO_CONFIG,
     CRITICAL_DETECTION_KEYS,
@@ -422,6 +423,8 @@ class TestConfigFlowHuaweiOptionalDefaults:
 
         assert flow._user_input["hsem_huawei_solar_device_id_inverter_2"] == ""
         assert flow._user_input["hsem_huawei_solar_device_id_batteries_2"] == ""
+        # Cleared, not the default entity: EMMA has none (issue #1120).
+        assert flow._user_input["hsem_huawei_solar_inverter_active_power_control"] == ""
         assert flow._user_input["hsem_ev_charger_status"] is None
         assert flow._user_input["hsem_ev_charger_power"] is None
         battery_economics.assert_awaited_once_with()
@@ -446,6 +449,7 @@ class TestConfigFlowHuaweiOptionalDefaults:
                 {
                     "hsem_huawei_solar_device_id_inverter_2": "inverter_2",
                     "hsem_huawei_solar_device_id_batteries_2": "battery_2",
+                    "hsem_huawei_solar_inverter_active_power_control": "sensor.apc",
                     "hsem_ev_charger_status": "sensor.ev_status",
                     "hsem_ev_charger_power": "sensor.ev_power",
                 }
@@ -457,8 +461,58 @@ class TestConfigFlowHuaweiOptionalDefaults:
         assert flow._user_input["hsem_huawei_solar_device_id_batteries_2"] == (
             "battery_2"
         )
+        assert flow._user_input["hsem_huawei_solar_inverter_active_power_control"] == (
+            "sensor.apc"
+        )
         assert flow._user_input["hsem_ev_charger_status"] == "sensor.ev_status"
         assert flow._user_input["hsem_ev_charger_power"] == "sensor.ev_power"
+
+
+class TestOptionsFlowActivePowerControlCanBeCleared:
+    """The optional export-limit feedback entity can be removed (issue #1120)."""
+
+    _KEY = "hsem_huawei_solar_inverter_active_power_control"
+
+    async def _submit(self, user_input: dict[str, Any]) -> HSEMOptionsFlow:
+        flow = _make_options_flow(_make_entry(options={self._KEY: "sensor.old"}))
+        with (
+            patch(
+                f"{_OPTIONS_FLOW_MODULE}.validate_huawei_solar_input",
+                AsyncMock(return_value={}),
+            ),
+            patch.object(
+                flow,
+                "async_step_battery_economics",
+                AsyncMock(return_value=_NEXT_STEP_SENTINEL),
+            ),
+        ):
+            await flow.async_step_huawei_solar(user_input)
+        return flow
+
+    @pytest.mark.asyncio
+    async def test_a_cleared_field_overrides_the_saved_entity(self) -> None:
+        """A cleared selector is omitted from the form data; "" is stored."""
+        flow = await self._submit(
+            {"hsem_huawei_solar_device_id_inverter_1": "inverter_1"}
+        )
+        assert flow._user_input[self._KEY] == ""
+
+    @pytest.mark.asyncio
+    async def test_a_selected_entity_is_kept(self) -> None:
+        flow = await self._submit({self._KEY: "sensor.apc"})
+        assert flow._user_input[self._KEY] == "sensor.apc"
+
+    @pytest.mark.asyncio
+    async def test_the_field_is_optional_with_a_suggested_value(self) -> None:
+        """A default would refill a cleared field, so only suggest the value."""
+        schema = await get_huawei_solar_step_schema(
+            _make_entry(options={self._KEY: "sensor.old"})
+        )
+        marker = next(m for m in schema.schema if str(m) == self._KEY)
+
+        assert isinstance(marker, vol.Optional)
+        assert marker.default is vol.UNDEFINED
+        assert marker.description == {"suggested_value": "sensor.old"}
 
 
 def _detected(**overrides: str | None) -> dict[str, str | None]:

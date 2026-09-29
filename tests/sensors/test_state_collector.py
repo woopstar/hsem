@@ -154,6 +154,18 @@ class TestBuildSensorConfig:
         )
         assert cfg.huawei_solar_device_id_tou_controller is None
 
+    @pytest.mark.parametrize("value", ["", vol.UNDEFINED])
+    def test_active_power_control_unset_becomes_none(self, value: Any) -> None:
+        """EMMA systems leave the feedback entity empty (issue #1120)."""
+        cfg = build_sensor_config(
+            _make_config_entry(hsem_huawei_solar_inverter_active_power_control=value)
+        )
+        assert cfg.huawei_solar_inverter_active_power_control is None
+
+    def test_active_power_control_value_is_preserved(self) -> None:
+        cfg = build_sensor_config(_make_config_entry())
+        assert cfg.huawei_solar_inverter_active_power_control == "sensor.apc"
+
     def test_tou_controller_value_is_preserved(self) -> None:
         cfg = build_sensor_config(
             _make_config_entry(hsem_huawei_solar_device_id_tou_controller="emma")

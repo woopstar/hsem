@@ -368,6 +368,30 @@ class TestUnconfiguredCriticalInputs:
         assert "Missing entity: state_of_capacity" in state.missing_entities_list
 
 
+class TestActivePowerControlRead:
+    """The export-limit feedback entity is optional (issue #1120)."""
+
+    @pytest.mark.asyncio
+    async def test_an_unconfigured_entity_is_not_missing(self) -> None:
+        """EMMA systems have no such sensor; that must not degrade the cycle."""
+        state = await _collect(_full_cfg())
+
+        assert state.huawei_inverter_active_power_control is None
+        assert not any(
+            "inverter_active_power_control" in label
+            for label in state.missing_entities_list
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_configured_entity_is_read(self) -> None:
+        cfg = _full_cfg()
+        cfg.huawei_solar_inverter_active_power_control = "sensor.apc"
+
+        state = await _collect(cfg, values={"sensor.apc": "Limited to 80%"})
+
+        assert state.huawei_inverter_active_power_control == "Limited to 80%"
+
+
 class TestEnergyAverageResolution:
     """HSEM's own average sensors may not exist on the first cycle."""
 

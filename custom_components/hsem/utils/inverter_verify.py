@@ -146,7 +146,7 @@ async def async_write_and_verify(
     entity_id: str,
     desired: Any,
     writer: Callable[[], Awaitable[None]],
-    reader: Callable[[], Any],
+    reader: Callable[[], Any] | None,
     *,
     tolerance: float = DEFAULT_NUMERIC_TOLERANCE,
     settle_seconds: float = DEFAULT_SETTLE_SECONDS,
@@ -161,7 +161,11 @@ async def async_write_and_verify(
         writer: Zero-argument coroutine that performs the actual hardware write.
         reader: Zero-argument callable that returns the current entity value
                 (may be a regular function or a coroutine).  Returns ``None``
-                when the entity is unavailable.
+                when the entity is unavailable.  Pass ``None`` when no entity
+                reports the written value at all: the write is then retried
+                only on errors, a write the device accepts is ``UNVERIFIED``
+                and one that errors on every attempt is ``FAILED``
+                (issue #1120).
         tolerance: Accepted absolute difference for numeric comparisons.
                    String comparisons use exact equality regardless.
         settle_seconds: Seconds to wait after writing before reading back.
@@ -174,6 +178,15 @@ async def async_write_and_verify(
     """
     if max_retries < 1:
         raise ValueError(f"max_retries must be >= 1, got {max_retries}")
+
+    if reader is None:
+        return await _async_write_without_readback(
+            entity_id,
+            desired,
+            writer,
+            settle_seconds=settle_seconds,
+            max_retries=max_retries,
+        )
 
     # ------------------------------------------------------------------
     # Pre-flight: read current value
@@ -278,6 +291,73 @@ async def async_write_and_verify(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+async def _async_write_without_readback(
+    entity_id: str,
+    desired: Any,
+    writer: Callable[[], Awaitable[None]],
+    *,
+    settle_seconds: float,
+    max_retries: int,
+) -> ApplyResult:
+    """Write *desired* when no entity can report the value back (issue #1120).
+
+    Only a write error is retried. A write the device accepts is reported as
+    ``UNVERIFIED``, because nothing can confirm it took effect; a write that
+    errors on every attempt is ``FAILED``, so callers keep failing closed on
+    real service errors.
+
+    Args:
+        entity_id: Label used for logging/reporting.
+        desired: The value to write.
+        writer: Zero-argument coroutine that performs the hardware write.
+        settle_seconds: Seconds to wait before retrying after a write error.
+        max_retries: Maximum number of write attempts.
+
+    Returns:
+        :class:`ApplyResult` with status ``UNVERIFIED`` or ``FAILED``.
+    """
+    last_error = ""
+    for attempt in range(1, max_retries + 1):
+        try:
+            await writer()
+        except Exception as exc:  # noqa: BLE001
+            last_error = f"Write error on attempt {attempt}: {exc}"
+            _LOGGER.warning(_LOG_FMT, entity_id, last_error)
+            if attempt < max_retries:
+                await asyncio.sleep(settle_seconds)
+            continue
+
+        _LOGGER.debug(
+            "%s written without read-back after %d attempt(s): desired=%s",
+            entity_id,
+            attempt,
+            desired,
+        )
+        return ApplyResult(
+            entity_id=entity_id,
+            desired=desired,
+            actual=None,
+            status=ApplyStatus.UNVERIFIED,
+            attempts=attempt,
+            error_message="Write accepted; no read-back entity to verify it",
+        )
+
+    _LOGGER.error(
+        "%s write FAILED after %d attempt(s). Last error: %s",
+        entity_id,
+        max_retries,
+        last_error,
+    )
+    return ApplyResult(
+        entity_id=entity_id,
+        desired=desired,
+        actual=None,
+        status=ApplyStatus.FAILED,
+        attempts=max_retries,
+        error_message=last_error,
+    )
 
 
 def _values_match(actual: Any, desired: Any, tolerance: float) -> bool:

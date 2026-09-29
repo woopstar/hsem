@@ -339,6 +339,9 @@ returned `None`. The inverter may still have accepted the value.
 - **Fix:** Usually self-corrects on the next cycle (HSEM retries up to 3
   times per write). If persistent, the inverter entity may be slow to
   update — check Huawei Solar integration health.
+- **Expected on EMMA systems:** Huawei Solar has no active power control
+  sensor for an EMMA, so the grid export limit (`inverter:<device>` entry) is
+  always `unverified`. Battery writes still run (issue #1120).
 
 **4d. Persistent write failures**
 
