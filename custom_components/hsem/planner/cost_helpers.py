@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import tzinfo
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.planner.cost_types import CostWeights
+from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import resolve_cycle_cost
 from custom_components.hsem.utils.units import usable_kwh_from_rated
@@ -144,123 +145,156 @@ def _resolve_cycle_cost(weights: CostWeights) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Terminal-SoC charge-premium helper (issues #694, #592)
+# Terminal-SoC end value (issue #1138)
 # ---------------------------------------------------------------------------
 
+# Share of a stored kWh's estimated use value that the end value claims.
+# Below 1 so a flat-price horizon still prefers using the energy now over
+# holding it for an estimated later use (issue #638).
+TERMINAL_USE_VALUE_CONFIDENCE = 0.9
 
-def compute_charge_premium(
+# Local hour at which the night window behind the overnight recharge cost
+# ends.  The window starts at 00:00.
+TERMINAL_NIGHT_END_HOUR = 6
+
+
+def terminal_end_value(
     *,
-    replacement_price_per_kwh: float,
-    imp_price_obj: float,
-    exp_price: float,
+    peak_import: float,
+    night_import: float | None,
     charge_eff: float,
-    deferred_export_price: float | None = None,
+    discharge_eff: float,
+    cycle_cost_per_kwh: float,
 ) -> float:
-    """Return the capped terminal-SoC credit for charging in a slot.
+    """Return the end value ``V`` of one DC kWh still stored at horizon end.
 
-    The charge credit must never make battery charging more attractive than
-    exporting the same PV surplus — either **now** (issue #694) or **later,
-    when the battery can still be refilled from surplus** (issue #592).
+    ``V`` is the lower of two estimates of what that kWh is worth after the
+    horizon::
 
-    Base cap (issue #694)::
+        use      = 0.9 × (η_dis × peak − cycle_cost)
+        recharge = night_import / η_chg + cycle_cost
+        V        = max(0, min(use, recharge))
 
-        charge_premium = max(0, repl − p_imp − p_exp / η_chg)
-
-    Deferred-export cap (issue #592): when the battery still has headroom
-    and a *future* slot has PV surplus that exceeds what the battery can
-    absorb (i.e. surplus that will be exported regardless), the true
-    opportunity cost of charging now is not this slot's export price but
-    the difference between selling now and selling later.  Charging now at
-    a high export price and refilling later at a low export price forfeits
-    ``p_exp_now − p_exp_future`` per kWh.  Passing the minimum such future
-    export price as *deferred_export_price* tightens the cap::
-
-        charge_premium = max(0, repl − p_imp − p_exp / η_chg
-                                      + min(p_exp_future, p_exp) / η_chg)
-
-    When ``p_exp_future >= p_exp`` the correction is zero (no deferral
-    benefit) — the formula degrades gracefully to the #694 cap.
+    ``use`` is what discharging the kWh at the next peak would save,
+    discounted because that peak is itself an estimate.  ``recharge`` is what
+    storing the same kWh again overnight would cost.  When a cheap night
+    follows the horizon, a leftover kWh is worth no more than its
+    replacement, so the plan does not buy energy in the horizon only to end
+    full.  A negative estimate is floored at zero, which disables the term.
 
     Args:
-        replacement_price_per_kwh: Value of one stored kWh at horizon end.
-        imp_price_obj: Finite signed import price for the slot; negative
-            values are preserved and are not clamped to zero.
-        exp_price: Export price for the slot (already clamped by the caller).
-        charge_eff: Charge efficiency fraction (0–1).
-        deferred_export_price: Minimum export price across *future* slots
-            whose PV surplus exceeds the battery's remaining charge
-            headroom.  ``None`` disables the deferred-export correction.
+        peak_import: Import price of the next peak (currency/kWh).
+        night_import: Mean overnight import price, or ``None`` when unknown
+            (only the use side then applies).
+        charge_eff: Charge efficiency fraction (0-1).
+        discharge_eff: Discharge efficiency fraction (0-1).
+        cycle_cost_per_kwh: Battery wear per kWh of throughput.
 
     Returns:
-        The capped charge credit (≥ 0) to subtract from the objective.
+        ``V`` in currency per DC kWh, never negative.
     """
-    terminal_premium = max(0.0, replacement_price_per_kwh - imp_price_obj)
-    if charge_eff <= 1e-9:
-        return terminal_premium
-    premium = replacement_price_per_kwh - imp_price_obj - exp_price / charge_eff
-    if deferred_export_price is not None:
-        premium += min(deferred_export_price, exp_price) / charge_eff
-    return max(0.0, premium)
+    use = TERMINAL_USE_VALUE_CONFIDENCE * (
+        discharge_eff * peak_import - cycle_cost_per_kwh
+    )
+    if night_import is None or charge_eff <= 1e-9:
+        return max(0.0, use)
+    recharge = night_import / charge_eff + cycle_cost_per_kwh
+    return max(0.0, min(use, recharge))
 
 
-def deferred_export_price_by_slot(
+def terminal_end_value_from_last_day(
     slots: Sequence[PlannedSlot],
+    tz: tzinfo | None,
     *,
-    usable_kwh: float,
-    max_charge_per_slot: float,
-    now: datetime | None = None,
-    export_fee_per_kwh: float = 0.0,
-) -> list[float | None]:
-    """Compute the deferred-export price for every slot index.
+    top_n: int,
+    charge_eff: float,
+    discharge_eff: float,
+    cycle_cost_per_kwh: float,
+) -> float | None:
+    """Estimate the terminal end value ``V`` from the last day of prices.
 
-    For each slot *t*, this is the minimum export price across **later**
-    slots that carry PV surplus the battery cannot absorb (because the
-    remaining headroom at that point is smaller than the surplus).  Those
-    slots will export regardless of today's charge decision, so their
-    export price is the economically correct "refill price" for the
-    deferred-export cap (issue #592).
+    The day after the horizon is unknown, so the last calendar day with
+    prices stands in for it.  ``peak`` is the mean of that day's *top_n*
+    import prices and ``night_import`` the mean import price of its slots
+    before :data:`TERMINAL_NIGHT_END_HOUR`.  See :func:`terminal_end_value`.
 
-    Slots without any qualifying later slot get ``None`` (no deferral
-    opportunity — the base #694 cap applies unchanged).
+    Days the price source has not published yet already carry the last
+    published day's prices (issue #1002), so the horizon's last calendar day
+    is the last known day whether it was published or copied.  Past slots
+    count too: here they are price data, not decisions.
 
     Args:
-        slots: Ordered slot list (ascending start time).
-        usable_kwh: Battery usable capacity (kWh) — the maximum headroom.
-        max_charge_per_slot: Per-slot charge power limit (kWh/slot).
-        now: Optional clock used to skip past slots.
-        export_fee_per_kwh: Retailer margin/balancing fee per kWh exported
-            (issue #925), netted out of the raw export price before it is
-            tracked as a refill price — must match whatever fee the caller
-            applies to its own export-revenue term.
+        slots: Chronological slot list with populated prices.
+        tz: Timezone that defines calendar days and the night window.
+        top_n: Number of most expensive slots that make up the peak,
+            ``ceil(usable_kwh / max_discharge_per_slot)`` in the engine.
+        charge_eff: Charge efficiency fraction (0-1).
+        discharge_eff: Discharge efficiency fraction (0-1).
+        cycle_cost_per_kwh: Battery wear per kWh of throughput.
 
     Returns:
-        A list parallel to *slots* with ``float | None`` entries.
+        ``V`` in currency per DC kWh, or ``None`` when no slot has a finite
+        import price.
     """
-    n = len(slots)
-    result: list[float | None] = [None] * n
-    # PV surplus beyond house load per slot (what could enter the battery).
-    surplus = [
-        max(
-            s.solcast_pv_estimate_kwh - s.avg_house_consumption_kwh,
-            0.0,
-        )
-        for s in slots
+    priced = [s for s in slots if math.isfinite(s.price.import_price)]
+    if not priced:
+        return None
+    last_day = max(as_tz(s.start, tz) for s in priced).date()
+    day = [s for s in priced if as_tz(s.start, tz).date() == last_day]
+    top = sorted((s.price.import_price for s in day), reverse=True)[: max(top_n, 1)]
+    night = [
+        s.price.import_price
+        for s in day
+        if as_tz(s.start, tz).hour < TERMINAL_NIGHT_END_HOUR
     ]
-    # Walk backwards tracking the minimum export price among slots whose
-    # surplus exceeds the battery's ability to absorb it in that slot.
-    # When surplus exceeds what the battery can take, the excess is
-    # exported regardless of any charge decision, so that slot's export
-    # price is the true refill price for a deferred charge (issue #592).
-    absorbable = min(usable_kwh, max_charge_per_slot)
-    best: float | None = None
-    for i in range(n - 1, -1, -1):
-        result[i] = best
-        if now is not None and slots[i].end <= now:
-            continue
-        if surplus[i] > absorbable + 1e-9:
-            p = slots[i].price.export_price
-            if not math.isnan(p):
-                p -= export_fee_per_kwh
-                if best is None or p < best:
-                    best = p
-    return result
+    peak_import = sum(top) / len(top)
+    night_import = sum(night) / len(night) if night else None
+    value = terminal_end_value(
+        peak_import=peak_import,
+        night_import=night_import,
+        charge_eff=charge_eff,
+        discharge_eff=discharge_eff,
+        cycle_cost_per_kwh=cycle_cost_per_kwh,
+    )
+    log_planner(
+        "debug",
+        "[cost] terminal_end_value  day=%s  peak=%.4f  night=%s  value=%.4f",
+        last_day.isoformat(),
+        peak_import,
+        f"{night_import:.4f}" if night_import is not None else "None",
+        value,
+    )
+    return value
+
+
+def terminal_soc_value(
+    charged_kwh: float,
+    discharged_kwh: float,
+    end_value_per_kwh: float | None,
+) -> float:
+    """Return the terminal-SoC term for a DC battery flow (issue #1138).
+
+    ``(discharged − charged) × V``: a penalty when the flow lowers the
+    energy stored at horizon end, a credit when it raises it.  The MILP
+    builds its ``ec``/``ed`` objective coefficients from unit flows and
+    :func:`~custom_components.hsem.planner.cost_function.score_plan` sums
+    this over each slot's flows, so both apply the same value behind the
+    same activation gate.
+
+    Every slot uses the same ``V`` and ``soc[t] = soc[0] + Σ(ec − ed)``, so
+    the horizon total is ``−V × (E_end − E_0)``.  A cycle that leaves the
+    end energy unchanged adds exactly zero, and the plan decides it on cash
+    and cycle cost alone.  Undiscounted: it values a single point in time,
+    the horizon end.
+
+    Args:
+        charged_kwh: DC energy stored (kWh).
+        discharged_kwh: DC energy removed (kWh).
+        end_value_per_kwh: ``V``; ``None`` or zero disables the term.
+
+    Returns:
+        The term in currency; ``0.0`` when disabled.
+    """
+    if end_value_per_kwh is None or abs(end_value_per_kwh) <= 1e-9:
+        return 0.0
+    return (discharged_kwh - charged_kwh) * end_value_per_kwh

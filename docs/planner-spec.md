@@ -1382,7 +1382,8 @@ surplus_remaining[t]` row applies instead.
     mode (issue #1015), where the battery has already had its pick in stage 1
     and the cap would only price the leftover below export: the EV's per-kWh
     benefit is
-    capped at the battery's charge credit (`abs(c_obj[ec[t]])`) minus the
+    capped at the battery's charge credit (`abs(c_obj[ec[t]])`, the terminal
+    end value `V` since #1138) minus the
     AC-side efficiency difference (`p_imp_obj[t] × (1/η_charge −
 1/η_charger)`) when the battery can absorb the full slot surplus. The
     efficiency adjustment is required because the LP compares AC-side costs:
@@ -1405,103 +1406,115 @@ surplus_remaining[t]` row applies instead.
 
 #### 5. Terminal SoC (horizon-end valuation)
 
-At horizon end, the battery's remaining energy is valued **inside the LP objective**
-as a linear term so the LP itself optimises for it:
-
-- `terminal_soc_value = (Σed − Σec) × replacement_price`
-- Discharging (`ed[t]`) incurs a penalty in the objective
-- Charging (`ec[t]`) earns a credit in the objective
-- Ending with less energy → penalty (encourages recharging)
-- Ending with more energy → credit (discourages wasteful discharging)
-
-**Per-slot incentive cap (issue #655):** the per-slot terminal-SoC term is
-capped by the **opportunity-cost differential** between the replacement
-price and the slot's own import price:
+At horizon end, the battery's remaining energy is valued **inside the LP
+objective** as a linear term, so the LP itself optimises for it. Since issue
+#1138 the term values the **net** stored energy at one end value `V`, the same
+for every slot:
 
 ```
-terminal_premium[t] = max(0, replacement_price_per_kwh − p_imp[t])
+c_obj[ec[t]] −= V        (undiscounted)
+c_obj[ed[t]] += V
+⇒ terminal term = −V × Σ_t (ec[t] − ed[t]) = −V × (E_end − E_0)
 ```
 
-When `replacement_price ≤ p_imp[t]`, the premium is zero — the LP sees no
-terminal-SoC incentive and makes discharge decisions purely on per-slot
-price signals. When `replacement_price > p_imp[t]`, the differential
-represents the genuine opportunity cost of using energy now vs. later.
+`ec`/`ed` are DC-side and `soc[t] = soc[0] + Σ_{k≤t}(ec[k] − ed[k])`, so the
+term depends only on the energy the plan leaves at the end:
 
-This prevents the regression where uniform +replacement_price penalties
-dominated per-slot import-saving benefits in flat/near-flat price scenarios,
-causing zero discharge even when a full battery could cover house load
-(issue #638 regression).
+- Ending with less energy → penalty (emptying the battery is not free).
+- Ending with more energy → credit.
+- **Cycle-neutral:** a cycle inside the horizon that leaves `E_end` unchanged
+  (charge → discharge, or discharge → recharge) adds exactly zero. The LP
+  decides it on cash and cycle cost alone.
 
-**Charge-credit cap (issue #694):** the terminal premium is applied
-**asymmetrically**. The charge credit is further reduced by the export
-opportunity cost — the revenue foregone by not exporting the same PV
-surplus:
+**Why one value (issue #1118).** The term used to be per-slot: a discharge
+penalty `max(0, R − p_imp[t])` (#638/#655) and a charge credit further capped
+by the export price, `max(0, R − p_imp[t] − p_exp[t] / η_chg)` (#694), with a
+deferred-export correction (#592). Those premiums did not cancel across a
+cycle, and the error went both ways:
 
-```
-charge_premium[t] = max(0, replacement_price_per_kwh − p_imp[t] − p_exp[t] / η_chg)
+1. A profitable evening-discharge / night-recharge cycle (real value
+   +0.155/kWh) netted a +0.52/kWh penalty, so the LP declined it.
+2. Without the #694 cap, a charge discharged at a slot priced at or above `R`
+   kept its whole credit `R − p_charge` as a bonus. The LP grid-charged at 2.40
+   to export at the 3.40 peak, a real loss of 0.36/kWh.
 
-c_obj[ec[t]] −= charge_premium[t]   (capped credit for charging)
-c_obj[ed[t]] += terminal_premium[t] (full penalty for discharging)
-```
+No per-slot credit fixes both: case 1 needs a night credit of about
+`R − p_evening`, case 2 needs about 0. The #655 floor, the #694 cap and the
+#592 correction only patched the per-slot shape, so they are gone. Their intent
+now follows from cash: when a later PV surplus refills the battery anyway,
+charging from PV now and exporting now end at the same `E_end`, so the LP
+picks the cheaper path.
 
-Without this cap, a high `replacement_price` can make the charge credit
-larger than the export benefit (`−p_exp[t]`), causing the LP to charge the
-battery from solar during expensive hours instead of exporting at peak
-prices and deferring charging to cheaper slots — a "tunnel-vision" effect.
-When `p_exp[t]` is high (expensive slots) the capped credit is small and
-the LP exports; when `p_exp[t]` is low (cheap slots) the credit is close
-to the full premium and the LP charges to store energy for future
-discharge windows. The discharge penalty is deliberately **not** capped,
-preserving the issue #638 protection against unnecessary discharging.
-
-**The cap applies to no-PV slots too (issue #1118).** In a slot without
-PV surplus the battery charges from the grid, so `p_exp[t]` is not a
-foregone export there. The cap still has to stay, because the per-slot
-premiums are not cycle-neutral. A charge at `t2` that is discharged at `t3`
-within the horizon nets `max(0, R − p_imp[t3]) − charge_premium[t2]`
-instead of zero. When `p_imp[t3] ≥ R` (the replacement window itself), the
-uncapped credit `R − p_imp[t2]` becomes a pure bonus for cycling. Dropping
-the cap on no-PV slots was replayed on a 2026-09-27-like price shape. It
-unblocked a profitable evening-discharge / night-recharge cycle, but it
-also made the LP grid-charge at mid prices and export at the peak at a
-real loss, and take evening cycles whose real spread was negative. On
-balance it was net harmful. The remaining gap, a profitable no-PV cycle
-declined because the premiums net to a penalty, needs a cycle-neutral
-terminal term (net `Σ(ec − ed)` valued at a single price) rather than a
-per-slot change. See `tests/planner/test_terminal_soc_grid_cycles.py`.
-
-**Deferred-export correction (issue #592):** the #694 cap compares charging
-against exporting in the **same slot**. When a _future_ slot carries PV
-surplus that exceeds the battery's absorption capacity
-(`min(usable_kwh, max_charge_per_slot)`), that surplus is exported
-regardless of today's charge decision — so the economically correct refill
-price is the future slot's export price, not this slot's. Letting
-`p_exp_deferred[t]` be the minimum export price across all later slots
-whose surplus exceeds that absorption capacity, the premium becomes:
+**The end value `V`.** `V` is what a kWh still stored when the horizon ends is
+worth **after** the horizon. It is not derived from any price inside the
+horizon:
 
 ```
-charge_premium[t] = max(0, repl − p_imp[t] − p_exp[t] / η_chg
-                             + min(p_exp_deferred[t], p_exp[t]) / η_chg)
+V = max(0, min( 0.9 × (η_dis × peak − cycle_cost),     # use value
+                night_import / η_chg + cycle_cost ))   # overnight recharge cost
 ```
 
-When `p_exp_deferred[t] ≥ p_exp[t]` (or no qualifying future slot exists),
-the correction is zero and the formula degrades to the #694 cap. When a
-cheaper future slot has unabsorbable surplus, the credit is restored so
-the LP charges now at the high export price and lets the inevitable
-future surplus refill the battery at the low price. Both the MILP
-(`milp/_objective.py`) and the selector (`cost_function.py`) compute the
-premium via the shared helper `cost_helpers.compute_charge_premium()` with
-the per-slot deferred price from `cost_helpers.deferred_export_price_by_slot()`
-so the LP's decisions and the selector's score never diverge.
+- `peak` is the mean of the top-N import prices of the **last known day** in
+  the price data, with N = `ceil(usable_kwh / max_discharge_per_slot)` (4
+  without a discharge limit).
+- `night_import` is the mean import price of that day's slots from 00:00 to
+  06:00 (`TERMINAL_NIGHT_END_HOUR`). Without such slots only the use value
+  applies.
+- The last known day stands in for the unknown day after the horizon. Days the
+  price source has not published yet already carry the last published day's
+  prices (#1002), so the horizon's last calendar day is that day. Past slots
+  count: here they are price data, not decisions.
+- The horizon usually ends at midnight, before a night, so a leftover kWh
+  mostly replaces an overnight purchase. After a cheap night `V` is that
+  recharge cost, and the LP never buys energy in the horizon just to end full
+  unless it is cheaper than the night. After an expensive night, when a kWh
+  costs more to replace than it saves, `V` is the discounted use value.
+- The 0.9 factor (`TERMINAL_USE_VALUE_CONFIDENCE`) keeps `V` below the use
+  value. On a flat-price horizon, discharging now saves `η × p − c`, which is
+  more than `V = 0.9 × (η × p − c)`, so the battery still covers house load
+  (issue #638). `V = R` would bring #638 back.
+- A negative estimate is floored at zero, which disables the term.
+- **Not from `R`.** An end value derived from the next expensive window inside
+  the horizon (`R`, the former `replacement_price_from_next_discharge`) prices
+  stored energy close to the in-horizon peak. #1138's prototype showed the LP
+  then buys at mid prices just to end full: with `V = 0.9 × (η·R − c)` it bought
+  5 kWh at 2.40.
 
-- **Undiscounted** — terminal SoC is a single point-in-time valuation at
-  horizon end, matching `cost_function.py`'s `terminal_soc_value` treatment.
-- The differential uses the finite signed import price. The premium itself
-  is floored at zero (`max(0, repl - p_imp)`), so a negative import price
-  cannot inflate the terminal premium beyond `replacement_price_per_kwh`.
+`V` is computed once per run in `engine_core.py` by
+`cost_helpers.terminal_end_value_from_last_day` and passed to both the MILP
+(`replacement_price_per_kwh`) and the selector's `score_plan`. It is active
+whenever prices exist. `R` was active only when the baseline had a future
+discharge-window slot, so the term was mostly off in winter months, where the
+seasonal fill marks Wait instead.
 
-The post-hoc `terminal_soc_credit` calculation in the diagnostics dict is
-retained as a consistency check but no longer drives the LP's decisions.
+The MILP objective (`milp/_objective.py`) and `score_plan` (`cost_function.py`)
+both compute the term through the shared helper
+`cost_helpers.terminal_soc_value(charged, discharged, V)`, so the LP's
+decisions and the selector's score never diverge. The post-hoc
+`terminal_soc_credit` in the MILP diagnostics uses the same helper on the
+solved `Σec` and `Σed`.
+
+- **Undiscounted:** the term values a single point in time, the horizon end.
+
+**Rolling-horizon check (issue #1138).** A cash-only simulation drove the
+real `run_planner` every hour for 7 days: day-ahead prices published at 13:00,
+the first hour of each plan executed, production defaults, perfect load and PV
+forecasts. It covered 6 synthetic price seeds × PV on/off × a DK-like and an
+expensive-night price shape. Mean gap to a perfect-foresight benchmark: the
+per-slot term 0.40 DKK/day, the single `V` 0.28, no terminal term 0.29. The
+single `V` beat no terminal term on the expensive-night shapes, where energy
+left at midnight saves an expensive night. The table and caveats are in the
+pull request that closed #1138.
+
+**Interaction with the dynamic discharge floor.** The floor (#600, #1140)
+releases only when the floor-free reference plan refills the battery from the
+grid before the next solar surplus. With a cycle-neutral term the reference
+plan no longer buys at a cheap night when the next day's PV refills the
+battery anyway: the night buy would only displace PV that is then exported, at
+the same end SoC. The floor then sees a solar refill and keeps its
+bridge-to-solar reserve, so on those days a floor-enabled plan serves the
+evening from the grid. Tracked in #1156; see
+`tests/test_dynamic_floor_reference_plan.py`.
 
 #### Key constraint: EV surplus-only for charge-past-target
 
@@ -1560,8 +1573,8 @@ future_value_per_kwh = confidence_factor × mean(import_price[t] for t in next 2
   to account for the EV's future need being less certain than the house
   battery's scheduled discharge (depends on driving pattern, whether the EV
   stays plugged in, etc.).
-- Mirrors `replacement_price_from_next_discharge`, which applies the same
-  avoided-cost principle to the house battery's terminal SoC.
+- The house battery's terminal SoC is valued on a similar avoided-cost basis
+  (`V`, see [Terminal SoC](#5-terminal-soc-horizon-end-valuation)).
 
 Because this benefit is priced in the same currency units as `p_imp` and
 `p_exp`, the MILP lets charge-past-target EV charging compete fairly
@@ -2040,15 +2053,14 @@ net-negative after fees is treated exactly like a negative raw price:
   connection-point block (`export_price < 0.0` → `GRID_EXPORT_LIMIT_WATT`)
   keys off `net_export_price` instead of the raw price.
 - **MILP objective** (`planner/milp/_objective.py::_build_objective`): the
-  export-revenue coefficient (`c_obj[ge_off + t]`) and the terminal-SoC
-  charge-premium's `exp_price` both use `p_exp_net[t] = p_exp[t] −
-export_fee_per_kwh`. The LP needs no new constraint — `curt[t]` already
-  has zero objective cost, so the LP already prefers curtailment over an
-  export whose net revenue is negative.
+  export-revenue coefficient (`c_obj[ge_off + t]`) uses `p_exp_net[t] =
+p_exp[t] − export_fee_per_kwh`. The LP needs no new constraint — `curt[t]`
+  already has zero objective cost, so the LP already prefers curtailment over
+  an export whose net revenue is negative. The terminal-SoC term no longer
+  reads an export price (#1138).
 - **Cost function** (`planner/cost_function.py::score_plan`): mirrors the
-  objective exactly — the export-revenue term, the
-  `deferred_export_price_by_slot()` call, and the `compute_charge_premium`
-  call all net the same fee, via `CostWeights.export_fee_per_kwh`.
+  objective exactly — the export-revenue term nets the same fee, via
+  `CostWeights.export_fee_per_kwh`.
 - **Reported cost** (`planner/milp/_write_results.py`, via
   `cost_helpers.slot_grid_cash_flow_cost`): nets the same fee into
   `estimated_cost_currency` so the reported per-slot cost matches what the
@@ -2120,55 +2132,30 @@ Plans must not look better merely because they empty the battery before the
 horizon ends.
 
 The cost function implements this via a `terminal_soc_value` term that
-contributes to `score` (not to `total_cost`). It is computed **per slot**
-and summed across the horizon, mirroring `milp_optimizer.py`'s `c_obj`
-terminal-SoC term exactly (issue #655/#657) so the selector's score always
-matches what the LP actually optimised for:
+contributes to `score` (not to `total_cost`). It values the net change in
+stored energy at the single end value `V` (`replacement_price_per_kwh`), the
+same term the MILP objective optimises (issues #655/#657, #1138):
 
 ```text
-imp_price_obj[t]     = slot.price.import_price   # finite, signed
-terminal_premium[t]  = max(0, replacement_price_per_kwh - imp_price_obj[t])
-charge_premium[t]    = max(0, replacement_price_per_kwh - imp_price_obj[t]
-                             - slot.price.export_price / charge_eff
-                             + min(p_exp_deferred[t], slot.price.export_price)
-                               / charge_eff)
-
-terminal_soc_value = sum over all slots of:
-    batteries_discharged_kwh[t] * terminal_premium[t]
-    - batteries_charged_kwh[t] * charge_premium[t]
+terminal_soc_value = Σ_t terminal_soc_value(charged[t], discharged[t], V)
+                   = Σ_t (batteries_discharged_kwh[t] − batteries_charged_kwh[t]) × V
+                   = (E_0 − E_end) × V
 ```
 
-The formula is **asymmetric** (issue #694): the charge credit is reduced
-by the export opportunity cost (`p_exp / η_chg`) so that charging never
-beats exporting in the same slot, while the discharge penalty uses the
-full `terminal_premium[t]`. The **deferred-export correction** (issue
-#592) adds back the spread when a future slot has PV surplus beyond the
-battery's absorption capacity — see the MILP objective section above.
-Both sides use the shared helper
-`cost_helpers.compute_charge_premium()` so the selector's score always
-matches what the LP optimised for.
+Both sides call the shared helper `cost_helpers.terminal_soc_value()`, so the
+selector's score always matches what the LP optimised for. The slot's own
+import and export prices play no part: see
+[Terminal SoC](#5-terminal-soc-horizon-end-valuation) for why the per-slot
+caps (#655, #694, #592) were removed and how `V` is estimated.
 
-Sign convention (per slot):
+Sign convention:
 
-- Charging (`batteries_charged_kwh[t] > 0`) contributes a **negative**
-  (credit) term, reducing `score`.
-- Discharging (`batteries_discharged_kwh[t] > 0`) contributes a **positive**
-  (penalty) term, increasing `score`.
-
-The per-slot premium is capped by the differential between
-`replacement_price_per_kwh` and that slot's own signed import price. When
-`replacement_price_per_kwh <= imp_price_obj[t]`, the premium is zero for that
-slot - charging/discharging then has no terminal-SoC effect, because the LP
-saw no genuine opportunity cost either. This prevents the selector from
-over-penalising discharge in cheap-import slots, matching the MILP exactly.
-
-The recommended `replacement_price_per_kwh` is the **minimum future import
-price across the planning horizon**. This represents the marginal cost of
-re-purchasing one stored kWh at the cheapest available opportunity - the
-economically correct proxy for the opportunity cost of consuming stored energy
-now rather than later. Using the average over all future slots (including
-expensive peak prices) systematically over-values stored energy during
-high-price periods and biases the selector against discharging.
+- A plan that ends with more stored energy than it started with gets a
+  **negative** (credit) term, reducing `score`.
+- A plan that ends with less gets a **positive** (penalty) term, increasing
+  `score`.
+- A charge → discharge (or discharge → recharge) cycle inside the horizon
+  that leaves the end energy unchanged adds zero.
 
 Finite actionable import and export rates retain their sign in `score_plan`
 and in the MILP objective; neither clamps a negative import price to zero. A
@@ -2179,10 +2166,11 @@ rather than becoming economic signals. Primary efficiency changes the physical
 separate loss-price term.
 
 Terminal-SoC accounting is **only active** when both `initial_battery_kwh`
-and `replacement_price_per_kwh` are supplied to `score_plan`. Unit tests
-that call `score_plan` without horizon context (e.g. simple per-slot
-arithmetic checks) do not need the term and may omit both inputs; in that
-case `terminal_soc_value = 0.0` and `score == total_cost + penalties`.
+and `replacement_price_per_kwh` are supplied to `score_plan`, and
+`replacement_price_per_kwh` is not zero. Unit tests that call `score_plan`
+without horizon context (e.g. simple per-slot arithmetic checks) do not need
+the term and may omit both inputs; in that case `terminal_soc_value = 0.0` and
+`score == total_cost + penalties`.
 
 ### Invariants for tests
 
@@ -2204,6 +2192,9 @@ case `terminal_soc_value = 0.0` and `score == total_cost + penalties`.
 - Given two otherwise-identical plans, the one that ends with more stored
   battery energy must have the lower `terminal_soc_value` and therefore the
   lower `score` (all else equal).
+- (issue #1138) A charge → discharge or discharge → recharge cycle that
+  leaves the end energy unchanged adds zero to `terminal_soc_value` and to the
+  MILP objective's terminal term, whatever the slot prices.
 - (issue #752) When `battery_export_min_price > 0` and a slot's raw
   `export_price` is strictly below this floor, the MILP never schedules
   intentional battery-to-grid export on that slot — `grid_export_kwh` may
@@ -2939,6 +2930,8 @@ Add tests for these invariants:
 - No-action includes normal PV/battery behavior.
 - Terminal SoC affects cost.
 - Emptying the battery is not free.
+- The terminal term is cycle-neutral: an in-horizon cycle that leaves the end
+  energy unchanged adds zero (issue #1138).
 - `winner.cost <= no_action.cost` within the implemented candidate set.
 - Current partial slot uses remaining duration only.
 - Missing price/PV data does not become real zero silently.

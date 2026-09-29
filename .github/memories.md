@@ -36,26 +36,26 @@ cycle are durable; stale generations must not publish.
 
 ### Planner layer (`custom_components/hsem/planner/`)
 
-| File                       | Responsibility                                                                                                                                                            |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `engine.py`                | Main entry point — orchestrates the full planning pipeline                                                                                                                |
-| `slot_population.py`       | Builds the 48/96/192-slot time horizon; populates PV/consumption/capacity                                                                                                 |
-| `slot_price_population.py` | Populates per-slot prices incl. missing-price estimation (issue #1002) — split out of `slot_population.py` for the 30 KB limit                                            |
-| `candidate_generator.py`   | Generates charge/discharge plan candidates (partial-SoC, MILP, solar)                                                                                                     |
-| `candidate_selector.py`    | Picks the best candidate using time-discounted score; also hosts avoided-cost pricing helpers (`replacement_price_from_next_discharge`, `ev_future_charge_value_per_kwh`) |
-| `charge_scheduler.py`      | Assigns charge recommendations to slots                                                                                                                                   |
-| `discharge_scheduler.py`   | Assigns discharge recommendations to slots; `concentrate_discharge_on_expensive_slots` uses **per-calendar-day** budget pools                                             |
-| `milp_optimizer.py`        | Solves the MILP LP problem — variable vector is 8\*n base, growing to 8n + 2n·E + E with EV co-optimisation. Accepts optional `EVConfig` list for EV integration.         |
-| `milp/_price_sanitise.py`  | Pre-solve price transformations: NaN handling, battery-export floor mask, export-≤-import clamp, negative-import clamp.                                                   |
-| `milp/_constraints.py`     | Builds LP constraint matrices and variable bounds.                                                                                                                        |
-| `milp/_objective.py`       | Builds LP objective vector.                                                                                                                                               |
-| `milp/_write_results.py`   | Translates LP solution back into `PlannedSlot` recommendations and energy flows.                                                                                          |
-| `milp/_diagnostics.py`     | Computes MILP diagnostics and violation reports.                                                                                                                          |
-| `milp/_export_cap.py`      | Resolves DNO/inverter grid-export power cap per slot.                                                                                                                     |
-| `cost_function.py`         | Scores a candidate plan — source of truth for cost math                                                                                                                   |
-| `soc_simulation.py`        | Simulates battery SoC forward through a slot plan                                                                                                                         |
-| `ev_planner.py`            | EV-specific planning logic                                                                                                                                                |
-| `ev_load_accounting.py`    | Canonical pure-house/EV split for normalized planner slot loads                                                                                                           |
+| File                       | Responsibility                                                                                                                                                    |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `engine.py`                | Main entry point — orchestrates the full planning pipeline                                                                                                        |
+| `slot_population.py`       | Builds the 48/96/192-slot time horizon; populates PV/consumption/capacity                                                                                         |
+| `slot_price_population.py` | Populates per-slot prices incl. missing-price estimation (issue #1002) — split out of `slot_population.py` for the 30 KB limit                                    |
+| `candidate_generator.py`   | Generates charge/discharge plan candidates (partial-SoC, MILP, solar)                                                                                             |
+| `candidate_selector.py`    | Picks the best candidate using time-discounted score; also hosts the EV avoided-cost pricing helper (`ev_future_charge_value_per_kwh`)                            |
+| `charge_scheduler.py`      | Assigns charge recommendations to slots                                                                                                                           |
+| `discharge_scheduler.py`   | Assigns discharge recommendations to slots; `concentrate_discharge_on_expensive_slots` uses **per-calendar-day** budget pools                                     |
+| `milp_optimizer.py`        | Solves the MILP LP problem — variable vector is 8\*n base, growing to 8n + 2n·E + E with EV co-optimisation. Accepts optional `EVConfig` list for EV integration. |
+| `milp/_price_sanitise.py`  | Pre-solve price transformations: NaN handling, battery-export floor mask, export-≤-import clamp, negative-import clamp.                                           |
+| `milp/_constraints.py`     | Builds LP constraint matrices and variable bounds.                                                                                                                |
+| `milp/_objective.py`       | Builds LP objective vector.                                                                                                                                       |
+| `milp/_write_results.py`   | Translates LP solution back into `PlannedSlot` recommendations and energy flows.                                                                                  |
+| `milp/_diagnostics.py`     | Computes MILP diagnostics and violation reports.                                                                                                                  |
+| `milp/_export_cap.py`      | Resolves DNO/inverter grid-export power cap per slot.                                                                                                             |
+| `cost_function.py`         | Scores a candidate plan — source of truth for cost math                                                                                                           |
+| `soc_simulation.py`        | Simulates battery SoC forward through a slot plan                                                                                                                 |
+| `ev_planner.py`            | EV-specific planning logic                                                                                                                                        |
+| `ev_load_accounting.py`    | Canonical pure-house/EV split for normalized planner slot loads                                                                                                   |
 
 ### ML layer (`custom_components/hsem/ml/`)
 
@@ -556,19 +556,15 @@ negative-price mechanics fire correctly:
   connection-point block now checks `net_export_price = export_price -
 cfg.export_fee_per_kwh`, not the raw price.
 - **MILP objective** (`milp/_objective.py::_build_objective`): builds a
-  local `p_exp_net = p_exp - export_fee_per_kwh` and uses it for BOTH the
-  export-revenue coefficient (`c_obj[ge_off+t]`) and the
-  `compute_charge_premium(exp_price=...)` call. The
-  `deferred_export_price_by_slot()` call also receives `export_fee_per_kwh`
-  directly (that helper independently re-reads `slots[i].price.export_price`,
-  bypassing the local `p_exp` array entirely). No new LP constraint needed —
-  `curt[t]` already has zero objective cost, so the LP already prefers
-  curtailment once net price goes negative.
+  local `p_exp_net = p_exp - export_fee_per_kwh` and uses it for the
+  export-revenue coefficient (`c_obj[ge_off+t]`). Since #1138 the
+  terminal-SoC term reads no export price, so the fee no longer reaches it.
+  No new LP constraint needed — `curt[t]` already has zero objective cost,
+  so the LP already prefers curtailment once net price goes negative.
 - **Cost function** (`cost_function.py::score_plan`): mirrors the objective
-  exactly via `CostWeights.export_fee_per_kwh` — export-revenue term,
-  `deferred_export_price_by_slot()` call, and `compute_charge_premium` call
-  all net the same fee. Grep both files together when touching either —
-  same rule as the terminal-SoC valuation mismatch class (issues #638/#657).
+  exactly via `CostWeights.export_fee_per_kwh` on the export-revenue term.
+  Grep both files together when touching either — same rule as the
+  terminal-SoC valuation mismatch class (issues #638/#657).
 - **Reported cost** (`milp/_write_results.py` → `cost_helpers.py`):
   `grid_cash_flow_cost()`/`slot_grid_cash_flow_cost()` net the fee into
   `estimated_cost_currency` too, so it matches what the LP optimised for.
@@ -791,46 +787,48 @@ for them. Computing them as post-hoc adjustments after `linprog()` returns
 creates a mismatch between the LP's optimisation target and the selector's
 scoring function.
 
-Canonical pattern for terminal-SoC valuation (opportunity-cost differential):
+Canonical pattern for terminal-SoC valuation (issue #1138, cycle-neutral):
 
 ```python
-# terminal_soc_value = (Σed - Σec) * replacement_price_per_kwh
-# Per-slot incentive is capped by the DIFFERENTIAL between replacement
-# price and this slot's import price, so the terminal-SoC term cannot
-# override a genuine discharge decision in flat/near-flat price scenarios.
-# Uses p_imp_obj (non-negative) to prevent negative prices from inflating
-# the terminal premium.
-if replacement_price_per_kwh is not None and abs(replacement_price_per_kwh) > 1e-9:
-    terminal_premium = max(0.0, replacement_price_per_kwh - p_imp_obj[t])
-    c_obj[ec_off + t] -= terminal_premium  # credit (capped)
-    c_obj[ed_off + t] += terminal_premium  # penalty (capped)
+# One end value V on net stored energy, undiscounted:
+#   terminal term = −V × Σ(ec − ed) = −V × (E_end − E_0)
+# Both sides go through the shared helper, so the MILP and score_plan agree.
+terminal_charge_coef = terminal_soc_value(1.0, 0.0, replacement_price_per_kwh)
+terminal_discharge_coef = terminal_soc_value(0.0, 1.0, replacement_price_per_kwh)
+for t in range(m):
+    c_obj[ec_off + t] += terminal_charge_coef  # −V
+    c_obj[ed_off + t] += terminal_discharge_coef  # +V
 ```
 
-When `replacement_price ≤ p_imp[t]`, the premium is zero — the LP sees no
-terminal-SoC incentive and makes discharge decisions purely on per-slot
-price signals. When `replacement_price > p_imp[t]`, the differential
-represents the genuine opportunity cost of using energy now vs. later.
+`V` (passed as `replacement_price_per_kwh`) comes from
+`cost_helpers.terminal_end_value_from_last_day`:
+`max(0, min(0.9 × (η_dis × peak − c), night / η_chg + c))` over the last known
+day of prices. It stands for the value of energy **after** the horizon; never
+derive it from a price inside the horizon (the old `R`). The 0.9 factor is what
+keeps #638's flat-price case discharging.
 
-This prevents the regression identified in issue #638 where flat-price
-scenarios saw zero discharge because the uniform +replacement_price penalty
-dominated the per-slot import-saving benefit.
+**Never reintroduce a per-slot terminal premium (issues #1118, #1138).** The
+old term was `max(0, R − p_imp[t])` on discharge (#638/#655) with a charge
+credit further capped by `p_exp[t]/η_chg` (#694) and a deferred-export
+correction (#592). Per-slot premiums do not cancel across an in-horizon cycle:
+they penalised a profitable evening/night cycle and, without the #694 cap,
+paid a bonus for grid-charging to export at the peak. No per-slot shape can fix
+both. Any change to this term needs a rolling-horizon, cash-only simulation
+against a perfect-foresight benchmark (see #1138's PR), not a single solve that
+values end energy at `R` (circular).
 
 The same principle applies to any valuation that affects the LP's decisions:
 if `cost_function.py` includes it in `score`, the MILP's `c_obj` must include
 it too. Post-hoc adjustments are for diagnostics only.
 
-**Both sides now fixed and matching (issue #657):** `cost_function.py`'s
-`score_plan()` previously used the OLD flat, uncapped
-`(initial_kwh - final_kwh) * replacement_price_per_kwh` formula (a stale
-copy of the pre-#638 MILP formula) even after `milp_optimizer.py` was fixed
-in PR #656. It now computes the identical per-slot capped-differential
-term shown above, summed across `batteries_charged_kwh[t]` /
-`batteries_discharged_kwh[t]`. `score_plan()` also clamps import price via
-`imp_price_obj = max(imp_price, 0.0)` before pricing `import_cost`, mirroring
-the MILP's `p_imp_obj` clamp. Conversion efficiency is priced once through
-physical grid flows; compatibility loss fields remain zero. Always grep both files together when touching any pricing
-term; a mismatch here is easy to introduce silently and hard to notice
-without side-by-side numeric verification using varying (non-flat) prices.
+**Both sides must match (issues #657, #1138):** `cost_function.py`'s
+`score_plan()` once kept a stale flat formula after the MILP moved to per-slot
+premiums (#657). Since #1138 both compute the term through
+`cost_helpers.terminal_soc_value()`, and
+`test_milp_terminal_soc_matches_score_plan_with_varying_prices` checks the two
+against each other with varying (non-flat) prices. Conversion efficiency is
+priced once through physical grid flows; compatibility loss fields remain zero.
+Always grep both files together when touching any pricing term.
 
 ---
 
@@ -846,8 +844,8 @@ future_value_per_kwh = confidence_factor * mean(import_price[t] for t in next 24
 ```
 
 Computed by `ev_future_charge_value_per_kwh()` in `planner/candidate_selector.py`
-(mirrors `replacement_price_from_next_discharge()`, which applies the same
-avoided-cost principle to the house battery's terminal SoC), and wired into
+(the house battery's terminal SoC uses a similar avoided-cost value, `V`), and
+wired into
 `EVConfig` per-EV in `_build_ev_configs_for_milp()` (`planner/engine_core.py`).
 `confidence_factor` defaults to 0.9 and is configurable per EV via
 `hsem_ev_past_target_confidence_factor` / `hsem_ev_second_past_target_confidence_factor`.
@@ -1364,42 +1362,33 @@ history inflate the hardware discharge cap.
 
 ---
 
-## Deferred-Export Charge Premium (issue #592)
+## Deferred-Export Charge Premium (issue #592) — removed in #1138
 
-The #694 charge-credit cap (`repl − p_imp − p_exp/η_chg`) only compares
-charging against exporting in the SAME slot. When a future slot has PV
-surplus exceeding `min(usable_kwh, max_charge_per_slot)`, that surplus is
-exported regardless — so the true refill price is the future (cheaper)
-export price, and early charging at a high export price is correct.
+The #694 charge-credit cap and the #592 deferred-export correction
+(`cost_helpers.compute_charge_premium`, `deferred_export_price_by_slot`, the
+`CostWeights.battery_usable_capacity_kwh` / `max_charge_per_slot_kwh` fields)
+are gone. They patched the per-slot terminal premiums, which were not
+cycle-neutral (issue #1118). With one end value `V` on net stored energy,
+charging from PV now and exporting now while a later surplus refills the
+battery end at the same `E_end`, so the LP picks the cheaper path on cash
+alone. The behaviour the old helpers existed for is still pinned by
+`test_milp_defers_charging_to_cheap_slots_when_future_pv_exceeds_headroom`,
+`test_milp_charges_now_when_no_future_surplus_exceeds_headroom` and the #694
+tests in `tests/planner/test_milp_optimizer.py`, all unchanged.
 
-Canonical implementation — never re-implement the formula inline:
+**Guard tests for the terminal term** live in
+`tests/planner/test_terminal_soc_grid_cycles.py` (#1118's fixtures, with
+`V` from `terminal_end_value`) and
+`tests/planner/test_terminal_soc_cycle_neutral.py` (neutrality of the MILP
+coefficients and `score_plan`, both sides of `V`'s `min`). The profitable
+2.06 / 1.644 evening/night cycle that #1118 left as a strict xfail now passes.
 
-- `cost_helpers.compute_charge_premium(...)` — the capped premium.
-- `cost_helpers.deferred_export_price_by_slot(...)` — per-slot deferred
-  export price (min export price across later unabsorbable-surplus slots).
-
-Both the MILP (`milp/_objective.py`) and the selector
-(`cost_function.py`) MUST use these helpers so LP decisions and
-selector scores never diverge. The correction activates only when the
-caller supplies `usable_kwh` and `max_charge_per_slot` (MILP: new
-`_build_objective` kwargs; selector: `CostWeights` fields
-`battery_usable_capacity_kwh` / `max_charge_per_slot_kwh`, populated
-in `engine_core.run_planner` and `candidate_selector`).
-
-Regression tests: `test_milp_defers_charging_to_cheap_slots_when_future_pv_exceeds_headroom`
-and `test_milp_charges_now_when_no_future_surplus_exceeds_headroom` in
-`tests/planner/test_milp_optimizer.py`.
-
-**Do not drop the #694 cap on no-PV slots (issue #1118).** It looks
-unjustified there, since grid charging forgoes no export. But the per-slot
-terminal premiums are not cycle-neutral: the #638 credit `R − p_imp` is not
-cancelled when the energy is discharged at a slot priced at or above `R`.
-The cap is what stops the LP from grid-charging at mid prices and
-exporting at the peak at a real loss. A replay showed that gating the cap
-on PV surplus was net harmful. The profitable no-PV cycle it blocks is
-tracked by a strict xfail in `tests/planner/test_terminal_soc_grid_cycles.py`.
-The real fix is a cycle-neutral terminal term (net `Σ(ec − ed)` at one
-price), not a per-slot tweak.
+**Dynamic-floor interaction (#1138).** A cash-correct reference plan no longer
+buys at a cheap night when the next day's PV refills the battery anyway, so the
+dynamic floor (#1140) sees a solar refill and keeps its bridge reserve instead
+of releasing. `test_cheap_night_releases_the_floor_on_the_first_replan` now
+uses a cloudy tomorrow; the PV-refill case is pinned separately. Fix tracked
+in #1156.
 
 ---
 

@@ -125,20 +125,11 @@ class CostWeights:
     battery_export_min_price: float = 0.0
 
     # Retailer margin/balancing-fee cost per kWh exported (issue #925),
-    # netted out of the raw export price for every export-revenue term below
-    # (export revenue, deferred-export refill price, terminal-SoC charge
-    # premium) so the score matches what the MILP's own objective optimised
-    # for.  Does NOT affect ``export_min_price``/``battery_export_min_price``
+    # netted out of the raw export price for the export-revenue term so the
+    # score matches what the MILP's own objective optimised for.  Does NOT affect ``export_min_price``/``battery_export_min_price``
     # floor comparisons, which stay on the raw price.  Default 0.0 keeps
     # existing callers byte-for-byte unaffected.
     export_fee_per_kwh: float = 0.0
-
-    # Battery capacity parameters used by the deferred-export correction in
-    # the terminal-SoC charge premium (issue #592).  Both must be positive
-    # for the correction to activate; defaults keep it disabled so existing
-    # callers are unaffected.
-    battery_usable_capacity_kwh: float = 0.0
-    max_charge_per_slot_kwh: float = 0.0
 
     # Time discount for selector score (1.0 = no discount)
     time_discount_rate: float = 0.995
@@ -179,14 +170,11 @@ class PlanCostBreakdown:
             Selector-only — does not enter :attr:`total_cost`.
 
         terminal_soc_value:
-            Per-slot opportunity cost of charging/discharging, summed across
-            the horizon.  Each slot's contribution is capped by the
-            differential between ``replacement_price_per_kwh`` and that
-            slot's own finite signed import price (mirrors
-            ``milp_optimizer.py``'s terminal-SoC objective term exactly,
-            issue #655).  Negative (credit) when the plan nets more
-            charging than discharging in slots where the differential is
-            positive; positive (penalty) when it nets more discharging.
+            Net change in stored energy valued at the single end value
+            ``V`` (``replacement_price_per_kwh``): ``(E_0 − E_end) × V``,
+            the same term as the MILP objective's (issue #1138).  Negative
+            (credit) when the plan ends with more stored energy than it
+            started with; positive (penalty) when it ends with less.
             Selector-only — does not enter :attr:`total_cost`.
         total_cost:
             Money outcome of the plan in the horizon.  Equal to
