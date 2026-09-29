@@ -19,9 +19,11 @@ from custom_components.hsem.coordinator_cycle import (
     EV_DELIVERED_ENERGY_REPLAN_DELTA_KWH,
     EV_DELIVERED_ENERGY_REPLAN_MIN_SECONDS,
 )
+from custom_components.hsem.coordinator_dynamic_floor import (
+    build_dynamic_floor_bridge_slots,
+)
 from custom_components.hsem.coordinator_helpers import (
     LoadForecastSignature,
-    _SimpleSlot,
     _StaleUpdateCycle,
     apply_current_ev_power_override,
     apply_force_charge_now,
@@ -92,19 +94,11 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             min_soc_pct = live.huawei_batteries_end_of_discharge_soc_pct or 0.0
             max_soc_pct = live.huawei_batteries_charging_cutoff_capacity_pct or 100.0
             _usable_kwh = usable_kwh_from_rated(rated_kwh, min_soc_pct, max_soc_pct)
-            _bridge_slots: list = []
-            for rec in self._hourly_recommendations:
-                _bridge_slots.append(
-                    _SimpleSlot(
-                        start=rec.start,
-                        end=rec.end,
-                        estimated_net_consumption_kwh=(
-                            rec.avg_house_consumption_kwh - rec.solcast_pv_estimate_kwh
-                        ),
-                        batteries_charged_kwh=rec.batteries_charged_kwh,
-                        recommendation=rec.recommendation,
-                    )
-                )
+            # The recommendations were regenerated empty this cycle; planned
+            # grid charges only exist in the last committed plan (#1140).
+            _bridge_slots = build_dynamic_floor_bridge_slots(
+                self._hourly_recommendations, self._last_planner_output
+            )
             floor_pct, floor_diag = self._dynamic_floor.compute_floor(
                 now=now,
                 slots=_bridge_slots,
