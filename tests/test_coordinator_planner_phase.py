@@ -135,8 +135,8 @@ class TestFreshPlan:
     async def test_dynamic_floor_is_computed_and_passed_to_the_planner(
         self, tmp_path: Path
     ) -> None:
-        """With the dynamic floor enabled the planner receives its floor."""
-        coordinator, _ = _coordinator(
+        """With the floor enabled: reference solve, floor, then the real solve."""
+        coordinator, executor = _coordinator(
             tmp_path, _planner_output(), {"hsem_dynamic_discharge_floor": True}
         )
         live = LiveState()
@@ -153,9 +153,13 @@ class TestFreshPlan:
 
         assert coordinator._effective_discharge_floor_pct == pytest.approx(12.0)
         assert coordinator._effective_discharge_floor_diag == {"reason": "bridge"}
-        assert build.call_args.kwargs["dynamic_discharge_floor_pct"] == (
-            pytest.approx(12.0)
-        )
+        # The input is built floor-free; the floor only reaches the second solve.
+        assert build.call_args.kwargs["dynamic_discharge_floor_pct"] is None
+        solved = [call.args[1] for call in executor.await_args_list]
+        assert [i.dynamic_discharge_floor_pct for i in solved] == [
+            None,
+            pytest.approx(12.0),
+        ]
         bridge_slots = compute_floor.call_args.kwargs["slots"]
         assert [slot.estimated_net_consumption_kwh for slot in bridge_slots] == [
             pytest.approx(0.3),

@@ -21,7 +21,7 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `coordinator.py`                      | HA lifecycle and collect/populate/plan/publication orchestration                                                     |
 | `coordinator_data.py`                 | Atomic `CoordinatorData` snapshot exposed to entities                                                                |
-| `coordinator_dynamic_floor.py`        | Dynamic-floor bridge slots: forecast net load + last committed plan's charge decisions (issue #1140)                 |
+| `coordinator_dynamic_floor.py`        | Dynamic floor from a floor-free reference solve: forecast net load + its charge decisions (issue #1140)              |
 | `coordinator_helpers.py`              | Pure override, strict-hold, and load-readiness/signature helpers                                                     |
 | `coordinator_load_forecast.py`        | ML/avg consumption population, load readiness, missing/estimated-hour diagnostics (issue #1110)                      |
 | `coordinator_load_hold.py`            | Non-planner load-forecast safety hold, grid-only EV-only fallback (issue #1106), force-charge re-apply (issue #1103) |
