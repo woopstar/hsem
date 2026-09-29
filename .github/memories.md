@@ -17,12 +17,13 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 
 ### Coordinator layer (`custom_components/hsem/`)
 
-| File                      | Responsibility                                                   |
-| ------------------------- | ---------------------------------------------------------------- |
-| `coordinator.py`          | HA lifecycle and collect/populate/plan/publication orchestration |
-| `coordinator_data.py`     | Atomic `CoordinatorData` snapshot exposed to entities            |
-| `coordinator_helpers.py`  | Pure override, strict-hold, and load-readiness/signature helpers |
-| `coordinator_tracking.py` | Forecast, daily, financial, and savings accumulation             |
+| File                           | Responsibility                                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `coordinator.py`               | HA lifecycle and collect/populate/plan/publication orchestration                                        |
+| `coordinator_data.py`          | Atomic `CoordinatorData` snapshot exposed to entities                                                   |
+| `coordinator_dynamic_floor.py` | Dynamic floor from a floor-free reference solve: forecast net load + its charge decisions (issue #1140) |
+| `coordinator_helpers.py`       | Pure override, strict-hold, and load-readiness/signature helpers                                        |
+| `coordinator_tracking.py`      | Forecast, daily, financial, and savings accumulation                                                    |
 
 Load-average availability must remain explicit: unknown/non-finite values are
 missing, genuine finite zero is valid, and contradictory zero load above 50 W
@@ -70,7 +71,7 @@ cycle are durable; stale generations must not publish.
 | `huawei.py`             | Huawei Solar inverter API helpers                                                                  |
 | `logger.py`             | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)    |
 | `solar_corrector.py`    | Per-hour PV forecast accuracy auto-correction (issue #602)                                         |
-| `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill computation)                               |
+| `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill; grid-charge refill → reserve 0, #1140)    |
 | `soc_bounds.py`         | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094)  |
 | `capacity_learner.py`   | Battery usable capacity auto-detection from BMS readings                                           |
 | `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                    |

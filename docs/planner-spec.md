@@ -3162,12 +3162,91 @@ day+2/day+3 forecast refill cannot extend the bridge past the window. If no
 refill is found within the window, consumption accumulates only over the
 in-window slots.
 
+#### Which plan the bridge scan reads (issue #1140)
+
+The cycle regenerates `_hourly_recommendations` empty at its start
+(`batteries_charged_kwh = 0.0`, `recommendation = None`), so they cannot tell
+the bridge scan whether the plan grid-charges. On every replan with the floor
+enabled the coordinator (`coordinator_planner_phase.py`) therefore solves
+**twice**:
+
+1. **Reference solve:** the planner input with `dynamic_discharge_floor_pct =
+None`, i.e. only the hardware floor.
+2. `compute_dynamic_floor_from_plan()` (`coordinator_dynamic_floor.py`) builds
+   the bridge slots with `build_dynamic_floor_bridge_slots()` and runs
+   `compute_floor()`:
+   - **Net load** (`avg_house_consumption_kwh − solcast_pv_estimate_kwh`)
+     comes from this cycle's freshly populated forecast.
+   - **Charge decision** (`batteries_charged_kwh`, `recommendation`) comes from
+     the reference plan's slot with the same UTC `(start, end)`. A slot the
+     plan does not cover keeps the regenerated values (no charge).
+3. **Real solve:** the same input with the resulting floor. Its output is the
+   plan that is published and committed.
+
+Between replans no solve runs; the floor in force (the one the committed plan
+was solved with) is kept, reported, and fed to the margin learner. When the
+floor is enabled but none has been computed yet (switched on mid-plan, or the
+first cycle after start-up), the cycle replans at once.
+
+**Why not the previous committed plan.** A first version of the #1140 fix read
+the last committed plan. That fed the floor back into the plan it constrains.
+At moderate night prices a closed-loop replay (68 % at 21:30, 0.19 evening,
+0.15 night, 0.25 peaks) flipped on every replan: a pinned plan grid-charged
+1.26 kWh at 04:00; that partial charge lowered the next floor to 56 %; the plan
+under that floor charged only 0.08 kWh; the floor rose to 70 %; and so on. The
+reference solve removes the feedback, so the floor is a deterministic function
+of the replan's own inputs.
+
+Before issue #1140 the grid-charge refill branch could never fire in
+production. After sunset the floor bridged the whole night's load to the next
+morning's PV surplus. It then exceeded the live SoC, and the live-SoC cap
+(issue #1094) pinned the model at 0 kWh, so the plan held the battery in
+`batteries_wait_mode` until its cheap-window grid charge (issue #1125).
+
+**Cost.** One extra planner solve per replan, only with the floor enabled
+(~75 ms for a 48 h horizon of 15-minute slots without EVs).
+
+#### Grid-charge refill reserve is zero (decision, issue #1140)
+
+The scan credits every planned grid charge it passes. It stops at the first
+charge slot where the cumulative charge covers the consumption bridged so far.
+The reserve is `consumption − solar − grid_charge`, clamped at 0, so a
+**covering grid-charge refill always yields `reserve_kwh = 0`**. The floor
+then equals the configured minimum SoC.
+
+This is deliberate:
+
+- The floor is meant to protect energy the plan has **no** other way to
+  supply. A planned grid charge is exactly that other way.
+- The MILP already prices the bridge. Discharging before the charge window
+  means importing more in it, and the cost function pays for that import at
+  the cheap-window price plus cycle cost. Reserving the bridge energy on top
+  would count the same need twice.
+- A floor above the live SoC is capped at the live SoC (issue #1094). A
+  non-zero reserve here would bring back the evening pinning of issue #1125.
+
+If the reference plan's charges do not cover the bridge, the scan continues to
+the PV surplus. The reserve is then the bridged consumption minus those partial
+charges, × the safety margin; without any charge it is the full bridged
+consumption × the margin, as before issue #1140.
+
 #### Dynamic floor invariant
 
 ```text
 effective_floor_pct ≥ configured_min_soc_pct    (always)
 effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
 ```
+
+- The bridge scan reads charge decisions from this replan's floor-free
+  reference solve — never from the regenerated recommendation list, and never
+  from the previous committed plan (issue #1140).
+- For fixed inputs the floor is the same on every replan; it does not depend
+  on the plan it constrains.
+- A grid-charge refill that covers the bridged consumption yields
+  `reserve_kwh == 0` and `effective_floor_pct == configured_min_soc_pct`.
+- The floor is opt-in (`hsem_dynamic_discharge_floor`, default `False`); when
+  disabled no floor is computed, one solve runs, and the planner receives
+  `None`.
 
 ### Session EV invariant — bounded by control authority (issue #789)
 
