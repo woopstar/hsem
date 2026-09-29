@@ -73,7 +73,7 @@ cycle are durable; stale generations must not publish.
 | `sensornames.py`        | All HA entity name constants — never hardcode sensor names elsewhere                               |
 | `prices.py`             | Price lookup, grid fee calculation, spot price helpers                                             |
 | `huawei.py`             | Huawei Solar inverter API helpers                                                                  |
-| `logger.py`             | `HSEM_LOGGER` — rotating file handler, `propagate=False`                                           |
+| `logger.py`             | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)    |
 | `solar_corrector.py`    | Per-hour PV forecast accuracy auto-correction (issue #602)                                         |
 | `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill computation)                               |
 | `soc_bounds.py`         | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094)  |
@@ -450,7 +450,7 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
   - `coordinator_planner_phase.py` — 32,040 bytes (over 30 KB)
   - `coordinator_tracking.py` — 31,036 bytes (over 30 KB)
 
-  - `custom_sensors/working_mode_sensor.py` — 32,933 bytes (over 30 KB)
+  - `custom_sensors/working_mode_sensor.py` — 33,137 bytes (over 30 KB; +139 in #1114)
   - `planner/candidate_selector.py` — 31,401 bytes (over 30 KB)
 
 - Resolved in issue #1110: the load-forecast population/readiness block moved
@@ -1122,6 +1122,23 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
   Always use `log_planner(level, msg, *args)` instead — it offloads file I/O to a
   thread-pool executor when a running event loop is detected, falling back to a
   direct call only when no loop is present (tests, early init). See issue #632.
+- **Never pass a log-level string to an `HSEM_LOGGER` / `_LOGGER` method** (issue
+  #1114). `_LOGGER.debug("msg", "warning")` is not a warning: `HSEM_LOGGER` is a plain
+  `logging.Logger`, so `"warning"` becomes a `%`-format argument. The record is always
+  DEBUG (dropped with verbose off) and formatting raises `TypeError: not all arguments
+converted` with verbose on, so the message is lost either way. Call the matching
+  method (`_LOGGER.warning(...)`, `_LOGGER.error(...)`). Only `async_log(level, ...)` /
+  `log_planner(level, ...)` take the level as an argument, and it is always the
+  _first_ one. `tests/test_logging_call_levels.py` AST-scans the package and fails on
+  any `*logger.<level>(...)` call with a level-string positional argument.
+- Use `%` placeholders and no trailing period in log messages; never f-strings.
+- **Per-cycle conditions** (unconfigured write entity, degraded-mode write block) use
+  `log_latched_warning(owner, key, active, msg, *args)` from `utils/logger.py`: WARNING on
+  the first active cycle, DEBUG on repeats, and the latch re-arms when the condition
+  clears. Call it on every pass (with `active=False` when the condition does not hold)
+  so the re-arm happens. The latch lives on the owning entity (`_hsem_warning_latch`).
+  The applier's verified-write aborts log at ERROR via `_log_write_failed()` in
+  `custom_sensors/applier.py`.
 
 ---
 
