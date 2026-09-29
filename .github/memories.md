@@ -17,13 +17,13 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 
 ### Coordinator layer (`custom_components/hsem/`)
 
-| File                           | Responsibility                                                                                       |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `coordinator.py`               | HA lifecycle and collect/populate/plan/publication orchestration                                     |
-| `coordinator_data.py`          | Atomic `CoordinatorData` snapshot exposed to entities                                                |
-| `coordinator_dynamic_floor.py` | Dynamic-floor bridge slots: forecast net load + last committed plan's charge decisions (issue #1140) |
-| `coordinator_helpers.py`       | Pure override, strict-hold, and load-readiness/signature helpers                                     |
-| `coordinator_tracking.py`      | Forecast, daily, financial, and savings accumulation                                                 |
+| File                           | Responsibility                                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `coordinator.py`               | HA lifecycle and collect/populate/plan/publication orchestration                                        |
+| `coordinator_data.py`          | Atomic `CoordinatorData` snapshot exposed to entities                                                   |
+| `coordinator_dynamic_floor.py` | Dynamic floor from a floor-free reference solve: forecast net load + its charge decisions (issue #1140) |
+| `coordinator_helpers.py`       | Pure override, strict-hold, and load-readiness/signature helpers                                        |
+| `coordinator_tracking.py`      | Forecast, daily, financial, and savings accumulation                                                    |
 
 Load-average availability must remain explicit: unknown/non-finite values are
 missing, genuine finite zero is valid, and contradictory zero load above 50 W

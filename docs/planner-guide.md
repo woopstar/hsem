@@ -146,14 +146,13 @@ the battery retains enough energy to cover the gap. Without this guard,
 the planner would discharge to the configured floor every night, forcing
 morning grid imports when solar is scarce.
 
-The refill scan reads planned grid charges from the **last committed plan**,
-because this cycle's plan does not exist yet when the floor is computed
-(issue #1140). If that plan grid-charges enough overnight to cover the
-evening load, the grid charge is the refill and the floor drops to the
-configured minimum. The battery can then cover evening load, and the cost
-function decides whether that beats holding it. On the first cycle after
-start-up there is no committed plan, so the floor bridges to the next solar
-surplus.
+To see planned grid charges, each replan first solves once **without** the
+floor and reads that reference plan's charges (issue #1140); then it solves
+again with the resulting floor. If the reference plan grid-charges enough
+overnight to cover the evening load, the grid charge is the refill and the
+floor drops to the configured minimum. The battery can then cover evening
+load, and the cost function decides whether that beats holding it. The floor
+never reads the previous plan, so it cannot flip from one replan to the next.
 
 The floor is also the origin of the planner's battery model: planned
 capacity is measured in kWh above it, and the planned SoC is
