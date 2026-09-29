@@ -115,7 +115,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             self._effective_discharge_floor_diag = floor_diag
             if live.huawei_batteries_soc_pct is not None:
                 self._dynamic_floor.correct_margin(
-                    live.huawei_batteries_soc_pct, floor_pct
+                    live.huawei_batteries_soc_pct, floor_pct, now=now
                 )
             _dynamic_floor_pct: float | None = floor_pct
         else:
