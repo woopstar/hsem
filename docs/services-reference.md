@@ -473,7 +473,7 @@ action:
 alias: "HSEM: Export diagnostics on error"
 trigger:
   - platform: state
-    entity_id: sensor.hsem_degraded_mode
+    entity_id: sensor.hsem_degraded_mode_sensor
     to: "error"
 action:
   - service: hsem.export_diagnostics

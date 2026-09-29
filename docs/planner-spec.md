@@ -3326,7 +3326,7 @@ never discharge. Energy the plan charges above the live SoC is dischargeable
 in the plan, exactly as it was before within the smaller headroom. What
 changes is that the published SoC matches the inverter and the charge
 headroom is the battery's real `rated × (maximum − live SoC)`. The
-coordinator's `sensor.hsem_effective_discharge_floor` keeps reporting the
+coordinator's `sensor.hsem_effective_discharge_floor_sensor` keeps reporting the
 uncapped bridge reserve.
 
 #### Invariants for tests

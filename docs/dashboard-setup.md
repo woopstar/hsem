@@ -177,7 +177,7 @@ views:
             grid_options:
               columns: 2
           - type: tile
-            entity: sensor.hsem_savings_tracker
+            entity: sensor.hsem_savings_tracker_sensor
             name: Savings Tracker
             icon: mdi:piggy-bank
             color: state
@@ -1327,12 +1327,12 @@ state at a glance and to provide quick controls:
 
 Quick visibility into the financial impact of the planner:
 
-| Card             | Entity                         | Purpose                              |
-| ---------------- | ------------------------------ | ------------------------------------ |
-| Export Income    | `sensor.hsem_export_income`    | Cumulative revenue from grid exports |
-| Import Cost      | `sensor.hsem_import_cost`      | Cumulative cost of grid imports      |
-| Net Grid Balance | `sensor.hsem_net_grid_balance` | Export income minus import cost      |
-| Savings Tracker  | `sensor.hsem_savings_tracker`  | Actual savings vs missed savings     |
+| Card             | Entity                               | Purpose                              |
+| ---------------- | ------------------------------------ | ------------------------------------ |
+| Export Income    | `sensor.hsem_export_income`          | Cumulative revenue from grid exports |
+| Import Cost      | `sensor.hsem_import_cost`            | Cumulative cost of grid imports      |
+| Net Grid Balance | `sensor.hsem_net_grid_balance`       | Export income minus import cost      |
+| Savings Tracker  | `sensor.hsem_savings_tracker_sensor` | Actual savings vs missed savings     |
 
 ### Forecast Quality tiles
 

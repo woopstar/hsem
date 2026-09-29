@@ -86,7 +86,7 @@ A user-configurable **solar confidence** percentile (default 0.50, range
 At 0.90 (optimistic), the top 90 % are used. At 0.50 (median), the
 correction is neutral.
 
-This is exposed via `sensor.hsem_solar_confidence` (a `number` entity) so
+This is exposed via `sensor.hsem_solar_confidence_sensor` (a `number` entity) so
 users can tune it from the dashboard without restarting.
 
 ### Integration point: slot population
