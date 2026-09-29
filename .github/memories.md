@@ -517,6 +517,16 @@ It is enforced in two places:
 Negative export prices always override the cap and write `GRID_EXPORT_LIMIT_WATT`
 to block all export, because exporting then costs money.
 
+**Unit-aware export-limit read-back (#1130):** with no cap, the two targets
+are 100 W (the block) and 100 %, so the value alone is ambiguous. The applier
+passes `async_write_and_verify` a unit-tagged `desired`
+(`_format_power_control_limit()` → `"100w"` / `"100%"`) and a reader that
+returns the same form (`_parse_power_control_limit()`; `Unlimited` →
+`"100%"`, bare numbers → `None`). Never hand write-and-verify the bare
+`_parse_power_control_pct()` value for an export limit: `"Unlimited"`,
+`"Limited to 100%"` and `"Limited to 100W"` all parse to `100`, which made
+the pre-flight skip both transitions and let a wrong-unit read-back verify.
+
 ## MILP Grid Flow Direction Exclusivity (Issues #635 / #655 — Unbounded LP Fix)
 
 The historical `np.minimum(p_exp, p_imp)` and `np.maximum(p_imp, 0.0)`
