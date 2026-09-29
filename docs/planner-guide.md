@@ -1600,7 +1600,7 @@ The `PlanExplanation` object is exposed as a HA sensor attribute on the
 can inspect it directly:
 
 ```
-Entity: sensor.hsem_working_mode
+Entity: sensor.hsem_workingmode_sensor
 Attributes:
   explanation:
     selected_strategy: charge_grid_discharge_peak

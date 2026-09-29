@@ -110,7 +110,7 @@ views:
             grid_options:
               columns: 2
           - type: tile
-            entity: sensor.hsem_savings_tracker
+            entity: sensor.hsem_savings_tracker_sensor
             name: Savings Tracker
             icon: mdi:piggy-bank
             color: state

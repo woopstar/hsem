@@ -214,7 +214,7 @@ Three ways to set it, roughly in order of effort:
    experience living in the house.
 
 There's no in-app way to auto-detect the "right" value, but there is a
-concrete way to validate a choice after the fact: `sensor.hsem_prediction_accuracy`
+concrete way to validate a choice after the fact: `sensor.hsem_prediction_accuracy_sensor`
 exposes a `load_mae_kwh` attribute (`utils/prediction_tracker.py`) — a
 rolling mean absolute error between predicted and actual house load. To
 tune the reference temperature:
