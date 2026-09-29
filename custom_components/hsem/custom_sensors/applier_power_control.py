@@ -13,8 +13,10 @@ from custom_components.hsem.const import (
     GRID_EXPORT_LIMIT_WATT,
 )
 from custom_components.hsem.custom_sensors.applier_state_readers import (
+    _format_power_control_limit,
     _is_power_measurement,
     _is_watt_limit,
+    _parse_power_control_limit,
     _parse_power_control_pct,
 )
 from custom_components.hsem.models.live_state import LiveState
@@ -72,6 +74,9 @@ async def async_apply_inverter_power_control(
     so that the inverter is polled after the write and the result is verified
     within tolerance.  If any write fails all retries, further writes within this
     cycle are blocked and the failure is recorded in the returned summary.
+    Desired and read-back limits are compared as unit-tagged strings
+    (``"100w"``, ``"100%"``), so a watt limit is never taken for a
+    percentage (issue #1130).
 
     Without a usable active power control entity (none configured — the EMMA
     case — or one reporting a bare power measurement), nothing can read the
@@ -203,10 +208,13 @@ async def async_apply_inverter_power_control(
     current_pct = _parse_power_control_pct(feedback_state)
     current_is_watt = _is_watt_limit(feedback_state)
     target = (desired, desired_is_watt)
+    # Write-and-verify compares desired and read-back with their unit, so
+    # 100 W (the export block) never matches 100 % / "Unlimited" (issue #1130).
+    desired_limit = _format_power_control_limit(desired, desired_is_watt)
     written_limits = _unverified_export_limits(sensor)
 
     for inv_id in _export_limit_device_ids(cfg):
-        reader_fn: Callable[[], int | None] | None = None
+        reader_fn: Callable[[], str | None] | None = None
         if feedback_entity:
             # Skip if the inverter already matches the desired state.
             if (
@@ -215,7 +223,7 @@ async def async_apply_inverter_power_control(
                 and current_pct == desired
             ):
                 continue
-            reader_fn = lambda inv=feedback_entity: _parse_power_control_pct(
+            reader_fn = lambda inv=feedback_entity: _parse_power_control_limit(
                 sensor.hass.states.get(inv).state
                 if inv and sensor.hass.states.get(inv) is not None
                 else None
@@ -229,7 +237,7 @@ async def async_apply_inverter_power_control(
         if desired_is_watt:
             result = await async_write_and_verify(
                 entity_id=result_label,
-                desired=desired,
+                desired=desired_limit,
                 writer=lambda _id=inv_id, _w=desired: async_set_grid_export_power_watt(  # type: ignore[misc]  # mypy cannot infer lambda types with default parameters
                     sensor, _id, _w
                 ),
@@ -238,7 +246,7 @@ async def async_apply_inverter_power_control(
         else:
             result = await async_write_and_verify(
                 entity_id=result_label,
-                desired=desired,
+                desired=desired_limit,
                 writer=lambda _id=inv_id, _pct=desired: (  # type: ignore[misc]  # mypy cannot infer lambda types with default parameters
                     async_set_grid_export_power_pct(sensor, _id, _pct)
                 ),

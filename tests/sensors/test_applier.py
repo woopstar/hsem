@@ -11,7 +11,9 @@ import pytest
 
 from custom_components.hsem.custom_sensors.applier import _parse_power_control_pct
 from custom_components.hsem.custom_sensors.applier_state_readers import (
+    _format_power_control_limit,
     _is_power_measurement,
+    _parse_power_control_limit,
 )
 
 
@@ -100,6 +102,57 @@ class TestParsePowerControlPct:
 
     def test_none_is_not_a_power_reading(self) -> None:
         assert _is_power_measurement(None) is False
+
+
+class TestParsePowerControlLimit:
+    """The unit-tagged export limit used by write-and-verify (issue #1130)."""
+
+    @pytest.mark.parametrize(
+        ("state", "expected"),
+        [
+            ("Unlimited", "100%"),
+            ("Ikke begrænset", "100%"),
+            ("Limited to 100%", "100%"),
+            ("Limited to 80%", "80%"),
+            ("Begrenzt auf 79.6 %", "80%"),
+            ("Limited to 100W", "100w"),
+            ("Limited to 100 W", "100w"),
+            ("Limited to 8000W", "8000w"),
+            ("Limited to 0W", "0w"),
+        ],
+    )
+    def test_the_limit_keeps_its_unit(self, state: str, expected: str) -> None:
+        assert _parse_power_control_limit(state) == expected
+
+    def test_100_watts_and_100_percent_differ(self) -> None:
+        watts = _parse_power_control_limit("Limited to 100W")
+        assert watts != _parse_power_control_limit("Limited to 100%")
+        assert watts != _parse_power_control_limit("Unlimited")
+
+    @pytest.mark.parametrize(
+        "state", [None, "", "1540", "100", "Zero power grid connection"]
+    )
+    def test_unparseable_states_and_power_readings_return_none(
+        self, state: str | None
+    ) -> None:
+        """Bare numbers stay power readings, not limits (issue #1120)."""
+        assert _parse_power_control_limit(state) is None
+
+    @pytest.mark.parametrize(
+        ("value", "is_watt", "state"),
+        [
+            (100, True, "Limited to 100W"),
+            (100, False, "Limited to 100%"),
+            (100, False, "Unlimited"),
+            (8000, True, "Limited to 8000W"),
+        ],
+    )
+    def test_a_desired_limit_matches_its_read_back(
+        self, value: int, is_watt: bool, state: str
+    ) -> None:
+        assert _format_power_control_limit(value, is_watt) == (
+            _parse_power_control_limit(state)
+        )
 
 
 # ---------------------------------------------------------------------------

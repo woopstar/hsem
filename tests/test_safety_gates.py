@@ -412,7 +412,7 @@ class TestInverterPowerControlSafetyGate:
 
         mock_pct_write.assert_not_called()
         mock_wv.assert_called_once()
-        assert mock_wv.call_args.kwargs["desired"] == GRID_EXPORT_LIMIT_WATT
+        assert mock_wv.call_args.kwargs["desired"] == f"{GRID_EXPORT_LIMIT_WATT}w"
 
     @pytest.mark.asyncio
     async def test_zero_export_fee_matches_pre_925_behaviour(self):
@@ -498,7 +498,7 @@ class TestInverterPowerControlSafetyGate:
         mock_pct_write.assert_not_called()
         mock_wv.assert_called_once()
         # Desired value passed to write-and-verify must be the watt cap.
-        assert mock_wv.call_args.kwargs["desired"] == 10000
+        assert mock_wv.call_args.kwargs["desired"] == "10000w"
 
     @pytest.mark.asyncio
     async def test_curtail_option_disabled_low_positive_price_keeps_exporting(self):
@@ -597,7 +597,7 @@ class TestInverterPowerControlSafetyGate:
 
         mock_pct_write.assert_not_called()
         mock_wv.assert_called_once()
-        assert mock_wv.call_args.kwargs["desired"] == GRID_EXPORT_LIMIT_WATT
+        assert mock_wv.call_args.kwargs["desired"] == f"{GRID_EXPORT_LIMIT_WATT}w"
 
     @pytest.mark.asyncio
     async def test_curtail_option_enabled_allows_export_above_threshold(self):
@@ -643,7 +643,7 @@ class TestInverterPowerControlSafetyGate:
 
         mock_pct_write.assert_not_called()
         mock_wv.assert_called_once()
-        assert mock_wv.call_args.kwargs["desired"] == 10000
+        assert mock_wv.call_args.kwargs["desired"] == "10000w"
 
     @pytest.mark.asyncio
     async def test_curtail_option_does_not_affect_negative_price_block(self):
@@ -695,7 +695,7 @@ class TestInverterPowerControlSafetyGate:
 
             mock_pct_write.assert_not_called()
             mock_wv.assert_called_once()
-            assert mock_wv.call_args.kwargs["desired"] == GRID_EXPORT_LIMIT_WATT
+            assert mock_wv.call_args.kwargs["desired"] == f"{GRID_EXPORT_LIMIT_WATT}w"
 
     @pytest.mark.asyncio
     async def test_grid_export_cap_skips_when_already_at_limit(self):

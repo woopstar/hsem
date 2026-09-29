@@ -116,9 +116,14 @@ The applier verifies these hardware writes:
 
 1. **Battery working mode** — `select.batteries_working_mode` set to the
    appropriate TOU mode for the current recommendation
-2. **Grid export power** — `set_maximum_feed_grid_power_percent` adjusted
-   to zero when export should be blocked, or restored to 100 % when allowed.
-   Verified against `hsem_huawei_solar_inverter_active_power_control`; when
+2. **Grid export power** — `set_maximum_feed_grid_power` set to a 100 W
+   limit (`GRID_EXPORT_LIMIT_WATT`) when export should be blocked, or, when
+   export is allowed, `set_maximum_feed_grid_power_percent` restored to
+   100 % (or `set_maximum_feed_grid_power` set to the configured export
+   cap). Verified against `hsem_huawei_solar_inverter_active_power_control`.
+   The desired and read-back limits are compared with their unit
+   (`"100w"` ≠ `"100%"`, `Unlimited` reads as `"100%"`), so the 100 W block
+   and 100 % never count as the same limit (issue #1130). When
    that entity is empty or reports a bare power reading (EMMA systems, issue
    #1120) the limit is written without read-back, once per change, and an
    accepted write is `unverified` — which, unlike `failed`, does not block
