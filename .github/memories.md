@@ -1511,6 +1511,15 @@ older watt value in isolation. Force-charge and negative-price Auto-Full use the
 same coherent accounting path, respect aggregate fuse headroom, and suppress a
 request when the corresponding EV is explicitly disconnected.
 
+**Charger ceilings are whole-amp nameplates (issue #1112).** Turn a configured
+`*_charger_power_kw` into a command ceiling only via
+`utils/phase_power.charger_rated_power_w(kw * 1000, topology)`, never
+`kw * 1000`. Raw 11.0 kW is 40 W under the 16 A three-phase nameplate, and
+whole-amp flooring then publishes 15 A / 10 350 W. Used by the heuristic
+`_build_and_inject_for_ev` (`phase_topology=`) and
+`apply_current_ev_power_override` (force charge, Auto-Full); the MILP EV config
+already snaps the same way via `charger_max_power_to_current_a`.
+
 ---
 
 ## Wait Mode Self-Consumption with Reserve (issue #742)

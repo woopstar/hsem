@@ -3633,6 +3633,12 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
   than the horizon cap, `plan.data_quality["deadline_clamped"] is True`
   and `plan.data_quality["effective_deadline"]` holds the ISO-format clamp.
 - Partial slot: current slot load ≤ `charger_power_kw × remaining_minutes / 60`.
+- Charger nameplate (issue #1112): every EV command ceiling — MILP
+  `EVConfig`, the heuristic `EVChargingPlan.charger_power_kw`, and
+  force-charge-now — is
+  `charger_rated_power_w(configured_kw × 1000, topology)`: the configured
+  power snapped to its whole-amp nameplate. Never raw `kW × 1000`. 11.0 kW balanced
+  three-phase is 16 A / 11 040 W, and survives whole-amp flooring unchanged.
 - When EV consumes all net surplus, home battery `batteries_charged == 0.0` in that slot.
 - `winner.cost == final_output.cost` still holds when EV load is active (no post-selection mutation).
 - Both `ev_charging_plan` and `ev_second_charging_plan` on `PlannerOutput` are `None` when disabled.

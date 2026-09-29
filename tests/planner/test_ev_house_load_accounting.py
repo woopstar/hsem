@@ -124,6 +124,55 @@ def test_current_removed_session_is_injected_as_separate_ev_load() -> None:
     assert injected[0] == pytest.approx(raw[0])
 
 
+@pytest.mark.parametrize(
+    ("topology", "pwr_kw", "expected_kw"),
+    [
+        ("three_phase_balanced", 11.0, 11.04),
+        ("single_phase", 3.7, 3.68),
+        (None, 3.7, 3.68),
+    ],
+)
+def test_heuristic_plan_uses_whole_amp_nameplate(
+    topology: str | None, pwr_kw: float, expected_kw: float
+) -> None:
+    """The heuristic EV plan caps at the snapped nameplate (issue #1112).
+
+    ``_compute_ev_charger_power`` caps each command at
+    ``plan.charger_power_kw``; a raw 11.0 kW cap floors to 15 A downstream.
+    """
+    slot = _slot(house_kwh=0.0, planned_ev_kwh=0.0, accounted_ev_kwh=0.0)
+
+    plan = _build_and_inject_for_ev(
+        enabled=True,
+        connected=True,
+        smart=True,
+        soc=0.0,
+        target=80.0,
+        cap_kwh=60.0,
+        pwr_kw=pwr_kw,
+        eff=100.0,
+        min_pwr_w=1_380.0,
+        deadline=slot.end,
+        base_includes=False,
+        current_session_removed_from_base=False,
+        allow_past_target=False,
+        label="primary",
+        now=_NOW,
+        slots=[slot],
+        slot_starts=[slot.start],
+        slot_ends=[slot.end],
+        slot_prices=[slot.price.import_price],
+        slot_net_surplus=[0.0],
+        combined_ev_raw_load=[0.0],
+        combined_ev_injected_load=[0.0],
+        warnings=[],
+        phase_topology=topology,
+    )
+
+    assert plan is not None
+    assert plan.charger_power_kw == pytest.approx(expected_kw)
+
+
 def test_production_planner_preserves_reported_house_load_and_cost_identity() -> None:
     """Production wiring keeps 0.082 kWh house demand beside a 0.628 kWh EV."""
     inp = make_flat_price_input(

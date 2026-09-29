@@ -36,6 +36,7 @@ from custom_components.hsem.utils.phase_power import (
     charger_max_power_to_current_a,
     charger_min_power_to_current_a,
     charger_power_to_current_a,
+    charger_rated_power_w,
 )
 from tests.planner.test_session_ev import _NOW, _build_slots
 
@@ -99,6 +100,30 @@ def test_balanced_nameplate_and_threshold_use_asymmetric_rounding() -> None:
     assert charger_power_to_current_a(11_000.0, topology) == 15
     assert charger_current_to_power_w(16, topology) == pytest.approx(11_040.0)
     assert charger_current_to_power_w(6, topology) == pytest.approx(4_140.0)
+
+
+@pytest.mark.parametrize(
+    ("power_w", "topology", "expected_w"),
+    [
+        (11_000.0, "three_phase_balanced", 11_040.0),
+        (3_700.0, "single_phase", 3_680.0),
+        (11_000.0, "single_phase", 11_040.0),
+        (0.0, "three_phase_balanced", 0.0),
+        (float("nan"), "three_phase_balanced", 0.0),
+    ],
+)
+def test_rated_power_is_the_whole_amp_nameplate(
+    power_w: float, topology: str, expected_w: float
+) -> None:
+    """Configured kW snaps to the executable nameplate (issue #1112)."""
+    rated_w = charger_rated_power_w(power_w, topology)
+
+    assert rated_w == pytest.approx(expected_w)
+    if expected_w > 0.0:
+        # The nameplate survives whole-amp flooring unchanged.
+        assert charger_power_to_current_a(
+            rated_w, topology
+        ) == charger_max_power_to_current_a(power_w, topology)
 
 
 @pytest.mark.parametrize("current_a", [0.0, -1.0, float("nan"), float("inf")])
