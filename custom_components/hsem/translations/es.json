@@ -291,7 +291,7 @@
           "hsem_huawei_solar_device_id_batteries_2": "Selecciona tu dispositivo de batería Huawei secundario, si corresponde.",
           "hsem_huawei_solar_device_id_inverter_1": "Selecciona tu dispositivo de inversor Huawei principal.",
           "hsem_huawei_solar_device_id_inverter_2": "Selecciona tu dispositivo de inversor Huawei secundario, si corresponde.",
-          "hsem_huawei_solar_inverter_active_power_control": "Selecciona el sensor que controla la salida de potencia activa de tu inversor Huawei."
+          "hsem_huawei_solar_inverter_active_power_control": "Selecciona el sensor de control de potencia activa de tu inversor (desactivado por defecto en Huawei Solar). HSEM lo vuelve a leer para verificar las escrituras del límite de exportación a la red. Déjalo vacío si un EMMA gestiona tu instalación: Huawei Solar no ofrece ese sensor para EMMA y el límite se escribe entonces sin verificación. No selecciones un sensor de potencia como la potencia activa del inversor."
         },
         "description": "Configura el modo de funcionamiento de las baterías solares Huawei.",
         "title": "Sensores de Huawei Solar"
@@ -830,7 +830,7 @@
           "hsem_huawei_solar_device_id_batteries_2": "Selecciona tu dispositivo de batería Huawei secundario, si corresponde.",
           "hsem_huawei_solar_device_id_inverter_1": "Selecciona tu dispositivo de inversor Huawei principal.",
           "hsem_huawei_solar_device_id_inverter_2": "Selecciona tu dispositivo de inversor Huawei secundario, si corresponde.",
-          "hsem_huawei_solar_inverter_active_power_control": "Selecciona el sensor que controla la salida de potencia activa de tu inversor Huawei."
+          "hsem_huawei_solar_inverter_active_power_control": "Selecciona el sensor de control de potencia activa de tu inversor (desactivado por defecto en Huawei Solar). HSEM lo vuelve a leer para verificar las escrituras del límite de exportación a la red. Déjalo vacío si un EMMA gestiona tu instalación: Huawei Solar no ofrece ese sensor para EMMA y el límite se escribe entonces sin verificación. No selecciones un sensor de potencia como la potencia activa del inversor."
         },
         "description": "Configura el modo de funcionamiento de las baterías solares Huawei.",
         "title": "Sensores de Huawei Solar"

@@ -42,6 +42,7 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.custom_sensors.applier_state_readers import (
+    _is_power_measurement,
     _is_watt_limit,
     _parse_power_control_pct,
 )
@@ -215,6 +216,9 @@ def _is_directly_limited(
     """
     if not isinstance(power_control_state, str):
         return False
+    if _is_power_measurement(power_control_state):
+        # A power reading, not a control mode (issue #1120) — no limit known.
+        return False
     normalized = power_control_state.strip().lower()
     if normalized in _UNLIMITED_STATES:
         return False
@@ -247,7 +251,8 @@ def _is_derived_curtailment(live: Any) -> bool:
     - Battery SoC is high (≥ ``_DERIVED_SOC_THRESHOLD``)
     - Export price is negative (the only case where HSEM's applier
       physically blocks the whole grid connection point — issue #767)
-    - The active power control register is unavailable (None)
+    - The active power control register is unavailable (None, or a bare
+      power reading — issue #1120)
 
     If the register is available and says "Unlimited", the inverter is
     not throttling — the derived heuristics are a fallback only.
@@ -275,8 +280,12 @@ def _is_derived_curtailment(live: Any) -> bool:
         return False
 
     # If the active power control register is known and says "Unlimited",
-    # the inverter is not throttling — trust the direct reading.
-    if live.huawei_inverter_active_power_control is not None:
+    # the inverter is not throttling — trust the direct reading.  A bare power
+    # reading is not the register (issue #1120), so it counts as unavailable.
+    power_control_state = live.huawei_inverter_active_power_control
+    if power_control_state is not None and not _is_power_measurement(
+        power_control_state
+    ):
         return False
 
     # Register unavailable, PV producing, battery full, export blocked
