@@ -14,7 +14,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.hsem import HSEMRuntimeData, async_setup_entry
+from custom_components.hsem import (
+    ENTITY_GATING_CONFIG_KEYS,
+    HSEMRuntimeData,
+    async_setup_entry,
+)
 
 
 @pytest.fixture
@@ -60,6 +64,8 @@ async def test_first_refresh_runs_after_platforms_are_forwarded(
     )
 
     entry = MagicMock()
+    entry.options = {}
+    entry.data = {}
     entry.runtime_data = None
 
     with (
@@ -84,4 +90,7 @@ async def test_first_refresh_runs_after_platforms_are_forwarded(
         "async_forward_entry_setups",
         "coordinator.async_run_first_refresh",
     ]
-    assert entry.runtime_data == HSEMRuntimeData(coordinator=mock_coordinator)
+    assert entry.runtime_data == HSEMRuntimeData(
+        coordinator=mock_coordinator,
+        entity_gating=dict.fromkeys(ENTITY_GATING_CONFIG_KEYS, False),
+    )
