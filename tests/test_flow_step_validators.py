@@ -126,7 +126,6 @@ class TestHuaweiSolarValidator:
     _REQUIRED_ENTITIES = (
         "hsem_huawei_solar_batteries_working_mode",
         "hsem_huawei_solar_batteries_state_of_capacity",
-        "hsem_huawei_solar_inverter_active_power_control",
         "hsem_huawei_solar_batteries_maximum_charging_power",
         "hsem_huawei_solar_batteries_grid_charge_cutoff_soc",
         "hsem_huawei_solar_batteries_charging_cutoff_capacity",
@@ -190,6 +189,49 @@ class TestHuaweiSolarValidator:
             ),
             "hsem_huawei_solar_device_id_batteries_2": "device_not_found",
             "hsem_huawei_solar_device_id_tou_controller": "device_not_found",
+        }
+
+    @pytest.mark.asyncio
+    async def test_the_active_power_control_sensor_is_optional(self) -> None:
+        """EMMA systems have no such sensor, so it may be left empty (#1120)."""
+        user_input = self._valid_input()
+        assert "hsem_huawei_solar_inverter_active_power_control" not in user_input
+
+        with (
+            patch(
+                f"{_CONFIG_VALIDATOR_MODULE}.async_entity_exists",
+                AsyncMock(return_value=True),
+            ),
+            patch(
+                f"{_CONFIG_VALIDATOR_MODULE}.async_device_exists",
+                AsyncMock(return_value=True),
+            ),
+        ):
+            errors = await validate_huawei_solar_input(MagicMock(), user_input)
+
+        assert errors == {}
+
+    @pytest.mark.asyncio
+    async def test_a_selected_active_power_control_sensor_must_exist(self) -> None:
+        user_input = self._valid_input()
+        user_input["hsem_huawei_solar_inverter_active_power_control"] = (
+            "sensor.missing_apc"
+        )
+
+        async def entity_exists(_hass: Any, entity_id: str) -> bool:
+            return entity_id != "sensor.missing_apc"
+
+        with (
+            patch(f"{_CONFIG_VALIDATOR_MODULE}.async_entity_exists", entity_exists),
+            patch(
+                f"{_CONFIG_VALIDATOR_MODULE}.async_device_exists",
+                AsyncMock(return_value=True),
+            ),
+        ):
+            errors = await validate_huawei_solar_input(MagicMock(), user_input)
+
+        assert errors == {
+            "hsem_huawei_solar_inverter_active_power_control": "entity_not_found"
         }
 
     @pytest.mark.asyncio

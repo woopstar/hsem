@@ -205,6 +205,11 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             errors = await validate_huawei_solar_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
+                # A cleared active power control sensor is omitted from the
+                # form data; store "" so the old entity is not kept (#1120).
+                self._user_input.setdefault(
+                    "hsem_huawei_solar_inverter_active_power_control", ""
+                )
                 return await self.async_step_battery_economics()
 
         data_schema = await get_huawei_solar_step_schema(self._config_entry)

@@ -251,8 +251,8 @@
           "hsem_huawei_solar_device_id_batteries_2": "Select your secondary Huawei battery device, if applicable.",
           "hsem_huawei_solar_device_id_inverter_1": "Select your primary Huawei inverter device.",
           "hsem_huawei_solar_device_id_inverter_2": "Select your secondary Huawei inverter device, if applicable.",
-          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter.",
-          "hsem_huawei_solar_device_id_tou_controller": "Select your EMMA device if an EMMA manages your batteries. HSEM then sends TOU periods to the EMMA instead of the battery devices; also select the EMMA working mode and TOU periods entities above. Leave empty for direct LUNA2000 battery control."
+          "hsem_huawei_solar_inverter_active_power_control": "Select the inverter's active power control sensor (disabled by default in Huawei Solar). HSEM reads it back to verify grid export limit writes. Leave empty if an EMMA manages your system: Huawei Solar has no such sensor for EMMA, and the limit is then written without verification. Do not select a power sensor such as the inverter's active power.",
+          "hsem_huawei_solar_device_id_tou_controller": "Select your EMMA device if an EMMA manages your batteries. HSEM then sends TOU periods and the grid export limit to the EMMA instead of the battery and inverter devices; also select the EMMA working mode and TOU periods entities above. Leave empty for direct LUNA2000 battery control."
         },
         "description": "Configure the working mode for Huawei solar batteries.",
         "title": "Huawei Solar Sensors"
@@ -731,8 +731,8 @@
           "hsem_huawei_solar_device_id_batteries_2": "Select your secondary Huawei battery device, if applicable.",
           "hsem_huawei_solar_device_id_inverter_1": "Select your primary Huawei inverter device.",
           "hsem_huawei_solar_device_id_inverter_2": "Select your secondary Huawei inverter device, if applicable.",
-          "hsem_huawei_solar_inverter_active_power_control": "Select the sensor that controls the active power output of your Huawei inverter.",
-          "hsem_huawei_solar_device_id_tou_controller": "Select your EMMA device if an EMMA manages your batteries. HSEM then sends TOU periods to the EMMA instead of the battery devices; also select the EMMA working mode and TOU periods entities above. Leave empty for direct LUNA2000 battery control."
+          "hsem_huawei_solar_inverter_active_power_control": "Select the inverter's active power control sensor (disabled by default in Huawei Solar). HSEM reads it back to verify grid export limit writes. Leave empty if an EMMA manages your system: Huawei Solar has no such sensor for EMMA, and the limit is then written without verification. Do not select a power sensor such as the inverter's active power.",
+          "hsem_huawei_solar_device_id_tou_controller": "Select your EMMA device if an EMMA manages your batteries. HSEM then sends TOU periods and the grid export limit to the EMMA instead of the battery and inverter devices; also select the EMMA working mode and TOU periods entities above. Leave empty for direct LUNA2000 battery control."
         },
         "description": "Configure the working mode for Huawei solar batteries.",
         "title": "Huawei Solar Sensors"

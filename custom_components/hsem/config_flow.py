@@ -417,6 +417,11 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
                         "hsem_huawei_solar_device_id_tou_controller", ""
                     )
                 )
+                # A cleared active power control sensor is stored as "" so it
+                # does not fall back to the default entity (issue #1120).
+                self._user_input.setdefault(
+                    "hsem_huawei_solar_inverter_active_power_control", ""
+                )
 
                 # Ensure that optional ev_charger_status is set to None if not provided.
                 self._user_input["hsem_ev_charger_status"] = self._user_input.get(

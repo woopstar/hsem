@@ -1091,6 +1091,22 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
   when an EMMA exists); otherwise the legacy battery-device routing is kept.
 - Forcible charge/discharge still targets battery devices — upstream
   `huawei_solar` keeps those services on the battery schema even with EMMA.
+- **Export-limit routing (#1120):** `applier_power_control._export_limit_device_ids()`
+  sends `set_maximum_feed_grid_power*` to the EMMA controller when it is set —
+  with an EMMA, upstream registers those services against the EMMA only and
+  rejects an inverter `device_id` (`wrong_device_type`).
+- **No export-limit feedback on EMMA (#1120):** upstream creates the active
+  power control sensor only when the primary device is not an EMMA, so
+  `hsem_huawei_solar_inverter_active_power_control` is optional. A bare
+  number is a power reading, not a limit (`_is_power_measurement()`); without
+  usable feedback the limit is written via `async_write_and_verify(reader=None)`
+  — accepted → `UNVERIFIED` (battery writes proceed), every attempt errors →
+  `FAILED` (still blocks them) — and latched on the sensor so it is only
+  rewritten when the target changes.
+- **Upstream gap:** EMMA watt-limit writes (negative-price 100 W floor, the
+  configured export cap) fail upstream with `P_max` `IllegalDataValueError`,
+  because `set_maximum_feed_grid_power` validates against the inverter-only
+  `P_MAX` register. HSEM keeps failing closed on that error.
 
 ---
 
