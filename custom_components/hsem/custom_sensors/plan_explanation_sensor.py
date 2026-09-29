@@ -93,6 +93,17 @@ class HSEMPlanExplanationSensor(
     _attr_translation_key = "plan_explanation"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
+    # Structured and per-slot attributes change every cycle and are only read
+    # from the live state; scalar summaries stay recorded (issue #1099).
+    _unrecorded_attributes = frozenset(
+        {
+            "rejected_plans",
+            "constraints",
+            "current_slot_start",
+            "current_slot_end",
+        }
+    )
+
     def __init__(
         self,
         config_entry: ConfigEntry,
