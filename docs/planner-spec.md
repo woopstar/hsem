@@ -727,10 +727,18 @@ on the first cycle after the sensor reports again.
 
 - SOC dynamics (cumulative, no discharge):
   `ev_soc[t] = ev_initial + Σ_{k≤t} ev_c[k]`
-- SOC upper bound per slot: `ev_soc[t] ≤ ev_capacity`
-- Deadline soft goal: `ev_soc[D] + ev_pen ≥ effective_target` where `D` is
-  the LP-slot index of the effective deadline and `effective_target` is
-  `ev_target` plus the configured safety margin (see below).
+- SOC upper bound per slot: `ev_soc[t] ≤ ev_capacity`. For an EV with a
+  target-cap row (below) the bound is `max(ev_capacity, ev_initial + target_cap)`:
+  a car ends the charge itself when it is full, so a deadline EV may overshoot
+  its headroom by the same activation quantum the target-cap row allows above
+  the target (issue #1117). Without this, a 100 % target has no executable
+  whole-amp point at or above the need.
+- Deadline soft goal: `Σ_{k≤D} ev_c[k] + ev_pen ≥ executable_need` where `D`
+  is the LP-slot index of the effective deadline. `executable_need` is
+  `effective_target − ev_initial`, snapped up to the full-slot whole-amp
+  lattice (see _Full-slot executable deadline need_ below), and
+  `effective_target` is `ev_target` plus the configured safety margin (see
+  below).
 - **Post-deadline zero-charge**: For EVs with a deadline and `charge_past_target=False`,
   `ev_c[t] = 0` for all `t > D`. This prevents charging after the deadline.
 - **Target-cap constraint** (issue #636, relaxed by issue #797, margin/escalation
@@ -878,6 +886,47 @@ carried a large negative `-ev_penalty_cost` coefficient mirroring the slack
 penalty; removing it let the target-cap activation-quantum relaxation above
 work without also inflating the reward for the extra energy.)
 
+**Full-slot executable deadline need** (issue #1117): a managed EV's charge
+is tied to whole-amp commands (see _Discharge permission and whole-amp
+lattice_ below). A full-width slot delivers `amps × q` of DC energy, where
+`q` is one amp (one phase for a `three_phase_switchable` charger) over a full
+slot. A partly elapsed live slot delivers `amps × q × remaining_fraction`,
+which is a finer lattice. A deadline need between two full-slot lattice points
+therefore left a residual that only the live slot could close. At
+`ev_penalty_cost` per kWh, closing it was worth more than any real price
+spread, so every mid-slot replan moved deferrable EV energy into the dearer
+live slot, and the next slot-boundary replan moved it back.
+
+The deadline soft goal therefore uses `executable_need`: the effective need
+`S = effective_target − ev_initial` snapped up to the smallest whole number of
+amp-slots `T` that full-width slots deliver exactly. `T` amp-slots are
+executable in `k` full slots when `k · min_amp ≤ T ≤ k · rated_amp`:
+
+$$executable\_need = q \cdot \min\{\,T \in \mathbb{Z} : T \ge S / q,\ \exists k \le K : k \cdot min\_amp \le T \le k \cdot rated\_amp\,\}$$
+
+where `K` is the number of full-width slots up to `D`. A live-slot
+combination must then displace at least one whole future amp-step (`q` kWh)
+of energy, so it wins only when the live slot is genuinely cheaper per kWh.
+While it is, it keeps charging for as long as its remaining minutes can
+deliver the need.
+
+`S` is kept unchanged (no snapping) when:
+
+- the EV is not managed or has no runnable amp lattice;
+- the deadline is escalated (issue #845);
+- no full-width slot precedes the deadline, for example a deadline inside the
+  live slot, which keeps the live slot's own lattice;
+- no executable total lies within one activation quantum above `S`, or
+  within what the pre-deadline slots can deliver.
+
+`executable_need − S` is always less than the target-cap activation quantum,
+so the target-cap row always admits it. At the boundary, the solver already
+picked this lattice point whenever the capacity row allowed it. What changes
+is a target at capacity: the plan now commands the whole-amp point that fills
+the car instead of stopping one amp short and paying the penalty. The
+published `deadline_met` still compares delivered energy against
+`effective_target`.
+
 ### Discharge permission and whole-amp lattice (issue #797)
 
 Huawei exposes **one global battery discharge limit**, shared by the house
@@ -998,11 +1047,22 @@ revenue the optimiser forbade.
 - When `ev_configs=None`, behaviour is identical to the pre-#530 code
   (backward compatible).
 - EV charge per slot never exceeds `ev.max_charge_per_slot`.
-- Cumulative EV SoC never exceeds `ev.capacity_kwh`.
+- Cumulative EV SoC never exceeds `ev.capacity_kwh`, except for a deadline
+  EV (`charge_past_target=False`), which may exceed it by at most the
+  target-cap activation quantum: the car ends the charge when full (issue
+  #1117).
 - For EVs with a deadline and `charge_past_target=False`, cumulative
   pre-deadline charge `Σ_{k≤D} ev_c[k]` never exceeds
   `effective_deadline_target_kwh − initial_soc_kwh` (issue #845), or
-  `capacity_kwh − initial_soc_kwh` when `deadline_escalated` is `True`.
+  `capacity_kwh − initial_soc_kwh` when `deadline_escalated` is `True`, plus
+  one activation quantum (issue #797).
+- `executable_need` satisfies `S ≤ executable_need < S + activation_quantum`,
+  and equals `S` when no full-width slot precedes the deadline (issue #1117).
+- With identical inputs, a managed deadline EV's commands are the same
+  whether `now` is at the live slot's start or partway through it, unless
+  the live slot is genuinely cheaper per kWh or the only slot before the
+  deadline (issue #1117,
+  `tests/planner/test_ev_mid_slot_placement.py`).
 - `deadline_margin_kwh = 0.0` reproduces the pre-#845 exact-target
   behaviour exactly (`effective_deadline_target_kwh == target_kwh`).
 - When `ev.deadline_slot` is provided and the margined target is reachable,

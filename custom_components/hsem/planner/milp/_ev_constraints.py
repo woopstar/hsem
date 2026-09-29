@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from custom_components.hsem.planner.milp._ev_amp_lattice import (
+    full_slot_executable_shortfall_dc,
     target_cap_activation_quantum_dc,
 )
 from custom_components.hsem.utils.logger import log_planner
@@ -22,6 +23,7 @@ from custom_components.hsem.utils.units import remaining_slot_fraction
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
+    from custom_components.hsem.planner.milp._ev_amp_lattice import EvAmpPlan
 
 
 def add_ev_and_session_constraint_rows(
@@ -42,6 +44,7 @@ def add_ev_and_session_constraint_rows(
     session_slots_set: set[int],
     charge_eff: float,
     _has_session_demand: bool,
+    ev_amp_plan: EvAmpPlan | None = None,
 ) -> tuple[np.ndarray, np.ndarray, int]:  # type: ignore[name-defined]
     """Append EV charging rows and session grid-charge-prevention rows.
 
@@ -142,8 +145,62 @@ def add_ev_and_session_constraint_rows(
             """
             return session_dc_by_ev.get(ev_idx, {}).get(t)
 
+        def _has_target_cap(ev: EVConfig) -> bool:
+            """Return whether *ev* gets the deadline target-cap row."""
+            return (
+                ev.deadline_slot is not None
+                and ev.target_kwh > ev.initial_soc_kwh + 1e-9
+                and not ev.charge_past_target
+            )
+
+        def _activation_quantum_dc(ev: EVConfig) -> float:
+            """Return the target-cap overshoot allowance (issue #797)."""
+            d = max(0, min(ev.deadline_slot or 0, m - 1))
+            return target_cap_activation_quantum_dc(
+                ev, d=d, available_slot_hours=available_slot_hours
+            )
+
+        def _target_cap_dc(ev: EVConfig) -> float:
+            """Return the pre-deadline charge cap before session pins.
+
+            ``cap_target − initial + activation_quantum``; ``cap_target`` is
+            capacity when the deadline is escalated (issue #845).
+            """
+            cap_target = (
+                ev.capacity_kwh
+                if ev.deadline_escalated(m)
+                else ev.effective_deadline_target_kwh
+            )
+            return cap_target - ev.initial_soc_kwh + _activation_quantum_dc(ev)
+
+        def _executable_shortfall_dc(ev_idx: int, ev: EVConfig) -> float | None:
+            """Return the deadline need snapped to the full-slot lattice.
+
+            ``None`` keeps the exact need: no target-cap row, or an escalated
+            deadline (the margin is out of reach and the cap already lifts
+            to capacity — issue #845).
+            """
+            if not _has_target_cap(ev) or ev.deadline_escalated(m):
+                return None
+            return full_slot_executable_shortfall_dc(
+                ev,
+                ev_amp_plan.specs[ev_idx] if ev_amp_plan is not None else None,
+                shortfall_dc=ev.effective_deadline_target_kwh - ev.initial_soc_kwh,
+                d=max(0, min(ev.deadline_slot or 0, m - 1)),
+                available_slot_hours=available_slot_hours,
+                slot_hours=slot_hours,
+                max_overshoot_dc=_activation_quantum_dc(ev),
+            )
+
         for ev_idx, ev in enumerate(active_evs):
             ev_off = ev_var_offsets[ev_idx]
+            target_cap_dc = _target_cap_dc(ev) if _has_target_cap(ev) else None
+            # Issue #1117: the deadline need, snapped up to the smallest
+            # whole-amp energy full-width slots deliver exactly. Without it a
+            # partly elapsed live slot's finer lattice closes the rounding
+            # residual that full slots cannot, and the deadline penalty on
+            # that residual outweighs any price spread.
+            executable_shortfall = _executable_shortfall_dc(ev_idx, ev)
             # EV SOC upper bound per slot: Σ_{k≤t} ev_c[k] ≤ cap − init
             #   For each t in 0..m-1:
             #   Σ_{k=0..t} ev_c[k] ≤ ev.capacity_kwh - ev.initial_soc_kwh
@@ -154,6 +211,13 @@ def add_ev_and_session_constraint_rows(
             # near full that is still drawing power); leaving the row negative
             # would make the whole solve infeasible.
             headroom = max(ev.capacity_kwh - ev.initial_soc_kwh, 0.0)
+            if target_cap_dc is not None:
+                # A car ends the charge itself when it is full, so a deadline
+                # EV may overshoot its headroom by the same activation
+                # quantum the target-cap row allows above the target (issue
+                # #797). Without it a target at capacity has no executable
+                # whole-amp point at or above the need (issue #1117).
+                headroom = max(headroom, target_cap_dc)
             for t in range(m):
                 fixed_session_dc = 0.0
                 for k in range(t + 1):
@@ -183,7 +247,11 @@ def add_ev_and_session_constraint_rows(
                 for k in range(d + 1):
                     A_ub[ev_row, ev_off + k] = -1.0
                 A_ub[ev_row, ev_pen_offsets[ev_idx]] = -1.0
-                b_ub[ev_row] = ev.initial_soc_kwh - ev.effective_deadline_target_kwh
+                b_ub[ev_row] = (
+                    -executable_shortfall
+                    if executable_shortfall is not None
+                    else ev.initial_soc_kwh - ev.effective_deadline_target_kwh
+                )
                 ev_row += 1
 
             # EV target-cap constraint:
@@ -205,22 +273,8 @@ def add_ev_and_session_constraint_rows(
             # (issue #845), so the solver isn't artificially blocked from
             # charging as much as physically possible once the safety
             # margin itself is no longer achievable.
-            if (
-                ev.deadline_slot is not None
-                and ev.target_kwh > ev.initial_soc_kwh + 1e-9
-                and not ev.charge_past_target
-            ):
-                cap_target = (
-                    ev.capacity_kwh
-                    if ev.deadline_escalated(m)
-                    else ev.effective_deadline_target_kwh
-                )
-                shortfall = cap_target - ev.initial_soc_kwh
-                d = ev.deadline_slot
-                d = max(0, min(d, m - 1))
-                activation_quantum_dc = target_cap_activation_quantum_dc(
-                    ev, d=d, available_slot_hours=available_slot_hours
-                )
+            if target_cap_dc is not None:
+                d = max(0, min(ev.deadline_slot or 0, m - 1))
                 fixed_session_dc = 0.0
                 for k in range(d + 1):
                     pinned = _pinned_session_dc(ev_idx, ev, k)
@@ -228,10 +282,7 @@ def add_ev_and_session_constraint_rows(
                         A_ub[ev_row, ev_off + k] = 1.0
                     else:
                         fixed_session_dc += pinned
-                b_ub[ev_row] = max(
-                    shortfall - fixed_session_dc + activation_quantum_dc,
-                    0.0,
-                )
+                b_ub[ev_row] = max(target_cap_dc - fixed_session_dc, 0.0)
                 ev_row += 1
 
             # Post-deadline zero-charge constraint:
