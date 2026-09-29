@@ -43,7 +43,10 @@ from custom_components.hsem.custom_sensors.recommendation_resolver import (
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.degraded_mode import hardware_writes_allowed
 from custom_components.hsem.utils.inverter_verify import ApplyStatus, CycleApplySummary
-from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+from custom_components.hsem.utils.logger import (
+    HSEM_LOGGER as _LOGGER,
+    log_latched_warning,
+)
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
     get_config_value,
@@ -587,13 +590,17 @@ class HSEMWorkingModeSensor(
             # Gate hardware writes on read_only and degraded mode.
             writes_safe = hardware_writes_allowed(live.degraded_mode)
             combined_summary = CycleApplySummary()
+            log_latched_warning(
+                self,
+                "degraded_mode_blocked",
+                not cfg.read_only and not writes_safe,
+                "Hardware writes BLOCKED — degraded mode: %s; missing: %s",
+                live.degraded_mode.value,
+                live.missing_entities_list,
+            )
             if cfg.read_only:
-                _LOGGER.debug("Hardware writes SKIPPED — read_only=True", "warning")
+                _LOGGER.debug("Hardware writes SKIPPED — read_only=True")
             elif not writes_safe:
-                _LOGGER.debug(
-                    f"Hardware writes BLOCKED — degraded mode: {live.degraded_mode.value}. Missing: {live.missing_entities_list}",
-                    "warning",
-                )
                 # Narrow downward-only exception (issue #840) — see
                 # GridChargeEmergencyStopMixin for the ownership/retry contract.
                 emergency_summary = await self._async_run_error_mode_emergency_stop(

@@ -88,7 +88,10 @@ from custom_components.hsem.utils.inverter_verify import (
     CycleApplySummary,
     async_write_and_verify,
 )
-from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+from custom_components.hsem.utils.logger import (
+    HSEM_LOGGER as _LOGGER,
+    log_latched_warning,
+)
 from custom_components.hsem.utils.misc import (
     generate_hash,
     get_max_discharge_power,
@@ -154,8 +157,8 @@ async def async_apply_battery_settings(
         return summary
     if not hardware_writes_allowed(live.degraded_mode):
         _LOGGER.debug(
-            f"async_apply_battery_settings: skipped — degraded mode: {live.degraded_mode.value}",
-            "warning",
+            "async_apply_battery_settings: skipped — degraded mode: %s",
+            live.degraded_mode.value,
         )
         return summary
 
@@ -340,6 +343,12 @@ async def async_apply_battery_settings(
 
     if live.huawei_batteries_max_discharge_power_w != cap_w:
         discharge_entity = cfg.huawei_solar_batteries_maximum_discharging_power
+        log_latched_warning(
+            sensor,
+            "max_discharge_power",
+            discharge_entity is None and cap_reason is None,
+            "Max discharge power entity not configured; skipping write",
+        )
         if discharge_entity is None:
             # Uncapped default path (no hold/EV/solar-charge-only condition):
             # matches the historical "rated max unless EV charging" write,
@@ -348,10 +357,6 @@ async def async_apply_battery_settings(
             # enforce the cap with — skip the write without aborting the
             # rest of this cycle's battery settings.
             if cap_reason is None:
-                _LOGGER.debug(
-                    "Max discharge power entity not configured; skipping write.",
-                    "warning",
-                )
                 return summary
         else:
             _de: str = discharge_entity  # narrowed for closure
@@ -378,11 +383,7 @@ async def async_apply_battery_settings(
                     rec.batteries_discharged_kwh,
                 )
             if result.status == ApplyStatus.FAILED:
-                _LOGGER.debug(
-                    f"Max discharge power write FAILED for {discharge_entity}. "
-                    "Blocking further battery writes this cycle.",
-                    "error",
-                )
+                _log_write_failed("Max discharge power", discharge_entity)
                 return summary
 
     # If we're switching away from force discharge, explicitly stop any
@@ -496,12 +497,14 @@ async def async_apply_battery_settings(
         target_w = round(phase_commands.primary_grid_charge_power_w)
         if live.huawei_batteries_grid_charge_max_power_w != target_w:
             grid_charge_entity = cfg.huawei_solar_batteries_grid_charge_maximum_power
+            log_latched_warning(
+                sensor,
+                "grid_charge_max_power",
+                grid_charge_entity is None,
+                "Grid-charge maximum-power entity not configured; "
+                "skipping phase-aware charge write",
+            )
             if grid_charge_entity is None:
-                _LOGGER.debug(
-                    "Grid-charge maximum-power entity not configured; "
-                    "skipping phase-aware charge write.",
-                    "warning",
-                )
                 return summary
             _gce: str = grid_charge_entity  # narrowed for closure
             grid_charge_result = await async_write_and_verify(
@@ -523,11 +526,7 @@ async def async_apply_battery_settings(
                 cfg, live, rec, float(target_w), summary
             )
             if grid_charge_result.status == ApplyStatus.FAILED:
-                _LOGGER.debug(
-                    f"Grid-charge maximum-power write FAILED for {grid_charge_entity}. "
-                    "Blocking further battery writes this cycle.",
-                    "error",
-                )
+                _log_write_failed("Grid-charge maximum-power", grid_charge_entity)
                 return summary
 
     # Wait-mode self-consumption reserve: the discharge cap for this case was
@@ -565,10 +564,13 @@ async def async_apply_battery_settings(
     )
     if live.huawei_batteries_excess_pv_use_in_tou != desired_excess:
         excess_entity = cfg.huawei_solar_batteries_excess_pv_energy_use_in_tou
+        log_latched_warning(
+            sensor,
+            "excess_pv_use",
+            excess_entity is None,
+            "Excess PV use entity not configured; skipping write",
+        )
         if excess_entity is None:
-            _LOGGER.debug(
-                "Excess PV use entity not configured; skipping write.", "warning"
-            )
             return summary
         _ee: str = excess_entity  # narrowed for closure
         excess_result = await async_write_and_verify(
@@ -579,11 +581,7 @@ async def async_apply_battery_settings(
         )
         summary.results.append(excess_result)
         if excess_result.status == ApplyStatus.FAILED:
-            _LOGGER.debug(
-                f"Excess PV use write FAILED for {excess_entity}. "
-                "Blocking further battery writes this cycle.",
-                "error",
-            )
+            _log_write_failed("Excess PV use", excess_entity)
             return summary
 
     # TOU periods — verified against the entity's live ``Period N`` attributes
@@ -599,11 +597,13 @@ async def async_apply_battery_settings(
     ):
         tou_entity = cfg.huawei_solar_batteries_tou_charging_and_discharging_periods
         battery_device_ids = _configured_battery_device_ids(cfg)
+        log_latched_warning(
+            sensor,
+            "tou_periods",
+            tou_entity is None or not battery_device_ids,
+            "TOU entity or battery device ID not configured; skipping write",
+        )
         if tou_entity is None or not battery_device_ids:
-            _LOGGER.debug(
-                "TOU entity or battery device ID not configured; skipping write.",
-                "warning",
-            )
             return summary
         _te: str = tou_entity  # narrowed for closure
         for battery_device_id in battery_device_ids:
@@ -625,20 +625,19 @@ async def async_apply_battery_settings(
             )
             summary.results.append(result)
             if result.status == ApplyStatus.FAILED:
-                _LOGGER.debug(
-                    "TOU period write FAILED for device %s. Blocking further "
-                    "battery writes this cycle.",
-                    battery_device_id,
-                )
+                _log_write_failed("TOU period", f"device {battery_device_id}")
                 return summary
 
     # Working mode
     if working_mode and live.huawei_batteries_working_mode != working_mode:
         mode_entity = cfg.huawei_solar_batteries_working_mode
+        log_latched_warning(
+            sensor,
+            "working_mode",
+            mode_entity is None,
+            "Working mode entity not configured; skipping write",
+        )
         if mode_entity is None:
-            _LOGGER.debug(
-                "Working mode entity not configured; skipping write.", "warning"
-            )
             return summary
         _me: str = mode_entity  # narrowed for closure
         mode_result = await async_write_and_verify(
@@ -649,11 +648,16 @@ async def async_apply_battery_settings(
         )
         summary.results.append(mode_result)
         if mode_result.status == ApplyStatus.FAILED:
-            _LOGGER.debug(
-                f"Working mode write FAILED for {mode_entity}. "
-                "Blocking further battery writes this cycle.",
-                "error",
-            )
+            _log_write_failed("Working mode", mode_entity)
             return summary
 
     return summary
+
+
+def _log_write_failed(what: str, target: str) -> None:
+    """Log a verified write that exhausted its retries and aborts the cycle."""
+    _LOGGER.error(
+        "%s write FAILED for %s; blocking further battery writes this cycle",
+        what,
+        target,
+    )
