@@ -101,6 +101,11 @@ At minimum you must:
 All other fields have sensible defaults (target SoC 80 %, deadline 07:00, efficiency
 100 %, min charger power 1380 W).
 
+The EV switches, target-SoC number, deadline time and EV sensors only exist
+while **Enable EV Planned Load Integration** is `on` (issue #859). Changing
+that flag, or the OCPP enable flags, makes HSEM reload itself on save, so the
+entities appear or go away without a manual reload (issue #1139).
+
 ---
 
 ## Field reference

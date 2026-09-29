@@ -16,6 +16,23 @@ quick_setup → init → prices → months → solcast → huawei_solar
     → energy_and_ml
 ```
 
+### When options changes take effect
+
+Most options are applied in place: saving the options flow triggers a
+debounced coordinator re-run with the new values, with no integration reload.
+
+The exceptions are the four flags that decide which entities exist (issue
+#859): `hsem_ev_planned_load_enabled`, `hsem_ev_second_planned_load_enabled`,
+`hsem_ocpp_enabled` and `hsem_ocpp_second_enabled`. Turning any of them on or
+off makes HSEM reload its config entry automatically, so the EV switches,
+target-SoC numbers, deadline times, EV sensors and OCPP charger sensors appear
+or disappear right away (issue #1139). Entities of a flag that was turned off
+stay in the entity registry as unavailable, keeping any name or icon
+customisations if the flag is turned back on.
+
+State writes by HSEM's own switches, numbers, times and selectors also land in
+the config entry options. They never cause a reload.
+
 ### Step: `quick_setup`
 
 Initial entity auto-detection step. Scans available HA entities and
