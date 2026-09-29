@@ -19,9 +19,11 @@ from custom_components.hsem.coordinator_cycle import (
     EV_DELIVERED_ENERGY_REPLAN_DELTA_KWH,
     EV_DELIVERED_ENERGY_REPLAN_MIN_SECONDS,
 )
+from custom_components.hsem.coordinator_dynamic_floor import (
+    compute_dynamic_floor_from_plan,
+)
 from custom_components.hsem.coordinator_helpers import (
     LoadForecastSignature,
-    _SimpleSlot,
     _StaleUpdateCycle,
     apply_current_ev_power_override,
     apply_force_charge_overrides,
@@ -58,7 +60,6 @@ from custom_components.hsem.utils.logger import (
     set_hsem_verbose,
 )
 from custom_components.hsem.utils.misc import get_config_value
-from custom_components.hsem.utils.units import usable_kwh_from_rated
 
 
 class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
@@ -81,45 +82,15 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
 
         Returns the updated working-mode state string.
         """
-        # Compute dynamic discharge floor BEFORE the planner runs.
+        # Dynamic discharge floor (issue #600). It is computed from a floor-free
+        # reference solve in the same replan (issue #1140), never from the
+        # plan it constrains; between replans the floor in force is kept.
         dynamic_floor_enabled = bool(
             get_config_value(self._config_entry, "hsem_dynamic_discharge_floor")
         )
-        if dynamic_floor_enabled:
-            rated_kwh = (live.huawei_batteries_rated_capacity_wh or 0.0) / 1000.0
-            min_soc_pct = live.huawei_batteries_end_of_discharge_soc_pct or 0.0
-            max_soc_pct = live.huawei_batteries_charging_cutoff_capacity_pct or 100.0
-            _usable_kwh = usable_kwh_from_rated(rated_kwh, min_soc_pct, max_soc_pct)
-            _bridge_slots: list = []
-            for rec in self._hourly_recommendations:
-                _bridge_slots.append(
-                    _SimpleSlot(
-                        start=rec.start,
-                        end=rec.end,
-                        estimated_net_consumption_kwh=(
-                            rec.avg_house_consumption_kwh - rec.solcast_pv_estimate_kwh
-                        ),
-                        batteries_charged_kwh=rec.batteries_charged_kwh,
-                        recommendation=rec.recommendation,
-                    )
-                )
-            floor_pct, floor_diag = self._dynamic_floor.compute_floor(
-                now=now,
-                slots=_bridge_slots,
-                usable_kwh=_usable_kwh,
-                configured_min_soc_pct=min_soc_pct,
-            )
-            self._effective_discharge_floor_pct = floor_pct
-            self._effective_discharge_floor_diag = floor_diag
-            if live.huawei_batteries_soc_pct is not None:
-                self._dynamic_floor.correct_margin(
-                    live.huawei_batteries_soc_pct, floor_pct, now=now
-                )
-            _dynamic_floor_pct: float | None = floor_pct
-        else:
+        if not dynamic_floor_enabled:
             self._effective_discharge_floor_pct = None
             self._effective_discharge_floor_diag = None
-            _dynamic_floor_pct = None
 
         # Collect session EV charge power for session-aware MILP (issue #615).
         ev_session_kw: dict[str, float] = {}
@@ -153,6 +124,8 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             load_forecast_signature=self._current_load_forecast_signature,
             live_power_replan_request_slot=live_power_replan_request_slot,
         )
+        if dynamic_floor_enabled and self._effective_discharge_floor_pct is None:
+            should_replan = True  # a floor only exists after a reference solve
 
         if should_replan:
             planner_input = build_planner_input(
@@ -162,7 +135,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                 previous_winner_name=self._previous_planner_winner_name,
                 previous_winner_score=self._previous_planner_winner_score,
                 ev_session_kw=ev_session_kw if ev_session_kw else None,
-                dynamic_discharge_floor_pct=_dynamic_floor_pct,
+                dynamic_discharge_floor_pct=None,
                 capacity_learner=getattr(self, "_capacity_learner", CapacityLearner()),
                 live_power_estimate=live_power_estimate,
                 ev_held_slot_start=self._ev_held_slot_start,
@@ -171,6 +144,24 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                 ev_second_held_power_w=self._ev_second_held_power_w,
             )
             planner_input.solar_corrector = self._solar_corrector
+            if dynamic_floor_enabled:
+                reference_output = await self.hass.async_add_executor_job(
+                    run_planner, planner_input
+                )
+                if getattr(self, "_update_generation", 0) != captured_generation:
+                    raise _StaleUpdateCycle
+                floor_pct, floor_diag = compute_dynamic_floor_from_plan(
+                    self._dynamic_floor,
+                    self._hourly_recommendations,
+                    reference_output,
+                    live,
+                    now,
+                )
+                self._effective_discharge_floor_pct = floor_pct
+                self._effective_discharge_floor_diag = floor_diag
+                planner_input = replace(
+                    planner_input, dynamic_discharge_floor_pct=floor_pct
+                )
             self._last_planner_input = planner_input
 
             total_1d = sum(
@@ -248,6 +239,12 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                 self._last_plan_slot_start.isoformat()
                 if self._last_plan_slot_start
                 else "(unknown)",
+            )
+
+        floor_in_force = self._effective_discharge_floor_pct
+        if floor_in_force is not None and live.huawei_batteries_soc_pct is not None:
+            self._dynamic_floor.correct_margin(
+                live.huawei_batteries_soc_pct, floor_in_force, now=now
             )
 
         # Window-level hysteresis (issue #315).

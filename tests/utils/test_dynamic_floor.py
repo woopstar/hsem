@@ -113,7 +113,11 @@ class TestBridgeComputation:
         # Reserve = (1.0 + 0.8 + 0.5) - 3.0 (grid charge) = neg → 0
         # Since grid charge covers, refill is the charge slot
         assert diag["refill_type"] == "grid_charge"
-        assert diag["reserve_kwh"] == 0.0
+        # Deliberate (issue #1140, planner-spec § "Dynamic discharge floor"):
+        # a covering grid-charge refill releases the floor to the configured
+        # minimum. The MILP already prices the pre-charge bridge energy.
+        assert diag["reserve_kwh"] == pytest.approx(0.0)
+        assert floor_pct == pytest.approx(10.0)
 
     def test_configured_min_is_absolute_floor(self) -> None:
         """Dynamic floor must be at least the configured minimum."""

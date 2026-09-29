@@ -608,6 +608,8 @@ Controls and reports the effective discharge floor SoC, which the planner uses a
 
 The sensor reports the bridge reserve itself. When the live battery SoC is below it, the planner measures its battery model from the live SoC instead, so `estimated_battery_soc_pct` in the plan starts at the inverter's reading, not at this sensor's value (issue #1094).
 
+The refill scan reads planned grid charges from a floor-free reference solve in the same replan (issue #1140). When that plan grid-charges enough to cover the load until the charge, the `refill_type` attribute is `grid_charge`, `reserve_kwh` is `0`, and the floor equals the configured minimum SoC. Otherwise the floor bridges to the next solar surplus (`refill_type: solar_surplus`). Between replans the sensor keeps the floor the current plan was solved with.
+
 **Entities:**
 
 - `sensor.hsem_effective_discharge_floor_sensor` — Current effective floor SoC (%)
