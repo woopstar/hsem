@@ -1454,6 +1454,22 @@ to the full premium and the LP charges to store energy for future
 discharge windows. The discharge penalty is deliberately **not** capped,
 preserving the issue #638 protection against unnecessary discharging.
 
+**The cap applies to no-PV slots too (issue #1118).** In a slot without
+PV surplus the battery charges from the grid, so `p_exp[t]` is not a
+foregone export there. The cap still has to stay, because the per-slot
+premiums are not cycle-neutral. A charge at `t2` that is discharged at `t3`
+within the horizon nets `max(0, R − p_imp[t3]) − charge_premium[t2]`
+instead of zero. When `p_imp[t3] ≥ R` (the replacement window itself), the
+uncapped credit `R − p_imp[t2]` becomes a pure bonus for cycling. Dropping
+the cap on no-PV slots was replayed on a 2026-09-27-like price shape. It
+unblocked a profitable evening-discharge / night-recharge cycle, but it
+also made the LP grid-charge at mid prices and export at the peak at a
+real loss, and take evening cycles whose real spread was negative. On
+balance it was net harmful. The remaining gap, a profitable no-PV cycle
+declined because the premiums net to a penalty, needs a cycle-neutral
+terminal term (net `Σ(ec − ed)` valued at a single price) rather than a
+per-slot change. See `tests/planner/test_terminal_soc_grid_cycles.py`.
+
 **Deferred-export correction (issue #592):** the #694 cap compares charging
 against exporting in the **same slot**. When a _future_ slot carries PV
 surplus that exceeds the battery's absorption capacity
