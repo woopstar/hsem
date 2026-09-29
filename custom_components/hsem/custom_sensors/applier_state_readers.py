@@ -206,3 +206,43 @@ def _is_watt_limit(state: str | None) -> bool:
     # Look for a number immediately followed (with optional whitespace) by "w"
     # Single quantifier avoids polynomial backtracking from stacked greedy quantifiers
     return bool(re.search(r"\d[\d\s]*w", normalized))
+
+
+def _format_power_control_limit(value: int, is_watt: bool) -> str:
+    """Return an export limit as a unit-tagged string (``"100w"``, ``"80%"``).
+
+    The value alone is ambiguous: the negative-price block
+    (``GRID_EXPORT_LIMIT_WATT`` = 100 W) and unlimited export (100 %) share
+    the number 100, so write-and-verify compared equal and skipped the write
+    in both directions (issue #1130).  Tagging the unit keeps them apart.
+
+    Args:
+        value: Limit in watts or percent.
+        is_watt: ``True`` for a watt limit, ``False`` for a percentage.
+
+    Returns:
+        The canonical limit string, e.g. ``"100w"`` or ``"100%"``.
+    """
+    return f"{value}{'w' if is_watt else '%'}"
+
+
+def _parse_power_control_limit(state: str | None) -> str | None:
+    """Parse the active power control state into a unit-tagged limit string.
+
+    ``"Unlimited"`` → ``"100%"``, ``"Limited to 80%"`` → ``"80%"`` and
+    ``"Limited to 100W"`` → ``"100w"`` — the same form
+    :func:`_format_power_control_limit` gives a desired limit, so the two
+    compare exactly and a watt limit can never match a percentage
+    (issue #1130).
+
+    Args:
+        state: Raw string from the inverter entity.
+
+    Returns:
+        The canonical limit string, or ``None`` when *state* cannot be parsed
+        or is a bare power measurement (see :func:`_is_power_measurement`).
+    """
+    value = _parse_power_control_pct(state)
+    if value is None:
+        return None
+    return _format_power_control_limit(value, _is_watt_limit(state))
