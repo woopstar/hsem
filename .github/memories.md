@@ -21,6 +21,7 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `coordinator.py`                      | HA lifecycle and collect/populate/plan/publication orchestration                                                     |
 | `coordinator_data.py`                 | Atomic `CoordinatorData` snapshot exposed to entities                                                                |
+| `coordinator_dynamic_floor.py`        | Dynamic-floor bridge slots: forecast net load + last committed plan's charge decisions (issue #1140)                 |
 | `coordinator_helpers.py`              | Pure override, strict-hold, and load-readiness/signature helpers                                                     |
 | `coordinator_load_forecast.py`        | ML/avg consumption population, load readiness, missing/estimated-hour diagnostics (issue #1110)                      |
 | `coordinator_load_hold.py`            | Non-planner load-forecast safety hold, grid-only EV-only fallback (issue #1106), force-charge re-apply (issue #1103) |
@@ -75,7 +76,7 @@ cycle are durable; stale generations must not publish.
 | `huawei.py`             | Huawei Solar inverter API helpers                                                                  |
 | `logger.py`             | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)    |
 | `solar_corrector.py`    | Per-hour PV forecast accuracy auto-correction (issue #602)                                         |
-| `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill computation)                               |
+| `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill; grid-charge refill → reserve 0, #1140)    |
 | `soc_bounds.py`         | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094)  |
 | `capacity_learner.py`   | Battery usable capacity auto-detection from BMS readings                                           |
 | `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                    |
@@ -447,7 +448,7 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 - If a file exceeds either limit, split it before adding more features.
 - Current oversized files (as of 2026-09-18):
 
-  - `coordinator_planner_phase.py` — 32,040 bytes (over 30 KB)
+  - `coordinator_planner_phase.py` — ~31.2 KB (over 30 KB; bridge-slot build moved out in #1140)
   - `coordinator_tracking.py` — 31,036 bytes (over 30 KB)
 
   - `custom_sensors/working_mode_sensor.py` — 33,137 bytes (over 30 KB; +139 in #1114)
