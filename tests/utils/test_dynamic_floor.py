@@ -6,6 +6,7 @@ and integration with various slot resolutions.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -13,6 +14,7 @@ import pytest
 
 from custom_components.hsem.utils.dynamic_floor import (
     DynamicDischargeFloor,
+    cheap_refill_price,
 )
 
 # ---------------------------------------------------------------------------
@@ -29,6 +31,7 @@ class _FakeSlot:
     estimated_net_consumption_kwh: float = 0.0
     batteries_charged_kwh: float = 0.0
     recommendation: str | None = None
+    import_price: float = math.nan
 
 
 def _make_slots(
@@ -37,6 +40,7 @@ def _make_slots(
     slot_minutes: int = 60,
     charged_kwh: list[float] | None = None,
     recommendations: list[str | None] | None = None,
+    import_prices: list[float] | None = None,
 ) -> list[_FakeSlot]:
     """Build a list of fake slots starting from *now*.
 
@@ -46,6 +50,7 @@ def _make_slots(
         slot_minutes: Duration of each slot in minutes.
         charged_kwh: Batteries charged per slot (None → all zero).
         recommendations: Recommendation per slot (None → all None).
+        import_prices: Import price per slot (None → no price).
     """
     slots: list[_FakeSlot] = []
     for i, net in enumerate(net_kwh_values):
@@ -53,6 +58,7 @@ def _make_slots(
         end = start + timedelta(minutes=slot_minutes)
         chg = charged_kwh[i] if charged_kwh else 0.0
         rec = recommendations[i] if recommendations else None
+        price = import_prices[i] if import_prices else math.nan
         slots.append(
             _FakeSlot(
                 start=start,
@@ -60,6 +66,7 @@ def _make_slots(
                 estimated_net_consumption_kwh=net,
                 batteries_charged_kwh=chg,
                 recommendation=rec,
+                import_price=price,
             )
         )
     return slots
@@ -276,6 +283,171 @@ class TestBridgeComputation:
         )
         assert diag["refill_type"] == "solar_surplus"
         assert diag["reserve_kwh"] == pytest.approx(0.5, rel=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# Affordable grid refill tests (issue #1156)
+# ---------------------------------------------------------------------------
+
+# Evening 0.19 → a 0.03 night from hour 4 → PV surplus from hour 8.  The
+# day after costs 0.12, so the night is the look-ahead's cheapest price.
+_NIGHT_NET = [0.8, 0.8, 0.7, 0.7, 0.5, 0.5, 0.5, 0.5, -1.0]
+_NIGHT_PRICES = [0.19, 0.19, 0.19, 0.19, 0.03, 0.03, 0.03, 0.03, 0.12]
+_CYCLE_COST = 0.008
+
+
+class TestCheapRefillPrice:
+    """The affordable-refill threshold from the look-ahead's prices."""
+
+    def test_cheapest_price_plus_cycle_cost(self) -> None:
+        """The threshold sits one cycle cost above the cheapest price."""
+        assert cheap_refill_price([0.19, 0.03, 0.12], 0.008) == pytest.approx(0.038)
+
+    def test_flat_prices_have_no_cheap_refill(self) -> None:
+        """No valley: nothing is cheaper than anything else."""
+        assert cheap_refill_price([0.2, 0.2, 0.2], 0.0) is None
+
+    def test_spread_within_cycle_cost_has_no_cheap_refill(self) -> None:
+        """A spread the cycle cost eats is not a valley either."""
+        assert cheap_refill_price([0.20, 0.205], 0.008) is None
+
+    def test_prices_without_a_value_are_ignored(self) -> None:
+        """Non-finite prices neither set nor block the threshold."""
+        assert cheap_refill_price([math.nan, 0.1, 0.3, math.inf], 0.0) == (
+            pytest.approx(0.1)
+        )
+        assert cheap_refill_price([math.nan], 0.0) is None
+        assert cheap_refill_price([], 0.0) is None
+
+    @pytest.mark.parametrize("cycle_cost", [-0.05, math.nan])
+    def test_invalid_cycle_cost_counts_as_zero(self, cycle_cost: float) -> None:
+        """A negative or non-finite cycle cost gives no tolerance."""
+        assert cheap_refill_price([0.1, 0.3], cycle_cost) == pytest.approx(0.1)
+
+
+class TestAffordableGridRefill:
+    """A cheap night ends the bridge even when the plan does not charge."""
+
+    @staticmethod
+    def _floor(
+        slots: list[_FakeSlot], max_grid_charge_kw: float = 5.0
+    ) -> tuple[float, dict]:
+        return DynamicDischargeFloor().compute_floor(
+            now=slots[0].start,
+            slots=slots,
+            usable_kwh=10.0,
+            configured_min_soc_pct=5.0,
+            cycle_cost_per_kwh=_CYCLE_COST,
+            max_grid_charge_kw=max_grid_charge_kw,
+        )
+
+    def test_cheap_night_without_a_planned_charge_releases_the_floor(self) -> None:
+        """The first 0.03 slot can refill the 3.0 kWh evening: reserve 0."""
+        now = datetime(2026, 9, 28, 22, 0)
+        slots = _make_slots(now, _NIGHT_NET, import_prices=_NIGHT_PRICES)
+
+        floor_pct, diag = self._floor(slots)
+
+        assert diag["refill_type"] == "grid_available"
+        assert diag["next_refill_slot"] == slots[4].start.isoformat()
+        assert diag["reserve_kwh"] == pytest.approx(0.0)
+        assert diag["bridge_duration_hours"] == pytest.approx(4.0)
+        assert diag["cheap_refill_price"] == pytest.approx(0.038)
+        assert floor_pct == pytest.approx(5.0)
+
+    def test_without_the_prices_the_solar_bridge_stands(self) -> None:
+        """No prices, no cheap refill: the pre-#1156 solar bridge."""
+        now = datetime(2026, 9, 28, 22, 0)
+        slots = _make_slots(now, _NIGHT_NET)
+
+        floor_pct, diag = self._floor(slots)
+
+        assert diag["refill_type"] == "solar_surplus"
+        assert diag["cheap_refill_price"] is None
+        assert diag["reserve_kwh"] == pytest.approx(5.0)
+        assert floor_pct == pytest.approx(5.0 / 10.0 * 100.0 * 1.15)
+
+    def test_moderate_night_is_not_cheap(self) -> None:
+        """A 0.15 night before a 0.12 day is not a refill: solar bridge."""
+        now = datetime(2026, 9, 28, 22, 0)
+        prices = [0.19] * 4 + [0.15] * 4 + [0.12]
+        slots = _make_slots(now, _NIGHT_NET, import_prices=prices)
+
+        _floor_pct, diag = self._floor(slots)
+
+        assert diag["cheap_refill_price"] == pytest.approx(0.128)
+        assert diag["refill_type"] == "solar_surplus"
+        assert diag["reserve_kwh"] == pytest.approx(5.0)
+
+    def test_charge_power_must_cover_the_bridge(self) -> None:
+        """Each cheap slot adds what the battery can take until it covers."""
+        now = datetime(2026, 9, 28, 22, 0)
+        slots = _make_slots(now, _NIGHT_NET, import_prices=_NIGHT_PRICES)
+
+        _floor_pct, diag = self._floor(slots, max_grid_charge_kw=1.2)
+
+        # 3.0 kWh bridged: 1.2 + 1.2 + 1.2 kWh covers it in the third slot.
+        assert diag["refill_type"] == "grid_available"
+        assert diag["next_refill_slot"] == slots[6].start.isoformat()
+        assert diag["reserve_kwh"] == pytest.approx(0.0)
+
+    def test_cheap_window_too_small_keeps_the_first_scan(self) -> None:
+        """A cheap window that cannot cover the bridge changes nothing."""
+        now = datetime(2026, 9, 28, 22, 0)
+        slots = _make_slots(now, _NIGHT_NET, import_prices=_NIGHT_PRICES)
+
+        _floor_pct, diag = self._floor(slots, max_grid_charge_kw=0.5)
+
+        # 4 × 0.5 kWh < 3.0 kWh: the solar bridge and its full reserve stand.
+        assert diag["refill_type"] == "solar_surplus"
+        assert diag["reserve_kwh"] == pytest.approx(5.0)
+
+    def test_no_charge_power_disables_the_cheap_refill(self) -> None:
+        """``max_grid_charge_kw = 0`` (the default) keeps the old scan."""
+        now = datetime(2026, 9, 28, 22, 0)
+        slots = _make_slots(now, _NIGHT_NET, import_prices=_NIGHT_PRICES)
+
+        _floor_pct, diag = self._floor(slots, max_grid_charge_kw=0.0)
+
+        assert diag["refill_type"] == "solar_surplus"
+
+    def test_a_covering_planned_charge_keeps_its_refill(self) -> None:
+        """The reference plan's own charge wins, even after a cheap slot."""
+        now = datetime(2026, 9, 28, 22, 0)
+        charged = [0.0] * 6 + [4.0, 0.0, 0.0]
+        recs: list[str | None] = [None] * 9
+        recs[6] = "batteries_charge_grid"
+        slots = _make_slots(
+            now,
+            _NIGHT_NET,
+            charged_kwh=charged,
+            recommendations=recs,
+            import_prices=_NIGHT_PRICES,
+        )
+
+        _floor_pct, diag = self._floor(slots)
+
+        assert diag["refill_type"] == "grid_charge"
+        assert diag["next_refill_slot"] == slots[6].start.isoformat()
+        assert diag["reserve_kwh"] == pytest.approx(0.0)
+
+    def test_cheap_slot_now_ends_the_bridge_at_once(self) -> None:
+        """When now is the cheapest time, there is nothing to bridge."""
+        now = datetime(2026, 9, 29, 2, 0)
+        slots = _make_slots(now, [0.5, 0.5, -1.0], import_prices=[0.03, 0.25, 0.12])
+
+        floor_pct, diag = self._floor(slots)
+
+        assert diag["refill_type"] == "grid_available"
+        assert diag["bridge_duration_hours"] == pytest.approx(0.0)
+        assert floor_pct == pytest.approx(5.0)
+
+    def test_same_inputs_give_the_same_floor(self) -> None:
+        """Deterministic: the floor depends only on this replan's slots."""
+        now = datetime(2026, 9, 28, 22, 0)
+        slots = _make_slots(now, _NIGHT_NET, import_prices=_NIGHT_PRICES)
+
+        assert self._floor(slots) == self._floor(slots)
 
 
 # ---------------------------------------------------------------------------

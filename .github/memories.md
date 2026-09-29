@@ -67,23 +67,23 @@ cycle are durable; stale generations must not publish.
 
 ### Utils layer (`custom_components/hsem/utils/`)
 
-| File                    | Responsibility                                                                                     |
-| ----------------------- | -------------------------------------------------------------------------------------------------- |
-| `recommendations.py`    | `Recommendations` enum + canonical `DISCHARGE_RECS`, `CHARGE_RECS`, and `SENTINEL_RECS` frozensets |
-| `misc.py`               | Shared math helpers: `clamp_efficiency()`, `calculate_recommended_threshold()`, etc.               |
-| `sensornames.py`        | All HA entity name constants — never hardcode sensor names elsewhere                               |
-| `prices.py`             | Price lookup, grid fee calculation, spot price helpers                                             |
-| `huawei.py`             | Huawei Solar inverter API helpers                                                                  |
-| `logger.py`             | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)    |
-| `solar_corrector.py`    | Per-hour PV forecast accuracy auto-correction (issue #602)                                         |
-| `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill; grid-charge refill → reserve 0, #1140)    |
-| `soc_bounds.py`         | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094)  |
-| `capacity_learner.py`   | Battery usable capacity auto-detection from BMS readings                                           |
-| `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                    |
-| `weekday_profile.py`    | Weekday/weekend split house load EWMA profiles                                                     |
-| `ev_mode_resolver.py`   | Auto-Full EV charging on negative electricity prices                                               |
-| `ev_accounting.py`      | Raw CT versus per-EV normalized-baseline accounting helper                                         |
-| `unit_normalize.py`     | Generic sensor unit normalization via HA's `unit_conversion` converters (issues #945, #1119)       |
+| File                    | Responsibility                                                                                                       |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `recommendations.py`    | `Recommendations` enum + canonical `DISCHARGE_RECS`, `CHARGE_RECS`, and `SENTINEL_RECS` frozensets                   |
+| `misc.py`               | Shared math helpers: `clamp_efficiency()`, `calculate_recommended_threshold()`, etc.                                 |
+| `sensornames.py`        | All HA entity name constants — never hardcode sensor names elsewhere                                                 |
+| `prices.py`             | Price lookup, grid fee calculation, spot price helpers                                                               |
+| `huawei.py`             | Huawei Solar inverter API helpers                                                                                    |
+| `logger.py`             | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)                      |
+| `solar_corrector.py`    | Per-hour PV forecast accuracy auto-correction (issue #602)                                                           |
+| `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill; planned or affordable grid refill → reserve 0, #1140/#1156) |
+| `soc_bounds.py`         | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094)                    |
+| `capacity_learner.py`   | Battery usable capacity auto-detection from BMS readings                                                             |
+| `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                                      |
+| `weekday_profile.py`    | Weekday/weekend split house load EWMA profiles                                                                       |
+| `ev_mode_resolver.py`   | Auto-Full EV charging on negative electricity prices                                                                 |
+| `ev_accounting.py`      | Raw CT versus per-EV normalized-baseline accounting helper                                                           |
+| `unit_normalize.py`     | Generic sensor unit normalization via HA's `unit_conversion` converters (issues #945, #1119)                         |
 
 ---
 
@@ -1387,8 +1387,8 @@ coefficients and `score_plan`, both sides of `V`'s `min`). The profitable
 buys at a cheap night when the next day's PV refills the battery anyway, so the
 dynamic floor (#1140) sees a solar refill and keeps its bridge reserve instead
 of releasing. `test_cheap_night_releases_the_floor_on_the_first_replan` now
-uses a cloudy tomorrow; the PV-refill case is pinned separately. Fix tracked
-in #1156.
+uses a cloudy tomorrow. The PV-refill case was fixed in #1156: an affordable
+grid refill now ends the bridge too (see the #1156 entry below).
 
 ---
 
@@ -2290,3 +2290,15 @@ Tests: `tests/test_init_options_reload.py` (each flag on→off and off→on sche
 **Test gotcha:** a fixture day that ends with the SoC below the floor makes the next day's first call an "unreachable" interval, so that day can't count as well above. Let fixture days recover before midnight.
 
 Tests: `tests/utils/test_dynamic_floor.py::TestMarginCorrection` (288 cycles/day move the margin once, on the day boundary; unreachable floor and a floor jumping above the SoC never ratchet; 1-point tolerance; neutral day and gap reset the chain; clamps).
+
+## Dynamic Floor Releases at an Affordable Grid Refill (issue #1156)
+
+**Bug:** since #1138 the floor-free reference plan does not buy at a cheap night when tomorrow's PV refills the battery anyway. The refill scan credited only planned grid charges, so it ran to the solar surplus and held a 77.5 % floor in the #1125 fixture (0.03 night, full PV). The final plan then imported the evening and cost 0.917 against 0.097 for the reference plan.
+
+**Rule:** `compute_floor()` scans twice. The first pass credits planned charges only, and a covering one (`grid_charge`) always stands. Otherwise a second pass also credits every _affordable_ slot with `max_grid_charge_kw × hours`. A covering credit ends the bridge as `grid_available` with reserve 0. If that pass does not cover the bridge, the first result stands, so the change can only release the floor. Affordable means `price ≤ cheap_refill_price() = min(look-ahead prices) + cycle_cost`, with `None` when no price is finite or the spread is ≤ the cycle cost (flat prices). Prices come from the **reference plan's** slots (`nan` when a slot is not covered). The cycle cost comes from `resolve_cycle_cost()` over the reference input, and the charge power from `battery_max_charge_power_w`.
+
+**Why not break-even or `V`:** both pass the 0.15 night, which must keep the floor. With the fixture at η 0.97 and cycle cost 0.0079, the round trip costs 0.167 against a 0.19 evening, and the `V` test passes any night slot at or below the last day's night mean of 0.163. The min is over the whole 48 h window: a 0.15 night before a 0.12 day is not cheap.
+
+**Gotcha:** coordinator test plans use default `SlotPrice(0.0, 0.0)`, which is flat, so there is no cheap refill. Use `_plan(..., cheap_night=True)` to exercise it.
+
+Tests: `tests/utils/test_dynamic_floor.py::TestCheapRefillPrice` and `::TestAffordableGridRefill`. Also `tests/test_dynamic_floor_reference_plan.py`: `test_cheap_night_without_a_charge_is_the_refill` (coordinator wiring) and `test_cheap_night_with_a_pv_refill_releases_the_floor` (real planner; cost within 0.01 of the reference).
