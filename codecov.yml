@@ -9,3 +9,7 @@
 # from 2026-08-17 onward).
 fixes:
   - "hsem/::custom_components/hsem/"
+  
+# Only post if coverage drops OR there are uncovered lines of code
+comment:
+  require_changes: "coverage_drop OR uncovered_patch"
