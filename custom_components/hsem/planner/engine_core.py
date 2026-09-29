@@ -19,14 +19,14 @@ from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_PASSIVE,
     generate_candidates,
 )
-from custom_components.hsem.planner.candidate_selector import (
-    replacement_price_from_next_discharge,
-    select_best_candidate,
-)
+from custom_components.hsem.planner.candidate_selector import select_best_candidate
 from custom_components.hsem.planner.charging.opportunistic_charge import (
     apply_opportunistic_charge,
 )
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
+from custom_components.hsem.planner.cost_helpers import (
+    terminal_end_value_from_last_day,
+)
 from custom_components.hsem.planner.discharge_scheduler import (
     apply_excess_export,
     apply_optimization_strategy,
@@ -558,8 +558,6 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         battery_export_min_price=inp.battery_export_min_price,
         export_fee_per_kwh=inp.export_fee_per_kwh,
         time_discount_rate=inp.time_discount_rate,
-        battery_usable_capacity_kwh=usable_kwh,
-        max_charge_per_slot_kwh=mcps,
     )
     sdh = inp.interval_minutes / 60.0
     import math
@@ -567,8 +565,15 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     top_n = 4
     if mdps is not None and mdps > 1e-9:
         top_n = math.ceil(usable_kwh / mdps)
-    rppk = replacement_price_from_next_discharge(
-        slots, now, top_n=top_n, interval_minutes=inp.interval_minutes
+    # Terminal-SoC end value V (issue #1138): what a kWh still stored at the
+    # horizon end is worth afterwards, estimated from the last day of prices.
+    rppk = terminal_end_value_from_last_day(
+        slots,
+        now.tzinfo,
+        top_n=top_n,
+        charge_eff=clamp_efficiency(inp.battery_charge_efficiency_pct),
+        discharge_eff=clamp_efficiency(inp.battery_discharge_efficiency_pct),
+        cycle_cost_per_kwh=effective_cycle_cost,
     )
     log_planner(
         "debug",

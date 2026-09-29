@@ -201,8 +201,9 @@ def generate_candidates(
             Maximum energy dischargeable per slot (kWh) passed through to the
             MILP optimizer.  ``None`` means unlimited.
         replacement_price_per_kwh:
-            Terminal-SoC replacement price (currency/kWh) passed through to the
-            MILP optimizer.  ``None`` disables the terminal-SoC credit term.
+            Terminal-SoC end value ``V`` (currency per DC kWh, issue #1138)
+            passed through to the MILP optimizer.  ``None`` disables the
+            terminal-SoC term.
         ev_configs:
             Optional list of :class:`EVConfig` objects (one per EV).  When
             provided, the MILP co-optimises EV charging alongside the battery.

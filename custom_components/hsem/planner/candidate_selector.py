@@ -51,9 +51,6 @@ from custom_components.hsem.planner.discharge_scheduler import (
 from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.datetime_utils import as_tz
 from custom_components.hsem.utils.logger import log_planner
-from custom_components.hsem.utils.recommendations import (
-    DISCHARGE_RECS as _DISCHARGE_RECS,
-)
 
 # SoC floor tolerance — plans are accepted even if they dip this many
 # percentage points below end_of_discharge_soc_pct (rounding / simulation
@@ -158,10 +155,10 @@ def select_best_candidate(  # NOSONAR
             Discharge-side efficiency (0-100 %).  Forwarded to
             :func:`~soc_simulation.simulate_soc`.  Defaults to 100 %.
         replacement_price_per_kwh:
-            Currency-per-kWh price used by :func:`~cost_function.score_plan`
-            to evaluate the terminal-SoC opportunity cost (issue #413).
-            A conservative choice is the average future import price across
-            the horizon.  ``None`` disables the terminal-SoC term.
+            Terminal-SoC end value ``V`` (currency per DC kWh, issue #1138)
+            used by :func:`~cost_function.score_plan` to value the change in
+            stored energy across the horizon.  ``None`` disables the
+            terminal-SoC term.
         hysteresis_enabled:
             When True, plan-level hysteresis is active.  The previous
             winner's strategy is kept unless a new candidate beats the
@@ -322,13 +319,6 @@ def select_best_candidate(  # NOSONAR
             winner.name,
         )
     else:
-        # Provide the deferred-export correction (issue #592) with the
-        # battery capacity context it needs.  CostWeights is a plain
-        # dataclass shared across candidates; setting these fields here is
-        # safe because score_plan is stateless and reads them immediately.
-        cost_weights.battery_usable_capacity_kwh = usable_kwh
-        cost_weights.max_charge_per_slot_kwh = max_charge_per_slot
-
         # Score all valid candidates (including no_action for diagnostics)
         for candidate in valid:
             candidate._cost = score_plan(
@@ -585,87 +575,6 @@ def _find_by_name(candidates: list[CandidatePlan], name: str) -> CandidatePlan |
     return next((c for c in candidates if c.name == name), None)
 
 
-def replacement_price_from_next_discharge(
-    slots: list,
-    now: datetime,
-    top_n: int = 4,
-    interval_minutes: int = 15,
-) -> float | None:
-    """Derive the terminal-SoC replacement price from the next discharge window.
-
-    The energy stored at end-of-horizon is worth what it would cost to
-    re-purchase that energy from the grid during the **first** upcoming
-    discharge window.  Within that window the battery discharges
-    in priority order from the most expensive slots, so we use the average
-    of the *top_n* most expensive import prices within that window.
-
-    In a 48h or 72h horizon the planner marks discharge-window slots
-    across all days, but the replacement price must reflect only the
-    closest discharge window — not windows 2+ days away.  We identify the
-    first window by collecting all future discharge slots, sorting them by
-    start time, and taking the first contiguous block of slots belonging
-    to the same schedule occurrence.
-
-    Args:
-        slots:
-            Any candidate's populated slot list (must have
-            ``recommendation``, ``price.import_price``, ``start`` set).
-        now:
-            Timezone-aware current datetime.  Past slots are excluded.
-        top_n:
-            Number of most expensive discharge slots to average over.
-            Derived dynamically from ``ceil(usable_kwh / max_discharge_per_slot)``
-            in the engine so it reflects how many slots the battery can actually
-            serve.  Default 4 is a safe fallback (~1 hour at 15-min resolution).
-        interval_minutes:
-            Slot duration in minutes.  Used to derive the gap threshold for
-            detecting separate discharge window occurrences.
-            Default 15.
-
-    Returns:
-        Replacement price in currency/kWh, or ``None`` when no future
-        discharge slot exists.
-    """
-    # Collect all future discharge slots sorted by start time.
-    # Use _DISCHARGE_RECS so both BatteriesDischargeMode and
-    # ForceBatteriesDischarge are included (Bug I fix).
-    future_discharge = sorted(
-        [
-            slot
-            for slot in slots
-            if (
-                slot.recommendation in _DISCHARGE_RECS
-                and as_tz(slot.start, now.tzinfo) > now
-                and not math.isnan(slot.price.import_price)
-            )
-        ],
-        key=lambda s: as_tz(s.start, now.tzinfo),
-    )
-
-    if not future_discharge:
-        return None
-
-    # Find the first contiguous block of discharge slots.  A gap larger than
-    # interval_minutes + 5 min between consecutive discharge slots signals a
-    # new schedule occurrence (the gap between discharge windows).
-    # We take only the first block.
-    GAP_THRESHOLD = timedelta(minutes=interval_minutes + 5)
-    first_block: list = [future_discharge[0]]
-    tz = now.tzinfo
-    for slot in future_discharge[1:]:
-        prev_end = as_tz(first_block[-1].end, tz)
-        this_start = as_tz(slot.start, tz)
-        if this_start - prev_end <= GAP_THRESHOLD:
-            first_block.append(slot)
-        else:
-            break  # reached the next schedule occurrence
-
-    # Average the top_n most expensive import prices within the first block
-    first_block.sort(key=lambda s: s.price.import_price, reverse=True)
-    top = [s.price.import_price for s in first_block[:top_n]]
-    return sum(top) / len(top) if top else None
-
-
 def ev_future_charge_value_per_kwh(
     slots: list,
     now: datetime,
@@ -681,12 +590,11 @@ def ev_future_charge_value_per_kwh(
     would otherwise cost to import the same amount of energy later, when
     the EV needs to top up again.
 
-    Mirrors :func:`replacement_price_from_next_discharge`, which applies the
-    same avoided-cost principle to the house battery's terminal SoC.  The EV
-    case uses a fixed lookahead window instead of the next discharge window,
-    because EV energy use depends on driving patterns rather than a known
-    schedule — a plain average of near-term import prices is a reasonable,
-    defensible proxy.
+    The house battery's terminal SoC is valued on a similar avoided-cost
+    basis (``cost_helpers.terminal_end_value_from_last_day``).  The EV case
+    uses a fixed lookahead window instead, because EV energy use depends on
+    driving patterns rather than a known schedule — a plain average of
+    near-term import prices is a reasonable, defensible proxy.
 
     A ``confidence_factor`` below ``1.0`` discounts the estimate to reflect
     that the EV's future need is less certain than the battery's scheduled

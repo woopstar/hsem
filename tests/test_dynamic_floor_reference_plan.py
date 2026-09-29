@@ -472,6 +472,8 @@ class TestBuildBridgeSlots:
 _HOURLY_LOAD = [0.5] * 6 + [0.7] * 3 + [0.5] * 8 + [0.8] * 5 + [0.7] * 2
 _PV_TOMORROW = [0.0] * 7 + [0.2, 0.8, 1.6, 2.4, 2.8, 3.0, 2.8, 2.3, 1.6, 0.8, 0.2]
 _PV_TOMORROW += [0.0] * (24 - len(_PV_TOMORROW))
+# Half the PV: tomorrow's surplus no longer refills the battery on its own.
+_CLOUDY = 0.5
 
 
 def _price_points(night: float) -> list[PricePoint]:
@@ -492,7 +494,7 @@ def _price_points(night: float) -> list[PricePoint]:
     ]
 
 
-def _planner_input(night: float) -> PlannerInput:
+def _planner_input(night: float, pv_scale: float = 1.0) -> PlannerInput:
     """Return the #1125 shape: 68 % at 21:30, cheap-or-not night, PV at 09:00."""
     return PlannerInput(
         now_iso=_NOW.isoformat(),
@@ -515,7 +517,7 @@ def _planner_input(night: float) -> PlannerInput:
         ],
         price_points=_price_points(night),
         solcast_slots=[
-            SolcastSlot(hour=h, pv_estimate=v, day_offset=1)
+            SolcastSlot(hour=h, pv_estimate=v * pv_scale, day_offset=1)
             for h, v in enumerate(_PV_TOMORROW)
         ]
         + [SolcastSlot(hour=h, pv_estimate=0.0) for h in range(24)],
@@ -524,14 +526,16 @@ def _planner_input(night: float) -> PlannerInput:
     )
 
 
-def _hourly_recommendations() -> list[HourlyRecommendation]:
+def _hourly_recommendations(pv_scale: float = 1.0) -> list[HourlyRecommendation]:
     """Return this cycle's regenerated hourly slots with the same forecast."""
     with patch.object(coordinator_builder, "hsem_now", return_value=_NOW):
         recs = coordinator_builder.generate_recommendation_intervals(60, 48)
     for rec in recs:
         rec.avg_house_consumption_kwh = _HOURLY_LOAD[rec.start.hour]
         tomorrow = rec.start.date() > _NOW.date()
-        rec.solcast_pv_estimate_kwh = _PV_TOMORROW[rec.start.hour] if tomorrow else 0.0
+        rec.solcast_pv_estimate_kwh = (
+            _PV_TOMORROW[rec.start.hour] * pv_scale if tomorrow else 0.0
+        )
     return recs
 
 
@@ -545,12 +549,18 @@ def _evening_discharge_kwh(output: PlannerOutput) -> float:
     )
 
 
-def _replan(night: float) -> tuple[float, dict, PlannerOutput, PlannerOutput]:
+def _replan(
+    night: float, pv_scale: float = 1.0
+) -> tuple[float, dict, PlannerOutput, PlannerOutput]:
     """Run one replan the way the coordinator does: reference, floor, final."""
-    planner_input = _planner_input(night)
+    planner_input = _planner_input(night, pv_scale)
     reference = run_planner(planner_input)
     floor_pct, diag = compute_dynamic_floor_from_plan(
-        DynamicDischargeFloor(), _hourly_recommendations(), reference, _live(), _NOW
+        DynamicDischargeFloor(),
+        _hourly_recommendations(pv_scale),
+        reference,
+        _live(),
+        _NOW,
     )
     final = run_planner(replace(planner_input, dynamic_discharge_floor_pct=floor_pct))
     return floor_pct, diag, reference, final
@@ -560,8 +570,13 @@ class TestRealPlanner:
     """End-to-end on the real planner, for both night-price regimes."""
 
     def test_cheap_night_releases_the_floor_on_the_first_replan(self) -> None:
-        """#1125: a 0.03 night lets the battery serve the evening at once."""
-        floor_pct, diag, reference, final = _replan(night=0.03)
+        """#1125: a 0.03 night lets the battery serve the evening at once.
+
+        Tomorrow is cloudy, so the reference plan needs the cheap night to
+        refill the battery.  With full PV it does not: see
+        ``test_cheap_night_with_a_pv_refill_keeps_the_solar_bridge``.
+        """
+        floor_pct, diag, reference, final = _replan(night=0.03, pv_scale=_CLOUDY)
 
         assert diag["refill_type"] == "grid_charge"
         assert floor_pct == pytest.approx(_HARDWARE_FLOOR_PCT)
@@ -571,6 +586,29 @@ class TestRealPlanner:
         assert _evening_discharge_kwh(final) == pytest.approx(
             _evening_discharge_kwh(reference)
         )
+
+    def test_cheap_night_with_a_pv_refill_keeps_the_solar_bridge(self) -> None:
+        """#1138: no night buy when tomorrow's PV refills the battery anyway.
+
+        The reference plan serves the evening from the battery and lets PV
+        refill it: buying at 0.03 would only displace PV that is then
+        exported, at the same end SoC.  Before #1138 the per-slot terminal
+        credit favoured the night buy, which is what released the floor.
+        The floor now sees a solar refill and keeps its bridge reserve
+        (issue #1156).
+        """
+        floor_pct, diag, reference, final = _replan(night=0.03)
+
+        night_grid_kwh = sum(
+            s.batteries_charged_kwh
+            for s in reference.slots
+            if s.recommendation == _CHARGE and s.start < _PV_FIRST_SURPLUS
+        )
+        assert night_grid_kwh == pytest.approx(0.0, abs=1e-3)
+        assert _evening_discharge_kwh(reference) > 3.0
+        assert diag["refill_type"] == "solar_surplus"
+        assert floor_pct > _LIVE_SOC_PCT
+        assert _evening_discharge_kwh(final) == pytest.approx(0.0)
 
     def test_moderate_night_keeps_the_solar_bridge_and_is_stable(self) -> None:
         """A 0.15 night is not refilled from the grid: pre-#1140 floor, no flip."""

@@ -123,7 +123,7 @@ Where:
 
 - $E_{initial}$ = stored battery energy above the discharge floor at the start of the horizon (kWh)
 - $E_{final}$ = stored battery energy above the discharge floor at the end of the horizon (kWh)
-- $p_{replacement}$ = replacement price per kWh (minimum future import price)
+- $p_{replacement}$ = the end value $V$ of one stored kWh after the horizon (issue #1138)
 
 **Sign convention:**
 
@@ -134,13 +134,24 @@ $$
 \end{aligned}
 $$
 
-The replacement price uses the **minimum** future import price across the horizon
-because:
+The term depends only on $E_{final} - E_{initial}$, so a charge/discharge cycle
+inside the horizon that leaves the end energy unchanged adds zero. The MILP
+objective applies the same value as $-V$ on every charge variable and $+V$ on
+every discharge variable, through the shared helper
+`cost_helpers.terminal_soc_value`.
 
-- It represents the marginal cost of re-purchasing one stored kWh at the cheapest
-  opportunity
-- Using the average (including expensive peak prices) over-values stored energy
-  during high-price periods and biases against discharging
+$V$ is estimated from the last known day of prices, standing in for the unknown
+day after the horizon:
+
+$$ V = \max\left(0, \min\left(0.9 \cdot (\eta*{dis} \cdot p*{peak} - c), \frac{p*{night}}{\eta*{chg}} + c\right)\right) $$
+
+- $p_{peak}$ = mean of that day's top-N import prices, N = `ceil(usable / max_discharge_per_slot)`
+- $p_{night}$ = mean import price of that day from 00:00 to 06:00
+- $c$ = cycle cost per kWh
+
+A leftover kWh is worth the lower of its discounted use at the next peak and the
+cost of storing it again overnight. See `docs/planner-spec.md` § Terminal SoC for
+why it is not derived from any price inside the horizon.
 
 ---
 
