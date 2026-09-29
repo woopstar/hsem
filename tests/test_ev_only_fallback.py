@@ -38,7 +38,7 @@ from custom_components.hsem.planner.ev_fallback import (
     estimate_unpriced_tail,
 )
 from custom_components.hsem.planner.ev_planner_models import EVPlannerInput
-from custom_components.hsem.utils.datetime_utils import slot_contains
+from custom_components.hsem.utils.datetime_utils import now as hsem_now, slot_contains
 from custom_components.hsem.utils.recommendations import Recommendations
 from tests.coordinator_fixtures import make_real_coordinator
 from tests.test_ha_mock_integration import (
@@ -213,6 +213,15 @@ class TestUnpricedTail:
 # Full hold-path cycles
 # ---------------------------------------------------------------------------
 
+# These cycles run on the real clock, and a deadline is resolved as the next
+# occurrence of an HH:MM time (``custom_sensors/ev_deadline.py``). Left at the
+# "07:00" default, a run in the hours before 07:00 squeezes the ~2.7 h charge
+# into the current slot whatever its price (issue #1134). Pinning the deadline
+# ~12 h ahead of import keeps the cheapest-slot choice unconstrained at any
+# time of day.
+_DEADLINE_LEAD = timedelta(hours=12)
+_DEADLINE_TIME = (hsem_now() + _DEADLINE_LEAD).strftime("%H:%M")
+
 _PRIMARY_OPTIONS: dict[str, Any] = {
     "hsem_read_only": True,
     "hsem_ocpp_enabled": True,
@@ -223,6 +232,7 @@ _PRIMARY_OPTIONS: dict[str, Any] = {
     "hsem_ev_planned_load_battery_capacity_kwh": 60.0,
     "hsem_ev_planned_load_charger_power_kw": 11.0,
     "hsem_ev_planned_load_charger_phase_topology": "three_phase_balanced",
+    "hsem_ev_deadline_time": _DEADLINE_TIME,
     "hsem_main_fuse_amps": 25,
     "hsem_main_fuse_phases": 3,
 }
@@ -236,6 +246,7 @@ _SECOND_OPTIONS: dict[str, Any] = {
     "hsem_ev_second_planned_load_battery_capacity_kwh": 60.0,
     "hsem_ev_second_planned_load_charger_power_kw": 11.0,
     "hsem_ev_second_planned_load_charger_phase_topology": "three_phase_balanced",
+    "hsem_ev_second_deadline_time": _DEADLINE_TIME,
 }
 
 _EV_STATES: dict[str, str | dict] = {"sensor.ev_soc": "40", "sensor.ev2_soc": "40"}
@@ -307,6 +318,29 @@ def _target_kw(server: MagicMock) -> float:
 
 class TestHoldPathFallback:
     """A managed EV on smart charging charges grid-only during the hold."""
+
+    @pytest.mark.asyncio
+    async def test_deadline_never_squeezes_the_plan(self) -> None:
+        """The cheapest-slot tests below are only meaningful without a squeeze.
+
+        40 -> 90 % of 60 kWh at 11.04 kW needs ~2.7 h. The resolved deadline
+        must leave far more than that at any wall-clock time (issue #1134).
+        """
+        coordinator, _published, _primary, _ = _coordinator(
+            {**_PRIMARY_OPTIONS, **_SECOND_OPTIONS}
+        )
+
+        await _run_unready_cycle(coordinator, cheap_now=False)
+
+        live = coordinator._live
+        assert live is not None
+        now = hsem_now()
+        for deadline in (
+            live.ev_planned_load_deadline,
+            live.ev_second_planned_load_deadline,
+        ):
+            assert deadline is not None
+            assert deadline - now > timedelta(hours=10)
 
     @pytest.mark.asyncio
     async def test_cheapest_current_slot_charges_while_battery_stays_held(
