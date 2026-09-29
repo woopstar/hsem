@@ -132,3 +132,13 @@ reported as `failed`. EMMA working-mode options and TOU routing are not part of
 | Power factor         | `sensor.power_meter_power_factor`         | —     | —                                                                    |
 | Reactive energy      | `sensor.power_meter_reactive_energy`      | kvarh | —                                                                    |
 | Reactive power       | `sensor.power_meter_reactive_power`       | var   | —                                                                    |
+
+**Phase fields for the main-fuse check (issue #1119).** Each
+`hsem_huawei_solar_power_meter_phase_*_active_power` field accepts either a
+**power** sensor (W, kW) or a **current** sensor (A, mA). HSEM reads the unit
+from the entity. A current reading counts as import and is checked against the
+fuse as `|I| × 230 V`, which is the same comparison in amps. A sensor with no
+unit, or a unit that is neither power nor current, is treated as unavailable
+and phase-aware grid charging stays blocked (fail closed), with a warning in
+the log at most once an hour. Before issue #1119 a current sensor was read as
+Watts (16 A → 16 W), which left the fuse guard effectively off.

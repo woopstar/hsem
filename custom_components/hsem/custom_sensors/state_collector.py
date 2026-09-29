@@ -30,6 +30,7 @@ from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401 
     build_battery_schedules,
     build_sensor_config,
 )
+from custom_components.hsem.custom_sensors.phase_inputs import read_grid_phase_power_w
 from custom_components.hsem.custom_sensors.state_collector_compute import (  # noqa: F401 — re-exported for callers
     _compute_battery_capacities,
     _compute_net_consumption,
@@ -340,29 +341,8 @@ async def async_collect_live_state(
                 label="grid_charge_maximum_power",
             )
         )
-        state.grid_phase_power_w = (
-            read_normalized_float(
-                sensor,
-                cfg.huawei_solar_power_meter_phase_a_active_power,
-                _read,
-                UnitOfPower.WATT,
-                label="power_meter_phase_a_active_power",
-            ),
-            read_normalized_float(
-                sensor,
-                cfg.huawei_solar_power_meter_phase_b_active_power,
-                _read,
-                UnitOfPower.WATT,
-                label="power_meter_phase_b_active_power",
-            ),
-            read_normalized_float(
-                sensor,
-                cfg.huawei_solar_power_meter_phase_c_active_power,
-                _read,
-                UnitOfPower.WATT,
-                label="power_meter_phase_c_active_power",
-            ),
-        )
+        # Power or current per phase, in Watts; unknown units fail closed (#1119).
+        state.grid_phase_power_w = read_grid_phase_power_w(sensor, cfg, _read)
         state.huawei_batteries_charge_discharge_power_w = convert_to_float(
             _read(
                 cfg.huawei_solar_batteries_charge_discharge_power,
