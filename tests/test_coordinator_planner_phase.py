@@ -161,7 +161,7 @@ class TestFreshPlan:
             pytest.approx(0.3),
             pytest.approx(0.3),
         ]
-        correct_margin.assert_called_once_with(40.0, 12.0)
+        correct_margin.assert_called_once_with(40.0, 12.0, now=_NOW)
 
     @pytest.mark.asyncio
     async def test_dynamic_floor_without_live_soc_skips_margin_correction(

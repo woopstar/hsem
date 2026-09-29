@@ -3545,10 +3545,48 @@ Where `safety_margin` is a self-learning multiplier that starts at **1.15**
 0.05 after 2 consecutive days where actual SoC fell below the floor, and
 steps down by 0.02 after 7 consecutive days where actual SoC stayed
 comfortably above the floor (`DynamicDischargeFloor.correct_margin()`,
-`utils/dynamic_floor.py`). The floor is never lower than the
-hardware-configured minimum SoC. When the live SoC is already below the
-floor, the planner uses the live SoC as its model origin instead (see
-_Dynamic discharge floor normalization_, issue #1094).
+`utils/dynamic_floor.py`; see _Safety-margin learning_ below). The floor is
+never lower than the hardware-configured minimum SoC. When the live SoC is
+already below the floor, the planner uses the live SoC as its model origin
+instead (see _Dynamic discharge floor normalization_, issue #1094).
+
+#### Safety-margin learning (issue #1141)
+
+The coordinator calls `correct_margin(actual_soc_pct, floor_pct, now=now)`
+on every cycle, but the margin learns **per local day**, not per call. Each
+call is judged against the floor **in force**, which is the floor computed on
+the previous call:
+
+- **Shortfall:** the SoC was at or above that floor and is now more than
+  1 SoC point below it (`_SHORTFALL_TOLERANCE_PCT`). The tolerance absorbs a
+  plan that discharges exactly to its floor, and the SoC-reading resolution.
+- **Well above:** the SoC is above that floor × 1.3.
+- **Unreachable floor:** the SoC was already below that floor. This is not
+  evidence either way, because the planner caps such a floor at the live SoC
+  (issue #1094), and failing to reach a floor says nothing about whether the
+  margin is too small. It does stop the day from counting as well above.
+
+A day is classified on the first call of a later local day:
+
+| Day evidence                        | Classification | Counters                  |
+| ----------------------------------- | -------------- | ------------------------- |
+| Any shortfall                       | below          | `below += 1`, `above = 0` |
+| Every evaluated call well above     | well above     | `above += 1`, `below = 0` |
+| Anything else (incl. no evaluation) | neutral        | both reset                |
+
+`below == 2` raises the margin by 0.05 and `above == 7` lowers it by 0.02.
+The triggering counter then resets. A gap between observed days, where the
+closing call is not on the next calendar day, also resets both counters,
+because "consecutive" means observed back to back. The margin therefore
+changes **at most once per local day**, whatever the coordinator interval.
+
+Before issue #1141 every call counted as a "day". At the default 5-minute
+interval the margin reached 1.50 about 70 minutes into any evening where the
+floor exceeded the live SoC, and it walked back down during the day.
+
+The margin and its day counters are held in memory only. A Home Assistant
+restart or config-entry reload resets the margin to 1.15 and clears the
+counters.
 
 The bridge scan (`DynamicDischargeFloor.compute_floor()`,
 `utils/dynamic_floor.py`) is bounded to a `hours_ahead` look-ahead window
