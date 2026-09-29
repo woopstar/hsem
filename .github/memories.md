@@ -297,12 +297,21 @@ value = read_normalized_float(self, entity_id, _read, canonical_unit, label=labe
 
 Both delegate to `normalize_to_unit()` after resolving `entity_id`'s
 `unit_of_measurement` via `self.hass.states.get(entity_id)`. Wired into
-(issue #946): `custom_sensors/state_collector.py` — house/solar/Huawei
-phase power meters (`UnitOfPower.WATT`) and grid import/export/PV energy
+(issue #946): `custom_sensors/state_collector.py` — house/solar power
+meters (`UnitOfPower.WATT`) and grid import/export/PV energy
 meters (`UnitOfEnergy.KILO_WATT_HOUR`); and
 `coordinator_live_power.py::_read_live_power_number()` — the fast-timer
 house/solar power samples (`UnitOfPower.WATT`), independently of the
 full-cycle `state_collector.py` read.
+
+**Phase fields are the exception (issue #1119).** The three
+`hsem_huawei_solar_power_meter_phase_*_active_power` fields may be power _or_
+current sensors, and `normalize_to_unit()` passes an unconvertible value
+through unchanged (16 A read as 16 W turned the fuse guard off). They are read
+by `custom_sensors/phase_inputs.py::read_grid_phase_power_w()`: power → W,
+current → `|I| × 230 V` (import), and a missing or unknown unit → `None`, so
+the limiter fails closed. Never route a phase field through
+`read_normalized_float()`.
 
 `utils/conversion.py::normalize_ev_power_w()` (issue #592) is intentionally
 **not** migrated onto this utility — its plausibility checks (implausibly
