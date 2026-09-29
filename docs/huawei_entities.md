@@ -41,6 +41,22 @@
 
 ---
 
+## EMMA systems (export limit only)
+
+When an EMMA is present, `wlcrs/huawei_solar` registers
+`set_maximum_feed_grid_power` / `set_maximum_feed_grid_power_percent` against the
+EMMA device only, and does **not** create the inverter's `Active power control`
+sensor. Select the EMMA as `hsem_huawei_solar_device_id_inverter_1` and leave
+`hsem_huawei_solar_inverter_active_power_control` empty: the limit is then
+written once per change and reported as `unverified` (issue #1120). Do not pick
+`Inverter active power` — that is a live power reading, not the configured
+limit. Known upstream limitation: EMMA watt limits (the negative-price block and
+a configured export cap) fail with a `P_max` read error, so those writes are
+reported as `failed`. EMMA working-mode options and TOU routing are not part of
+6.3.x (PR #1098).
+
+---
+
 ## Inverter
 
 ### sensor entities

@@ -108,6 +108,10 @@ The following integrations work alongside HSEM but are **not required**:
 
 The [Huawei Solar integration by wlcrs](https://github.com/wlcrs/huawei_solar) provides `sensor.inverter_active_power_control` and `sensor.batteries_rated_capacity` but they are disabled by default. To use these entities, go to the device settings, select the inverter or batteries device and show hidden/disabled entities. Find the `sensor.inverter_active_power_control` and `sensor.batteries_rated_capacity` and enable them.
 
+### EMMA systems
+
+If a Huawei EMMA is present, the Huawei Solar integration only accepts grid export limit writes on the EMMA device and has no active power control sensor. Select the EMMA as **Huawei Inverter 1 Device** and leave **Huawei Inverter Active Power Control Sensor** empty: HSEM then writes the export limit without read-back (issue #1120). EMMA working-mode options and TOU routing are not part of 6.3.x (see PR #1098).
+
 ---
 
 ## Installation

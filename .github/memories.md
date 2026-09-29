@@ -940,6 +940,23 @@ When adding a new sensor/entity from the inverter:
 Never hardcode entity IDs — always use `sensornames.py` constants.
 Always check `docs/huawei_entities.md` before looking elsewhere.
 
+### EMMA export-limit feedback (#1120, 6.3.x backport)
+
+- With an EMMA, upstream registers `set_maximum_feed_grid_power*` against the
+  EMMA only and never creates the inverter's active power control sensor. On
+  6.3.x EMMA users select the EMMA as inverter 1 (no controller routing here —
+  that is #1098 on the 7.x line).
+- `hsem_huawei_solar_inverter_active_power_control` is optional. A bare
+  number is a power reading, not a limit (`_is_power_measurement()`); without
+  usable feedback the limit is written via `async_write_and_verify(reader=None)`
+  — accepted → `UNVERIFIED` (battery writes proceed), every attempt errors →
+  `FAILED` (still blocks them) — and latched on the sensor so it is only
+  rewritten when the target changes.
+- **Upstream gap:** EMMA watt-limit writes (negative-price 100 W floor, the
+  configured export cap) fail upstream with `P_max` `IllegalDataValueError`,
+  because `set_maximum_feed_grid_power` validates against the inverter-only
+  `P_MAX` register. HSEM keeps failing closed on that error.
+
 ---
 
 ## Testing Rules

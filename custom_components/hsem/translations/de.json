@@ -291,7 +291,7 @@
           "hsem_huawei_solar_device_id_batteries_2": "Wähle dein sekundäres Huawei-Batteriegerät, falls zutreffend.",
           "hsem_huawei_solar_device_id_inverter_1": "Wähle dein primäres Huawei-Wechselrichtergerät.",
           "hsem_huawei_solar_device_id_inverter_2": "Wähle dein sekundäres Huawei-Wechselrichtergerät, falls zutreffend.",
-          "hsem_huawei_solar_inverter_active_power_control": "Wähle den Sensor, der die Wirkleistungsabgabe deines Huawei-Wechselrichters steuert."
+          "hsem_huawei_solar_inverter_active_power_control": "Wähle den Wirkleistungssteuerung-Sensor deines Wechselrichters (in Huawei Solar standardmäßig deaktiviert). HSEM liest ihn zurück, um das Schreiben der Einspeisegrenze zu prüfen. Lass das Feld leer, wenn eine EMMA deine Anlage steuert: Huawei Solar bietet für EMMA keinen solchen Sensor, und die Grenze wird dann ohne Prüfung geschrieben. Wähle keinen Leistungssensor wie die Wirkleistung des Wechselrichters."
         },
         "description": "Konfiguriere den Arbeitsmodus für Huawei-Solarbatterien.",
         "title": "Huawei Solar-Sensoren"
@@ -830,7 +830,7 @@
           "hsem_huawei_solar_device_id_batteries_2": "Wähle dein sekundäres Huawei-Batteriegerät, falls zutreffend.",
           "hsem_huawei_solar_device_id_inverter_1": "Wähle dein primäres Huawei-Wechselrichtergerät.",
           "hsem_huawei_solar_device_id_inverter_2": "Wähle dein sekundäres Huawei-Wechselrichtergerät, falls zutreffend.",
-          "hsem_huawei_solar_inverter_active_power_control": "Wähle den Sensor, der die Wirkleistungsabgabe deines Huawei-Wechselrichters steuert."
+          "hsem_huawei_solar_inverter_active_power_control": "Wähle den Wirkleistungssteuerung-Sensor deines Wechselrichters (in Huawei Solar standardmäßig deaktiviert). HSEM liest ihn zurück, um das Schreiben der Einspeisegrenze zu prüfen. Lass das Feld leer, wenn eine EMMA deine Anlage steuert: Huawei Solar bietet für EMMA keinen solchen Sensor, und die Grenze wird dann ohne Prüfung geschrieben. Wähle keinen Leistungssensor wie die Wirkleistung des Wechselrichters."
         },
         "description": "Konfiguriere den Arbeitsmodus für Huawei-Solarbatterien.",
         "title": "Huawei Solar-Sensoren"

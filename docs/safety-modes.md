@@ -96,14 +96,19 @@ with a read-back verification loop:
 8. If all retries exhausted → return ApplyResult.FAILED
 ```
 
+When no entity can report the written value back (`reader=None` — the grid
+export limit on an EMMA system, issue #1120), steps 5–7 are skipped: only a
+write error is retried, an accepted write is `UNVERIFIED`, and a write that
+errors on every attempt is `FAILED`.
+
 ### Apply status values
 
-| Status       | Meaning                                                   |
-| ------------ | --------------------------------------------------------- |
-| `ok`         | Read-back value matched desired value within tolerance    |
-| `unverified` | Write accepted but read-back timed out or returned `None` |
-| `failed`     | All retries exhausted — inverter did not accept the value |
-| `skipped`    | Current value already matched — no write performed        |
+| Status       | Meaning                                                                                |
+| ------------ | -------------------------------------------------------------------------------------- |
+| `ok`         | Read-back value matched desired value within tolerance                                 |
+| `unverified` | Write accepted but read-back timed out, returned `None`, or no read-back entity exists |
+| `failed`     | All retries exhausted — inverter did not accept the value                              |
+| `skipped`    | Current value already matched — no write performed                                     |
 
 ### Verified writes
 
@@ -112,7 +117,12 @@ The applier verifies these hardware writes:
 1. **Battery working mode** — `select.batteries_working_mode` set to the
    appropriate TOU mode for the current recommendation
 2. **Grid export power** — `set_maximum_feed_grid_power_percent` adjusted
-   to zero when export should be blocked, or restored to 100 % when allowed
+   to zero when export should be blocked, or restored to 100 % when allowed.
+   Verified against `hsem_huawei_solar_inverter_active_power_control`; when
+   that entity is empty or reports a bare power reading (EMMA systems, issue
+   #1120) the limit is written without read-back, once per change, and an
+   accepted write is `unverified` — which, unlike `failed`, does not block
+   the battery writes that follow
 3. **TOU periods** — `set_tou_periods` applied according to the current
    battery schedule
 

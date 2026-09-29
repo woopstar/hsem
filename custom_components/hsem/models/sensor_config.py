@@ -92,7 +92,9 @@ class SensorConfig:
         huawei_solar_power_meter_phase_c_active_power: Entity ID for phase C live power.
         huawei_solar_batteries_tou_charging_and_discharging_periods: Entity ID for TOU periods.
         huawei_solar_batteries_excess_pv_energy_use_in_tou: Entity ID for excess PV use select.
-        huawei_solar_inverter_active_power_control: Entity ID for export power control.
+        huawei_solar_inverter_active_power_control: Optional entity ID of the
+            active power control sensor that verifies export limit writes
+            (none on EMMA systems, issue #1120).
         huawei_solar_batteries_rated_capacity: Entity ID for rated battery capacity sensor.
 
         house_consumption_power: Entity ID for house power meter.

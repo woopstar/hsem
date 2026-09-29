@@ -248,7 +248,7 @@
           "hsem_huawei_solar_device_id_batteries_2": "Vælg din sekundære Huawei-batterienhed, hvis relevant.",
           "hsem_huawei_solar_device_id_inverter_1": "Vælg din primære Huawei-vekselretterenhed.",
           "hsem_huawei_solar_device_id_inverter_2": "Vælg din sekundære Huawei-vekselretterenhed, hvis relevant.",
-          "hsem_huawei_solar_inverter_active_power_control": "Vælg den sensor, der styrer aktiv effektudgang for din Huawei-vekselretter.",
+          "hsem_huawei_solar_inverter_active_power_control": "Vælg vekselretterens sensor for aktiv effektkontrol (deaktiveret som standard i Huawei Solar). HSEM læser den tilbage for at verificere skrivninger af netteksportgrænsen. Lad feltet være tomt, hvis en EMMA styrer dit anlæg: Huawei Solar har ingen sådan sensor for EMMA, og grænsen skrives så uden verificering. Vælg ikke en effektsensor som vekselretterens aktive effekt.",
           "hsem_huawei_solar_batteries_forcible_charge": "Vælg sensoren der angiver om tvungen opladning er aktiv.",
           "hsem_huawei_solar_batteries_charge_discharge_power": "Vælg sensoren, der rapporterer den fortegnsbestemte øjeblikkelige batteri op-/afladningseffekt (positiv = opladning, negativ = afladning). Kræves af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at fjerne Huaweis eget bidrag fra det live faseøjebliksbillede, før rådighedsmargenen beregnes. Valgfrit — kræves kun når fasebevidst opladning er aktiveret.",
           "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Vælg tal-enheden, der sætter Huaweis maksimale loft for netopladningseffekt (W). Skrives af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at holde netfinansieret opladning under hovedsikringens per-fase-grænse. Valgfrit — kræves kun når fasebevidst opladning er aktiveret."
@@ -788,7 +788,7 @@
           "hsem_huawei_solar_device_id_batteries_2": "Vælg din sekundære Huawei-batterienhed, hvis relevant.",
           "hsem_huawei_solar_device_id_inverter_1": "Vælg din primære Huawei-vekselretterenhed.",
           "hsem_huawei_solar_device_id_inverter_2": "Vælg din sekundære Huawei-vekselretterenhed, hvis relevant.",
-          "hsem_huawei_solar_inverter_active_power_control": "Vælg den sensor, der styrer aktiv effektudgang for din Huawei-vekselretter.",
+          "hsem_huawei_solar_inverter_active_power_control": "Vælg vekselretterens sensor for aktiv effektkontrol (deaktiveret som standard i Huawei Solar). HSEM læser den tilbage for at verificere skrivninger af netteksportgrænsen. Lad feltet være tomt, hvis en EMMA styrer dit anlæg: Huawei Solar har ingen sådan sensor for EMMA, og grænsen skrives så uden verificering. Vælg ikke en effektsensor som vekselretterens aktive effekt.",
           "hsem_huawei_solar_batteries_charge_discharge_power": "Vælg sensoren, der rapporterer den fortegnsbestemte øjeblikkelige batteri op-/afladningseffekt (positiv = opladning, negativ = afladning). Kræves af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at fjerne Huaweis eget bidrag fra det live faseøjebliksbillede, før rådighedsmargenen beregnes. Valgfrit — kræves kun når fasebevidst opladning er aktiveret.",
           "hsem_huawei_solar_batteries_grid_charge_maximum_power": "Vælg tal-enheden, der sætter Huaweis maksimale loft for netopladningseffekt (W). Skrives af den live fasebevidste opladningssikkerhedsbegrænser (issue #831) for at holde netfinansieret opladning under hovedsikringens per-fase-grænse. Valgfrit — kræves kun når fasebevidst opladning er aktiveret."
         },
