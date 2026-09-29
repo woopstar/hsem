@@ -2290,3 +2290,13 @@ Tests: `tests/test_discharge_mode_cap_oscillation.py` (16 tests: `_primary_batte
 **Registry entries of a disabled feature are left as unavailable** (not removed like the #979 orphan clean-up), so users keep entity customisations if they re-enable. Revisit only if users ask for them to disappear.
 
 Tests: `tests/test_init_options_reload.py` (each flag on→off and off→on schedules a reload with no in-place refresh; entity-driven writes and unrelated options refresh in place; explicit default is not a change; no double reload; setup snapshot reads options→data→defaults).
+
+## Dynamic Floor Safety Margin Learns Per Day, Against the Floor In Force (issue #1141)
+
+**Bug:** `DynamicDischargeFloor.correct_margin()` is called on every coordinator cycle (`coordinator_planner_phase.py`), but it counted each call as a "day" (`_DAYS_BELOW_FLOOR_TRIGGER = 2`). It also compared the live SoC with the raw, uncapped floor. On any evening where the floor exceeded the live SoC (#1125 / #1140), the margin climbed from 1.15 to 1.50 in 14 calls (~70 min) and then walked back down during the day.
+
+**Rule:** `correct_margin(soc, floor, now=now)` files evidence under `now.date()` and classifies a day only on the first call of a later day. Each call is judged against the **previous call's floor**, which is the floor in force. A shortfall means the SoC was at/above that floor and is now more than `_SHORTFALL_TOLERANCE_PCT` (1 point) below it. A floor the battery was already below is **not** evidence, because #1094 caps it at the live SoC. A gap between observed days breaks the chain. The margin is in memory only and resets to 1.15 on restart or reload; that is documented, not persisted.
+
+**Test gotcha:** a fixture day that ends with the SoC below the floor makes the next day's first call an "unreachable" interval, so that day can't count as well above. Let fixture days recover before midnight.
+
+Tests: `tests/utils/test_dynamic_floor.py::TestMarginCorrection` (288 cycles/day move the margin once, on the day boundary; unreachable floor and a floor jumping above the SoC never ratchet; 1-point tolerance; neutral day and gap reset the chain; clamps).
