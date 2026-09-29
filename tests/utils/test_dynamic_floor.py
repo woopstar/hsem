@@ -7,7 +7,7 @@ and integration with various slot resolutions.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -113,7 +113,11 @@ class TestBridgeComputation:
         # Reserve = (1.0 + 0.8 + 0.5) - 3.0 (grid charge) = neg → 0
         # Since grid charge covers, refill is the charge slot
         assert diag["refill_type"] == "grid_charge"
-        assert diag["reserve_kwh"] == 0.0
+        # Deliberate (issue #1140, planner-spec § "Dynamic discharge floor"):
+        # a covering grid-charge refill releases the floor to the configured
+        # minimum. The MILP already prices the pre-charge bridge energy.
+        assert diag["reserve_kwh"] == pytest.approx(0.0)
+        assert floor_pct == pytest.approx(10.0)
 
     def test_configured_min_is_absolute_floor(self) -> None:
         """Dynamic floor must be at least the configured minimum."""
@@ -279,60 +283,163 @@ class TestBridgeComputation:
 # ---------------------------------------------------------------------------
 
 
-class TestMarginCorrection:
-    """Tests for DynamicDischargeFloor.correct_margin()."""
+# 5-minute coordinator cycles on a +02:00 local clock (issue #1141).
+_TZ = timezone(timedelta(hours=2))
+_DAY_ZERO = datetime(2026, 9, 1, tzinfo=_TZ)
+_CYCLE = timedelta(minutes=5)
+_CYCLES_PER_DAY = 288
 
-    def test_margin_increases_after_consecutive_below_floor(self) -> None:
-        """Margin steps up after 2 consecutive days below floor."""
+
+def _run_day(
+    df: DynamicDischargeFloor, day: int, socs: list[float], floor_pct: float
+) -> None:
+    """Feed one local day of 5-minute cycles, one SoC reading per cycle."""
+    start = _DAY_ZERO + timedelta(days=day)
+    for i, soc in enumerate(socs):
+        df.correct_margin(soc, floor_pct, now=start + i * _CYCLE)
+
+
+def _day_start(df: DynamicDischargeFloor, day: int, soc: float, floor: float) -> None:
+    """First cycle of *day* — the call that closes the previous day."""
+    df.correct_margin(soc, floor, now=_DAY_ZERO + timedelta(days=day))
+
+
+# Held at/above the 20 % floor, drained more than 1 point below it, then
+# recharged before midnight.
+_SHORTFALL_DAY = [25.0] * 96 + [15.0] * 96 + [25.0] * 96
+_WELL_ABOVE_DAY = [30.0] * _CYCLES_PER_DAY  # above 20 % × 1.3
+_NEUTRAL_DAY = [22.0] * _CYCLES_PER_DAY  # between 20 % and 26 %
+
+
+class TestMarginCorrection:
+    """Tests for DynamicDischargeFloor.correct_margin() (issues #600, #1141)."""
+
+    def test_margin_rises_once_after_two_shortfall_days(self) -> None:
+        """288 cycles a day move the margin by one step, on the day boundary."""
         df = DynamicDischargeFloor()
         original = df.safety_margin
-        floor_pct = 20.0
 
-        # Day 1: below floor
-        df.correct_margin(15.0, floor_pct)
-        assert df.safety_margin == original
+        _run_day(df, 0, _SHORTFALL_DAY, 20.0)
+        assert df.safety_margin == pytest.approx(original)
+        _run_day(df, 1, _SHORTFALL_DAY, 20.0)
+        assert df.safety_margin == pytest.approx(original)
 
-        # Day 2: below floor → trigger increase
-        df.correct_margin(15.0, floor_pct)
-        assert df.safety_margin == pytest.approx(original + 0.05, rel=1e-4)
+        _day_start(df, 2, 25.0, 20.0)
+        assert df.safety_margin == pytest.approx(original + 0.05)
         assert df._days_below_floor == 0
 
-    def test_margin_decreases_after_consecutive_above_floor(self) -> None:
-        """Margin steps down after 7 consecutive days well above floor."""
+    def test_margin_falls_once_after_seven_well_above_days(self) -> None:
+        """Seven comfortable days lower the margin by 0.02, once."""
         df = DynamicDischargeFloor()
         original = df.safety_margin
-        floor_pct = 20.0
 
-        for _ in range(7):
-            df.correct_margin(30.0, floor_pct)
-        assert df.safety_margin == pytest.approx(original - 0.02, rel=1e-4)
+        for day in range(7):
+            _run_day(df, day, _WELL_ABOVE_DAY, 20.0)
+        assert df.safety_margin == pytest.approx(original)
+
+        _day_start(df, 7, 30.0, 20.0)
+        assert df.safety_margin == pytest.approx(original - 0.02)
         assert df._days_above_floor == 0
+
+    def test_single_shortfall_day_is_not_enough(self) -> None:
+        """A shortfall day followed by a comfortable day starts a new chain."""
+        df = DynamicDischargeFloor()
+        original = df.safety_margin
+
+        _run_day(df, 0, _SHORTFALL_DAY, 20.0)
+        _run_day(df, 1, _WELL_ABOVE_DAY, 20.0)
+        _day_start(df, 2, 30.0, 20.0)
+
+        assert df.safety_margin == pytest.approx(original)
+        assert df._days_below_floor == 0
+        assert df._days_above_floor == 1
+
+    def test_neutral_day_resets_the_chain(self) -> None:
+        """A day between the floor and floor × 1.3 resets both counters."""
+        df = DynamicDischargeFloor()
+        original = df.safety_margin
+
+        _run_day(df, 0, _SHORTFALL_DAY, 20.0)
+        _run_day(df, 1, _NEUTRAL_DAY, 20.0)
+        assert df._days_below_floor == 1
+        _day_start(df, 2, 22.0, 20.0)
+        assert df._days_below_floor == 0
+        assert df._days_above_floor == 0
+
+        _run_day(df, 2, _SHORTFALL_DAY, 20.0)
+        _day_start(df, 3, 25.0, 20.0)
+        assert df.safety_margin == pytest.approx(original)
+        assert df._days_below_floor == 1
+
+    def test_unreachable_floor_is_not_a_shortfall(self) -> None:
+        """#1125 shape: a floor above the live SoC never ratchets the margin."""
+        df = DynamicDischargeFloor()
+        original = df.safety_margin
+
+        for day in range(3):
+            _run_day(df, day, [68.0] * _CYCLES_PER_DAY, 87.2)
+        _day_start(df, 3, 68.0, 87.2)
+
+        assert df.safety_margin == pytest.approx(original)
+        assert df._days_below_floor == 0
+
+    def test_floor_jumping_above_the_soc_is_not_a_shortfall(self) -> None:
+        """Only a drain below the floor in force counts, not a new higher floor."""
+        df = DynamicDischargeFloor()
+        original = df.safety_margin
+        for day in range(2):
+            start = _DAY_ZERO + timedelta(days=day)
+            for i in range(_CYCLES_PER_DAY):
+                floor = 5.0 if i % 2 == 0 else 87.2
+                df.correct_margin(68.0, floor, now=start + i * _CYCLE)
+        _day_start(df, 2, 68.0, 5.0)
+
+        assert df.safety_margin == pytest.approx(original)
+        assert df._days_below_floor == 0
+
+    @pytest.mark.parametrize(
+        ("soc_after", "shortfall"),
+        [(29.5, False), (29.0, False), (28.5, True)],
+    )
+    def test_dip_within_one_point_is_not_a_shortfall(
+        self, soc_after: float, shortfall: bool
+    ) -> None:
+        """Landing on the floor, or a reading just under it, is tolerated."""
+        df = DynamicDischargeFloor()
+        _run_day(df, 0, [30.0, soc_after], 30.0)
+        assert df._day_shortfall is shortfall
+
+    def test_first_call_has_no_floor_in_force(self) -> None:
+        """Without a previous call there is nothing to judge the SoC against."""
+        df = DynamicDischargeFloor()
+        _run_day(df, 0, [5.0], 20.0)
+        assert df._day_shortfall is False
+        assert df._day_evaluated is False
+
+    def test_gap_between_days_breaks_the_chain(self) -> None:
+        """Consecutive means observed back to back — a missing day resets."""
+        df = DynamicDischargeFloor()
+        original = df.safety_margin
+
+        _run_day(df, 0, _SHORTFALL_DAY, 20.0)
+        _run_day(df, 2, _SHORTFALL_DAY, 20.0)
+        _day_start(df, 3, 25.0, 20.0)
+
+        assert df.safety_margin == pytest.approx(original)
+        assert df._days_below_floor == 1
 
     def test_margin_never_below_min(self) -> None:
         """Safety margin clamped at min_margin."""
         df = DynamicDischargeFloor(safety_margin=1.06, min_margin=1.05)
-        floor_pct = 20.0
-        for _ in range(7):
-            df.correct_margin(30.0, floor_pct)
-        assert df.safety_margin == pytest.approx(1.05, rel=1e-4)
+        for day in range(7):
+            _run_day(df, day, _WELL_ABOVE_DAY, 20.0)
+        _day_start(df, 7, 30.0, 20.0)
+        assert df.safety_margin == pytest.approx(1.05)
 
     def test_margin_never_above_max(self) -> None:
         """Safety margin clamped at max_margin."""
         df = DynamicDischargeFloor(safety_margin=1.48, max_margin=1.50)
-        floor_pct = 20.0
-        df.correct_margin(15.0, floor_pct)
-        df.correct_margin(15.0, floor_pct)
-        assert df.safety_margin == pytest.approx(1.50, rel=1e-4)
-
-    def test_counter_resets_on_normal_soc(self) -> None:
-        """Counters reset when SoC is between floor and well-above threshold."""
-        df = DynamicDischargeFloor()
-        floor_pct = 20.0
-
-        df.correct_margin(15.0, floor_pct)
-        df.correct_margin(22.0, floor_pct)
-        assert df._days_below_floor == 0
-        assert df._days_above_floor == 0
-
-        df.correct_margin(15.0, floor_pct)
-        assert df._days_below_floor == 1
+        _run_day(df, 0, _SHORTFALL_DAY, 20.0)
+        _run_day(df, 1, _SHORTFALL_DAY, 20.0)
+        _day_start(df, 2, 25.0, 20.0)
+        assert df.safety_margin == pytest.approx(1.50)

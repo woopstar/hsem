@@ -21,6 +21,7 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `coordinator.py`                      | HA lifecycle and collect/populate/plan/publication orchestration                                                     |
 | `coordinator_data.py`                 | Atomic `CoordinatorData` snapshot exposed to entities                                                                |
+| `coordinator_dynamic_floor.py`        | Dynamic floor from a floor-free reference solve: forecast net load + its charge decisions (issue #1140)              |
 | `coordinator_helpers.py`              | Pure override, strict-hold, and load-readiness/signature helpers                                                     |
 | `coordinator_load_forecast.py`        | ML/avg consumption population, load readiness, missing/estimated-hour diagnostics (issue #1110)                      |
 | `coordinator_load_hold.py`            | Non-planner load-forecast safety hold, grid-only EV-only fallback (issue #1106), force-charge re-apply (issue #1103) |
@@ -75,7 +76,7 @@ cycle are durable; stale generations must not publish.
 | `huawei.py`             | Huawei Solar inverter API helpers                                                                  |
 | `logger.py`             | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)    |
 | `solar_corrector.py`    | Per-hour PV forecast accuracy auto-correction (issue #602)                                         |
-| `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill computation)                               |
+| `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill; grid-charge refill → reserve 0, #1140)    |
 | `soc_bounds.py`         | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094)  |
 | `capacity_learner.py`   | Battery usable capacity auto-detection from BMS readings                                           |
 | `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                    |
@@ -447,7 +448,7 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 - If a file exceeds either limit, split it before adding more features.
 - Current oversized files (as of 2026-09-18):
 
-  - `coordinator_planner_phase.py` — 32,040 bytes (over 30 KB)
+  - `coordinator_planner_phase.py` — ~31.2 KB (over 30 KB; bridge-slot build moved out in #1140)
   - `coordinator_tracking.py` — 31,036 bytes (over 30 KB)
 
   - `custom_sensors/working_mode_sensor.py` — 33,137 bytes (over 30 KB; +139 in #1114)
@@ -1080,6 +1081,15 @@ When adding a new sensor/entity from the inverter:
 
 Never hardcode entity IDs — always use `sensornames.py` constants.
 Always check `docs/huawei_entities.md` before looking elsewhere.
+
+HSEM's own entity IDs come from the `utils/sensornames/*` `get_*_entity_id()`
+helpers (every entity sets `self.entity_id` from one), and most end in
+`_sensor`. Docs and the bundled `dashboards/dashboard_en.yaml` must quote those
+exact IDs: `tests/test_entity_id_references.py` fails on any `hsem_` ID no
+helper produces. Before it existed, ~100 doc references and one dashboard tile
+had drifted (e.g. `sensor.hsem_plan_explanation` for `…_sensor`). Note one
+outlier: the plan-vs-actual sensor is `sensor.daily_plan_vs_actual`, with no
+`hsem_` prefix.
 
 ### LUNA2000 vs. EMMA working-mode options (PR #1098, related #408)
 
@@ -2132,11 +2142,11 @@ a unit renegotiation at the same wattage re-publishes the profile.
 
 **Separately, the anti-flap stop-window guard was asymmetric with the start path.** The stop branch's outer condition was `if flap_state == "charging" or flap_state == "starting":` — missing `"stopping"` itself. Once the state machine entered `"stopping"`, the block became unreachable on every later cycle, so a failed-to-send or charger-ignored `RemoteStopTransaction` was attempted exactly once and never retried, despite a comment claiming otherwise. The start path's equivalent guard correctly includes its own in-progress state (`flap_state in ("idle", "stopping", "starting")`), which is why start retries always worked. Fixed to mirror start: guard now includes `"stopping"`, and the `"stopping" → "idle"` transition is gated on `session.transaction_id is None` (ground truth via the charger's own `StopTransaction` call) rather than on `_send_remote_stop()`'s return value, with a `_remote_stop_due()` cooldown mirroring `_remote_start_due()`.
 
-**Also added:** `ChargerSession.pending_calls`/`last_call_status` — outbound `RemoteStartTransaction`/`SetChargingProfile`/`RemoteStopTransaction` CALLRESULTs were previously logged at debug level with their `status` field never read, so a charger silently rejecting a command was indistinguishable from acceptance in diagnostics. Now tracked and surfaced via `sensor.hsem_ocpp_charger_status`'s per-CPID `last_call_status` attribute; a rejected `SetChargingProfile` is retried on a cooldown without waiting for a material target change.
+**Also added:** `ChargerSession.pending_calls`/`last_call_status` — outbound `RemoteStartTransaction`/`SetChargingProfile`/`RemoteStopTransaction` CALLRESULTs were previously logged at debug level with their `status` field never read, so a charger silently rejecting a command was indistinguishable from acceptance in diagnostics. Now tracked and surfaced via `sensor.hsem_ocpp_charger_status_sensor`'s per-CPID `last_call_status` attribute; a rejected `SetChargingProfile` is retried on a cooldown without waiting for a material target change.
 
 ## OCPP Event-Driven Coordinator Refresh (issue #908)
 
-**Gap confirmed 2026-09-02/03.** `sensor.hsem_ocpp_charger_status` and the other OCPP diagnostic sensors are `CoordinatorEntity` subclasses with `should_poll = False` and no override of `_handle_coordinator_update()` — the only path that pushes their state into HA (`async_write_ha_state()`) is the coordinator calling `async_set_updated_data()` from its own cycle. The embedded OCPP server mutates the live `ChargerSession` the instant a WebSocket message arrives (`_handle_status_notification`, `_handle_start_transaction`, `_handle_stop_transaction`, connect/disconnect in `_handle_charger`), but nothing in `ocpp_server.py`/`ocpp_message_handlers.py`/`ocpp_commands.py` ever told the coordinator to refresh. The coordinator has no HA-managed poll interval (`update_interval=None`, "Bronze rule: appropriate-polling") — it runs its own `async_track_time_interval` timer at `hsem_update_interval` minutes (default 5). Net effect: a car plugging in/out or a charge starting/stopping was invisible in the frontend for up to 5 minutes despite being recorded internally instantly.
+**Gap confirmed 2026-09-02/03.** `sensor.hsem_ocpp_charger_status_sensor` and the other OCPP diagnostic sensors are `CoordinatorEntity` subclasses with `should_poll = False` and no override of `_handle_coordinator_update()` — the only path that pushes their state into HA (`async_write_ha_state()`) is the coordinator calling `async_set_updated_data()` from its own cycle. The embedded OCPP server mutates the live `ChargerSession` the instant a WebSocket message arrives (`_handle_status_notification`, `_handle_start_transaction`, `_handle_stop_transaction`, connect/disconnect in `_handle_charger`), but nothing in `ocpp_server.py`/`ocpp_message_handlers.py`/`ocpp_commands.py` ever told the coordinator to refresh. The coordinator has no HA-managed poll interval (`update_interval=None`, "Bronze rule: appropriate-polling") — it runs its own `async_track_time_interval` timer at `hsem_update_interval` minutes (default 5). Net effect: a car plugging in/out or a charge starting/stopping was invisible in the frontend for up to 5 minutes despite being recorded internally instantly.
 
 **Fix:** mirrors the existing `async_options_updated()`/`_async_options_update_debounced()`/`_async_options_update_background()` debounce trio in `coordinator_lifecycle.py` (cancel-and-reschedule `asyncio.Task`, not HA's `Debouncer` helper — not used elsewhere in this codebase) — a new `async_ocpp_event()` trio with its own `OCPP_EVENT_DEBOUNCE_SECONDS` (2.0s, `coordinator_helpers.py`). `OCPPServer.__init__()` takes an optional `on_significant_event` async callback, wired to `coordinator.async_ocpp_event` for both the primary and second server in `async_setup()`. `OCPPServer._notify_significant_event()` awaits it directly from the WebSocket message loop (cheap — the callback only does task bookkeeping, doesn't block on the actual refresh) — called from connect/disconnect in `_handle_charger()`, and from `_handle_status_notification` (only on an actual status _change_, not a repeat), `_handle_start_transaction`, and `_handle_stop_transaction`. Deliberately **not** called from `MeterValues`/`Heartbeat`/`Authorize` — those arrive far more often and carry no transition information worth an out-of-band planner cycle. A burst of related messages around one connect/start (BootNotification + StatusNotification + StartTransaction, typically within ~1s of each other) coalesces into one refresh via the debounce window, not one per message.
 
@@ -2189,7 +2199,7 @@ Tests: `tests/test_grid_charge_emergency_stop.py` (26 tests: disarmed-telemetry 
 
 **Reverses the deliberate #843 non-wiring, for diagnostics only.** `OCPPCommandsMixin.send_set_charging_profile()`/`send_remote_stop()` (`ocpp_commands.py`) existed as public anti-flap-bypassing methods since #843/#892 but were intentionally never wired to an HA service. With reports that OCPP still won't reliably start/stop a charger, #920 adds two services — `hsem.ocpp_debug_start_charging` and `hsem.ocpp_debug_stop_charging` (`services.py`) — that bypass the anti-flap state machine entirely to isolate a charger/protocol problem from a planner-timing problem. A new `OCPPCommandsMixin.send_remote_start(cpid)` public method was added (there was previously no bare, non-anti-flap-gated `RemoteStartTransaction` sender — only the internal `_send_remote_start()`). Both services resolve `coordinator._ocpp_server`/`_ocpp_second_server` via a `charger: "primary"/"second"` field, look up the sole entry in `OCPPServer.active_chargers`, and raise `ServiceValidationError` if OCPP isn't enabled or nothing is connected. These are explicitly not a substitute for normal operation — the planner's own anti-flap-gated target still applies next cycle and can immediately countermand a manual command.
 
-**Wire-level visibility gap closed.** Neither `OCPPServer._handle_message()` (inbound) nor `OCPPCommandsMixin._send_call()` (outbound, the single chokepoint for every outbound CALL) logged the raw action+payload — only some individual handlers logged a short summary. Both now log at DEBUG from their single chokepoint, so enabling DEBUG logging for `custom_components.hsem.custom_sensors.ocpp_server`/`ocpp_commands` shows the exact wire conversation. `ChargerSession.pending_calls` (tracked since #906 but never surfaced) is now also exposed per-CPID on `sensor.hsem_ocpp_charger_status`, next to the existing `last_call_status`.
+**Wire-level visibility gap closed.** Neither `OCPPServer._handle_message()` (inbound) nor `OCPPCommandsMixin._send_call()` (outbound, the single chokepoint for every outbound CALL) logged the raw action+payload — only some individual handlers logged a short summary. Both now log at DEBUG from their single chokepoint, so enabling DEBUG logging for `custom_components.hsem.custom_sensors.ocpp_server`/`ocpp_commands` shows the exact wire conversation. `ChargerSession.pending_calls` (tracked since #906 but never surfaced) is now also exposed per-CPID on `sensor.hsem_ocpp_charger_status_sensor`, next to the existing `last_call_status`.
 
 **Test gotcha: `caplog.at_level(logging.DEBUG)` with no `logger=` argument does not work for these loggers.** `HSEM_LOGGER` (`utils/logger.py`) calls `logging.getLogger("custom_components.hsem").setLevel(logging.WARNING)` at import time — an ancestor of `custom_components.hsem.custom_sensors.ocpp_server`/`ocpp_commands` with an explicit (non-`NOTSET`) level. Python's effective-level walk stops at the nearest ancestor with an explicit level, so raising only the _root_ logger's level (what bare `caplog.at_level(logging.DEBUG)` does) never reaches these modules — the ancestor's `WARNING` wins regardless of root. Tests must pass `logger="custom_components.hsem.custom_sensors.ocpp_server"` (or `ocpp_commands`) explicitly to `caplog.at_level()`/`caplog.set_level()` to actually capture DEBUG records from them.
 
@@ -2354,3 +2364,13 @@ Tests: `tests/test_discharge_mode_cap_oscillation.py` (16 tests: `_primary_batte
 **Registry entries of a disabled feature are left as unavailable** (not removed like the #979 orphan clean-up), so users keep entity customisations if they re-enable. Revisit only if users ask for them to disappear.
 
 Tests: `tests/test_init_options_reload.py` (each flag on→off and off→on schedules a reload with no in-place refresh; entity-driven writes and unrelated options refresh in place; explicit default is not a change; no double reload; setup snapshot reads options→data→defaults).
+
+## Dynamic Floor Safety Margin Learns Per Day, Against the Floor In Force (issue #1141)
+
+**Bug:** `DynamicDischargeFloor.correct_margin()` is called on every coordinator cycle (`coordinator_planner_phase.py`), but it counted each call as a "day" (`_DAYS_BELOW_FLOOR_TRIGGER = 2`). It also compared the live SoC with the raw, uncapped floor. On any evening where the floor exceeded the live SoC (#1125 / #1140), the margin climbed from 1.15 to 1.50 in 14 calls (~70 min) and then walked back down during the day.
+
+**Rule:** `correct_margin(soc, floor, now=now)` files evidence under `now.date()` and classifies a day only on the first call of a later day. Each call is judged against the **previous call's floor**, which is the floor in force. A shortfall means the SoC was at/above that floor and is now more than `_SHORTFALL_TOLERANCE_PCT` (1 point) below it. A floor the battery was already below is **not** evidence, because #1094 caps it at the live SoC. A gap between observed days breaks the chain. The margin is in memory only and resets to 1.15 on restart or reload; that is documented, not persisted.
+
+**Test gotcha:** a fixture day that ends with the SoC below the floor makes the next day's first call an "unreachable" interval, so that day can't count as well above. Let fixture days recover before midnight.
+
+Tests: `tests/utils/test_dynamic_floor.py::TestMarginCorrection` (288 cycles/day move the margin once, on the day boundary; unreachable floor and a floor jumping above the SoC never ratchet; 1-point tolerance; neutral day and gap reset the chain; clamps).

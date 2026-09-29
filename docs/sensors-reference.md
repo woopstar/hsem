@@ -36,9 +36,9 @@ sensor's `_unrecorded_attributes` and never reach the recorder:
 | `sensor.hsem_ev_*charger_current_limit`        | `schedule`                                                                  |
 | `sensor.hsem_solar_confidence_sensor`          | `hour_factors`, `processed_through`, `_solar_corrector_data`                |
 | `sensor.hsem_forecast_accuracy_sensor`         | `_forecast_tracker_data`                                                    |
-| `sensor.hsem_prediction_accuracy`              | `action_mix`                                                                |
-| `sensor.hsem_savings_tracker`                  | `daily`                                                                     |
-| `sensor.hsem_daily_plan_vs_actual`             | `today`, `yesterday`, `history`                                             |
+| `sensor.hsem_prediction_accuracy_sensor`       | `action_mix`                                                                |
+| `sensor.hsem_savings_tracker_sensor`           | `daily`                                                                     |
+| `sensor.daily_plan_vs_actual`                  | `today`, `yesterday`, `history`                                             |
 | Export income / import cost / net grid balance | `today`, `last_7_days`, `last_30_days`, `this_month`, `this_year`, `daily`  |
 | `sensor.hsem_applier_status_sensor`            | `last_apply_details`, `failed_entities`, `unverified_entities`              |
 | `sensor.hsem_ocpp_*charger_status`             | all attributes                                                              |
@@ -102,7 +102,7 @@ reference the old single `device_id`.
 The primary HSEM sensor. Exposes the active battery recommendation and carries
 all planner output as attributes.
 
-**Entity:** `sensor.hsem_working_mode`
+**Entity:** `sensor.hsem_workingmode_sensor`
 
 | State                             | Meaning                                                                                                  |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -272,7 +272,7 @@ attributes are exposed. These reference the raw HA entity IDs for troubleshootin
 
 Displays the planner's strategy rationale and per-candidate cost breakdown.
 
-**Entity:** `sensor.hsem_plan_explanation`
+**Entity:** `sensor.hsem_plan_explanation_sensor`
 
 | Key attribute                                 | Description                                                      |
 | --------------------------------------------- | ---------------------------------------------------------------- |
@@ -353,7 +353,7 @@ rollup is always complete; older days are pruned at midnight and on load.
 
 Tracks prediction accuracy across multiple horizons — solar, load, and battery SoC — up to 30 days.
 
-**Entity:** `sensor.hsem_prediction_accuracy`
+**Entity:** `sensor.hsem_prediction_accuracy_sensor`
 
 | State        | Meaning                                   |
 | ------------ | ----------------------------------------- |
@@ -373,7 +373,7 @@ Tracks prediction accuracy across multiple horizons — solar, load, and battery
 
 Per-hour PV forecast accuracy factors and confidence percentile.
 
-**Entity:** `sensor.hsem_solar_confidence`
+**Entity:** `sensor.hsem_solar_confidence_sensor`
 
 | Attribute        | Description                                      |
 | ---------------- | ------------------------------------------------ |
@@ -384,8 +384,8 @@ Per-hour PV forecast accuracy factors and confidence percentile.
 **Template example:**
 
 ```jinja2
-{{ states('sensor.hsem_solar_confidence') | float | round(3) }}
-Confidence: {{ state_attr('sensor.hsem_solar_confidence', 'confidence_pct') }}%
+{{ states('sensor.hsem_solar_confidence_sensor') | float | round(3) }}
+Confidence: {{ state_attr('sensor.hsem_solar_confidence_sensor', 'confidence_pct') }}%
 ```
 
 ---
@@ -546,7 +546,7 @@ successful, live coordinator recommendation can publish a positive ceiling.
 
 Diagnostic sensor tracking daily cumulative plan-vs-actual energy deviations.
 
-**Entity:** `sensor.hsem_daily_plan_vs_actual`
+**Entity:** `sensor.daily_plan_vs_actual`
 
 Tracks planned kWh vs actual kWh for import, export, PV, consumption, and battery
 throughput on a per-calendar-day basis using cumulative energy meter readings.
@@ -608,12 +608,14 @@ Controls and reports the effective discharge floor SoC, which the planner uses a
 
 The sensor reports the bridge reserve itself. When the live battery SoC is below it, the planner measures its battery model from the live SoC instead, so `estimated_battery_soc_pct` in the plan starts at the inverter's reading, not at this sensor's value (issue #1094).
 
+The refill scan reads planned grid charges from a floor-free reference solve in the same replan (issue #1140). When that plan grid-charges enough to cover the load until the charge, the `refill_type` attribute is `grid_charge`, `reserve_kwh` is `0`, and the floor equals the configured minimum SoC. Otherwise the floor bridges to the next solar surplus (`refill_type: solar_surplus`). Between replans the sensor keeps the floor the current plan was solved with.
+
 **Entities:**
 
-- `sensor.hsem_effective_discharge_floor` — Current effective floor SoC (%)
+- `sensor.hsem_effective_discharge_floor_sensor` — Current effective floor SoC (%)
 - `switch.hsem_dynamic_discharge_floor` — Enable/disable the dynamic floor feature
 
-### `sensor.hsem_effective_discharge_floor`
+### `sensor.hsem_effective_discharge_floor_sensor`
 
 | Property  | Value                                            |
 | --------- | ------------------------------------------------ |
@@ -632,7 +634,7 @@ The sensor reports the bridge reserve itself. When the live battery SoC is below
 
 ```jinja2
 {% if is_state('switch.hsem_dynamic_discharge_floor', 'on') %}
-  Dynamic floor: {{ states('sensor.hsem_effective_discharge_floor') }}%
+  Dynamic floor: {{ states('sensor.hsem_effective_discharge_floor_sensor') }}%
 {% endif %}
 ```
 
@@ -655,7 +657,7 @@ Sensors providing live status and diagnostics for an OCPP-compliant EV charger c
 | `hsem_ocpp_second_port`    | TCP port for the second EV's OCPP WebSocket connections         |
 | `hsem_ocpp_second_cpid`    | Second EV charger's OCPP charge point identifier                |
 
-### `sensor.hsem_ocpp_charger_status`
+### `sensor.hsem_ocpp_charger_status_sensor`
 
 | Property       | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -663,7 +665,7 @@ Sensors providing live status and diagnostics for an OCPP-compliant EV charger c
 | **State**      | `not_configured` (this EV's OCPP server isn't enabled), `disconnected` (enabled, no charger connected), or the live connection/charging state (`Available`, `Preparing`, `Charging`, `Finishing`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | **Attributes** | `listening` (bool — server socket bound), `port`, `requested_current_a` (whole amps in the last `SetChargingProfile` sent to the charger, `None` until the first profile has been sent — issue #886), `anti_flap_state` (`"idle"`/`"starting"`/`"charging"`/`"stopping"` — HSEM's own anti-flap state machine, issue #892), `stalled` (bool — `True` when the active session has been stuck reporting `"SuspendedEVSE"`/`"Faulted"`/`"Unavailable"` for over 5 minutes despite an open transaction; `"SuspendedEV"`, an EV-decided pause, is never flagged — issue #894), `url` (best-effort `ws://<host>:<port>/<cpid>` for the EVSE's OCPP config, including the configured charge-point ID, when HA can resolve a reachable host) — present only when this EV's OCPP server is enabled; plus one entry per connected charger CPID with `status`, `power_w`, `transaction_id`, `connected_at`, `status_changed_at` (issue #894) |
 
-### `sensor.hsem_ocpp_charger_power`
+### `sensor.hsem_ocpp_charger_power_sensor`
 
 | Property         | Value                    |
 | ---------------- | ------------------------ |
@@ -678,7 +680,7 @@ Reports `0` whenever the connector's status is anything other than
 transitioned to `SuspendedEVSE` could still display several kW with no
 fresh meter data to explain why.
 
-### `sensor.hsem_ocpp_charger_info`
+### `sensor.hsem_ocpp_charger_info_sensor`
 
 | Property       | Value                                                  |
 | -------------- | ------------------------------------------------------ |
@@ -686,7 +688,7 @@ fresh meter data to explain why.
 | **State**      | Charger summary string                                 |
 | **Attributes** | `vendor`, `model`, `firmware_version`, `serial_number` |
 
-### `sensor.hsem_ocpp_charger_sessions`
+### `sensor.hsem_ocpp_charger_sessions_sensor`
 
 | Property       | Value                                                                      |
 | -------------- | -------------------------------------------------------------------------- |
@@ -710,8 +712,8 @@ OCPP server.
 **Template example:**
 
 ```jinja2
-{{ states('sensor.hsem_ocpp_charger_status') }}
-{{ states('sensor.hsem_ocpp_charger_power') | float | round(2) }} kW
+{{ states('sensor.hsem_ocpp_charger_status_sensor') }}
+{{ states('sensor.hsem_ocpp_charger_power_sensor') | float | round(2) }} kW
 ```
 
 ---
@@ -724,7 +726,7 @@ difference when battery energy is charged below the mean positive import price
 for the current cycle's calendar day. Missing, non-finite, and non-positive
 planner prices are excluded from that daily mean.
 
-**Entity:** `sensor.hsem_savings_tracker`
+**Entity:** `sensor.hsem_savings_tracker_sensor`
 
 | Property       | Value                                                                            |
 | -------------- | -------------------------------------------------------------------------------- |
@@ -735,8 +737,8 @@ planner prices are excluded from that daily mean.
 **Template example:**
 
 ```jinja2
-Actual: {{ state_attr('sensor.hsem_savings_tracker', 'actual_savings') }}
-Missed: {{ state_attr('sensor.hsem_savings_tracker', 'missed_savings') }}
+Actual: {{ state_attr('sensor.hsem_savings_tracker_sensor', 'actual_savings') }}
+Missed: {{ state_attr('sensor.hsem_savings_tracker_sensor', 'missed_savings') }}
 ```
 
 ---
@@ -769,7 +771,7 @@ Detects when the inverter is actively curtailing PV production.
 | ------------------------------------------------ | ------------------------------- | ----------------------------------------------- | --------------------------------------- |
 | `sensor.hsem_applier_status_sensor`              | Inverter Apply Status           | Hardware write success/failure                  | `ok`, `unverified`, `failed`, `skipped` |
 | `sensor.hsem_battery_soc_sensor`                 | Battery State of Charge         | Battery SoC snapshot                            | Percentage (0–100)                      |
-| `sensor.hsem_daily_plan_vs_actual`               | Daily Plan vs Actual            | Daily energy plan-vs-actual tracking            | Dict with cumulative metrics            |
+| `sensor.daily_plan_vs_actual`                    | Daily Plan vs Actual            | Daily energy plan-vs-actual tracking            | Dict with cumulative metrics            |
 | `sensor.hsem_degraded_mode_sensor`               | System Health                   | Overall system health                           | `ok`, `degraded`, `error`               |
 | `sensor.hsem_ev_charger_calculated_power`        | EV Charger Calculated Power     | Planner target power for primary EV charger     | Watts (W)                               |
 | `sensor.hsem_ev_second_charger_calculated_power` | EV 2 Charger Calculated Power   | Planner target power for second EV charger      | Watts (W)                               |
@@ -787,20 +789,20 @@ Detects when the inverter is actively curtailing PV production.
 | `sensor.hsem_next_update_sensor`                 | Next Update                     | Next scheduled coordinator cycle                | ISO-8601 timestamp                      |
 | `sensor.hsem_missing_entities_sensor`            | Missing Input Entities          | Count of missing input entities                 | Integer                                 |
 | `sensor.hsem_plan_explanation_sensor`            | Plan Explanation                | Planner strategy and cost breakdown             | Winning candidate name                  |
-| `sensor.hsem_prediction_accuracy`                | Prediction Accuracy             | Multi-horizon forecast accuracy                 | `soc_mae_7d`                            |
+| `sensor.hsem_prediction_accuracy_sensor`         | Prediction Accuracy             | Multi-horizon forecast accuracy                 | `soc_mae_7d`                            |
 | `sensor.hsem_forecast_accuracy_sensor`           | Forecast Accuracy               | PV and load forecast MAE                        | kWh                                     |
 | `sensor.hsem_recommendation_interval_sensor`     | Recommendation Interval         | Slot width and horizon info                     | Minutes                                 |
 | `sensor.hsem_update_interval_sensor`             | Update Interval                 | Current polling interval                        | Minutes                                 |
-| `sensor.hsem_working_mode`                       | Working Mode                    | Active battery recommendation                   | Working mode state                      |
+| `sensor.hsem_workingmode_sensor`                 | Working Mode                    | Active battery recommendation                   | Working mode state                      |
 | `sensor.hsem_export_income`                      | Export Income                   | Cumulative export revenue                       | Monetary (total)                        |
 | `sensor.hsem_import_cost`                        | Import Cost                     | Cumulative import cost                          | Monetary (total)                        |
 | `sensor.hsem_net_grid_balance`                   | Net Grid Balance                | Export income minus import cost                 | Monetary (total)                        |
-| `sensor.hsem_effective_discharge_floor`          | Effective Discharge Floor       | Current effective floor SoC                     | Percentage                              |
-| `sensor.hsem_ocpp_charger_status`                | OCPP Charger Status             | Charger connection/charging state               | String                                  |
-| `sensor.hsem_ocpp_charger_power`                 | OCPP Charger Power              | Live charging power                             | kW                                      |
-| `sensor.hsem_ocpp_charger_info`                  | OCPP Charger Info               | Vendor, model, firmware, serial                 | String                                  |
-| `sensor.hsem_ocpp_charger_sessions`              | OCPP Charger Sessions           | Completed session log                           | Integer                                 |
-| `sensor.hsem_savings_tracker`                    | Savings Tracker                 | Actual vs missed savings (90-day)               | Monetary                                |
+| `sensor.hsem_effective_discharge_floor_sensor`   | Effective Discharge Floor       | Current effective floor SoC                     | Percentage                              |
+| `sensor.hsem_ocpp_charger_status_sensor`         | OCPP Charger Status             | Charger connection/charging state               | String                                  |
+| `sensor.hsem_ocpp_charger_power_sensor`          | OCPP Charger Power              | Live charging power                             | kW                                      |
+| `sensor.hsem_ocpp_charger_info_sensor`           | OCPP Charger Info               | Vendor, model, firmware, serial                 | String                                  |
+| `sensor.hsem_ocpp_charger_sessions_sensor`       | OCPP Charger Sessions           | Completed session log                           | Integer                                 |
+| `sensor.hsem_savings_tracker_sensor`             | Savings Tracker                 | Actual vs missed savings (90-day)               | Monetary                                |
 | `sensor.hsem_pv_curtailment_sensor`              | PV Curtailment                  | PV curtailment detection                        | `curtailed` / `normal`                  |
 
 ---
@@ -839,20 +841,20 @@ EV switches are only created when the corresponding EV's planned load
 primary EV, `hsem_ev_second_planned_load_enabled` for the second EV
 (issue #859). All other switches are always created.
 
-| Entity                                    | Purpose                                        |
-| ----------------------------------------- | ---------------------------------------------- |
-| `switch.hsem_read_only`                   | Block all hardware writes                      |
-| `switch.hsem_extended_attributes`         | Enable extended diagnostic attributes          |
-| `switch.hsem_verbose_logging`             | Enable verbose logging                         |
-| `switch.hsem_ev_force_discharge`          | Force EV maximum discharge power               |
-| `switch.hsem_ev_smart_charging`           | Enable smart EV charging scheduling            |
-| `switch.hsem_ev_force_charge_now`         | Force immediate EV charging                    |
-| `switch.hsem_ev_second_smart_charging`    | Enable smart charging for second EV            |
-| `switch.hsem_ev_second_force_charge_now`  | Force immediate second EV charging             |
-| `switch.hsem_ml_consumption`              | Enable ML-based consumption prediction         |
-| `switch.hsem_ml_sequential`               | Enable sequential (intra-day momentum) ML mode |
-| `switch.hsem_dynamic_discharge_floor`     | Enable dynamic discharge floor                 |
-| `switch.hsem_ev_auto_full_negative_price` | Auto-Full EV on negative price                 |
+| Entity                                             | Purpose                                        |
+| -------------------------------------------------- | ---------------------------------------------- |
+| `switch.hsem_read_only`                            | Block all hardware writes                      |
+| `switch.hsem_extended_attributes`                  | Enable extended diagnostic attributes          |
+| `switch.hsem_verbose_logging`                      | Enable verbose logging                         |
+| `switch.hsem_ev_charger_force_max_discharge_power` | Force EV maximum discharge power               |
+| `switch.hsem_ev_smart_charging`                    | Enable smart EV charging scheduling            |
+| `switch.hsem_ev_force_charge_now`                  | Force immediate EV charging                    |
+| `switch.hsem_ev_second_smart_charging`             | Enable smart charging for second EV            |
+| `switch.hsem_ev_second_force_charge_now`           | Force immediate second EV charging             |
+| `switch.hsem_ml_consumption_enabled`               | Enable ML-based consumption prediction         |
+| `switch.hsem_ml_consumption_sequential`            | Enable sequential (intra-day momentum) ML mode |
+| `switch.hsem_dynamic_discharge_floor`              | Enable dynamic discharge floor                 |
+| `switch.hsem_ev_auto_full_negative_price`          | Auto-Full EV on negative price                 |
 
 ---
 
@@ -874,14 +876,14 @@ efficiency numbers are always created.
 
 ## Time entities
 
-`time.hsem_ev_deadline` is only created when `hsem_ev_planned_load_enabled`
-is set; `time.hsem_ev_second_deadline` only when
+`time.hsem_ev_deadline_time` is only created when `hsem_ev_planned_load_enabled`
+is set; `time.hsem_ev_second_deadline_time` only when
 `hsem_ev_second_planned_load_enabled` is set (issue #859).
 
-| Entity                         | Purpose                    |
-| ------------------------------ | -------------------------- |
-| `time.hsem_ev_deadline`        | Primary EV charge deadline |
-| `time.hsem_ev_second_deadline` | Second EV charge deadline  |
+| Entity                              | Purpose                    |
+| ----------------------------------- | -------------------------- |
+| `time.hsem_ev_deadline_time`        | Primary EV charge deadline |
+| `time.hsem_ev_second_deadline_time` | Second EV charge deadline  |
 
 ---
 

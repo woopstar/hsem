@@ -12,12 +12,12 @@ symptoms below in order — the first sections cover foundational issues
 Before diving into individual symptoms, check these four sensors in the
 Home Assistant **Developer Tools → States** tab. They answer 90 % of questions.
 
-| Sensor                        | Look for                                                                                                     |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `sensor.hsem_degraded_mode`   | Must be `ok`. `error` means no hardware writes. `degraded` means some data is missing but writes still work. |
-| `sensor.hsem_hardware_writes` | Must be `allowed`. `blocked` means the system cannot send commands to the inverter.                          |
-| `sensor.hsem_read_only`       | Must be `off`. `on` means you intentionally disabled writes.                                                 |
-| `sensor.hsem_applier_status`  | Must be `ok` or `skipped`. `failed` means the last hardware write did not take effect.                       |
+| Sensor                               | Look for                                                                                                     |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `sensor.hsem_degraded_mode_sensor`   | Must be `ok`. `error` means no hardware writes. `degraded` means some data is missing but writes still work. |
+| `sensor.hsem_hardware_writes_sensor` | Must be `allowed`. `blocked` means the system cannot send commands to the inverter.                          |
+| `sensor.hsem_read_only_sensor`       | Must be `off`. `on` means you intentionally disabled writes.                                                 |
+| `sensor.hsem_applier_status_sensor`  | Must be `ok` or `skipped`. `failed` means the last hardware write did not take effect.                       |
 
 If any of these show a non-ideal value, start with the matching section below.
 
@@ -27,10 +27,10 @@ If any of these show a non-ideal value, start with the matching section below.
 
 ### Symptoms
 
-- `sensor.hsem_degraded_mode` shows `degraded` or `error`
-- `sensor.hsem_missing_entities` shows a number > 0
-- `sensor.hsem_working_mode` shows `missing_input_entities`
-- `sensor.hsem_plan_explanation` → `data_quality_complete` is `false`
+- `sensor.hsem_degraded_mode_sensor` shows `degraded` or `error`
+- `sensor.hsem_missing_entities_sensor` shows a number > 0
+- `sensor.hsem_workingmode_sensor` shows `missing_input_entities`
+- `sensor.hsem_plan_explanation_sensor` → `data_quality_complete` is `false`
 - The `HSEM` device in HA shows unavailable entities
 
 ### Checks & likely causes
@@ -40,7 +40,7 @@ If any of these show a non-ideal value, start with the matching section below.
 The Huawei Solar integration needs one poll cycle before its entities become
 available. HSEM can read them only after that.
 
-- **Check:** Look at `sensor.hsem_degraded_mode` → `missing_entities` attribute.
+- **Check:** Look at `sensor.hsem_degraded_mode_sensor` → `missing_entities` attribute.
   Are battery/power entities listed?
 - **Fix:** Wait 2–3 minutes after HA restart for the inverter to respond. HSEM
   automatically shortens its update interval to 1 minute while entities are
@@ -63,7 +63,7 @@ HSEM reads electricity prices from the `energidataservice` integration. If it's
 missing, not configured, or its entities are unavailable, prices default to
 `0.0`.
 
-- **Check:** Look at the `data_quality` attribute on `sensor.hsem_plan_explanation`.
+- **Check:** Look at the `data_quality` attribute on `sensor.hsem_plan_explanation_sensor`.
   Are `today_price_missing_hours` or `tomorrow_price_missing_hours` high?
 - **Fix:** Verify the EDS integration is installed, configured for your
   price area, and its entities show valid data in HA Developer Tools → States.
@@ -81,7 +81,7 @@ If any of these five entities are missing, HSEM enters `error` mode and
 | `batteries_rated_capacity`            | Battery rated capacity  |
 | `house_consumption_power`             | House consumption power |
 
-- **Check:** `sensor.hsem_degraded_mode` → `missing_entities` attribute.
+- **Check:** `sensor.hsem_degraded_mode_sensor` → `missing_entities` attribute.
 - **Fix:** Correct device IDs or reinstall the Huawei Solar integration.
 
 **1e. Consumption energy sensors not ready after restart**
@@ -91,7 +91,7 @@ After a restart they may exist while their restored state is still `unknown` or
 `unavailable`. HSEM keeps that state missing; it does not turn it into a
 zero-load forecast.
 
-- **Check:** Inspect `sensor.hsem_working_mode` → `data_quality`.
+- **Check:** Inspect `sensor.hsem_workingmode_sensor` → `data_quality`.
   `load_forecast_ready` is false until the future profile is safe, and
   `load_forecast_reason` identifies the cause. A zero profile with live house
   demand above 50 W reports `zero_forecast_with_live_demand`.
@@ -139,7 +139,7 @@ consumption sample for hour block(s) …`). More missing hours hold the
 
 - The planner makes decisions that don't match your intuition about electricity
   prices
-- `sensor.hsem_plan_explanation` → `selected_strategy` doesn't match price
+- `sensor.hsem_plan_explanation_sensor` → `selected_strategy` doesn't match price
   patterns you see in EDS
 - Charge/discharge happens at unexpected times
 
@@ -192,7 +192,7 @@ If the live import price is negative, the runtime recommendation resolver
 forces `force_export` mode regardless of planner output. This is correct
 behaviour — the battery should discharge to avoid paying to import.
 
-- **Check:** `sensor.hsem_working_mode` shows `force_export` during a
+- **Check:** `sensor.hsem_workingmode_sensor` shows `force_export` during a
   slot with negative prices. This is normal — verify the spot price in EDS.
 - **Fix:** If you don't want force-export, disable it in your battery
   schedule configuration (set _Allow Forced Export_ to off).
@@ -221,7 +221,7 @@ when the market price is a small positive number (issue #925).
 ### Symptoms
 
 - The planner charges or discharges at unexpected times despite plenty of solar
-- `sensor.hsem_plan_explanation` → `data_quality` shows `tomorrow_pv_missing_hours` > 0
+- `sensor.hsem_plan_explanation_sensor` → `data_quality` shows `tomorrow_pv_missing_hours` > 0
 - `sensor.forecast_accuracy` shows `mae_pv_kwh` consistently high
 - Battery does not charge from solar when PV is available
 
@@ -259,7 +259,7 @@ You can change **Wait mode behaviour** to _Self-consumption with reserve_ if
 you want the battery to cover normal household load during wait periods while
 still protecting the planner's required reserve.
 
-- **Check:** `sensor.hsem_plan_explanation` → `forecast_mode`. Does it
+- **Check:** `sensor.hsem_plan_explanation_sensor` → `forecast_mode`. Does it
   match your expectation for the current month?
 - **Fix:** HSEM → **Configure** → **Months** step. Adjust the _Winter
   Months_ list so months are correctly classified for your climate.
@@ -288,7 +288,7 @@ reading (missing entity, negative/non-finite value) leaves the forecast
 untouched instead of being masked by whatever number happens to sit in the
 raw watt field.
 
-- **Check:** `sensor.hsem_plan_explanation` for the current slot's
+- **Check:** `sensor.hsem_plan_explanation_sensor` for the current slot's
   `avg_house_consumption_kwh` / `solcast_pv_estimate_kwh` against your house
   power / solar power sensor's live value.
 - **Behaviour:** If the house or solar power sensor is temporarily
@@ -305,11 +305,11 @@ raw watt field.
 
 ### Symptoms
 
-- `sensor.hsem_applier_status` shows `failed`
-- `sensor.hsem_degraded_mode` shows `error` (writes blocked)
-- `sensor.hsem_hardware_writes` shows `blocked`
+- `sensor.hsem_applier_status_sensor` shows `failed`
+- `sensor.hsem_degraded_mode_sensor` shows `error` (writes blocked)
+- `sensor.hsem_hardware_writes_sensor` shows `blocked`
 - Battery does not change behaviour despite planner recommendations
-- `sensor.hsem_plan_explanation` → `last_apply_status` is `failed`
+- `sensor.hsem_plan_explanation_sensor` → `last_apply_status` is `failed`
 
 ### Checks & likely causes
 
@@ -326,7 +326,7 @@ When critical entities are missing, all hardware writes are blocked. See
 a safety feature for when you want to monitor the planner without letting it
 control hardware.
 
-- **Check:** `sensor.hsem_read_only` state. Is it `on`?
+- **Check:** `sensor.hsem_read_only_sensor` state. Is it `on`?
 - **Fix:** Set `switch.hsem_read_only` to `off`.
 
 **4c. Write accepted but unverified (transient)**
@@ -334,7 +334,7 @@ control hardware.
 `unverified` status means the write was sent but the read-back timed out or
 returned `None`. The inverter may still have accepted the value.
 
-- **Check:** `sensor.hsem_applier_status` → `last_apply_details` attribute.
+- **Check:** `sensor.hsem_applier_status_sensor` → `last_apply_details` attribute.
   Look for entries with status `unverified`.
 - **Fix:** Usually self-corrects on the next cycle (HSEM retries up to 3
   times per write). If persistent, the inverter entity may be slow to
@@ -348,7 +348,7 @@ returned `None`. The inverter may still have accepted the value.
 `failed` status means all 3 retry attempts were exhausted — the inverter did
 not accept the value.
 
-- **Check:** `sensor.hsem_applier_status` → `failed_entities` attribute for
+- **Check:** `sensor.hsem_applier_status_sensor` → `failed_entities` attribute for
   the specific entity IDs that failed.
 - **Check:** Home Assistant logs for errors from the `huawei_solar`
   integration.
@@ -377,7 +377,7 @@ mode is invalid for your inverter, writes may fail.
 
 ### Symptoms
 
-- `sensor.hsem_plan_explanation` → `selected_strategy` stays the same for
+- `sensor.hsem_plan_explanation_sensor` → `selected_strategy` stays the same for
   many hours
 - The working mode sensor never changes recommendation
 - You expect the battery to switch between charge/discharge but it doesn't
@@ -390,7 +390,7 @@ The planner has hysteresis: it keeps the previous plan if the new plan's
 improvement is less than 5 %. This prevents oscillation between similar
 strategies.
 
-- **Check:** `sensor.hsem_plan_explanation` → `hysteresis_active` (is it
+- **Check:** `sensor.hsem_plan_explanation_sensor` → `hysteresis_active` (is it
   `true`?) and `hysteresis_reason`.
 - **Fix:** This is normal behaviour. If you want more responsive switching,
   reduce the hysteresis threshold in HSEM → **Configure** → **Batteries
@@ -416,7 +416,7 @@ doesn't actively charge or discharge. This is intentional, but you can enable
 you prefer the battery to cover household load using surplus capacity above the
 planner reserve.
 
-- **Check:** `sensor.hsem_plan_explanation` → `forecast_mode` is `winter`
+- **Check:** `sensor.hsem_plan_explanation_sensor` → `forecast_mode` is `winter`
   and `selected_strategy` is `winter_wait`.
 - **Fix:** If this is unexpected, check the _Winter Months_ setting in the
   Months config step. Adjust if your climate has different seasonal patterns.
@@ -438,7 +438,7 @@ warning and may produce suboptimal plans.
 ### Symptoms
 
 - Battery SoC stays low or doesn't increase
-- `sensor.hsem_working_mode` never shows `batteries_charge` recommendations
+- `sensor.hsem_workingmode_sensor` never shows `batteries_charge` recommendations
 - Battery draws no power from grid or solar despite low SoC
 
 ### Checks & likely causes
@@ -449,7 +449,7 @@ HSEM only commands charging when the planner's optimal candidate assigns a
 charge recommendation to a slot — driven by price, solar, and consumption
 forecasts, not a manual schedule.
 
-- **Check:** `sensor.hsem_plan_explanation` → `selected_strategy`. Does it
+- **Check:** `sensor.hsem_plan_explanation_sensor` → `selected_strategy`. Does it
   include "charge"? Look at the `planned_slots` attribute — are any marked
   with a charge recommendation?
 - **Fix:** Review your electricity price sensor and battery economics
@@ -473,7 +473,7 @@ the cutoff, the planner won't schedule charging.
 In winter mode, the planner does not actively charge from solar. It waits
 for prices to drop below the charge threshold.
 
-- **Check:** `sensor.hsem_plan_explanation` → `forecast_mode` is `winter`.
+- **Check:** `sensor.hsem_plan_explanation_sensor` → `forecast_mode` is `winter`.
 - **Fix:** If you want solar charging in what HSEM considers winter, adjust
   the _Winter Months_ in the Months config step.
 
@@ -502,7 +502,7 @@ is not economical.
 If house consumption is higher than available solar + low-price grid energy,
 the planner may determine there's no surplus to charge the battery.
 
-- **Check:** `sensor.hsem_net_consumption` — is it positive (house draws
+- **Check:** `sensor.hsem_net_consumption_sensor` — is it positive (house draws
   from battery/grid) during sunny hours?
 - **Fix:** This is normal if consumption is high. The planner correctly
   prioritises serving house load over charging.
@@ -522,7 +522,7 @@ the planner may determine there's no surplus to charge the battery.
 ### Symptoms
 
 - Battery SoC stays high or doesn't decrease during peak price hours
-- `sensor.hsem_working_mode` never shows `batteries_discharge` recommendations
+- `sensor.hsem_workingmode_sensor` never shows `batteries_discharge` recommendations
 - Battery does not export or serve house load when expected
 
 ### Checks & likely causes
@@ -533,7 +533,7 @@ Discharge only happens when the planner's optimal candidate determines it's
 economically worthwhile — driven by the price spread, the discharge floor,
 and battery cycle-cost economics, not a manual schedule.
 
-- **Check:** `sensor.hsem_plan_explanation` → `selected_strategy`. Does it
+- **Check:** `sensor.hsem_plan_explanation_sensor` → `selected_strategy`. Does it
   include "discharge"?
 - **Fix:** Review your electricity export/import price spread and battery
   economics settings — see
@@ -790,17 +790,17 @@ If you've checked everything and HSEM still doesn't work:
 
 ## Key diagnostic entities reference
 
-| Entity                            | Type   | Purpose                                                |
-| --------------------------------- | ------ | ------------------------------------------------------ |
-| `sensor.hsem_degraded_mode`       | Sensor | `ok` / `degraded` / `error`                            |
-| `sensor.hsem_missing_entities`    | Sensor | Count of missing input entities                        |
-| `sensor.hsem_hardware_writes`     | Sensor | `allowed` / `blocked`                                  |
-| `sensor.hsem_read_only`           | Sensor | `on` / `off`                                           |
-| `sensor.hsem_applier_status`      | Sensor | `ok` / `unverified` / `failed` / `skipped` / `pending` |
-| `sensor.hsem_plan_explanation`    | Sensor | Active strategy + detailed attributes                  |
-| `sensor.hsem_working_mode`        | Sensor | Current slot recommendation                            |
-| `sensor.forecast_accuracy`        | Sensor | PV/load forecast accuracy metrics                      |
-| `switch.hsem_read_only`           | Switch | Toggle read-only mode                                  |
-| `switch.hsem_verbose_logging`     | Switch | Toggle verbose HSEM logging                            |
-| `switch.hsem_extended_attributes` | Switch | Expose additional sensor attributes                    |
-| `select.hsem_force_working_mode`  | Select | Manual working mode override                           |
+| Entity                                | Type   | Purpose                                                |
+| ------------------------------------- | ------ | ------------------------------------------------------ |
+| `sensor.hsem_degraded_mode_sensor`    | Sensor | `ok` / `degraded` / `error`                            |
+| `sensor.hsem_missing_entities_sensor` | Sensor | Count of missing input entities                        |
+| `sensor.hsem_hardware_writes_sensor`  | Sensor | `allowed` / `blocked`                                  |
+| `sensor.hsem_read_only_sensor`        | Sensor | `on` / `off`                                           |
+| `sensor.hsem_applier_status_sensor`   | Sensor | `ok` / `unverified` / `failed` / `skipped` / `pending` |
+| `sensor.hsem_plan_explanation_sensor` | Sensor | Active strategy + detailed attributes                  |
+| `sensor.hsem_workingmode_sensor`      | Sensor | Current slot recommendation                            |
+| `sensor.forecast_accuracy`            | Sensor | PV/load forecast accuracy metrics                      |
+| `switch.hsem_read_only`               | Switch | Toggle read-only mode                                  |
+| `switch.hsem_verbose_logging`         | Switch | Toggle verbose HSEM logging                            |
+| `switch.hsem_extended_attributes`     | Switch | Expose additional sensor attributes                    |
+| `select.hsem_force_working_mode`      | Select | Manual working mode override                           |

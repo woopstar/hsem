@@ -134,14 +134,26 @@ effective_floor   = max(configured_min_soc_pct,
 ```
 
 where `safety_margin` is a **self-correcting multiplier** that starts at
-1.50 and gradually decays toward 1.05 as the tracker observes successful
-refills. The floor is clamped to the hardware minimum SoC.
+1.15 and stays within 1.05–1.50. It learns once per day: two days in a row
+where the SoC fell below the floor raise it by 0.05, and seven days in a row
+where the SoC stayed well above the floor lower it by 0.02. A floor the
+battery never reached does not count (issue #1141). The margin resets to
+1.15 when Home Assistant restarts. The floor is clamped to the hardware
+minimum SoC.
 
 This prevents the planner from discharging the battery late in the
 evening when the next day's solar forecast is insufficient to refill it —
 the battery retains enough energy to cover the gap. Without this guard,
 the planner would discharge to the configured floor every night, forcing
 morning grid imports when solar is scarce.
+
+To see planned grid charges, each replan first solves once **without** the
+floor and reads that reference plan's charges (issue #1140); then it solves
+again with the resulting floor. If the reference plan grid-charges enough
+overnight to cover the evening load, the grid charge is the refill and the
+floor drops to the configured minimum. The battery can then cover evening
+load, and the cost function decides whether that beats holding it. The floor
+never reads the previous plan, so it cannot flip from one replan to the next.
 
 The floor is also the origin of the planner's battery model: planned
 capacity is measured in kWh above it, and the planned SoC is
@@ -1600,7 +1612,7 @@ The `PlanExplanation` object is exposed as a HA sensor attribute on the
 can inspect it directly:
 
 ```
-Entity: sensor.hsem_working_mode
+Entity: sensor.hsem_workingmode_sensor
 Attributes:
   explanation:
     selected_strategy: charge_grid_discharge_peak
