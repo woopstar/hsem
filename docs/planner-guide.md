@@ -133,8 +133,12 @@ effective_floor   = max(configured_min_soc_pct,
 ```
 
 where `safety_margin` is a **self-correcting multiplier** that starts at
-1.50 and gradually decays toward 1.05 as the tracker observes successful
-refills. The floor is clamped to the hardware minimum SoC.
+1.15 and stays within 1.05–1.50. It learns once per day: two days in a row
+where the SoC fell below the floor raise it by 0.05, and seven days in a row
+where the SoC stayed well above the floor lower it by 0.02. A floor the
+battery never reached does not count (issue #1141). The margin resets to
+1.15 when Home Assistant restarts. The floor is clamped to the hardware
+minimum SoC.
 
 This prevents the planner from discharging the battery late in the
 evening when the next day's solar forecast is insufficient to refill it —

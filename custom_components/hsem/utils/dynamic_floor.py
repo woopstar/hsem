@@ -6,14 +6,15 @@ Computes the reserve SoC needed to run the house until the next energy refill
 Usage
 -----
 Instantiate once per entry and call :meth:`DynamicDischargeFloor.compute_floor`
-after each planner run.  Call :meth:`DynamicDischargeFloor.correct_margin` with
-the actual SoC to let the safety margin self-correct over time.
+after each planner run.  Call :meth:`DynamicDischargeFloor.correct_margin` every
+cycle with the actual SoC; it files the evidence under the local day and lets
+the safety margin self-correct at most once per day (issue #1141).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.units import slot_duration_hours
@@ -38,6 +39,9 @@ _DAYS_BELOW_FLOOR_TRIGGER = 2
 _DAYS_ABOVE_FLOOR_TRIGGER = 7
 # Threshold multiplier: SoC is "well above" floor when it exceeds floor by 30 %.
 _WELL_ABOVE_FACTOR = 1.3
+# SoC points below the floor in force before a dip counts as a shortfall.
+# Absorbs the plan landing exactly on its floor and SoC-reading resolution.
+_SHORTFALL_TOLERANCE_PCT = 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +73,14 @@ class DynamicDischargeFloor:
     # Margin correction tracking (non-dataclass, mutable)
     _days_below_floor: int = field(default=0, init=False, repr=False)
     _days_above_floor: int = field(default=0, init=False, repr=False)
+    # Evidence for the local day being observed (issue #1141).
+    _observed_day: date | None = field(default=None, init=False, repr=False)
+    _day_evaluated: bool = field(default=False, init=False, repr=False)
+    _day_shortfall: bool = field(default=False, init=False, repr=False)
+    _day_well_above: bool = field(default=True, init=False, repr=False)
+    # SoC and floor of the previous call — that floor is the one in force.
+    _prev_soc_pct: float | None = field(default=None, init=False, repr=False)
+    _prev_floor_pct: float | None = field(default=None, init=False, repr=False)
 
     # ------------------------------------------------------------------
     # Public API
@@ -238,78 +250,129 @@ class DynamicDischargeFloor:
 
         return effective_floor_pct, diag
 
-    def correct_margin(self, actual_soc_pct: float, floor_pct: float) -> None:
-        """Self-correct the safety margin based on whether the reserve was sufficient.
+    def correct_margin(
+        self, actual_soc_pct: float, floor_pct: float, *, now: datetime
+    ) -> None:
+        """Record one cycle's SoC-vs-floor evidence and learn once per day.
 
-        Called once per coordinator cycle (or at midnight).  Compares the actual
-        SoC against the previously computed floor:
+        Called every coordinator cycle.  Each call is judged against the floor
+        *in force* since the previous call and filed under the local day of
+        *now*:
 
-        - If actual SoC < floor: increment ``_days_below_floor``.
-          After 2 consecutive days below floor, increase margin by 0.05.
-        - If actual SoC > floor × 1.3: increment ``_days_above_floor``.
-          After 7 consecutive days well above floor, decrease margin by 0.02.
+        - **Shortfall:** the battery was at or above that floor and is now more
+          than 1 SoC point below it, so the reserve did not hold.
+        - **Well above:** the SoC is above that floor × 1.3.
+        - A floor the battery was already below is no evidence either way.
+          The planner caps it at the live SoC (issue #1094), and missing a
+          floor the battery never reached says nothing about the margin.
+
+        A day is classified on the first call of a later day (issue #1141):
+        any shortfall makes it a *below* day; a day whose every evaluated call
+        was well above is an *above* day; any other day resets both counters,
+        and so does a gap between observed days.  Two consecutive below days
+        raise the margin by 0.05; seven consecutive above days lower it by
+        0.02.  The margin therefore changes at most once per day, however
+        often this is called.  It lives in memory only, so a restart resets
+        it to 1.15.
 
         Args:
             actual_soc_pct:
                 Current actual battery SoC as a percentage (0-100).
             floor_pct:
-                The dynamic floor computed earlier today.  Used as the
-                comparison baseline.
+                The floor :meth:`compute_floor` just returned, uncapped.  It
+                is the floor in force for the next call.
+            now:
+                Timezone-aware local datetime; its date files the evidence.
         """
-        if actual_soc_pct < floor_pct:
+        today = now.date()
+        if self._observed_day is not None and today != self._observed_day:
+            self._close_day(today)
+        if self._observed_day != today:
+            self._observed_day = today
+            self._day_evaluated = False
+            self._day_shortfall = False
+            self._day_well_above = True
+
+        prev_soc, prev_floor = self._prev_soc_pct, self._prev_floor_pct
+        self._prev_soc_pct, self._prev_floor_pct = actual_soc_pct, floor_pct
+        if prev_soc is None or prev_floor is None:
+            return
+        if prev_soc < prev_floor - 1e-9:
+            # The battery never reached this floor — not a margin signal.
+            self._day_well_above = False
+            return
+        self._day_evaluated = True
+        if actual_soc_pct < prev_floor - _SHORTFALL_TOLERANCE_PCT:
+            self._day_shortfall = True
+            log_planner(
+                "debug",
+                "[dynamic_floor] SoC %.1f%% fell below floor %.1f%% — %s is a "
+                "below-floor day",
+                actual_soc_pct,
+                prev_floor,
+                today,
+            )
+        if actual_soc_pct <= prev_floor * _WELL_ABOVE_FACTOR:
+            self._day_well_above = False
+
+    def _close_day(self, today: date) -> None:
+        """Classify the observed day and apply the margin triggers (issue #1141).
+
+        Args:
+            today: The local date of the call that ended the observed day.
+        """
+        day = self._observed_day
+        if self._day_shortfall:
+            verdict = "below"
             self._days_below_floor += 1
             self._days_above_floor = 0
-            log_planner(
-                "debug",
-                "[dynamic_floor] SoC %.1f%% < floor %.1f%% — below-floor days: %d",
-                actual_soc_pct,
-                floor_pct,
-                self._days_below_floor,
-            )
-            if self._days_below_floor >= _DAYS_BELOW_FLOOR_TRIGGER:
-                old_margin = self.safety_margin
-                self.safety_margin = min(
-                    self.max_margin, self.safety_margin + _MARGIN_INCREASE
-                )
-                self._days_below_floor = 0
-                log_planner(
-                    "info",
-                    "[dynamic_floor] Increasing safety margin from %.2f to %.2f "
-                    "(SoC %.1f%% dropped below floor %.1f%% for %d days)",
-                    old_margin,
-                    self.safety_margin,
-                    actual_soc_pct,
-                    floor_pct,
-                    _DAYS_BELOW_FLOOR_TRIGGER,
-                )
-        elif actual_soc_pct > floor_pct * _WELL_ABOVE_FACTOR:
+        elif self._day_evaluated and self._day_well_above:
+            verdict = "well above"
             self._days_above_floor += 1
             self._days_below_floor = 0
-            log_planner(
-                "debug",
-                "[dynamic_floor] SoC %.1f%% > floor %.1f%% × %.1f — above-floor days: %d",
-                actual_soc_pct,
-                floor_pct,
-                _WELL_ABOVE_FACTOR,
-                self._days_above_floor,
-            )
-            if self._days_above_floor >= _DAYS_ABOVE_FLOOR_TRIGGER:
-                old_margin = self.safety_margin
-                self.safety_margin = max(
-                    self.min_margin, self.safety_margin - _MARGIN_DECREASE
-                )
-                self._days_above_floor = 0
-                log_planner(
-                    "info",
-                    "[dynamic_floor] Decreasing safety margin from %.2f to %.2f "
-                    "(SoC %.1f%% stayed above floor %.1f%% for %d days)",
-                    old_margin,
-                    self.safety_margin,
-                    actual_soc_pct,
-                    floor_pct,
-                    _DAYS_ABOVE_FLOOR_TRIGGER,
-                )
         else:
-            # SoC is between floor and floor × 1.3 — steady state, reset counters.
+            verdict = "neutral"
+            self._days_below_floor = 0
+            self._days_above_floor = 0
+        log_planner(
+            "debug",
+            "[dynamic_floor] day %s closed: %s — below-floor days: %d, "
+            "above-floor days: %d",
+            day,
+            verdict,
+            self._days_below_floor,
+            self._days_above_floor,
+        )
+
+        old_margin = self.safety_margin
+        if self._days_below_floor >= _DAYS_BELOW_FLOOR_TRIGGER:
+            self.safety_margin = min(
+                self.max_margin, self.safety_margin + _MARGIN_INCREASE
+            )
+            self._days_below_floor = 0
+            log_planner(
+                "info",
+                "[dynamic_floor] Increasing safety margin from %.2f to %.2f "
+                "(SoC dropped below the floor on %d consecutive days)",
+                old_margin,
+                self.safety_margin,
+                _DAYS_BELOW_FLOOR_TRIGGER,
+            )
+        elif self._days_above_floor >= _DAYS_ABOVE_FLOOR_TRIGGER:
+            self.safety_margin = max(
+                self.min_margin, self.safety_margin - _MARGIN_DECREASE
+            )
+            self._days_above_floor = 0
+            log_planner(
+                "info",
+                "[dynamic_floor] Decreasing safety margin from %.2f to %.2f "
+                "(SoC stayed well above the floor on %d consecutive days)",
+                old_margin,
+                self.safety_margin,
+                _DAYS_ABOVE_FLOOR_TRIGGER,
+            )
+
+        if day is not None and (today - day).days != 1:
+            # Days are only consecutive when observed back to back.
             self._days_below_floor = 0
             self._days_above_floor = 0
