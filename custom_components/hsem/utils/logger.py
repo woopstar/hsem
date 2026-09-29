@@ -318,6 +318,48 @@ def async_log(level: str, msg: str, *args: object) -> None:
     log_planner(level, msg, *args)
 
 
+_LATCH_ATTR = "_hsem_warning_latch"
+
+
+def log_latched_warning(
+    owner: object, key: str, active: bool, msg: str, *args: object
+) -> bool:
+    """Log a per-cycle condition at WARNING once per episode, DEBUG afterwards.
+
+    Coordinator-cycle code often re-detects the same condition (an
+    unconfigured entity, a degraded mode) every few minutes. Warning on every
+    cycle floods ``hsem.log``; never warning hides it. This helper logs the
+    first active cycle at ``WARNING`` and later cycles at ``DEBUG``, so the
+    verbose trace is kept. The latch re-arms as soon as the condition is seen
+    inactive, so a later recurrence warns again.
+
+    Args:
+        owner: Long-lived object that stores the latch (e.g. the entity).
+        key: Identifies the condition within *owner*'s latch.
+        active: Whether the condition holds this cycle.
+        msg: ``%``-style message template.
+        *args: Positional arguments for *msg*.
+
+    Returns:
+        *active*, so callers can branch on the condition in one expression.
+    """
+    latch = getattr(owner, _LATCH_ATTR, None)
+    if not isinstance(latch, set):
+        if not active:
+            return False
+        latch = set()
+        setattr(owner, _LATCH_ATTR, latch)
+    if not active:
+        latch.discard(key)
+        return False
+    if key in latch:
+        HSEM_LOGGER.debug(msg, *args)
+    else:
+        latch.add(key)
+        HSEM_LOGGER.warning(msg, *args)
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
