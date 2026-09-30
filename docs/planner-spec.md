@@ -78,6 +78,13 @@ time (issue #1160):
   wall-clock fields (`.date()`, `.hour`); ordering it against a `ZoneInfo`
   `now` compares by wall clock. `tests/test_dst_slot_compare.py` guards
   against the pattern returning.
+- Slots are half-open `[start, end)`, so a slot with `end == now` has
+  passed: `mark_time_passed` labels it `time_passed`, the MILP leaves it
+  out, `simulate_soc` zeroes its SoC display and the consistency gate skips
+  its balance check. Every pass uses the same rule (`slot_is_future`); a
+  strict `end < now` in `mark_time_passed` once left the boundary slot
+  labelled but unsolved whenever `now` fell exactly on a boundary
+  (issue #1174).
 - `SlotKey.slot_in_day` (and `PricePoint.slot_in_day`, via
   `utils.datetime_utils.slot_position`) counts real steps since the local
   midnight of the slot's date. It equals `(hour × 60 + minute) // interval`

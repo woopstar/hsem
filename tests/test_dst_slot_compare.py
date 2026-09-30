@@ -223,16 +223,17 @@ class TestPastSlots:
 
     @pytest.mark.parametrize(("fold", "now_utc"), _FOLDS)
     def test_mark_time_passed(self, fold: int, now_utc: datetime) -> None:
-        """Exactly the slots ending before *now* in UTC are ``TimePassed``."""
+        """Exactly the slots ending by *now* in UTC are ``TimePassed``."""
         slots = _grid_slots()
 
         mark_time_passed(slots, _now(fold))
 
         passed = [s.recommendation == Recommendations.TimePassed.value for s in slots]
-        assert passed == [s.end.astimezone(UTC) < now_utc for s in slots]
-        # The grid starts at 22:00Z: 9 slots end before 00:30Z, 13 before
-        # 01:30Z, so fold=1 also marks the first occurrence of 02:00-03:00.
-        assert sum(passed) == (9 if fold == 0 else 13)
+        assert passed == [s.end.astimezone(UTC) <= now_utc for s in slots]
+        # The grid starts at 22:00Z: 10 slots end by 00:30Z, 14 by 01:30Z
+        # (a slot ending exactly at now has passed, issue #1174), so fold=1
+        # also marks the first occurrence of 02:00-03:00.
+        assert sum(passed) == (10 if fold == 0 else 14)
 
 
 _SOURCE_ROOT = Path(__file__).resolve().parents[1] / "custom_components"

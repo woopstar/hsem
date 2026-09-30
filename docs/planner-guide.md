@@ -443,7 +443,7 @@ Each `PlannedSlot` in the output list covers one time interval and carries:
 | `force_export`              | Export price above import/threshold (planner), or — at runtime only — a negative import price combined with a profitable live export price and excess battery export enabled                    |
 | `ev_smart_charging`         | EV charging load is allocated to this slot (planner or runtime resolver)                                                                                                                        |
 | `batteries_wait_mode`       | Battery idle by default; when **Wait mode behaviour** is set to _Self-consumption with reserve_, normal household self-consumption is allowed using energy above the planner's required reserve |
-| `time_passed`               | Slot is in the past — no recommendation applied                                                                                                                                                 |
+| `time_passed`               | Slot has ended (`end <= now`) — no recommendation applied                                                                                                                                       |
 | `missing_input_entities`    | Required HA entities were unavailable when this slot was scheduled                                                                                                                              |
 
 ---

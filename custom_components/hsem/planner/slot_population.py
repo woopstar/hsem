@@ -36,7 +36,11 @@ from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.models.time_series import TimeSeriesIndex
-from custom_components.hsem.utils.datetime_utils import slot_contains, utc_key
+from custom_components.hsem.utils.datetime_utils import (
+    slot_contains,
+    slot_is_future,
+    utc_key,
+)
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.prices import SlotPrice
 from custom_components.hsem.utils.recommendations import Recommendations
@@ -458,13 +462,19 @@ def populate_estimated_cost(
 def mark_time_passed(slots: list[PlannedSlot], now: datetime) -> None:
     """Mark past slots as ``TimePassed``.
 
+    A slot is the half-open interval ``[start, end)``, so one ending exactly
+    at *now* has passed.  This is the same rule the MILP
+    (:func:`~custom_components.hsem.utils.datetime_utils.future_slot_indices`)
+    and :func:`simulate_soc` use; a strict ``end < now`` left that slot
+    labelled but unsolved when *now* fell on a boundary (issue #1174).
+
     Args:
         slots: Mutable list of planned slots to update.
         now: Timezone-aware current datetime.
     """
     past_count = 0
     for slot in slots:
-        if utc_key(slot.end) < utc_key(now):
+        if not slot_is_future(slot.end, now):
             slot.recommendation = Recommendations.TimePassed.value
             past_count += 1
     log_planner(
