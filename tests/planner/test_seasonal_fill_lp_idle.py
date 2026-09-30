@@ -19,7 +19,9 @@ and zero discharge for them (issue #1094).
 The fix is label-only in the plan by construction: the MILP candidate is
 simulated with ``milp_prepopulated=True``, so ``simulate_soc`` never re-derives
 energy from the recommendation.  These tests pin down both halves — the labels
-change, the economics do not.
+change, the economics do not.  Since issue #1158 the same flag also stops the
+fill's solar-charge steps on the MILP candidate, so its energy is exactly the
+LP's.
 """
 
 from __future__ import annotations
@@ -292,32 +294,45 @@ class TestSeasonIndependence:
 
 
 class TestLabelOnlyChange:
-    """The fix must not move a single kWh or currency unit in the plan."""
+    """On the MILP candidate the fill may change labels, never energy."""
 
     @pytest.mark.parametrize("name", sorted(_BUILDERS))
     @pytest.mark.parametrize("factor", [1.0, 5.0])
-    def test_cost_and_energy_are_bit_identical(
-        self, request: pytest.FixtureRequest, name: str, factor: float
+    def test_the_fill_keeps_every_lp_energy_field(
+        self, monkeypatch: pytest.MonkeyPatch, name: str, factor: float
     ) -> None:
-        """Plan cost, score and every energy field compare exactly equal.
+        """Every energy field the LP wrote reaches the published plan unchanged.
 
-        Exact equality, not ``approx`` — the MILP candidate trusts its energy
-        verbatim and labels carry no price, so any drift means the change
-        stopped being label-only.
+        The #1041 version of this test compared plans with the flag on and
+        off.  Since #1158 the flag also stops the fill's solar-charge steps,
+        which used to book a charge on the LP's export slots, so turning it
+        off now changes energy on purpose.  This asserts the invariant both
+        issues protect directly: the fill and the SoC simulation leave the
+        MILP candidate's energy exactly as the LP wrote it.
         """
-        inp = _scale_load(_BUILDERS[name](), factor)
-        after = run_planner(inp)
-        request.getfixturevalue("pre_1041")
-        before = run_planner(inp)
+        snapshots: list[list[tuple[PlannedSlot, tuple[float, ...]]]] = []
+        real = apply_optimization_strategy
 
-        assert before.plan_cost is not None and after.plan_cost is not None
-        assert before.plan_cost.total_cost == after.plan_cost.total_cost
-        assert before.plan_cost.score == after.plan_cost.score
-        for a, b in zip(before.slots, after.slots, strict=True):
-            assert a.batteries_charged_kwh == b.batteries_charged_kwh
-            assert a.batteries_discharged_kwh == b.batteries_discharged_kwh
-            assert a.grid_import_kwh == b.grid_import_kwh
-            assert a.grid_export_kwh == b.grid_export_kwh
+        def _energy(slot: PlannedSlot) -> tuple[float, ...]:
+            return (
+                slot.batteries_charged_kwh,
+                slot.batteries_discharged_kwh,
+                slot.grid_import_kwh,
+                slot.grid_export_kwh,
+            )
+
+        def wrapper(slots: list[PlannedSlot], *args: object, **kwargs: object) -> None:
+            if kwargs.get("unassigned_slots_are_lp_decisions"):
+                snapshots.append([(s, _energy(s)) for s in slots])
+            real(slots, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(candidate_selector, "apply_optimization_strategy", wrapper)
+        run_planner(_scale_load(_BUILDERS[name](), factor))
+
+        assert snapshots, "the MILP candidate never reached the seasonal fill"
+        for snapshot in snapshots:
+            for slot, written in snapshot:
+                assert _energy(slot) == written, slot.start
 
     def test_only_discharge_to_wait_transitions_occur(
         self, request: pytest.FixtureRequest
