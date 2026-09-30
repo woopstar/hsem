@@ -576,8 +576,10 @@ def apply_optimization_strategy(
     5. Slot's month is a summer month with solar → ``BatteriesChargeSolar``;
        else ``BatteriesDischargeWindowMode`` (promoted to
        ``BatteriesDischargeMode`` by the SoC simulation if the battery
-       actually discharges) — unless
-       ``unassigned_slots_are_lp_decisions`` is set, see below.
+       actually discharges).
+
+    Steps 2 and 5 do not run when ``unassigned_slots_are_lp_decisions`` is
+    set, see below.
 
     The seasonal check (steps 4–5) uses each slot's own calendar month
     (derived from ``rec.start``), not the month of ``now``.  This means a
@@ -601,8 +603,8 @@ def apply_optimization_strategy(
             has scheduled this slot yet* (issue #1041).  Set only for the
             MILP candidate, whose write-out resets every future slot to
             ``None`` and then labels only the slots it allocated energy to.
-            Under this flag step 5 holds the battery instead of opening a
-            discharge window.
+            Under this flag every remaining slot holds the battery: no
+            discharge window (#1041), no solar charge (#1158).
     """
     log_planner(
         "debug",
@@ -627,10 +629,16 @@ def apply_optimization_strategy(
     # Solar charging per calendar day — each day gets its own
     # usable_capacity budget so tomorrow's solar charging isn't
     # blocked by today's full battery.
-    # Group unassigned future slots by calendar day.
+    # Group unassigned future slots by calendar day.  Skipped on the MILP
+    # candidate: a surplus slot the LP left idle is an LP decision to export
+    # that PV, and booking a charge on it would count the PV twice (#1158).
     by_day: dict[date, list[PlannedSlot]] = defaultdict(list)
     for s in slots:
-        if s.recommendation is None and as_tz(s.start, now.tzinfo) >= now:
+        if (
+            s.recommendation is None
+            and not unassigned_slots_are_lp_decisions
+            and as_tz(s.start, now.tzinfo) >= now
+        ):
             by_day[as_tz(s.start, now.tzinfo).date()].append(s)
 
     for day_slots in by_day.values():
@@ -669,7 +677,11 @@ def apply_optimization_strategy(
         # crosses a season boundary (e.g. Aug 31 → Sep 1) applies the
         # correct seasonal strategy to each slot independently.
         slot_month = as_tz(rec.start, now.tzinfo).month
-        if slot_month in months_winter:
+        if slot_month in months_winter or unassigned_slots_are_lp_decisions:
+            # On the MILP candidate the optimizer considered this slot and
+            # left the battery idle, so neither a discharge window (#1041)
+            # nor a solar charge (#1158) may be opened on it.  See
+            # docs/planner-spec.md § "The fill no longer creates those labels".
             rec.recommendation = Recommendations.BatteriesWaitMode.value
         elif slot_month in months_summer:
             # Only charge from solar when there is an actual PV surplus
@@ -679,15 +691,6 @@ def apply_optimization_strategy(
             # BatteriesChargeSolar (issue #720).
             if rec.estimated_net_consumption_kwh < 0.0:
                 rec.recommendation = Recommendations.BatteriesChargeSolar.value
-            elif unassigned_slots_are_lp_decisions:
-                # The optimizer considered this slot and declined to dispatch
-                # the battery, so opening a discharge window would contradict
-                # it — winter already reaches this answer one branch up
-                # (issue #1041).  Only this branch is gated: steps 1-3 write
-                # energy or re-route PV, so gating them would change the plan
-                # rather than just its labels.  See docs/planner-spec.md
-                # § "The fill no longer creates those labels".
-                rec.recommendation = Recommendations.BatteriesWaitMode.value
             else:
                 # Seasonal discharge-window slots start as
                 # batteries_discharge_window_mode.  The SoC simulation

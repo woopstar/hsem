@@ -1211,9 +1211,29 @@ Adding a `Recommendations` member without an entry in
 `LABEL_ENERGY_CONTRACTS` fails `tests/planner/test_plan_consistency.py`, so a
 new label cannot silently arrive without a decision.
 
+**Energy balance (issue #1158).** The engine also passes the charge and
+discharge efficiencies, which turns on a per-slot balance check for every slot
+that ends after `now`:
+
+```text
+deficit = (house + ev + grid_export + charged / η_chg)
+        − (pv + grid_import + discharged × η_dis)
+```
+
+House and EV load are split as `simulate_soc` splits them. A deficit above
+`ENERGY_BALANCE_TOLERANCE_KWH` (5 Wh, which covers the 3-decimal rounding of the
+fields) is reported as `energy balance short by X kWh`. The check is one-sided
+on purpose: a deficit is energy from nowhere, such as PV counted as both stored
+and exported, but unused supply is legitimate, because PV the LP curtails at a
+negative export price is not a slot field. Past slots are skipped, because they
+keep their planned values for the plan-vs-actual tracker. Every label contract
+held on the #1158 slots, so only this check could see that bug.
+
 ##### Invariants for tests
 
 - Every `Recommendations` member has an entry in `LABEL_ENERGY_CONTRACTS`.
+- A future slot whose flows use more energy than they supply, beyond the
+  tolerance, is reported; unused supply and past slots are not (issue #1158).
 - The selected plan produces zero violations across the stock fixtures,
   parametrized over starting SoC.
 - Reverting the #989, #1026 or #1032 fix makes the check report a violation.
@@ -3466,16 +3486,35 @@ that flag a slot still unassigned after the LP ran means _the optimizer declined
 to act here_, not _nothing has scheduled this slot yet_, and the seasonal branch
 holds the battery instead of opening a discharge window.
 
-Only that one branch is gated. `force_export` re-routes PV rather than
-dispatching the battery, and the solar-charge steps write
-`batteries_charged_kwh`, so gating those would change plan energy rather than
-just a label.
+The #1041 change is label-only by construction: the MILP candidate is
+simulated with `milp_prepopulated=True`, so `simulate_soc` never re-derives
+energy from the recommendation. Verified across the four stock fixtures × load ×
+starting SoC — plan cost and score compare exactly equal and no slot differs in
+any energy field, while up to 17 slots change label.
 
-The change is label-only by construction: the MILP candidate is simulated with
-`milp_prepopulated=True`, so `simulate_soc` never re-derives energy from the
-recommendation. Verified across the four stock fixtures × load × starting SoC —
-plan cost and score compare exactly equal and no slot differs in any energy
-field, while up to 17 slots change label.
+**The solar-charge steps are gated too (issue #1158).** #1041 left them ungated
+because they write `batteries_charged_kwh`, so gating them "would change plan
+energy". That energy was never the LP's. On a PV-surplus slot the LP left idle
+(`ec = ed = 0`, `ge > 0`) the LP chose to export the surplus. The per-day
+solar-charge step still labelled it `batteries_charge_solar` and wrote the
+surplus into `batteries_charged_kwh`, and `simulate_soc(milp_prepopulated=True)`
+kept the LP's `grid_export_kwh` next to it. The published slot counted the same
+PV as both stored and exported, the SoC trajectory rose by energy that had been
+sold, later LP charges were clipped against a battery that filled too early, and
+the applier drove `MaximizeSelfConsumption` on a slot the LP planned to export.
+On the stock fixtures up to 4.6 kWh of PV was counted twice in a single slot.
+
+Under the flag the fill therefore books no solar charge. Step 2 (the per-day
+solar charge) is skipped, and step 5 holds the battery on every remaining slot,
+surplus or not. A surplus slot the LP left idle is published as
+`batteries_wait_mode` with the LP's export, which the applier executes as a
+held planned export (issue #797). Only `force_export` and the
+future-forced-export hold still run on the MILP candidate; neither writes
+energy.
+
+With both gates the fill and the SoC simulation leave every energy field of the
+MILP candidate exactly as the LP wrote it. Non-MILP candidates keep the full
+fill, where `simulate_soc` derives the grid flows from the charge it books.
 
 Concentration still runs on the MILP candidate and is now a no-op there. It is
 kept because that no-op is a property of the current fill rather than a
@@ -3495,8 +3534,13 @@ the fill's original rationale genuinely applies.
 - An LP-idle slot receives the same label in summer as in winter.
 - Non-MILP candidates keep the seasonal-fill behaviour: an unassigned summer
   slot with no PV surplus still becomes `batteries_discharge_window_mode`.
-- Enabling the flag changes labels only — plan cost, score and every slot's
-  energy fields are bit-identical.
+- On the MILP candidate, the fill and `simulate_soc` leave every slot's
+  `batteries_charged_kwh`, `batteries_discharged_kwh`, `grid_import_kwh` and
+  `grid_export_kwh` exactly as the LP wrote them (issues #1041, #1158).
+- A PV-surplus slot the LP left idle is published with zero charge, a
+  non-charging label and the LP's export (issue #1158).
+- Every published future slot of the MILP plan satisfies the energy balance
+  within 1e-3 kWh, with and without battery headroom (issue #1158).
 
 ### Invariants for multi-day horizon tests
 

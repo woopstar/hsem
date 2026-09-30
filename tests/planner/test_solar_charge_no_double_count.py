@@ -59,8 +59,13 @@ def _make_solar_only_input(
         consumption_per_hour: House consumption per hour in kWh.
         now_iso: Planning timestamp (timezone-aware ISO-8601).
     """
+    # The export price is well below import, so storing PV for the evening
+    # beats exporting it by more than the ~0.09/kWh cycle cost.  At an export
+    # price near import (0.18 against 0.20) storing loses money, the MILP
+    # rightly exports, and only the seasonal fill's double-counted solar
+    # charge (issue #1158) used to put charge labels on this plan.
     prices = [
-        PricePoint(hour=h, import_price=0.20, export_price=0.18) for h in range(24)
+        PricePoint(hour=h, import_price=0.20, export_price=0.02) for h in range(24)
     ]
     # Solar only during hours 8-16; 0 otherwise
     solar = [

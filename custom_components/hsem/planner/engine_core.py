@@ -674,8 +674,14 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # Post-plan self-consistency gate (issue #1035).  Runs on the *winner*,
     # after every relabelling pass including the EV display relabel above, so
     # it sees exactly what is about to be published.  Reported, never raised
-    # and never auto-corrected — see the module docstring.
-    plan_consistency_violations = check_plan_self_consistency(slots)
+    # and never auto-corrected — see the module docstring.  The efficiencies
+    # turn on the per-slot energy-balance check (issue #1158).
+    plan_consistency_violations = check_plan_self_consistency(
+        slots,
+        now=now,
+        charge_eff=clamp_efficiency(inp.battery_charge_efficiency_pct),
+        discharge_eff=clamp_efficiency(inp.battery_discharge_efficiency_pct),
+    )
     if plan_consistency_violations:
         warnings.append(consistency_warning(plan_consistency_violations))
         log_planner(
