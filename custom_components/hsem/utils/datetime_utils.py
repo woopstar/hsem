@@ -27,6 +27,12 @@ so that all timezone normalisation is routed through this module.
 
 >>> from custom_components.hsem.utils.datetime_utils import as_tz
 >>> slot_local = as_tz(slot.start, now.tzinfo)
+
+``as_tz`` is for reading local wall-clock fields (``.date()``, ``.hour``).
+Never compare its result with ``now``: two datetimes sharing one ``ZoneInfo``
+compare by wall clock and ignore ``fold``, which is wrong during the DST
+fall-back hour (issue #1167).  Use :func:`slot_contains`,
+:func:`slot_is_future` or :func:`utc_key` for ordering instead.
 """
 
 from __future__ import annotations
@@ -135,6 +141,25 @@ def slot_contains(start: datetime, end: datetime, value: datetime) -> bool:
     return utc_key(start) <= utc_key(value) < utc_key(end)
 
 
+def slot_is_future(end: datetime, now: datetime) -> bool:
+    """Return whether a slot ending at *end* has not yet ended at *now*.
+
+    Compares by UTC instant, like :func:`slot_contains`.  Never compare
+    ``as_tz(end, now.tzinfo)`` with ``now`` instead: both operands then share
+    one :class:`zoneinfo.ZoneInfo`, so Python compares wall-clock fields and
+    ignores ``fold``, and on the DST fall-back day a slot from the first
+    occurrence of the repeated hour counts as future during the second.
+
+    Args:
+        end: Timezone-aware slot end.
+        now: Timezone-aware current datetime.
+
+    Returns:
+        ``True`` when *end* lies strictly after *now*.
+    """
+    return utc_key(end) > utc_key(now)
+
+
 def as_tz(value: datetime, tz: tzinfo | None) -> datetime:
     """Return *value* converted to the given timezone without microseconds.
 
@@ -178,10 +203,7 @@ def future_slot_indices(slot_ends: Iterable[datetime], now: datetime) -> list[in
     Returns:
         Ascending indices of slots whose end lies strictly after *now*.
     """
-    # Compare physical instants: on the DST fall-back day the repeated hour
-    # has two slots with the same wall-clock time.
-    now_utc = now.astimezone(UTC)
-    return [i for i, end in enumerate(slot_ends) if end.astimezone(UTC) > now_utc]
+    return [i for i, end in enumerate(slot_ends) if slot_is_future(end, now)]
 
 
 def _fixed_offset(instant: datetime, zone: tzinfo | None) -> datetime:

@@ -13,7 +13,7 @@ from custom_components.hsem.planner.slot_population import (
     populate_prices,
     populate_solcast,
 )
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import slot_contains
 from custom_components.hsem.utils.logger import log_planner
 
 #: How far below zero ``live_house_power − EV power`` may land before the two
@@ -179,9 +179,7 @@ def _inject_live_data_into_current_slot(
     removal = LiveEvBaselineRemoval()
 
     for slot in slots:
-        s_start = as_tz(slot.start, now.tzinfo)
-        s_end = as_tz(slot.end, now.tzinfo)
-        if s_start <= now < s_end:
+        if slot_contains(slot.start, slot.end, now):
             # Convert live Watts to projected full-slot kWh.
             if inp.live_solar_production_w > 1e-9:
                 live_pv_kwh = (inp.live_solar_production_w / 1000.0) * slot_hours

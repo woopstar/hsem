@@ -1417,6 +1417,19 @@ share a `ZoneInfo` compare by wall clock and ignore `fold`). Use
 `midnight + timedelta(...)`. Regression tests: `tests/test_dst_slot_grid.py`,
 `tests/test_time_series_model.py::TestDstTransitions`.
 
+**Past/live/future slot checks (issue #1167):** never order
+`as_tz(slot.x, now.tzinfo)` against `now`. With the coordinator's `ZoneInfo`
+`now` both sides share one `ZoneInfo`, so Python compares wall clock and
+ignores `fold`, and in the fall-back hour the other occurrence's slots look
+live/future (or past). Use `slot_contains(start, end, now)`,
+`slot_is_future(end, now)`, `utc_key(a) <op> utc_key(b)`, or
+`future_slot_indices` for LP alignment. `as_tz` stays fine for `.date()` /
+`.hour` / `.month`. Note: `run_planner` parses `now_iso` into a fixed
+offset, so inside the planner these checks were latent; the coordinator
+paths (`coordinator_planner_phase`, `coordinator_tracking`,
+`apply_window_hysteresis`) were live. Guard test:
+`tests/test_dst_slot_compare.py::test_no_as_tz_ordering_comparisons_remain`.
+
 ---
 
 ## Avg Sensor Must Not Store Partial-Day Samples (issue #720 follow-up)

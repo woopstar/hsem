@@ -49,7 +49,7 @@ from custom_components.hsem.planner.discharge_scheduler import (
     concentrate_discharge_on_expensive_slots,
 )
 from custom_components.hsem.planner.soc_simulation import simulate_soc
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import physical_elapsed, utc_key
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.recommendations import (
     DISCHARGE_RECS as _DISCHARGE_RECS,
@@ -630,11 +630,11 @@ def replacement_price_from_next_discharge(
             for slot in slots
             if (
                 slot.recommendation in _DISCHARGE_RECS
-                and as_tz(slot.start, now.tzinfo) > now
+                and utc_key(slot.start) > utc_key(now)
                 and not math.isnan(slot.price.import_price)
             )
         ],
-        key=lambda s: as_tz(s.start, now.tzinfo),
+        key=lambda s: utc_key(s.start),
     )
 
     if not future_discharge:
@@ -646,11 +646,8 @@ def replacement_price_from_next_discharge(
     # We take only the first block.
     GAP_THRESHOLD = timedelta(minutes=interval_minutes + 5)
     first_block: list = [future_discharge[0]]
-    tz = now.tzinfo
     for slot in future_discharge[1:]:
-        prev_end = as_tz(first_block[-1].end, tz)
-        this_start = as_tz(slot.start, tz)
-        if this_start - prev_end <= GAP_THRESHOLD:
+        if physical_elapsed(slot.start, first_block[-1].end) <= GAP_THRESHOLD:
             first_block.append(slot)
         else:
             break  # reached the next schedule occurrence
@@ -706,12 +703,12 @@ def ev_future_charge_value_per_kwh(
         Value in currency/kWh, or ``None`` when no future price data is
         available within the lookahead window.
     """
-    tz = now.tzinfo
-    cutoff = now + timedelta(hours=lookahead_hours)
+    now_utc = utc_key(now)
+    cutoff = now_utc + timedelta(hours=lookahead_hours)
     future_prices: list[float] = [
         float(s.price.import_price)
         for s in slots
-        if now < as_tz(s.start, tz) <= cutoff and not math.isnan(s.price.import_price)
+        if now_utc < utc_key(s.start) <= cutoff and not math.isnan(s.price.import_price)
     ]
     if not future_prices:
         return None
