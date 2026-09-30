@@ -27,3 +27,9 @@ cycle.log
 core
 
 test-results.xml
+
+# Local secrets -- HA_TOKEN etc. for scripts/collect_actuals.sh.
+# Only the template is committed.
+.env
+.env.*
+!.env.example

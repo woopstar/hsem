@@ -14,6 +14,36 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON="${PYTHON:-python3}"
 
+# Settings (HA_URL, HA_TOKEN, TZ, HSEM_*) may live in a .env file so the token
+# never has to be typed into a shell or committed.  The file is *parsed*, not
+# sourced: a token containing $, quotes or backticks is taken literally and
+# nothing in the file is executed.  Variables already exported win, so a
+# one-off override on the command line still works.
+ENV_FILE="${HSEM_ENV_FILE:-${REPO_ROOT}/.env}"
+load_env_file() {
+    local file="$1" line key value
+    [[ -f "${file}" ]] || return 0
+    if [[ -n "$(find "${file}" -perm /077 2>/dev/null)" ]]; then
+        echo "[warn] ${file} is readable by other users -- run: chmod 600 ${file}" >&2
+    fi
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+        line="${line#"${line%%[![:space:]]*}"}"          # trim leading space
+        [[ -z "${line}" || "${line}" == \#* ]] && continue
+        line="${line#export }"
+        [[ "${line}" == *=* ]] || continue
+        key="${line%%=*}"
+        value="${line#*=}"
+        [[ "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+        # Strip one pair of matching surrounding quotes.
+        if [[ "${value}" =~ ^\"(.*)\"$ || "${value}" =~ ^\'(.*)\'$ ]]; then
+            value="${BASH_REMATCH[1]}"
+        fi
+        [[ -n "${!key+x}" ]] && continue                    # exported value wins
+        export "${key}=${value}"
+    done < "${file}"
+}
+load_env_file "${ENV_FILE}"
+
 DAYS=7
 OUT_DIR="${HOME}/hsem-actuals"
 SLOT_MINUTES=15
@@ -55,13 +85,14 @@ Options:
                     realized prices against the plan that cycle was built from
   -h, --help        This message
 
-Environment:
+Environment (read from ${ENV_FILE} if present; see .env.example):
   HA_URL, HA_TOKEN            required unless --skip-fetch
   TZ                          must match your Home Assistant timezone
   HSEM_ARCHIVE_ENTITIES       extra comma-separated entities to download but not
                               convert -- EV charger power, EV SoC, phase meters.
                               The recorder purges; these cannot be fetched later.
   HSEM_*_ENTITY               override any mapped entity (see MAPPING in this file)
+  HSEM_ENV_FILE               read settings from this file instead of .env
 EOF
 }
 

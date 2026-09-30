@@ -32,6 +32,7 @@
 | [Troubleshooting Guide](troubleshooting-guide.md)                   | Diagnose and fix common problems: missing data, wrong prices, write failures, battery behaviour |
 | [Quality Checks](quality-checks.md)                                 | Static quality tools and CI configuration                                                       |
 | [Planner Backtest Harness](backtest-harness.md)                     | Replay recorded production cycles offline and check them against the planner spec               |
+| [Backtest Runbook](backtest-runbook.md)                             | Collect a live corpus and actuals, then replay them — the commands to redo a backtest           |
 
 ---
 

@@ -96,6 +96,9 @@ not, which is why `is_faithful` is asserted rather than reported.
 
 ## Running it
 
+> Step-by-step instructions for collecting a corpus and replaying it live in
+> the [Backtest Runbook](backtest-runbook.md). This section explains the pieces.
+
 The harness is part of the normal suite:
 
 ```bash
