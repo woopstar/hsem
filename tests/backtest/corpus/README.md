@@ -42,6 +42,14 @@ python3 scripts/replay_planner_input.py \
     --regenerate tests/backtest/corpus/cycle-2026-09-14-1721.json
 ```
 
+**Check what a new field defaults to before regenerating.** `--regenerate`
+fills a field the dump predates with its dataclass default, and that default
+must describe the recorded site. When #1169 added `PlannerInput.time_zone`, the
+default `None` meant the legacy fixed-offset path, while a current dump carries
+the Home Assistant zone key. So the committed cycle was regenerated with
+`time_zone="Europe/Copenhagen"`, the site's actual zone, and confirmed to plan
+identically.
+
 The regenerated file records the replaying checkout's `hsem_version` and keeps
 the source cycle's `dump_timestamp`, so regenerating an unchanged entry
 produces an unchanged file. Review the diff: a field that silently disappeared
