@@ -272,6 +272,7 @@ def build_planner_input(
 
     return PlannerInput(
         now_iso=now.isoformat(),
+        time_zone=getattr(now.tzinfo, "key", None),
         interval_minutes=cfg.recommendation_interval_minutes,
         interval_length_hours=cfg.recommendation_interval_length,
         battery_soc_pct=battery_soc_pct if battery_soc_pct is not None else 50.0,
