@@ -17,7 +17,7 @@ directly.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
@@ -30,7 +30,11 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.conversion import convert_to_float, convert_to_int
-from custom_components.hsem.utils.datetime_utils import now as hsem_now
+from custom_components.hsem.utils.datetime_utils import (
+    now as hsem_now,
+    physical_slot_grid,
+    slot_position,
+)
 from custom_components.hsem.utils.ev_accounting import normalized_baseline_includes_ev
 from custom_components.hsem.utils.live_power import LivePowerEstimate
 from custom_components.hsem.utils.misc import (
@@ -179,14 +183,15 @@ def build_planner_input(
         # planning midnight and this slot's date.  This preserves the
         # distinction between today's hour-3 and tomorrow's hour-3 for
         # multi-day planning horizons (e.g. 48 h or 72 h).
-        day_offset = (rec.start.date() - planning_midnight.date()).days
-
+        #
         # Prices are per-slot: 15-min price data must survive to the planner
-        # as distinct quarter-hourly points (issue #720).  Consumption
+        # as distinct quarter-hourly points (issue #720).  slot_in_day counts
+        # real steps since local midnight, so both occurrences of the DST
+        # fall-back hour keep their own price (issue #1160).  Consumption
         # averages and Solcast PV are genuinely hour-granular and stay
         # deduplicated below.
-        slot_in_day = (rec.start.hour * 60 + rec.start.minute) // int(
-            cfg.recommendation_interval_minutes
+        day_offset, slot_in_day = slot_position(
+            rec.start, planning_midnight, int(cfg.recommendation_interval_minutes)
         )
         # Prices are stored at face value by the populator (no scaling).
         price_points.append(
@@ -474,22 +479,22 @@ def generate_recommendation_intervals(
 ) -> list[HourlyRecommendation]:
     """Generate empty recommendation slots from midnight for ``total_hours`` hours.
 
+    ``total_hours`` is local wall-clock time, so a DST day yields 23 or 25
+    real hours of slots (see
+    :func:`~custom_components.hsem.utils.datetime_utils.physical_slot_grid`).
+
     Args:
         interval_minutes: Width of each slot in minutes.
-        total_hours: Planning horizon in hours.
+        total_hours: Planning horizon in local wall-clock hours.
 
     Returns:
         A list of :class:`HourlyRecommendation` objects with all numeric
         fields initialised to ``0.0``.
     """
-    now = hsem_now()
-    start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    steps = int((total_hours * 60) / interval_minutes)
-
     intervals = []
-    for i in range(steps):
-        t_start = start_time + timedelta(minutes=i * interval_minutes)
-        t_end = t_start + timedelta(minutes=interval_minutes)
+    # Same physical grid as the planner's TimeSeriesIndex (issue #1160), so
+    # recommendation and planner slots match 1:1 by UTC instant on DST days.
+    for t_start, t_end in physical_slot_grid(hsem_now(), interval_minutes, total_hours):
         intervals.append(
             HourlyRecommendation(
                 avg_house_consumption_kwh=0.0,

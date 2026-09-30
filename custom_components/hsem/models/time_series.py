@@ -8,9 +8,12 @@ Design goals
 - **Single slot index**: every series maps to the same ``SlotKey`` so
   there is no risk of off-by-one or hour-lookup disagreements.
 - **Configurable resolution**: default 15-minute slots, any divisor of 60.
-- **DST-safe**: slot boundaries are computed via ``timedelta`` arithmetic
-  from a UTC-normalised midnight so spring-forward / autumn-fallback days
-  always produce the expected number of slots.
+- **DST-safe**: slot boundaries are stepped in physical (UTC) time from
+  local midnight (issue #1160), so every slot spans exactly
+  ``interval_minutes`` of real time.  A 24 h horizon covers the whole local
+  day: 92 × 15-min slots on the spring-forward day, 100 on the fall-back
+  day.  Boundaries carry a fixed UTC offset so comparisons and subtraction
+  are by physical instant.
 - **Explicit missing slots**: ``TimeSeriesIndex.missing_slots`` lists every
   ``SlotKey`` for which at least one series has no data, so callers can
   surface gaps rather than silently defaulting to zero.
@@ -20,8 +23,10 @@ Key types
 ``SlotKey``
     A ``(day_offset, slot_in_day)`` named-tuple.  *day_offset* is the
     number of whole calendar days since the planning midnight; *slot_in_day*
-    is the 0-based slot index within that day.  This is unambiguous across
-    DST transitions because it does not rely on wall-clock hours.
+    counts real slot steps since that day's local midnight.  This is
+    unambiguous across DST transitions because it does not rely on
+    wall-clock hours: on the fall-back day the repeated 02:00 hour gets its
+    own indices (8-11 and 12-15 with 15-min slots).
 
 ``TimeSeriesIndex``
     The central alignment object.  Construct it once from the planning
@@ -45,9 +50,14 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import NamedTuple
 from zoneinfo import ZoneInfo
+
+from custom_components.hsem.utils.datetime_utils import (
+    physical_slot_grid,
+    slot_position,
+)
 
 # ---------------------------------------------------------------------------
 # Public constants
@@ -73,9 +83,10 @@ class SlotKey(NamedTuple):
             Number of whole calendar days since the planning midnight (0 for
             today, 1 for tomorrow, etc.).
         slot_in_day:
-            0-based index of this slot within its calendar day.  For 15-min
-            slots there are 96 indices per day (0-95); for 60-min slots there
-            are 24 (0-23).
+            0-based count of real slot steps since the local midnight of
+            this slot's calendar day.  For 15-min slots there are 96 indices
+            on an ordinary day (0-95), 92 on the DST spring-forward day and
+            100 on the fall-back day.
     """
 
     day_offset: int
@@ -174,9 +185,11 @@ class TimeSeriesIndex:
         """Build a :class:`TimeSeriesIndex` anchored at *now*.
 
         Slots start at midnight of *now*'s calendar day (wall-clock midnight
-        in *now*'s timezone) and extend *horizon_hours* into the future.
-        Boundaries are computed with ``timedelta`` arithmetic so DST
-        transitions never cause gaps, duplicates, or incorrect slot counts.
+        in *now*'s timezone) and end *horizon_hours* of local wall-clock time
+        later.  Boundaries are stepped in physical time (see
+        :func:`~custom_components.hsem.utils.datetime_utils.physical_slot_grid`),
+        so DST days have 23 or 25 real hours of slots with no duplicate or
+        missing instants.
 
         Args:
             now:
@@ -204,18 +217,12 @@ class TimeSeriesIndex:
         if horizon_hours <= 0:
             raise ValueError(f"horizon_hours must be positive; got {horizon_hours}.")
 
-        # Midnight in the same timezone — use timedelta to stay in the same tz
         midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        slots_per_hour = 60 // interval_minutes
-        total_slots = horizon_hours * slots_per_hour
         slot_fraction = interval_minutes / 60.0
 
         slots: list[SlotMeta] = []
-        for i in range(total_slots):
-            start = midnight + timedelta(minutes=i * interval_minutes)
-            end = midnight + timedelta(minutes=(i + 1) * interval_minutes)
-            day_offset = i // (24 * slots_per_hour)
-            slot_in_day = i % (24 * slots_per_hour)
+        for start, end in physical_slot_grid(now, interval_minutes, horizon_hours):
+            day_offset, slot_in_day = slot_position(start, midnight, interval_minutes)
             key = SlotKey(day_offset=day_offset, slot_in_day=slot_in_day)
             slots.append(
                 SlotMeta(
