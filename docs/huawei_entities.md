@@ -50,10 +50,16 @@ sensor. Select the EMMA as `hsem_huawei_solar_device_id_inverter_1` and leave
 `hsem_huawei_solar_inverter_active_power_control` empty: the limit is then
 written once per change and reported as `unverified` (issue #1120). Do not pick
 `Inverter active power` — that is a live power reading, not the configured
-limit. Known upstream limitation: EMMA watt limits (the negative-price block and
-a configured export cap) fail with a `P_max` read error, so those writes are
-reported as `failed`. EMMA working-mode options and TOU routing are not part of
-6.3.x (PR #1098).
+limit. EMMA working-mode options and TOU routing are not part of 6.3.x
+(PR #1098).
+
+**EMMA needs Huawei Solar 2.1.6 or newer.** Before 2.1.6,
+`set_maximum_feed_grid_power` validated every request against the inverter-only
+`P_MAX` register, so on an EMMA every watt limit (the negative-price export
+block and a configured `hsem_max_grid_export_power_kw` cap) failed with
+`Failed to read registers P_max`. Fixed upstream in wlcrs/huawei_solar#1439.
+HSEM keeps failing closed on that error, so battery writes are skipped in those
+cycles, and it logs a one-time warning telling you to update (issue #1131).
 
 ---
 

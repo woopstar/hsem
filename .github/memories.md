@@ -1019,10 +1019,13 @@ Always check `docs/huawei_entities.md` before looking elsewhere.
   — accepted → `UNVERIFIED` (battery writes proceed), every attempt errors →
   `FAILED` (still blocks them) — and latched on the sensor so it is only
   rewritten when the target changes.
-- **Upstream gap:** EMMA watt-limit writes (negative-price 100 W floor, the
-  configured export cap) fail upstream with `P_max` `IllegalDataValueError`,
-  because `set_maximum_feed_grid_power` validates against the inverter-only
-  `P_MAX` register. HSEM keeps failing closed on that error.
+- **Huawei Solar ≥ 2.1.6 required for EMMA watt limits (#1131):** older
+  versions validate `set_maximum_feed_grid_power` against the inverter-only
+  `P_MAX` register, so every EMMA watt write (negative-price 100 W floor, the
+  configured export cap) fails with `P_max` `IllegalDataValueError`. Fixed
+  upstream in wlcrs/huawei_solar#1439. HSEM keeps failing closed and logs a
+  one-time update hint (`applier_power_control._warn_emma_p_max_once`); there
+  is deliberately no HSEM-side 0 % workaround.
 
 ---
 
