@@ -1512,6 +1512,17 @@ Hour-granular callers (`slot_in_day=None`) are unaffected.
 
 Regression tests: `tests/test_quarter_hourly_planner_input.py`.
 
+**DST slot grid (issue #1160):** both slot grids (recommendations and
+`TimeSeriesIndex`) come from `utils.datetime_utils.physical_slot_grid`,
+which steps in UTC from local midnight: 92 × 15-min slots on the
+spring-forward day, 100 on the fall-back day. Boundaries carry a fixed UTC
+offset so they compare and subtract by physical instant (two datetimes that
+share a `ZoneInfo` compare by wall clock and ignore `fold`). Use
+`slot_position` for `(day_offset, slot_in_day)`; never derive
+`slot_in_day` from `hour * 60 + minute`, and never build a grid with
+`midnight + timedelta(...)`. Regression tests: `tests/test_dst_slot_grid.py`,
+`tests/test_time_series_model.py::TestDstTransitions`.
+
 ---
 
 ## Avg Sensor Must Not Store Partial-Day Samples (issue #720 follow-up)

@@ -17,6 +17,7 @@ from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.ev_accounting import normalized_baseline_includes_ev
+from custom_components.hsem.utils.live_power import LivePowerEstimate
 
 
 class TestResolveMaxDischargePowerW:
@@ -209,3 +210,33 @@ class TestFalsyZeroPreservation:
         cfg.batteries_forecast_reserve_pct = 12.5
         planner_input = self._build(cfg, LiveState())
         assert planner_input.battery_forecast_reserve_pct == pytest.approx(12.5)
+
+
+class TestLivePowerEstimateOverride:
+    """The rolling median overrides each live-power channel independently (#797)."""
+
+    @staticmethod
+    def _build(estimate: LivePowerEstimate) -> PlannerInput:
+        return build_planner_input(
+            cfg=SensorConfig(),
+            live=LiveState(),
+            hourly_recommendations=[],
+            previous_winner_name=None,
+            previous_winner_score=0.0,
+            live_power_estimate=estimate,
+        )
+
+    def test_both_channels_use_the_median(self) -> None:
+        inp = self._build(LivePowerEstimate(house_power_w=1200.0, solar_power_w=450.0))
+        assert inp.live_house_consumption_w == pytest.approx(1200.0)
+        assert inp.live_house_consumption_available is True
+        assert inp.live_solar_production_w == pytest.approx(450.0)
+        assert inp.live_solar_production_available is True
+
+    def test_a_missing_channel_keeps_the_single_sample_fallback(self) -> None:
+        inp = self._build(LivePowerEstimate(house_power_w=None, solar_power_w=300.0))
+        assert inp.live_solar_production_w == pytest.approx(300.0)
+        # No house sensor is configured, so the single-sample path stays
+        # unavailable rather than inheriting the PV channel's authority.
+        assert inp.live_house_consumption_w == pytest.approx(0.0)
+        assert inp.live_house_consumption_available is False

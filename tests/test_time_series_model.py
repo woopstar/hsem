@@ -218,67 +218,140 @@ class TestSlotMeta:
 
 
 class TestDstTransitions:
-    """Slot generation must be correct on DST spring-forward and autumn-fallback days."""
+    """Slot generation must be correct in real (UTC) time on DST days (#1160).
 
-    # ---- Spring forward: 2024-03-31, 02:00 → 03:00, UTC+1 → UTC+2 -----
+    Every assertion converts to UTC first: slots sharing one ``ZoneInfo``
+    compare and subtract by wall clock, which hid the wall-clock grid bug.
+    """
 
-    def test_spring_forward_96_slots_15min(self):
-        now = _cph(2024, 3, 31, 0)
-        tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
-        assert len(tsi) == 96
+    # Spring forward: 2024-03-31, 02:00 → 03:00, UTC+1 → UTC+2 (23 h day).
+    # Autumn fallback: 2024-10-27, 03:00 → 02:00, UTC+2 → UTC+1 (25 h day).
 
-    def test_spring_forward_24_slots_60min(self):
-        now = _cph(2024, 3, 31, 0)
-        tsi = TimeSeriesIndex.from_now(now, interval_minutes=60, horizon_hours=24)
-        assert len(tsi) == 24
+    @staticmethod
+    def _utc_bounds(tsi: TimeSeriesIndex) -> list[tuple[datetime, datetime]]:
+        """Return every slot's (start, end) converted to UTC."""
+        return [(m.start.astimezone(_TZ_UTC), m.end.astimezone(_TZ_UTC)) for m in tsi]
 
-    def test_spring_forward_total_span_24h(self):
-        now = _cph(2024, 3, 31, 0)
-        tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
-        assert tsi.slots[-1].end - tsi.slots[0].start == timedelta(hours=24)
+    @pytest.mark.parametrize(
+        ("day", "interval", "expected"),
+        [
+            pytest.param((2024, 3, 31), 15, 92, id="spring_15min"),
+            pytest.param((2024, 3, 31), 60, 23, id="spring_60min"),
+            pytest.param((2024, 10, 27), 15, 100, id="autumn_15min"),
+            pytest.param((2024, 10, 27), 60, 25, id="autumn_60min"),
+            pytest.param((2024, 6, 15), 15, 96, id="ordinary_15min"),
+        ],
+    )
+    def test_slot_count_matches_real_day_length(
+        self, day: tuple[int, int, int], interval: int, expected: int
+    ) -> None:
+        tsi = TimeSeriesIndex.from_now(
+            _cph(*day, 12), interval_minutes=interval, horizon_hours=24
+        )
+        assert len(tsi) == expected
 
-    def test_spring_forward_all_slots_aware(self):
-        now = _cph(2024, 3, 31, 0)
-        tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
+    @pytest.mark.parametrize(
+        ("day", "real_hours"),
+        [
+            pytest.param((2024, 3, 31), 23, id="spring"),
+            pytest.param((2024, 10, 27), 25, id="autumn"),
+        ],
+    )
+    def test_total_span_in_utc(
+        self, day: tuple[int, int, int], real_hours: int
+    ) -> None:
+        tsi = TimeSeriesIndex.from_now(
+            _cph(*day, 0), interval_minutes=15, horizon_hours=24
+        )
+        bounds = self._utc_bounds(tsi)
+        assert bounds[-1][1] - bounds[0][0] == timedelta(hours=real_hours)
+        # The grid covers exactly the local day: midnight to next midnight.
+        assert tsi.slots[0].start == _cph(*day, 0)
+        assert tsi.slots[-1].end == _cph(*day, 0) + timedelta(days=1)
+
+    @pytest.mark.parametrize(
+        "day", [(2024, 3, 31), (2024, 10, 27)], ids=["spring", "autumn"]
+    )
+    def test_every_slot_spans_interval_in_utc(self, day: tuple[int, int, int]) -> None:
+        tsi = TimeSeriesIndex.from_now(
+            _cph(*day, 0), interval_minutes=15, horizon_hours=24
+        )
+        for start, end in self._utc_bounds(tsi):
+            assert end - start == timedelta(minutes=15)
+
+    @pytest.mark.parametrize(
+        "day", [(2024, 3, 31), (2024, 10, 27)], ids=["spring", "autumn"]
+    )
+    def test_utc_starts_unique_and_contiguous(self, day: tuple[int, int, int]) -> None:
+        tsi = TimeSeriesIndex.from_now(
+            _cph(*day, 0), interval_minutes=15, horizon_hours=24
+        )
+        bounds = self._utc_bounds(tsi)
+        assert len({start for start, _ in bounds}) == len(bounds)
+        for (_, end), (next_start, _) in zip(bounds, bounds[1:]):
+            assert end == next_start
+
+    def test_spring_forward_has_no_nonexistent_local_start(self) -> None:
+        tsi = TimeSeriesIndex.from_now(
+            _cph(2024, 3, 31, 0), interval_minutes=15, horizon_hours=24
+        )
+        assert all(m.hour != 2 for m in tsi)
+        # 01:45 +01:00 is followed directly by 03:00 +02:00.
+        assert tsi.slots[7].start.isoformat() == "2024-03-31T01:45:00+01:00"
+        assert tsi.slots[8].start.isoformat() == "2024-03-31T03:00:00+02:00"
+
+    def test_autumn_fallback_represents_repeated_hour(self) -> None:
+        tsi = TimeSeriesIndex.from_now(
+            _cph(2024, 10, 27, 0), interval_minutes=60, horizon_hours=24
+        )
+        hour_two = [m for m in tsi if m.hour == 2]
+        assert [m.start.isoformat() for m in hour_two] == [
+            "2024-10-27T02:00:00+02:00",
+            "2024-10-27T02:00:00+01:00",
+        ]
+        # Each occurrence has its own SlotKey.
+        assert [m.key.slot_in_day for m in hour_two] == [2, 3]
+
+    @pytest.mark.parametrize(
+        "day", [(2024, 3, 31), (2024, 10, 27)], ids=["spring", "autumn"]
+    )
+    def test_slot_keys_unique(self, day: tuple[int, int, int]) -> None:
+        tsi = TimeSeriesIndex.from_now(
+            _cph(*day, 0), interval_minutes=15, horizon_hours=48
+        )
+        keys = [m.key for m in tsi]
+        assert len(set(keys)) == len(keys)
+        # Day 1 is an ordinary day and starts at slot 0 again.
+        assert [m.key for m in tsi if m.key.day_offset == 1][0] == SlotKey(1, 0)
+
+    def test_multi_day_horizon_crossing_dst(self) -> None:
+        """A 48 h horizon starting the day before fall-back has 96 + 100 slots."""
+        tsi = TimeSeriesIndex.from_now(
+            _cph(2024, 10, 26, 12), interval_minutes=15, horizon_hours=48
+        )
+        assert len(tsi) == 196
+        assert sum(1 for m in tsi if m.key.day_offset == 1) == 100
+
+    def test_slot_index_for_repeated_hour(self) -> None:
+        """Both physical occurrences of 02:30 locate their own slot."""
+        tsi = TimeSeriesIndex.from_now(
+            _cph(2024, 10, 27, 0), interval_minutes=60, horizon_hours=24
+        )
+        first = datetime(2024, 10, 27, 2, 30, tzinfo=_TZ, fold=0)
+        second = datetime(2024, 10, 27, 2, 30, tzinfo=_TZ, fold=1)
+        assert tsi.slot_index_for(first) == 2
+        assert tsi.slot_index_for(second) == 3
+
+    @pytest.mark.parametrize(
+        "day", [(2024, 3, 31), (2024, 10, 27)], ids=["spring", "autumn"]
+    )
+    def test_all_slots_aware(self, day: tuple[int, int, int]) -> None:
+        tsi = TimeSeriesIndex.from_now(
+            _cph(*day, 0), interval_minutes=15, horizon_hours=24
+        )
         for meta in tsi:
             assert meta.start.tzinfo is not None
             assert meta.end.tzinfo is not None
-
-    def test_spring_forward_slots_contiguous(self):
-        now = _cph(2024, 3, 31, 0)
-        tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
-        for a, b in zip(tsi.slots, tsi.slots[1:]):
-            assert a.end == b.start
-
-    # ---- Autumn fallback: 2024-10-27, 03:00 → 02:00, UTC+2 → UTC+1 ---
-
-    def test_autumn_fallback_96_slots_15min(self):
-        now = _cph(2024, 10, 27, 0)
-        tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
-        assert len(tsi) == 96
-
-    def test_autumn_fallback_24_slots_60min(self):
-        now = _cph(2024, 10, 27, 0)
-        tsi = TimeSeriesIndex.from_now(now, interval_minutes=60, horizon_hours=24)
-        assert len(tsi) == 24
-
-    def test_autumn_fallback_total_span_24h(self):
-        now = _cph(2024, 10, 27, 0)
-        tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
-        assert tsi.slots[-1].end - tsi.slots[0].start == timedelta(hours=24)
-
-    def test_autumn_fallback_all_slots_aware(self):
-        now = _cph(2024, 10, 27, 0)
-        tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
-        for meta in tsi:
-            assert meta.start.tzinfo is not None
-            assert meta.end.tzinfo is not None
-
-    def test_autumn_fallback_slots_contiguous(self):
-        now = _cph(2024, 10, 27, 0)
-        tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
-        for a, b in zip(tsi.slots, tsi.slots[1:]):
-            assert a.end == b.start
 
 
 # ---------------------------------------------------------------------------
