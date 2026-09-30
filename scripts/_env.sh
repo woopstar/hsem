@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared by the backtest scripts: load settings from a .env file.
 #
 # Settings (HA_URL, HA_TOKEN, TZ, HSEM_*) may live in a .env file so the token
