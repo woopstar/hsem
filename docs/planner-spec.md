@@ -62,6 +62,13 @@ time (issue #1160):
   Two datetimes sharing one `ZoneInfo` compare by wall clock and cannot
   tell the repeated hour's two occurrences apart; match slots by
   `utc_key` / UTC instants, never by local wall-clock time.
+- Past / live / future checks compare UTC instants (issue #1167): the live
+  slot is `slot_contains(start, end, now)`, a future slot is
+  `slot_is_future(end, now)`, and anything aligned with the MILP's LP rows
+  uses `future_slot_indices`. `as_tz(x, now.tzinfo)` is only for reading
+  wall-clock fields (`.date()`, `.hour`); ordering it against a `ZoneInfo`
+  `now` compares by wall clock. `tests/test_dst_slot_compare.py` guards
+  against the pattern returning.
 - `SlotKey.slot_in_day` (and `PricePoint.slot_in_day`, via
   `utils.datetime_utils.slot_position`) counts real steps since the local
   midnight of the slot's date. It equals `(hour × 60 + minute) // interval`

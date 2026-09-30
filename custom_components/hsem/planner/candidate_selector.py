@@ -49,7 +49,7 @@ from custom_components.hsem.planner.discharge_scheduler import (
     concentrate_discharge_on_expensive_slots,
 )
 from custom_components.hsem.planner.soc_simulation import simulate_soc
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import utc_key
 from custom_components.hsem.utils.logger import log_planner
 
 # SoC floor tolerance — plans are accepted even if they dip this many
@@ -619,12 +619,12 @@ def ev_future_charge_value_per_kwh(
         Value in currency/kWh, or ``None`` when no future price data is
         available within the lookahead window.
     """
-    tz = now.tzinfo
-    cutoff = now + timedelta(hours=lookahead_hours)
+    now_utc = utc_key(now)
+    cutoff = now_utc + timedelta(hours=lookahead_hours)
     future_prices: list[float] = [
         float(s.price.import_price)
         for s in slots
-        if now < as_tz(s.start, tz) <= cutoff and not math.isnan(s.price.import_price)
+        if now_utc < utc_key(s.start) <= cutoff and not math.isnan(s.price.import_price)
     ]
     if not future_prices:
         return None
