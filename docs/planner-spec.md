@@ -42,6 +42,35 @@ Power values in kW must be converted to energy using:
 energy_kwh = power_kw * duration_hours
 ```
 
+### Slot grid and DST
+
+The slot grid starts at local midnight of `now`'s date and ends
+`interval_length_hours` of local wall-clock time later. Both the
+recommendation grid (`coordinator_builder.generate_recommendation_intervals`)
+and the planner's `TimeSeriesIndex` build it with
+`utils.datetime_utils.physical_slot_grid`, which steps in physical (UTC)
+time (issue #1160):
+
+- Every slot spans exactly `interval_minutes` of real time, so
+  `slot_fraction = interval_minutes / 60` is always the real duration.
+- A DST day has its real length: 23 h (92 × 15 min) on the spring-forward
+  day, with no slots at the non-existent 02:xx times, and 25 h
+  (100 × 15 min) on the fall-back day, with both occurrences of the repeated
+  hour.
+- Boundaries carry a fixed UTC offset (`02:00+02:00`, then `02:00+01:00`),
+  so comparing, sorting and subtracting slot times is by physical instant.
+  Two datetimes sharing one `ZoneInfo` compare by wall clock and cannot
+  tell the repeated hour's two occurrences apart; match slots by
+  `utc_key` / UTC instants, never by local wall-clock time.
+- `SlotKey.slot_in_day` (and `PricePoint.slot_in_day`, via
+  `utils.datetime_utils.slot_position`) counts real steps since the local
+  midnight of the slot's date. It equals `(hour × 60 + minute) // interval`
+  on ordinary days and stays unique on DST days, so each of the fall-back
+  day's two hour-2 prices lands on its own slot.
+- Hour-granular series (consumption averages, Solcast PV, and the hourly
+  price fallback) are keyed by `(day_offset, hour)`, so both occurrences of
+  the repeated hour use the same hourly value.
+
 ## Recommendation priority rules
 
 ### Three-layer model
