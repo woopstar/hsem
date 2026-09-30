@@ -88,6 +88,10 @@ caches) rather than durable source of truth — they aren't visible from the hos
 all editing happens through Zed's remote session (or Claude Code) running inside the container
 anyway. Push or commit anything you want to keep before removing the volume.
 
+Agent sessions use the same directory: the `hsem-pre-flight` skill creates one worktree per task
+at `/workspaces/worktrees/hsem-<issue>`, because the main checkout at `/workspaces/hsem` is shared
+between sessions and must not be switched, pulled or rebased by an agent (issue #1122).
+
 No per-worktree Python setup is needed: dependencies are installed into the container's system
 Python (see `setup-python-deps.sh`), not a per-checkout virtualenv, so every worktree shares the
 same installed packages automatically. Git hooks (pre-commit) are also shared, since `.git/hooks`

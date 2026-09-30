@@ -1,18 +1,44 @@
 ---
 name: hsem-pre-flight
-description: Run before starting any HSEM code change. Checkout main, pull latest, read repository memory and relevant docs, create a feature branch.
+description: Run before starting any HSEM code change. Fetch origin, create a dedicated git worktree and feature branch, read repository memory and relevant docs.
 ---
 
 # HSEM Pre-Flight — Start Any Code Change
 
 Activate this skill **before writing any code** — when the user asks to fix a bug, implement a feature, or make any change to the HSEM codebase.
 
-## Step 1: Checkout Main and Pull Latest
+## Step 1: Create a Worktree and Feature Branch
+
+The main checkout at `/workspaces/hsem` is **shared** between agent sessions (Claude
+Code, Zed agents, Copilot) running in the same devcontainer. Never run `git checkout`,
+`git switch`, `git pull`, `git rebase` or `git reset` there: it moves the branch, index
+and working tree under whichever other session is using it (issue #1122,
+woopstar/open_spot_forecast#55). Give every task its own worktree instead:
 
 ```bash
-git checkout main
-git pull
+git -C /workspaces/hsem fetch origin
+git -C /workspaces/hsem worktree add /workspaces/worktrees/hsem-<issue> \
+  -b <type>/<issue>-<slug> origin/main
+cd /workspaces/worktrees/hsem-<issue>
 ```
+
+- Branch from `origin/main` unless the user explicitly says otherwise. A 6.3.x
+  backport branches from `origin/v6.3.0-hotfix` into its own worktree, e.g.
+  `/workspaces/worktrees/hsem-<issue>-hotfix`.
+- `/workspaces/worktrees` is the `hsem-worktrees` volume (see `.devcontainer/README.md`).
+  No per-worktree setup is needed: Python deps are container-wide and pre-commit hooks
+  live in the common git dir.
+- Do **all** work from the worktree: edits, `./scripts/quality.sh`, commits, pushes and
+  `gh` commands. `scripts/quality.sh` keeps separate mypy, ruff and pytest caches per
+  worktree.
+- If `worktree add` fails because the branch is already checked out elsewhere, another
+  session probably owns it. Inspect that worktree (`git worktree list`,
+  `git -C <path> status`) before touching it, and never remove one with uncommitted
+  changes.
+- The git stash stack is shared by every worktree. Don't use `git stash`; commit
+  work in progress instead.
+
+Branch naming: see Step 4.
 
 ## Step 2: Read Repository Memory
 
@@ -31,9 +57,10 @@ Read `.github/memories.md`. Pay special attention to:
 
 If this is issue-driven work, read the full GitHub issue before touching any code.
 
-## Step 4: Create a Feature Branch
+## Step 4: Branch Naming
 
-Format: `<type>/<issue-number>-<slug>`
+The branch is created by `git worktree add -b` in Step 1. Format:
+`<type>/<issue-number>-<slug>`
 
 | Type       | Use for                  |
 | ---------- | ------------------------ |
@@ -48,7 +75,7 @@ Format: `<type>/<issue-number>-<slug>`
 
 Examples: `fix/444-milp-cycle-cost`, `feat/123-add-solar-forecast`
 
-All branches MUST be based on main unless the user explicitly instructs otherwise.
+All branches MUST be based on `origin/main` unless the user explicitly instructs otherwise.
 
 ## Step 5: Identify Relevant Documentation
 

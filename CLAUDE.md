@@ -11,7 +11,8 @@ please refer to `AGENTS.md`.
 1. **Read AGENTS.md first** — Understand the project's constraints, security rules, and Home
    Assistant compliance requirements
 2. **Verify Python 3.14** — Ensure you're using Python 3.14 (see `.python-version`)
-3. **Create a feature branch** — Use format: `feat/<issue-number>-<description>`
+3. **Create a worktree and feature branch** — Use format: `feat/<issue-number>-<description>`,
+   in its own worktree under `/workspaces/worktrees` (see _Shared checkout_ below)
 4. **Make focused changes** — Solve one issue at a time
 5. **Run quality checks** — `./scripts/quality.sh lint`, `./scripts/quality.sh typing`, `./scripts/quality.sh quality`, `./scripts/quality.sh test`
 6. **Submit PR for review** — Do not merge without explicit permission
@@ -127,14 +128,26 @@ and run `./scripts/quality.sh translations` (or `python3 scripts/validate_transl
 directly) before opening the PR; it must report 0 missing/stale/placeholder-mismatch
 keys. This check is also enforced by CI (`lint-and-test.yml`) and by `./scripts/quality.sh all`.
 
+## Shared Checkout — Work in a Worktree
+
+The main checkout at `/workspaces/hsem` is **shared** between agent sessions (Claude Code,
+Zed agents, Copilot) running in the same devcontainer. An agent must never switch, pull,
+rebase or reset it: doing so moves the branch and files under another session mid-task
+(issue #1122). Every task gets its own git worktree under `/workspaces/worktrees`, created
+by the `hsem-pre-flight` skill, and all edits, quality gates, commits and pushes run from
+there. Don't use `git stash`: the stash stack is shared by every worktree.
+
 ## Development Workflow
 
 ```bash
 # 1. Ensure you're on Python 3.14
 python --version  # Should show 3.14.x
 
-# 2. Create a feature branch
-git checkout -b feat/<issue-number>-<description>
+# 2. Create a worktree with a feature branch (never switch /workspaces/hsem itself)
+git -C /workspaces/hsem fetch origin
+git -C /workspaces/hsem worktree add /workspaces/worktrees/hsem-<issue-number> \
+  -b feat/<issue-number>-<description> origin/main
+cd /workspaces/worktrees/hsem-<issue-number>
 
 # 3. Make your changes and write tests
 

@@ -34,14 +34,18 @@ It contains the complete Home Assistant development compliance checklist:
 
 When asked to solve a GitHub issue, always follow these steps in order:
 
-0. **Checkout main and pull latest**
+0. **Create a dedicated worktree from the latest `origin/main`.** The main checkout at
+   `/workspaces/hsem` is shared between agent sessions, so never check out, pull or
+   rebase there (issue #1122). See `.claude/skills/hsem-pre-flight/SKILL.md` Step 1.
    ```bash
-   git checkout main
-   git pull
+   git -C /workspaces/hsem fetch origin
+   git -C /workspaces/hsem worktree add /workspaces/worktrees/hsem-<issue> \
+     -b <type>/<issue>-<slug> origin/main
+   cd /workspaces/worktrees/hsem-<issue>
    ```
 1. **Read the GitHub issue** — Understand the problem fully before touching any code.
 2. **Read `.github/memories.md`** — Check if the issue touches a known pattern or canonical helper.
-3. **Create a branch** using the issue prefix and a short slug.
+3. **Name the branch** (created by `worktree add -b` in step 0) with the issue prefix and a short slug.
    - Format: `<type>/<issue-number>-<slug>` — e.g., `fix/444-milp-cycle-cost`
 4. **Understand the relevant code** — Search and read the affected files before making changes.
 5. **Implement the smallest safe fix** — No unrelated changes, no broad refactors.

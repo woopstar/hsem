@@ -12,9 +12,13 @@ Apply these rules to **every** PR, regardless of scope.
 
 ## Pre-Flight
 
+`/workspaces/hsem` is shared between agent sessions: never check out, pull or rebase
+there. Work in a dedicated worktree (details: `.claude/skills/hsem-pre-flight/SKILL.md`):
+
 ```bash
-git checkout main
-git pull
+git -C /workspaces/hsem fetch origin
+git -C /workspaces/hsem worktree add /workspaces/worktrees/hsem-<issue> -b <type>/<issue>-<slug> origin/main
+cd /workspaces/worktrees/hsem-<issue>
 cat .github/memories.md
 ```
 
