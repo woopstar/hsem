@@ -1424,11 +1424,20 @@ ignores `fold`, and in the fall-back hour the other occurrence's slots look
 live/future (or past). Use `slot_contains(start, end, now)`,
 `slot_is_future(end, now)`, `utc_key(a) <op> utc_key(b)`, or
 `future_slot_indices` for LP alignment. `as_tz` stays fine for `.date()` /
-`.hour` / `.month`. Note: `run_planner` parses `now_iso` into a fixed
-offset, so inside the planner these checks were latent; the coordinator
-paths (`coordinator_planner_phase`, `coordinator_tracking`,
-`apply_window_hysteresis`) were live. Guard test:
+`.hour` / `.month`. Guard test:
 `tests/test_dst_slot_compare.py::test_no_as_tz_ordering_comparisons_remain`.
+
+**Planner `now` carries the HA zone (issue #1169):** `now_iso` is a fixed
+offset, so `run_planner` rebuilds `now` in `PlannerInput.time_zone`
+(`_parse_now(now_iso, time_zone)`); `build_planner_input` fills it from
+`now.tzinfo.key`. Before #1169 the planner's DST-day grid was 96 fixed-offset
+slots, silently misaligned with the recommendation grid and the price keys.
+Planner code therefore sees a `ZoneInfo` `now`: slot times (fixed offset)
+vs `now` compare by instant, but `now` vs another `ZoneInfo` datetime
+(deadlines, `now.replace(...)`) compares and subtracts by wall clock; use
+`physical_elapsed` / `utc_key` there. DST tests that claim production
+behaviour must go through `build_planner_input` → `run_planner`
+(`tests/test_dst_planner_grid.py`).
 
 ---
 

@@ -51,6 +51,15 @@ and the planner's `TimeSeriesIndex` build it with
 `utils.datetime_utils.physical_slot_grid`, which steps in physical (UTC)
 time (issue #1160):
 
+- The local zone comes from `now.tzinfo`. `now_iso` only carries a fixed
+  UTC offset, which has no DST rules, so `run_planner` re-expresses `now`
+  in `PlannerInput.time_zone` (the HA zone's IANA name, set by
+  `build_planner_input`) before building the grid (issue #1169). Without
+  it, a DST day is planned as 24 fixed-offset hours and no longer lines up
+  with the recommendation grid or the `(day_offset, slot_in_day)` price
+  keys. `time_zone=None` (old dumps, hand-built inputs) keeps that
+  fixed-offset behaviour.
+
 - Every slot spans exactly `interval_minutes` of real time, so
   `slot_fraction = interval_minutes / 60` is always the real duration.
 - A DST day has its real length: 23 h (92 × 15 min) on the spring-forward

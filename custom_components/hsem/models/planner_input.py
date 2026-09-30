@@ -25,6 +25,13 @@ class PlannerInput:
         now_iso:
             ISO-8601 timestamp of the planning moment (e.g.
             ``"2024-06-15T14:00:00+02:00"``).  Must be timezone-aware.
+        time_zone:
+            IANA name of the Home Assistant time zone (e.g.
+            ``"Europe/Copenhagen"``).  The ISO string only carries a fixed
+            UTC offset, which has no DST rules; the planner uses this zone
+            to build the local-day slot grid, so a DST day gets its real
+            23 or 25 hours (issue #1169).  ``None`` (older dumps, hand-built
+            inputs) plans in the fixed offset of ``now_iso``.
         interval_minutes:
             Planning slot width in minutes.  Typical values: 15 or 60.
         interval_length_hours:
@@ -126,6 +133,7 @@ class PlannerInput:
 
     # --- temporal context ---
     now_iso: str = "2024-06-15T00:00:00+02:00"
+    time_zone: str | None = None
     interval_minutes: int = 60
     interval_length_hours: int = 24
 

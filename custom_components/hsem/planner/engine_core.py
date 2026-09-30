@@ -384,7 +384,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     """Execute the HSEM planner and return a :class:`PlannerOutput`."""
     warnings: list[str] = []
     missing_inputs: list[str] = []
-    now = _parse_now(inp.now_iso)
+    now = _parse_now(inp.now_iso, inp.time_zone)
     log_planner(
         "debug",
         "==== HSEM PLANNER RUN START ==== now=%s interval=%dmin horizon=%dh",
