@@ -29,7 +29,11 @@ from custom_components.hsem.planner.ev_planner_models import (  # noqa: F401
     EVChargingSlot,
     EVPlannerInput,
 )
-from custom_components.hsem.utils.datetime_utils import slot_contains, utc_key
+from custom_components.hsem.utils.datetime_utils import (
+    physical_elapsed,
+    slot_contains,
+    utc_key,
+)
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.units import ev_ac_to_dc_kwh, ev_dc_to_ac_kwh
@@ -357,7 +361,10 @@ def build_ev_charging_plan(
             avail_min = min(
                 avail_min,
                 max(
-                    (effective_deadline - max(s_start, now_tz)).total_seconds() / 60.0,
+                    physical_elapsed(
+                        effective_deadline, max(s_start, now_tz)
+                    ).total_seconds()
+                    / 60.0,
                     0.0,
                 ),
             )

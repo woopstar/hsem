@@ -55,13 +55,14 @@ All inputs are collected in the `PlannerInput` dataclass
 
 ### Temporal context
 
-| Field                   | Type  | Description                                                                                   |
-| ----------------------- | ----- | --------------------------------------------------------------------------------------------- |
-| `now_iso`               | `str` | ISO-8601 timezone-aware timestamp of the planning moment (e.g. `"2024-06-15T14:00:00+02:00"`) |
-| `interval_minutes`      | `int` | Slot width in minutes — `15` or `60`                                                          |
-| `interval_length_hours` | `int` | Planning horizon length — `24`, `48`, or `72` hours                                           |
+| Field                   | Type          | Description                                                                                                                                                                               |
+| ----------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `now_iso`               | `str`         | ISO-8601 timezone-aware timestamp of the planning moment (e.g. `"2024-06-15T14:00:00+02:00"`)                                                                                             |
+| `time_zone`             | `str \| None` | IANA name of the HA time zone (e.g. `"Europe/Copenhagen"`); the planner re-expresses `now` in it so DST days get their real 23 or 25 hours. `None` plans in the fixed offset of `now_iso` |
+| `interval_minutes`      | `int`         | Slot width in minutes — `15` or `60`                                                                                                                                                      |
+| `interval_length_hours` | `int`         | Planning horizon length — `24`, `48`, or `72` hours                                                                                                                                       |
 
-The total number of slots generated is `(interval_length_hours * 60) // interval_minutes`.
+The total number of slots generated is `(interval_length_hours * 60) // interval_minutes` on an ordinary day; a DST day has 4 × (60 / `interval_minutes`) fewer or more (see `planner-spec.md` → _Slot grid and DST_).
 
 | Horizon | 15-min slots | 60-min slots |
 | ------- | ------------ | ------------ |
