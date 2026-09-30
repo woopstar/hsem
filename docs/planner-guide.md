@@ -503,6 +503,14 @@ recommendation it is not changed by later rules in the same layer.
 > strategy to every slot independently — summer slots get discharge/solar and
 > winter slots get wait-mode, even within the same 48-hour plan.
 
+> **MILP candidate:** the optimizer has already decided every slot, so a slot
+> it left unassigned is one where it chose to leave the battery idle. There the
+> fill skips priorities 2 and 5 and publishes `batteries_wait_mode`: it opens
+> no discharge window (issue #1041) and books no solar charge (issue #1158). A
+> PV surplus the optimizer chose to export is therefore exported, not also
+> counted as stored in the battery. The table above applies in full to the
+> non-MILP candidates.
+
 > **Wait mode behaviour:** the `batteries_wait_mode` recommendation normally keeps the
 > battery idle. When `hsem_batteries_wait_mode_behavior` is set to
 > `self_consumption_with_reserve`, the applier switches the inverter to

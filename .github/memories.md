@@ -2302,3 +2302,15 @@ Tests: `tests/utils/test_dynamic_floor.py::TestMarginCorrection` (288 cycles/day
 **Gotcha:** coordinator test plans use default `SlotPrice(0.0, 0.0)`, which is flat, so there is no cheap refill. Use `_plan(..., cheap_night=True)` to exercise it.
 
 Tests: `tests/utils/test_dynamic_floor.py::TestCheapRefillPrice` and `::TestAffordableGridRefill`. Also `tests/test_dynamic_floor_reference_plan.py`: `test_cheap_night_without_a_charge_is_the_refill` (coordinator wiring) and `test_cheap_night_with_a_pv_refill_releases_the_floor` (real planner; cost within 0.01 of the reference).
+
+## The Seasonal Fill Books No Energy on the MILP Candidate (issue #1158)
+
+**Bug:** `apply_optimization_strategy(..., unassigned_slots_are_lp_decisions=True)` gated only the discharge-window branch (#1041). Its per-day solar-charge step still labelled every PV-surplus slot the LP left idle (`ec = ed = 0`, `ge > 0`) as `batteries_charge_solar` and wrote the surplus into `batteries_charged_kwh`. `simulate_soc(milp_prepopulated=True)` kept the LP's `grid_export_kwh` beside it, so the published slot counted the same PV as stored **and** exported. The SoC trajectory rose by energy that had been sold, later LP charges were clipped against a battery that filled too early, and the applier drove `MaximizeSelfConsumption` against a planned export. On the stock fixtures up to 4.6 kWh was counted twice in one slot, on `main` and on `v6.3.0-hotfix` alike.
+
+**Rule:** under the flag the fill writes no energy. Step 2 (per-day solar charge) is skipped, and every remaining slot is `batteries_wait_mode` (a held planned export at the applier, #797). `tests/planner/test_seasonal_fill_lp_idle.py::TestLabelOnlyChange` now asserts this directly: every energy field the LP wrote reaches the published MILP plan unchanged. Don't "restore" a solar charge on an LP-idle surplus slot: the LP chose to export there, and #1138's end value `V` already prices stored energy.
+
+**Energy-balance gate:** `plan_consistency.energy_balance_deficit()` computes `(house + ev + ge + ec/η_chg) − (pv + gi + ed·η_dis)`, and `check_plan_self_consistency(..., now=, charge_eff=, discharge_eff=)` reports future slots above `ENERGY_BALANCE_TOLERANCE_KWH` (5 Wh). It is one-sided because curtailed PV is not a slot field. Without efficiencies the gate stays label-only, which is what the synthetic tests in `test_plan_consistency.py` rely on.
+
+**Test gotcha:** `tests/planner/test_solar_charge_no_double_count.py` used a flat 0.20/0.18 import/export price, where storing PV loses money against the cycle cost. Its charge labels only existed because of this bug; the fixture now exports at 0.02.
+
+Tests: `tests/planner/test_milp_fill_no_double_pv.py` (the issue's four-slot reproduction; non-MILP fill unchanged; every published future slot balances within 1e-3 kWh across the stock fixtures × SoC 10/50/100; the gate reports a deficit and ignores unused supply, past slots and a missing efficiency).
