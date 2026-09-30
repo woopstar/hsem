@@ -265,6 +265,8 @@ async def async_apply_inverter_power_control(
                 written_limits.pop(inv_id, None)
 
         if result.status == ApplyStatus.FAILED:
+            if desired_is_watt:
+                _warn_emma_p_max_once(sensor, result.error_message)
             mode = "W" if desired_is_watt else "%"
             _LOGGER.debug(
                 "Export power %s write FAILED for inverter %s after all retries. "
@@ -336,4 +338,32 @@ def _warn_measurement_feedback_once(
         "Solar setup has no active power control sensor (e.g. EMMA).",
         entity_id,
         state,
+    )
+
+
+def _warn_emma_p_max_once(
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
+    error_message: str,
+) -> None:
+    """Tell the user to update Huawei Solar when an EMMA watt limit fails.
+
+    Before 2.1.6, ``huawei_solar.set_maximum_feed_grid_power`` validated
+    every request against the inverter-only ``P_MAX`` register, so on an EMMA
+    it always failed with "Failed to read registers P_max" (issue #1131,
+    fixed upstream in wlcrs/huawei_solar#1439).  The write stays ``FAILED``;
+    this only explains why.  Latched on the sensor as ``_emma_p_max_warned``
+    so it is logged once per session.
+    """
+    if "p_max" not in error_message.lower():
+        return
+    if getattr(sensor, "_emma_p_max_warned", False) is True:
+        return
+    sensor._emma_p_max_warned = True
+    _LOGGER.warning(
+        "Grid export limit (watts) failed because Huawei Solar could not read "
+        "P_max. On an EMMA system this is a Huawei Solar bug fixed in 2.1.6: "
+        "update the Huawei Solar integration to 2.1.6 or newer. Until then the "
+        "negative-price export block and any hsem_max_grid_export_power_kw cap "
+        "fail, and battery writes are skipped in those cycles. Last error: %s",
+        error_message,
     )

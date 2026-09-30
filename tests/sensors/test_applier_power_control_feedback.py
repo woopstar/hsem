@@ -228,6 +228,47 @@ class TestRealFeedbackIsUnchanged:
         assert summary.results[0].entity_id == _APC_ENTITY
 
 
+class TestEmmaPMaxUpdateHint:
+    """Huawei Solar < 2.1.6 fails every EMMA watt limit on P_max (#1131)."""
+
+    @staticmethod
+    async def _block(sensor: MagicMock, error: Exception) -> Any:
+        with (
+            _patch_sleep(),
+            patch(
+                f"{_MODULE}.async_set_grid_export_power_watt",
+                AsyncMock(side_effect=error),
+            ),
+            patch(f"{_MODULE}._LOGGER") as logger,
+        ):
+            summary = await async_apply_inverter_power_control(
+                sensor, _cfg(), _live(export_electricity_price=-0.1)
+            )
+        return summary, [c.args for c in logger.warning.call_args_list]
+
+    @pytest.mark.asyncio
+    async def test_a_p_max_failure_tells_the_user_to_update_once(self) -> None:
+        sensor = _sensor()
+        error = RuntimeError(
+            "Failed to read registers P_max: received IllegalDataValueError"
+        )
+
+        first, warnings = await self._block(sensor, error)
+        _, again = await self._block(sensor, error)
+
+        # Still fails closed; the hint only explains why.
+        assert [r.status for r in first.results] == [ApplyStatus.FAILED]
+        assert len(warnings) == 1
+        assert "2.1.6" in warnings[0][0]
+        assert "P_max" in warnings[0][1]
+        assert again == []
+
+    @pytest.mark.asyncio
+    async def test_other_write_errors_get_no_update_hint(self) -> None:
+        _, warnings = await self._block(_sensor(), RuntimeError("wrong_device_type"))
+        assert warnings == []
+
+
 class TestExportLimitRouting:
     """With an EMMA, huawei_solar only accepts the EMMA for export limits."""
 
