@@ -26,7 +26,7 @@ from custom_components.hsem.models.hourly_recommendation import HourlyRecommenda
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.models.savings_tracker import SavingsTracker
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import as_tz, slot_contains, utc_key
 from custom_components.hsem.utils.forecast_tracker import (
     ForecastTracker,
     compute_accumulated_energy,
@@ -119,7 +119,9 @@ def accumulate_forecast_actuals(
     for rec in hourly_recommendations:
         slot_start = as_tz(rec.start, now.tzinfo)
         slot_end = as_tz(rec.end, now.tzinfo)
-        if slot_end > interval_start and slot_start < now:
+        if utc_key(slot_end) > utc_key(interval_start) and utc_key(
+            slot_start
+        ) < utc_key(now):
             forecast_tracker.get_or_create_record(slot_start, slot_end)
 
     # Attribute the elapsed interval's PV/load energy by physical overlap.
@@ -684,17 +686,22 @@ def _accumulate_plan_for_slots(
         The accumulation marker (start of the current slot if it was
         just accumulated, or the last_accumulated value unchanged).
     """
+    # Order by UTC instant: slot times converted to the HA ZoneInfo would
+    # compare by wall clock and confuse the DST fall-back hour (#1167).
+    now_key = utc_key(now)
     for slot in slots:
-        slot_start = as_tz(slot.start, now.tzinfo) if hasattr(slot, "start") else None
-        slot_end = as_tz(slot.end, now.tzinfo) if hasattr(slot, "end") else None
+        slot_start: datetime | None = getattr(slot, "start", None)
+        slot_end: datetime | None = getattr(slot, "end", None)
 
         # Current in-progress slot: accumulate full plan on first encounter.
         if (
             slot_start is not None
             and slot_end is not None
-            and slot_start <= now < slot_end
+            and slot_contains(slot_start, slot_end, now)
         ):
-            if last_accumulated is None or last_accumulated < slot_start:
+            if last_accumulated is None or utc_key(last_accumulated) < utc_key(
+                slot_start
+            ):
                 _add_slot_to_tracker(tracker, slot, fraction=1.0)
                 return slot_start  # Mark this slot as accumulated
             return last_accumulated  # Already accumulated this slot
@@ -703,10 +710,16 @@ def _accumulate_plan_for_slots(
         # accumulated yet.  Only active after the first cycle (when
         # last_accumulated is not None) to avoid inflating plan values
         # with stale zeroed fields from past slots on startup.
-        if last_accumulated is not None and slot_end is not None and slot_end <= now:
+        if (
+            last_accumulated is not None
+            and slot_end is not None
+            and utc_key(slot_end) <= now_key
+        ):
             # Use slot_start in the skip-check because last_accumulated
             # is now a slot-start marker (set by the current-slot branch).
-            if slot_start is not None and slot_start <= last_accumulated:
+            if slot_start is not None and utc_key(slot_start) <= utc_key(
+                last_accumulated
+            ):
                 continue
             _add_slot_to_tracker(tracker, slot, fraction=1.0)
 
@@ -744,8 +757,8 @@ def _last_completed_slot_end(slots: list, now: datetime) -> datetime | None:
     """Return the end time of the most recent completed slot, or None."""
     last_end: datetime | None = None
     for slot in slots:
-        slot_end = as_tz(slot.end, now.tzinfo) if hasattr(slot, "end") else None
-        if slot_end is not None and slot_end <= now:
-            if last_end is None or slot_end > last_end:
+        slot_end: datetime | None = getattr(slot, "end", None)
+        if slot_end is not None and utc_key(slot_end) <= utc_key(now):
+            if last_end is None or utc_key(slot_end) > utc_key(last_end):
                 last_end = slot_end
     return last_end

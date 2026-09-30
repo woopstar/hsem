@@ -14,7 +14,12 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import (
+    as_tz,
+    physical_elapsed,
+    slot_is_future,
+    utc_key,
+)
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.recommendations import (
@@ -53,7 +58,7 @@ def calculate_required_battery_until_solar(
     """
     required = 0.0
     for slot in sorted(slots, key=lambda s: s.start):
-        if as_tz(slot.start, now.tzinfo) < now:
+        if utc_key(slot.start) < utc_key(now):
             continue
         if slot.estimated_net_consumption_kwh < 0:
             break
@@ -142,7 +147,7 @@ def calculate_required_battery_for_plan(
         Wait behaviour in that case.
     """
     future_slots = sorted(
-        (s for s in slots if as_tz(s.end, now.tzinfo) > now),
+        (s for s in slots if slot_is_future(s.end, now)),
         key=lambda s: s.start,
     )
     if not future_slots:
@@ -153,7 +158,7 @@ def calculate_required_battery_for_plan(
     for slot in future_slots:
         min_capacity = min(min_capacity, slot.estimated_battery_capacity_kwh)
         if slot.batteries_charged_kwh > 1e-9 or slot.batteries_discharged_kwh > 1e-9:
-            next_action_start = as_tz(slot.start, now.tzinfo)
+            next_action_start = slot.start
             break
 
     full_reserve = max(current_capacity - min_capacity, 0.0)
@@ -161,7 +166,7 @@ def calculate_required_battery_for_plan(
     hours_until_action = 0.0
     if next_action_start is not None and full_reserve > 1e-9:
         hours_until_action = max(
-            (next_action_start - now).total_seconds() / 3600.0, 0.0
+            physical_elapsed(next_action_start, now).total_seconds() / 3600.0, 0.0
         )
         time_factor = max(
             0.0, min(1.0, 1.0 - hours_until_action / WAIT_MODE_RESERVE_DECAY_HOURS)
@@ -264,7 +269,7 @@ def apply_excess_export(
         (
             s
             for s in slots
-            if as_tz(s.start, now.tzinfo) >= now
+            if utc_key(s.start) >= utc_key(now)
             and s.recommendation
             in (
                 None,
@@ -415,7 +420,7 @@ def concentrate_discharge_on_expensive_slots(
     discharge_slots = [
         s
         for s in slots
-        if s.recommendation in _DISCHARGE_RECS and as_tz(s.end, now.tzinfo) > now
+        if s.recommendation in _DISCHARGE_RECS and slot_is_future(s.end, now)
     ]
     if not discharge_slots:
         return ConcentrationStats(candidate_name=candidate_name)
@@ -637,7 +642,7 @@ def apply_optimization_strategy(
         if (
             s.recommendation is None
             and not unassigned_slots_are_lp_decisions
-            and as_tz(s.start, now.tzinfo) >= now
+            and utc_key(s.start) >= utc_key(now)
         ):
             by_day[as_tz(s.start, now.tzinfo).date()].append(s)
 

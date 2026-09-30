@@ -10,7 +10,7 @@ from custom_components.hsem.planner.ev_planner import (
     apply_ev_planned_load_to_slots,
     build_ev_charging_plan,
 )
-from custom_components.hsem.utils.datetime_utils import as_tz, utc_key
+from custom_components.hsem.utils.datetime_utils import slot_contains, utc_key
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.phase_power import (
     charger_rated_power_w,
@@ -171,11 +171,7 @@ def _hold_current_slot_ev_power(
         else "ev_charger_calculated_power"
     )
     current = next(
-        (
-            s
-            for s in slots
-            if as_tz(s.start, now.tzinfo) <= now < as_tz(s.end, now.tzinfo)
-        ),
+        (s for s in slots if slot_contains(s.start, s.end, now)),
         None,
     )
     if current is None:
@@ -306,7 +302,7 @@ def _build_and_inject_for_ev(
     )
     if current_session_removed_from_base:
         for i, slot in enumerate(slots):
-            if as_tz(slot.start, now.tzinfo) <= now < as_tz(slot.end, now.tzinfo):
+            if slot_contains(slot.start, slot.end, now):
                 # The accepted live-house projection already excludes this EV,
                 # so its current-slot demand is separate planner load even when
                 # future baseline slots still contain it.

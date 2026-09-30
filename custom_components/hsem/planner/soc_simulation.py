@@ -33,7 +33,7 @@ from datetime import datetime
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.planner.ev_load_accounting import split_house_and_ev_load
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import slot_contains, slot_is_future
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.recommendations import (
@@ -142,22 +142,19 @@ def simulate_soc(
     )
 
     for slot in slots:
-        slot_start = as_tz(slot.start, now.tzinfo)
-        slot_end = as_tz(slot.end, now.tzinfo)
-
         # Past slots: zero out SoC display fields only.
         # Energy-flow fields (grid_import_kwh, grid_export_kwh,
         # batteries_discharged_kwh, batteries_charged_kwh) are NOT zeroed
         # here so that the daily plan-vs-actual tracker can still read the
         # plan values for completed slots.
-        if slot_end <= now:
+        if not slot_is_future(slot.end, now):
             slot.estimated_battery_capacity_kwh = 0.0
             slot.estimated_battery_soc_pct = 0.0
             continue
 
         # For the current in-progress slot use current_kwh as the starting
         # state; for all future slots chain from the previous slot's end.
-        if slot_start <= now < slot_end:
+        if slot_contains(slot.start, slot.end, now):
             cap = current_kwh
 
         pv = slot.solcast_pv_estimate_kwh  # kWh produced by PV this slot
