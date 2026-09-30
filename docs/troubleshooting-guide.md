@@ -336,6 +336,10 @@ not accept the value.
   3. Restart the Huawei Solar integration.
   4. If the failure is on `set_tou_periods`, check your battery schedule
      configuration for invalid values.
+  5. On an EMMA system, if the export limit (`inverter:<device>`) fails with
+     `Failed to read registers P_max`, update the Huawei Solar integration to
+     2.1.6 or newer. Older versions reject every watt limit on an EMMA
+     (issue #1131).
 
 **4e. Force working mode override active**
 

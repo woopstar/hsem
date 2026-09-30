@@ -110,7 +110,7 @@ The [Huawei Solar integration by wlcrs](https://github.com/wlcrs/huawei_solar) p
 
 ### EMMA systems
 
-If a Huawei EMMA is present, the Huawei Solar integration only accepts grid export limit writes on the EMMA device and has no active power control sensor. Select the EMMA as **Huawei Inverter 1 Device** and leave **Huawei Inverter Active Power Control Sensor** empty: HSEM then writes the export limit without read-back (issue #1120). EMMA working-mode options and TOU routing are not part of 6.3.x (see PR #1098).
+If a Huawei EMMA is present, the Huawei Solar integration only accepts grid export limit writes on the EMMA device and has no active power control sensor. Select the EMMA as **Huawei Inverter 1 Device** and leave **Huawei Inverter Active Power Control Sensor** empty: HSEM then writes the export limit without read-back (issue #1120). EMMA grid export limits in watts (the negative-price block and a configured export cap) need **Huawei Solar 2.1.6 or newer**; older versions fail them with a `P_max` error, and HSEM logs a warning telling you to update. EMMA working-mode options and TOU routing are not part of 6.3.x (see PR #1098).
 
 ---
 
