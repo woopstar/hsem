@@ -86,6 +86,16 @@ parses the file rather than sourcing it, so the token needs no escaping, and
 anything you export in the shell overrides it. It warns if the file is readable
 by other users.
 
+To have the corpus copied off Home Assistant automatically, add the SSH
+details too (the SSH add-on's port; key-based login avoids a password prompt):
+
+```bash
+HA_SSH_HOST=homeassistant.local
+HA_SSH_PORT=22
+HA_SSH_USER=root
+HA_CORPUS_PATH=/config/hsem-corpus.jsonl
+```
+
 To keep one `.env` for several checkouts, put it anywhere and point at it:
 
 ```bash
@@ -100,69 +110,90 @@ so anything you might want later has to be fetched now.
 
 ## Each run
 
-### 1. Copy the corpus off Home Assistant
-
-With the SSH add-on (use the port it listens on):
-
 ```bash
-mkdir -p ~/hsem-actuals/corpus
-scp -P <port> root@<ha-host>:/config/hsem-corpus.jsonl ~/hsem-actuals/corpus/
+./scripts/backtest_update.sh
 ```
 
-Copying while Home Assistant is still appending is fine: a half-written last
-line is skipped.
+That is the whole routine. It runs four steps and prints a summary:
 
-### 2. Collect actuals for the same days
+1. **Copies the live corpus** off Home Assistant with `scp` (skipped when
+   `HA_SSH_HOST` is empty — then copy `hsem-corpus.jsonl` into
+   `~/hsem-actuals/corpus/` yourself).
+2. **Collects actuals** for the last 8 days (`collect_actuals.sh`).
+3. **Backtests every new cycle** against the planner spec and **harvests** the
+   ones worth keeping into `tests/backtest/corpus/`, plus actuals for the days
+   they cover into `tests/backtest/actuals/`.
+4. **Runs the backtest suite** over the committed corpus.
+
+It never commits to git. The summary lists new files; review and commit them:
 
 ```bash
-./scripts/collect_actuals.sh --days 8 --verify
+git add tests/backtest/corpus tests/backtest/actuals
+git commit -m "test(backtest): add corpus cycles from <dates>"
 ```
 
-This fetches each complete day not already in `~/hsem-actuals/raw/`, converts
-them all, and aligns the result against the committed corpus cycle. Re-running
-is cheap: days already downloaded are skipped. Add `--refresh` to download them
-again — needed once after adding entities to the mapping or to
-`HSEM_ARCHIVE_ENTITIES`.
+Run it as often as you like — weekly is plenty. Only cycles newer than the last
+run are replayed (the resume point is `~/hsem-actuals/corpus/.harvested-until`),
+so each run takes minutes, not hours.
 
-Check two things in the output:
+| Option           | Use                                                        |
+| ---------------- | ---------------------------------------------------------- |
+| `--dry-run`      | Show what would be added; write nothing to the repository. |
+| `--skip-fetch`   | Use what is on disk: no `scp`, no Home Assistant calls.    |
+| `--all`          | Replay the whole live corpus, ignoring the resume point.   |
+| `--days N`       | Days of actuals to fetch (default 8).                      |
+| `--max-new N`    | New cycles per run (default 10).                           |
+| `--max-corpus N` | Committed cycles in total (default 50).                    |
 
-- **Every series has the same slot count** (96 per day at 15-minute slots). A
-  series far below the others means that entity is not a cumulative kWh meter,
-  or is not recorded.
-- **The `prices:` verdict.** `same prices, slot for slot` is ideal. `plan carries
-hourly prices while the export is sub-hourly` is expected against the
-  committed cycle, which predates 15-minute prices. **`systematic offset`
-  means stop**: a fee differs between what the planner used and what was
-  recorded, and every cost comparison would carry it.
+### What gets committed
 
-### 3. Replay the corpus
+**Only cycles that cover a new situation.** Most cycles repeat one already in
+the corpus: 340 real cycles contained just 8 distinct situations. A situation
+is which plan won, which operating modes it uses, the starting SoC band
+(quartiles), and whether it involves EV charging, negative prices or a DST
+change. So the corpus grows by breadth, and the rare cases — negative prices,
+DST days, EV sessions — get added the first time they happen.
 
-Quick check — the full backtest suite, first 25 cycles of each corpus file:
+**Only what the harness reads.** A committed cycle keeps `planner_input`, the
+version, timestamp and `apply_result` — about 44 KB instead of 135. It must
+round-trip losslessly and contain no entity id. Dumps from before #1169 get the
+site's `TZ` filled into `time_zone`.
+
+**Actuals for the days those cycles cover**, one file per day, and only when
+every energy series is complete. A day with a recorder gap is reported as
+`incomplete in the export` and left out rather than committed short.
+
+**Caps.** Each committed cycle is replayed by every test run, so the corpus is
+capped at 50 cycles and 10 per run. When a cap stops a new situation, the
+report says so; raise the cap deliberately.
+
+### When a cycle violates an invariant
+
+The run reports it, copies the cycle to `~/hsem-actuals/quarantine/`, and exits
+non-zero. It is **not** committed — that would turn CI red before the bug is
+fixed. Replay it with `scripts/replay_planner_input.py`, and attach it to an
+issue.
+
+Replays lift production's 2-second solver time limit. A real cycle can take
+1.5 s to solve on an idle machine; on a busy one the same input returns a worse,
+time-limited plan and fails an invariant for no reason in the planner's logic.
+The backtest checks what the planner decides, not how fast the solver is.
+
+### Doing the steps by hand
+
+Each step is a script you can run alone:
 
 ```bash
+./scripts/collect_actuals.sh --days 8 --verify           # actuals + price check
+python3 scripts/backtest_harvest.py --dry-run             # backtest + harvest
+python3 scripts/backtest_corpus.py ~/hsem-actuals/corpus  # replay everything
 HSEM_BACKTEST_CORPUS=~/hsem-actuals/corpus python -m pytest tests/backtest/ -q
 ```
 
-Every cycle:
-
-```bash
-python3 scripts/backtest_corpus.py ~/hsem-actuals/corpus
-```
-
-Example from a real 340-cycle corpus:
-
-```text
-cycles: 340  in 276s (812 ms/cycle)
-versions: {'7.0.0-beta1': 340}
-winners: {'milp': 340}
-fidelity: every cycle round-trips losslessly
-invariants: none violated
-```
-
-It exits non-zero when any cycle violates an invariant, and names the first
-cycle for each one. Use `--limit N` for a quicker look. A real cycle takes
-anywhere from a few hundred milliseconds to about a second, depending on the
-machine.
+`backtest_corpus.py` replays every cycle regardless of the resume point and
+names the first cycle for each violated invariant. `collect_actuals.sh
+--verify` also cross-checks recorded prices: `systematic offset` means stop —
+a fee differs between what the planner used and what was recorded.
 
 ---
 

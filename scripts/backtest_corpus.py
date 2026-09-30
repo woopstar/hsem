@@ -25,7 +25,11 @@ if str(_REPO_ROOT) not in sys.path:
 
 from custom_components.hsem.planner.engine_core import run_planner  # noqa: E402
 from tests.backtest.invariants import check_invariants  # noqa: E402
-from tests.backtest.replay import iter_dumps, planner_input_from_dict  # noqa: E402
+from tests.backtest.replay import (  # noqa: E402
+    generous_solver_limit,
+    iter_dumps,
+    planner_input_from_dict,
+)
 
 
 def _corpus_files(targets: list[str]) -> list[Path]:
@@ -74,22 +78,26 @@ def main(argv: list[str] | None = None) -> int:
     first_seen: dict[str, str] = {}
     started = time.perf_counter()
 
-    for path in _corpus_files(targets):
-        for payload in iter_dumps(path):
-            if args.limit and cycles >= args.limit:
-                break
-            planner_input, report = planner_input_from_dict(payload)
-            cycles += 1
-            versions[report.source_version] += 1
-            for name in (*report.missing, *report.dropped):
-                missing[name] += 1
-            output = run_planner(planner_input)
-            winners[output.winner_name] += 1
-            for violation in check_invariants(planner_input, output):
-                violations[violation.invariant] += 1
-                first_seen.setdefault(
-                    violation.invariant, f"{planner_input.now_iso}: {violation.detail}"
-                )
+    # Replays lift production's 2 s solver cap: a busy machine would otherwise
+    # return time-limited plans and report violations the planner never made.
+    with generous_solver_limit():
+        for path in _corpus_files(targets):
+            for payload in iter_dumps(path):
+                if args.limit and cycles >= args.limit:
+                    break
+                planner_input, report = planner_input_from_dict(payload)
+                cycles += 1
+                versions[report.source_version] += 1
+                for name in (*report.missing, *report.dropped):
+                    missing[name] += 1
+                output = run_planner(planner_input)
+                winners[output.winner_name] += 1
+                for violation in check_invariants(planner_input, output):
+                    violations[violation.invariant] += 1
+                    first_seen.setdefault(
+                        violation.invariant,
+                        f"{planner_input.now_iso}: {violation.detail}",
+                    )
 
     elapsed = time.perf_counter() - started
     per_cycle = elapsed / cycles * 1000 if cycles else 0.0

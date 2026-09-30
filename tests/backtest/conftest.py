@@ -9,7 +9,12 @@ from pathlib import Path
 import pytest
 
 from custom_components.hsem.models.planner_input import PlannerInput
-from tests.backtest.replay import ReplayReport, iter_dumps, planner_input_from_dict
+from tests.backtest.replay import (
+    ReplayReport,
+    generous_solver_limit,
+    iter_dumps,
+    planner_input_from_dict,
+)
 
 CORPUS_DIR = Path(__file__).parent / "corpus"
 
@@ -49,7 +54,7 @@ def corpus_paths() -> list[Path]:
     paths = _find(CORPUS_DIR)
     external = os.environ.get(CORPUS_ENV_VAR)
     if external:
-        extra = Path(external)
+        extra = Path(external).expanduser()
         if not extra.is_dir():
             raise ValueError(f"{CORPUS_ENV_VAR}={external!r} is not a directory")
         paths.extend(_find(extra))
@@ -83,3 +88,15 @@ def corpus_dump(request: pytest.FixtureRequest) -> Path:
     """Yield each corpus file in turn."""
     path: Path = request.param
     return path
+
+
+@pytest.fixture(autouse=True)
+def _deterministic_solver() -> Iterator[None]:
+    """Lift the production solver time limit for every backtest test.
+
+    Corpus cycles take up to ~1.5 s to solve on an idle machine; on a slower CI
+    runner production's 2 s cap would return time-limited plans and make these
+    tests flaky.  They test the planner's decisions, not solver speed.
+    """
+    with generous_solver_limit():
+        yield

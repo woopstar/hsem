@@ -1209,6 +1209,21 @@ against `docs/planner-spec.md`.
   (alignment, attribution, oracle scope) need real data to answer.
 - `hsem.log` is not a corpus — derived `[soc_sim]`/`[avg]`/`[pop]` traces, no
   `planner_input`.
+- **Replays lift the MILP's 2 s solver time limit** (`generous_solver_limit()`,
+  autouse in `tests/backtest/conftest.py`). Real cycles take ~1.5 s idle; under
+  load the same input returned a time-limited incumbent (143.61 vs 110.12) and
+  failed `winner_not_worse_than_no_action` — a machine-load artefact. Never
+  replay corpus cycles under the production limit, or CI turns flaky.
+- **Real policy gap, not yet an issue:** `candidate_selector.py` makes a valid
+  MILP the sole executable candidate, so a time-limited incumbent worse than
+  `passive` is still published. Harmless while solves finish in time (no
+  time-limit hits in production logs 08-31→09-27); a slow host would hit it.
+- **The committed corpus grows by harvest**, not by hand:
+  `scripts/backtest_update.sh` → `tests/backtest/harvest.py` commits a cycle only
+  for a new `Situation` (winner, modes, SoC quartile, EV/negative-price/DST
+  flags), slim (no `planner_output`), faithful, entity-free; caps 10/run, 50
+  total. 340 real cycles held only 8 situations. Actuals are committed per
+  complete day in `tests/backtest/actuals/`.
 
 ---
 

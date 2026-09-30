@@ -56,16 +56,21 @@ flowchart LR
     H -->|any| J[named, per-slot failure report]
 ```
 
-| Module                            | Responsibility                                                      |
-| --------------------------------- | ------------------------------------------------------------------- |
-| `tests/backtest/replay.py`        | Rebuild a `PlannerInput` from a dump; report anything it cannot map |
-| `tests/backtest/invariants.py`    | Check one `(input, output)` pair against `planner-spec.md`          |
-| `tests/backtest/actuals.py`       | Load realized outcomes and align them to planner slots              |
-| `tests/backtest/conftest.py`      | Corpus discovery, including a private out-of-repo corpus            |
-| `tests/backtest/corpus/`          | Committed, redacted dumps — so CI needs no live Home Assistant      |
-| `scripts/replay_planner_input.py` | Command-line front end for replay                                   |
-| `scripts/collect_actuals.sh`      | One command: fetch a week of history, convert, verify               |
-| `scripts/build_actuals.py`        | Turn an HA history export into an actuals file                      |
+| Module                            | Responsibility                                                         |
+| --------------------------------- | ---------------------------------------------------------------------- |
+| `tests/backtest/replay.py`        | Rebuild a `PlannerInput` from a dump; report anything it cannot map    |
+| `tests/backtest/invariants.py`    | Check one `(input, output)` pair against `planner-spec.md`             |
+| `tests/backtest/actuals.py`       | Load realized outcomes and align them to planner slots                 |
+| `tests/backtest/conftest.py`      | Corpus discovery, including a private out-of-repo corpus               |
+| `tests/backtest/harvest.py`       | Grow the committed corpus from a live one, one new situation at a time |
+| `tests/backtest/actuals/`         | Committed per-day actuals for the days committed cycles cover          |
+| `tests/backtest/corpus/`          | Committed, redacted dumps — so CI needs no live Home Assistant         |
+| `scripts/replay_planner_input.py` | Command-line front end for replay                                      |
+| `scripts/backtest_update.sh`      | One command: copy corpus, collect actuals, backtest, harvest, test     |
+| `scripts/backtest_harvest.py`     | Backtest new cycles and harvest new situations                         |
+| `scripts/backtest_corpus.py`      | Replay every cycle of a corpus and report                              |
+| `scripts/collect_actuals.sh`      | One command: fetch a week of history, convert, verify                  |
+| `scripts/build_actuals.py`        | Turn an HA history export into an actuals file                         |
 
 ### What the shim has to rebuild
 
@@ -181,6 +186,16 @@ not raised, so one replay reports all of its problems at once.
 | `winner_not_worse_than_no_action` | The winner's **score** beats the no-action baseline's               |
 | `terminal_soc_reported`           | `battery_soc_at_end` matches the simulated trajectory               |
 | `missing_price_reported`          | A zero-price day is reported by `DataQuality`, not planned as free  |
+
+**Replays lift the solver time limit.** Production caps HiGHS at 2 s and
+accepts the best feasible solution found by then. A real cycle can take 1.5 s on
+an idle machine, so on a busy one the same input returns a worse plan: one live
+cycle scored 143.61 under a 0.6 s cap against 110.12 solved properly, and failed
+`winner_not_worse_than_no_action`. `generous_solver_limit()` raises the cap for
+every backtest replay, so results depend on the planner's logic, not on machine
+load. (The underlying policy — a time-limited MILP incumbent is executed even
+when it scores worse than `passive`, because the selector treats a valid MILP as
+the sole authority — is a real gap on slow hosts, but a separate issue.)
 
 Two deliberate exclusions:
 

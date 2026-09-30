@@ -11,6 +11,16 @@ issue #1032 shipped a contradiction to v6.3.2 while every fixture-based test
 passed. These dumps make the spec invariants run against real inputs, and they
 keep doing so in CI without a live Home Assistant.
 
+## How it grows
+
+`scripts/backtest_update.sh` (see `docs/backtest-runbook.md`) adds cycles from a
+live corpus, but only those that cover a situation not already here — which
+plan won, which modes it uses, the SoC band, and EV, negative-price and DST
+flags. Harvested files keep only `planner_input`, the version, the timestamp
+and `apply_result` (about 44 KB); `planner_output` is never read, since replays
+recompute it. Each must round-trip losslessly and contain no entity id. The
+corpus is capped at 50 cycles because every test run replays each one.
+
 ## Provenance and redaction
 
 | File                           | Source cycle     | Notes                                                        |

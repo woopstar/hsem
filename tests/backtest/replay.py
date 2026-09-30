@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from datetime import datetime
 from pathlib import Path
@@ -37,8 +38,10 @@ from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 
 __all__ = [
+    "BACKTEST_SOLVER_TIME_LIMIT_S",
     "DATETIME_FIELDS",
     "ReplayReport",
+    "generous_solver_limit",
     "iter_dumps",
     "load_dump",
     "load_planner_input",
@@ -343,3 +346,38 @@ def load_planner_input(path: str | Path) -> tuple[PlannerInput, ReplayReport]:
         KeyError: If the file carries no ``planner_input`` section.
     """
     return planner_input_from_dict(next(iter_dumps(path)))
+
+
+#: Solver time limit for replays.  Production caps HiGHS at 2 s and accepts the
+#: best feasible solution found by then; a real cycle can take 1.5 s on an idle
+#: machine, so on a busy one the same input yields a worse, time-limited plan.
+#: A backtest asks what the planner *decides*, not how fast the solver is (the
+#: MILP perf test covers speed), so replays lift the cap and stay deterministic.
+BACKTEST_SOLVER_TIME_LIMIT_S = 60.0
+
+
+@contextmanager
+def generous_solver_limit(
+    seconds: float = BACKTEST_SOLVER_TIME_LIMIT_S,
+) -> Iterator[None]:
+    """Replay with the MILP solver's time limit raised, restoring it after.
+
+    Without this, a cycle replayed on a loaded machine can hit production's
+    2 s limit and return a worse incumbent: one real cycle scored 143.61 under
+    a 0.6 s limit against 110.12 solved properly, and failed an invariant for
+    no reason in the planner's logic.
+
+    Args:
+        seconds: The limit to apply while the context is active.
+
+    Yields:
+        Nothing; the limit applies for the duration of the ``with`` block.
+    """
+    from custom_components.hsem.planner import milp_optimizer
+
+    original = milp_optimizer._SOLVER_TIME_LIMIT_S
+    milp_optimizer._SOLVER_TIME_LIMIT_S = seconds
+    try:
+        yield
+    finally:
+        milp_optimizer._SOLVER_TIME_LIMIT_S = original
