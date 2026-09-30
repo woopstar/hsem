@@ -68,7 +68,11 @@ from custom_components.hsem.planner.slot_population import (
     populate_net_consumption,
     usable_capacity,
 )
-from custom_components.hsem.utils.datetime_utils import as_tz, slot_contains, utc_key
+from custom_components.hsem.utils.datetime_utils import (
+    slot_contains,
+    slot_is_future,
+    utc_key,
+)
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
@@ -700,10 +704,10 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     _label_commanded_ev_slots(slots)
     cur_rec: str | None = None
     for s in slots:
-        if as_tz(s.start, now.tzinfo) <= now < as_tz(s.end, now.tzinfo):
+        if slot_contains(s.start, s.end, now):
             cur_rec = s.recommendation
             break
-    fut = [s for s in slots if as_tz(s.end, now.tzinfo) > now]
+    fut = [s for s in slots if slot_is_future(s.end, now)]
     bsoc_end = fut[-1].estimated_battery_soc_pct if fut else 0.0
     cw_out, dw_out = _derive_windows(slots)
     expl = _build_explanation(inp, slots, bsoc_end, now)

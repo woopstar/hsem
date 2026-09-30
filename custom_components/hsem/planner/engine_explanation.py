@@ -17,7 +17,7 @@ from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.rejected_plan import RejectedPlan
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import slot_is_future
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
 from custom_components.hsem.utils.recommendations import Recommendations
@@ -153,7 +153,7 @@ def _build_explanation(
         battery_soc_at_end,
         now.isoformat(),
     )
-    future_slots = [s for s in slots if as_tz(s.end, now.tzinfo) > now]
+    future_slots = [s for s in slots if slot_is_future(s.end, now)]
 
     # --- Price metrics ---------------------------------------------------
     import_prices = [s.price.import_price for s in future_slots]

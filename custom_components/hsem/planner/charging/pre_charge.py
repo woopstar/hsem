@@ -14,7 +14,7 @@ from datetime import datetime
 from custom_components.hsem.const import SOLAR_SURPLUS_CHARGE_THRESHOLD_KWH
 from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
 from custom_components.hsem.models.planned_slot import PlannedSlot
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import as_tz, slot_is_future, utc_key
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.time_windows import next_window_start_dt
@@ -163,8 +163,8 @@ def apply_charge_schedules(
             eligible = [
                 s
                 for s in slots
-                if as_tz(s.end, now.tzinfo) > now
-                and as_tz(s.end, now.tzinfo) <= window_start_abs
+                if slot_is_future(s.end, now)
+                and utc_key(s.end) <= utc_key(window_start_abs)
                 and s.recommendation is None
             ]
 

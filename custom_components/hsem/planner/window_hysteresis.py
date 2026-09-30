@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import slot_contains
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.recommendations import (
     CHARGE_RECS as _CHARGE_RECS,
@@ -63,14 +63,14 @@ def apply_window_hysteresis(
     if window_hysteresis_minutes <= 0:
         # Feature disabled — find and return current recommendation unchanged
         for s in slots:
-            if as_tz(s.start, now.tzinfo) <= now < as_tz(s.end, now.tzinfo):
+            if slot_contains(s.start, s.end, now):
                 return s.recommendation, s.start
         return None, None
 
     # Find the current slot
     current_slot: PlannedSlot | None = None
     for s in slots:
-        if as_tz(s.start, now.tzinfo) <= now < as_tz(s.end, now.tzinfo):
+        if slot_contains(s.start, s.end, now):
             current_slot = s
             break
 
