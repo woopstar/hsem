@@ -627,8 +627,9 @@ def apply_optimization_strategy(
     3. Future forced export pending and battery above required → ``BatteriesWaitMode``
     4. Slot's month is a winter month → ``BatteriesWaitMode``
     5. Slot's month is a summer month with solar → ``BatteriesChargeSolar``;
-       else ``BatteriesDischargeMode`` (``BatteriesWaitMode`` under
-       ``unassigned_slots_are_lp_decisions``)
+       else ``BatteriesDischargeMode``.  Under
+       ``unassigned_slots_are_lp_decisions`` steps 2 and 5 are skipped and the
+       slot holds (``BatteriesWaitMode``).
 
     The seasonal check (steps 4–5) uses each slot's own calendar month
     (derived from ``rec.start``), not the month of ``now``.  This means a
@@ -647,8 +648,8 @@ def apply_optimization_strategy(
             threshold are not marked for export even if export > import.
             Defaults to ``0.0`` (any positive export price qualifies).
         unassigned_slots_are_lp_decisions: ``True`` for the MILP candidate,
-            where an unassigned slot is one the LP declined to act in; step 5
-            then holds the battery (issue #1041).
+            where an unassigned slot is one the LP declined to act in; it
+            then holds the battery (issues #1041, #1158).
     """
     log_planner(
         "debug",
@@ -673,10 +674,16 @@ def apply_optimization_strategy(
     # Solar charging per calendar day — each day gets its own
     # usable_capacity budget so tomorrow's solar charging isn't
     # blocked by today's full battery.
-    # Group unassigned future slots by calendar day.
+    # Group unassigned future slots by calendar day.  Skipped on the MILP
+    # candidate: an idle surplus slot is an LP export; charging it too would
+    # count the PV twice (#1158).
     by_day: dict[date, list[PlannedSlot]] = defaultdict(list)
     for s in slots:
-        if s.recommendation is None and as_tz(s.start, now.tzinfo) >= now:
+        if (
+            s.recommendation is None
+            and not unassigned_slots_are_lp_decisions
+            and as_tz(s.start, now.tzinfo) >= now
+        ):
             by_day[as_tz(s.start, now.tzinfo).date()].append(s)
 
     for day_slots in by_day.values():
@@ -715,7 +722,8 @@ def apply_optimization_strategy(
         # crosses a season boundary (e.g. Aug 31 → Sep 1) applies the
         # correct seasonal strategy to each slot independently.
         slot_month = as_tz(rec.start, now.tzinfo).month
-        if slot_month in months_winter:
+        if slot_month in months_winter or unassigned_slots_are_lp_decisions:
+            # The LP left this slot idle: no window (#1041), no charge (#1158).
             rec.recommendation = Recommendations.BatteriesWaitMode.value
         elif slot_month in months_summer:
             # Only charge from solar when there is an actual PV surplus
@@ -725,8 +733,5 @@ def apply_optimization_strategy(
             # BatteriesChargeSolar (issue #720).
             if rec.estimated_net_consumption_kwh < 0.0:
                 rec.recommendation = Recommendations.BatteriesChargeSolar.value
-            elif unassigned_slots_are_lp_decisions:
-                # The LP declined this slot; MSC would drain it (#1041).
-                rec.recommendation = Recommendations.BatteriesWaitMode.value
             else:
                 rec.recommendation = Recommendations.BatteriesDischargeMode.value
