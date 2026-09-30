@@ -38,19 +38,13 @@ Selector-only terms (added on top of ``total_cost`` to produce ``score``):
    configured ``max_soc_pct`` guard), multiplied by a configurable weight.
 6. **Grid limit penalty** — penalty when grid import or export in any slot
    exceeds the configured grid power limit, proportional to the excess energy.
-7. **Terminal SoC value** — per-slot opportunity cost of charging/discharging,
-   capped by the differential between ``replacement_price_per_kwh`` and that
-   slot's own finite signed import price:
-   ``terminal_premium[t] = max(0, replacement_price_per_kwh - imp_price_obj[t])``.
-   Discharging a slot incurs ``+terminal_premium[t]`` per kWh; charging earns
-   ``-terminal_premium[t]`` per kWh.  Summed across all slots.  This mirrors
-   ``milp_optimizer.py``'s ``c_obj`` terminal-SoC term exactly, so the
-   selector's score always matches what the LP actually optimised for
-   (issue #655) — when ``replacement_price_per_kwh <= imp_price_obj[t]`` for
-   every slot, this reduces to the same net effect as the old flat
-   ``(initial_kwh − final_kwh) × replacement_price_per_kwh`` formula, but it
-   no longer *over-penalises* discharge in slots where the replacement price
-   does not exceed that slot's own import price.
+7. **Terminal SoC value** — the net stored energy valued at one end value
+   ``V`` (``replacement_price_per_kwh``, issue #1138): each slot adds
+   ``(batteries_discharged_kwh − batteries_charged_kwh) × V``, so the sum is
+   ``(E_0 − E_end) × V`` and a cycle that leaves the end energy unchanged
+   adds nothing.  Computed through ``cost_helpers.terminal_soc_value``, the
+   helper the MILP objective also uses, so the selector's score matches what
+   the LP optimised for.
 
 All monetary values are in the caller's local currency.
 
@@ -82,15 +76,13 @@ from datetime import datetime
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.planner.cost_helpers import (
     _resolve_cycle_cost,
-    compute_charge_premium,
-    deferred_export_price_by_slot,
+    terminal_soc_value,
 )
 from custom_components.hsem.planner.cost_types import (  # noqa: F401
     CostWeights,
     PlanCostBreakdown,
 )
 from custom_components.hsem.utils.logger import log_planner
-from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import hours_ahead
 
@@ -172,11 +164,12 @@ def score_plan(
             ``replacement_price_per_kwh``) to enable terminal-SoC accounting.
             ``None`` disables the term.
         replacement_price_per_kwh:
-            Currency-per-kWh price used to value the change in stored
-            battery energy across the horizon.  A conservative choice is the
-            *average future import price* across the planning horizon.
-            Required (together with ``initial_battery_kwh``) to enable
-            terminal-SoC accounting.  ``None`` disables the term.
+            End value ``V`` of one DC kWh still stored at horizon end,
+            used to value the change in stored battery energy across the
+            horizon (issue #1138).  The engine estimates it with
+            ``cost_helpers.terminal_end_value_from_last_day``.  Required
+            (together with ``initial_battery_kwh``) to enable terminal-SoC
+            accounting.  ``None`` disables the term.
 
     Returns:
         A :class:`PlanCostBreakdown` containing every cost component, the
@@ -232,36 +225,13 @@ def score_plan(
 
     cycle_cost_kwh = _resolve_cycle_cost(weights)
 
-    # Deferred-export correction (issue #592): mirror the MILP's objective
-    # so the selector's terminal-SoC charge credit matches what the LP
-    # actually optimised for.  Computed once for the whole slot list.
-    _deferred_prices: list[float | None] | None = None
-    if (
-        replacement_price_per_kwh is not None
-        and abs(replacement_price_per_kwh) > 1e-9
-        and weights.battery_usable_capacity_kwh > 1e-9
-        and weights.max_charge_per_slot_kwh > 1e-9
-    ):
-        _deferred_prices = deferred_export_price_by_slot(
-            slots,
-            usable_kwh=weights.battery_usable_capacity_kwh,
-            max_charge_per_slot=weights.max_charge_per_slot_kwh,
-            now=now,
-            export_fee_per_kwh=weights.export_fee_per_kwh,
-        )
-
-    # Charge efficiency remains necessary for the terminal-inventory charge
-    # premium. Physical conversion loss itself is already represented by the
-    # grid-flow fields and must not receive a second monetary charge.
-    charge_eff = clamp_efficiency(weights.charge_efficiency_pct)
-
     import_cost = 0.0
     export_revenue = 0.0
     conversion_loss_cost = 0.0
     cycle_cost_total = 0.0
     soc_penalty = 0.0
     grid_limit_penalty = 0.0
-    terminal_soc_value = 0.0
+    terminal_soc_value_total = 0.0
 
     # Discounted versions for the selector score (total_cost stays raw).
     # time_discount_rate < 1.0 means future savings are worth less.
@@ -276,7 +246,7 @@ def score_plan(
 
     _time_passed_value = Recommendations.TimePassed.value
 
-    for slot_idx, slot in enumerate(slots):
+    for slot in slots:
         # Skip past slots entirely.  The SoC simulation zeros
         # estimated_battery_soc_pct on past slots as a sentinel, which would
         # falsely trigger the SoC-low penalty on every past slot.
@@ -403,53 +373,16 @@ def score_plan(
                     grid_limit_penalty += pen
                     grid_limit_penalty_disc += pen * discount
 
-        # 7. Terminal-SoC opportunity cost (selector-only).
-        #
-        # Per-slot incentive capped by the opportunity-cost DIFFERENTIAL
-        # between the replacement price and this slot's own (sanitised)
-        # import price — mirrors milp_optimizer.py's terminal_premium term
-        # exactly, so the selector's score matches what the LP actually
-        # optimised for (issue #655).  When replacement_price <=
-        # imp_price_obj[t], the premium is zero: charging/discharging in
-        # that slot is not discouraged or encouraged by terminal-SoC alone.
-        # Charging (batteries_charged_kwh) earns a credit; discharging
-        # (batteries_discharged_kwh) incurs a penalty.  Undiscounted —
-        # matches milp_optimizer.py's treatment of this term.
-        #
-        # SECOND CAP (issue #694): the terminal premium must never make
-        # battery charging more attractive than grid export.  Mirrors the
-        # identical cap in milp_optimizer.py's _build_objective().
-        #
-        # Gated on initial_battery_kwh as well (even though this per-slot
-        # formula no longer needs its value) to preserve the documented
-        # enablement contract: terminal-SoC accounting requires BOTH
-        # initial_battery_kwh and replacement_price_per_kwh to be provided.
-        if (
-            initial_battery_kwh is not None
-            and replacement_price_per_kwh is not None
-            and abs(replacement_price_per_kwh) > 1e-9
-        ):
-            terminal_premium = max(0.0, replacement_price_per_kwh - imp_price_obj)
-            # Cap the CHARGE credit only: the terminal premium for
-            # charging is reduced by the opportunity cost of not
-            # exporting the same PV surplus (issue #694), and corrected by
-            # the deferred-export spread when a future slot's PV surplus
-            # exceeds the battery's absorption capacity (issue #592).
-            # Mirrors milp/_objective.py exactly.  The discharge penalty
-            # is NOT capped.
-            _charge_premium = compute_charge_premium(
-                replacement_price_per_kwh=replacement_price_per_kwh,
-                imp_price_obj=imp_price_obj,
-                exp_price=exp_price - weights.export_fee_per_kwh,
-                charge_eff=charge_eff,
-                deferred_export_price=(
-                    _deferred_prices[slot_idx] if _deferred_prices else None
-                ),
-            )
-            # Charge earns the capped credit; discharge incurs the full penalty
-            terminal_soc_value += (
-                -slot.batteries_charged_kwh * _charge_premium
-                + slot.batteries_discharged_kwh * terminal_premium
+        # 7. Terminal-SoC value (selector-only, undiscounted): net stored
+        #    energy at the single end value V, through the same helper the
+        #    MILP objective uses (issue #1138).  Gated on initial_battery_kwh
+        #    as well to keep the documented enablement contract: the term
+        #    needs BOTH initial_battery_kwh and replacement_price_per_kwh.
+        if initial_battery_kwh is not None:
+            terminal_soc_value_total += terminal_soc_value(
+                slot.batteries_charged_kwh,
+                slot.batteries_discharged_kwh,
+                replacement_price_per_kwh,
             )
 
     # ``total_cost`` is money only — never includes synthetic penalties.
@@ -467,10 +400,10 @@ def score_plan(
             + cycle_cost_total_disc
             + soc_penalty_disc
             + grid_limit_penalty_disc
-            + terminal_soc_value
+            + terminal_soc_value_total
         )
     else:
-        score = total_cost + soc_penalty + grid_limit_penalty + terminal_soc_value
+        score = total_cost + soc_penalty + grid_limit_penalty + terminal_soc_value_total
 
     score_rounded = round(score, 6)
 
@@ -481,7 +414,7 @@ def score_plan(
         cycle_cost=round(cycle_cost_total, 6),
         soc_penalty=round(soc_penalty, 6),
         grid_limit_penalty=round(grid_limit_penalty, 6),
-        terminal_soc_value=round(terminal_soc_value, 6),
+        terminal_soc_value=round(terminal_soc_value_total, 6),
         total_cost=round(total_cost, 6),
         score=score_rounded,
         # ``total`` is a deprecated alias for ``score`` (issue #413).

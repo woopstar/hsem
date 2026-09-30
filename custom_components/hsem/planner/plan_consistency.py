@@ -11,6 +11,12 @@ in :data:`~custom_components.hsem.utils.recommendations.LABEL_ENERGY_CONTRACTS`
 so that adding a :class:`Recommendations` member forces a decision about its
 energy contract.
 
+A slot's flows must also balance (issue #1158).  The seasonal fill once booked a
+solar charge on MILP slots where the LP exported the same PV surplus, so the
+published slot both stored and exported it.  Every label contract held, and the
+plan was wrong anyway.  :func:`energy_balance_deficit` catches that class of
+bug: energy a slot uses that no source supplies.
+
 Two deliberate non-behaviours
 -----------------------------
 The check **never raises** and **never auto-corrects**.  A violation is a bug in
@@ -24,7 +30,10 @@ wrong decision that produced the slot.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.planner.ev_load_accounting import split_house_and_ev_load
 from custom_components.hsem.utils.recommendations import (
     LABEL_ENERGY_CONTRACTS,
     MATERIAL_ENERGY_KWH,
@@ -32,7 +41,16 @@ from custom_components.hsem.utils.recommendations import (
     LabelEnergyContract,
 )
 
-__all__ = ["check_plan_self_consistency", "consistency_warning"]
+__all__ = [
+    "ENERGY_BALANCE_TOLERANCE_KWH",
+    "check_plan_self_consistency",
+    "consistency_warning",
+    "energy_balance_deficit",
+]
+
+#: Largest energy deficit (kWh) a slot may carry before the gate reports it.
+#: Covers the 3-decimal rounding of the slot's energy fields.
+ENERGY_BALANCE_TOLERANCE_KWH = 5e-3
 
 _BY_VALUE: dict[str, LabelEnergyContract] = {
     member.value: contract for member, contract in LABEL_ENERGY_CONTRACTS.items()
@@ -62,7 +80,47 @@ def _field_violation(
     return None
 
 
-def check_plan_self_consistency(slots: list[PlannedSlot]) -> list[str]:
+def energy_balance_deficit(
+    slot: PlannedSlot, charge_eff: float, discharge_eff: float
+) -> float:
+    """Return how much more energy a slot's flows use than they supply (kWh).
+
+    ::
+
+        supply = pv + grid_import + discharged × η_dis
+        demand = house + ev + grid_export + charged / η_chg
+
+    House and EV load are split as ``simulate_soc`` splits them.  A positive
+    result is energy from nowhere, such as PV counted as both stored and
+    exported (issue #1158).  A negative result is legitimate: PV curtailed
+    at a negative export price leaves supply unused, and curtailment is not
+    a slot field.
+
+    Args:
+        slot: A published slot.
+        charge_eff: Charge efficiency fraction (0-1].
+        discharge_eff: Discharge efficiency fraction (0-1].
+
+    Returns:
+        ``demand − supply`` in kWh.
+    """
+    house, ev = split_house_and_ev_load(slot)
+    supply = (
+        slot.solcast_pv_estimate_kwh
+        + slot.grid_import_kwh
+        + slot.batteries_discharged_kwh * discharge_eff
+    )
+    demand = house + ev + slot.grid_export_kwh + slot.batteries_charged_kwh / charge_eff
+    return demand - supply
+
+
+def check_plan_self_consistency(
+    slots: list[PlannedSlot],
+    *,
+    now: datetime | None = None,
+    charge_eff: float | None = None,
+    discharge_eff: float | None = None,
+) -> list[str]:
     """Check every slot's label against its energy fields.
 
     Intended to run on the **winning** candidate in the planner output path,
@@ -76,8 +134,19 @@ def check_plan_self_consistency(slots: list[PlannedSlot]) -> list[str]:
     warnings; ``tests/planner/test_plan_consistency.py`` is what fails in that
     case.
 
+    When both efficiencies are given, every slot that ends after *now* is
+    also checked for an :func:`energy_balance_deficit` above
+    :data:`ENERGY_BALANCE_TOLERANCE_KWH` (issue #1158).  Past slots are
+    skipped: they keep their planned values for the plan-vs-actual tracker.
+
     Args:
         slots: The selected plan's slots, in chronological order.
+        now: Current time; slots ending at or before it are not
+            balance-checked.  ``None`` checks every slot.
+        charge_eff: Charge efficiency fraction; ``None`` skips the balance
+            check.
+        discharge_eff: Discharge efficiency fraction; ``None`` skips the
+            balance check.
 
     Returns:
         One human-readable string per violating slot, in slot order.  An empty
@@ -87,27 +156,35 @@ def check_plan_self_consistency(slots: list[PlannedSlot]) -> list[str]:
     violations: list[str] = []
     for slot in slots:
         recommendation = slot.recommendation
-        if recommendation is None:
-            continue
-        contract = _BY_VALUE.get(recommendation)
-        if contract is None:
-            continue
-        problems = [
-            problem
-            for problem in (
-                _field_violation(
-                    contract.charge,
-                    slot.batteries_charged_kwh,
-                    "batteries_charged_kwh",
-                ),
-                _field_violation(
-                    contract.discharge,
-                    slot.batteries_discharged_kwh,
-                    "batteries_discharged_kwh",
-                ),
-            )
-            if problem is not None
-        ]
+        contract = _BY_VALUE.get(recommendation) if recommendation else None
+        problems = (
+            [
+                problem
+                for problem in (
+                    _field_violation(
+                        contract.charge,
+                        slot.batteries_charged_kwh,
+                        "batteries_charged_kwh",
+                    ),
+                    _field_violation(
+                        contract.discharge,
+                        slot.batteries_discharged_kwh,
+                        "batteries_discharged_kwh",
+                    ),
+                )
+                if problem is not None
+            ]
+            if contract is not None
+            else []
+        )
+        if (
+            charge_eff is not None
+            and discharge_eff is not None
+            and (now is None or slot.end > now)
+        ):
+            deficit = energy_balance_deficit(slot, charge_eff, discharge_eff)
+            if deficit > ENERGY_BALANCE_TOLERANCE_KWH:
+                problems.append(f"energy balance short by {deficit:.3f} kWh")
         if problems:
             violations.append(
                 f"{slot.start.isoformat()} {recommendation}: {', '.join(problems)}"
@@ -133,6 +210,7 @@ def consistency_warning(violations: list[str]) -> str:
     )
     return (
         f"Plan self-consistency: {len(violations)} slot(s) carry energy that "
-        f"contradicts their recommendation — this is an HSEM bug, please report "
+        f"contradicts their recommendation or their energy balance — this is "
+        f"an HSEM bug, please report "
         f"it with a diagnostics dump. {'; '.join(shown)}{suffix}"
     )

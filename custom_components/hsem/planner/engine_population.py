@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from custom_components.hsem.models.data_quality import DataQuality
 from custom_components.hsem.models.planner_input import PlannerInput
@@ -13,7 +14,7 @@ from custom_components.hsem.planner.slot_population import (
     populate_solcast,
 )
 from custom_components.hsem.planner.slot_price_population import populate_prices
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import slot_contains
 from custom_components.hsem.utils.logger import log_planner
 
 #: How far below zero ``live_house_power − EV power`` may land before the two
@@ -31,12 +32,40 @@ class LiveEvBaselineRemoval:
     second: bool = False
 
 
-def _parse_now(now_iso: str) -> datetime:
-    """Parse a timezone-aware ISO-8601 string."""
+def _parse_now(now_iso: str, time_zone: str | None = None) -> datetime:
+    """Parse a timezone-aware ISO-8601 string into the planner's ``now``.
+
+    ``fromisoformat`` yields a fixed UTC offset, which has no DST rules.
+    When *time_zone* names a known IANA zone, the same instant is returned
+    in that zone so the slot grid covers the real local day (issue #1169).
+    An unknown zone falls back to the fixed offset.
+
+    Args:
+        now_iso: Timezone-aware ISO-8601 timestamp.
+        time_zone: Optional IANA zone name, e.g. ``"Europe/Copenhagen"``.
+
+    Returns:
+        The parsed timezone-aware datetime.
+
+    Raises:
+        ValueError: If *now_iso* is naive.
+    """
     dt = datetime.fromisoformat(now_iso)
     if dt.tzinfo is None:
         raise ValueError(f"now_iso must be timezone-aware, got: {now_iso!r}")
-    return dt
+    if not time_zone:
+        return dt
+    try:
+        zone = ZoneInfo(time_zone)
+    except ZoneInfoNotFoundError, ValueError:
+        log_planner(
+            "warning",
+            "[core] unknown time_zone=%r — planning in the fixed offset of %s",
+            time_zone,
+            now_iso,
+        )
+        return dt
+    return dt.astimezone(zone)
 
 
 def _populate_slots(
@@ -179,9 +208,7 @@ def _inject_live_data_into_current_slot(
     removal = LiveEvBaselineRemoval()
 
     for slot in slots:
-        s_start = as_tz(slot.start, now.tzinfo)
-        s_end = as_tz(slot.end, now.tzinfo)
-        if s_start <= now < s_end:
+        if slot_contains(slot.start, slot.end, now):
             # Convert live Watts to projected full-slot kWh.
             live_solar_available = getattr(inp, "live_solar_production_available", None)
             if live_solar_available is None:

@@ -128,10 +128,9 @@ def solve_milp(
             to the house equals battery energy removed x (discharge_efficiency_pct / 100).
             Defaults to 97 % (3 % discharge-side loss).
         replacement_price_per_kwh:
-            Terminal-SoC replacement price (currency/kWh) used to value the
-            opportunity cost of ending the horizon with less stored energy.
-            Passed from the engine (computed from the next discharge window).
-            ``None`` disables the terminal-SoC credit term.
+            Terminal-SoC end value ``V`` (currency per DC kWh); the objective
+            gains ``−V × (E_end − E_0)`` (issue #1138).  From the engine
+            (``terminal_end_value_from_last_day``).  ``None`` disables it.
         min_export_price:
             Minimum export price (local currency/kWh) for the combined
             battery-export floor.  Caps ``ed[t]`` to
@@ -656,7 +655,6 @@ def solve_milp(
 
     terminal_soc_credit = _compute_terminal_soc_credit(
         current_kwh=current_kwh,
-        usable_kwh=usable_kwh,
         ec_sol=ec_sol,
         ed_sol=ed_sol,
         replacement_price_per_kwh=replacement_price_per_kwh,

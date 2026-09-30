@@ -19,14 +19,14 @@ from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_PASSIVE,
     generate_candidates,
 )
-from custom_components.hsem.planner.candidate_selector import (
-    replacement_price_from_next_discharge,
-    select_best_candidate,
-)
+from custom_components.hsem.planner.candidate_selector import select_best_candidate
 from custom_components.hsem.planner.charging.opportunistic_charge import (
     apply_opportunistic_charge,
 )
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
+from custom_components.hsem.planner.cost_helpers import (
+    terminal_end_value_from_last_day,
+)
 from custom_components.hsem.planner.discharge_scheduler import (
     apply_excess_export,
     apply_optimization_strategy,
@@ -67,7 +67,11 @@ from custom_components.hsem.planner.slot_population import (
     populate_net_consumption,
     usable_capacity,
 )
-from custom_components.hsem.utils.datetime_utils import as_tz, slot_contains, utc_key
+from custom_components.hsem.utils.datetime_utils import (
+    slot_contains,
+    slot_is_future,
+    utc_key,
+)
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
@@ -347,7 +351,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     """Execute the HSEM planner and return a :class:`PlannerOutput`."""
     warnings: list[str] = []
     missing_inputs: list[str] = []
-    now = _parse_now(inp.now_iso)
+    now = _parse_now(inp.now_iso, inp.time_zone)
     log_planner(
         "debug",
         "==== HSEM PLANNER RUN START ==== now=%s interval=%dmin horizon=%dh",
@@ -558,8 +562,6 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         battery_export_min_price=inp.battery_export_min_price,
         export_fee_per_kwh=inp.export_fee_per_kwh,
         time_discount_rate=inp.time_discount_rate,
-        battery_usable_capacity_kwh=usable_kwh,
-        max_charge_per_slot_kwh=mcps,
     )
     sdh = inp.interval_minutes / 60.0
     import math
@@ -567,8 +569,15 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     top_n = 4
     if mdps is not None and mdps > 1e-9:
         top_n = math.ceil(usable_kwh / mdps)
-    rppk = replacement_price_from_next_discharge(
-        slots, now, top_n=top_n, interval_minutes=inp.interval_minutes
+    # Terminal-SoC end value V (issue #1138): what a kWh still stored at the
+    # horizon end is worth afterwards, estimated from the last day of prices.
+    rppk = terminal_end_value_from_last_day(
+        slots,
+        now.tzinfo,
+        top_n=top_n,
+        charge_eff=clamp_efficiency(inp.battery_charge_efficiency_pct),
+        discharge_eff=clamp_efficiency(inp.battery_discharge_efficiency_pct),
+        cycle_cost_per_kwh=effective_cycle_cost,
     )
     log_planner(
         "debug",
@@ -669,8 +678,14 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # Post-plan self-consistency gate (issue #1035).  Runs on the *winner*,
     # after every relabelling pass including the EV display relabel above, so
     # it sees exactly what is about to be published.  Reported, never raised
-    # and never auto-corrected — see the module docstring.
-    plan_consistency_violations = check_plan_self_consistency(slots)
+    # and never auto-corrected — see the module docstring.  The efficiencies
+    # turn on the per-slot energy-balance check (issue #1158).
+    plan_consistency_violations = check_plan_self_consistency(
+        slots,
+        now=now,
+        charge_eff=clamp_efficiency(inp.battery_charge_efficiency_pct),
+        discharge_eff=clamp_efficiency(inp.battery_discharge_efficiency_pct),
+    )
     if plan_consistency_violations:
         warnings.append(consistency_warning(plan_consistency_violations))
         log_planner(
@@ -682,10 +697,10 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
 
     cur_rec: str | None = None
     for s in slots:
-        if as_tz(s.start, now.tzinfo) <= now < as_tz(s.end, now.tzinfo):
+        if slot_contains(s.start, s.end, now):
             cur_rec = s.recommendation
             break
-    fut = [s for s in slots if as_tz(s.end, now.tzinfo) > now]
+    fut = [s for s in slots if slot_is_future(s.end, now)]
     bsoc_end = fut[-1].estimated_battery_soc_pct if fut else 0.0
     cw_out, dw_out = _derive_windows(slots)
     expl = _build_explanation(inp, slots, bsoc_end, now)

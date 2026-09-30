@@ -263,6 +263,16 @@ explicitly instructs otherwise.
 
 All code changes MUST start from a dedicated branch following the naming convention above.
 
+**The main checkout at `/workspaces/hsem` is shared between agent sessions** (Claude Code, Zed
+agents, Copilot) in the same devcontainer. The agent MUST NOT run `git checkout`, `git switch`,
+`git pull`, `git rebase` or `git reset` there, because that moves the branch, index and files
+under another session mid-task (issue #1122). Each task runs in its own git worktree under
+`/workspaces/worktrees`, created from `origin/main` by the `hsem-pre-flight` skill
+(`.claude/skills/hsem-pre-flight/SKILL.md`, Step 1). All edits, quality gates, commits and
+pushes run from that worktree, and the worktree is removed after the PR merges
+(`hsem-pr-workflow`). The git stash stack is shared by every worktree, so use a WIP commit
+instead of `git stash`.
+
 The agent must NEVER push directly to the default branch and NEVER merge directly without explicit
 user permission.
 

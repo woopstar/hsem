@@ -15,8 +15,8 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.datetime_utils import (
-    normalize_datetime,
     normalize_slot_start,
+    utc_key,
 )
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
@@ -299,9 +299,13 @@ def _populate_from_attributes(
                 if value is None:
                     continue
 
+                # Match by physical instant: two HA-local datetimes compare by
+                # wall clock, which cannot tell the DST fall-back hour's two
+                # occurrences apart (issue #1160).
+                window_start = utc_key(dt_key)
                 for obj in recommendations:
-                    obj_start = normalize_datetime(obj.start)
-                    if dt_key <= obj_start < dt_key + source_window:
+                    obj_start = utc_key(obj.start)
+                    if window_start <= obj_start < window_start + source_window:
                         setattr(obj, field_name, round(value, 5))
                         matched += 1
 

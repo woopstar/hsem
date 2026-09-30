@@ -36,7 +36,7 @@ from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.models.time_series import TimeSeriesIndex
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import slot_contains, utc_key
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.recommendations import Recommendations
 
@@ -377,7 +377,7 @@ def mark_time_passed(slots: list[PlannedSlot], now: datetime) -> None:
     """
     past_count = 0
     for slot in slots:
-        if as_tz(slot.end, now.tzinfo) < now:
+        if utc_key(slot.end) < utc_key(now):
             slot.recommendation = Recommendations.TimePassed.value
             past_count += 1
     log_planner(
@@ -413,17 +413,14 @@ def populate_battery_capacity(
     previous_capacity = 0.0
 
     for slot in slots:
-        slot_start = as_tz(slot.start, now.tzinfo)
-        slot_end = as_tz(slot.end, now.tzinfo)
-
-        if slot_start <= now < slot_end:
+        if slot_contains(slot.start, slot.end, now):
             cap = max(
                 current_capacity
                 - slot.estimated_net_consumption_kwh
                 + slot.batteries_charged_kwh,
                 0.0,
             )
-        elif slot_start >= now:
+        elif utc_key(slot.start) >= utc_key(now):
             cap = max(
                 previous_capacity
                 - slot.estimated_net_consumption_kwh

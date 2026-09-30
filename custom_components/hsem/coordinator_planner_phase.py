@@ -51,10 +51,7 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.planner.charge_scheduler import apply_window_hysteresis
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
-from custom_components.hsem.utils.datetime_utils import (
-    as_tz,
-    utc_key,
-)
+from custom_components.hsem.utils.datetime_utils import slot_contains, utc_key
 from custom_components.hsem.utils.logger import (
     async_log,
     set_hsem_verbose,
@@ -154,6 +151,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                     self._dynamic_floor,
                     self._hourly_recommendations,
                     reference_output,
+                    planner_input,
                     live,
                     now,
                 )
@@ -261,7 +259,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             self._window_hys_previous_slot_start = held_start
         else:
             for s in planner_output.slots:
-                if as_tz(s.start, now.tzinfo) <= now < as_tz(s.end, now.tzinfo):
+                if slot_contains(s.start, s.end, now):
                     self._window_hys_previous_rec = s.recommendation
                     self._window_hys_previous_slot_start = s.start
                     break
@@ -278,7 +276,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                 (
                     r
                     for r in self._hourly_recommendations
-                    if as_tz(r.start, now.tzinfo) <= now < as_tz(r.end, now.tzinfo)
+                    if slot_contains(r.start, r.end, now)
                 ),
                 None,
             )
@@ -338,7 +336,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             (
                 r
                 for r in self._hourly_recommendations
-                if as_tz(r.start, now.tzinfo) <= now < as_tz(r.end, now.tzinfo)
+                if slot_contains(r.start, r.end, now)
             ),
             None,
         )

@@ -27,12 +27,18 @@ so that all timezone normalisation is routed through this module.
 
 >>> from custom_components.hsem.utils.datetime_utils import as_tz
 >>> slot_local = as_tz(slot.start, now.tzinfo)
+
+``as_tz`` is for reading local wall-clock fields (``.date()``, ``.hour``).
+Never compare its result with ``now``: two datetimes sharing one ``ZoneInfo``
+compare by wall clock and ignore ``fold``, which is wrong during the DST
+fall-back hour (issue #1167).  Use :func:`slot_contains`,
+:func:`slot_is_future` or :func:`utc_key` for ordering instead.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import UTC, datetime, timedelta, tzinfo
+from datetime import UTC, datetime, time, timedelta, timezone, tzinfo
 
 import homeassistant.util.dt as dt_util
 
@@ -135,6 +141,25 @@ def slot_contains(start: datetime, end: datetime, value: datetime) -> bool:
     return utc_key(start) <= utc_key(value) < utc_key(end)
 
 
+def slot_is_future(end: datetime, now: datetime) -> bool:
+    """Return whether a slot ending at *end* has not yet ended at *now*.
+
+    Compares by UTC instant, like :func:`slot_contains`.  Never compare
+    ``as_tz(end, now.tzinfo)`` with ``now`` instead: both operands then share
+    one :class:`zoneinfo.ZoneInfo`, so Python compares wall-clock fields and
+    ignores ``fold``, and on the DST fall-back day a slot from the first
+    occurrence of the repeated hour counts as future during the second.
+
+    Args:
+        end: Timezone-aware slot end.
+        now: Timezone-aware current datetime.
+
+    Returns:
+        ``True`` when *end* lies strictly after *now*.
+    """
+    return utc_key(end) > utc_key(now)
+
+
 def as_tz(value: datetime, tz: tzinfo | None) -> datetime:
     """Return *value* converted to the given timezone without microseconds.
 
@@ -178,7 +203,86 @@ def future_slot_indices(slot_ends: Iterable[datetime], now: datetime) -> list[in
     Returns:
         Ascending indices of slots whose end lies strictly after *now*.
     """
-    return [i for i, end in enumerate(slot_ends) if as_tz(end, now.tzinfo) > now]
+    return [i for i, end in enumerate(slot_ends) if slot_is_future(end, now)]
+
+
+def _fixed_offset(instant: datetime, zone: tzinfo | None) -> datetime:
+    """Return *instant* as local time in *zone*, pinned to its UTC offset.
+
+    A fixed-offset ``tzinfo`` makes Python compare, sort and subtract slot
+    boundaries by physical instant.  Two datetimes that share one
+    ``ZoneInfo`` are compared by wall clock instead, which ignores ``fold``
+    and breaks on the DST fall-back day.
+    """
+    local = instant.astimezone(zone)
+    return local.replace(tzinfo=timezone(local.utcoffset() or timedelta(0)))
+
+
+def _local_day_start_utc(day: datetime, zone: tzinfo | None) -> datetime:
+    """Return the physical (UTC) instant at which *day*'s local date begins."""
+    return datetime.combine(day.date(), time(0), tzinfo=zone).astimezone(UTC)
+
+
+def physical_slot_grid(
+    anchor: datetime, interval_minutes: int, horizon_hours: int
+) -> list[tuple[datetime, datetime]]:
+    """Return ``(start, end)`` slot boundaries stepped in physical time.
+
+    The grid starts at local midnight of *anchor*'s date and ends at the
+    local wall-clock time ``horizon_hours`` later, so a 24 h horizon on a
+    DST day covers the whole local day: 23 real hours (92 × 15 min) on the
+    spring-forward day, 25 real hours (100 × 15 min) on the fall-back day.
+    Every slot spans exactly *interval_minutes* of real time.  Boundaries
+    carry a fixed UTC offset (see :func:`_fixed_offset`); ``.hour`` and
+    ``.date()`` still read local wall-clock time.
+
+    Args:
+        anchor: Timezone-aware datetime whose local date starts the grid.
+        interval_minutes: Positive slot width in minutes.
+        horizon_hours: Positive horizon length in local wall-clock hours.
+
+    Returns:
+        Chronological, contiguous ``(start, end)`` pairs.
+    """
+    zone = anchor.tzinfo
+    start_utc = _local_day_start_utc(anchor, zone)
+    end_wall = datetime.combine(anchor.date(), time(0)) + timedelta(hours=horizon_hours)
+    end_utc = end_wall.replace(tzinfo=zone).astimezone(UTC)
+    step = timedelta(minutes=interval_minutes)
+    count = (end_utc - start_utc) // step
+    return [
+        (
+            _fixed_offset(start_utc + i * step, zone),
+            _fixed_offset(start_utc + (i + 1) * step, zone),
+        )
+        for i in range(count)
+    ]
+
+
+def slot_position(
+    start: datetime, planning_midnight: datetime, interval_minutes: int
+) -> tuple[int, int]:
+    """Return ``(day_offset, slot_in_day)`` for a physical slot start.
+
+    *slot_in_day* counts real *interval_minutes* steps since the start of
+    the slot's local date, so it is unique within a day even when the DST
+    fall-back hour repeats a wall-clock time.  On ordinary days it equals
+    ``(hour * 60 + minute) // interval_minutes``.
+
+    Args:
+        start: Timezone-aware slot start.
+        planning_midnight: Timezone-aware local midnight of the planning
+            day; its ``tzinfo`` is the local zone.
+        interval_minutes: Positive slot width in minutes.
+
+    Returns:
+        ``(day_offset, slot_in_day)``.
+    """
+    zone = planning_midnight.tzinfo
+    local = start.astimezone(zone)
+    day_offset = (local.date() - planning_midnight.date()).days
+    elapsed = start.astimezone(UTC) - _local_day_start_utc(local, zone)
+    return day_offset, elapsed // timedelta(minutes=interval_minutes)
 
 
 def utc_now_iso() -> str:

@@ -29,7 +29,11 @@ from custom_components.hsem.planner.ev_planner_models import (  # noqa: F401
     EVChargingSlot,
     EVPlannerInput,
 )
-from custom_components.hsem.utils.datetime_utils import utc_key
+from custom_components.hsem.utils.datetime_utils import (
+    physical_elapsed,
+    slot_contains,
+    utc_key,
+)
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.units import ev_ac_to_dc_kwh, ev_dc_to_ac_kwh
@@ -357,7 +361,10 @@ def build_ev_charging_plan(
             avail_min = min(
                 avail_min,
                 max(
-                    (effective_deadline - max(s_start, now_tz)).total_seconds() / 60.0,
+                    physical_elapsed(
+                        effective_deadline, max(s_start, now_tz)
+                    ).total_seconds()
+                    / 60.0,
                     0.0,
                 ),
             )
@@ -573,7 +580,6 @@ def rebuild_ev_plan_from_slots(
         A new :class:`EVChargingPlan` with ``charging_slots`` derived from
         the MILP's per-EV slot decisions.
     """
-    from custom_components.hsem.utils.datetime_utils import as_tz, slot_contains
     from custom_components.hsem.utils.units import slot_duration_hours
 
     eff = clamp_efficiency(charger_efficiency_pct)
@@ -644,9 +650,7 @@ def rebuild_ev_plan_from_slots(
         planned_load_by_slot[s.start.isoformat()] = dc_kwh
 
         # Detect current slot
-        s_start_tz = as_tz(s.start, now.tzinfo)
-        s_end_tz = as_tz(s.end, now.tzinfo)
-        if s_start_tz <= now < s_end_tz:
+        if slot_contains(s.start, s.end, now):
             current_slot_planned_load_kwh = dc_kwh
 
     # Determine state

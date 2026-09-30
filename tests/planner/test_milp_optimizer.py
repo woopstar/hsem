@@ -6,7 +6,8 @@ Coverage
   arbitrage case (buy cheap, sell expensive).
 - MILP falls back gracefully when the solver is given a degenerate problem.
 - MILP candidate is present in the output candidates list after a planner run.
-- Bug 3: ``replacement_price_per_kwh`` uses the minimum future price, not average.
+- The terminal-SoC credit scales with the end value ``V`` (issue #1138;
+  formerly Bug 3, the minimum future price).
 - Performance: MILP solves a 96-slot (48 h × 30 min) horizon within 320 ms.
 
 Former Bug 2 (aggressive-strategy dynamic slot count) and Bug 5 (aggressive
@@ -32,6 +33,9 @@ from custom_components.hsem.planner.candidate_generator import (
 )
 from custom_components.hsem.planner.candidates._mutations import _copy_slots
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
+from custom_components.hsem.planner.cost_helpers import (
+    terminal_end_value_from_last_day,
+)
 from custom_components.hsem.planner.milp_optimizer import is_scipy_available, solve_milp
 from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.prices import SlotPrice
@@ -579,21 +583,16 @@ def test_milp_reported_cost_matches_score_plan_with_export_fee():
 
 @_scipy_skip()
 def test_milp_terminal_soc_matches_score_plan_with_varying_prices():
-    """Regression for issue #657.
+    """Regression for issues #657 and #1138.
 
-    score_plan()'s terminal-SoC term must use the SAME per-slot,
-    price-differential-capped formula as solve_milp()'s c_obj terminal-SoC
-    term. Flat/uniform prices cannot distinguish the old (buggy) flat
-    delta formula from the correct per-slot capped-differential formula --
-    both produce identical numbers when price is constant. This test uses
-    three DISTINCT, varying per-slot import prices spanning a range both
-    above and below the replacement price, which only the correct per-slot
-    formula reproduces exactly.
+    score_plan()'s terminal-SoC term must equal the term solve_milp()
+    optimised.  Both value net stored energy at one end value ``V`` through
+    ``cost_helpers.terminal_soc_value``, so over the horizon the term is
+    ``(E_0 − E_end) × V``.  The import prices vary above and below ``V``:
+    there the pre-#1138 per-slot caps give a different number (−3.0 instead
+    of −4.0 for this plan), which a flat price would hide.
     """
-    replacement_price = 1.00
-    # Slot 0: import price BELOW replacement price -> full premium applies.
-    # Slot 1: import price ABOVE replacement price -> premium capped to 0.
-    # Slot 2: import price EXACTLY at replacement price -> premium is 0.
+    end_value = 1.00
     slots = [
         _make_slot(hour=0, import_price=0.20, consumption_kwh=0.0),
         _make_slot(hour=1, import_price=2.00, consumption_kwh=0.0),
@@ -610,10 +609,10 @@ def test_milp_terminal_soc_matches_score_plan_with_varying_prices():
         cycle_cost_per_kwh=0.0,
         charge_efficiency_pct=100.0,
         discharge_efficiency_pct=100.0,
-        replacement_price_per_kwh=replacement_price,
+        replacement_price_per_kwh=end_value,
     )
     assert milp_result is not None, "MILP must return a solution"
-    result, _diag = milp_result
+    result, diag = milp_result
 
     simulate_soc(
         result,
@@ -627,26 +626,11 @@ def test_milp_terminal_soc_matches_score_plan_with_varying_prices():
         end_of_discharge_soc_pct=0.0,
     )
 
-    # Compute the expected terminal-SoC value directly from the MILP's own
-    # per-slot capped-differential formula, using the realised SoC-simulated
-    # charge/discharge flows.
-    #
-    # The formula is asymmetric (issue #694): the charge credit is reduced
-    # by the export opportunity cost (p_exp / η_chg), while the discharge
-    # penalty uses the full terminal premium.
-    charge_eff = 1.0  # 100 % efficiency in this test
-    expected_terminal_soc_value = 0.0
-    for s in result:
-        imp_price_obj = max(s.price.import_price, 0.0)
-        terminal_premium = max(0.0, replacement_price - imp_price_obj)
-        charge_premium = max(
-            0.0,
-            replacement_price - imp_price_obj - s.price.export_price / charge_eff,
-        )
-        expected_terminal_soc_value += (
-            s.batteries_discharged_kwh * terminal_premium
-            - s.batteries_charged_kwh * charge_premium
-        )
+    charged = sum(s.batteries_charged_kwh for s in result)
+    discharged = sum(s.batteries_discharged_kwh for s in result)
+    # Buying at 0.20 is worth V = 1.00 at the end: the LP fills the battery.
+    assert charged - discharged == pytest.approx(4.0, abs=1e-6)
+    expected = (discharged - charged) * end_value
 
     bd = score_plan(
         result,
@@ -654,17 +638,15 @@ def test_milp_terminal_soc_matches_score_plan_with_varying_prices():
         slot_duration_hours=1.0,
         now=_NOW,
         initial_battery_kwh=5.0,
-        replacement_price_per_kwh=replacement_price,
+        replacement_price_per_kwh=end_value,
     )
 
-    assert bd.terminal_soc_value == pytest.approx(
-        expected_terminal_soc_value, abs=1e-6
-    ), (
+    assert bd.terminal_soc_value == pytest.approx(expected, abs=1e-6), (
         f"score_plan terminal_soc_value {bd.terminal_soc_value:.6f} does not "
-        f"match the MILP's own per-slot capped-differential formula "
-        f"{expected_terminal_soc_value:.6f} -- cost_function.py and "
-        f"milp_optimizer.py have diverged (issue #657)."
+        f"match (E_0 − E_end) × V = {expected:.6f} -- cost_function.py and "
+        f"the MILP objective have diverged (issues #657, #1138)."
     )
+    assert diag["terminal_soc_credit"] == pytest.approx(expected, abs=1e-4)
 
 
 # ---------------------------------------------------------------------------
@@ -740,13 +722,13 @@ def test_milp_solves_96_slot_horizon_within_performance_budget() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_replacement_price_is_minimum_of_future_prices():
-    """Engine must pass min(future_import_prices) as replacement_price_per_kwh.
+def test_terminal_soc_credit_scales_with_end_value():
+    """A plan that ends with more stored energy earns a credit that scales with V.
 
-    We indirectly verify this by checking the terminal_soc_value in the plan_cost
-    breakdown uses the minimum price, not the average.  A plan that ends with more
-    stored energy than it started should have a lower (more negative) terminal_soc_value
-    when the minimum price is used vs. the average (because min < avg typically).
+    The engine derives ``V`` from the last known day of prices
+    (``cost_helpers.terminal_end_value_from_last_day``, issue #1138); this
+    pins only that ``score_plan`` values the net gain at whatever ``V`` it is
+    given, here the horizon's minimum and average import prices.
     """
     from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 
@@ -1307,6 +1289,55 @@ def test_milp_extreme_overcharge_returns_plan_with_violations():
 # ---------------------------------------------------------------------------
 # Main fuse / tariff protection tests (issue #567)
 # ---------------------------------------------------------------------------
+
+
+def test_fuse_penalty_is_discounted_like_import_cost() -> None:
+    """The fuse-penalty coefficient carries the same time discount as import cost.
+
+    ``P_fuse = max(p_imp) × 100`` per kWh over the fuse limit, discounted per
+    slot exactly like the grid-import coefficient, so the penalty stays the
+    same multiple of the money it protects at every point in the horizon.
+    """
+    import numpy as np
+
+    from custom_components.hsem.planner.milp._objective import _build_objective
+
+    prices = [0.20, 1.50, 0.80]
+    slots = [_make_slot(hour=h, import_price=p) for h, p in enumerate(prices)]
+    m = len(slots)
+    c_obj = _build_objective(
+        slots,
+        list(range(m)),
+        _NOW,
+        m,
+        9 * m,
+        0,  # ec
+        m,  # ed
+        2 * m,  # gi
+        3 * m,  # ge
+        4 * m,  # battery_export
+        5 * m,  # cycle-cost aux
+        6 * m,  # s_max
+        7 * m,  # s_min
+        8 * m,  # fuse penalty
+        [],
+        [],
+        [],
+        np.array(prices),
+        np.array([0.05] * m),
+        100.0,
+        0.0,
+        0.97,
+        0.99,  # discounted
+        None,
+        True,  # fuse active
+    )
+
+    p_fuse = max(prices) * 100.0
+    for t, price in enumerate(prices):
+        discount = c_obj[2 * m + t] / price
+        assert discount < 1.0
+        assert c_obj[8 * m + t] == pytest.approx(p_fuse * discount)
 
 
 @_scipy_skip()
@@ -2281,11 +2312,26 @@ def test_terminal_soc_flat_price_allows_discharge():
     battery (10 kWh usable), unlimited discharge.  Before the Fix 2
     correction, the uniform +replacement_price penalty dominated the
     per-slot import-saving benefit and caused zero discharge.
+
+    Since #1138 the term is a single end value on net stored energy, so the
+    uniform penalty is back by design; what keeps #638 fixed is the value
+    itself.  The engine's ``V`` claims only 0.9 of a kWh's use value
+    (``0.9 × 0.97 × 0.10 ≈ 0.087``), below the ``0.97 × 0.10 ≈ 0.097``
+    that discharging now saves.  ``V = R = 0.10`` would reintroduce #638.
     """
     slots = [
         _make_slot(hour=h, import_price=0.10, export_price=0.10, consumption_kwh=4.0)
         for h in range(24)
     ]
+    end_value = terminal_end_value_from_last_day(
+        slots,
+        _TZ,
+        top_n=4,
+        charge_eff=0.97,
+        discharge_eff=0.97,
+        cycle_cost_per_kwh=0.0,
+    )
+    assert end_value == pytest.approx(0.9 * 0.97 * 0.10)
     result = solve_milp(
         slots,
         _NOW,
@@ -2293,7 +2339,7 @@ def test_terminal_soc_flat_price_allows_discharge():
         usable_kwh=10.0,
         max_charge_per_slot=5.0,
         max_discharge_per_slot=None,
-        replacement_price_per_kwh=0.10,
+        replacement_price_per_kwh=end_value,
     )
     assert result is not None, "MILP must return a solution"
     out_slots, _diag = result

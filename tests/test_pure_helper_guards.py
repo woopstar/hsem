@@ -258,6 +258,70 @@ class TestLivePowerWindowSampling:
 
         assert window.estimate(_NOW).house_power_w is None
 
+    @staticmethod
+    def _add_house(window: LivePowerWindow, offset_s: int, power_w: float) -> None:
+        """Add a house sample ``offset_s`` seconds after ``_NOW`` (PV fixed)."""
+        window.add_sample(
+            _NOW + timedelta(seconds=offset_s),
+            house_power_w=power_w,
+            solar_power_w=500.0,
+            house_available=True,
+            solar_available=True,
+        )
+
+    def test_out_of_order_sample_is_ignored(self) -> None:
+        """A sample older than the newest one leaves the window unchanged."""
+        window = self._window()
+        self._add_house(window, 0, 1000.0)
+        self._add_house(window, 10, 2000.0)
+        # Arrives late: accepting it would move the median to 2000 W.
+        self._add_house(window, 5, 9000.0)
+
+        estimate = window.estimate(_NOW + timedelta(seconds=10))
+        assert estimate.house_power_w == pytest.approx(1500.0)
+
+    def test_same_timestamp_sample_replaces_the_newest(self) -> None:
+        """A repeat of the newest timestamp overwrites it instead of appending."""
+        window = self._window()
+        self._add_house(window, 0, 1000.0)
+        self._add_house(window, 10, 2000.0)
+        self._add_house(window, 10, 4000.0)
+
+        # Replaced: median of [1000, 4000]; appended would give 2000 W.
+        estimate = window.estimate(_NOW + timedelta(seconds=10))
+        assert estimate.house_power_w == pytest.approx(2500.0)
+
+    def test_same_timestamp_sample_does_not_add_evidence(self) -> None:
+        """A replaced sample does not count toward ``minimum_samples``."""
+        window = LivePowerWindow(
+            window_seconds=60, minimum_samples=3, maximum_sample_age_seconds=30
+        )
+        self._add_house(window, 0, 1000.0)
+        self._add_house(window, 10, 2000.0)
+        self._add_house(window, 10, 4000.0)
+
+        assert window.estimate(_NOW + timedelta(seconds=10)).house_power_w is None
+
+    @pytest.mark.parametrize(
+        "now_offset_s",
+        [
+            pytest.param(36, id="newest_older_than_max_age"),
+            pytest.param(4, id="now_before_newest"),
+        ],
+    )
+    def test_stale_or_future_newest_sample_yields_no_estimate(
+        self, now_offset_s: int
+    ) -> None:
+        """Samples inside the window give no estimate unless the newest is fresh."""
+        window = self._window()
+        self._add_house(window, 0, 1000.0)
+        self._add_house(window, 5, 2000.0)
+
+        # Both samples stay inside the 60 s window; only the newest's age fails.
+        estimate = window.estimate(_NOW + timedelta(seconds=now_offset_s))
+        assert estimate.house_power_w is None
+        assert estimate.solar_power_w is None
+
 
 class TestSlotEnergyCaps:
     """A disabled or nonsensical power cap yields no energy allowance."""

@@ -55,13 +55,14 @@ All inputs are collected in the `PlannerInput` dataclass
 
 ### Temporal context
 
-| Field                   | Type  | Description                                                                                   |
-| ----------------------- | ----- | --------------------------------------------------------------------------------------------- |
-| `now_iso`               | `str` | ISO-8601 timezone-aware timestamp of the planning moment (e.g. `"2024-06-15T14:00:00+02:00"`) |
-| `interval_minutes`      | `int` | Slot width in minutes — `15` or `60`                                                          |
-| `interval_length_hours` | `int` | Planning horizon length — `12`, `24`, `36`, or `48` hours                                     |
+| Field                   | Type          | Description                                                                                                                                                                               |
+| ----------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `now_iso`               | `str`         | ISO-8601 timezone-aware timestamp of the planning moment (e.g. `"2024-06-15T14:00:00+02:00"`)                                                                                             |
+| `time_zone`             | `str \| None` | IANA name of the HA time zone (e.g. `"Europe/Copenhagen"`); the planner re-expresses `now` in it so DST days get their real 23 or 25 hours. `None` plans in the fixed offset of `now_iso` |
+| `interval_minutes`      | `int`         | Slot width in minutes — `15` or `60`                                                                                                                                                      |
+| `interval_length_hours` | `int`         | Planning horizon length — `12`, `24`, `36`, or `48` hours                                                                                                                                 |
 
-The total number of slots generated is `(interval_length_hours * 60) // interval_minutes`.
+The total number of slots generated is `(interval_length_hours * 60) // interval_minutes` on an ordinary day; a DST day has 4 × (60 / `interval_minutes`) fewer or more (see `planner-spec.md` → _Slot grid and DST_).
 
 | Horizon | 15-min slots | 60-min slots |
 | ------- | ------------ | ------------ |
@@ -154,6 +155,15 @@ overnight to cover the evening load, the grid charge is the refill and the
 floor drops to the configured minimum. The battery can then cover evening
 load, and the cost function decides whether that beats holding it. The floor
 never reads the previous plan, so it cannot flip from one replan to the next.
+
+A cheap night releases the floor even when the reference plan does not buy
+there (issue #1156). This happens when tomorrow's PV will refill the battery
+anyway. A slot counts as an **affordable refill** when its import price is
+within one battery cycle cost of the cheapest import price in the next 48 h,
+and the battery could charge enough there to cover the load bridged so far.
+A night that is not the cheapest time of the look-ahead does not count, for
+example a 0.15 night before a 0.12 day. Neither do flat prices. The sensor then
+reports `refill_type: grid_available`.
 
 The floor is also the origin of the planner's battery model: planned
 capacity is measured in kWh above it, and the planned SoC is
@@ -493,6 +503,14 @@ recommendation it is not changed by later rules in the same layer.
 > season boundary (e.g. Aug 31 → Sep 1) therefore applies the correct seasonal
 > strategy to every slot independently — summer slots get discharge/solar and
 > winter slots get wait-mode, even within the same 48-hour plan.
+
+> **MILP candidate:** the optimizer has already decided every slot, so a slot
+> it left unassigned is one where it chose to leave the battery idle. There the
+> fill skips priorities 2 and 5 and publishes `batteries_wait_mode`: it opens
+> no discharge window (issue #1041) and books no solar charge (issue #1158). A
+> PV surplus the optimizer chose to export is therefore exported, not also
+> counted as stored in the battery. The table above applies in full to the
+> non-MILP candidates.
 
 > **Wait mode behaviour:** the `batteries_wait_mode` recommendation normally keeps the
 > battery idle. When `hsem_batteries_wait_mode_behavior` is set to
@@ -974,8 +992,8 @@ price is not necessarily net revenue — retailer margin and balancing fees
 can make a positive market price a real loss. `export_fee_per_kwh`
 (default `0.0`) is subtracted from the export price everywhere export
 profitability is decided (the applier's negative-price physical block, the
-MILP objective's export-revenue and terminal-SoC terms, and the cost
-function's mirrored terms), so a positive-but-net-negative price is treated
+MILP objective's export-revenue term, and the cost function's mirrored
+term), so a positive-but-net-negative price is treated
 exactly like a negative raw price. It does **not** change the
 `export_min_price`/`battery_export_min_price` floor comparisons above,
 which stay on the raw price.
@@ -1048,28 +1066,26 @@ because they avoid future discharge costs. The cost function accounts for this
 by pricing the battery's remaining energy at the end of the horizon.
 
 The terminal SoC penalty (or credit) ensures that two plans with different
-ending SoC levels are compared fairly:
+ending SoC levels are compared fairly. It values the net change in stored
+energy at one end value `V` (issue #1138):
 
 ```text
-terminal_soc_delta_kwh = baseline_terminal_soc_kwh − candidate_terminal_soc_kwh
-terminal_soc_adjustment = terminal_soc_delta_kwh × replacement_energy_price
+terminal_soc_value = (initial_kwh − final_kwh) × V
 ```
 
-Emptying the battery is **not free** — the cost function charges for the energy
-that would need to be replaced to restore the battery to a useful state.
+Emptying the battery is **not free**: the energy left at the end is worth what
+it saves after the horizon. `V` is the lower of two estimates taken from the
+last known day of prices: the energy's use at that day's peak (discounted to
+90 %) and the cost of storing it again overnight. After a cheap night, a kWh
+left at midnight is worth no more than its replacement, so the planner does not
+buy energy just to end full.
 
-**Charge-credit caps (issues #694, #592).** The terminal-SoC credit for
-_charging_ is capped so it never beats exporting the same PV surplus:
-
-- **Same-slot cap (#694):** the credit is reduced by this slot's export
-  opportunity cost (`p_exp / η_chg`).
-- **Deferred-export correction (#592):** when a _future_ slot has PV surplus
-  beyond what the battery can absorb (`min(usable_kwh, max_charge_per_slot)`),
-  that surplus is exported regardless — so the credit is partially restored by
-  the spread between this slot's (high) export price and the future slot's
-  (low) export price. The planner therefore exports solar at peak prices and
-  lets the inevitable cheap-afternoon surplus refill the battery, instead of
-  charging immediately during expensive hours.
+Because every slot uses the same `V`, charging and discharging the same energy
+inside the horizon adds nothing: the planner decides such a cycle on its real
+price spread, losses and cycle wear alone. Charging from PV now or exporting now
+and letting a later surplus refill the battery also end at the same SoC, so the
+planner simply picks the one that pays more. The per-slot charge-credit caps
+that used to handle those cases (#694, #592) are gone.
 
 ---
 

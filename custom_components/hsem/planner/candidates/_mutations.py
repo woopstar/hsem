@@ -10,7 +10,7 @@ import copy
 from datetime import datetime
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import slot_is_future
 from custom_components.hsem.utils.recommendations import (
     CHARGE_RECS as _CHARGE_RECS,
     DISCHARGE_RECS as _DISCHARGE_RECS,
@@ -72,7 +72,7 @@ def _apply_passive_solar(slots: list[PlannedSlot], now: datetime) -> None:
         # Passively absorb surplus into battery for future slots only
         # NaN < 0.0 is False in Python so no explicit NaN guard is needed
         if (
-            as_tz(slot.end, now.tzinfo) > now
+            slot_is_future(slot.end, now)
             and slot.estimated_net_consumption_kwh is not None
             and slot.estimated_net_consumption_kwh < 0.0
         ):
