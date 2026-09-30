@@ -17,7 +17,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON="${PYTHON:-python3}"
 ENV_FILE="${HSEM_ENV_FILE:-${REPO_ROOT}/.env}"
-# shellcheck source=scripts/_env.sh
+# _env.sh is shellchecked on its own; CI does not run with -x to follow it.
+# shellcheck disable=SC1091
 source "${REPO_ROOT}/scripts/_env.sh"
 load_env_file "${ENV_FILE}"
 

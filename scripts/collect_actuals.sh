@@ -16,7 +16,8 @@ PYTHON="${PYTHON:-python3}"
 
 # Settings come from .env (see .env.example and scripts/_env.sh).
 ENV_FILE="${HSEM_ENV_FILE:-${REPO_ROOT}/.env}"
-# shellcheck source=scripts/_env.sh
+# _env.sh is shellchecked on its own; CI does not run with -x to follow it.
+# shellcheck disable=SC1091
 source "${REPO_ROOT}/scripts/_env.sh"
 load_env_file "${ENV_FILE}"
 
