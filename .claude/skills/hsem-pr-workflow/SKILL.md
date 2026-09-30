@@ -30,6 +30,27 @@ Or run all at once:
 
 Verify: `git --no-optional-locks status` shows only intended changes.
 
+Run everything from the task's own worktree (see `hsem-pre-flight` Step 1), never from
+the shared main checkout at `/workspaces/hsem`.
+
+### Branch Sanity Check (Before Every Commit)
+
+Confirm nothing moved the branch underneath you:
+
+```bash
+git fetch origin
+git merge-base --is-ancestor origin/main HEAD && echo "based on origin/main"
+git reflog -3
+```
+
+- `merge-base` fails when `main` has moved on since you branched. That is expected
+  after another PR merges. Rebase in your own worktree
+  (`git rebase origin/main`) and re-run the quality gates before pushing. For a
+  6.3.x backport, check against `origin/v6.3.0-hotfix` instead.
+- `git reflog -3` must show only your own commits, checkouts and rebases. An
+  entry you did not make means another process touched the branch: stop and
+  inspect it before committing.
+
 ## Translation Sync
 
 Before opening a PR, run the `hsem-translation-sync` skill if any user-facing
@@ -154,7 +175,19 @@ Before merging ANY PR:
 
 **Never merge without explicit user permission.**
 
-After merge, delete the branch locally and remotely.
+After merge, delete the branch locally and remotely, and remove the task's worktree:
+
+```bash
+git -C /workspaces/hsem worktree remove /workspaces/worktrees/hsem-<issue>
+git -C /workspaces/hsem branch -D <type>/<issue>-<slug>
+git -C /workspaces/hsem worktree prune
+```
+
+- `gh pr merge --squash --delete-branch` deletes the remote branch. The devcontainer's
+  `gh` (2.100) also removes the local branch and its worktree, so check
+  `git worktree list` and only remove what is left.
+- Remove only your own worktree, and never one with uncommitted changes
+  (`git -C <path> status --porcelain` must be empty).
 
 ## PR Review Request
 
