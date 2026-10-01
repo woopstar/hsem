@@ -801,3 +801,108 @@ class TestRealPlanner:
         assert _evening_discharge_kwh(second[3]) == pytest.approx(
             _evening_discharge_kwh(final)
         )
+
+
+# ---------------------------------------------------------------------------
+# The reference solve keeps the house-battery target (issue #1186)
+# ---------------------------------------------------------------------------
+
+
+def _floor_with_battery_target(
+    *, enabled: bool, target_time: str
+) -> tuple[float, dict, PlannerOutput]:
+    """Return the floor a reference solve gives with the target on or off.
+
+    The #1125 fixture with a 0.45 export price at 21:00-23:00 and the house
+    battery target at 100 % by *target_time*.  Floor-free, the spike empties
+    the battery and the plan buys back at night.
+    """
+    spike = 0.45
+    planner_input = replace(
+        _planner_input(night=0.15),
+        excess_export_enabled=True,
+        battery_target_soc_enabled=enabled,
+        battery_target_soc_pct=100.0,
+        battery_target_soc_time=target_time,
+    )
+    planner_input.price_points = [
+        PricePoint(
+            hour=point.hour,
+            import_price=max(point.import_price, spike + 0.02),
+            export_price=spike,
+            day_offset=point.day_offset,
+        )
+        if point.day_offset == 0 and point.hour in (21, 22)
+        else point
+        for point in planner_input.price_points
+    ]
+    reference = run_planner(planner_input)
+    floor_pct, diag, _profile = compute_dynamic_floor_from_plan(
+        DynamicDischargeFloor(),
+        _hourly_recommendations(),
+        reference,
+        planner_input,
+        _live(),
+        _NOW,
+    )
+    return floor_pct, diag, reference
+
+
+def _night_grid_charge_kwh(reference: PlannerOutput) -> float:
+    """Return the grid charge the plan makes before tomorrow's PV surplus."""
+    return sum(
+        slot.batteries_charged_kwh
+        for slot in reference.slots
+        if slot.end > _NOW
+        and slot.start < _PV_FIRST_SURPLUS
+        and slot.recommendation == _CHARGE
+    )
+
+
+class TestReferenceSolveKeepsTheBatteryTarget:
+    """Issue #1186 proposed solving the reference plan with the target off.
+
+    The idea was that the target's stage 2 pins grid import and so cannot
+    change what the floor reads.  It pins import only up to the target slot;
+    after it, import is merely capped.  When stage 2 keeps energy that stage 1
+    exported before the deadline, the plan needs less grid charge afterwards,
+    and a night charge the bridge scan credited disappears.
+    """
+
+    def test_floor_differs_when_stage_2_removes_the_night_charge(self) -> None:
+        """Target by 23:00: skipping stage 2 would lower the floor by 33 points."""
+        with_target, diag, reference = _floor_with_battery_target(
+            enabled=True, target_time="23:00:00"
+        )
+        without_target, _diag, stage1_only = _floor_with_battery_target(
+            enabled=False, target_time="23:00:00"
+        )
+
+        assert reference.battery_target is not None
+        assert reference.battery_target["stage2_ran"] is True
+        assert reference.battery_target["stage2_status"] == "solved"
+        # Stage 1 alone sells the battery at the spike and buys back at night.
+        assert _night_grid_charge_kwh(stage1_only) > 2.0
+        # With the target the battery is kept, and nothing is bought at night.
+        assert _night_grid_charge_kwh(reference) == pytest.approx(0.0, abs=1e-3)
+        # The whole night to tomorrow's PV is bridged: 6.42 kWh, uncredited.
+        assert diag["refill_type"] == "solar_surplus"
+        assert diag["reserve_kwh"] == pytest.approx(6.42)
+        assert with_target == pytest.approx(6.42 / _USABLE_KWH * 100.0 * 1.15)
+        assert without_target < with_target - 30.0
+
+    def test_floor_is_the_same_when_the_charge_lies_before_the_target(self) -> None:
+        """Target by 06:00: the night charge is inside the pinned window."""
+        with_target, _diag, reference = _floor_with_battery_target(
+            enabled=True, target_time="06:00:00"
+        )
+        without_target, _diag, stage1_only = _floor_with_battery_target(
+            enabled=False, target_time="06:00:00"
+        )
+
+        assert reference.battery_target is not None
+        assert reference.battery_target["stage2_ran"] is True
+        assert _night_grid_charge_kwh(reference) == pytest.approx(
+            _night_grid_charge_kwh(stage1_only), abs=1e-3
+        )
+        assert with_target == pytest.approx(without_target)

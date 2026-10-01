@@ -457,11 +457,14 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 - If a file exceeds either limit, split it before adding more features.
 - Current oversized files (as of 2026-09-18):
 
-  - `coordinator_planner_phase.py` — ~31.2 KB (over 30 KB; bridge-slot build moved out in #1140)
   - `coordinator_tracking.py` — 31,036 bytes (over 30 KB)
 
   - `planner/candidate_selector.py` — 31,401 bytes (over 30 KB)
 
+- Resolved in issue #1186: the dynamic-floor steps of the planner phase
+  (enable/clear, reference solve, margin learning) moved from
+  `coordinator_planner_phase.py` (31.7 KB) to `CoordinatorDynamicFloorMixin`
+  in `coordinator_dynamic_floor.py`; the phase module is now ~29.9 KB.
 - Resolved in issue #1109: the attribute dict moved from
   `custom_sensors/working_mode_sensor.py` (33.1 KB) to
   `custom_sensors/working_mode_attributes.py`; the sensor is now ~21 KB.
@@ -2440,7 +2443,19 @@ Tests: `tests/test_solcast_subhourly_planner.py` (real populator → `build_plan
 - The margin learner must be fed `floor_required_at_slot_end()` (the next slot's floor), not the scalar. The plan follows the reserve down within a slot, so against the slot-start floor every slot of planned self-consumption is a shortfall and the margin walks to 1.50.
 - The sensor still shows the floor at the start of the live slot; the live SoC can read slightly below it until the next replan.
 - A scalar-only caller (`dynamic_discharge_floor_pct` without a profile) gets a constant reserve, capped at the energy held.
-- `planner/milp_optimizer.py` is at 30,485 B and `coordinator_planner_phase.py` is over the limit (issue #1186 moves the reference-solve block out).
+- `planner/milp_optimizer.py` is at 30,485 B.
 - The floor itself still flips between replans when the reference plan's night charge moves among equally priced slots (issue #1198, pre-existing).
 
 Tests: `tests/planner/test_dynamic_floor_reserve_profile.py` (profile, per-slot bound, every consumer, real planner at 60 and 15 minutes, export spike, battery below the reserve, all candidates, margin learning), `tests/planner/test_dynamic_floor_reserve_replay.py` (closed loop).
+
+## The Dynamic-Floor Reference Solve Keeps the Battery Target (issue #1186)
+
+**Proposal rejected by measurement:** solve the floor's reference plan with `battery_target_soc_enabled=False` to save the target's stage-2 solve. The argument was that stage 2 pins grid import, so it cannot change what the bridge scan reads.
+
+**Why it is wrong:** `milp/_battery_target.py::build_target_rows` pins `gi[t]` to stage 1 only for `t <= T`; after the target slot import is merely capped. When stage 2 keeps energy that stage 1 exported before the deadline, the plan buys less after `T` and a night grid charge the scan credited disappears. #1125 fixture, 68 % at 21:30, 0.45 export at 21:00-23:00, target 100 % by 23:00: floor 77.72 % with the target in the reference solve, 44.93 % without. With the target at 06:00 the charge is inside the pinned window and the floors are equal.
+
+**Rule:** the reference solve and the real solve differ only in the floor (`dynamic_discharge_floor_pct`, `dynamic_floor_profile`). Do not strip features from the reference input to save a solve without a test that shows the floor is unchanged on a day where the feature acts.
+
+The planner-phase floor steps live in `CoordinatorDynamicFloorMixin` (`coordinator_dynamic_floor.py`): `_sync_dynamic_floor_enabled()`, `_async_apply_dynamic_floor()`, `_learn_dynamic_floor_margin()`. `CoordinatorPlannerPhaseMixin` inherits it.
+
+Tests: `tests/test_dynamic_floor_reference_plan.py::TestReferenceSolveKeepsTheBatteryTarget`, `tests/test_coordinator_planner_phase.py::TestFreshPlan::test_reference_solve_keeps_the_battery_target`.

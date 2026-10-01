@@ -28,18 +28,24 @@ ended the bridge at a solar surplus that was not there.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from datetime import datetime
 
-from custom_components.hsem.coordinator_helpers import _SimpleSlot
+from custom_components.hsem.coordinator_helpers import (
+    _SimpleSlot,
+    _StaleUpdateCycle,
+)
+from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.datetime_utils import utc_key
 from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
 from custom_components.hsem.utils.logger import async_log
-from custom_components.hsem.utils.misc import resolve_cycle_cost
+from custom_components.hsem.utils.misc import get_config_value, resolve_cycle_cost
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import (
     slot_duration_hours,
@@ -220,3 +226,96 @@ def floor_required_at_slot_end(
         if utc_key(datetime.fromisoformat(start_iso)) > utc_key(now):
             return floor_pct
     return floor_now_pct
+
+
+class CoordinatorDynamicFloorMixin(CoordinatorSharedState):
+    """Dynamic discharge floor steps of the coordinator's planner phase.
+
+    Moved out of ``coordinator_planner_phase.py`` to keep that module under
+    the 30 KB file limit (issue #1186).  The methods run on the coordinator
+    through the mixin chain, so ``self`` and every attribute are unchanged.
+    """
+
+    def _sync_dynamic_floor_enabled(self) -> bool:
+        """Return whether the dynamic floor is enabled; clear its state if not.
+
+        The floor is computed from a floor-free reference solve in the same
+        replan (issue #1140), never from the plan it constrains; between
+        replans the floor in force is kept.
+        """
+        enabled = bool(
+            get_config_value(self._config_entry, "hsem_dynamic_discharge_floor")
+        )
+        if not enabled:
+            self._effective_discharge_floor_pct = None
+            self._effective_discharge_floor_diag = None
+            self._effective_discharge_floor_profile = None
+        return enabled
+
+    async def _async_apply_dynamic_floor(
+        self,
+        planner_input: PlannerInput,
+        live: LiveState,
+        now: datetime,
+        captured_generation: int,
+    ) -> PlannerInput:
+        """Solve the reference plan and return the input with this replan's floor.
+
+        The reference solve uses *planner_input* unchanged apart from the
+        missing floor.  In particular it keeps the house-battery target
+        (issue #1109): the target's stage 2 can remove a night grid charge
+        the scan would otherwise credit, so a reference plan without it gives
+        a different floor (issue #1186).
+
+        Args:
+            planner_input: This replan's floor-free planner input.
+            live: Live state; supplies the battery's capacity and SoC limits.
+            now: Timezone-aware current datetime.
+            captured_generation: The update generation this cycle started in.
+
+        Returns:
+            *planner_input* with ``dynamic_discharge_floor_pct`` and
+            ``dynamic_floor_profile`` set.
+
+        Raises:
+            _StaleUpdateCycle: A newer update cycle started during the solve.
+        """
+        reference_output = await self.hass.async_add_executor_job(
+            run_planner, planner_input
+        )
+        if getattr(self, "_update_generation", 0) != captured_generation:
+            raise _StaleUpdateCycle
+        floor_pct, floor_diag, floor_profile = compute_dynamic_floor_from_plan(
+            self._dynamic_floor,
+            self._hourly_recommendations,
+            reference_output,
+            planner_input,
+            live,
+            now,
+        )
+        self._effective_discharge_floor_pct = floor_pct
+        self._effective_discharge_floor_diag = floor_diag
+        self._effective_discharge_floor_profile = floor_profile
+        return replace(
+            planner_input,
+            dynamic_discharge_floor_pct=floor_pct,
+            dynamic_floor_profile=floor_profile,
+        )
+
+    def _learn_dynamic_floor_margin(self, live: LiveState, now: datetime) -> None:
+        """Feed the live SoC and the floor in force to the margin learner.
+
+        The floor passed is the one the plan may reach by the end of the live
+        slot: the plan follows the reserve down to the next slot's floor
+        (issue #1188).
+        """
+        floor_in_force = self._effective_discharge_floor_pct
+        if floor_in_force is None or live.huawei_batteries_soc_pct is None:
+            return
+        self._dynamic_floor.correct_margin(
+            live.huawei_batteries_soc_pct,
+            floor_required_at_slot_end(
+                self._effective_discharge_floor_profile, now, floor_in_force
+            ),
+            now=now,
+        )
