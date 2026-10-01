@@ -3294,11 +3294,17 @@ None`, i.e. only the hardware floor.
 2. `compute_dynamic_floor_from_plan()` (`coordinator_dynamic_floor.py`) builds
    the bridge slots with `build_dynamic_floor_bridge_slots()` and runs
    `compute_floor()`:
-   - **Net load** (`avg_house_consumption_kwh − solcast_pv_estimate_kwh`)
-     comes from this cycle's freshly populated forecast.
-   - **Charge decision** (`batteries_charged_kwh`, `recommendation`) comes from
-     the reference plan's slot with the same UTC `(start, end)`. A slot the
-     plan does not cover keeps the regenerated values (no charge).
+   - **Net load** (`avg_house_consumption_kwh − solcast_pv_estimate_kwh`),
+     the **charge decision** (`batteries_charged_kwh`, `recommendation`) and
+     the import price all come from the reference plan's slot with the same
+     UTC `(start, end)`. Both net-load terms are kWh per slot there, with the
+     planner's PV correction, confidence decay and live injection applied, so
+     the bridge reads the forecast the plan was solved on (issue #1187).
+     Planned EV load is not part of it: the floor reserves for the house only.
+   - A slot the plan does not cover keeps the regenerated forecast and has no
+     charge and no price. Its `solcast_pv_estimate_kwh` is still the hourly
+     value the populator stored, so it is multiplied by the slot's duration
+     in hours before it is subtracted.
 3. **Real solve:** the same input with the resulting floor. Its output is the
    plan that is published and committed.
 
@@ -3321,6 +3327,17 @@ production. After sunset the floor bridged the whole night's load to the next
 morning's PV surplus. It then exceeded the live SoC, and the live-SoC cap
 (issue #1094) pinned the model at 0 kWh, so the plan held the battery in
 `batteries_wait_mode` until its cheap-window grid charge (issue #1125).
+
+**Why not the regenerated recommendations (issue #1187).** Until #1187 the net
+load was read from the regenerated recommendation list. There the house load
+is kWh per slot, but `solcast_pv_estimate_kwh` is the unscaled Solcast value in
+kWh per hour; the planner does the per-slot split itself, and the per-slot
+value is copied back only after the final solve. The subtraction overstated PV
+4× at 15-minute slots and 2× at 30-minute slots, so an hour with PV between
+25 % and 100 % of the load counted as a solar refill. The bridge ended there
+and the reserve was too small on exactly the low-PV days the floor exists for.
+In a production log (issue #1125) the scan found its solar refill at 08:30
+while the plan's first surplus slot was 10:00. Hourly slots were not affected.
 
 **Cost.** One extra planner solve per replan, only with the floor enabled
 (~75 ms for a 48 h horizon of 15-minute slots without EVs).
@@ -3435,6 +3452,9 @@ effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
 - The bridge scan reads charge decisions from this replan's floor-free
   reference solve — never from the regenerated recommendation list, and never
   from the previous committed plan (issue #1140).
+- The bridge's net load is per-slot house load minus per-slot PV at every slot
+  interval. Its first `solar_surplus` slot is the reference plan's first slot
+  with `avg_house_consumption_kwh < solcast_pv_estimate_kwh` (issue #1187).
 - For fixed inputs the floor is the same on every replan; it does not depend
   on the plan it constrains.
 - A grid-charge refill that covers the bridged consumption yields

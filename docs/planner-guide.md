@@ -155,6 +155,14 @@ floor drops to the configured minimum. The battery can then cover evening
 load, and the cost function decides whether that beats holding it. The floor
 never reads the previous plan, so it cannot flip from one replan to the next.
 
+The reference plan also supplies the house load and PV the floor bridges
+over, so the floor and the plan work from the same forecast. Before issue
+#1187 the floor compared the load of one slot with a whole hour of PV, which
+at 15- or 30-minute slots made it see a solar refill too early and reserve too
+little. Floors on such setups are higher since that fix on days when PV stays
+below the house load. Hourly setups keep the same arithmetic; their floor can
+still move a little, because the bridge now uses the planner's corrected PV.
+
 A cheap night releases the floor even when the reference plan does not buy
 there (issue #1156). This happens when tomorrow's PV will refill the battery
 anyway. A slot counts as an **affordable refill** when its import price is

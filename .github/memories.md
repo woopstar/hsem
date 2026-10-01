@@ -17,14 +17,14 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 
 ### Coordinator layer (`custom_components/hsem/`)
 
-| File                           | Responsibility                                                                                          |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `coordinator.py`               | HA lifecycle and collect/populate/plan/publication orchestration                                        |
-| `coordinator_data.py`          | Atomic `CoordinatorData` snapshot exposed to entities                                                   |
-| `coordinator_dynamic_floor.py` | Dynamic floor from a floor-free reference solve: forecast net load + its charge decisions (issue #1140) |
-| `coordinator_helpers.py`       | Pure override, strict-hold, and load-readiness/signature helpers                                        |
-| `coordinator_load_hold.py`     | Non-planner load-forecast safety hold + force-charge re-apply (issue #1103)                             |
-| `coordinator_tracking.py`      | Forecast, daily, financial, and savings accumulation                                                    |
+| File                           | Responsibility                                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `coordinator.py`               | HA lifecycle and collect/populate/plan/publication orchestration                                                   |
+| `coordinator_data.py`          | Atomic `CoordinatorData` snapshot exposed to entities                                                              |
+| `coordinator_dynamic_floor.py` | Dynamic floor from a floor-free reference solve: its per-slot net load, charge decisions and prices (#1140, #1187) |
+| `coordinator_helpers.py`       | Pure override, strict-hold, and load-readiness/signature helpers                                                   |
+| `coordinator_load_hold.py`     | Non-planner load-forecast safety hold + force-charge re-apply (issue #1103)                                        |
+| `coordinator_tracking.py`      | Forecast, daily, financial, and savings accumulation                                                               |
 
 Load-average availability must remain explicit: unknown/non-finite values are
 missing, genuine finite zero is valid, and contradictory zero load above 50 W
@@ -2125,3 +2125,13 @@ Tests: `tests/utils/test_dynamic_floor.py::TestMarginCorrection` (288 cycles/day
 **Gotcha:** coordinator test plans use default `SlotPrice(0.0, 0.0)`, which is flat, so there is no cheap refill. Use `_plan(..., cheap_night=True)` to exercise it.
 
 Tests: `tests/utils/test_dynamic_floor.py::TestCheapRefillPrice` and `::TestAffordableGridRefill`. Also `tests/test_dynamic_floor_reference_plan.py`: `test_cheap_night_without_a_charge_is_the_refill` (coordinator wiring) and `test_cheapest_night_without_a_charge_releases_the_floor` (real planner; cost within 0.01 of the reference).
+
+## Dynamic Floor Bridge Reads Load and PV From the Reference Plan (issue #1187)
+
+**Bug:** `build_dynamic_floor_bridge_slots()` computed `rec.avg_house_consumption_kwh - rec.solcast_pv_estimate_kwh` on the regenerated recommendations. The load there is kWh per slot, but the PV is the **unscaled hourly** Solcast value: `hourly_data_populator/prices_solcast.py` stores it raw on purpose, the planner splits it per slot, and `_apply_planner_output()` copies the per-slot value back only after the final solve. PV was overstated 4× at 15-minute slots and 2× at 30, so the scan found a `solar_surplus` refill hours early (08:30 against the plan's 10:00 in #1125's log) and reserved too little. Hourly slots were right.
+
+**Rule:** the bridge's net load is `plan_slot.avg_house_consumption_kwh - plan_slot.solcast_pv_estimate_kwh` from the reference plan (per slot, corrected, decayed, live-injected; house only, never `estimated_net_consumption_kwh`, which adds planned EV load). A recommendation without a plan slot scales its raw PV by `slot_duration_hours()`. Never subtract `rec.solcast_pv_estimate_kwh` from a per-slot quantity before the final plan is applied.
+
+**Gotcha:** hand-built reference plans in tests must carry `avg_house_consumption_kwh` / `solcast_pv_estimate_kwh` on their slots, or the bridge sees zero load (`_plan()` in `tests/test_dynamic_floor_reference_plan.py` does). The fix raises floors at sub-hourly slots; the #1156 affordable refill is what keeps a cheap night from pinning the battery, so do not ship one without the other.
+
+Tests: `tests/test_dynamic_floor_reference_plan.py::TestBuildBridgeSlots::test_unplanned_slot_scales_the_hourly_pv_to_the_slot` (real populator, 15/30/60 min), `::test_load_pv_and_charge_come_from_the_plan_slot`, and `TestRealPlanner::test_quarter_hour_bridge_ends_at_the_plans_first_surplus` / `::test_quarter_hour_cheap_night_still_releases_the_floor`.
