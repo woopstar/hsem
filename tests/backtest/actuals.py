@@ -43,6 +43,7 @@ from typing import Any
 from custom_components.hsem.ml.history_reader import MAX_SLOT_KWH
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.utils.datetime_utils import slot_key, utc_key
+from tests.backtest.site import SITE_KEY, site_of, validate_site
 
 __all__ = [
     "ACTUALS_SCHEMA",
@@ -249,6 +250,8 @@ class Actuals:
         unknown_series: Series names the file carried that are not recognised.
         zero_filled: Series the caller declared absent-means-zero.
         source: Where the actuals were loaded from, for reporting.
+        site_tag: Which installation recorded them (see
+            ``tests/backtest/site.py``); ``None`` when the file carries no tag.
     """
 
     slot_minutes: int
@@ -257,6 +260,7 @@ class Actuals:
     unknown_series: tuple[str, ...] = ()
     zero_filled: tuple[str, ...] = ()
     source: str = "<memory>"
+    site_tag: str | None = None
 
     def fill_absent_with_zero(self, *series: str) -> None:
         """Declare that an absent observation means zero for *series*.
@@ -335,8 +339,8 @@ def load_actuals(path: str | Path) -> Actuals:
         The loaded :class:`Actuals`.
 
     Raises:
-        ValueError: If the file carries no or an unsupported ``schema``, or no
-            usable ``slot_minutes``.
+        ValueError: If the file carries no or an unsupported ``schema``, no
+            usable ``slot_minutes``, or an invalid ``site`` tag.
     """
     source = Path(path)
     raw = json.loads(source.read_text(encoding="utf-8"))
@@ -365,6 +369,7 @@ def load_actuals(path: str | Path) -> Actuals:
         values={k: v for k, v in values.items() if k in VALUE_SERIES},
         unknown_series=unknown,
         source=str(source),
+        site_tag=site_of(raw),
     )
 
 
@@ -671,6 +676,7 @@ def build_actuals_payload(
     now: datetime,
     slot_minutes: int,
     max_silence: timedelta = DEFAULT_MAX_SILENCE,
+    site: str | None = None,
 ) -> dict[str, Any]:
     """Assemble an ``hsem-actuals-1`` payload from raw entity readings.
 
@@ -687,13 +693,17 @@ def build_actuals_payload(
             are emitted.
         slot_minutes: Slot width in minutes.
         max_silence: Longest tolerated silence across all entities.
+        site: Tag of the installation the readings are from (issue #1225);
+            ``None`` writes no tag.
 
     Returns:
         A JSON-serialisable payload ready for :func:`load_actuals`.
 
     Raises:
         KeyError: If *mapping* names a series this module does not recognise.
+        ValueError: If *site* is not a valid tag.
     """
+    site = validate_site(site)
     event_times = sorted(utc_key(t) for rows in readings.values() for t, _v in rows)
     keys = _slot_keys(event_times[0], now, slot_minutes) if event_times else []
     observed = _observed_slots(event_times, keys, slot_minutes, now, max_silence)
@@ -714,7 +724,7 @@ def build_actuals_payload(
         if keyed:
             target[series] = {k.isoformat(): v for k, v in keyed.items()}
 
-    return {
+    payload: dict[str, Any] = {
         "schema": ACTUALS_SCHEMA,
         "slot_minutes": slot_minutes,
         "slot_energy_kwh": {
@@ -724,6 +734,9 @@ def build_actuals_payload(
             name: sorted(rows.items()) for name, rows in sorted(values.items())
         },
     }
+    if site is not None:
+        payload[SITE_KEY] = site
+    return payload
 
 
 # ---------------------------------------------------------------------------

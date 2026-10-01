@@ -66,6 +66,7 @@ from custom_components.hsem.utils.datetime_utils import slot_key
 from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.units import fuse_max_energy_per_slot_kwh
 from tests.backtest.actuals import Actuals
+from tests.backtest.site import describe_site
 
 #: Smallest potential, in the currency of the prices, that capture is divided
 #: by.  Below it the share is noise and is reported as unknown.
@@ -341,16 +342,24 @@ def merge_actuals(parts: Sequence[Actuals]) -> Actuals:
         One :class:`Actuals` holding every series of every part.
 
     Raises:
-        ValueError: If there are no parts, or they differ in slot width.
+        ValueError: If there are no parts, they differ in slot width, or they
+            are from different installations (issue #1225).
     """
     if not parts:
         raise ValueError("no actuals to merge")
     widths = {part.slot_minutes for part in parts}
     if len(widths) != 1:
         raise ValueError(f"actuals differ in slot width: {sorted(widths)}")
+    tags = {part.site_tag for part in parts}
+    if len(tags) != 1:
+        raise ValueError(
+            "actuals are from different installations: "
+            + ", ".join(sorted(describe_site(tag) for tag in tags))
+        )
     merged = Actuals(
         slot_minutes=parts[0].slot_minutes,
         source=", ".join(part.source for part in parts),
+        site_tag=parts[0].site_tag,
     )
     for part in parts:
         for name, values in part.energy_kwh.items():

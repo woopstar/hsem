@@ -33,8 +33,10 @@ from tests.backtest.attribution import (
     Decision,
     attribute_day,
     cycles_by_slot,
+    cycles_of_site,
     describe,
     execute_decision,
+    site_cycles_by_slot,
     with_realized_forecasts,
 )
 from tests.backtest.scoring import SiteLimits, day_slot_keys
@@ -229,6 +231,39 @@ class TestDaysThatCannotBeAttributed:
         assert result.forecast_error is None
         assert result.planner_error is None
         assert result.execution_error is None
+
+    def test_cycles_of_another_installation_do_not_count(self) -> None:
+        """Issue #1225: another house's plans are not compared with these meters."""
+        actuals = replace(_actuals(_SUNNY), site_tag="site-a")
+        cycles = [{**cycle, "site": "site-b"} for cycle in _cycles(_SUNNY)]
+
+        result = attribute_day(actuals, cycles, _DAY, _ZONE, _site())
+
+        assert result.unscorable == (
+            "the day's planner cycles are not from the installation of the "
+            "actuals (site 'site-a')"
+        )
+
+    def test_untagged_cycles_do_not_pair_with_tagged_actuals(self) -> None:
+        actuals = replace(_actuals(_SUNNY), site_tag="site-a")
+
+        result = attribute_day(actuals, _cycles(_SUNNY), _DAY, _ZONE, _site())
+
+        assert not result.is_attributed
+        assert "not from the installation" in (result.unscorable or "")
+
+    def test_only_the_cycles_of_the_installation_are_used(self) -> None:
+        cycles = [
+            *({**cycle, "site": "site-a"} for cycle in _cycles(_SUNNY)),
+            *({**cycle, "site": "site-b"} for cycle in _cycles(_CLOUDY)),
+        ]
+
+        assert cycles_of_site(cycles, "site-a") == cycles[:24]
+        assert cycles_of_site(cycles, "site-b") == cycles[24:]
+        assert cycles_of_site(cycles, None) == []
+        recorded = site_cycles_by_slot(cycles, _DAY, _ZONE, 60, "site-a")
+        assert not isinstance(recorded, str)
+        assert all(cycle["site"] == "site-a" for cycle in recorded.values())
 
     def test_cycles_of_another_day_do_not_count(self) -> None:
         result = attribute_day(

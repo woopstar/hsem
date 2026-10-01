@@ -68,6 +68,7 @@ from custom_components.hsem.utils.recommendations import Recommendations
 from tests.backtest.actuals import Actuals
 from tests.backtest.replay import planner_input_from_dict
 from tests.backtest.scoring import RealizedDay, SiteLimits, realized_day
+from tests.backtest.site import describe_site, same_site, site_of
 
 #: Least share of a day's slots that must have a cycle recorded in them.  Below
 #: it the replay would plan most of the day from forecasts HSEM did not have
@@ -276,6 +277,25 @@ def _recorded_at(payload: Mapping[str, Any]) -> datetime | None:
         return None
 
 
+def cycles_of_site(
+    payloads: Iterable[Mapping[str, Any]], site_tag: str | None
+) -> list[Mapping[str, Any]]:
+    """Return the cycles recorded on the installation tagged *site_tag*.
+
+    Every comparison of a plan with realized values goes through this: a
+    cycle from another installation is left out, exactly like a cycle of
+    another day (issue #1225).  Untagged cycles pair with untagged actuals.
+
+    Args:
+        payloads: Recorded cycles, in any order.
+        site_tag: The tag of the actuals they are compared with.
+
+    Returns:
+        The cycles whose tag equals *site_tag*, in the order given.
+    """
+    return [payload for payload in payloads if same_site(site_of(payload), site_tag)]
+
+
 def cycles_by_slot(
     payloads: Iterable[Mapping[str, Any]],
     day: date,
@@ -309,6 +329,40 @@ def cycles_by_slot(
         if key not in first or recorded < first[key][0]:
             first[key] = (recorded, payload)
     return {key: payload for key, (_recorded, payload) in first.items()}
+
+
+def site_cycles_by_slot(
+    payloads: Iterable[Mapping[str, Any]],
+    day: date,
+    zone: ZoneInfo,
+    slot_minutes: int,
+    site_tag: str | None,
+) -> dict[datetime, Mapping[str, Any]] | str:
+    """Return *day*'s cycles of one installation, or why there are none.
+
+    Args:
+        payloads: Recorded cycles, in any order.
+        day: The local calendar day.
+        zone: The site's time zone.
+        slot_minutes: Slot width.
+        site_tag: The tag of the actuals the cycles are compared with.
+
+    Returns:
+        :func:`cycles_by_slot` of the cycles tagged *site_tag*; or, when that
+        is empty, the reason as a string.
+    """
+    payloads = list(payloads)
+    recorded = cycles_by_slot(
+        cycles_of_site(payloads, site_tag), day, zone, slot_minutes
+    )
+    if recorded:
+        return recorded
+    if cycles_by_slot(payloads, day, zone, slot_minutes):
+        return (
+            f"the day's planner cycles are not from the installation of the "
+            f"actuals ({describe_site(site_tag)})"
+        )
+    return "no planner cycle was recorded on this day"
 
 
 def _cycle_for_slot(
@@ -588,7 +642,8 @@ def attribute_day(
 
     Args:
         actuals: The loaded realized series.
-        payloads: Recorded cycles; those of other days are ignored.
+        payloads: Recorded cycles; those of other days and of other
+            installations are ignored (issue #1225).
         day: The local calendar day.
         zone: The site's time zone.
         site: The installation's hard limits.  Must describe the installation
@@ -601,11 +656,11 @@ def attribute_day(
     prepared = realized_day(actuals, day, zone, site)
     if isinstance(prepared, str):
         return DayAttribution(day=day, unscorable=prepared)
-    recorded = cycles_by_slot(payloads, day, zone, actuals.slot_minutes)
-    if not recorded:
-        return DayAttribution(
-            day=day, unscorable="no planner cycle was recorded on this day"
-        )
+    recorded = site_cycles_by_slot(
+        payloads, day, zone, actuals.slot_minutes, actuals.site_tag
+    )
+    if isinstance(recorded, str):
+        return DayAttribution(day=day, unscorable=recorded)
     covered = sum(1 for key in prepared.keys if key in recorded)
     if covered < MIN_CYCLE_COVERAGE * len(prepared.keys):
         return DayAttribution(

@@ -21,11 +21,33 @@ and `apply_result` (about 44 KB); `planner_output` is never read, since replays
 recompute it. Each must round-trip losslessly and contain no entity id. The
 corpus is capped at 50 cycles because every test run replays each one.
 
+## Which installation a file is from
+
+Every committed cycle and every file in `tests/backtest/actuals/` carries a
+top-level `site` tag (issue #1225). The harness only compares a plan with
+realized values when both carry the same tag, so one house's plan is never
+scored against another house's meters.
+
+| Tag      | Installation                                              | Files                                                           |
+| -------- | --------------------------------------------------------- | --------------------------------------------------------------- |
+| `site-a` | The collecting installation: 15 kWh battery, 35 A fuse    | the September 24 and 25 cycles, both actuals days               |
+| `site-b` | The installation of a bug report: 10 kWh battery, 25 A fuse | `cycle-2026-09-14-1721.json`; no actuals were ever collected for it |
+
+`actuals-2026-09-15.json` was committed because the September 14 cycle's
+48-hour horizon covers that day. It is a `site-a` day: valid for scoring, but
+not paired with that cycle.
+
+The tag comes from `HSEM_BACKTEST_SITE` in `.env`. It is a label, not an
+identity: lower-case letters, digits and hyphens, at most 32 characters, so no
+name, address, host or entity id fits. A file without a tag still loads; two
+untagged files pair with each other, an untagged file never pairs with a
+tagged one, and nothing untagged is committed.
+
 ## Provenance and redaction
 
 | File                           | Source cycle     | Notes                                                        |
 | ------------------------------ | ---------------- | ------------------------------------------------------------ |
-| `cycle-2026-09-14-1721.json`   | 2026-09-14 17:21 | 15-min slots, 48 h horizon, EV disabled, battery at 100 % SoC |
+| `cycle-2026-09-14-1721.json`   | 2026-09-14 17:21 | 15-min slots, 48 h horizon, EV disabled, battery at 100 % SoC; the diagnostics download of a bug report (`site-b`) |
 
 `build_diagnostics_dump` redacts HA entity IDs, tokens and passwords before a
 dump is returned — that is what makes these safe to attach to GitHub issues in

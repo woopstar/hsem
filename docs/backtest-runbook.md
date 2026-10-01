@@ -77,6 +77,7 @@ Then edit `.env`. At minimum:
 HA_URL=http://homeassistant.local:8123
 HA_TOKEN=<long-lived access token>
 TZ=Europe/Copenhagen
+HSEM_BACKTEST_SITE=site-a
 HSEM_ARCHIVE_ENTITIES=sensor.my_ev_charger_power,sensor.my_ev_soc,select.batteries_working_mode
 ```
 
@@ -101,6 +102,14 @@ To keep one `.env` for several checkouts, put it anywhere and point at it:
 ```bash
 export HSEM_ENV_FILE=~/hsem-actuals/.env
 ```
+
+`HSEM_BACKTEST_SITE` says which installation the collection is from. It is
+written to every committed cycle and actuals file, and a plan is only compared
+with realized values that carry the same tag (issue #1225). The label ends up
+in a public repository, so keep it meaningless: lower-case letters, digits and
+hyphens, for example `site-a`. If you collect from a second installation, give
+it its own `.env` with another tag. Without a tag the run still backtests every
+cycle but commits nothing.
 
 `TZ` must be Home Assistant's time zone, or every day boundary shifts.
 `HSEM_ARCHIVE_ENTITIES` are downloaded but not converted — the recorder purges,
@@ -164,7 +173,14 @@ site's `TZ` filled into `time_zone`.
 
 **Actuals for the days those cycles cover**, one file per day, and only when
 every energy series is complete. A day with a recorder gap is reported as
-`incomplete in the export` and left out rather than committed short.
+`incomplete in the export` and left out rather than committed short. Only
+cycles with the site tag of the actuals count: a committed cycle from another
+installation never pulls in a day of yours.
+
+**The site tag.** Every committed cycle and actuals day carries
+`HSEM_BACKTEST_SITE` as `site`. Actuals built before you set it carry none and
+are not committed; `collect_actuals.sh` rebuilds `actuals.json` on every run,
+so the next run fixes that.
 
 **Caps.** Each committed cycle is replayed by every test run, so the corpus is
 capped at 50 cycles and 10 per run. When a cap stops a new situation, the
@@ -219,10 +235,13 @@ day         realized   oracle   regret potential  savings  capture
 | `savings`   | `potential − regret`: what HSEM saved over plain self-consumption.                       |
 | `capture`   | `savings ÷ potential`. Negative when the day went worse than self-consumption.           |
 
-The battery and grid limits come from a recorded planner input: the newest
-committed cycle by default. Score a collection from another installation with
-`--site path/to/its/dump.json`. The time zone is read from the actuals files,
-then from that dump; `--tz` overrides both.
+The battery and grid limits come from a recorded planner input: by default the
+newest committed cycle with the site tag of the actuals. Score a collection
+from an installation that has no committed cycle with
+`--site path/to/its/dump.json`; a dump straight from Home Assistant carries no
+tag and is taken to be from `HSEM_BACKTEST_SITE`. A dump tagged for another
+installation is refused. The time zone is read from the actuals files, then
+from that dump; `--tz` overrides both.
 
 [Stage 2b](backtest-harness.md#stage-2b--scoring-a-day) explains what each
 number compares and why the end-of-day battery level is part of it.
@@ -246,6 +265,10 @@ day         realized forecast hindsight   regret = execution + forecast +  plann
 | `execution`            | Regret that comes from the real system not doing what the replay does.     |
 | `forecast` (the split) | Regret that better forecasts would have removed.                           |
 | `planner`              | Regret the planner keeps even with perfect inputs.                         |
+
+Cycles and actuals must be from the same installation. The live corpus carries
+no site tags, so its cycles are taken to be from `HSEM_BACKTEST_SITE`, the tag
+your actuals were built with; cycles tagged otherwise are ignored.
 
 It needs the live corpus: a cycle in at least half of the day's slots. Pick a
 day from the scoring table with a high regret. About half a minute per day.
@@ -295,9 +318,11 @@ the pytest corpus tests fail on the committed cycles. Both are deliberate.
 
 ## Troubleshooting collection
 
-| Symptom                                                                     | Cause                                                                                                |
-| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `hsem-corpus.jsonl` never appears                                           | The automation targets `notify.send_message` with an entity. Call `notify.hsem_corpus` as a service. |
-| Automation error `Type is not JSON serializable: numpy.float64`             | An HSEM build without the `export_diagnostics` serialisation fix (PR #1093). Update HSEM.            |
-| First line of the corpus is `Home Assistant notifications (Log started: …)` | Normal — the file notifier's header. It is skipped.                                                  |
-| `[error] <day> failed` from `collect_actuals.sh`                            | Wrong `HA_URL` or `HA_TOKEN`, or the recorder no longer holds that day.                              |
+| Symptom                                                                                   | Cause                                                                                                |
+| ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `hsem-corpus.jsonl` never appears                                                         | The automation targets `notify.send_message` with an entity. Call `notify.hsem_corpus` as a service. |
+| Automation error `Type is not JSON serializable: numpy.float64`                           | An HSEM build without the `export_diagnostics` serialisation fix (PR #1093). Update HSEM.            |
+| First line of the corpus is `Home Assistant notifications (Log started: …)`               | Normal — the file notifier's header. It is skipped.                                                  |
+| `[error] <day> failed` from `collect_actuals.sh`                                          | Wrong `HA_URL` or `HA_TOKEN`, or the recorder no longer holds that day.                              |
+| `not added: no site tag (set HSEM_BACKTEST_SITE)`                                         | `.env` has no `HSEM_BACKTEST_SITE`. Set it; the next run commits the cycles.                         |
+| `no actuals day committed` / `no committed cycle is from the installation of the actuals` | `actuals.json` was built before the tag was set. Re-run `collect_actuals.sh` (or the whole update).  |

@@ -2077,5 +2077,6 @@
     "weight_1d": 25,
     "weight_3d": 30,
     "weight_7d": 35
-  }
+  },
+  "site": "site-a"
 }

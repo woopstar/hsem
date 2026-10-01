@@ -26,7 +26,7 @@ from custom_components.hsem.planner.milp_optimizer import is_scipy_available
 from custom_components.hsem.utils.datetime_utils import slot_key
 from tests.backtest.actuals import Actuals, load_actuals
 from tests.backtest.conftest import CORPUS_DIR
-from tests.backtest.harvest import committed_actuals
+from tests.backtest.harvest import committed_actuals, newest_cycle_of_site
 from tests.backtest.replay import load_planner_input
 from tests.backtest.scoring import (
     MIN_POTENTIAL,
@@ -67,7 +67,11 @@ _START_SOC_PCT = 40.0
 
 def _committed_site() -> SiteLimits:
     """Return the limits of the installation the committed actuals describe."""
-    planner_input, _ = load_planner_input(sorted(CORPUS_DIR.glob("cycle-*.json"))[-1])
+    tags = {load_actuals(path).site_tag for path in ACTUALS_DIR.glob("actuals-*.json")}
+    assert len(tags) == 1, tags
+    cycle = newest_cycle_of_site(CORPUS_DIR, next(iter(tags)))
+    assert cycle is not None
+    planner_input, _ = load_planner_input(cycle)
     return SiteLimits.from_planner_input(planner_input)
 
 
@@ -527,6 +531,50 @@ class TestMergeActuals:
     def test_nothing_to_merge_is_an_error(self) -> None:
         with pytest.raises(ValueError, match="no actuals"):
             merge_actuals([])
+
+    def test_parts_must_be_from_one_installation(self) -> None:
+        """Issue #1225: two houses' meters are never merged into one day."""
+        with pytest.raises(ValueError, match="different installations"):
+            merge_actuals(
+                [
+                    Actuals(slot_minutes=15, site_tag="site-a"),
+                    Actuals(slot_minutes=15, site_tag="site-b"),
+                ]
+            )
+
+    def test_tagged_and_untagged_parts_do_not_merge(self) -> None:
+        with pytest.raises(ValueError, match="no site tag"):
+            merge_actuals(
+                [Actuals(slot_minutes=15, site_tag="site-a"), Actuals(slot_minutes=15)]
+            )
+
+    def test_the_merge_keeps_the_site_tag(self) -> None:
+        merged = merge_actuals(
+            [
+                Actuals(slot_minutes=15, site_tag="site-a"),
+                Actuals(slot_minutes=15, site_tag="site-a"),
+            ]
+        )
+        assert merged.site_tag == "site-a"
+        assert merge_actuals([Actuals(slot_minutes=15)]).site_tag is None
+
+
+class TestDefaultSiteDump:
+    """Issue #1225: the limits come from the installation of the actuals."""
+
+    def test_the_newest_cycle_of_the_installation_is_chosen(self) -> None:
+        home = newest_cycle_of_site(CORPUS_DIR, "site-a")
+        report = newest_cycle_of_site(CORPUS_DIR, "site-b")
+        assert home is not None
+        assert report is not None
+        assert home.name == sorted(CORPUS_DIR.glob("cycle-2026-09-2*.json"))[-1].name
+        assert report.name == "cycle-2026-09-14-1721.json"
+        assert load_planner_input(home)[0].battery_rated_capacity_kwh == 15.0
+        assert load_planner_input(report)[0].battery_rated_capacity_kwh == 10.0
+
+    @pytest.mark.parametrize("tag", [None, "site-unknown"])
+    def test_no_cycle_of_an_unknown_installation(self, tag: str | None) -> None:
+        assert newest_cycle_of_site(CORPUS_DIR, tag) is None
 
 
 class TestSiteLimits:
