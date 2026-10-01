@@ -1,0 +1,2086 @@
+{
+  "apply_result": {
+    "last_updated": null,
+    "overall_status": "skipped",
+    "results": [
+      {
+        "actual": 1.0,
+        "attempts": 0,
+        "desired": 1.0,
+        "entity_id": "**REDACTED**",
+        "error_message": "",
+        "status": "skipped"
+      }
+    ]
+  },
+  "dump_timestamp": "2026-09-25T07:40:00.146755+02:00",
+  "hsem_version": "7.0.0-beta1",
+  "planner_input": {
+    "battery_capacity_loss_pct": 30.0,
+    "battery_charge_efficiency_pct": 98.0,
+    "battery_cycle_cost_per_kwh": 0.0,
+    "battery_discharge_efficiency_pct": 98.0,
+    "battery_end_of_discharge_soc_pct": 5.0,
+    "battery_expected_cycles": 6000,
+    "battery_export_min_price": 0.0,
+    "battery_forecast_reserve_pct": 0.0,
+    "battery_max_charge_power_w": 5000.0,
+    "battery_max_discharge_power_w": 5000.0,
+    "battery_max_soc_pct": 100.0,
+    "battery_purchase_price": 53000.0,
+    "battery_rated_capacity_kwh": 15.0,
+    "battery_soc_pct": 24.0,
+    "consumption_averages": [
+      {
+        "avg_14d": 0.626,
+        "avg_1d": 0.626,
+        "avg_3d": 0.626,
+        "avg_7d": 0.626,
+        "day_offset": 0,
+        "hour": 0
+      },
+      {
+        "avg_14d": 0.532,
+        "avg_1d": 0.532,
+        "avg_3d": 0.532,
+        "avg_7d": 0.532,
+        "day_offset": 0,
+        "hour": 1
+      },
+      {
+        "avg_14d": 0.593,
+        "avg_1d": 0.593,
+        "avg_3d": 0.593,
+        "avg_7d": 0.593,
+        "day_offset": 0,
+        "hour": 2
+      },
+      {
+        "avg_14d": 0.512,
+        "avg_1d": 0.512,
+        "avg_3d": 0.512,
+        "avg_7d": 0.512,
+        "day_offset": 0,
+        "hour": 3
+      },
+      {
+        "avg_14d": 1.082,
+        "avg_1d": 1.082,
+        "avg_3d": 1.082,
+        "avg_7d": 1.082,
+        "day_offset": 0,
+        "hour": 4
+      },
+      {
+        "avg_14d": 2.206,
+        "avg_1d": 2.206,
+        "avg_3d": 2.206,
+        "avg_7d": 2.206,
+        "day_offset": 0,
+        "hour": 5
+      },
+      {
+        "avg_14d": 0.642,
+        "avg_1d": 0.642,
+        "avg_3d": 0.642,
+        "avg_7d": 0.642,
+        "day_offset": 0,
+        "hour": 6
+      },
+      {
+        "avg_14d": 0.818,
+        "avg_1d": 0.818,
+        "avg_3d": 0.818,
+        "avg_7d": 0.818,
+        "day_offset": 0,
+        "hour": 7
+      },
+      {
+        "avg_14d": 2.921,
+        "avg_1d": 2.921,
+        "avg_3d": 2.921,
+        "avg_7d": 2.921,
+        "day_offset": 0,
+        "hour": 8
+      },
+      {
+        "avg_14d": 4.647,
+        "avg_1d": 4.647,
+        "avg_3d": 4.647,
+        "avg_7d": 4.647,
+        "day_offset": 0,
+        "hour": 9
+      },
+      {
+        "avg_14d": 4.619,
+        "avg_1d": 4.619,
+        "avg_3d": 4.619,
+        "avg_7d": 4.619,
+        "day_offset": 0,
+        "hour": 10
+      },
+      {
+        "avg_14d": 3.569,
+        "avg_1d": 3.569,
+        "avg_3d": 3.569,
+        "avg_7d": 3.569,
+        "day_offset": 0,
+        "hour": 11
+      },
+      {
+        "avg_14d": 3.328,
+        "avg_1d": 3.328,
+        "avg_3d": 3.328,
+        "avg_7d": 3.328,
+        "day_offset": 0,
+        "hour": 12
+      },
+      {
+        "avg_14d": 3.222,
+        "avg_1d": 3.222,
+        "avg_3d": 3.222,
+        "avg_7d": 3.222,
+        "day_offset": 0,
+        "hour": 13
+      },
+      {
+        "avg_14d": 2.954,
+        "avg_1d": 2.954,
+        "avg_3d": 2.954,
+        "avg_7d": 2.954,
+        "day_offset": 0,
+        "hour": 14
+      },
+      {
+        "avg_14d": 3.492,
+        "avg_1d": 3.492,
+        "avg_3d": 3.492,
+        "avg_7d": 3.492,
+        "day_offset": 0,
+        "hour": 15
+      },
+      {
+        "avg_14d": 3.065,
+        "avg_1d": 3.065,
+        "avg_3d": 3.065,
+        "avg_7d": 3.065,
+        "day_offset": 0,
+        "hour": 16
+      },
+      {
+        "avg_14d": 3.229,
+        "avg_1d": 3.229,
+        "avg_3d": 3.229,
+        "avg_7d": 3.229,
+        "day_offset": 0,
+        "hour": 17
+      },
+      {
+        "avg_14d": 2.837,
+        "avg_1d": 2.837,
+        "avg_3d": 2.837,
+        "avg_7d": 2.837,
+        "day_offset": 0,
+        "hour": 18
+      },
+      {
+        "avg_14d": 0.607,
+        "avg_1d": 0.607,
+        "avg_3d": 0.607,
+        "avg_7d": 0.607,
+        "day_offset": 0,
+        "hour": 19
+      },
+      {
+        "avg_14d": 0.56,
+        "avg_1d": 0.56,
+        "avg_3d": 0.56,
+        "avg_7d": 0.56,
+        "day_offset": 0,
+        "hour": 20
+      },
+      {
+        "avg_14d": 0.732,
+        "avg_1d": 0.732,
+        "avg_3d": 0.732,
+        "avg_7d": 0.732,
+        "day_offset": 0,
+        "hour": 21
+      },
+      {
+        "avg_14d": 2.074,
+        "avg_1d": 2.074,
+        "avg_3d": 2.074,
+        "avg_7d": 2.074,
+        "day_offset": 0,
+        "hour": 22
+      },
+      {
+        "avg_14d": 1.873,
+        "avg_1d": 1.873,
+        "avg_3d": 1.873,
+        "avg_7d": 1.873,
+        "day_offset": 0,
+        "hour": 23
+      },
+      {
+        "avg_14d": 1.756,
+        "avg_1d": 1.756,
+        "avg_3d": 1.756,
+        "avg_7d": 1.756,
+        "day_offset": 1,
+        "hour": 0
+      },
+      {
+        "avg_14d": 1.525,
+        "avg_1d": 1.525,
+        "avg_3d": 1.525,
+        "avg_7d": 1.525,
+        "day_offset": 1,
+        "hour": 1
+      },
+      {
+        "avg_14d": 1.574,
+        "avg_1d": 1.574,
+        "avg_3d": 1.574,
+        "avg_7d": 1.574,
+        "day_offset": 1,
+        "hour": 2
+      },
+      {
+        "avg_14d": 1.512,
+        "avg_1d": 1.512,
+        "avg_3d": 1.512,
+        "avg_7d": 1.512,
+        "day_offset": 1,
+        "hour": 3
+      },
+      {
+        "avg_14d": 1.81,
+        "avg_1d": 1.81,
+        "avg_3d": 1.81,
+        "avg_7d": 1.81,
+        "day_offset": 1,
+        "hour": 4
+      },
+      {
+        "avg_14d": 2.517,
+        "avg_1d": 2.517,
+        "avg_3d": 2.517,
+        "avg_7d": 2.517,
+        "day_offset": 1,
+        "hour": 5
+      },
+      {
+        "avg_14d": 3.531,
+        "avg_1d": 3.531,
+        "avg_3d": 3.531,
+        "avg_7d": 3.531,
+        "day_offset": 1,
+        "hour": 6
+      },
+      {
+        "avg_14d": 2.191,
+        "avg_1d": 2.191,
+        "avg_3d": 2.191,
+        "avg_7d": 2.191,
+        "day_offset": 1,
+        "hour": 7
+      },
+      {
+        "avg_14d": 2.558,
+        "avg_1d": 2.558,
+        "avg_3d": 2.558,
+        "avg_7d": 2.558,
+        "day_offset": 1,
+        "hour": 8
+      },
+      {
+        "avg_14d": 4.618,
+        "avg_1d": 4.618,
+        "avg_3d": 4.618,
+        "avg_7d": 4.618,
+        "day_offset": 1,
+        "hour": 9
+      },
+      {
+        "avg_14d": 4.789,
+        "avg_1d": 4.789,
+        "avg_3d": 4.789,
+        "avg_7d": 4.789,
+        "day_offset": 1,
+        "hour": 10
+      },
+      {
+        "avg_14d": 4.678,
+        "avg_1d": 4.678,
+        "avg_3d": 4.678,
+        "avg_7d": 4.678,
+        "day_offset": 1,
+        "hour": 11
+      },
+      {
+        "avg_14d": 4.244,
+        "avg_1d": 4.244,
+        "avg_3d": 4.244,
+        "avg_7d": 4.244,
+        "day_offset": 1,
+        "hour": 12
+      },
+      {
+        "avg_14d": 3.826,
+        "avg_1d": 3.826,
+        "avg_3d": 3.826,
+        "avg_7d": 3.826,
+        "day_offset": 1,
+        "hour": 13
+      },
+      {
+        "avg_14d": 3.71,
+        "avg_1d": 3.71,
+        "avg_3d": 3.71,
+        "avg_7d": 3.71,
+        "day_offset": 1,
+        "hour": 14
+      },
+      {
+        "avg_14d": 3.78,
+        "avg_1d": 3.78,
+        "avg_3d": 3.78,
+        "avg_7d": 3.78,
+        "day_offset": 1,
+        "hour": 15
+      },
+      {
+        "avg_14d": 2.662,
+        "avg_1d": 2.662,
+        "avg_3d": 2.662,
+        "avg_7d": 2.662,
+        "day_offset": 1,
+        "hour": 16
+      },
+      {
+        "avg_14d": 3.915,
+        "avg_1d": 3.915,
+        "avg_3d": 3.915,
+        "avg_7d": 3.915,
+        "day_offset": 1,
+        "hour": 17
+      },
+      {
+        "avg_14d": 3.978,
+        "avg_1d": 3.978,
+        "avg_3d": 3.978,
+        "avg_7d": 3.978,
+        "day_offset": 1,
+        "hour": 18
+      },
+      {
+        "avg_14d": 1.897,
+        "avg_1d": 1.897,
+        "avg_3d": 1.897,
+        "avg_7d": 1.897,
+        "day_offset": 1,
+        "hour": 19
+      },
+      {
+        "avg_14d": 1.301,
+        "avg_1d": 1.301,
+        "avg_3d": 1.301,
+        "avg_7d": 1.301,
+        "day_offset": 1,
+        "hour": 20
+      },
+      {
+        "avg_14d": 0.87,
+        "avg_1d": 0.87,
+        "avg_3d": 0.87,
+        "avg_7d": 0.87,
+        "day_offset": 1,
+        "hour": 21
+      },
+      {
+        "avg_14d": 1.963,
+        "avg_1d": 1.963,
+        "avg_3d": 1.963,
+        "avg_7d": 1.963,
+        "day_offset": 1,
+        "hour": 22
+      },
+      {
+        "avg_14d": 2.427,
+        "avg_1d": 2.427,
+        "avg_3d": 2.427,
+        "avg_7d": 2.427,
+        "day_offset": 1,
+        "hour": 23
+      }
+    ],
+    "dynamic_discharge_floor_pct": null,
+    "ev_held_power_w": 0.0,
+    "ev_held_slot_start": null,
+    "ev_past_target_confidence_factor": 0.9,
+    "ev_planned_allow_charge_past_target_soc": true,
+    "ev_planned_load_base_load_includes_ev": false,
+    "ev_planned_load_battery_capacity_kwh": 86.5,
+    "ev_planned_load_charger_efficiency_pct": 92.0,
+    "ev_planned_load_charger_min_power_w": 1380.0,
+    "ev_planned_load_charger_phase_topology": "three_phase_switchable",
+    "ev_planned_load_charger_power_kw": 11.0,
+    "ev_planned_load_connected": false,
+    "ev_planned_load_current_soc_pct": 38.0,
+    "ev_planned_load_deadline": "2026-09-25T16:00:00+02:00",
+    "ev_planned_load_deadline_safety_margin_pct": 0.0,
+    "ev_planned_load_enabled": true,
+    "ev_planned_load_force_max_discharge_power": false,
+    "ev_planned_load_max_discharge_power_w": 50.0,
+    "ev_planned_load_smart_charging_enabled": true,
+    "ev_planned_load_target_soc_pct": 80.0,
+    "ev_second_allow_charge_past_target_soc": false,
+    "ev_second_held_power_w": 0.0,
+    "ev_second_held_slot_start": null,
+    "ev_second_past_target_confidence_factor": 0.9,
+    "ev_second_planned_load_base_load_includes_ev": true,
+    "ev_second_planned_load_battery_capacity_kwh": 0.0,
+    "ev_second_planned_load_charger_efficiency_pct": 100.0,
+    "ev_second_planned_load_charger_min_power_w": 1380.0,
+    "ev_second_planned_load_charger_phase_topology": "single_phase",
+    "ev_second_planned_load_charger_power_kw": 0.0,
+    "ev_second_planned_load_connected": false,
+    "ev_second_planned_load_current_soc_pct": null,
+    "ev_second_planned_load_deadline": null,
+    "ev_second_planned_load_deadline_safety_margin_pct": 0.0,
+    "ev_second_planned_load_enabled": false,
+    "ev_second_planned_load_force_max_discharge_power": false,
+    "ev_second_planned_load_max_discharge_power_w": 0.0,
+    "ev_second_planned_load_smart_charging_enabled": true,
+    "ev_second_planned_load_target_soc_pct": 80.0,
+    "ev_second_session_charge_kw": null,
+    "ev_session_charge_kw": null,
+    "excess_export_discharge_buffer_pct": 0.0,
+    "excess_export_enabled": true,
+    "excess_export_price_threshold": 0.088,
+    "export_fee_per_kwh": 0.0,
+    "export_min_price": 0.03,
+    "house_power_includes_ev": true,
+    "interval_length_hours": 48,
+    "interval_minutes": 15,
+    "live_house_consumption_available": true,
+    "live_house_consumption_w": 737.0,
+    "live_solar_production_available": true,
+    "live_solar_production_w": 159.0,
+    "main_fuse_amps": 35.0,
+    "main_fuse_phases": 3,
+    "max_grid_export_power_kw": null,
+    "months_winter": [
+      1,
+      2,
+      3,
+      11,
+      12,
+      10
+    ],
+    "now_iso": "2026-09-25T07:36:43+02:00",
+    "planner_hysteresis_absolute": 0.0,
+    "planner_hysteresis_enabled": true,
+    "planner_hysteresis_percentage": 5.0,
+    "planner_window_hysteresis_minutes": 10,
+    "previous_winner_name": "milp",
+    "previous_winner_score": 61.878366,
+    "price_points": [
+      {
+        "day_offset": 0,
+        "export_price": 1.458,
+        "hour": 0,
+        "import_price": 2.09,
+        "slot_in_day": 0
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.363,
+        "hour": 0,
+        "import_price": 1.972,
+        "slot_in_day": 1
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.299,
+        "hour": 0,
+        "import_price": 1.891,
+        "slot_in_day": 2
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.26,
+        "hour": 0,
+        "import_price": 1.843,
+        "slot_in_day": 3
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.294,
+        "hour": 1,
+        "import_price": 1.885,
+        "slot_in_day": 4
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.27,
+        "hour": 1,
+        "import_price": 1.855,
+        "slot_in_day": 5
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.266,
+        "hour": 1,
+        "import_price": 1.851,
+        "slot_in_day": 6
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.257,
+        "hour": 1,
+        "import_price": 1.839,
+        "slot_in_day": 7
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.239,
+        "hour": 2,
+        "import_price": 1.816,
+        "slot_in_day": 8
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.229,
+        "hour": 2,
+        "import_price": 1.804,
+        "slot_in_day": 9
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.225,
+        "hour": 2,
+        "import_price": 1.799,
+        "slot_in_day": 10
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.197,
+        "hour": 2,
+        "import_price": 1.764,
+        "slot_in_day": 11
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.214,
+        "hour": 3,
+        "import_price": 1.785,
+        "slot_in_day": 12
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.22,
+        "hour": 3,
+        "import_price": 1.793,
+        "slot_in_day": 13
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.25,
+        "hour": 3,
+        "import_price": 1.83,
+        "slot_in_day": 14
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.254,
+        "hour": 3,
+        "import_price": 1.835,
+        "slot_in_day": 15
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.273,
+        "hour": 4,
+        "import_price": 1.859,
+        "slot_in_day": 16
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.265,
+        "hour": 4,
+        "import_price": 1.849,
+        "slot_in_day": 17
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.259,
+        "hour": 4,
+        "import_price": 1.841,
+        "slot_in_day": 18
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.23,
+        "hour": 4,
+        "import_price": 1.805,
+        "slot_in_day": 19
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.251,
+        "hour": 5,
+        "import_price": 1.831,
+        "slot_in_day": 20
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.26,
+        "hour": 5,
+        "import_price": 1.843,
+        "slot_in_day": 21
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.44,
+        "hour": 5,
+        "import_price": 2.068,
+        "slot_in_day": 22
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.622,
+        "hour": 5,
+        "import_price": 2.295,
+        "slot_in_day": 23
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.542,
+        "hour": 6,
+        "import_price": 2.236,
+        "slot_in_day": 24
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.8,
+        "hour": 6,
+        "import_price": 2.557,
+        "slot_in_day": 25
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.798,
+        "hour": 6,
+        "import_price": 2.554,
+        "slot_in_day": 26
+      },
+      {
+        "day_offset": 0,
+        "export_price": 2.023,
+        "hour": 6,
+        "import_price": 2.836,
+        "slot_in_day": 27
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.926,
+        "hour": 7,
+        "import_price": 2.715,
+        "slot_in_day": 28
+      },
+      {
+        "day_offset": 0,
+        "export_price": 2.04,
+        "hour": 7,
+        "import_price": 2.857,
+        "slot_in_day": 29
+      },
+      {
+        "day_offset": 0,
+        "export_price": 2.096,
+        "hour": 7,
+        "import_price": 2.927,
+        "slot_in_day": 30
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.897,
+        "hour": 7,
+        "import_price": 2.679,
+        "slot_in_day": 31
+      },
+      {
+        "day_offset": 0,
+        "export_price": 2.22,
+        "hour": 8,
+        "import_price": 3.083,
+        "slot_in_day": 32
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.968,
+        "hour": 8,
+        "import_price": 2.767,
+        "slot_in_day": 33
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.833,
+        "hour": 8,
+        "import_price": 2.599,
+        "slot_in_day": 34
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.515,
+        "hour": 8,
+        "import_price": 2.201,
+        "slot_in_day": 35
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.738,
+        "hour": 9,
+        "import_price": 2.48,
+        "slot_in_day": 36
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.5,
+        "hour": 9,
+        "import_price": 2.183,
+        "slot_in_day": 37
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.4,
+        "hour": 9,
+        "import_price": 2.058,
+        "slot_in_day": 38
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.163,
+        "hour": 9,
+        "import_price": 1.761,
+        "slot_in_day": 39
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.345,
+        "hour": 10,
+        "import_price": 1.989,
+        "slot_in_day": 40
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.215,
+        "hour": 10,
+        "import_price": 1.826,
+        "slot_in_day": 41
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.095,
+        "hour": 10,
+        "import_price": 1.676,
+        "slot_in_day": 42
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.009,
+        "hour": 10,
+        "import_price": 1.569,
+        "slot_in_day": 43
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.011,
+        "hour": 11,
+        "import_price": 1.571,
+        "slot_in_day": 44
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.904,
+        "hour": 11,
+        "import_price": 1.438,
+        "slot_in_day": 45
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.741,
+        "hour": 11,
+        "import_price": 1.233,
+        "slot_in_day": 46
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.735,
+        "hour": 11,
+        "import_price": 1.226,
+        "slot_in_day": 47
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.856,
+        "hour": 12,
+        "import_price": 1.377,
+        "slot_in_day": 48
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.756,
+        "hour": 12,
+        "import_price": 1.252,
+        "slot_in_day": 49
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.705,
+        "hour": 12,
+        "import_price": 1.189,
+        "slot_in_day": 50
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.646,
+        "hour": 12,
+        "import_price": 1.115,
+        "slot_in_day": 51
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.747,
+        "hour": 13,
+        "import_price": 1.241,
+        "slot_in_day": 52
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.716,
+        "hour": 13,
+        "import_price": 1.203,
+        "slot_in_day": 53
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.676,
+        "hour": 13,
+        "import_price": 1.153,
+        "slot_in_day": 54
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.615,
+        "hour": 13,
+        "import_price": 1.077,
+        "slot_in_day": 55
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.582,
+        "hour": 14,
+        "import_price": 1.035,
+        "slot_in_day": 56
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.64,
+        "hour": 14,
+        "import_price": 1.108,
+        "slot_in_day": 57
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.609,
+        "hour": 14,
+        "import_price": 1.069,
+        "slot_in_day": 58
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.657,
+        "hour": 14,
+        "import_price": 1.129,
+        "slot_in_day": 59
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.55,
+        "hour": 15,
+        "import_price": 0.995,
+        "slot_in_day": 60
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.56,
+        "hour": 15,
+        "import_price": 1.007,
+        "slot_in_day": 61
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.794,
+        "hour": 15,
+        "import_price": 1.3,
+        "slot_in_day": 62
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.935,
+        "hour": 15,
+        "import_price": 1.476,
+        "slot_in_day": 63
+      },
+      {
+        "day_offset": 0,
+        "export_price": 0.88,
+        "hour": 16,
+        "import_price": 1.408,
+        "slot_in_day": 64
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.038,
+        "hour": 16,
+        "import_price": 1.605,
+        "slot_in_day": 65
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.2,
+        "hour": 16,
+        "import_price": 1.807,
+        "slot_in_day": 66
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.396,
+        "hour": 16,
+        "import_price": 2.053,
+        "slot_in_day": 67
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.161,
+        "hour": 17,
+        "import_price": 1.95,
+        "slot_in_day": 68
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.41,
+        "hour": 17,
+        "import_price": 2.262,
+        "slot_in_day": 69
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.497,
+        "hour": 17,
+        "import_price": 2.37,
+        "slot_in_day": 70
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.768,
+        "hour": 17,
+        "import_price": 2.709,
+        "slot_in_day": 71
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.486,
+        "hour": 18,
+        "import_price": 2.357,
+        "slot_in_day": 72
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.7,
+        "hour": 18,
+        "import_price": 2.623,
+        "slot_in_day": 73
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.84,
+        "hour": 18,
+        "import_price": 2.798,
+        "slot_in_day": 74
+      },
+      {
+        "day_offset": 0,
+        "export_price": 2.107,
+        "hour": 18,
+        "import_price": 3.132,
+        "slot_in_day": 75
+      },
+      {
+        "day_offset": 0,
+        "export_price": 2.171,
+        "hour": 19,
+        "import_price": 3.212,
+        "slot_in_day": 76
+      },
+      {
+        "day_offset": 0,
+        "export_price": 2.274,
+        "hour": 19,
+        "import_price": 3.341,
+        "slot_in_day": 77
+      },
+      {
+        "day_offset": 0,
+        "export_price": 2.351,
+        "hour": 19,
+        "import_price": 3.438,
+        "slot_in_day": 78
+      },
+      {
+        "day_offset": 0,
+        "export_price": 2.234,
+        "hour": 19,
+        "import_price": 3.292,
+        "slot_in_day": 79
+      },
+      {
+        "day_offset": 0,
+        "export_price": 2.004,
+        "hour": 20,
+        "import_price": 3.003,
+        "slot_in_day": 80
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.891,
+        "hour": 20,
+        "import_price": 2.863,
+        "slot_in_day": 81
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.831,
+        "hour": 20,
+        "import_price": 2.787,
+        "slot_in_day": 82
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.754,
+        "hour": 20,
+        "import_price": 2.691,
+        "slot_in_day": 83
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.81,
+        "hour": 21,
+        "import_price": 2.57,
+        "slot_in_day": 84
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.713,
+        "hour": 21,
+        "import_price": 2.449,
+        "slot_in_day": 85
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.616,
+        "hour": 21,
+        "import_price": 2.328,
+        "slot_in_day": 86
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.501,
+        "hour": 21,
+        "import_price": 2.183,
+        "slot_in_day": 87
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.629,
+        "hour": 22,
+        "import_price": 2.343,
+        "slot_in_day": 88
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.543,
+        "hour": 22,
+        "import_price": 2.236,
+        "slot_in_day": 89
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.494,
+        "hour": 22,
+        "import_price": 2.175,
+        "slot_in_day": 90
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.439,
+        "hour": 22,
+        "import_price": 2.106,
+        "slot_in_day": 91
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.477,
+        "hour": 23,
+        "import_price": 2.154,
+        "slot_in_day": 92
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.427,
+        "hour": 23,
+        "import_price": 2.091,
+        "slot_in_day": 93
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.335,
+        "hour": 23,
+        "import_price": 1.976,
+        "slot_in_day": 94
+      },
+      {
+        "day_offset": 0,
+        "export_price": 1.25,
+        "hour": 23,
+        "import_price": 1.87,
+        "slot_in_day": 95
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.128,
+        "hour": 0,
+        "import_price": 1.677,
+        "slot_in_day": 0
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.128,
+        "hour": 0,
+        "import_price": 1.677,
+        "slot_in_day": 1
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.128,
+        "hour": 0,
+        "import_price": 1.677,
+        "slot_in_day": 2
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.128,
+        "hour": 0,
+        "import_price": 1.677,
+        "slot_in_day": 3
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.045,
+        "hour": 1,
+        "import_price": 1.574,
+        "slot_in_day": 4
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.045,
+        "hour": 1,
+        "import_price": 1.574,
+        "slot_in_day": 5
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.045,
+        "hour": 1,
+        "import_price": 1.574,
+        "slot_in_day": 6
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.045,
+        "hour": 1,
+        "import_price": 1.574,
+        "slot_in_day": 7
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.975,
+        "hour": 2,
+        "import_price": 1.486,
+        "slot_in_day": 8
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.975,
+        "hour": 2,
+        "import_price": 1.486,
+        "slot_in_day": 9
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.975,
+        "hour": 2,
+        "import_price": 1.486,
+        "slot_in_day": 10
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.975,
+        "hour": 2,
+        "import_price": 1.486,
+        "slot_in_day": 11
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.934,
+        "hour": 3,
+        "import_price": 1.435,
+        "slot_in_day": 12
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.934,
+        "hour": 3,
+        "import_price": 1.435,
+        "slot_in_day": 13
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.934,
+        "hour": 3,
+        "import_price": 1.435,
+        "slot_in_day": 14
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.934,
+        "hour": 3,
+        "import_price": 1.435,
+        "slot_in_day": 15
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.878,
+        "hour": 4,
+        "import_price": 1.365,
+        "slot_in_day": 16
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.878,
+        "hour": 4,
+        "import_price": 1.365,
+        "slot_in_day": 17
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.878,
+        "hour": 4,
+        "import_price": 1.365,
+        "slot_in_day": 18
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.878,
+        "hour": 4,
+        "import_price": 1.365,
+        "slot_in_day": 19
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.853,
+        "hour": 5,
+        "import_price": 1.333,
+        "slot_in_day": 20
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.853,
+        "hour": 5,
+        "import_price": 1.333,
+        "slot_in_day": 21
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.853,
+        "hour": 5,
+        "import_price": 1.333,
+        "slot_in_day": 22
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.853,
+        "hour": 5,
+        "import_price": 1.333,
+        "slot_in_day": 23
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.855,
+        "hour": 6,
+        "import_price": 1.376,
+        "slot_in_day": 24
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.855,
+        "hour": 6,
+        "import_price": 1.376,
+        "slot_in_day": 25
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.855,
+        "hour": 6,
+        "import_price": 1.376,
+        "slot_in_day": 26
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.855,
+        "hour": 6,
+        "import_price": 1.376,
+        "slot_in_day": 27
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.907,
+        "hour": 7,
+        "import_price": 1.442,
+        "slot_in_day": 28
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.907,
+        "hour": 7,
+        "import_price": 1.442,
+        "slot_in_day": 29
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.907,
+        "hour": 7,
+        "import_price": 1.442,
+        "slot_in_day": 30
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.907,
+        "hour": 7,
+        "import_price": 1.442,
+        "slot_in_day": 31
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.998,
+        "hour": 8,
+        "import_price": 1.555,
+        "slot_in_day": 32
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.998,
+        "hour": 8,
+        "import_price": 1.555,
+        "slot_in_day": 33
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.998,
+        "hour": 8,
+        "import_price": 1.555,
+        "slot_in_day": 34
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.998,
+        "hour": 8,
+        "import_price": 1.555,
+        "slot_in_day": 35
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.004,
+        "hour": 9,
+        "import_price": 1.562,
+        "slot_in_day": 36
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.004,
+        "hour": 9,
+        "import_price": 1.562,
+        "slot_in_day": 37
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.004,
+        "hour": 9,
+        "import_price": 1.562,
+        "slot_in_day": 38
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.004,
+        "hour": 9,
+        "import_price": 1.562,
+        "slot_in_day": 39
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.901,
+        "hour": 10,
+        "import_price": 1.434,
+        "slot_in_day": 40
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.901,
+        "hour": 10,
+        "import_price": 1.434,
+        "slot_in_day": 41
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.901,
+        "hour": 10,
+        "import_price": 1.434,
+        "slot_in_day": 42
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.901,
+        "hour": 10,
+        "import_price": 1.434,
+        "slot_in_day": 43
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.766,
+        "hour": 11,
+        "import_price": 1.265,
+        "slot_in_day": 44
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.766,
+        "hour": 11,
+        "import_price": 1.265,
+        "slot_in_day": 45
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.766,
+        "hour": 11,
+        "import_price": 1.265,
+        "slot_in_day": 46
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.766,
+        "hour": 11,
+        "import_price": 1.265,
+        "slot_in_day": 47
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.674,
+        "hour": 12,
+        "import_price": 1.15,
+        "slot_in_day": 48
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.674,
+        "hour": 12,
+        "import_price": 1.15,
+        "slot_in_day": 49
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.674,
+        "hour": 12,
+        "import_price": 1.15,
+        "slot_in_day": 50
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.674,
+        "hour": 12,
+        "import_price": 1.15,
+        "slot_in_day": 51
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.565,
+        "hour": 13,
+        "import_price": 1.014,
+        "slot_in_day": 52
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.565,
+        "hour": 13,
+        "import_price": 1.014,
+        "slot_in_day": 53
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.565,
+        "hour": 13,
+        "import_price": 1.014,
+        "slot_in_day": 54
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.565,
+        "hour": 13,
+        "import_price": 1.014,
+        "slot_in_day": 55
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.456,
+        "hour": 14,
+        "import_price": 0.878,
+        "slot_in_day": 56
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.456,
+        "hour": 14,
+        "import_price": 0.878,
+        "slot_in_day": 57
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.456,
+        "hour": 14,
+        "import_price": 0.878,
+        "slot_in_day": 58
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.456,
+        "hour": 14,
+        "import_price": 0.878,
+        "slot_in_day": 59
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.362,
+        "hour": 15,
+        "import_price": 0.76,
+        "slot_in_day": 60
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.362,
+        "hour": 15,
+        "import_price": 0.76,
+        "slot_in_day": 61
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.362,
+        "hour": 15,
+        "import_price": 0.76,
+        "slot_in_day": 62
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.362,
+        "hour": 15,
+        "import_price": 0.76,
+        "slot_in_day": 63
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.354,
+        "hour": 16,
+        "import_price": 0.75,
+        "slot_in_day": 64
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.354,
+        "hour": 16,
+        "import_price": 0.75,
+        "slot_in_day": 65
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.354,
+        "hour": 16,
+        "import_price": 0.75,
+        "slot_in_day": 66
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.354,
+        "hour": 16,
+        "import_price": 0.75,
+        "slot_in_day": 67
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.46,
+        "hour": 17,
+        "import_price": 1.073,
+        "slot_in_day": 68
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.46,
+        "hour": 17,
+        "import_price": 1.073,
+        "slot_in_day": 69
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.46,
+        "hour": 17,
+        "import_price": 1.073,
+        "slot_in_day": 70
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.46,
+        "hour": 17,
+        "import_price": 1.073,
+        "slot_in_day": 71
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.663,
+        "hour": 18,
+        "import_price": 1.327,
+        "slot_in_day": 72
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.663,
+        "hour": 18,
+        "import_price": 1.327,
+        "slot_in_day": 73
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.663,
+        "hour": 18,
+        "import_price": 1.327,
+        "slot_in_day": 74
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.663,
+        "hour": 18,
+        "import_price": 1.327,
+        "slot_in_day": 75
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.942,
+        "hour": 19,
+        "import_price": 1.676,
+        "slot_in_day": 76
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.942,
+        "hour": 19,
+        "import_price": 1.676,
+        "slot_in_day": 77
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.942,
+        "hour": 19,
+        "import_price": 1.676,
+        "slot_in_day": 78
+      },
+      {
+        "day_offset": 1,
+        "export_price": 0.942,
+        "hour": 19,
+        "import_price": 1.676,
+        "slot_in_day": 79
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.215,
+        "hour": 20,
+        "import_price": 2.017,
+        "slot_in_day": 80
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.215,
+        "hour": 20,
+        "import_price": 2.017,
+        "slot_in_day": 81
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.215,
+        "hour": 20,
+        "import_price": 2.017,
+        "slot_in_day": 82
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.215,
+        "hour": 20,
+        "import_price": 2.017,
+        "slot_in_day": 83
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.368,
+        "hour": 21,
+        "import_price": 2.017,
+        "slot_in_day": 84
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.368,
+        "hour": 21,
+        "import_price": 2.017,
+        "slot_in_day": 85
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.368,
+        "hour": 21,
+        "import_price": 2.017,
+        "slot_in_day": 86
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.368,
+        "hour": 21,
+        "import_price": 2.017,
+        "slot_in_day": 87
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.352,
+        "hour": 22,
+        "import_price": 1.997,
+        "slot_in_day": 88
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.352,
+        "hour": 22,
+        "import_price": 1.997,
+        "slot_in_day": 89
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.352,
+        "hour": 22,
+        "import_price": 1.997,
+        "slot_in_day": 90
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.352,
+        "hour": 22,
+        "import_price": 1.997,
+        "slot_in_day": 91
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.257,
+        "hour": 23,
+        "import_price": 1.879,
+        "slot_in_day": 92
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.257,
+        "hour": 23,
+        "import_price": 1.879,
+        "slot_in_day": 93
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.257,
+        "hour": 23,
+        "import_price": 1.879,
+        "slot_in_day": 94
+      },
+      {
+        "day_offset": 1,
+        "export_price": 1.257,
+        "hour": 23,
+        "import_price": 1.879,
+        "slot_in_day": 95
+      }
+    ],
+    "solar_corrector": null,
+    "solcast_slots": [
+      {
+        "day_offset": 0,
+        "hour": 0,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 0,
+        "hour": 1,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 0,
+        "hour": 2,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 0,
+        "hour": 3,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 0,
+        "hour": 4,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 0,
+        "hour": 5,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 0,
+        "hour": 6,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 0,
+        "hour": 7,
+        "pv_estimate": 0.089
+      },
+      {
+        "day_offset": 0,
+        "hour": 8,
+        "pv_estimate": 0.709
+      },
+      {
+        "day_offset": 0,
+        "hour": 9,
+        "pv_estimate": 1.846
+      },
+      {
+        "day_offset": 0,
+        "hour": 10,
+        "pv_estimate": 1.683
+      },
+      {
+        "day_offset": 0,
+        "hour": 11,
+        "pv_estimate": 2.878
+      },
+      {
+        "day_offset": 0,
+        "hour": 12,
+        "pv_estimate": 2.949
+      },
+      {
+        "day_offset": 0,
+        "hour": 13,
+        "pv_estimate": 2.41
+      },
+      {
+        "day_offset": 0,
+        "hour": 14,
+        "pv_estimate": 2.349
+      },
+      {
+        "day_offset": 0,
+        "hour": 15,
+        "pv_estimate": 1.642
+      },
+      {
+        "day_offset": 0,
+        "hour": 16,
+        "pv_estimate": 1.078
+      },
+      {
+        "day_offset": 0,
+        "hour": 17,
+        "pv_estimate": 0.377
+      },
+      {
+        "day_offset": 0,
+        "hour": 18,
+        "pv_estimate": 0.098
+      },
+      {
+        "day_offset": 0,
+        "hour": 19,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 0,
+        "hour": 20,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 0,
+        "hour": 21,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 0,
+        "hour": 22,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 0,
+        "hour": 23,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 1,
+        "hour": 0,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 1,
+        "hour": 1,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 1,
+        "hour": 2,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 1,
+        "hour": 3,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 1,
+        "hour": 4,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 1,
+        "hour": 5,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 1,
+        "hour": 6,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 1,
+        "hour": 7,
+        "pv_estimate": 0.005
+      },
+      {
+        "day_offset": 1,
+        "hour": 8,
+        "pv_estimate": 0.027
+      },
+      {
+        "day_offset": 1,
+        "hour": 9,
+        "pv_estimate": 0.177
+      },
+      {
+        "day_offset": 1,
+        "hour": 10,
+        "pv_estimate": 0.798
+      },
+      {
+        "day_offset": 1,
+        "hour": 11,
+        "pv_estimate": 1.58
+      },
+      {
+        "day_offset": 1,
+        "hour": 12,
+        "pv_estimate": 1.836
+      },
+      {
+        "day_offset": 1,
+        "hour": 13,
+        "pv_estimate": 1.615
+      },
+      {
+        "day_offset": 1,
+        "hour": 14,
+        "pv_estimate": 2.058
+      },
+      {
+        "day_offset": 1,
+        "hour": 15,
+        "pv_estimate": 1.836
+      },
+      {
+        "day_offset": 1,
+        "hour": 16,
+        "pv_estimate": 1.167
+      },
+      {
+        "day_offset": 1,
+        "hour": 17,
+        "pv_estimate": 0.181
+      },
+      {
+        "day_offset": 1,
+        "hour": 18,
+        "pv_estimate": 0.105
+      },
+      {
+        "day_offset": 1,
+        "hour": 19,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 1,
+        "hour": 20,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 1,
+        "hour": 21,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 1,
+        "hour": 22,
+        "pv_estimate": 0.0
+      },
+      {
+        "day_offset": 1,
+        "hour": 23,
+        "pv_estimate": 0.0
+      }
+    ],
+    "time_discount_rate": 0.995,
+    "time_zone": "Europe/Copenhagen",
+    "weight_14d": 10,
+    "weight_1d": 25,
+    "weight_3d": 30,
+    "weight_7d": 35
+  }
+}
