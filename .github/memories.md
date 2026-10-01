@@ -1889,6 +1889,14 @@ instead of keeping the battery strictly idle.
   means no reliable reserve could be derived; the applier then forces strict
   TOU wait instead of enabling self-consumption. See `docs/planner-spec.md`
   §"Wait-mode self-consumption reserve (issue #914)".
+- **Never below the dynamic floor's reserve (issue #1200):** the trajectory
+  reserve is ~0 while the dynamic floor holds the battery (flat trajectory), so
+  `engine_core.run_planner` publishes
+  `discharge_reserve.wait_mode_reserve_with_floor()` =
+  `max(trajectory reserve, live slot's discharge_reserve_kwh)`. Both are kWh
+  above the hardware floor, like the applier's `battery_current_capacity_kwh`,
+  so the applier is unchanged. The #954 time decay is not applied to the
+  floor's part. `None` stays `None`.
 - **Scan stops at the next discharge too, not just the next charge (issue
   #942 follow-up, fixed 2026-09-08):** the scan originally broke only on a
   genuine planned _charge_, so it accumulated through every future discharge
@@ -2455,7 +2463,7 @@ Tests: `tests/test_solcast_subhourly_planner.py` (real populator → `build_plan
 
 **Rule:** the origin is always the hardware floor. `DynamicDischargeFloor.compute_floor_profile()` returns the floor at the start of every look-ahead slot (suffix sums of the same bridge; the first entry is the scalar; the configured minimum from the refill slot on). It reaches the planner as `PlannerInput.dynamic_floor_profile` (`(slot start ISO, floor %)`, matched by UTC instant) and `planner/discharge_reserve.py::apply_discharge_reserve()` writes `PlannedSlot.discharge_reserve_kwh`: the kWh above the hardware floor the plan must hold at the **end** of the slot, which is the **next** slot's floor. Two rules keep it satisfiable without charging: never above the energy held now (the #1094 cap), never rising along the horizon.
 
-**Every consumer reads the slot field:** the MILP as the RHS of its existing lower SoC rows (`b_ub[m + t] = current_kwh - reserve[t]`, no new row or column), `simulate_soc()` as the level greedy discharge stops at, `_validate_candidate()`, the write-out clamps in `milp/_write_results.py` and `validate_primary_inventory()`.
+**Every consumer reads the slot field:** the MILP as the RHS of its existing lower SoC rows (`b_ub[m + t] = current_kwh - reserve[t]`, no new row or column), `simulate_soc()` as the level greedy discharge stops at, `_validate_candidate()`, the write-out clamps in `milp/_write_results.py` and `validate_primary_inventory()`. The applier reads the live slot's value through `wait_mode_reserve_kwh` (issue #1200), so wait-mode `self_consumption_with_reserve` cannot go below it.
 
 **Gotchas:**
 

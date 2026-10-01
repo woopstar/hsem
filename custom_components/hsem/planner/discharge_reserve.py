@@ -148,3 +148,44 @@ def apply_discharge_reserve(
             current_kwh,
             released_at.isoformat() if released_at is not None else "never",
         )
+
+
+def wait_mode_reserve_with_floor(
+    plan_reserve_kwh: float | None,
+    slots: list[PlannedSlot],
+    now: datetime,
+) -> float | None:
+    """Return the wait-mode reserve, never below the live slot's floor reserve.
+
+    The wait-mode self-consumption reserve (issue #914) tells the applier how
+    much stored energy the house may **not** use in a ``batteries_wait_mode``
+    slot under ``self_consumption_with_reserve``.  It is derived from the
+    selected plan's SoC trajectory, which is flat while the dynamic discharge
+    floor holds the battery, so on its own it released the energy the floor
+    had set aside (issue #1200).
+
+    The live slot's ``discharge_reserve_kwh`` is what the floor requires at
+    the end of that slot, in kWh above the hardware floor: the same origin as
+    the applier's live capacity.  It is needed now, so the #954 time decay of
+    the trajectory reserve is not applied to it.
+
+    Args:
+        plan_reserve_kwh: Reserve from
+            :func:`~custom_components.hsem.planner.discharge_scheduler.calculate_required_battery_for_plan`,
+            or ``None`` when it cannot be derived.
+        slots: The selected plan's slots, carrying ``discharge_reserve_kwh``.
+        now: Timezone-aware current datetime.
+
+    Returns:
+        The larger of the two reserves in kWh, or ``None`` when
+        *plan_reserve_kwh* is ``None`` (the applier then keeps strict Wait).
+    """
+    if plan_reserve_kwh is None:
+        return None
+    live_slot = min(
+        (slot for slot in slots if slot_is_future(slot.end, now)),
+        key=lambda slot: utc_key(slot.start),
+        default=None,
+    )
+    floor_reserve_kwh = live_slot.discharge_reserve_kwh if live_slot else 0.0
+    return round(max(plan_reserve_kwh, floor_reserve_kwh), 3)
