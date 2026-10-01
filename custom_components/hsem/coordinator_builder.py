@@ -19,6 +19,7 @@ from __future__ import annotations
 import math
 from datetime import datetime
 
+from custom_components.hsem.models.forecast_coverage import ForecastCoverage
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
@@ -131,6 +132,8 @@ def _resolve_live_house_measurement(
 
 def _build_solcast_slots(
     pv_by_day_hour: dict[tuple[int, int], list[tuple[int, float]]],
+    *,
+    has_gap: bool = False,
 ) -> list[SolcastSlot]:
     """Build the planner's PV forecast entries from the populated slots.
 
@@ -144,10 +147,19 @@ def _build_solcast_slots(
     - When any hour's slots differ, the source is finer than an hour and one
       entry per slot is emitted with its ``slot_in_day``, so the planner sees
       the forecast at the source's resolution.
+    - With *has_gap* one entry per slot is emitted as well (issue #1196).
+      Hour-granular entries that all lie on day 0 are read by the planner as
+      "the same forecast every day", so a forecast that is missing for
+      tomorrow would be planned with today's values and not reported.
+      Per-slot entries are matched by ``(day_offset, slot_in_day)``: a slot
+      without one is planned with zero PV and recorded as missing.  The
+      energy of the covered slots is the same either way.
 
     Args:
-        pv_by_day_hour: ``(slot_in_day, average kW)`` of every slot, grouped
-            by ``(day_offset, hour)`` in chronological order.
+        pv_by_day_hour: ``(slot_in_day, average kW)`` of every slot that has
+            PV data, grouped by ``(day_offset, hour)`` in chronological order.
+        has_gap: Whether the PV source left any slot of the horizon
+            uncovered.
 
     Returns:
         The ``SolcastSlot`` entries for :class:`PlannerInput`.
@@ -156,7 +168,7 @@ def _build_solcast_slots(
         max(value for _, value in slots) - min(value for _, value in slots) > 1e-9
         for slots in pv_by_day_hour.values()
     )
-    if sub_hourly:
+    if sub_hourly or has_gap:
         return [
             SolcastSlot(
                 hour=hour,
@@ -194,6 +206,7 @@ def build_planner_input(
     ev_held_power_w: float = 0.0,
     ev_second_held_slot_start: datetime | None = None,
     ev_second_held_power_w: float = 0.0,
+    forecast_coverage: ForecastCoverage | None = None,
 ) -> PlannerInput:
     """Assemble a :class:`PlannerInput` from the coordinator's current pipeline state.
 
@@ -206,6 +219,11 @@ def build_planner_input(
             planner run, or ``None`` for the first run.
         previous_winner_score: Score of the winning candidate from the
             previous planner run.
+        forecast_coverage: Which slots the price and PV sources covered, from
+            the populator (issue #1196).  A slot without a price pair gets no
+            ``PricePoint`` and a slot without PV data no PV entry, so the
+            planner estimates the price, plans the PV as zero and reports
+            both gaps.  ``None`` treats every slot as covered.
 
     Returns:
         A fully populated :class:`PlannerInput` ready for the planner engine.
@@ -220,6 +238,7 @@ def build_planner_input(
     # Every slot's (slot_in_day, PV value) per (day_offset, hour), in
     # first-seen order.
     pv_by_day_hour: dict[tuple[int, int], list[tuple[int, float]]] = {}
+    pv_has_gap = False
 
     # slots_per_hour is used to up-scale per-slot consumption averages to
     # hourly totals for the planner engine.  Prices and Solcast PV are now
@@ -247,21 +266,27 @@ def build_planner_input(
         day_offset, slot_in_day = slot_position(
             rec.start, planning_midnight, int(cfg.recommendation_interval_minutes)
         )
-        # Prices are stored at face value by the populator (no scaling).
-        price_points.append(
-            PricePoint(
-                hour=h,
-                import_price=round(rec.import_price, 5),
-                export_price=round(rec.export_price, 5),
-                day_offset=day_offset,
-                slot_in_day=slot_in_day,
+        # Prices are stored at face value by the populator (no scaling).  A
+        # slot no source covered still reads 0.0 there; it is left out, so the
+        # planner estimates its price and reports the gap (issue #1196).
+        if forecast_coverage is None or forecast_coverage.has_price(rec.start):
+            price_points.append(
+                PricePoint(
+                    hour=h,
+                    import_price=round(rec.import_price, 5),
+                    export_price=round(rec.export_price, 5),
+                    day_offset=day_offset,
+                    slot_in_day=slot_in_day,
+                )
             )
-        )
 
         day_hour_key = (day_offset, h)
-        pv_by_day_hour.setdefault(day_hour_key, []).append(
-            (slot_in_day, rec.solcast_pv_estimate_kwh)
-        )
+        if forecast_coverage is None or forecast_coverage.has_pv(rec.start):
+            pv_by_day_hour.setdefault(day_hour_key, []).append(
+                (slot_in_day, rec.solcast_pv_estimate_kwh)
+            )
+        else:
+            pv_has_gap = True
         if day_hour_key in seen_day_hours:
             continue
         seen_day_hours.add(day_hour_key)
@@ -277,7 +302,7 @@ def build_planner_input(
             )
         )
 
-    solcast_slots = _build_solcast_slots(pv_by_day_hour)
+    solcast_slots = _build_solcast_slots(pv_by_day_hour, has_gap=pv_has_gap)
 
     _cycles = convert_to_int(cfg.batteries_expected_cycles)
     _w1d = convert_to_int(cfg.house_consumption_energy_weight_1d)

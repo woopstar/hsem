@@ -202,8 +202,9 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 live.force_working_mode_state,
             )
 
-        # 6. Populate electricity prices and Solcast PV estimates.
-        populate_price_and_solcast_from_snapshot(
+        # 6. Populate electricity prices and Solcast PV estimates.  The
+        # coverage tells the builder which slots no source wrote (#1196).
+        self._forecast_coverage = populate_price_and_solcast_from_snapshot(
             self._hourly_recommendations,
             self._snapshot,
             cfg,

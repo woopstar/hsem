@@ -129,6 +129,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorDynamicFloorMixin):
                 ev_held_power_w=self._ev_held_power_w,
                 ev_second_held_slot_start=self._ev_second_held_slot_start,
                 ev_second_held_power_w=self._ev_second_held_power_w,
+                forecast_coverage=getattr(self, "_forecast_coverage", None),
             )
             planner_input.solar_corrector = self._solar_corrector
             if dynamic_floor_enabled:

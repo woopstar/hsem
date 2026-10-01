@@ -2554,6 +2554,22 @@ Tests: `tests/planner/test_battery_target_milp.py` (every acceptance scenario, a
 
 Tests: `tests/test_dynamic_floor_reference_plan.py::TestBuildBridgeSlots::test_unplanned_slot_scales_the_hourly_pv_to_the_slot` (real populator, 15/30/60 min), `::test_load_pv_and_charge_come_from_the_plan_slot`, and `TestRealPlanner::test_quarter_hour_bridge_ends_at_the_plans_first_surplus` / `::test_quarter_hour_cheap_night_still_releases_the_floor`.
 
+## Uncovered Price/PV Slots Are Missing, Not 0.0 (issue #1196)
+
+**Bug:** `generate_recommendation_intervals` creates every slot with price and PV at `0.0`, the populator only writes covered slots, and `build_planner_input` emitted a `PricePoint` / PV entry for **every** slot. No key was ever absent in the planner, so the #1002 missing-price estimate and the `DataQuality` missing-hour fields never ran in production: until the day-ahead prices publish, tomorrow was planned at `0.0` and `is_complete` was true. The #1002 tests built `PricePoint` lists by hand and never went through the builder.
+
+**Rule:** `populate_price_and_solcast_from_snapshot` returns a `ForecastCoverage` (`models/forecast_coverage.py`: UTC slot starts per field plus `pv_source_configured`). The coordinator stores it as `_forecast_coverage` and passes it to `build_planner_input(forecast_coverage=...)`, which skips the `PricePoint` of a slot without **both** prices and the PV entry of an uncovered slot. `None` (hand-built recommendations, tests) means every slot is covered. Never put the flag on `HourlyRecommendation`: that list is a sensor attribute (#1099). Never default the fields to NaN: the recommendations are read before the plan is applied (dynamic floor, load hold, JSON attributes).
+
+**Gotchas:**
+
+- A published `0.0` or negative price and a `0.0 kW` forecast are data. Test with them.
+- PV: no sensor configured means "covered", or every hour is reported on every cycle.
+- Hour-granular `SolcastSlot`s that all lie on day 0 make `populate_solcast` use hour-only keys, which reuse today's forecast for every day. With any PV gap the builder therefore emits per-slot entries (`slot_in_day`), which are day-specific. Prices do not have this problem: the builder always sets `slot_in_day`.
+- The planner's `missing_inputs` labels do **not** set the degraded mode; that comes from missing HA entities only. `is_complete` is false every morning on a 36/48 h horizon until tomorrow's prices arrive.
+- The recommendation's own `import_price` stays `0.0` on an uncovered slot; only the plan uses the estimate.
+
+Tests: `tests/test_uncovered_forecast_slots.py` (real populator -> builder -> `run_planner`).
+
 ## Half-Hourly Solcast Data and the Hour's PV (issue #1191, stage 1)
 
 **Bug:** the Solcast sensor can expose `detailedHourly` and the half-hourly `detailedForecast`, both average power in kW. `_populate_from_attributes()` read both, the half-hourly values overwrote the hourly ones, and a slot only took the point whose window contained the slot start (a 60-minute slot never saw the `:30` point). `build_planner_input()` then kept the first slot of each `(day_offset, hour)`. An hour averaging 0.4 kW then 0.8 kW reached the planner as 0.4 kWh instead of 0.6, at every slot interval. Hourly-only sensors were right.
