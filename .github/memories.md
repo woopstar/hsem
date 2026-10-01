@@ -1102,6 +1102,24 @@ for s in discharge_slots:
     by_day[as_tz(s.start, now.tzinfo).date()].append(s)
 ```
 
+**Three materiality thresholds, three jobs (issue #1199).** Do not mix them:
+
+- `milp/_write_results._MIN_ACTION_KWH` (1e-4) filters **raw LP values**
+  before they are labelled and rounded.
+- `utils/recommendations.MATERIAL_ENERGY_KWH` (1e-9) is the one threshold for
+  **published** slot energy in every planner pass that decides a label
+  (`simulate_soc` guards, the concentration reservation, the self-consistency
+  gate). The smallest published value, 0.001 kWh, is a solved decision.
+- `utils/units.is_material_planned_energy_kwh` (> 0.001) is the **applier's**
+  hold heuristic (#797). Never relabel a planned slot with it.
+
+Concentration reserved LP slots with the applier's threshold, so a slot with
+exactly 0.001 kWh was not reserved and, once another LP discharge on the same
+calendar day had spent the day budget, became `batteries_wait_mode` with the
+energy still on it (5.01 % SoC on a 5 % floor; needs an export spike on
+tomorrow evening to spend that budget, which is why a day-0-only fixture does
+not reproduce it). Regression: `tests/planner/test_residual_discharge_label.py`.
+
 ---
 
 ## Huawei Solar Entity Wiring

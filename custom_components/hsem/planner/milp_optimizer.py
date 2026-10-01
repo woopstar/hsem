@@ -38,10 +38,6 @@ CANDIDATE_MILP = "milp"
 # where preprocessing overhead alone can reach 200-400ms.
 _SOLVER_TIME_LIMIT_S = 2.0
 
-# Minimum energy threshold below which a slot is treated as zero-charge/discharge
-# to avoid writing tiny floating-point artefacts into recommendations.
-_MIN_ACTION_KWH = 1e-4
-
 
 def solve_milp(
     slots: list[PlannedSlot],
@@ -654,6 +650,7 @@ def solve_milp(
         _compute_terminal_soc_credit,
     )
     from custom_components.hsem.planner.milp._write_results import (
+        _MIN_ACTION_KWH,
         _write_milp_results_to_slots,
     )
 
