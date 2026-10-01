@@ -94,6 +94,11 @@ PV forecast sensor configuration.
 | Forecast tomorrow   | `hsem_solcast_pv_forecast_forecast_tomorrow`   | `sensor.solcast_pv_forecast_forecast_tomorrow` | Tomorrow's Solcast forecast          |
 | Forecast likelihood | `hsem_solcast_pv_forecast_forecast_likelihood` | `pv_estimate`                                  | Attribute key for the estimate field |
 
+HSEM reads the forecast from the sensors' `detailedHourly` attribute and, when
+the Solcast integration also publishes it, the half-hourly `detailedForecast`
+attribute. Either one is enough, and both may be enabled: the planner works
+with one PV value per hour, taken as the mean over that hour (issue #1191).
+
 ### Step: `huawei_solar`
 
 Huawei Solar inverter and battery entity configuration (device selectors and entity sensors only).

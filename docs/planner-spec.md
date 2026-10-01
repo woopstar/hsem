@@ -2564,17 +2564,32 @@ available), HSEM falls back to the configured interval for prices and to
 
    - Prices are rates (`currency / kWh`) and are stored **unchanged** on each
      covered `HourlyRecommendation` slot.
-   - Solcast entries are hourly energy totals (`kWh`) and are also stored
+   - Solcast entries are average power over their period (`kW`), which for
+     an hourly entry equals that hour's energy in `kWh`. They are also stored
      **unchanged** on each covered slot.
 
    This means a 15-minute price point only covers its own quarter-hour slot,
    while an hourly price or Solcast point fans out to all four quarter-hour
    slots inside that hour when `recommendation_interval_minutes = 15`.
 
+   **PV sources finer than the slot (issue #1191).** The Solcast integration
+   can publish `detailedHourly` and the half-hourly `detailedForecast` on the
+   same sensor; both are read, the half-hourly one last. For the PV field a
+   slot takes the **overlap-weighted mean** of every source point that
+   overlaps it, not the point at the slot's start. A 60-minute slot under a
+   half-hourly source therefore holds the mean of its two half-hours instead
+   of the first one. A source at or above the slot width overlaps each slot
+   with one point, so its value is stored unchanged. Prices keep the
+   start-in-window match.
+
 2. **Planner input** (`coordinator_builder.build_planner_input`):
    Recommendation slots are deduplicated on `(day_offset, hour)` for
-   consumption averages and Solcast PV (genuinely hour-granular), but
-   **price points are emitted per slot** with an explicit `slot_in_day`
+   consumption averages (genuinely hour-granular). Solcast PV is emitted per
+   `(day_offset, hour)` too, as the **mean over that hour's slots**: a
+   half-hourly source leaves different values on the slots of one hour, and
+   the hour's energy is their mean, not the first slot's value (issue #1191).
+   With an hourly source all slots of the hour are equal and the mean is that
+   value. **Price points are emitted per slot** with an explicit `slot_in_day`
    field, so quarter-hourly prices survive as distinct `PricePoint`
    entries (192 for a 48 h horizon at 15-minute slots). Stored price values
    are passed through directly to `PricePoint`; there is **no inverse
@@ -2609,6 +2624,11 @@ available), HSEM falls back to the configured interval for prices and to
 - With hourly Solcast data and 15-minute slots, one hourly kWh total must fan
   out to four quarter-hour planner slots whose combined energy equals the raw
   hourly input.
+- With half-hourly Solcast data, alone or next to the hourly attribute, the
+  planner's PV for an hour must equal the mean of its two half-hours, at 15-,
+  30- and 60-minute slots, whichever attribute is processed last
+  (issue #1191). An hourly-only sensor must give the planner the same values
+  as before.
 
 ## Candidate plans
 
