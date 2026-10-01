@@ -1314,118 +1314,92 @@ directly to a sensor's `extra_state_attributes`:
 
 ## Scenario examples
 
-All examples use the following base configuration:
+All examples use the following base configuration and were produced by
+`run_planner` on an input built from the stated conditions. The _What the
+planner does_ blocks are the plan's slot recommendations, the cost tables are
+its `rejected_plans`, and the _Explanation excerpt_ blocks are the
+`PlanExplanation` it returned, trimmed to the keys the scenario is about.
 
-- Battery: 10 kWh rated, 10 % end-of-discharge floor → 9 kWh usable
+- Battery: 10 kWh rated, 10 % end-of-discharge floor → 9 kWh usable, no upper SoC limit
 - Charge efficiency: 90 % (10 % conversion loss)
 - Max charge power: 5 kW (5 kWh/h)
-- Horizon: 24 h, 1-hour slots
+- Battery purchase price 10 000 DKK over 6 000 expected cycles (cycle cost ≈ 0.08 DKK/kWh)
+- Horizon: 24 h, 1-hour slots, planned at 00:00
 - Prices and PV in local currency (DKK) and kWh
 
 ---
 
-### Scenario 1: Winter day
-
-**Conditions:**
-
-- Month: January (winter month)
-- PV forecast: 0 kWh across all hours (no solar production)
-- House load: ~2 kWh/h constant
-- Import prices: flat at 1.50 DKK/kWh all day
-- Battery at start: 50 % SoC (4.5 kWh above floor)
-- Discharge window schedule: 16:00–21:00 (evening peak)
-
-**What the planner does:**
-
-```
-Hours 00–14:  batteries_wait_mode  (cheap flat price, no PV, conserve battery)
-Hours 14–16:  batteries_charge_grid (pre-charge before evening window)
-              → charges to max_soc, importing ≈ 4.5 kWh from grid
-Hours 16–21:  batteries_discharge_mode
-              → discharges to cover 2 kWh/h house load
-              → avoids 5 × 2 kWh = 10 kWh grid import during the window
-Hours 21–24:  batteries_wait_mode  (window ended, battery near floor)
-```
-
-**Why this plan wins:**
-
-The selected plan charges cheaply before the discharge window so the evening
-load is covered entirely by the battery. On a flat-price winter day the
-net saving is small (no price arbitrage benefit), but the plan ensures the
-battery is available for the programmed window. The `no_action` candidate
-(battery idle all day) produces an identical grid cost here, so the planner
-may select `no_action` when the schedule does not force grid charge.
-
-**Explanation excerpt:**
-
-```json
-{
-  "selected_strategy": "baseline",
-  "summary": "Pre-charge for evening discharge window; no PV surplus available.",
-  "constraints": ["winter_month", "schedule_window_active"],
-  "forecast_pv_kwh": 0.0,
-  "battery_soc_at_end_pct": 10.0
-}
-```
-
----
-
-### Scenario 2: Summer day — high PV surplus
+### Scenario 1: Summer day — high PV surplus
 
 **Conditions:**
 
 - Month: July (summer month)
-- PV forecast: 0→2→6→8→6→4→1→0 kWh (ramps from 06:00 to 14:00, falls off by 19:00)
+- PV forecast: 0→2→6→8→6→4→1→0 kWh/h from 06:00 to 13:00 (27 kWh total)
 - House load: 0.5 kWh/h (typical summer light load)
-- Import prices: moderate, 2.00 DKK/kWh peak (09–11), 0.80 DKK/kWh off-peak
-- Battery at start: 20 % SoC (1.8 kWh above floor)
+- Import prices: 2.00 DKK/kWh peak (09–11), 0.80 DKK/kWh otherwise
+- Export price: 0.10 DKK/kWh
+- Battery at start: 20 % SoC (1 kWh above floor)
 - Excess export disabled
 
 **What the planner does:**
 
 ```
-Hours 00–06:  batteries_wait_mode  (night, no PV, load from grid)
-Hours 06–09:  batteries_charge_solar
-              → PV arrives, surplus charges battery
-              → net_consumption = 0.5 kWh − PV (surplus) → battery fills
-Hours 09–14:  batteries_charge_solar / batteries_wait_mode
-              → PV covers load; surplus continues charging battery
-              → battery reaches max_soc around 11:00
-Hours 14–19:  batteries_discharge_mode (PV falling, prices still moderate)
-              → battery discharges to cover load, reduces grid import
-Hours 19–24:  batteries_wait_mode (battery near floor, no PV)
+Hours 00–02:  batteries_discharge_mode
+              → the 1 kWh above the floor covers two night hours (0.80 DKK/kWh)
+Hours 02–10:  batteries_wait_mode
+              → night load imported; the first PV surplus (07–10) is exported
+Hours 10–13:  batteries_charge_solar
+              → 5.7 kWh of surplus charges the battery to 66.7 %
+Hours 13–24:  batteries_discharge_mode
+              → the stored PV covers every remaining hour (0.80 DKK/kWh)
+              → battery reaches the floor at 24:00
 ```
 
 **Why this plan wins:**
 
-The planner identifies the large solar surplus and assigns `batteries_charge_solar`
-slots in the morning. This avoids peak-price grid imports in the morning hours
-and accumulates free solar energy. The battery then covers evening load when PV
-has stopped. The `no_action` candidate wastes PV surplus by exporting it at the
-low export price instead of storing it for later use.
+The battery empties what it holds into the night load because it will be
+refilled by PV for free later. It stores only as much of the surplus as the
+rest of the day can use (5.5 kWh for eleven hours at 0.5 kWh/h); the morning
+surplus that would be left over at midnight is exported at 0.10 DKK/kWh
+instead, which the [terminal SoC accounting](#terminal-soc-accounting) prefers
+to carrying it past the horizon. The `passive` candidate stores the surplus
+too but does not discharge for the evening load; the diagnostic `no_action`
+candidate imports every hour.
+
+**Cost comparison (`rejected_plans`):**
+
+| Candidate    | Cost (DKK) | Note                                           |
+| ------------ | ---------- | ---------------------------------------------- |
+| `milp`       | 0.25       | selected; score 6.95 saved versus `do_nothing` |
+| `passive`    | 1.52       | selector score 0.91 worse than `milp`          |
+| `do_nothing` | 7.20       | 24 × 0.5 kWh imported at the hourly price      |
 
 **Explanation excerpt:**
 
 ```json
 {
-  "selected_strategy": "solar_only",
-  "summary": "High PV day: solar surplus stored for evening discharge.",
+  "selected_strategy": "charge_solar_discharge_peak",
+  "winner_name": "milp",
+  "summary": "Battery will be charged from solar surplus (27.0 kWh forecast) and discharged during peak hours (max 2.000).",
+  "score": 6.946,
+  "estimated_total_cost": 0.254,
   "constraints": ["summer_month"],
   "forecast_pv_kwh": 27.0,
   "forecast_net_consumption_kwh": -15.0,
-  "battery_soc_at_end_pct": 12.0
+  "battery_soc_pct": 20.0,
+  "battery_soc_at_end_pct": 10.1
 }
 ```
 
 ---
 
-### Scenario 3: Cheap night price — grid charge opportunity
+### Scenario 2: Cheap night price — grid charge opportunity
 
 **Conditions:**
 
 - Month: March (winter month)
-- PV forecast: small midday peak (2–3 kWh/h, 10:00–14:00)
-- House load: ~1.5 kWh/h
+- PV forecast: small midday peak (2→3→3→2 kWh/h, 10:00–14:00)
+- House load: 1.5 kWh/h
 - Import prices:
   - 00:00–06:00: 0.25 DKK/kWh (very cheap night tariff)
   - 06:00–09:00: 2.50 DKK/kWh
@@ -1433,63 +1407,67 @@ low export price instead of storing it for later use.
   - 16:00–21:00: 3.20 DKK/kWh (peak)
   - 21:00–24:00: 1.20 DKK/kWh
 - Export price: 0.10 DKK/kWh (low, net-metering not attractive)
-- Battery at start: 15 % SoC (0.45 kWh above floor)
-- No discharge window schedule configured
+- Battery at start: 15 % SoC (0.5 kWh above floor)
 
 **What the planner does:**
 
 ```
-Hours 00–06:  batteries_charge_grid
+Hours 00–04:  batteries_wait_mode
+Hours 04–06:  batteries_charge_grid
               → cheap night rate: 0.25 DKK/kWh import
-              → charge 5 kWh/h × 5h = 25 kWh capacity requested,
-                capped at usable range → battery fills to max_soc (90 %)
-Hours 06–10:  batteries_wait_mode (prices rise, battery full)
-Hours 10–14:  batteries_charge_solar (PV surplus topping up)
-Hours 14–22:  batteries_discharge_mode
-              → discharges during expensive slots (1.80–3.20 DKK/kWh)
-              → avoids 8h × 1.5 kWh = 12 kWh at avg 2.5 DKK/kWh = 30 DKK import
-              → charge cost: ≈ 9 kWh × 0.25 DKK + cycle cost ≈ 2.25 + 4.50 = 6.75 DKK
-              → net saving ≈ 23 DKK
-Hours 22–24:  batteries_wait_mode
+              → 8.5 kWh charged (9.4 kWh imported at 90 % efficiency)
+              → battery full at 06:00; the exact cheap hours are interchangeable
+Hours 06–10:  batteries_discharge_mode (2.50 DKK/kWh morning peak)
+              → 4.7 kWh discharged, battery at 51.3 %
+Hours 10–14:  batteries_charge_solar (PV surplus tops the battery up to 87.3 %)
+Hours 14–16:  batteries_wait_mode (1.80 DKK/kWh: imported, battery kept for 3.20)
+Hours 16–21:  batteries_discharge_mode
+              → 7.5 kWh discharged through the 3.20 DKK/kWh peak
+              → battery reaches the floor at 21:00
+Hours 21–24:  batteries_wait_mode
 ```
 
 **Why this plan wins:**
 
-The price spread of 2.95 DKK/kWh (peak 3.20 − night 0.25) far exceeds the
-cycle cost (~0.50 DKK/kWh for a typical installation). The `aggressive` candidate
-also finds the cheap slots but may over-charge if the battery is already full.
-The `baseline` candidate with schedule-driven pre-charge produces the same plan
-here. The `no_action` candidate pays full peak prices.
+The MILP compares the physical cost of storing energy at 0.25 DKK/kWh
+(including charge loss and cycle wear) with the import avoided at up to
+3.20 DKK/kWh. The large spread is profitable, so the solved MILP charges
+exactly the energy the two peaks need, in two of the six cheap hours. The
+`passive` candidate can use the PV but cannot exploit the cheap night tariff;
+the diagnostic `do_nothing` plan pays the full peak import cost.
 
-**Key cost comparison:**
+**Cost comparison (`rejected_plans`):**
 
-| Candidate                | Estimated cost (DKK)     |
-| ------------------------ | ------------------------ |
-| `baseline` (grid charge) | 6.75                     |
-| `solar_only`             | 22.50 (no night charge)  |
-| `no_action`              | 30.00 (full peak import) |
+| Candidate    | Cost (DKK) | Note                                            |
+| ------------ | ---------- | ----------------------------------------------- |
+| `milp`       | 17.71      | selected; score 33.29 saved versus `do_nothing` |
+| `passive`    | 48.19      | selector score 31.00 worse than `milp`          |
+| `do_nothing` | 51.00      | 24 × 1.5 kWh imported at the hourly price       |
 
 **Explanation excerpt:**
 
 ```json
 {
-  "selected_strategy": "grid_charge",
-  "summary": "Cheap night rate (0.25 DKK/kWh) enables grid pre-charge; discharges during peak (3.20 DKK/kWh).",
-  "score": 23.25,
+  "selected_strategy": "charge_grid_discharge_peak",
+  "winner_name": "milp",
+  "summary": "Battery will be charged from the grid during cheap hours (min 0.250) and discharged during peak hours (max 3.200).",
+  "score": 33.2886,
+  "estimated_total_cost": 17.7114,
   "price_spread": 2.95,
-  "constraints": ["winter_month", "grid_charge_price_spread_met"],
+  "constraints": ["winter_month"],
+  "battery_soc_pct": 15.0,
   "battery_soc_at_end_pct": 10.0
 }
 ```
 
 ---
 
-### Scenario 4: High PV day — excess export opportunity
+### Scenario 3: High PV day — excess export opportunity
 
 **Conditions:**
 
 - Month: June (summer month)
-- PV forecast: 1→3→7→10→10→8→5→2→0 kWh/h (strong sun, 07:00–18:00)
+- PV forecast: 1→3→7→10→10→10→8→5→3→2→1→0 kWh/h (strong sun, 07:00–19:00, 60 kWh)
 - House load: 0.3 kWh/h (light load)
 - Export price: 2.80 DKK/kWh (09:00–13:00 midday peak), 0.50 DKK/kWh otherwise
 - Import price: 1.80 DKK/kWh (09:00–13:00), 0.80 DKK/kWh otherwise
@@ -1499,114 +1477,144 @@ here. The `no_action` candidate pays full peak prices.
 **What the planner does:**
 
 ```
-Hours 07–09:  batteries_charge_solar
-              → PV arrives, surplus charges battery
-Hours 09–10:  batteries_charge_solar then force_batteries_discharge
-              → battery reaches max_soc before midday export peak
-Hours 10–13:  force_batteries_discharge (export_price = 2.80 DKK/kWh > threshold 1.00)
-              → battery discharges AND PV exports simultaneously
-              → export revenue: ~8 kWh × 2.80 = 22.40 DKK
-Hours 13–18:  batteries_charge_solar (re-charging after export window)
-              → battery refills from PV surplus
-Hours 18–24:  batteries_discharge_mode (cover evening load from battery)
+Hours 00–07:  batteries_wait_mode
+Hours 07–09:  batteries_charge_grid
+              → 8 kWh charged: the morning PV plus 5.5 kWh bought at 0.80
+              → battery full at 09:00, when the export price rises
+Hours 09–10:  force_batteries_discharge (export_price 2.80 > threshold 1.00)
+              → the full 9 kWh usable battery exports together with the PV
+Hours 10–13:  batteries_wait_mode
+              → PV covers the load; all surplus (9.7 kWh/h) exports at 2.80
+Hours 13–14:  batteries_charge_solar
+              → 4.5 kWh of afternoon surplus is stored
+Hours 14–24:  batteries_wait_mode
+              → remaining surplus exports at 0.50; the evening load is imported
+              → the stored 4.5 kWh is carried to the next day (55 %)
 ```
 
 **Why this plan wins:**
 
-The high midday export price (2.80 DKK/kWh) exceeds the `excess_export_price_threshold`
-(1.00 DKK/kWh), so the planner triggers `force_batteries_discharge` during the peak
-export window. The battery is pre-charged from solar in the morning and re-charged
-from PV after the export window ends. The `solar_only` candidate does not exploit
-the export window and earns significantly less revenue.
+The midday export price (2.80 DKK/kWh) exceeds the
+`excess_export_price_threshold` (1.00 DKK/kWh) and the morning import price
+(0.80 DKK/kWh), so the planner fills the battery from the grid and the first
+PV, and sells the whole battery in the first hour of the export window.
+Because the plan both grid-charges and discharges, the strategy label is
+`charge_grid_discharge_peak`, not `force_export`: that label is only used when
+no grid charge is planned. The `passive` candidate exports the PV surplus but
+never sells the battery.
 
-**Key cost comparison:**
+**Cost comparison (`rejected_plans`):**
 
-| Candidate                  | Net cost (DKK)       |
-| -------------------------- | -------------------- |
-| `baseline` (excess export) | −18.40 (net revenue) |
-| `solar_only`               | −8.00                |
-| `no_action`                | −5.60                |
+| Candidate    | Cost (DKK) | Note                                                     |
+| ------------ | ---------- | -------------------------------------------------------- |
+| `milp`       | −123.42    | selected (net revenue); score 126.54 versus `do_nothing` |
+| `passive`    | −85.41     | selector score 43.27 worse than `milp`                   |
+| `do_nothing` | 3.12       | load imported; PV export is not counted for this plan    |
 
 **Explanation excerpt:**
 
 ```json
 {
-  "selected_strategy": "baseline",
-  "summary": "High PV surplus and peak export price trigger forced battery export.",
-  "score": 12.8,
-  "constraints": ["summer_month", "excess_export_enabled", "export_price_above_threshold"],
-  "forecast_pv_kwh": 46.0,
-  "forecast_net_consumption_kwh": -39.4
+  "selected_strategy": "charge_grid_discharge_peak",
+  "winner_name": "milp",
+  "summary": "Battery will be charged from the grid during cheap hours (min 0.800) and discharged during peak hours (max 1.800).",
+  "score": 126.5428,
+  "estimated_total_cost": -123.4228,
+  "constraints": ["summer_month", "excess_export_enabled"],
+  "forecast_pv_kwh": 60.0,
+  "forecast_net_consumption_kwh": -52.8,
+  "battery_soc_at_end_pct": 55.0
 }
 ```
 
 ---
 
-### Scenario 5: Flat price day — no arbitrage value
+### Scenario 4: Flat price day — no arbitrage value
 
 **Conditions:**
 
 - Month: April (winter/spring boundary, configured as winter)
-- PV forecast: modest (1–2 kWh/h, 09:00–15:00)
+- PV forecast: modest (1→2→2→2→2→1 kWh/h, 09:00–15:00)
 - House load: 1.0 kWh/h
 - Import price: 1.20 DKK/kWh flat all 24 hours
 - Export price: 0.10 DKK/kWh flat
-- Battery at start: 50 % SoC
-- No discharge window schedule; excess export disabled
+- Battery at start: 50 % SoC (4 kWh above floor)
 
 **What the planner does:**
 
 ```
-All hours: batteries_wait_mode
-           (except 09–15 where batteries_charge_solar from PV surplus)
+Hours 00–04:  batteries_discharge_mode
+              → the 4 kWh held at start covers the first four hours
+Hours 04–10:  batteries_wait_mode
+              → no batteries_charge_grid anywhere: nothing to arbitrage
+Hours 10–14:  batteries_charge_solar
+              → 1 kWh/h PV surplus is stored instead of exported at 0.10
+Hours 15–19:  batteries_discharge_mode
+              → the stored 3.6 kWh covers the late afternoon
+              → battery reaches the floor at 19:00
+Hours 19–24:  batteries_wait_mode
 ```
 
 **Why this plan wins:**
 
-With a flat import price of 1.20 DKK/kWh, there is no price arbitrage to exploit.
-Grid-charging the battery at 1.20 DKK/kWh and discharging it later to avoid
-buying at 1.20 DKK/kWh would not save money — the cycle cost makes it
-net-negative. The planner compares the `grid_charge` candidate against `no_action`
-and finds:
+With a flat import price of 1.20 DKK/kWh there is no price arbitrage to
+exploit: grid-charging at 1.20 DKK/kWh and discharging later to avoid buying
+at 1.20 DKK/kWh would lose the conversion loss and the cycle cost. So the plan
+contains no `batteries_charge_grid` slot, and `price_spread` is 0. The energy
+the battery already holds is spent, since a kWh used today saves 1.20 DKK and
+the terminal SoC accounting values a kWh carried past the horizon at less
+than that. Which of the equally priced hours it picks is arbitrary. The PV
+surplus is stored because 0.10 DKK/kWh export is worth less than the import it
+later avoids.
 
-```text
-grid_charge cost: charge 9 kWh × 1.20 DKK + cycle cost (9 kWh × 0.50 DKK)
-               = 10.80 + 4.50 = 15.30 DKK
-no_action cost: buy 1 kWh/h from grid × 24h × 1.20 DKK = 28.80 DKK
-                (with PV reducing demand: ≈ 20 DKK)
-```
+**Cost comparison (`rejected_plans`):**
 
-Since the discharge savings equal the import cost (same price), and cycle
-depreciation tips the scale negative, `no_action` or `solar_only` wins.
-
-The `solar_only` candidate accepts the free PV energy into the battery during
-the morning hours, avoiding some afternoon imports — this is marginally better
-than pure `no_action` because the PV surplus would otherwise export at only
-0.10 DKK/kWh.
+| Candidate    | Cost (DKK) | Note                                           |
+| ------------ | ---------- | ---------------------------------------------- |
+| `milp`       | 12.75      | selected; score 8.85 saved versus `do_nothing` |
+| `passive`    | 20.96      | selector score 8.77 worse than `milp`          |
+| `do_nothing` | 21.60      | 24 × 1.0 kWh − 6 kWh PV, at 1.20 DKK/kWh       |
 
 **Explanation excerpt:**
 
 ```json
 {
-  "selected_strategy": "solar_only",
-  "summary": "Flat price day: no grid charge arbitrage; solar surplus stored to reduce afternoon imports.",
-  "score": 0.6,
+  "selected_strategy": "charge_solar_discharge_peak",
+  "winner_name": "milp",
+  "summary": "Battery will be charged from solar surplus (10.0 kWh forecast) and discharged during peak hours (max 1.200).",
+  "score": 8.8464,
+  "estimated_total_cost": 12.7536,
   "price_spread": 0.0,
-  "constraints": ["winter_month", "no_price_spread"],
-  "battery_soc_at_end_pct": 38.0,
+  "constraints": ["winter_month", "no_price_spread", "battery_low_at_end"],
+  "battery_soc_pct": 50.0,
+  "battery_soc_at_end_pct": 10.0,
   "rejected_plans": [
     {
-      "name": "grid_charge",
-      "reason": "Grid charge cost exceeds cycle depreciation benefit on flat-price day.",
-      "estimated_cost": 15.3
+      "name": "do_nothing",
+      "reason": "Battery idle would cost 21.6000; selected plan saves 8.8464 over the horizon.",
+      "estimated_cost": 21.6
+    },
+    {
+      "name": "charge_only_solar",
+      "reason": "Charging from solar without discharging would leave 10.0 kWh of PV unused during peak demand.",
+      "estimated_cost": 21.6
+    },
+    {
+      "name": "passive",
+      "reason": "Higher selector score than selected plan (20.9615 vs 12.1882; Δ = +8.7733).",
+      "estimated_cost": 20.961463
     }
   ]
 }
 ```
 
+`battery_low_at_end` is listed because the simulated terminal SoC is the
+configured floor; `no_price_spread` because the max and min import prices are
+equal.
+
 ---
 
-### Scenario 6: EV charging — MILP co-optimisation
+### Scenario 5: EV charging — MILP co-optimisation
 
 **Conditions:**
 
@@ -1652,58 +1660,70 @@ Post-deadline slots (after 07:00):
 
 ## Reading the plan explanation
 
-The `PlanExplanation` object is exposed as a HA sensor attribute on the
-`hsem_working_mode` sensor. In the Home Assistant developer tools (States) you
-can inspect it directly:
+The `PlanExplanation` object is published by `sensor.hsem_plan_explanation_sensor`:
+its state is the winning candidate name and every field of the explanation is
+an attribute. In the Home Assistant developer tools (States) you can inspect it
+directly. This is scenario 2 above:
 
 ```
-Entity: sensor.hsem_working_mode
+Entity: sensor.hsem_plan_explanation_sensor
+State: milp
 Attributes:
-  explanation:
-    selected_strategy: grid_charge
-    summary: "Pre-charge for evening discharge: 0.25 DKK night vs 3.20 DKK peak"
-    score: 23.25
-    estimated_total_cost: 6.75
-    price_spread: 2.95
-    peak_import_price: 3.20
-    off_peak_import_price: 0.25
-    forecast_pv_kwh: 4.5
-    forecast_net_consumption_kwh: 16.5
-    battery_soc_pct: 15.0
-    battery_soc_at_end_pct: 10.0
-    constraints: [winter_month, grid_charge_price_spread_met]
-    rejected_plans:
-      - name: no_action
-        reason: "Peak-price import cost exceeds grid-charge cost plus cycle cost."
-        estimated_cost: 30.00
+  selected_strategy: charge_grid_discharge_peak
+  winner_name: milp
+  summary: "Battery will be charged from the grid during cheap hours (min 0.250) and discharged during peak hours (max 3.200)."
+  score: 33.2886
+  estimated_total_cost: 17.7114
+  price_spread: 2.95
+  peak_import_price: 3.2
+  off_peak_import_price: 0.25
+  forecast_pv_kwh: 10.0
+  forecast_net_consumption_kwh: 26.0
+  battery_soc_pct: 15.0
+  battery_soc_at_end_pct: 10.0
+  constraints: [winter_month]
+  rejected_plans:
+    - name: do_nothing
+      reason: "Battery idle would cost 51.0000; selected plan saves 33.2886 over the horizon."
+      estimated_cost: 51.0
+    - name: passive
+      reason: "Higher selector score than selected plan (48.1946 vs 17.1954; Δ = +30.9992)."
+      estimated_cost: 48.194565
 ```
 
 ### Understanding `score`
 
 `score` is the estimated saving of the selected plan versus the `no_action` baseline:
 
-- **Positive score** — the plan saves money compared to doing nothing. A score of 23.25
-  means the planner expects to save 23.25 DKK over the planning horizon.
-- **Zero or near-zero score** — flat price day or no arbitrage available.
+- **Positive score** — the plan saves money compared to doing nothing. A score of 33.29
+  means the planner expects to save 33.29 DKK over the planning horizon.
+- **Zero or near-zero score** — the battery has nothing to add: no stored energy to
+  spend, no PV surplus to store, and no price spread to arbitrage. A flat price alone
+  does not give a zero score (scenario 4).
 - **Negative score** (unusual) — the pre-charge overhead exceeds the discharge benefit
   within this specific horizon window. This can happen if the horizon ends before the
   discharge window is fully executed.
 
 ### Understanding `constraints`
 
-Common constraint tags and their meaning:
+These are all the tags `_build_explanation` in
+`custom_components/hsem/planner/engine_explanation.py` can emit, in the order
+it lists them. Exactly one of `winter_month` and `summer_month` is always
+present; `tests/test_planner_guide_explanation_values.py` checks that this
+guide shows no other tag or strategy:
 
-| Tag                            | Meaning                                                                             |
-| ------------------------------ | ----------------------------------------------------------------------------------- |
-| `winter_month`                 | Current month is in `months_winter`; winter scheduling strategy active              |
-| `summer_month`                 | Not in winter months; summer scheduling strategy active                             |
-| `no_price_spread`              | Max − min import price is near zero; no grid-charge arbitrage                       |
-| `grid_charge_price_spread_met` | Price spread exceeds min_price_difference threshold                                 |
-| `excess_export_enabled`        | Excess export feature is active in config                                           |
-| `export_price_above_threshold` | Export price exceeds `excess_export_price_threshold`                                |
-| `schedule_window_active`       | At least one `battery_schedules` entry is enabled and active                        |
-| `dynamic_discharge_floor`      | The dynamic discharge floor is above the configured minimum SoC and reserves energy |
-| `battery_below_dynamic_floor`  | Initial SoC is at or below the dynamic discharge floor; the battery is held         |
+| Tag                           | Meaning                                                                             |
+| ----------------------------- | ----------------------------------------------------------------------------------- |
+| `winter_month`                | Current month is in `months_winter`; winter scheduling strategy active              |
+| `summer_month`                | Not in winter months; summer scheduling strategy active                             |
+| `no_price_spread`             | Max − min import price is near zero; no grid-charge arbitrage                       |
+| `excess_export_enabled`       | Excess export feature is active in config                                           |
+| `battery_disabled`            | Rated battery capacity is zero or unavailable                                       |
+| `battery_full`                | Initial SoC is at or above the configured maximum                                   |
+| `battery_empty`               | Initial SoC is at or below the configured discharge floor                           |
+| `battery_low_at_end`          | Simulated terminal SoC reaches the configured discharge floor                       |
+| `dynamic_discharge_floor`     | The dynamic discharge floor is above the configured minimum SoC and reserves energy |
+| `battery_below_dynamic_floor` | Initial SoC is at or below the dynamic discharge floor; the battery is held         |
 
 When `battery_below_dynamic_floor` is listed, the plan keeps the battery at its
 current SoC and only energy charged on top of it is discharged, so the
