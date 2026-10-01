@@ -75,6 +75,7 @@ __all__ = [
     "leaks_entity_ids",
     "newest_cycle_of_site",
     "refresh_corpus",
+    "refresh_payload",
     "situation_of",
     "slim_payload",
     "write_actuals_days",
@@ -577,6 +578,46 @@ class RefreshResult:
         return "\n".join(lines)
 
 
+def refresh_payload(
+    payload: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]] | str | None:
+    """Bring one payload back in step with the current ``PlannerInput``, in place.
+
+    Fields the dump predates are filled with their ``PlannerInput`` default
+    and fields that no longer exist are dropped, as :func:`refresh_corpus`
+    describes.
+
+    Args:
+        payload: A dump payload carrying ``planner_input``; modified in place.
+
+    Returns:
+        ``None`` when the payload already round-trips; the reason when it
+        cannot be repaired; otherwise ``(filled, removed)``: the defaults
+        filled in by field name, and the names removed.
+    """
+    _inp, report = planner_input_from_dict(payload)
+    if report.is_faithful:
+        return None
+    if report.malformed_datetimes:
+        return f"unparseable {sorted(report.malformed_datetimes)}"
+
+    defaults = _planner_input_to_dict(PlannerInput())
+    planner_input = payload["planner_input"]
+    filled = {name: defaults[name] for name in report.missing}
+    planner_input.update(copy.deepcopy(filled))
+    for name in report.dropped:
+        del planner_input[name]
+    for list_name, keys in report.dropped_nested.items():
+        for row in planner_input[list_name]:
+            for key in keys:
+                row.pop(key, None)
+
+    _inp, after = planner_input_from_dict(payload)
+    if not after.is_faithful:
+        return after.describe()
+    return filled, [*report.dropped, *(f"{k}[]" for k in report.dropped_nested)]
+
+
 def refresh_corpus(corpus_dir: Path, *, dry_run: bool = False) -> RefreshResult:
     """Bring every committed cycle back in step with the current ``PlannerInput``.
 
@@ -599,42 +640,25 @@ def refresh_corpus(corpus_dir: Path, *, dry_run: bool = False) -> RefreshResult:
         A :class:`RefreshResult`.
     """
     result = RefreshResult()
-    defaults = _planner_input_to_dict(PlannerInput())
     with generous_solver_limit():
         for path in sorted(corpus_dir.glob("*.json")):
             document = json.loads(path.read_text(encoding="utf-8"))
             payload = document.get("data", document)
-            _inp, report = planner_input_from_dict(payload)
-            if report.is_faithful:
+            outcome = refresh_payload(payload)
+            if outcome is None:
                 result.unchanged += 1
                 continue
-            if report.malformed_datetimes:
-                result.unfixable.append(
-                    (path.name, f"unparseable {sorted(report.malformed_datetimes)}")
-                )
+            if isinstance(outcome, str):
+                result.unfixable.append((path.name, outcome))
                 continue
-
-            planner_input = payload["planner_input"]
-            filled = {name: defaults[name] for name in report.missing}
-            planner_input.update(copy.deepcopy(filled))
-            for name in report.dropped:
-                del planner_input[name]
-            for list_name, keys in report.dropped_nested.items():
-                for row in planner_input[list_name]:
-                    for key in keys:
-                        row.pop(key, None)
-
-            inp, after = planner_input_from_dict(payload)
-            if not after.is_faithful:
-                result.unfixable.append((path.name, after.describe()))
-                continue
-            removed = [*report.dropped, *(f"{k}[]" for k in report.dropped_nested)]
+            filled, removed = outcome
             result.updated.append((path.name, filled, removed))
             if not dry_run:
                 path.write_text(
                     json.dumps(document, indent=2, sort_keys=True) + "\n",
                     encoding="utf-8",
                 )
+            inp, _report = planner_input_from_dict(payload)
             violations = check_invariants(inp, run_planner(inp))
             if violations:
                 result.violations.append((path.name, format_violations(violations)))
