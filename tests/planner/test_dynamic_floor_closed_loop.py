@@ -1,4 +1,6 @@
-"""Closed-loop regression for issue #1198 — the floor flipped between replans.
+"""Closed-loop regressions for the dynamic discharge floor (issues #1198, #1214).
+
+**Issue #1198 — the floor flipped between replans.**
 
 The dynamic discharge floor is computed from a floor-free reference solve of
 the same replan (issue #1140).  When several night slots have the same import
@@ -14,7 +16,16 @@ against the consumption bridged up to the charge's own slot, so:
 On consecutive hourly replans the floor went 5.0 / 29.8 / 5.0 / 24.0 / 5.0 /
 26.6 % and the executed slot alternated between holding and discharging.
 
-This replays that night through the real ``run_planner``: every replan solves
+**Issue #1214 — the floor rose within one bridge.**  A night charge too small
+to cover the bridge was subtracted from the reserve, and the rest of the
+bridge, behind the charge, stayed reserved.  How much the reference plan buys
+depends on the live SoC, which the floor itself produced one replan earlier:
+the energy the floor held for the hours behind the charge made the next
+reference plan buy less, so the floor went 44.9 / 35.3 / 43.4 / 43.7 / 44.8 %
+and the battery was held for five hours.  A planned charge now ends the
+bridge, so the reserve never reaches past it.
+
+Both replay the fixture through the real ``run_planner``: every replan solves
 the reference plan, takes its own floor from it, solves again with the floor
 and executes the live slot.
 """
@@ -55,6 +66,9 @@ _DISCHARGE = Recommendations.BatteriesDischargeMode.value
 _EXPORT_SPIKE = 0.45
 #: The evening the battery was sold into the spike: 23:00, at the floor.
 _START = _MIDNIGHT + timedelta(days=1, hours=23)
+#: The first evening: 21:00 with a 68 % battery and the export spike ahead.
+_FIRST_EVENING = _MIDNIGHT + timedelta(hours=21)
+_FIRST_EVENING_SOC_PCT = 68.0
 
 
 def _prices(day: int) -> list[tuple[float, float]]:
@@ -222,3 +236,63 @@ class TestFloorDoesNotFlipOverTheNight:
         floors = [_floor(now, soc_pct)[0] for _ in range(3)]
 
         assert floors == pytest.approx([floors[0]] * 3)
+
+
+@pytest.fixture(scope="module")
+def first_evening() -> list[_Replan]:
+    """21:00 to 08:00 from a 68 % battery: twelve hourly replans."""
+    return _closed_loop(_FIRST_EVENING, _FIRST_EVENING_SOC_PCT, 12)
+
+
+class TestFloorDoesNotRiseWithinABridge:
+    """The first evening of issue #1214, replayed through the real planner."""
+
+    def test_floor_only_rises_where_a_bridge_starts(
+        self, first_evening: list[_Replan]
+    ) -> None:
+        """Before #1214: 44.9 / 35.3 / 43.4 / 43.7 / 44.8 % — two rises inside."""
+        rises = _rises(first_evening)
+
+        # A floor that rises does so from the configured minimum: the grid
+        # refill has happened and the bridge to the PV surplus starts.
+        assert all(
+            before.floor_pct == pytest.approx(_HARDWARE_FLOOR_PCT)
+            for before, _after in rises
+        )
+        assert len(rises) <= 1
+
+    def test_reserve_before_the_night_charge_declines_with_the_bridge(
+        self, first_evening: list[_Replan]
+    ) -> None:
+        """21:00, 22:00 and 23:00 bridge 3.2, 2.4 and 1.7 kWh to the 02:00 charge."""
+        evening = first_evening[:3]
+
+        assert [replan.refill_type for replan in evening] == ["grid_charge"] * 3
+        assert [replan.floor_pct for replan in evening] == pytest.approx(
+            [kwh / 9.5 * 100.0 * 1.15 for kwh in (3.2, 2.4, 1.7)], abs=0.1
+        )
+
+    def test_battery_is_not_held_after_the_sale(
+        self, first_evening: list[_Replan]
+    ) -> None:
+        """Before #1214 the battery sat in wait mode from 23:00 to 04:00."""
+        executed = {replan.now.hour: replan.executed for replan in first_evening}
+
+        # The battery is sold into the export price down to the reserve …
+        assert Recommendations.ForceBatteriesDischarge.value in (
+            executed[21],
+            executed[22],
+        )
+        # … and then serves the house until the planned night charge.
+        assert [executed[hour] for hour in (23, 0, 1)] == [_DISCHARGE] * 3
+
+    def test_floor_never_exceeds_the_battery_it_left(
+        self, first_evening: list[_Replan]
+    ) -> None:
+        """A floor above the SoC the previous floor allowed is the hold.
+
+        Before #1214 the 23:00 replan asked for 43.4 % of a battery the
+        22:00 floor had let down to 26.8 %.
+        """
+        for replan in first_evening[1:3]:
+            assert replan.floor_pct <= replan.soc_pct + 1.0

@@ -187,8 +187,8 @@ class TestDynamicDischargeFloor:
         assert floor > 10.0
         assert diag["reserve_kwh"] > 0.0
 
-    def test_a_partial_grid_charge_keeps_scanning(self) -> None:
-        """Grid charging too small to cover the bridge is counted, not a refill."""
+    def test_a_partial_grid_charge_ends_the_bridge_with_a_reserve(self) -> None:
+        """Grid charging too small to cover the bridge still ends it (#1214)."""
         slots = [
             _floor_slot(_NOW, net_kwh=2.0),
             _floor_slot(
@@ -206,8 +206,9 @@ class TestDynamicDischargeFloor:
         )
 
         assert floor > 10.0
-        # The scan ran past the partial charge to the solar refill.
-        assert diag["bridge_duration_hours"] >= 2.0
+        # The bridge is the 2.0 kWh consumed before the charge slot.
+        assert diag["refill_type"] == "grid_charge"
+        assert diag["reserve_kwh"] == pytest.approx(2.0)
 
     def test_a_planned_grid_charge_counts_as_a_refill(self) -> None:
         """Grid charging covering the bridge ends the scan."""

@@ -391,6 +391,37 @@ class TestAffordableGridRefill:
         assert diag["next_refill_slot"] == slots[6].start.isoformat()
         assert diag["reserve_kwh"] == pytest.approx(0.0)
 
+    def test_cheap_night_releases_the_floor_behind_a_partial_planned_charge(
+        self,
+    ) -> None:
+        """A planned charge too small for the bridge does not hide the cheap night.
+
+        The planned-charge pass ends at the 0.5 kWh charge with the 3.0 kWh
+        before it reserved (issue #1214); the affordable pass still runs and
+        the first 0.03 slot covers the bridge.
+        """
+        now = datetime(2026, 9, 28, 22, 0)
+        charged = [0.0] * len(_NIGHT_NET)
+        charged[4] = 0.5
+        recs = ["batteries_charge_grid" if kwh else None for kwh in charged]
+        slots = _make_slots(
+            now,
+            _NIGHT_NET,
+            charged_kwh=charged,
+            recommendations=recs,
+            import_prices=_NIGHT_PRICES,
+        )
+
+        floor_pct, diag = self._floor(slots)
+        planned_only, planned_diag = self._floor(slots, max_grid_charge_kw=0.0)
+
+        assert planned_diag["refill_type"] == "grid_charge"
+        assert planned_diag["reserve_kwh"] == pytest.approx(3.0)
+        assert planned_only == pytest.approx(3.0 / 10.0 * 100.0 * 1.15)
+        assert diag["refill_type"] == "grid_available"
+        assert diag["reserve_kwh"] == pytest.approx(0.0)
+        assert floor_pct == pytest.approx(5.0)
+
     def test_cheap_window_too_small_keeps_the_first_scan(self) -> None:
         """A cheap window that cannot cover the bridge changes nothing."""
         now = datetime(2026, 9, 28, 22, 0)
@@ -559,18 +590,19 @@ class TestPlannedChargePlacement:
         assert diag["reserve_kwh"] == pytest.approx(0.0)
         assert floor_pct == pytest.approx(5.0)
 
-    def test_a_charge_too_small_for_the_bridge_is_a_partial_credit_anywhere(
+    def test_a_charge_too_small_for_the_bridge_ends_it_with_a_reserve_anywhere(
         self,
     ) -> None:
         """0.6 kWh does not cover the 1.0 kWh before 02:00, wherever it sits."""
         results = [self._floor(charge_slot, 0.6) for charge_slot in (2, 3, 4, 5)]
 
-        # 00:00-08:00 is 4.2 kWh; 02:00 holds the credit, so its own 0.5 kWh
-        # is not bridged, and 0.6 kWh is bought: 4.2 - 0.5 - 0.6 = 3.1 kWh.
+        # The bridge ends at 02:00, where the charge is credited, and the
+        # reserve is the 1.0 kWh consumed before it (issue #1214).
         for floor_pct, diag, profile in results:
-            assert diag["refill_type"] == "solar_surplus"
-            assert diag["reserve_kwh"] == pytest.approx(3.1)
-            assert floor_pct == pytest.approx(3.1 / 9.5 * 100.0 * 1.15)
+            assert diag["refill_type"] == "grid_charge"
+            assert diag["next_refill_slot"] == "2026-09-30T02:00:00"
+            assert diag["reserve_kwh"] == pytest.approx(1.0)
+            assert floor_pct == pytest.approx(1.0 / 9.5 * 100.0 * 1.15)
             assert profile == results[0][2]
 
     def test_charges_of_one_price_add_up_at_its_first_slot(self) -> None:
@@ -603,7 +635,8 @@ class TestPlannedChargePlacement:
 
         # 0.8 kWh at 00:00 would cover the bridge at once; at 02:00 it does
         # not cover the 1.0 kWh bridged until then.
-        assert diag["refill_type"] == "solar_surplus"
+        assert diag["next_refill_slot"] == "2026-09-30T02:00:00"
+        assert diag["reserve_kwh"] == pytest.approx(1.0)
 
     def test_prices_within_the_cycle_cost_are_the_same_price(self) -> None:
         """0.155 next to 0.15 is within one 0.008 cycle cost."""
@@ -620,7 +653,8 @@ class TestPlannedChargePlacement:
         _floor_pct, diag, _profile = self._floor(5, prices=prices, cycle_cost=0.0)
 
         # Credited at 03:00, the first 0.15 slot: 1.24 kWh < 1.5 kWh bridged.
-        assert diag["refill_type"] == "solar_surplus"
+        assert diag["next_refill_slot"] == "2026-09-30T03:00:00"
+        assert diag["reserve_kwh"] == pytest.approx(1.5)
 
     def test_flat_prices_credit_the_charge_now(self) -> None:
         """Every slot costs the same, so the plan could buy that energy now."""
@@ -639,7 +673,10 @@ class TestPlannedChargePlacement:
 
         assert early[1]["refill_type"] == "grid_charge"
         assert early[1]["next_refill_slot"] == "2026-09-30T01:00:00"
-        assert late[1]["refill_type"] == "solar_surplus"
+        assert early[1]["reserve_kwh"] == pytest.approx(0.0)
+        # 1.24 kWh at 05:00 does not cover the 2.5 kWh bridged until then.
+        assert late[1]["next_refill_slot"] == "2026-09-30T05:00:00"
+        assert late[1]["reserve_kwh"] == pytest.approx(2.5)
 
     def test_a_charge_behind_the_solar_surplus_is_never_read(self) -> None:
         """The bridge ends at the PV surplus; a later charge is not moved in."""
