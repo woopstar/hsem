@@ -80,7 +80,10 @@ from custom_components.hsem.utils.misc import (
     resolve_cycle_cost,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
-from custom_components.hsem.utils.soc_bounds import resolve_soc_bounds_pct
+from custom_components.hsem.utils.soc_bounds import (
+    resolve_soc_bounds_pct,
+    wait_mode_reserve_above_hardware_floor,
+)
 from custom_components.hsem.utils.units import (
     max_energy_per_slot_kwh,
     roundtrip_loss_pct,
@@ -699,7 +702,14 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     # Wait-mode self-consumption reserve (issue #914): derived from the
     # *selected* plan's own simulated SoC trajectory, not the raw forecast
     # scan used by ``rc``/``calculate_required_battery_until_solar`` above.
-    wait_mode_reserve_kwh = calculate_required_battery_for_plan(slots, now, current_kwh)
+    # Published above the hardware floor, the applier's origin, so the energy
+    # the dynamic floor sets aside is never counted as surplus (issue #1200).
+    wait_mode_reserve_kwh = wait_mode_reserve_above_hardware_floor(
+        calculate_required_battery_for_plan(slots, now, current_kwh),
+        inp.battery_rated_capacity_kwh,
+        _hardware_eod_soc,
+        _effective_eod_soc,
+    )
 
     _label_commanded_ev_slots(slots)
     cur_rec: str | None = None
