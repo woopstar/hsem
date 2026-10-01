@@ -4789,7 +4789,8 @@ depends on the SoC. Inside the charge window, with 15-minute replans, the
 reference plan's last small charge appears and disappears between replans, and
 the floor alternates between the configured minimum (a charge in the live
 slot) and the bridge to the PV surplus (no charge left). The battery is below
-that reserve and the plan is the same either way.
+that reserve and the plan is the same either way. This is accepted; see _The
+floor inside the charge window_ (issue #1238).
 
 #### The export reserve's buffer buy-back is no refill (issue #1239)
 
@@ -4890,6 +4891,83 @@ on the export decision the floor is meant to be.
 #1214, #1220): a charge smaller than the consumption before it is subtracted
 from the bridge, so the buy-back shortens the reserve by its size and does
 not end the bridge.
+
+#### The floor inside the charge window (issue #1238, accepted)
+
+Inside the night charge window the floor-free reference plan buys what the
+morning peak still needs. As the window fills the battery that purchase
+shrinks to nothing, and from one replan to the next it can come and go: the
+reference plan at 03:00 with the battery at 18.6 % put 6 Wh into a slot of
+the window, the plan at 17.4 % put nothing. A charge is credited to the live
+slot inside the window (it is the first slot of its price), so the floor is
+the configured minimum when there is one and the bridge to the PV surplus
+when there is none, and with 15-minute replans it alternates between the two:
+
+```text
+replan   02:00  02:15  02:30  02:45  03:00  03:15  03:30
+floor %    5.0   40.4    5.0    5.0    5.0   34.6    5.0
+soc %      7.0   17.4   18.6   18.6   18.6   18.6   18.6
+```
+
+**What it changes.** `sensor.hsem_effective_discharge_floor_sensor`, its
+`refill_type` (`grid_charge` / `solar_surplus`) and the
+`battery_below_dynamic_floor` tag of the plan explanation. Not what the plan
+costs: the battery is below the bridge's reserve, and since issue #1222 a
+battery below its reserve is assigned to the bridge's dearest slots, the
+morning peak, which is where the floor-free plan keeps it anyway. Solved with
+either floor the plan serves the peak from the battery and costs the same
+within 0.001; only ties move (which of the equally priced night slots holds a
+few Wh of charge). The margin learner is not affected either: a floor the
+battery is below is no evidence (`correct_margin()` ignores it).
+
+**Measured.** Closed loop through the real `run_planner`, each replan's floor
+from its own reference solve, 48 h from 21:00, the 108-scenario sweep of _A
+planned charge ends the bridge_ (start SoC 30/50/68/95 %, export spike
+none/0.30/0.45, night 0.15/0.10/0.03, tomorrow's PV 100/50/20 %). An
+alternation is a reversal between the minimum and a bridge on three
+consecutive replans inside the 02:00–06:00 window:
+
+| Replans   |          Scenarios with an alternation | Reversals |
+| --------- | -------------------------------------: | --------: |
+| hourly    |                               0 of 108 |         0 |
+| 15 minute | 8 of 36 on the 0.15 night, 0 elsewhere |        13 |
+
+On the 0.10 and 0.03 nights the window is the look-ahead's cheapest price and
+an affordable refill (issue #1156) releases the floor whether or not the plan
+charges; only the 0.15 night, which is not, can alternate. Hourly replans do
+not: the hour's purchase is large enough to be there or not for the rest of
+the window.
+
+**Why it is not fixed.** The floor reads the plan's charge decisions and no
+state from the previous replan (issue #1140). The alternation is exactly the
+plan's decision changing with the SoC, and the two ways to hide it were
+rejected:
+
+- _Keep the window released once the plan charged in it._ Whether the plan
+  charged earlier in the window cannot be read: the reference plan's past
+  slots are `time_passed` and carry no decision, and the previous plan is
+  state. A price-only reading, "the live slot is priced within one cycle cost
+  of the cheapest price before the PV surplus and that bridge is not flat",
+  needs no state and removes the alternation, but it is a different floor: to
+  predict the next replan it has to end every bridge at the first slot of
+  such a window whether or not the plan charges there, so a full battery on a
+  0.15 night no longer keeps the bridge to the surplus (78.8 % → 41.8 % at
+  21:00 for 68 % and 95 % without an export spike). That is the decision of
+  _Affordable grid refill_ (a 0.15 night before a 0.12 day is not a refill)
+  and the #1125 shape every closed-loop fixture of issues #1188, #1207 and
+  #1222 is built on. Measured over the 108-scenario sweep with hourly replans: the four
+  evenings of a 68 % or 95 % battery on a 0.15 night without an export spike
+  drop from 78.8–83.8 % to 41.8 % at 21:00, realised cash is 0.01 worse in
+  17 scenarios and better in none (sum −171.8 against −172.1), and the floor
+  is released at 02:00 and re-armed at 06:00 for the flat 0.25 peak 28 times
+  where today it is never released and re-armed within four replans.
+  At 15-minute replans it does remove the alternation (0 of the 36
+  0.15-night scenarios) and realised cash over those 36 replays of 11 h is
+  4.3 lower (0.2 against 4.5); with 192 slots and battery export those solves
+  run into the solver's time limit, so that difference is not attributed to
+  the rule. It is kept as a follow-up, not shipped here.
+- _Hysteresis on the sensor._ Hides the flip without removing it, and
+  carries state from one replan to the next.
 
 #### A planned charge ends the bridge (issue #1214)
 

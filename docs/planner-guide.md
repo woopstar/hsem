@@ -166,6 +166,10 @@ that purchase is not a refill (issue #1239), so the night behind it is still
 reserved. The floor can still step up once during a night, when the planned
 grid refill has happened and the reserve for the rest of the night to the
 solar surplus takes over.
+Inside the charge window itself, with 15-minute replans, the sensor can
+alternate between the configured minimum and that bridge while the reference
+plan's last small purchase for the morning comes and goes with the SoC
+(issue #1238); the plan is the same either way, so this is accepted.
 
 The reference plan also supplies the house load and PV the floor bridges
 over, so the floor and the plan work from the same forecast. Before issue
