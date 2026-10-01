@@ -11,8 +11,10 @@ import pytest
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
 from custom_components.hsem.flows.batteries_excess_export import (
+    get_batteries_excess_export_step_schema,
     validate_batteries_excess_export_input,
 )
+from custom_components.hsem.utils.config_validator import validate_time_of_day
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
 
 # ---------------------------------------------------------------------------
@@ -318,3 +320,76 @@ class TestValidateBatteriesExcessExportInput:
         }
         errors = await validate_batteries_excess_export_input(user_input)
         assert "hsem_batteries_forecast_reserve_pct" in errors
+
+
+# ---------------------------------------------------------------------------
+# House-battery target SoC by deadline (issue #1109)
+# ---------------------------------------------------------------------------
+
+
+class TestBatteryTargetSocConfig:
+    """The opt-in battery target lives in the excess-export step."""
+
+    _BASE = {
+        "hsem_batteries_enable_excess_export": False,
+        "hsem_batteries_excess_export_discharge_buffer": 10,
+        "hsem_batteries_forecast_reserve_pct": 0,
+        "hsem_batteries_export_min_price": 0.0,
+    }
+
+    def test_target_is_off_by_default(self):
+        """The feature must be opt-in so existing plans are unchanged."""
+        assert DEFAULT_CONFIG_VALUES["hsem_batteries_target_soc_enabled"] is False
+        assert DEFAULT_CONFIG_VALUES["hsem_batteries_target_soc_pct"] == 100
+        assert DEFAULT_CONFIG_VALUES["hsem_batteries_target_soc_time"] == "17:00:00"
+
+    @pytest.mark.asyncio
+    async def test_schema_offers_the_three_target_fields_with_defaults(self):
+        """Fresh installs see the fields pre-filled with the safe defaults."""
+        schema = await get_batteries_excess_export_step_schema(None)
+
+        defaults = {str(key): key.default() for key in schema.schema}
+        assert defaults["hsem_batteries_target_soc_enabled"] is False
+        assert defaults["hsem_batteries_target_soc_pct"] == 100
+        assert defaults["hsem_batteries_target_soc_time"] == "17:00:00"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("pct", [0, 62, 100])
+    async def test_target_pct_in_range_is_valid(self, pct):
+        """Any absolute SoC from 0 to 100 % is accepted."""
+        errors = await validate_batteries_excess_export_input(
+            {
+                **self._BASE,
+                "hsem_batteries_target_soc_enabled": True,
+                "hsem_batteries_target_soc_pct": pct,
+                "hsem_batteries_target_soc_time": "17:00:00",
+            }
+        )
+        assert errors == {}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("pct", [-1, 100.5, "abc"])
+    async def test_target_pct_out_of_range_is_rejected(self, pct):
+        """A target outside 0-100 % or a non-number is rejected."""
+        errors = await validate_batteries_excess_export_input(
+            {**self._BASE, "hsem_batteries_target_soc_pct": pct}
+        )
+        assert "hsem_batteries_target_soc_pct" in errors
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("value", ["25:00", "17.00", "soon", ""])
+    async def test_invalid_target_time_is_rejected(self, value):
+        """A value that is not a time of day gets the dedicated error key."""
+        errors = await validate_batteries_excess_export_input(
+            {**self._BASE, "hsem_batteries_target_soc_time": value}
+        )
+        assert errors == {"hsem_batteries_target_soc_time": "invalid_time_value"}
+
+    @pytest.mark.parametrize("value", ["17:00", "17:00:00", " 06:30:00 "])
+    def test_valid_times_are_accepted(self, value):
+        """Both ``HH:MM`` and the selector's ``HH:MM:SS`` are valid."""
+        assert validate_time_of_day({"field": value}, "field") == {}
+
+    def test_missing_time_is_not_an_error(self):
+        """Required-field enforcement belongs to the schema, not the validator."""
+        assert validate_time_of_day({}, "field") == {}

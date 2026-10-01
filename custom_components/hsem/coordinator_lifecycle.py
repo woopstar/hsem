@@ -511,6 +511,7 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
         # Preserve the plan explanation and data quality for the next CoordinatorData snapshot.
         self._plan_explanation = output.explanation
         self._data_quality = output.data_quality
+        self._battery_target_diagnostics = output.battery_target
 
         # Persist the winning candidate name and score for hysteresis (issue #372).
         # The next planner run will compare against these values.

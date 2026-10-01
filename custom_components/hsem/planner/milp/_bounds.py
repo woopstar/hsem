@@ -12,6 +12,10 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from custom_components.hsem.planner.milp._battery_target_rows import (
+    BATTERY_TARGET_PENALTY_BLOCK,
+    grid_import_bounds,
+)
 from custom_components.hsem.planner.milp._layout import (
     Bound,
     MilpBoundsBuilder,
@@ -45,8 +49,14 @@ def build_bounds(
     reserve_active: bool,
     fuse_active: bool,
     ev_amp_plan: EvAmpPlan | None = None,
+    grid_import_floor_per_slot: Sequence[float] | None = None,
 ) -> list[Bound]:
-    """Return the complete, validated solver bounds vector."""
+    """Return the complete, validated solver bounds vector.
+
+    ``grid_import_floor_per_slot`` (issue #1109) is the per-slot lower bound
+    on ``gi[t]`` used by the house-battery target stage-2 solve to pin grid
+    import to the stage-1 plan; ``None`` keeps every lower bound at 0.
+    """
     unbounded: tuple[float, float | None] = (0.0, None)
     bounds_builder = MilpBoundsBuilder(column_layout)
     bounds_builder.fill("battery_charge", (0.0, max_charge_per_slot))
@@ -56,7 +66,7 @@ def build_bounds(
     )
     bounds_builder.set(
         "grid_import",
-        [(0.0, max(float(grid_import_ub_per_slot[t]), 0.0)) for t in range(m)],
+        grid_import_bounds(grid_import_ub_per_slot[:m], grid_import_floor_per_slot),
     )
     bounds_builder.set(
         "grid_export",
@@ -118,6 +128,8 @@ def build_bounds(
         )
     if fuse_active:
         bounds_builder.fill("grid_import_penalty", unbounded)
+    if column_layout.has(BATTERY_TARGET_PENALTY_BLOCK):
+        bounds_builder.fill(BATTERY_TARGET_PENALTY_BLOCK, unbounded)
 
     if ev_amp_plan is not None:
         from custom_components.hsem.planner.milp._ev_amp_lattice import (

@@ -122,6 +122,15 @@ $$
 | ------------- | ----------- | ------------ | ------------------------------------------------------------- | -------- |
 | after EV vars | `gi_pen[t]` | `gi_pen_off` | Grid import fuse penalty — kWh exceeding the main fuse rating | `[0, ∞)` |
 
+### House-battery target extension (issue #1109)
+
+The stage-2 solve of the opt-in house-battery target adds one column,
+`battery_target_penalty` (width 1, `[0, ∞)`), the shortfall in kWh against the
+target at slot $T$. It is declared only for that solve, so the stage-1 model
+is unchanged. The same solve also replaces the `gi[t]` bounds with the
+stage-1 import: fixed for $t \le T$, capped for $t > T$. See
+[planner-spec.md](planner-spec.md#house-battery-target-soc-by-deadline-issue-1109).
+
 The max grid import per slot is converted from amps to kWh/slot:
 
 $$
@@ -312,6 +321,17 @@ $$
 $$
 
 The battery then needs no row and stays free to grid-charge. The second solve runs only while a charge-past-target EV is active. A direct `solve_milp` call without a reservation keeps the conservative shared row above. See [planner-spec.md](planner-spec.md) _Battery-first for charge-past-target_.
+
+**House-battery target (soft, stage 2 only, issue #1109):**
+
+$$
+-\sum_{k \le T} (ec[k] - ed[k]) - \mathrm{bt\_pen} \leq E_0 - E_{target}
+$$
+
+with $\mathrm{bt\_pen}$ priced at $P$ in the objective (undiscounted) and
+$gi[t]$ pinned to the stage-1 plan as variable bounds. With import fixed, the
+only way to raise $soc[T]$ is to export less PV
+(`planner/milp/_battery_target.py`).
 
 **Main fuse grid import limit (soft):**
 

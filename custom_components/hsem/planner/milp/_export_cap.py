@@ -5,10 +5,12 @@ Extracted from ``solve_milp`` so the orchestrator remains under 30 KB.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import numpy as np
 
+from custom_components.hsem.planner.milp._battery_target_rows import cap_grid_import
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.units import (
     export_max_energy_per_slot_kwh,
@@ -73,8 +75,13 @@ def resolve_grid_bounds(
     max_grid_export_power_kw: float | None,
     slots: list[PlannedSlot],
     future_idx: list[int],
+    grid_import_cap_per_slot: Sequence[float] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, bool, float]:  # type: ignore[name-defined]
     """Resolve finite grid import/export bounds that close both signed-price directions.
+
+    ``grid_import_cap_per_slot`` (issue #1109) tightens the import bound per
+    LP slot.  It is applied here, before the grid-direction big-M rows are
+    built, so those rows and the ``gi[t]`` bound use the same value.
 
     Returns ``(grid_import_ub_per_slot, grid_export_ub_per_slot,
     export_limit_active, max_grid_export_per_slot_kwh)``.
@@ -82,8 +89,9 @@ def resolve_grid_bounds(
     ev_import_capacity = sum(
         ev.max_charge_per_slot / max(ev.charger_efficiency, 0.01) for ev in active_evs
     )
-    grid_import_ub_per_slot = (
-        base_load + max_charge_per_slot / charge_eff + ev_import_capacity
+    grid_import_ub_per_slot = cap_grid_import(
+        base_load + max_charge_per_slot / charge_eff + ev_import_capacity,
+        grid_import_cap_per_slot,
     )
     grid_export_ub_per_slot = pv_avail + max_dis * discharge_eff
 

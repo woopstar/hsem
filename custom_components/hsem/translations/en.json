@@ -24,7 +24,8 @@
       "required": "This field is required.",
       "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve.",
       "port_conflict": "The second OCPP port must differ from the first OCPP port.",
-      "ev_min_power_below_start_current": "The configured minimum power is too low for the selected phase topology — a real charger cannot start below 6 A. Increase the minimum power or switch phase topology."
+      "ev_min_power_below_start_current": "The configured minimum power is too low for the selected phase topology — a real charger cannot start below 6 A. Increase the minimum power or switch phase topology.",
+      "invalid_time_value": "Enter a valid time of day (HH:MM)."
     },
     "step": {
       "batteries_excess_export": {
@@ -32,15 +33,21 @@
           "hsem_batteries_enable_excess_export": "Enable Excess Battery Export",
           "hsem_batteries_excess_export_discharge_buffer": "Discharge Buffer (%)",
           "hsem_batteries_forecast_reserve_pct": "Battery Export Forecast Reserve (+% SoC)",
-          "hsem_batteries_export_min_price": "Battery Export Min Price"
+          "hsem_batteries_export_min_price": "Battery Export Min Price",
+          "hsem_batteries_target_soc_enabled": "Enable Battery Target SoC",
+          "hsem_batteries_target_soc_pct": "Battery Target SoC (%)",
+          "hsem_batteries_target_soc_time": "Battery Target Time"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Enable or disable the excess battery export feature, which automatically exports excess battery capacity to the grid when economically beneficial.",
           "hsem_batteries_excess_export_discharge_buffer": "Set the safety buffer percentage to maintain minimum battery reserves (0-50%). Default is 10% to ensure adequate capacity for unexpected demand.",
           "hsem_batteries_forecast_reserve_pct": "Extra SoC percentage points above the Huawei end-of-discharge limit that intentional battery export must leave immediately after each export slot. For example, a 15% Huawei limit plus a 5% reserve protects 20% SoC. The reserve remains available for house load when actual demand exceeds the forecast. Set to 0 to disable (default).",
-          "hsem_batteries_export_min_price": "Per-slot hard floor for intentional battery-to-grid export (issue #752). When > 0, HSEM forbids marking a slot as force_batteries_discharge when the export price is strictly below this floor - the battery can still serve house load in those slots. Reaching the threshold does NOT auto-trigger export; the optimizer still decides whether selling is worthwhile. Applies only to intentional battery-to-grid export, not to normal self-consumption, PV export, or PV charging. Set to 0 to disable (default)."
+          "hsem_batteries_export_min_price": "Per-slot hard floor for intentional battery-to-grid export (issue #752). When > 0, HSEM forbids marking a slot as force_batteries_discharge when the export price is strictly below this floor - the battery can still serve house load in those slots. Reaching the threshold does NOT auto-trigger export; the optimizer still decides whether selling is worthwhile. Applies only to intentional battery-to-grid export, not to normal self-consumption, PV export, or PV charging. Set to 0 to disable (default).",
+          "hsem_batteries_target_soc_enabled": "Build an extra house-battery reserve towards the target SoC by the daily target time, using only PV that would otherwise be exported. HSEM never buys extra grid energy for the target, keeps the grid charging and discharge the normal plan already needs unchanged, and still decides when to store and when to export, so it may export now if enough surplus is forecast later. Off by default.",
+          "hsem_batteries_target_soc_pct": "Target battery SoC to reach by the target time, as absolute SoC including the Huawei end-of-discharge limit (0-100%). Default 100%.",
+          "hsem_batteries_target_soc_time": "Daily time by which the battery should reach the target SoC. Only the next occurrence is planned; after it, the battery behaves normally. Default 17:00."
         },
-        "description": "Configure excess battery export settings to automatically sell excess energy to the grid when economically beneficial.",
+        "description": "Configure excess battery export settings to automatically sell excess energy to the grid when economically beneficial, and an optional battery target SoC built from PV that would otherwise be exported.",
         "title": "Excess Battery Export"
       },
       "ev_planned_load": {
@@ -504,7 +511,8 @@
       "required": "This field is required.",
       "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve.",
       "port_conflict": "The second OCPP port must differ from the first OCPP port.",
-      "ev_min_power_below_start_current": "The configured minimum power is too low for the selected phase topology — a real charger cannot start below 6 A. Increase the minimum power or switch phase topology."
+      "ev_min_power_below_start_current": "The configured minimum power is too low for the selected phase topology — a real charger cannot start below 6 A. Increase the minimum power or switch phase topology.",
+      "invalid_time_value": "Enter a valid time of day (HH:MM)."
     },
     "step": {
       "batteries_excess_export": {
@@ -512,15 +520,21 @@
           "hsem_batteries_enable_excess_export": "Enable Excess Battery Export",
           "hsem_batteries_excess_export_discharge_buffer": "Discharge Buffer (%)",
           "hsem_batteries_forecast_reserve_pct": "Battery Export Forecast Reserve (+% SoC)",
-          "hsem_batteries_export_min_price": "Battery Export Min Price"
+          "hsem_batteries_export_min_price": "Battery Export Min Price",
+          "hsem_batteries_target_soc_enabled": "Enable Battery Target SoC",
+          "hsem_batteries_target_soc_pct": "Battery Target SoC (%)",
+          "hsem_batteries_target_soc_time": "Battery Target Time"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Enable or disable the excess battery export feature, which automatically exports excess battery capacity to the grid when economically beneficial.",
           "hsem_batteries_excess_export_discharge_buffer": "Set the safety buffer percentage to maintain minimum battery reserves (0-50%). Default is 10% to ensure adequate capacity for unexpected demand.",
           "hsem_batteries_forecast_reserve_pct": "Extra SoC percentage points above the Huawei end-of-discharge limit that intentional battery export must leave immediately after each export slot. For example, a 15% Huawei limit plus a 5% reserve protects 20% SoC. The reserve remains available for house load when actual demand exceeds the forecast. Set to 0 to disable (default).",
-          "hsem_batteries_export_min_price": "Per-slot hard floor for intentional battery-to-grid export (issue #752). When > 0, HSEM forbids marking a slot as force_batteries_discharge when the export price is strictly below this floor - the battery can still serve house load in those slots. Reaching the threshold does NOT auto-trigger export; the optimizer still decides whether selling is worthwhile. Applies only to intentional battery-to-grid export, not to normal self-consumption, PV export, or PV charging. Set to 0 to disable (default)."
+          "hsem_batteries_export_min_price": "Per-slot hard floor for intentional battery-to-grid export (issue #752). When > 0, HSEM forbids marking a slot as force_batteries_discharge when the export price is strictly below this floor - the battery can still serve house load in those slots. Reaching the threshold does NOT auto-trigger export; the optimizer still decides whether selling is worthwhile. Applies only to intentional battery-to-grid export, not to normal self-consumption, PV export, or PV charging. Set to 0 to disable (default).",
+          "hsem_batteries_target_soc_enabled": "Build an extra house-battery reserve towards the target SoC by the daily target time, using only PV that would otherwise be exported. HSEM never buys extra grid energy for the target, keeps the grid charging and discharge the normal plan already needs unchanged, and still decides when to store and when to export, so it may export now if enough surplus is forecast later. Off by default.",
+          "hsem_batteries_target_soc_pct": "Target battery SoC to reach by the target time, as absolute SoC including the Huawei end-of-discharge limit (0-100%). Default 100%.",
+          "hsem_batteries_target_soc_time": "Daily time by which the battery should reach the target SoC. Only the next occurrence is planned; after it, the battery behaves normally. Default 17:00."
         },
-        "description": "Configure excess battery export settings to automatically sell excess energy to the grid when economically beneficial.",
+        "description": "Configure excess battery export settings to automatically sell excess energy to the grid when economically beneficial, and an optional battery target SoC built from PV that would otherwise be exported.",
         "title": "Excess Battery Export"
       },
       "ev_planned_load": {

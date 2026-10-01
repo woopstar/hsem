@@ -116,3 +116,7 @@ class PlannerOutput:
     #: Same as ev_held_slot_start/ev_held_power_w, for the second EV.
     ev_second_held_slot_start: datetime | None = None
     ev_second_held_power_w: float = 0.0
+    #: House-battery target diagnostics for the next occurrence (issue #1109),
+    #: from ``planner.battery_target.summarize_battery_target``.  ``None``
+    #: when the target is disabled or has no occurrence in the horizon.
+    battery_target: dict[str, Any] | None = None

@@ -13,7 +13,11 @@ from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
-from custom_components.hsem.utils.config_validator import merge_errors, validate_price
+from custom_components.hsem.utils.config_validator import (
+    merge_errors,
+    validate_price,
+    validate_time_of_day,
+)
 from custom_components.hsem.utils.misc import get_config_value
 
 
@@ -34,6 +38,11 @@ async def get_batteries_excess_export_step_schema(  # NOSONAR
     MILP caps the discharge variable so the battery can serve house load but
     cannot export to the grid.  Defaults to 0 (disabled) which preserves the
     pre-#752 behaviour.
+
+    The opt-in house-battery target (issue #1109) lives here too: it builds a
+    reserve towards ``hsem_batteries_target_soc_pct`` by the daily
+    ``hsem_batteries_target_soc_time`` from PV that would otherwise be
+    exported, never from extra grid import.
 
     Args:
         config_entry: Existing config entry (used during options flow editing).
@@ -98,6 +107,32 @@ async def get_batteries_excess_export_step_schema(  # NOSONAR
                     }
                 }
             ),
+            vol.Required(
+                "hsem_batteries_target_soc_enabled",
+                default=get_config_value(
+                    config_entry, "hsem_batteries_target_soc_enabled"
+                ),
+            ): selector({"boolean": {}}),
+            vol.Required(
+                "hsem_batteries_target_soc_pct",
+                default=get_config_value(config_entry, "hsem_batteries_target_soc_pct"),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0,
+                        "max": 100,
+                        "step": 1,
+                        "mode": "slider",
+                        "unit_of_measurement": PERCENTAGE,
+                    }
+                }
+            ),
+            vol.Required(
+                "hsem_batteries_target_soc_time",
+                default=get_config_value(
+                    config_entry, "hsem_batteries_target_soc_time"
+                ),
+            ): selector({"time": {}}),
         }
     )
 
@@ -139,8 +174,20 @@ async def validate_batteries_excess_export_input(
         max_price=2.0,
         allow_negative=False,
     )
+    target_soc_errors = validate_price(
+        user_input,
+        "hsem_batteries_target_soc_pct",
+        min_price=0.0,
+        max_price=100.0,
+        allow_negative=False,
+    )
+    target_time_errors = validate_time_of_day(
+        user_input, "hsem_batteries_target_soc_time"
+    )
     return merge_errors(
         buffer_errors,
         forecast_reserve_errors,
         export_floor_errors,
+        target_soc_errors,
+        target_time_errors,
     )

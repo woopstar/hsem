@@ -24,7 +24,8 @@
       "required": "Dette felt er påkrævet.",
       "invalid_wait_mode_behavior": "Ugyldig ventetilstand. Vælg Streng ventetilstand eller Selvforbrug med reserve.",
       "port_conflict": "Den anden OCPP-port skal være forskellig fra den første OCPP-port.",
-      "ev_min_power_below_start_current": "Den konfigurerede minimumseffekt er for lav til den valgte fasetopologi — en rigtig lader kan ikke starte under 6 A. Øg minimumseffekten, eller skift fasetopologi."
+      "ev_min_power_below_start_current": "Den konfigurerede minimumseffekt er for lav til den valgte fasetopologi — en rigtig lader kan ikke starte under 6 A. Øg minimumseffekten, eller skift fasetopologi.",
+      "invalid_time_value": "Angiv et gyldigt klokkeslæt (TT:MM)."
     },
     "step": {
       "batteries_excess_export": {
@@ -32,15 +33,21 @@
           "hsem_batteries_enable_excess_export": "Aktiver overskuds-eksport",
           "hsem_batteries_excess_export_discharge_buffer": "Afladningsbuffer (%)",
           "hsem_batteries_export_min_price": "Batterieksport Min. Pris",
-          "hsem_batteries_forecast_reserve_pct": "Batteri eksportprognose-reserve (+% SoC)"
+          "hsem_batteries_forecast_reserve_pct": "Batteri eksportprognose-reserve (+% SoC)",
+          "hsem_batteries_target_soc_enabled": "Aktivér batteri-mål-SoC",
+          "hsem_batteries_target_soc_pct": "Batteri-mål-SoC (%)",
+          "hsem_batteries_target_soc_time": "Batteri-måltidspunkt"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Aktiver eller deaktiver eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
           "hsem_batteries_excess_export_discharge_buffer": "Indstil sikkerhedsbufferprocenten for at opretholde minimum batterireserver (0-50%). Standard er 10% for at sikre tilstrækkelig kapacitet til uventet efterspørgsel.",
           "hsem_batteries_export_min_price": "Hårdt prægulv per slot for tilsigtet batteri-til-net eksport (issue #752). Når værdien > 0, forbyder HSEM at markere et slot som force_batteries_discharge når eksportprisen er strengt under dette gulv — batteriet kan stadig betjene husforbruget i disse slots. At nå tærsklen udløser IKKE automatisk eksport; optimizeren bestemmer stadig, om salg er økonomisk fordelagtigt. Gælder kun for tilsigtet batteri-til-net eksport, ikke for normalt selvforbrug, PV-eksport eller PV-opladning. Sæt til 0 for at deaktivere (standard).",
-          "hsem_batteries_forecast_reserve_pct": "Ekstra SoC-procentpoint over Huaweis afladningsstop-grænse, som bevidst batterieksport skal efterlade umiddelbart efter hvert eksportinterval. For eksempel beskytter en Huawei-grænse på 15 % plus en 5 % reserve 20 % SoC. Reserven forbliver tilgængelig til husforbrug, når det faktiske forbrug overstiger prognosen. Sæt til 0 for at deaktivere (standard)."
+          "hsem_batteries_forecast_reserve_pct": "Ekstra SoC-procentpoint over Huaweis afladningsstop-grænse, som bevidst batterieksport skal efterlade umiddelbart efter hvert eksportinterval. For eksempel beskytter en Huawei-grænse på 15 % plus en 5 % reserve 20 % SoC. Reserven forbliver tilgængelig til husforbrug, når det faktiske forbrug overstiger prognosen. Sæt til 0 for at deaktivere (standard).",
+          "hsem_batteries_target_soc_enabled": "Opbyg en ekstra reserve i husbatteriet mod mål-SoC inden det daglige måltidspunkt, kun med solcelleproduktion der ellers ville blive eksporteret. HSEM køber aldrig ekstra strøm fra nettet til målet, ændrer ikke den netopladning og afladning den normale plan allerede har brug for, og bestemmer stadig, hvornår der skal lagres, og hvornår der skal eksporteres, så den kan eksportere nu, hvis der forventes nok overskud senere. Deaktiveret som standard.",
+          "hsem_batteries_target_soc_pct": "Batteri-SoC der skal nås inden måltidspunktet, som absolut SoC inklusive Huaweis afladningsstop-grænse (0-100 %). Standard 100 %.",
+          "hsem_batteries_target_soc_time": "Dagligt tidspunkt, hvor batteriet skal have nået mål-SoC. Kun den næste forekomst planlægges; derefter opfører batteriet sig normalt. Standard 17:00."
         },
-        "description": "Konfigurer indstillinger for eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
+        "description": "Konfigurer indstillinger for eksport af overskydende batterienergi, så overskydende energi automatisk sælges til nettet, når det er økonomisk fordelagtigt, samt et valgfrit batteri-mål-SoC, der opbygges med solcelleproduktion, der ellers ville blive eksporteret.",
         "title": "Overskuds-eksport"
       },
       "ev_planned_load": {
@@ -504,7 +511,8 @@
       "required": "Dette felt er påkrævet.",
       "invalid_wait_mode_behavior": "Ugyldig ventetilstand. Vælg Streng ventetilstand eller Selvforbrug med reserve.",
       "port_conflict": "Den anden OCPP-port skal være forskellig fra den første OCPP-port.",
-      "ev_min_power_below_start_current": "Den konfigurerede minimumseffekt er for lav til den valgte fasetopologi — en rigtig lader kan ikke starte under 6 A. Øg minimumseffekten, eller skift fasetopologi."
+      "ev_min_power_below_start_current": "Den konfigurerede minimumseffekt er for lav til den valgte fasetopologi — en rigtig lader kan ikke starte under 6 A. Øg minimumseffekten, eller skift fasetopologi.",
+      "invalid_time_value": "Angiv et gyldigt klokkeslæt (TT:MM)."
     },
     "step": {
       "batteries_excess_export": {
@@ -512,15 +520,21 @@
           "hsem_batteries_enable_excess_export": "Aktiver overskuds-eksport",
           "hsem_batteries_excess_export_discharge_buffer": "Afladningsbuffer (%)",
           "hsem_batteries_export_min_price": "Batterieksport Min. Pris",
-          "hsem_batteries_forecast_reserve_pct": "Batteri eksportprognose-reserve (+% SoC)"
+          "hsem_batteries_forecast_reserve_pct": "Batteri eksportprognose-reserve (+% SoC)",
+          "hsem_batteries_target_soc_enabled": "Aktivér batteri-mål-SoC",
+          "hsem_batteries_target_soc_pct": "Batteri-mål-SoC (%)",
+          "hsem_batteries_target_soc_time": "Batteri-måltidspunkt"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Aktiver eller deaktiver eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
           "hsem_batteries_excess_export_discharge_buffer": "Indstil sikkerhedsbufferprocenten for at opretholde minimum batterireserver (0-50%). Standard er 10% for at sikre tilstrækkelig kapacitet til uventet efterspørgsel.",
           "hsem_batteries_export_min_price": "Hårdt prægulv per slot for tilsigtet batteri-til-net eksport (issue #752). Når værdien > 0, forbyder HSEM at markere et slot som force_batteries_discharge når eksportprisen er strengt under dette gulv — batteriet kan stadig betjene husforbruget i disse slots. At nå tærsklen udløser IKKE automatisk eksport; optimizeren bestemmer stadig, om salg er økonomisk fordelagtigt. Gælder kun for tilsigtet batteri-til-net eksport, ikke for normalt selvforbrug, PV-eksport eller PV-opladning. Sæt til 0 for at deaktivere (standard).",
-          "hsem_batteries_forecast_reserve_pct": "Ekstra SoC-procentpoint over Huaweis afladningsstop-grænse, som bevidst batterieksport skal efterlade umiddelbart efter hvert eksportinterval. For eksempel beskytter en Huawei-grænse på 15 % plus en 5 % reserve 20 % SoC. Reserven forbliver tilgængelig til husforbrug, når det faktiske forbrug overstiger prognosen. Sæt til 0 for at deaktivere (standard)."
+          "hsem_batteries_forecast_reserve_pct": "Ekstra SoC-procentpoint over Huaweis afladningsstop-grænse, som bevidst batterieksport skal efterlade umiddelbart efter hvert eksportinterval. For eksempel beskytter en Huawei-grænse på 15 % plus en 5 % reserve 20 % SoC. Reserven forbliver tilgængelig til husforbrug, når det faktiske forbrug overstiger prognosen. Sæt til 0 for at deaktivere (standard).",
+          "hsem_batteries_target_soc_enabled": "Opbyg en ekstra reserve i husbatteriet mod mål-SoC inden det daglige måltidspunkt, kun med solcelleproduktion der ellers ville blive eksporteret. HSEM køber aldrig ekstra strøm fra nettet til målet, ændrer ikke den netopladning og afladning den normale plan allerede har brug for, og bestemmer stadig, hvornår der skal lagres, og hvornår der skal eksporteres, så den kan eksportere nu, hvis der forventes nok overskud senere. Deaktiveret som standard.",
+          "hsem_batteries_target_soc_pct": "Batteri-SoC der skal nås inden måltidspunktet, som absolut SoC inklusive Huaweis afladningsstop-grænse (0-100 %). Standard 100 %.",
+          "hsem_batteries_target_soc_time": "Dagligt tidspunkt, hvor batteriet skal have nået mål-SoC. Kun den næste forekomst planlægges; derefter opfører batteriet sig normalt. Standard 17:00."
         },
-        "description": "Konfigurer indstillinger for eksport af overskydende batterikapacitet til nettet, når det er økonomisk fordelagtigt.",
+        "description": "Konfigurer indstillinger for eksport af overskydende batterienergi, så overskydende energi automatisk sælges til nettet, når det er økonomisk fordelagtigt, samt et valgfrit batteri-mål-SoC, der opbygges med solcelleproduktion, der ellers ville blive eksporteret.",
         "title": "Overskuds-eksport"
       },
       "ev_planned_load": {

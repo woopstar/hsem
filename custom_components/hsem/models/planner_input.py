@@ -90,6 +90,13 @@ class PlannerInput:
             Extra SoC percentage points above the hardware discharge floor that
             intentional battery export must retain immediately after each
             export slot. Ordinary self-consumption may use this reserve.
+        battery_target_soc_enabled:
+            Opt-in house-battery target SoC by a daily deadline, funded only
+            by PV the normal plan would otherwise export (issue #1109).
+        battery_target_soc_pct:
+            Target absolute SoC in percent (0-100).
+        battery_target_soc_time:
+            Daily target time as ``HH:MM[:SS]`` local time.
         excess_export_price_threshold:
             Minimum export price required to trigger forced export.
         battery_export_min_price:
@@ -182,6 +189,12 @@ class PlannerInput:
     #: protected only from intentional battery-to-grid export. This is not a
     #: global floor: local demand may consume it when the forecast is wrong.
     battery_forecast_reserve_pct: float = 0.0
+
+    # --- house-battery target SoC by deadline (issue #1109) ---
+    #: Opt-in; ``False`` (default) keeps plans bit-for-bit unchanged.
+    battery_target_soc_enabled: bool = False
+    battery_target_soc_pct: float = 100.0
+    battery_target_soc_time: str = "17:00:00"
 
     # --- per-slot hard floor for intentional battery-to-grid export (issue #752) ---
     #: Per-slot hard floor on the export price below which intentional

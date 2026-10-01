@@ -41,6 +41,7 @@ from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
     get_max_discharge_power,
 )
+from custom_components.hsem.utils.soc_bounds import finite_or
 
 
 def _resolve_max_discharge_power_w(live: LiveState) -> float | None:
@@ -331,6 +332,9 @@ def build_planner_input(
         battery_forecast_reserve_pct=(
             forecast_reserve_pct if forecast_reserve_pct is not None else 0.0
         ),
+        battery_target_soc_enabled=bool(cfg.batteries_target_soc_enabled),
+        battery_target_soc_pct=finite_or(cfg.batteries_target_soc_pct, 100.0),
+        battery_target_soc_time=str(cfg.batteries_target_soc_time),
         export_min_price=convert_to_float(cfg.export_electricity_min_price) or 0.0,
         export_fee_per_kwh=convert_to_float(cfg.export_fee_per_kwh) or 0.0,
         main_fuse_amps=(float(cfg.main_fuse_amps) if cfg.main_fuse_amps > 0 else None),

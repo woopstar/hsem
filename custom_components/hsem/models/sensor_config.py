@@ -138,6 +138,10 @@ class SensorConfig:
             leave available for unexpected local demand.
         batteries_export_min_price: Per-slot hard floor for intentional
             battery-to-grid export (issue #752).  ``0.0`` disables the floor.
+        batteries_target_soc_enabled: Opt-in house-battery target SoC by a
+            daily deadline, funded only by otherwise-exported PV (issue #1109).
+        batteries_target_soc_pct: House-battery target, absolute SoC percent.
+        batteries_target_soc_time: Daily target time (``HH:MM:SS``).
         batteries_wait_mode_behavior: How ``batteries_wait_mode`` is interpreted.
             ``strict`` keeps the battery idle; ``self_consumption_with_reserve``
             allows normal household self-consumption while protecting the
@@ -286,6 +290,10 @@ class SensorConfig:
     #: house load (no grid export).  ``0.0`` = disabled (default) — fully
     #: backward compatible.
     batteries_export_min_price: float = 0.0
+    #: House-battery target SoC by deadline (issue #1109); off by default.
+    batteries_target_soc_enabled: bool = False
+    batteries_target_soc_pct: float = 100.0
+    batteries_target_soc_time: str = "17:00:00"
 
     # Wait mode behaviour
     batteries_wait_mode_behavior: str = DEFAULT_WAIT_MODE_BEHAVIOR

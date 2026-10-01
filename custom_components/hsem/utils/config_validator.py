@@ -18,6 +18,7 @@ Design principles
 """
 
 import re
+from datetime import time
 from typing import Any
 
 from custom_components.hsem.utils.conversion import convert_months_to_int
@@ -396,6 +397,26 @@ def validate_price(
         errors[field] = "price_out_of_range"
 
     return errors
+
+
+def validate_time_of_day(user_input: dict, field: str) -> dict[str, str]:
+    """Validate an ``HH:MM[:SS]`` time-of-day value.
+
+    Args:
+        user_input: Dict from the config/options form.
+        field: The field name whose value is being validated.
+
+    Returns:
+        Dict mapping field names to translation error keys.
+    """
+    value = user_input.get(field)
+    if value is None:
+        return {}
+    try:
+        time.fromisoformat(str(value).strip())
+    except ValueError:
+        return {field: "invalid_time_value"}
+    return {}
 
 
 # ---------------------------------------------------------------------------

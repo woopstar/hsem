@@ -32,6 +32,11 @@ DEFAULT_CONFIG_VALUES = {
     # Per-slot hard floor for intentional battery-to-grid export (issue #752).
     # 0.0 = disabled (default) — fully backward compatible.
     "hsem_batteries_export_min_price": 0.0,
+    # House-battery target SoC by a daily deadline, funded only by PV that
+    # would otherwise be exported (issue #1109).  Off by default.
+    "hsem_batteries_target_soc_enabled": False,
+    "hsem_batteries_target_soc_pct": 100,
+    "hsem_batteries_target_soc_time": "17:00:00",
     # Wait mode behaviour: "strict" keeps the battery idle, "self_consumption_with_reserve"
     # allows normal household self-consumption while protecting the planner reserve.
     "hsem_batteries_wait_mode_behavior": DEFAULT_WAIT_MODE_BEHAVIOR,

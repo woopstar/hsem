@@ -86,7 +86,11 @@ configures grid tariff fees.
 
 ## Score (selector objective)
 
-$$ S = C*{total} + P*{soc} + P*{grid} + V*{terminal} $$
+$$
+S = C_{total} + P_{soc} + P_{grid} + V_{terminal} + B
+$$
+
+$B$ is the battery target penalty, zero unless that opt-in feature is active.
 
 ### SoC penalties (quadratic guard)
 
@@ -152,6 +156,24 @@ $$ V = \max\left(0, \min\left(0.9 \cdot (\eta*{dis} \cdot p*{peak} - c), \frac{p
 A leftover kWh is worth the lower of its discounted use at the next peak and the
 cost of storing it again overnight. See `docs/planner-spec.md` § Terminal SoC for
 why it is not derived from any price inside the horizon.
+
+### Battery target penalty (issue #1109)
+
+Zero unless the opt-in house-battery target SoC is active. It prices the
+shortfall against the target at the next target occurrence, for every
+candidate, undiscounted:
+
+$$
+B = P \cdot \max(E_{target} - E[T],\ 0)
+$$
+
+- $E[T]$ = `estimated_battery_capacity_kwh` at the target slot $T$
+- $E_{target}$ = the configured target in model kWh (above the discharge floor)
+- $P$ = the shortfall price the MILP stage-2 slack uses:
+  $P = \min\left(\max_{t \le T} \frac{p_{exp}[t]}{\eta_{chg}} + c + \varepsilon,\ P_{ev} - \varepsilon\right)$
+
+$B$ enters the score only, never the total cost. See `docs/planner-spec.md`
+§ House-battery target SoC by deadline.
 
 ---
 

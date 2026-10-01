@@ -72,6 +72,9 @@ class CoordinatorData:
     plan_explanation: PlanExplanation = field(default_factory=PlanExplanation)
     #: Structured data-quality report for price, PV, and load-forecast inputs.
     data_quality: DataQuality = field(default_factory=DataQuality)
+    #: House-battery target diagnostics for the next occurrence (issue #1109);
+    #: ``None`` when the target is disabled or out of the horizon.
+    battery_target: dict | None = None
     #: EV optimal charging plan for the primary EV (None when disabled).
     ev_charging_plan: EVChargingPlan | None = None
     #: EV optimal charging plan for the second EV (None when disabled).
