@@ -159,8 +159,8 @@ class TimeSeriesIndex:
             missing price data from missing PV data.
         missing_pv_slots:
             Subset of :attr:`missing_slots` populated only by
-            :meth:`align_hourly_pv`.  Enables callers to distinguish missing
-            PV data from missing price data.
+            :meth:`align_hourly_pv` and :meth:`align_slot_pv`.  Enables
+            callers to distinguish missing PV data from missing price data.
     """
 
     slots: list[SlotMeta] = field(default_factory=list)
@@ -348,6 +348,49 @@ class TimeSeriesIndex:
                 aligned.append(MISSING_SENTINEL)
             else:
                 aligned.append(round(hourly_kwh * meta.slot_fraction, 6))
+        return aligned
+
+    def align_slot_pv(
+        self,
+        pv_by_slot: dict[tuple[int, int], float],
+        pv_by_hour: dict[tuple[int, int], float] | None = None,
+    ) -> list[float]:
+        """Align a per-slot PV forecast onto the slot grid (issue #1191).
+
+        Each value is the average PV power in kW over its slot, so the slot's
+        energy is ``kW × slot_fraction``.  Slots are matched by
+        ``(day_offset, slot_in_day)``, which stays unique on DST days: both
+        occurrences of the fall-back hour keep their own value.
+
+        A slot without its own entry falls back to the hour-granular value
+        for ``(day_offset, hour)``, split evenly as in
+        :meth:`align_hourly_pv`.  A slot with neither is filled with
+        :data:`MISSING_SENTINEL` and recorded in :attr:`missing_slots` and
+        :attr:`missing_pv_slots`.
+
+        Args:
+            pv_by_slot:
+                Average PV power in kW keyed by ``(day_offset, slot_in_day)``.
+            pv_by_hour:
+                Optional hour-granular fallback keyed by
+                ``(day_offset, hour)``, in kWh per hour.
+
+        Returns:
+            List of per-slot PV energy estimates in kWh parallel to
+            :attr:`slots`.
+        """
+        hourly = pv_by_hour or {}
+        aligned: list[float] = []
+        for meta in self.slots:
+            power_kw = pv_by_slot.get((meta.key.day_offset, meta.key.slot_in_day))
+            if power_kw is None:
+                power_kw = hourly.get((meta.key.day_offset, meta.hour))
+            if power_kw is None:
+                self.missing_slots.add(meta.key)
+                self.missing_pv_slots.add(meta.key)
+                aligned.append(MISSING_SENTINEL)
+            else:
+                aligned.append(round(power_kw * meta.slot_fraction, 6))
         return aligned
 
     def align_hourly_load(

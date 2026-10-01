@@ -2409,3 +2409,17 @@ Tests: `tests/test_dynamic_floor_reference_plan.py::TestBuildBridgeSlots::test_u
 **Gotcha:** never take "the first slot of the hour" for a quantity a finer source may have written. On affected installs the solar corrector's per-hour factors were learned against the biased forecast and relearn within its four-sample history.
 
 Tests: `tests/test_solcast_subhourly_source.py` (real `populate_price_and_solcast_from_snapshot` and `build_planner_input`; both attributes, half-hourly only, hourly only, attribute order, 15/30/60-minute slots).
+
+## Sub-Hourly PV Reaches the Planner Per Slot (issue #1191, stage 2)
+
+**Unit:** `SolcastSlot.pv_estimate` is **average power in kW** over the entry's period; the docstring on `SolcastSlot` is the one definition. Slot energy = kW × slot hours. For an hourly entry kW and kWh are the same number, which is why the old "hourly kWh" wording worked.
+
+**Rule:** `SolcastSlot` has an optional `slot_in_day` (as `PricePoint` since #720). `coordinator_builder._build_solcast_slots()` emits hour-granular entries when every hour's slots hold one value (hourly source, or 60-minute slots) and one entry per slot when any hour's slots differ. `populate_solcast()` routes per-slot entries through `TimeSeriesIndex.align_slot_pv()` (`(day_offset, slot_in_day)` key, hour-granular fallback, missing slots into `missing_pv_slots`) and hour-granular ones through `align_hourly_pv()` as before. The corrector's factor is still looked up by `slot.start.hour`.
+
+**Gotchas:**
+
+- An hourly source must keep producing `slot_in_day=None` entries: that is what makes its planner input and plan identical to before. Do not "simplify" the builder to always emit per slot.
+- Anything that reads `inp.solcast_slots` as `{(day_offset, hour): value}` now takes the last slot of the hour with a sub-hourly source. Take the mean of the hour's entries instead (`tests/test_solcast_subhourly_source.py::_planner_pv_by_hour`).
+- The builder cannot tell "no PV data" from "zero PV": uncovered slots still arrive as `0.0`, for prices too. That is issue #1196, not solved here.
+
+Tests: `tests/test_solcast_subhourly_planner.py` (real populator → `build_planner_input` → `run_planner`: 30- and 15-minute sources at 15/30/60-minute slots, energy per hour, both DST days, missing slots, corrector, forecast tracker), `tests/test_time_series_model.py::TestAlignSlotPv`.

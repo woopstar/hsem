@@ -57,7 +57,7 @@ flowchart TD
 | Integration                                   | Purpose                             | Data provided                                                |
 | --------------------------------------------- | ----------------------------------- | ------------------------------------------------------------ |
 | **Huawei Solar** (`wlcrs/huawei_solar`)       | Inverter/battery hardware interface | SoC, power limits, working mode, TOU periods, rated capacity |
-| **Solcast Solar** (`solcast_solar`)           | PV production forecast              | Per-hour PV estimates for today and tomorrow                 |
+| **Solcast Solar** (`solcast_solar`)           | PV production forecast              | Hourly or half-hourly PV estimates for today and tomorrow    |
 | **Energi Data Service** (`energidataservice`) | Electricity spot prices             | Hourly import and export prices                              |
 | **EV charger** (generic)                      | EV state monitoring                 | Connected status, SoC, charging power                        |
 

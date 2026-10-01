@@ -239,14 +239,31 @@ See [Price interval semantics](planner-spec.md#price-interval-semantics) in the 
 
 ### PV forecast
 
-| Field           | Type                | Description                     |
-| --------------- | ------------------- | ------------------------------- |
-| `solcast_slots` | `list[SolcastSlot]` | Forecast PV production per hour |
+| Field           | Type                | Description                                          |
+| --------------- | ------------------- | ---------------------------------------------------- |
+| `solcast_slots` | `list[SolcastSlot]` | Forecast PV production, per hour or per planner slot |
 
 Each `SolcastSlot` carries:
 
 - `hour` — 0-based clock-hour
-- `pv_estimate` — expected PV energy (kWh) for that hour
+- `pv_estimate` — average PV power (kW) over the entry's period. For an
+  hourly entry that is also the hour's energy in kWh
+- `day_offset` — whole days from the planning midnight
+- `slot_in_day` — optional index of the planner slot within its day. `None`
+  means the entry covers the whole hour and is split evenly over its slots
+
+The forecast reaches the plan at the source's resolution (issue #1191):
+
+| Solcast attribute    | Cadence | What the planner uses                                  |
+| -------------------- | ------- | ------------------------------------------------------ |
+| `detailedHourly`     | 60 min  | One value per hour, split evenly over the hour's slots |
+| `detailedForecast`   | 30 min  | One value per half-hour at 15- and 30-minute slots     |
+| any source at 15 min | 15 min  | One value per quarter-hour at 15-minute slots          |
+
+A source finer than the planner slot is averaged over the slot, so the hour's
+energy is the same at every slot interval. With both Solcast attributes
+enabled the half-hourly one is used. A slot with no PV data is planned with
+zero PV and listed in the `*_pv_missing_hours` data-quality fields.
 
 For multi-day horizons, a **confidence decay** factor is applied to PV estimates
 for future days to account for forecast uncertainty:
