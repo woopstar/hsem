@@ -3,8 +3,10 @@
 Single responsibility: transform raw :class:`PricePoint` inputs into
 per-slot :class:`SlotPrice` values on the planned slots, including the
 missing-price estimation rule (issue #1002): a slot with no source price
-is filled with the same-hour price from the nearest earlier day that has
-data, and the gap is always recorded on the shared time-series index.
+is filled with the price of the same wall-clock time on the nearest earlier
+day that has data (the same quarter of the hour when the source is
+sub-hourly, issue #1219), and the gap is always recorded on the shared
+time-series index.
 
 Split out of ``slot_population.py`` to keep both modules under the 30 KB
 file-size limit.  Pure functions — no I/O, no Home Assistant imports.
@@ -13,6 +15,7 @@ file-size limit.  Pure functions — no I/O, no Home Assistant imports.
 from __future__ import annotations
 
 import math
+from collections.abc import Hashable, Iterable
 from typing import cast
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
@@ -23,28 +26,56 @@ from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.prices import SlotPrice
 
 
+def _mean_by_key[K: Hashable](pairs: Iterable[tuple[K, float]]) -> dict[K, float]:
+    """Return the mean of the values that share a key.
+
+    A key whose values are all the same keeps the first of them, so an hourly
+    source repeated on every sub-hourly slot is not disturbed by rounding.
+    """
+    grouped: dict[K, list[float]] = {}
+    for key, value in pairs:
+        grouped.setdefault(key, []).append(value)
+    return {
+        key: values[0]
+        if max(values) - min(values) < 1e-12
+        else sum(values) / len(values)
+        for key, values in grouped.items()
+    }
+
+
 def _estimate_missing_price(
     prices_by_day_hour: dict[tuple[int, int], float],
     day_offset: int,
     hour: int,
+    prices_by_day_quarter: dict[tuple[int, int, int], float] | None = None,
+    minute: int = 0,
 ) -> float | None:
     """Estimate a missing price from the nearest earlier day with data.
 
     Spot-market prices are only known for today (and tomorrow after ~13:00
     local time), so slots on uncovered days must not be planned as *free*
     energy (issue #1002).  Walk backwards from ``day_offset - 1`` to day 0
-    and return the same-hour price from the nearest day that has one.
+    and return the price of the same wall-clock time on the nearest day that
+    has one: the same quarter of the hour when *prices_by_day_quarter* holds
+    it, otherwise the hour's price (issue #1219).
 
     Args:
         prices_by_day_hour: Prices keyed by ``(day_offset, hour)``.
         day_offset: Day offset of the missing slot.
         hour: Wall-clock hour (0-23) of the missing slot.
+        prices_by_day_quarter: Sub-hourly prices keyed by
+            ``(day_offset, hour, minute)``, or ``None`` for an hourly source.
+        minute: Wall-clock minute (0-59) the missing slot starts at.
 
     Returns:
         The estimated price, or ``None`` when no earlier day has data for
         that hour.
     """
     for d in range(day_offset - 1, -1, -1):
+        if prices_by_day_quarter is not None:
+            quarter = prices_by_day_quarter.get((d, hour, minute))
+            if quarter is not None:
+                return quarter
         value = prices_by_day_hour.get((d, hour))
         if value is not None:
             return value
@@ -63,9 +94,11 @@ def populate_prices(
 
     Slots with no source price data (e.g. day+1 before the day-ahead
     auction publishes, or any multi-day horizon beyond the data coverage)
-    are filled with the same-hour price from the nearest earlier day that
-    has data — see :func:`_estimate_missing_price`.  Only when no earlier
-    day has data for that hour at all do they fall back to 0.0 for
+    are filled with the price of the same wall-clock time on the nearest
+    earlier day that has data — see :func:`_estimate_missing_price`.  With
+    sub-hourly price points that is the same quarter of the hour, and the
+    hour's mean when that day lacks the quarter (issue #1219).  Only when no
+    earlier day has data for that hour at all do they fall back to 0.0 for
     backward compatibility.  The gap is always recorded on
     ``tsi.missing_price_slots`` so ``DataQuality`` warnings still fire.
 
@@ -98,13 +131,31 @@ def populate_prices(
                 if pp.slot_in_day is not None
             }
             # Hourly fallback for slots the source does not cover (e.g. a
-            # 60-min price source feeding 15-min slots).
-            imp_by_hour = {
-                (pp.day_offset, pp.hour): pp.import_price for pp in price_points
-            }
-            exp_by_hour = {
-                (pp.day_offset, pp.hour): pp.export_price for pp in price_points
-            }
+            # 60-min price source feeding 15-min slots): the mean of the
+            # hour's points, which for an hourly source is its one price.
+            imp_by_hour = _mean_by_key(
+                ((pp.day_offset, pp.hour), pp.import_price) for pp in price_points
+            )
+            exp_by_hour = _mean_by_key(
+                ((pp.day_offset, pp.hour), pp.export_price) for pp in price_points
+            )
+            # The estimate for an uncovered day reads the same wall-clock
+            # quarter of an earlier day (issue #1219).  slot_in_day counts
+            # real steps since local midnight, so on a DST day the same index
+            # is a different clock time; the minute within the hour is not
+            # moved by a whole-hour shift.  Both passes of a repeated
+            # fall-back hour share a key and are averaged.
+            step = tsi.interval_minutes
+            imp_by_quarter = _mean_by_key(
+                ((pp.day_offset, pp.hour, pp.slot_in_day * step % 60), pp.import_price)
+                for pp in price_points
+                if pp.slot_in_day is not None
+            )
+            exp_by_quarter = _mean_by_key(
+                ((pp.day_offset, pp.hour, pp.slot_in_day * step % 60), pp.export_price)
+                for pp in price_points
+                if pp.slot_in_day is not None
+            )
             for slot, meta in zip(slots, tsi.slots):
                 key = (meta.key.day_offset, meta.key.slot_in_day)
                 hour_key = (meta.key.day_offset, meta.hour)
@@ -117,11 +168,19 @@ def populate_prices(
                     tsi.missing_price_slots.add(meta.key)
                     if imp is None:
                         imp = _estimate_missing_price(
-                            imp_by_hour, meta.key.day_offset, meta.hour
+                            imp_by_hour,
+                            meta.key.day_offset,
+                            meta.hour,
+                            imp_by_quarter,
+                            meta.minute,
                         )
                     if exp is None:
                         exp = _estimate_missing_price(
-                            exp_by_hour, meta.key.day_offset, meta.hour
+                            exp_by_hour,
+                            meta.key.day_offset,
+                            meta.hour,
+                            exp_by_quarter,
+                            meta.minute,
                         )
                 slot.price = SlotPrice(
                     import_price=0.0 if imp is None else imp,
