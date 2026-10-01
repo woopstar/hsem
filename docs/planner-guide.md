@@ -1857,7 +1857,8 @@ The planner treats all `price_points` as equally reliable. In practice:
 
 Missing price data is surfaced in `data_quality` and triggers `Degraded` mode.
 Since issue #1002 the planner fills price-missing slots with the same-hour
-price from the nearest earlier day that has data, instead of planning against
+price from the nearest earlier day that has data (with quarter-hourly prices:
+the same quarter of that hour, issue #1219), instead of planning against
 a fictitious `0.0` ("free energy") price; only hours missing on every earlier
 day still fall back to `0.0`. The estimate is always flagged in
 `data_quality.*_price_missing_hours`, so diagnostics reflect the true data
