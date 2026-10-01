@@ -33,8 +33,8 @@ can be opened.
 ```
 
 The non-mutating counterpart of `lint`: `ruff format --check`, `ruff check`
-(no `--fix`) and prettier `--check`. It never touches the tree, so a violation
-fails instead of being quietly repaired.
+(no `--fix`), prettier `--check` and the docs math check. It never touches the
+tree, so a violation fails instead of being quietly repaired.
 
 This is the target that actually gates formatting and lint in CI. `lint` and
 `all` both _fix_ in place, which means that in an ephemeral CI container they
@@ -145,14 +145,37 @@ If in doubt, **add to the whitelist** rather than deleting.
 
 ---
 
+### Check the math in the docs
+
+```bash
+./scripts/quality.sh docs-math
+```
+
+Runs `scripts/check_docs_math.py` over `docs/**/*.md`. Two tools rewrite
+LaTeX silently, and this is the only thing that reports it:
+
+- **prettier** treats a display formula written on one line
+  (`$$ C_{total} = ... $$`) as text and turns the underscores into `*` or
+  `\_`. A block with `$$` alone on its own lines is left alone.
+- **GitHub** applies Markdown's backslash escapes inside math, so `\_`
+  loses its backslash and renders as a subscript, and a line inside a block
+  that looks like Markdown (a blank line, a leading `+` or `>`) ends the block.
+
+The check fails on a single-line display formula, on the marks prettier
+leaves behind (`*{`, `\_{`), on a single backslash before punctuation inside
+math, and on Markdown-looking lines inside a block. `lint`, `format-check`
+and `all` run it; `lint` runs it after prettier, so a formula prettier has
+just rewritten is reported in the same run.
+
 ## CI Integration
 
 `.github/workflows/lint-and-test.yml` runs the checks in two jobs:
 
 - **`validate`** calls `./scripts/quality.sh format-check`, which verifies
-  `ruff format`, `ruff check` and prettier without writing. This is what gates
-  formatting and lint — `lint` and `all` fix in place, so in an ephemeral CI
-  container they cannot fail on anything auto-fixable.
+  `ruff format`, `ruff check`, prettier and the math in `docs/` without
+  writing. This is what gates formatting and lint — `lint` and `all` fix in
+  place, so in an ephemeral CI container they cannot fail on anything
+  auto-fixable.
 - **`quality`** runs `./scripts/quality.sh all` in the devcontainer, covering
   typing (mypy), static quality (pyright + vulture), translations and the test
   suite with its per-module coverage floor.

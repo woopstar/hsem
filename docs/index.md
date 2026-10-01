@@ -50,7 +50,7 @@
 1. **Always read `planner-spec.md`** before modifying planner code
 2. **Always check `huawei_entities.md`** before using a battery/inverter value
 3. Use Mermaid for architecture and flow diagrams; do not use ASCII/Markdown box diagrams
-4. Use math equations (`$$ ... $$`) for formulas rather than plain text/code-block formulas
+4. Use math equations for formulas rather than plain text/code-block formulas. Put each `$$` on its own line and write a literal underscore as `\\_`; `./scripts/quality.sh docs-math` checks the rules (see the top of `scripts/check_docs_math.py`)
 5. Run `./scripts/quality.sh lint` before every commit
 6. Run `./scripts/quality.sh quality` after lint
 7. Run `./scripts/quality.sh test` before every PR

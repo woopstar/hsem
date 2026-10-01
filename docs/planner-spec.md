@@ -869,7 +869,9 @@ on the first cycle after the sensor reports again.
      charge-past-target EV (`EVConfig.past_target_reserved_ac_kwh`). One
      shared per-slot row caps those EVs at the PV stage 1 left unused:
 
-  $$\sum_{ev} \frac{ev_c[t]}{\eta_{charger}} \le \max\bigl(0,\ S_{full}[t] - reserved[t]\bigr) \cdot remaining\_fraction[t]$$
+  $$
+  \sum_{ev} \frac{ev\\_c[t]}{\eta_{charger}} \le \max\bigl(0,\ S_{full}[t] - reserved[t]\bigr) \cdot remaining\\_fraction[t]
+  $$
 
   The EV gains nothing from the battery yielding surplus, so the battery needs
   no row at all and is free to grid-charge. Session-pinned EV columns are
@@ -979,7 +981,9 @@ The deadline soft goal therefore uses `executable_need`: the effective need
 amp-slots `T` that full-width slots deliver exactly. `T` amp-slots are
 executable in `k` full slots when `k · min_amp ≤ T ≤ k · rated_amp`:
 
-$$executable\_need = q \cdot \min\{\,T \in \mathbb{Z} : T \ge S / q,\ \exists k \le K : k \cdot min\_amp \le T \le k \cdot rated\_amp\,\}$$
+$$
+executable\\_need = q \cdot \min\\{\\,T \in \mathbb{Z} : T \ge S / q,\ \exists k \le K : k \cdot min\\_amp \le T \le k \cdot rated\\_amp\\,\\}
+$$
 
 where `K` is the number of full-width slots up to `D`. A live-slot
 combination must then displace at least one whole future amp-step (`q` kWh)
@@ -1758,7 +1762,7 @@ time zone. An occurrence that falls before the end of the current slot rolls
 to the next day; an occurrence beyond the horizon is not enforced. Later
 days' targets are picked up by the receding horizon, so tomorrow's target
 cannot interfere with using tonight's reserve. The build window is
-$W = \{t \le T\}$.
+$W = \\{t \le T\\}$.
 
 **Target in model coordinates.** `battery_target.target_kwh_for_pct` converts
 the absolute SoC percentage with `resolve_soc_bounds_pct`, the resolver the
@@ -2526,7 +2530,7 @@ When the opt-in house-battery target is active, `score` gains
 at the same `P` the MILP stage-2 slack uses, undiscounted.
 
 $$
-battery\_target\_penalty = P \times \max(E_{target} - E[T],\ 0)
+battery\\_target\\_penalty = P \times \max(E_{target} - E[T],\ 0)
 $$
 
 `E[T]` is `estimated_battery_capacity_kwh` at the target slot. A shortfall
@@ -3531,7 +3535,7 @@ such hours, each window of a missing hour $h$ is estimated from the nearest
 measured hour before ($b$) and after ($a$) on the circular day:
 
 $$
-\hat{v}_{w}(h) = \max\left(v_{w}(b),\ v_{w}(a)\right), \quad w \in \{1d, 3d, 7d, 14d\}
+\hat{v}_{w}(h) = \max\left(v_{w}(b),\ v_{w}(a)\right), \quad w \in \\{1d, 3d, 7d, 14d\\}
 $$
 
 The estimate then goes through the normal weighted blend. It is never below
