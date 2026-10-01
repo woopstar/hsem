@@ -166,13 +166,13 @@ The planner classifies each EV contribution as either separate/planned or still
 embedded/accounted:
 
 $$
-\mathrm{pure\_house}[t]
-= \mathrm{avg\_house}[t] - \mathrm{ev\_accounted}[t]
+\mathrm{pure\\_house}[t]
+= \mathrm{avg\\_house}[t] - \mathrm{ev\\_accounted}[t]
 $$
 
 $$
-\mathrm{net\_load}[t]
-= \mathrm{avg\_house}[t] + \mathrm{ev\_planned}[t] - \mathrm{pv}[t]
+\mathrm{net\\_load}[t]
+= \mathrm{avg\\_house}[t] + \mathrm{ev\\_planned}[t] - \mathrm{pv}[t]
 $$
 
 With two EVs, one contribution may be planned while the other is accounted.

@@ -490,7 +490,27 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 
 - Use Mermaid fenced code blocks for architecture and flow diagrams.
 - Do not use ASCII/Markdown box diagrams for architecture.
-- Use math equations (`$$ ... $$`) for formulas instead of plain text or code-block formulas.
+- Use math equations for formulas instead of plain text or code-block formulas.
+- **Display math uses the block form** (issue #1184): `$$` alone on a line, the
+  formula, `$$` alone on a line. Never write `$$ ... $$` on one line: prettier
+  treats it as text and rewrites `C_{total}` to `C*{total}` or `p\_{imp}`, and
+  `./scripts/quality.sh lint` re-applies that on every run.
+- **GitHub strips a backslash before punctuation inside `$...$` and `$$...$$`**
+  (Markdown escapes are applied to math). `\_` becomes a subscript, `\,` a comma
+  and `\{` an opening group. Write them doubled: `\\_`, `\\,`, `\\;`, `\\%`,
+  `\\{`, `\\}`. A `\\` line break must be the last thing on its line; in the
+  middle of a line GitHub turns it into a single backslash.
+- **No Markdown inside a `$$` block**: no blank line, and no line that starts
+  with `+ `, `- `, `* `, `> `, `#` or `1. `. Put a leading operator at the end
+  of the previous line (or write `{} + ...`). Rows indented by four spaces
+  inside `aligned` are fine.
+- A fenced ` ```math ` block and inline ``$`...`$`` are passed through
+  untouched by both tools; there LaTeX is written with single backslashes.
+- `scripts/check_docs_math.py` enforces all of this for `docs/**/*.md`. It
+  runs in `./scripts/quality.sh lint`, `format-check` (CI) and `all`, and alone
+  as `./scripts/quality.sh docs-math`. To see what GitHub will hand to its
+  renderer: `gh api -X POST /markdown -f mode=gfm -F text=@docs/<file>.md` and
+  read the `<math-renderer>` elements.
 
 ---
 
