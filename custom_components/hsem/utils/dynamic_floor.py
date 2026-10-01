@@ -142,9 +142,8 @@ class _BridgeScan(NamedTuple):
     """Result of one walk from now to the next refill.
 
     ``deltas`` holds, for every slot before the refill, what that slot adds
-    to the reserve: its net consumption.  ``covered`` is true when the grid
-    credit at the refill slot covers what was bridged up to it; such a refill
-    leaves no reserve.
+    to the reserve: its net consumption.  ``covered`` is true for an
+    affordable refill (``grid_available``); such a refill leaves no reserve.
     """
 
     refill_slot: Any
@@ -173,14 +172,16 @@ def _scan_bridge(
 
     With *cheap_price* ``None`` only the reference plan's grid charges are
     credited, and the first credited slot is a ``grid_charge`` refill: the
-    bridge ends where the plan refills.  A charge that covers what was bridged
-    up to it leaves no reserve; a smaller one leaves the consumption before
-    it (issue #1214).  The reserve never reaches past a planned charge, so
-    holding it cannot shrink that charge on the next replan.
+    bridge ends where the plan refills, and the reserve is the consumption
+    before it (issue #1214) whatever the size of the charge (issue #1220: a
+    covering charge used to release the floor, and the amount the plan buys
+    depends on the live SoC).  The reserve never reaches past a planned
+    charge, so holding it cannot shrink that charge on the next replan.
 
-    Otherwise a slot priced at or below *cheap_price* is also credited with
-    what the battery can take at *max_grid_charge_kw*, credits add up, and a
-    covering total is a ``grid_available`` refill (issue #1156).
+    Otherwise a slot priced at or below *cheap_price* is credited with what
+    the battery can take at *max_grid_charge_kw*, credits add up, and a
+    covering total is a ``grid_available`` refill (issue #1156).  A planned
+    charge in a slot that is not affordable ends this scan too.
 
     Args:
         future: Chronological look-ahead slots.
@@ -220,14 +221,20 @@ def _scan_bridge(
             max(planned, max_grid_charge_kw * slot_hours) if affordable else planned
         )
         if credit > 1e-9:
+            if not affordable:
+                # A planned charge ends the bridge whatever its size: the
+                # reserve is what is consumed before it (issues #1214, #1220).
+                # In the affordable pass that leaves the first scan standing.
+                refill_type = "grid_charge" if cheap_price is None else "none"
+                return _BridgeScan(
+                    s, refill_type, consumption, solar, False, hours, tuple(deltas)
+                )
             grid_charge += credit
             # The credit covers the bridge when it is at least what was
             # consumed up to this slot (consumption - solar so far).
-            covered = grid_charge >= max(consumption - solar, 0.0)
-            if covered or cheap_price is None:
-                refill_type = "grid_charge" if cheap_price is None else "grid_available"
+            if grid_charge >= max(consumption - solar, 0.0):
                 return _BridgeScan(
-                    s, refill_type, consumption, solar, covered, hours, tuple(deltas)
+                    s, "grid_available", consumption, solar, True, hours, tuple(deltas)
                 )
             # An affordable credit that does not cover the bridge yet: keep
             # scanning, later affordable slots add to it.
@@ -400,9 +407,9 @@ class DynamicDischargeFloor:
            - Solar surplus (net_consumption_kwh < 0)
            - The first slot a planned grid charge is credited to
         3. Accumulate house consumption for every slot before the refill.
-        4. A planned charge of at least that consumption covers the bridge:
-           the reserve is 0.  A smaller one leaves it whole (issue #1214).
-        5. If no planned grid charge covers the bridge, scan again and also
+        4. That consumption is the reserve, whatever the size of the planned
+           charge (issues #1214, #1220).
+        5. If a reserve is left, scan again and
            credit every affordable slot (see :func:`cheap_refill_price`) with
            ``max_grid_charge_kw × hours``.  A covering credit ends the bridge
            as ``grid_available`` (issue #1156); otherwise the first scan
@@ -481,9 +488,8 @@ class DynamicDischargeFloor:
             return configured_min_soc_pct, diag, []
 
         # Scan forward to the first refill.  The reference plan's own grid
-        # charges come first; only if they do not cover the bridge does a
-        # second pass also credit affordable slots it does not charge in
-        # (issue #1156), so a covering planned charge keeps its refill.
+        # charges come first; when they leave a reserve, a second pass
+        # credits affordable slots (issue #1156), which can only release it.
         planned = _planned_grid_charges(
             future, _cycle_cost_tolerance(cycle_cost_per_kwh)
         )
@@ -492,7 +498,11 @@ class DynamicDischargeFloor:
             (getattr(s, "import_price", math.nan) for s in future),
             cycle_cost_per_kwh,
         )
-        if not scan.covered and cheap_price is not None and max_grid_charge_kw > 1e-9:
+        if (
+            scan.reserve_kwh > 1e-9
+            and cheap_price is not None
+            and max_grid_charge_kw > 1e-9
+        ):
             cheap_scan = _scan_bridge(future, planned, cheap_price, max_grid_charge_kw)
             if cheap_scan.refill_type == "grid_available":
                 scan = cheap_scan

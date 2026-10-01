@@ -71,23 +71,23 @@ cycle are durable; stale generations must not publish.
 
 ### Utils layer (`custom_components/hsem/utils/`)
 
-| File                    | Responsibility                                                                                                                                              |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `recommendations.py`    | `Recommendations` enum + canonical `DISCHARGE_RECS`, `CHARGE_RECS`, and `SENTINEL_RECS` frozensets                                                          |
-| `misc.py`               | Shared math helpers: `clamp_efficiency()`, `calculate_recommended_threshold()`, etc.                                                                        |
-| `sensornames.py`        | All HA entity name constants — never hardcode sensor names elsewhere                                                                                        |
-| `prices.py`             | Price lookup, grid fee calculation, spot price helpers                                                                                                      |
-| `huawei.py`             | Huawei Solar inverter API helpers                                                                                                                           |
-| `logger.py`             | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)                                                             |
-| `solar_corrector.py`    | Per-hour PV forecast accuracy auto-correction (issue #602)                                                                                                  |
-| `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill; a covering grid refill → reserve 0, #1140/#1156; a planned charge ends the bridge, #1214)          |
-| `soc_bounds.py`         | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094); `reserve_floor_pct()` — reserve kWh to floor SoC (#1221) |
-| `capacity_learner.py`   | Battery usable capacity auto-detection from BMS readings                                                                                                    |
-| `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                                                                             |
-| `weekday_profile.py`    | Weekday/weekend split house load EWMA profiles                                                                                                              |
-| `ev_mode_resolver.py`   | Auto-Full EV charging on negative electricity prices                                                                                                        |
-| `ev_accounting.py`      | Raw CT versus per-EV normalized-baseline accounting helper                                                                                                  |
-| `unit_normalize.py`     | Generic sensor unit normalization via HA's `unit_conversion` converters (issues #945, #1119)                                                                |
+| File                    | Responsibility                                                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `recommendations.py`    | `Recommendations` enum + canonical `DISCHARGE_RECS`, `CHARGE_RECS`, and `SENTINEL_RECS` frozensets                                                           |
+| `misc.py`               | Shared math helpers: `clamp_efficiency()`, `calculate_recommended_threshold()`, etc.                                                                         |
+| `sensornames.py`        | All HA entity name constants — never hardcode sensor names elsewhere                                                                                         |
+| `prices.py`             | Price lookup, grid fee calculation, spot price helpers                                                                                                       |
+| `huawei.py`             | Huawei Solar inverter API helpers                                                                                                                            |
+| `logger.py`             | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)                                                              |
+| `solar_corrector.py`    | Per-hour PV forecast accuracy auto-correction (issue #602)                                                                                                   |
+| `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill; an affordable refill → reserve 0, #1156; a planned charge ends the bridge at any size, #1214/#1220) |
+| `soc_bounds.py`         | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094); `reserve_floor_pct()` — reserve kWh to floor SoC (#1221)  |
+| `capacity_learner.py`   | Battery usable capacity auto-detection from BMS readings                                                                                                     |
+| `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                                                                              |
+| `weekday_profile.py`    | Weekday/weekend split house load EWMA profiles                                                                                                               |
+| `ev_mode_resolver.py`   | Auto-Full EV charging on negative electricity prices                                                                                                         |
+| `ev_accounting.py`      | Raw CT versus per-EV normalized-baseline accounting helper                                                                                                   |
+| `unit_normalize.py`     | Generic sensor unit normalization via HA's `unit_conversion` converters (issues #945, #1119)                                                                 |
 
 ---
 
@@ -2530,7 +2530,7 @@ Tests: `tests/utils/test_dynamic_floor.py::TestMarginCorrection` (288 cycles/day
 
 **Bug:** since #1138 the floor-free reference plan does not buy at a cheap night when tomorrow's PV refills the battery anyway. The refill scan credited only planned grid charges, so it ran to the solar surplus and held a 77.5 % floor in the #1125 fixture (0.03 night, full PV). The final plan then imported the evening and cost 0.917 against 0.097 for the reference plan.
 
-**Rule:** `compute_floor()` scans twice. The first pass credits planned charges only, and a covering one (`grid_charge`) always stands. Otherwise a second pass also credits every _affordable_ slot with `max_grid_charge_kw × hours`. A covering credit ends the bridge as `grid_available` with reserve 0. If that pass does not cover the bridge, the first result stands, so the change can only release the floor. Affordable means `price ≤ cheap_refill_price() = min(look-ahead prices) + cycle_cost`, with `None` when no price is finite or the spread is ≤ the cycle cost (flat prices). Prices come from the **reference plan's** slots (`nan` when a slot is not covered). The cycle cost comes from `resolve_cycle_cost()` over the reference input, and the charge power from `battery_max_charge_power_w`.
+**Rule:** `compute_floor()` scans twice. The first pass credits planned charges only; when it leaves no reserve it stands. Otherwise a second pass also credits every _affordable_ slot with `max_grid_charge_kw × hours`. A covering credit ends the bridge as `grid_available` with reserve 0. A planned charge credited to a slot that is not affordable ends the second pass too (#1220). If that pass does not cover the bridge, the first result stands, so the change can only release the floor. Affordable means `price ≤ cheap_refill_price() = min(look-ahead prices) + cycle_cost`, with `None` when no price is finite or the spread is ≤ the cycle cost (flat prices). Prices come from the **reference plan's** slots (`nan` when a slot is not covered). The cycle cost comes from `resolve_cycle_cost()` over the reference input, and the charge power from `battery_max_charge_power_w`.
 
 **Why not break-even or `V`:** both pass the 0.15 night, which must keep the floor. With the fixture at η 0.97 and cycle cost 0.0079, the round trip costs 0.167 against a 0.19 evening, and the `V` test passes any night slot at or below the last day's night mean of 0.163. The min is over the whole 48 h window: a 0.15 night before a 0.12 day is not cheap.
 
@@ -2589,6 +2589,8 @@ Tests: `tests/planner/test_battery_target_milp.py` (every acceptance scenario, a
 **Rule:** `_scan_bridge()` ends the planned-charge pass at the **first credited slot**. `_BridgeScan.covered` says whether the credit is at least the consumption before it: covered → reserve 0 (unchanged); not covered → reserve = the consumption before that slot. `refill_type` is `grid_charge` in both cases. The size of a non-covering charge never enters the reserve, and no bridge has a credit inside it, so the profile only declines. The affordable pass (#1156) runs whenever the first pass is not covered, and still adds credits up.
 
 **Why this and not the others:** the reserve must be consumed before the planned charge, or holding it shrinks that charge on the next replan. Dropping the credit but keeping the bridge to the PV surplus pins a 68 % battery under a 77.7 % floor through an export price. Exempting slots priced like the planned charge keeps the dependency (the charge disappears once the floor holds enough: 43.8 → 59.6 %).
+
+**Changed by #1220:** the covered → reserve 0 half of this rule is gone; a planned charge leaves the consumption before it as the reserve at any size (see _The Planned Charge's Size Does Not Release the Floor_ below).
 
 **Follow-ups filed:** #1220 (the covering test is still a step: at 15-minute replans the floor is released and re-armed within one bridge), #1221 (the floor % counts the energy below the hardware floor as reserve, so small bridges are under-reserved), #1222 (a battery below its reserve is held through the bridge's first, dearest hours).
 
@@ -2666,6 +2668,18 @@ Tests: `tests/test_solcast_subhourly_planner.py` (real populator → `build_plan
 - The floor itself still flips between replans when the reference plan's night charge moves among equally priced slots (issue #1198, pre-existing).
 
 Tests: `tests/planner/test_dynamic_floor_reserve_profile.py` (profile, per-slot bound, every consumer, real planner at 60 and 15 minutes, export spike, battery below the reserve, all candidates, margin learning), `tests/planner/test_dynamic_floor_reserve_replay.py` (closed loop).
+
+## The Planned Charge's Size Does Not Release the Floor (issue #1220)
+
+**Bug:** a planned grid charge at least as large as the consumption before it released the floor (reserve 0, the #1140 decision); a slightly smaller one reserved all of that consumption (#1214). The reference plan buys what its battery is short of, so the amount depends on the live SoC the floor produced one replan earlier. At 15-minute replans the floor went 30.6 / 5.0 / 5.0 / 24.6 %: released at 22:30, the battery was sold, and the floor was re-armed above an empty battery.
+
+**Rule:** `_scan_bridge()` returns at the first credited planned-charge slot **without comparing the credit**: reserve = the consumption before that slot, `refill_type: grid_charge`. Reserve 0 only when the charge is credited to the live slot. In the affordable pass a planned charge credited to a non-affordable slot ends the scan (returns `none`, so the first scan stands); only affordable slots collect capacity credit and release as `grid_available`.
+
+**Measured (108 hourly scenarios):** release-and-re-arm 14 → 0; cash equal in 93, 0.2–0.5 worse in 15 (all export spike + 0.15 night: the reserve in front of the charge is no longer sold); nothing changes without an export spike.
+
+**Rejected:** judging "covered" by what the battery could take at the plan's own charge price (capacity, not amount). It removes the step at no cost, but any planned charge then releases the floor, and a plan that exports the battery always has one: the MILP export reserve makes it buy its buffer back before the PV surplus. The floor would never block a battery export.
+
+**Gotchas:** `refill_type` for a plan that charges in a cheapest-price night is now `grid_available` (the affordable pass releases it), not `grid_charge`. The floor still alternates between the minimum and the solar bridge inside the charge window at 15-minute replans, when the reference plan's last small charge comes and goes (same published plan either way).
 
 ## Dynamic Floor: Conversion and Shortfall Placement (issues #1221, #1222)
 

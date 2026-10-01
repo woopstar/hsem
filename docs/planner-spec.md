@@ -4687,30 +4687,106 @@ times instead of 12.
 bridge still moved the floor, because that size depends on the live SoC. That
 is fixed separately: see _A planned charge ends the bridge_ (issue #1214).
 
-#### Grid-charge refill reserve is zero (decision, issue #1140)
+#### A planned grid charge is the refill (issues #1140, #1220)
 
 The scan stops at the first slot `_planned_grid_charges()` credits a planned
-grid charge to: that is where the plan refills. When the credit there is at
-least the consumption bridged up to that slot, the charge **covers** the
-bridge and `reserve_kwh = 0`. The floor then equals the configured minimum
-SoC.
-
-This is deliberate:
+grid charge to: that is where the plan refills, and the reserve is the
+consumption bridged **up to that slot**. A charge credited to the live slot
+has nothing in front of it, so `reserve_kwh = 0` and the floor equals the
+configured minimum SoC.
 
 - The floor is meant to protect energy the plan has **no** other way to
-  supply. A planned grid charge is exactly that other way.
-- The MILP already prices the bridge. Discharging before the charge window
-  means importing more in it, and the cost function pays for that import at
-  the cheap-window price plus cycle cost. Reserving the bridge energy on top
-  would count the same need twice.
-- A floor above the live SoC is capped at the live SoC (issue #1094). A
-  non-zero reserve here would bring back the evening pinning of issue #1125.
+  supply. Behind the planned charge the plan has one; in front of it the
+  battery is the only supply besides importing at the prices of those hours.
+- The size of the charge plays no part (issue #1220, next section).
+- A night at the look-ahead's cheapest price still releases the floor
+  completely, whether or not the plan charges in it (_Affordable grid
+  refill_).
 
 Without any planned charge before the PV surplus the reserve is the full
-bridged consumption × the safety margin, as before issue #1140. A planned
-charge that does not cover the bridge still ends it (next section), and an
-affordable grid refill can release the floor in either case (the section
-after).
+bridged consumption × the safety margin, as before issue #1140.
+
+**History.** Issue #1140 decided that a planned charge at least as large as
+the consumption before it **covers** the bridge and leaves no reserve at all.
+One reason was that a floor above the live SoC pinned the battery for the
+whole evening (issue #1125); that stopped with the per-slot reserve (#1188)
+and the placement of a shortfall (#1222). The other, that the MILP already
+prices the bridge, holds for every reserve the floor keeps. Issue #1220
+removed the covering rule because it was a step: see below.
+
+#### The planned charge's size does not release the floor (issue #1220)
+
+Until issue #1220 the reserve in front of a planned charge depended on the
+charge's size:
+
+```text
+credit[c] ≥ consumption before c   → reserve 0        (covered, #1140)
+credit[c] < consumption before c   → reserve = consumption before c   (#1214)
+```
+
+The reference plan buys what its battery will be short of, so `credit[c]`
+depends on the live SoC, and the live SoC depends on the floor of the replan
+before. Around the threshold the floor was released and re-armed inside one
+bridge: released, the battery was sold; a replan later the smaller buy-back no
+longer covered, and the floor asked for a reserve of a battery that was empty.
+
+Now `reserve = consumption before c` in both cases. `_scan_bridge()` returns
+at the first credited slot without comparing the credit, and in the affordable
+pass a planned charge credited to a slot that is not affordable ends the scan,
+so that the planned-charge scan stands.
+
+**Measured.** Closed loop through the real `run_planner`, each replan's floor
+from its own reference solve (10 kWh, 5 % hardware floor, 68 % at 21:00,
+0.15 night at 02:00–06:00, export 0.45 at 21:00–23:00).
+
+15-minute replans, floor (%) from 22:15:
+
+| Replan at | 22:15 | 22:30 | 22:45 | 23:00 | 23:15 | 23:30 | 23:45 | 00:00 | …   | 02:00 |
+| --------- | ----: | ----: | ----: | ----: | ----: | ----: | ----: | ----: | --- | ----: |
+| Before    |  30.6 |   5.0 |   5.0 |  24.6 |  22.5 |  20.5 |   5.0 |   5.0 | 5.0 |   5.0 |
+| Now       |  30.6 |  28.6 |  26.6 |  24.6 |  22.5 |  20.5 |  18.5 |  16.5 | …   |   5.0 |
+
+Before, the battery was sold from 38.9 % to 13.8 % while the floor was
+released at 22:30, and the floor then asked for 24.6 %. Now the reserve
+declines by each slot's load until the charge window.
+
+Hourly replans, realised grid cash over 48 replans, lower is better:
+
+| Scenario (68 % at 21:00)        | Floor off | Before | Now    |
+| ------------------------------- | --------: | -----: | ------ |
+| evening export 0.45             |    −2.725 | −2.201 | −2.199 |
+| evening export, cloudy tomorrow |    −1.882 | −1.758 | −1.377 |
+| no export spike (0.15 night)    |    −0.177 | −0.177 | −0.177 |
+| no export spike, cloudy         |     0.642 |  0.649 | 0.649  |
+| 0.03 night                      |    −3.361 | −3.361 | −3.361 |
+
+The cloudy export row costs 0.38 more. Its planned night charge is large and
+covered the bridge on every replan from 22:00, so the floor was released and
+the battery was sold at 0.45; now 1.5 kWh of it is kept for 23:00–02:00. With
+a perfect forecast a floor can only cost, so this is the price of the reserve
+being held, not a loss of protection.
+
+Over the 108-scenario sweep of _A planned charge ends the bridge_: release
+followed by a re-arm within four replans with no grid charge in between,
+14 times before and none now. Realised cash equal in 93 scenarios and 0.2–0.5
+worse in 15, all of them with an export spike and a 0.15 night (summed −176.3
+before, −172.1 now, −179.7 with the floor off). Without an export spike
+nothing changes. The floor never rose within a bridge, before or now.
+
+**Rejected.** Treating the price the reference plan buys at as an affordable
+refill price (covering judged by what the battery **could** take there, not
+by what the plan buys) also removes the step, and it costs nothing (−179.6).
+But it releases the floor whenever the plan buys anything from the grid before
+the PV surplus, and a plan that exports the battery always does: the export
+reserve (_MILP export reserve_) makes it buy its buffer back. The floor would
+then never block a battery export.
+
+**What it does not do.** Whether the reference plan charges at all still
+depends on the SoC. Inside the charge window, with 15-minute replans, the
+reference plan's last small charge appears and disappears between replans, and
+the floor alternates between the configured minimum (a charge in the live
+slot) and the bridge to the PV surplus (no charge left). The battery is below
+that reserve and the plan is the same either way.
 
 #### A planned charge ends the bridge (issue #1214)
 
@@ -4720,13 +4796,12 @@ the reserve is the consumption bridged up to that slot:
 
 ```text
 c            = first bridge slot with a planned-charge credit
-covered      = credit[c] ≥ Σ net consumption of the slots before c
-reserve_kwh  = 0                                         when covered
-reserve_kwh  = Σ net consumption of the slots before c   otherwise
-refill_type  = grid_charge, next_refill_slot = c         in both cases
+reserve_kwh  = Σ net consumption of the slots before c
+refill_type  = grid_charge, next_refill_slot = c
 ```
 
-How much the plan buys does not enter the reserve, only where it buys.
+How much the plan buys does not enter the reserve, only where it buys. (Until
+issue #1220 a credit of at least that consumption gave `reserve_kwh = 0`.)
 
 **Why.** Until issue #1214 a non-covering charge was subtracted and the scan
 ran on to the PV surplus: `reserve = consumption to the surplus − charge`.
@@ -4796,12 +4871,13 @@ and the floor rises from 43.8 % to 59.6 %.
   battery that can carry the whole bridge has no planned charge and keeps the
   full bridge to the PV surplus; that is the 0.15-night case of issue #1125
   and is unchanged.
-- The covering test is still a step: a charge just large enough to cover the
-  consumption before it releases the floor, a slightly smaller one reserves
-  that consumption. With 15-minute replans the first evening above crosses it
+- The covering test was still a step: a charge just large enough to cover the
+  consumption before it released the floor, a slightly smaller one reserved
+  that consumption. With 15-minute replans the first evening above crossed it
   both ways (26.9 / 5.0 / 5.0 / 20.6 / 18.5 / 16.3 / 5.0 % from 22:15; before
-  this change 37.7 / 5.0 / 5.0 / 42.8 / 40.7 / 38.6 / 5.0 %). The battery is
-  sold while the floor is released, so the step holds nothing (issue #1220).
+  this change 37.7 / 5.0 / 5.0 / 42.8 / 40.7 / 38.6 / 5.0 %). Issue #1220
+  removed the covering test (see _The planned charge's size does not release
+  the floor_).
 - At 23:00 above the battery reaches the hardware floor before the night
   charge and the house imports 0.19 kWh: the reserve held a little less than
   it bridged. That was the conversion, fixed by issue #1221 (see _The reserve
@@ -4849,19 +4925,22 @@ power from `battery_max_charge_power_w`.
 
 **Scan.** `compute_floor()` runs the bridge scan up to twice:
 
-1. Planned charges only, exactly as above. If a planned grid charge covers
-   the bridge (`grid_charge`), that result stands, even when an earlier
-   affordable slot would also have covered it.
+1. Planned charges only, exactly as above. When that leaves no reserve (a
+   charge credited to the live slot, or nothing to bridge), the result
+   stands.
 2. Otherwise, and only when a threshold exists and the charge power is
    positive, it scans again. This time each affordable slot is credited with
    `max(planned charge, max_grid_charge_kw × slot_hours)`: the energy the
    battery could take there. The first slot where the credit covers the
    consumption bridged so far ends the bridge as `grid_available`, and the
-   reserve is 0, for the same reasons as a covering planned charge.
+   reserve is 0: a refill at the look-ahead's cheapest price bounds the risk
+   the floor guards against. A planned charge credited to a slot that is
+   **not** affordable ends this scan as it ends the first one (issue #1220),
+   so a cheap slot behind it is not read.
 3. If the second scan finds no covering refill (the cheap window is too
-   short for the bridge, or it lies beyond the solar surplus), the first
-   scan's result stands unchanged. The affordable refill can only release
-   the floor, never raise it.
+   short for the bridge, or it lies beyond the planned charge or the solar
+   surplus), the first scan's result stands unchanged. The affordable refill
+   can only release the floor, never raise it.
 
 With 15-minute slots and 5 kW, each affordable slot can take 1.25 kWh. A
 2.7 kWh bridge therefore ends in the third cheap slot.
@@ -4921,9 +5000,13 @@ safety_margin       ≤ 1.50                      (after learning period)
 - Without an EV the floor, its diagnostics and its profile are the same
   whether or not the reference solve carries the house-battery target
   (issue #1207).
-- A grid-charge refill that covers the consumption bridged up to it yields
+- A planned grid charge leaves the consumption bridged up to the slot it is
+  credited to as the reserve, **whatever its size**: the floor, its
+  diagnostics and its profile are the same for a charge below, at and above
+  that consumption (issue #1220). A charge credited to the live slot yields
   `reserve_kwh == 0` and `effective_floor_pct == configured_min_soc_pct`.
-- So does an affordable grid refill (`grid_available`, issue #1156), even when
+- An affordable grid refill (`grid_available`, issue #1156) yields
+  `reserve_kwh == 0`, even when
   the reference plan does not charge in it. A slot is affordable only if its
   price is within one cycle cost of the look-ahead's cheapest price, and only
   if the look-ahead has a price valley wider than that cycle cost.
@@ -4933,9 +5016,11 @@ safety_margin       ≤ 1.50                      (after learning period)
   disabled no floor is computed, one solve runs, and the planner receives
   `None`.
 - The reserve never reaches past a planned grid charge: the first slot a
-  planned charge is credited to ends the bridge. A charge that does not cover
-  the consumption before it leaves exactly that consumption as the reserve,
-  whatever its size (issue #1214).
+  planned charge is credited to ends the bridge, in the planned-charge scan
+  and in the affordable scan (issues #1214, #1220).
+- In a closed-loop replay the floor is not released and re-armed within one
+  bridge: for batteries that all plan a grid charge, the floor at a given
+  time does not depend on the SoC (issue #1220).
 - In a closed-loop replay the floor rises by more than one SoC point only
   from the configured minimum, where a bridge starts; it never rises within
   a bridge (issue #1214).

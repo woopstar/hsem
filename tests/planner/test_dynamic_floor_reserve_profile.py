@@ -146,14 +146,27 @@ class TestFloorProfile:
         assert diag["refill_type"] == "none"
         assert profile == pytest.approx([_pct(2.0), _pct(1.2), _pct(0.5)])
 
-    def test_covering_grid_charge_leaves_no_reserve_anywhere(self) -> None:
+    def test_a_grid_charge_larger_than_the_bridge_still_ends_it(self) -> None:
+        """Issue #1220: a covering charge no longer releases the floor."""
         slots = _bridge([0.8, 0.7, 0.0, 0.5, -1.0], charges={2: 2.0})
 
         floor, diag, profile = _profile(slots)
 
         assert diag["refill_type"] == "grid_charge"
+        assert diag["reserve_kwh"] == pytest.approx(1.5)
+        assert floor == pytest.approx(_pct(1.5))
+        assert profile == pytest.approx(
+            [_pct(1.5), _pct(0.7)] + [_HARDWARE_FLOOR_PCT] * 3
+        )
+
+    def test_a_grid_charge_in_the_live_slot_leaves_no_reserve_anywhere(self) -> None:
+        slots = _bridge([0.0, 0.7, 0.5, -1.0], charges={0: 0.3})
+
+        floor, diag, profile = _profile(slots)
+
+        assert diag["refill_type"] == "grid_charge"
         assert floor == pytest.approx(_HARDWARE_FLOOR_PCT)
-        assert profile == pytest.approx([_HARDWARE_FLOOR_PCT] * 5)
+        assert profile == pytest.approx([_HARDWARE_FLOOR_PCT] * 4)
 
     def test_affordable_refill_leaves_no_reserve_anywhere(self) -> None:
         slots = _bridge([0.8, 0.7, 0.5, 0.5, -1.0])
@@ -185,8 +198,8 @@ class TestFloorProfile:
         # The 1.5 kWh before the charge is reserved; nothing behind it is.
         assert profile == pytest.approx([_pct(1.5)] + [_HARDWARE_FLOOR_PCT] * 4)
 
-    @pytest.mark.parametrize("charged_kwh", [0.05, 0.5, 1.4])
-    def test_the_size_of_a_partial_charge_does_not_change_the_floor(
+    @pytest.mark.parametrize("charged_kwh", [0.05, 0.5, 1.4, 1.5, 1.6, 5.0])
+    def test_the_size_of_a_planned_charge_does_not_change_the_floor(
         self, charged_kwh: float
     ) -> None:
         """The reserve must not depend on how much the reference plan buys.

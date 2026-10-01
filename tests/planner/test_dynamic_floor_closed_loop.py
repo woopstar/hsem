@@ -90,11 +90,11 @@ def _prices(day: int) -> list[tuple[float, float]]:
     return prices
 
 
-def _input(now: datetime, soc_pct: float) -> PlannerInput:
-    """Return the #1125 house at *now*: 10 kWh, 5 % floor, hourly slots, 48 h."""
+def _input(now: datetime, soc_pct: float, interval_minutes: int = 60) -> PlannerInput:
+    """Return the #1125 house at *now*: 10 kWh, 5 % floor, 48 h of slots."""
     day = (now.date() - _MIDNIGHT.date()).days
     return replace(
-        _planner_input(0.15),
+        _planner_input(0.15, 1.0, interval_minutes),
         now_iso=now.isoformat(),
         battery_soc_pct=soc_pct,
         excess_export_enabled=True,
@@ -122,11 +122,15 @@ class _Replan:
     executed: str | None
 
 
-def _floor(now: datetime, soc_pct: float) -> tuple[float, dict, PlannerInput]:
+def _floor(
+    now: datetime, soc_pct: float, interval_minutes: int = 60
+) -> tuple[float, dict, PlannerInput]:
     """Return this replan's floor from its own floor-free reference solve."""
-    planner_input = _input(now, soc_pct)
+    planner_input = _input(now, soc_pct, interval_minutes)
     with patch.object(coordinator_builder, "hsem_now", return_value=now):
-        recommendations = coordinator_builder.generate_recommendation_intervals(60, 48)
+        recommendations = coordinator_builder.generate_recommendation_intervals(
+            interval_minutes, 48
+        )
     live = _live()
     live.huawei_batteries_soc_pct = soc_pct
     floor_pct, diag, profile = compute_dynamic_floor_from_plan(
@@ -183,41 +187,58 @@ def night() -> list[_Replan]:
 class TestFloorDoesNotFlipOverTheNight:
     """The night the issue reported, replayed through the real planner."""
 
-    def test_floor_rises_once_where_the_next_bridge_starts(
-        self, night: list[_Replan]
-    ) -> None:
-        """Released while the plan refills from the grid, then one new bridge.
+    def test_floor_only_rises_where_a_bridge_starts(self, night: list[_Replan]) -> None:
+        """5.0 / 16.5 / 10.8 / 5.0 / 36.0 / 30.3 / 24.6 / 18.8 / 10.8 %.
 
-        Before #1198: 5.0 / 29.8 / 5.0 / 24.0 / 5.0 / 26.6 % — three rises.
+        Before #1198: 5.0 / 29.8 / 5.0 / 24.0 / 5.0 / 26.6 % — three rises
+        inside one night.  Now the floor rises twice, each time from the
+        configured minimum: at 00:00 the bridge to the 02:00 night charge
+        starts (the 23:00 slot costs the night price, so the plan refills
+        there), and at 03:00 the bridge to the PV surplus.
         """
         rises = _rises(night)
 
-        assert len(rises) == 1
-        before, after = rises[0]
-        # The grid refill has happened; the bridge to the PV surplus starts.
-        assert before.refill_type == "grid_charge"
-        assert after.refill_type == "solar_surplus"
-        # Within that bridge the floor only declines.
-        tail = night[night.index(after) :]
+        assert all(
+            before.floor_pct == pytest.approx(_HARDWARE_FLOOR_PCT)
+            for before, _after in rises
+        )
+        assert [after.refill_type for _before, after in rises] == [
+            "grid_charge",
+            "solar_surplus",
+        ]
+        # Within a bridge the floor only declines.
+        risen = {id(after) for _before, after in rises}
         assert all(
             later.floor_pct <= earlier.floor_pct + 1e-6
-            for earlier, later in zip(tail, tail[1:])
+            for earlier, later in zip(night, night[1:])
+            if id(later) not in risen
         )
 
-    def test_floor_is_released_through_the_whole_cheap_window(
+    def test_floor_is_released_where_the_plan_refills_now(
         self, night: list[_Replan]
     ) -> None:
-        """Every replan up to the grid refill sees a covering planned charge."""
-        charged_at = next(
-            index
-            for index, replan in enumerate(night)
-            if replan.executed == Recommendations.BatteriesChargeGrid.value
-            and index > 0
-        )
+        """At 23:00 and 02:00 the live slot costs what the plan charges at."""
+        charging_now = [night[0], night[3]]
 
-        for replan in night[: charged_at + 1]:
+        assert [replan.now.hour for replan in charging_now] == [23, 2]
+        for replan in charging_now:
             assert replan.refill_type == "grid_charge"
             assert replan.floor_pct == pytest.approx(_HARDWARE_FLOOR_PCT)
+
+    def test_the_hours_before_the_night_charge_are_reserved(
+        self, night: list[_Replan]
+    ) -> None:
+        """00:00 and 01:00 bridge 1.0 and 0.5 kWh to the 02:00 charge (#1220).
+
+        Before, the charge was large enough to cover them and the floor was
+        the configured minimum; a slightly smaller charge reserved them.
+        """
+        before_charge = night[1:3]
+
+        assert [replan.refill_type for replan in before_charge] == ["grid_charge"] * 2
+        assert [replan.floor_pct for replan in before_charge] == pytest.approx(
+            [5.0 + kwh * 1.15 / 10.0 * 100.0 for kwh in (1.0, 0.5)], abs=0.1
+        )
 
     def test_no_hold_between_two_discharges(self, night: list[_Replan]) -> None:
         """discharge / wait / discharge on consecutive slots was the symptom."""
@@ -272,6 +293,30 @@ class TestFloorDoesNotRiseWithinABridge:
             [5.0 + kwh * 1.15 / 10.0 * 100.0 for kwh in (3.2, 2.4, 1.7)], abs=0.1
         )
 
+    def test_floor_is_not_released_before_the_night_charge(
+        self, first_evening: list[_Replan]
+    ) -> None:
+        """Issue #1220: 41.8 / 32.6 / 24.6 / 16.5 / 10.8 %, then the charge.
+
+        Before, the 01:00 replan's planned charge covered the 0.5 kWh left to
+        bridge and released the floor an hour before the charge; with
+        15-minute replans it was released at 22:30 and re-armed at 23:00.
+        """
+        bridge, window = first_evening[:5], first_evening[5:7]
+
+        assert [replan.refill_type for replan in bridge] == ["grid_charge"] * 5
+        floors = [replan.floor_pct for replan in bridge]
+        assert all(floor > _HARDWARE_FLOOR_PCT + 1.0 for floor in floors)
+        assert all(a > b for a, b in zip(floors, floors[1:]))
+        assert floors[3:] == pytest.approx(
+            [5.0 + kwh * 1.15 / 10.0 * 100.0 for kwh in (1.0, 0.5)], abs=0.1
+        )
+        # Inside the 0.15 window the plan refills now: nothing to bridge.
+        assert [replan.now.hour for replan in window] == [2, 3]
+        assert [replan.floor_pct for replan in window] == pytest.approx(
+            [_HARDWARE_FLOOR_PCT] * 2
+        )
+
     def test_battery_is_not_held_after_the_sale(
         self, first_evening: list[_Replan]
     ) -> None:
@@ -296,3 +341,34 @@ class TestFloorDoesNotRiseWithinABridge:
         """
         for replan in first_evening[1:3]:
             assert replan.floor_pct <= replan.soc_pct + 1.0
+
+
+class TestFloorDoesNotDependOnThePlannedChargeSize:
+    """Issue #1220 at 15-minute slots: 23:00, after the 0.45 export price.
+
+    The reference plan buys what its battery is short of, so a fuller
+    battery plans a smaller night charge.  The floor at 23:00 was 5.0 % for
+    a battery whose planned charge covered the 1.7 kWh until 02:00 and 24.6 %
+    for one whose charge did not, and in the closed loop it went
+    26.9 / 5.0 / 5.0 / 20.6 / 18.5 / 16.3 / 5.0 %: released at 22:30, where the
+    battery was then sold, and re-armed at 23:00.
+    """
+
+    _NOW = _MIDNIGHT + timedelta(hours=23)
+
+    @pytest.mark.timeout(120)
+    def test_the_floor_is_the_same_for_every_battery_that_plans_a_charge(
+        self,
+    ) -> None:
+        results = [
+            _floor(self._NOW, soc_pct, 15)[:2] for soc_pct in (5.0, 13.8, 25.0, 38.9)
+        ]
+
+        for floor_pct, diag in results:
+            assert diag["refill_type"] == "grid_charge"
+            assert (
+                diag["next_refill_slot"]
+                == (_MIDNIGHT + timedelta(days=1, hours=2)).isoformat()
+            )
+            assert diag["reserve_kwh"] == pytest.approx(1.7, abs=0.01)
+            assert floor_pct == pytest.approx(5.0 + 1.7 * 1.15 * 10.0, abs=0.1)

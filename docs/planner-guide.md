@@ -152,13 +152,11 @@ morning grid imports when solar is scarce.
 
 To see planned grid charges, each replan first solves once **without** the
 floor and reads that reference plan's charges (issue #1140); then it solves
-again with the resulting floor. If the reference plan grid-charges enough
-overnight to cover the evening load, the grid charge is the refill and the
-floor drops to the configured minimum. The battery can then cover evening
-load, and the cost function decides whether that beats holding it. If it
-charges less than that, the charge is still the refill: the floor reserves
-the load up to the charge and nothing behind it, so how much the plan buys
-never moves the floor (issue #1214). The floor
+again with the resulting floor. If the reference plan charges from the grid
+before the next solar surplus, that charge is the refill: the floor reserves
+the house load up to the charge and nothing behind it. How much the plan buys
+never moves the floor (issues #1214, #1220); a charge in the current slot
+leaves nothing to reserve, and the floor is the configured minimum. The floor
 never reads the previous plan, and it does not depend on which of several
 equally priced night slots the reference plan happens to charge in
 (issue #1198): a planned charge counts from the first slot of its price.
