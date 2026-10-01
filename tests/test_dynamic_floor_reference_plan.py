@@ -14,6 +14,10 @@ into the plan it constrains: at moderate night prices a partial night charge
 lowered the floor, the next plan charged less, the floor rose again, and the
 two flipped on every replan.
 
+The reference plan does not always buy at night: when tomorrow's PV refills
+the battery anyway it plans no charge, so the scan also ends the bridge at an
+*affordable* grid refill the plan does not schedule (issue #1156).
+
 The coordinator tests go through the real regeneration in
 ``_async_collect_and_populate`` and the real ``compute_floor()``; only the HA
 entity reads, the consumption/PV population (a deterministic profile), and
@@ -23,6 +27,7 @@ the planner executor job are faked.  ``TestRealPlanner`` runs the real
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
@@ -51,6 +56,7 @@ from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
+from custom_components.hsem.utils.prices import SlotPrice
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.soc_bounds import resolve_soc_bounds_pct
 from tests.test_ha_mock_integration import make_fake_config_entry
@@ -135,16 +141,24 @@ def _snapshot() -> MagicMock:
     return snapshot
 
 
-def _plan(*, grid_charge: bool) -> PlannerOutput:
-    """Return a 48 h plan: grid charge 02:00-02:45 (or none), wait otherwise."""
+def _plan(*, grid_charge: bool, cheap_night: bool = False) -> PlannerOutput:
+    """Return a 48 h plan: grid charge 02:00-02:45 (or none), wait otherwise.
+
+    With *cheap_night* the slots are priced 0.20, except 0.03 from 02:00 to
+    06:00 each night; otherwise every price is the default 0.0 (flat).
+    """
     slots: list[PlannedSlot] = []
     start = _MIDNIGHT
     while start < _MIDNIGHT + timedelta(hours=48):
         charging = grid_charge and _CHARGE_START <= start < _CHARGE_END
+        price = SlotPrice(0.0, 0.0)
+        if cheap_night:
+            price = SlotPrice(0.03 if 2 <= start.hour < 6 else 0.20, 0.0)
         slots.append(
             PlannedSlot(
                 start=start,
                 end=start + _SLOT,
+                price=price,
                 recommendation=_CHARGE if charging else _WAIT,
                 batteries_charged_kwh=_CHARGE_KWH_PER_SLOT if charging else 0.0,
             )
@@ -312,6 +326,36 @@ class TestFloorReadsReferencePlan:
         assert _model_origin_pct(floor_pct) == pytest.approx(_LIVE_SOC_PCT)
 
     @pytest.mark.asyncio
+    async def test_cheap_night_without_a_charge_is_the_refill(
+        self, tmp_path: Path
+    ) -> None:
+        """#1156: an unplanned 0.03 night refill releases the floor.
+
+        The reference plan does not charge, but 02:00-06:00 is the
+        look-ahead's cheapest price.  At the 5 kW default charge power each
+        quarter-hour can take 1.25 kWh, so the third one covers the 2.7 kWh
+        bridged by 02:00.
+        """
+        coordinator, build, solved = _coordinator(
+            tmp_path, reference=_plan(grid_charge=False, cheap_night=True)
+        )
+
+        await _run_collect_then_plan(coordinator, build)
+
+        diag = coordinator._effective_discharge_floor_diag
+        assert diag is not None
+        assert diag["refill_type"] == "grid_available"
+        assert diag["next_refill_slot"] == _EXPECTED_REFILL.isoformat()
+        assert diag["reserve_kwh"] == pytest.approx(0.0)
+        assert diag["cheap_refill_price"] == pytest.approx(0.03)
+        assert coordinator._effective_discharge_floor_pct == pytest.approx(
+            _HARDWARE_FLOOR_PCT
+        )
+        assert solved[1].dynamic_discharge_floor_pct == pytest.approx(
+            _HARDWARE_FLOOR_PCT
+        )
+
+    @pytest.mark.asyncio
     async def test_committed_plan_does_not_feed_the_floor(self, tmp_path: Path) -> None:
         """A charge in the previous plan is ignored — no plan→floor feedback."""
         coordinator, build, _solved = _coordinator(
@@ -420,6 +464,7 @@ class TestBuildBridgeSlots:
                     start=_CHARGE_START,
                     end=_CHARGE_START + _SLOT,
                     recommendation=_CHARGE,
+                    price=SlotPrice(0.45, 0.2),
                     batteries_charged_kwh=1.5,
                     estimated_net_consumption_kwh=9.9,  # includes EV — not used
                 )
@@ -431,6 +476,8 @@ class TestBuildBridgeSlots:
         assert slot.estimated_net_consumption_kwh == pytest.approx(0.3)
         assert slot.batteries_charged_kwh == pytest.approx(1.5)
         assert slot.recommendation == _CHARGE
+        # The price is the plan's too (issue #1156), not the regenerated 0.0.
+        assert slot.import_price == pytest.approx(0.45)
 
     def test_matches_slots_across_timezones(self) -> None:
         """The same instant in another tzinfo still matches (UTC keyed)."""
@@ -460,6 +507,7 @@ class TestBuildBridgeSlots:
 
         assert slot.batteries_charged_kwh == pytest.approx(0.0)
         assert slot.recommendation is None
+        assert math.isnan(slot.import_price)
 
     def test_no_plan_keeps_every_regenerated_value(self) -> None:
         """Without a plan the scan sees no charge and logs why."""
@@ -558,7 +606,12 @@ def _replan(night: float) -> tuple[float, dict, PlannerOutput, PlannerOutput]:
     planner_input = _planner_input(night)
     reference = run_planner(planner_input)
     floor_pct, diag = compute_dynamic_floor_from_plan(
-        DynamicDischargeFloor(), _hourly_recommendations(), reference, _live(), _NOW
+        DynamicDischargeFloor(),
+        _hourly_recommendations(),
+        reference,
+        planner_input,
+        _live(),
+        _NOW,
     )
     final = run_planner(replace(planner_input, dynamic_discharge_floor_pct=floor_pct))
     return floor_pct, diag, reference, final
@@ -580,12 +633,46 @@ class TestRealPlanner:
             _evening_discharge_kwh(reference)
         )
 
+    def test_cheapest_night_without_a_charge_releases_the_floor(self) -> None:
+        """#1156: the look-ahead's cheapest night releases the floor unplanned.
+
+        At a 0.09 night the reference plan serves the evening from the battery
+        and lets tomorrow's PV refill it, so it plans no night charge and the
+        planned-charge scan runs to the solar surplus.  The night is still the
+        cheapest price of the look-ahead, so it is an affordable refill: the
+        bridge ends there, and the final plan equals the floor-free one.
+        """
+        floor_pct, diag, reference, final = _replan(night=0.09)
+
+        night_grid_kwh = sum(
+            s.batteries_charged_kwh
+            for s in reference.slots
+            if s.recommendation == _CHARGE and s.start < _PV_FIRST_SURPLUS
+        )
+        assert night_grid_kwh == pytest.approx(0.0, abs=1e-3)
+        assert diag["refill_type"] == "grid_available"
+        assert diag["next_refill_slot"] == _CHARGE_START.isoformat()
+        assert floor_pct == pytest.approx(_HARDWARE_FLOOR_PCT)
+        assert _evening_discharge_kwh(final) > 3.0
+        assert _evening_discharge_kwh(final) == pytest.approx(
+            _evening_discharge_kwh(reference)
+        )
+        assert final.plan_cost is not None
+        assert reference.plan_cost is not None
+        assert final.plan_cost.total_cost == pytest.approx(
+            reference.plan_cost.total_cost, abs=0.01
+        )
+        # Deterministic per replan: the same inputs give the same floor.
+        assert _replan(night=0.09)[0] == pytest.approx(floor_pct)
+
     def test_moderate_night_keeps_the_solar_bridge_and_is_stable(self) -> None:
         """A 0.15 night is not refilled from the grid: pre-#1140 floor, no flip."""
         first = _replan(night=0.15)
         second = _replan(night=0.15)
 
         floor_pct, diag, _reference, final = first
+        # Tomorrow's 0.12 day is cheaper, so the 0.15 night is no cheap refill.
+        assert diag["cheap_refill_price"] < 0.15
         assert diag["refill_type"] == "solar_surplus"
         assert floor_pct > _LIVE_SOC_PCT
         assert _evening_discharge_kwh(final) == pytest.approx(0.0)

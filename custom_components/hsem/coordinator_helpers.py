@@ -52,6 +52,7 @@ class _SimpleSlot:
     estimated_net_consumption_kwh: float
     batteries_charged_kwh: float
     recommendation: str | None
+    import_price: float = math.nan
 
 
 # ---------------------------------------------------------------------------

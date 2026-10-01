@@ -1,7 +1,8 @@
 """Dynamic self-learning discharge floor (issue #600).
 
 Computes the reserve SoC needed to run the house until the next energy refill
-(solar surplus or planned grid-charge), with a self-correcting safety margin.
+(solar surplus, planned grid-charge, or an affordable grid refill), with a
+self-correcting safety margin.
 
 Usage
 -----
@@ -13,10 +14,14 @@ the safety margin self-correct at most once per day (issue #1141).
 
 from __future__ import annotations
 
+import math
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from typing import Any, NamedTuple
 
 from custom_components.hsem.utils.logger import log_planner
+from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import slot_duration_hours
 
 # ---------------------------------------------------------------------------
@@ -44,6 +49,132 @@ _WELL_ABOVE_FACTOR = 1.3
 _SHORTFALL_TOLERANCE_PCT = 1.0
 
 
+def cheap_refill_price(
+    import_prices: Iterable[float], cycle_cost_per_kwh: float
+) -> float | None:
+    """Return the highest import price that counts as an affordable refill.
+
+    A grid refill is *affordable* when its import price is within one battery
+    cycle cost of the cheapest import price in the look-ahead (issue #1156).
+    The cycle cost is the smallest price spread the planner treats as worth
+    moving energy for, so a slot that close to the look-ahead's minimum is as
+    cheap a refill as the horizon offers.  A night that is not the cheapest
+    time of the look-ahead, such as a 0.15 night before a 0.12 day, is not.
+
+    Args:
+        import_prices: Import prices of the look-ahead slots.  Non-finite
+            values (slots without a price) are ignored.
+        cycle_cost_per_kwh: Battery wear per kWh of throughput; a negative or
+            non-finite value counts as 0.
+
+    Returns:
+        The threshold price, or ``None`` when no price is finite or when the
+        prices spread by no more than the cycle cost.  Without a price valley
+        no slot is cheaper than any other, so none is an affordable refill.
+    """
+    finite = [p for p in import_prices if math.isfinite(p)]
+    if not finite:
+        return None
+    tolerance = (
+        cycle_cost_per_kwh
+        if math.isfinite(cycle_cost_per_kwh) and cycle_cost_per_kwh > 0.0
+        else 0.0
+    )
+    lowest = min(finite)
+    if max(finite) - lowest <= tolerance + 1e-9:
+        return None
+    return lowest + tolerance
+
+
+class _BridgeScan(NamedTuple):
+    """Result of one walk from now to the next refill."""
+
+    refill_slot: Any
+    refill_type: str
+    consumption_kwh: float
+    solar_kwh: float
+    grid_charge_kwh: float
+    duration_hours: float
+
+
+def _scan_bridge(
+    future: list, cheap_price: float | None, max_grid_charge_kw: float
+) -> _BridgeScan:
+    """Walk *future* to the first refill and total the energy bridged.
+
+    With *cheap_price* ``None`` only the reference plan's grid charges are
+    credited, and a covering one is a ``grid_charge`` refill.  Otherwise a
+    slot priced at or below *cheap_price* is also credited with what the
+    battery can take at *max_grid_charge_kw*, and a covering credit is a
+    ``grid_available`` refill (issue #1156).
+
+    Args:
+        future: Chronological look-ahead slots.
+        cheap_price: Affordable-refill threshold from
+            :func:`cheap_refill_price`, or ``None``.
+        max_grid_charge_kw: Battery charge power limit (kW).
+
+    Returns:
+        The refill slot and type (``None`` / ``"none"`` when no refill is
+        found) and the bridge's consumption, solar, grid credit and hours.
+    """
+    consumption = 0.0
+    solar = 0.0
+    grid_charge = 0.0
+    hours = 0.0
+    for s in future:
+        slot_hours = slot_duration_hours(s.start, s.end)
+
+        net = getattr(s, "estimated_net_consumption_kwh", 0.0) or 0.0
+
+        # Check for solar surplus refill.
+        if net < -1e-9:
+            return _BridgeScan(
+                s, "solar_surplus", consumption, solar, grid_charge, hours
+            )
+
+        # Check for grid-charge refill: a slot where the reference plan grid
+        # charges, or (second pass) an affordable slot it could charge in.
+        charged = getattr(s, "batteries_charged_kwh", 0.0) or 0.0
+        planned = (
+            charged
+            if charged > 1e-9
+            and getattr(s, "recommendation", None)
+            == Recommendations.BatteriesChargeGrid.value
+            else 0.0
+        )
+        price = getattr(s, "import_price", math.nan)
+        affordable = cheap_price is not None and price <= cheap_price + 1e-9
+        credit = (
+            max(planned, max_grid_charge_kw * slot_hours) if affordable else planned
+        )
+        if credit > 1e-9:
+            grid_charge += credit
+            # Check if the accumulated grid charge covers the reserve need.
+            # The reserve need is consumption - solar so far.
+            if grid_charge >= max(consumption - solar, 0.0):
+                refill_type = "grid_charge" if cheap_price is None else "grid_available"
+                return _BridgeScan(
+                    s, refill_type, consumption, solar, grid_charge, hours
+                )
+            # If it doesn't cover the full reserve yet, continue scanning.
+            # The grid charge energy will be counted in the final
+            # reserve calculation (subtracted from consumption).
+            hours += slot_hours
+            continue
+
+        # Regular consumption slot.
+        if net > 1e-9:
+            consumption += net
+        elif net < -1e-9:
+            # Solar surplus that we didn't catch above (shouldn't happen due to
+            # the return above, but be safe).
+            solar += abs(net)
+
+        hours += slot_hours
+    return _BridgeScan(None, "none", consumption, solar, grid_charge, hours)
+
+
 # ---------------------------------------------------------------------------
 # DynamicDischargeFloor
 # ---------------------------------------------------------------------------
@@ -54,8 +185,9 @@ class DynamicDischargeFloor:
     """Computes a dynamic discharge floor based on bridge-to-refill energy.
 
     Scans future planner output slots to find the next energy *refill* slot
-    (solar surplus or planned grid-charge), sums the house consumption between
-    now and that refill, and applies a self-learning safety margin.
+    (solar surplus, planned grid-charge, or affordable grid refill), sums the
+    house consumption between now and that refill, and applies a self-learning
+    safety margin.
 
     Attributes:
         safety_margin:
@@ -93,6 +225,9 @@ class DynamicDischargeFloor:
         usable_kwh: float,
         configured_min_soc_pct: float,
         hours_ahead: int = 48,
+        *,
+        cycle_cost_per_kwh: float = 0.0,
+        max_grid_charge_kw: float = 0.0,
     ) -> tuple[float, dict]:
         """Compute the effective discharge floor as SoC percentage.
 
@@ -105,8 +240,13 @@ class DynamicDischargeFloor:
         3. Accumulate house consumption for every non-refill future slot.
         4. Subtract solar surplus (negative net) between now and the refill.
         5. Subtract grid-charge energy planned between now and the refill.
-        6. Reserve = net_consumption × safety_margin.
-        7. Convert reserve to SoC pct and return max(configured_min, reserve).
+        6. If no planned grid charge covers the bridge, scan again and also
+           credit every affordable slot (see :func:`cheap_refill_price`) with
+           ``max_grid_charge_kw × hours``.  A covering credit ends the bridge
+           as ``grid_available`` (issue #1156); otherwise the first scan
+           stands.
+        7. Reserve = net_consumption × safety_margin.
+        8. Convert reserve to SoC pct and return max(configured_min, reserve).
 
         Args:
             now:
@@ -114,7 +254,9 @@ class DynamicDischargeFloor:
             slots:
                 Future planner output slots (list of objects with
                 ``start``, ``end``, ``estimated_net_consumption_kwh``,
-                ``batteries_charged_kwh``, and ``recommendation`` attributes).
+                ``batteries_charged_kwh``, and ``recommendation`` attributes,
+                and optionally ``import_price``; a slot without a finite
+                price is never an affordable refill).
             usable_kwh:
                 Maximum usable battery capacity (kWh).
             configured_min_soc_pct:
@@ -122,13 +264,19 @@ class DynamicDischargeFloor:
                 absolute floor — the dynamic floor can only be higher.
             hours_ahead:
                 Look-ahead window in hours.  Defaults to 48.
+            cycle_cost_per_kwh:
+                Battery wear per kWh of throughput; the affordable-refill
+                tolerance above the look-ahead's cheapest import price.
+            max_grid_charge_kw:
+                Battery charge power limit (kW).  ``0`` (the default)
+                disables affordable refills.
 
         Returns:
             A ``(effective_floor_pct, diagnostics)`` tuple where
             *effective_floor_pct* is the greater of *configured_min_soc_pct*
             and the computed reserve SoC, and *diagnostics* is a dict with
             ``reserve_kwh``, ``bridge_duration_hours``, ``next_refill_slot``,
-            and ``safety_margin``.
+            ``safety_margin``, ``refill_type`` and ``cheap_refill_price``.
         """
         # Default diagnostics when no slots or no refill is found.
         diag: dict = {
@@ -137,6 +285,7 @@ class DynamicDischargeFloor:
             "next_refill_slot": None,
             "safety_margin": self.safety_margin,
             "refill_type": "none",
+            "cheap_refill_price": None,
         }
 
         if not slots:
@@ -160,60 +309,29 @@ class DynamicDischargeFloor:
             )
             return configured_min_soc_pct, diag
 
-        # Scan forward to find refill and accumulate consumption.
-        accumulated_consumption = 0.0
-        accumulated_solar = 0.0
-        accumulated_grid_charge = 0.0
-        refill_slot = None
-        refill_type = "none"
-        bridge_duration_hours = 0.0
-
-        for s in future:
-            slot_hours = slot_duration_hours(s.start, s.end)
-
-            net = getattr(s, "estimated_net_consumption_kwh", 0.0) or 0.0
-
-            # Check for solar surplus refill.
-            if net < -1e-9:
-                refill_slot = s
-                refill_type = "solar_surplus"
-                break
-
-            # Check for grid-charge refill.
-            # A grid-charge slot is one where batteries_charged_kwh > 0 and the
-            # recommendation indicates grid charging.
-            charged = getattr(s, "batteries_charged_kwh", 0.0) or 0.0
-            rec = getattr(s, "recommendation", None)
-            if charged > 1e-9 and rec == "batteries_charge_grid":
-                # This is a planned grid charge slot — credit the energy delivered.
-                accumulated_grid_charge += charged
-                # Check if the accumulated grid charge covers the reserve need.
-                # The reserve need is accumulated_consumption - accumulated_solar.
-                reserve_need = max(accumulated_consumption - accumulated_solar, 0.0)
-                if accumulated_grid_charge >= reserve_need:
-                    refill_slot = s
-                    refill_type = "grid_charge"
-                    break
-                # If it doesn't cover the full reserve yet, continue scanning.
-                # The grid charge energy will be counted in the final
-                # reserve calculation (subtracted from consumption).
-                bridge_duration_hours += slot_hours
-                continue
-
-            # Regular consumption slot.
-            if net > 1e-9:
-                accumulated_consumption += net
-            elif net < -1e-9:
-                # Solar surplus that we didn't catch above (shouldn't happen due to
-                # the break above, but be safe).
-                accumulated_solar += abs(net)
-
-            bridge_duration_hours += slot_hours
+        # Scan forward to the first refill.  The reference plan's own grid
+        # charges come first; only if they do not cover the bridge does a
+        # second pass also credit affordable slots it does not charge in
+        # (issue #1156), so a covering planned charge keeps its refill.
+        scan = _scan_bridge(future, None, 0.0)
+        cheap_price = cheap_refill_price(
+            (getattr(s, "import_price", math.nan) for s in future),
+            cycle_cost_per_kwh,
+        )
+        if (
+            scan.refill_type != "grid_charge"
+            and cheap_price is not None
+            and max_grid_charge_kw > 1e-9
+        ):
+            cheap_scan = _scan_bridge(future, cheap_price, max_grid_charge_kw)
+            if cheap_scan.refill_type == "grid_available":
+                scan = cheap_scan
+        refill_slot = scan.refill_slot
+        refill_type = scan.refill_type
+        bridge_duration_hours = scan.duration_hours
 
         # Compute reserve: net consumption minus solar contribution and grid charge.
-        reserve_kwh = (
-            accumulated_consumption - accumulated_solar - accumulated_grid_charge
-        )
+        reserve_kwh = scan.consumption_kwh - scan.solar_kwh - scan.grid_charge_kwh
         reserve_kwh = max(reserve_kwh, 0.0)
 
         # Convert reserve to SoC percentage.
@@ -230,17 +348,21 @@ class DynamicDischargeFloor:
             "next_refill_slot": refill_slot.start.isoformat() if refill_slot else None,
             "safety_margin": self.safety_margin,
             "refill_type": refill_type,
+            "cheap_refill_price": (
+                round(cheap_price, 5) if cheap_price is not None else None
+            ),
         }
 
         log_planner(
             "debug",
             "[dynamic_floor] compute_floor: reserve=%.3f kWh  bridge=%.1f h  "
-            "refill=%s(%s)  margin=%.2f  raw_soc=%.1f%%  effective=%.1f%%  "
-            "configured_min=%.1f%%  usable=%.3f",
+            "refill=%s(%s)  cheap_refill_price=%s  margin=%.2f  raw_soc=%.1f%%  "
+            "effective=%.1f%%  configured_min=%.1f%%  usable=%.3f",
             reserve_kwh,
             bridge_duration_hours,
             refill_type,
             diag["next_refill_slot"] or "none",
+            diag["cheap_refill_price"],
             self.safety_margin,
             reserve_soc_pct,
             effective_floor_pct,
