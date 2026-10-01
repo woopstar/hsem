@@ -1681,6 +1681,16 @@ instead of keeping the battery strictly idle.
   means no reliable reserve could be derived; the applier then forces strict
   TOU wait instead of enabling self-consumption. See `docs/planner-spec.md`
   §"Wait-mode self-consumption reserve (issue #914)".
+- **Published above the hardware floor (issue #1200):** the trajectory reserve
+  is kWh above the planner's origin (the _effective_ discharge floor); the
+  applier's `battery_current_capacity_kwh` is kWh above the _hardware_ floor.
+  With the dynamic floor active the difference is the energy the floor holds,
+  and it counted as surplus. `engine_core.run_planner` publishes
+  `soc_bounds.wait_mode_reserve_above_hardware_floor()` =
+  `trajectory reserve + rated × (effective − hardware) / 100`. The #954 time
+  decay is not applied to the floor's part. `None` stays `None`. (On `main`,
+  where the origin is always the hardware floor since #1188, the same issue is
+  fixed as `max(trajectory reserve, live slot's discharge_reserve_kwh)`.)
 - **Scan stops at the next discharge too, not just the next charge (issue
   #942 follow-up, fixed 2026-09-08):** the scan originally broke only on a
   genuine planned _charge_, so it accumulated through every future discharge

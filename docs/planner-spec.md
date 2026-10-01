@@ -2588,8 +2588,35 @@ a discharge. When no future action is found in the horizon at all (the scan
 reaches the end without a break), decay does not apply — that case already
 naturally yields the correct result from the min-tracking alone.
 
+**Published above the hardware floor (issue #1200).** The trajectory reserve
+is measured in the planner's battery model, whose origin is the _effective_
+discharge floor. The applier compares it with `battery_current_capacity_kwh`,
+the live capacity above the **hardware** floor. With the dynamic discharge
+floor active the two origins differ, and the energy between them, which is
+exactly what the floor sets aside, counted as surplus the house may use. On
+the #1125 fixture (10 kWh, 5 % hardware floor, 68 % at 21:30, floor 77.72 %)
+the live slot is `batteries_wait_mode`, the trajectory reserve is 0.0 kWh and
+the applier saw 6.3 kWh of surplus.
+
+`engine_core.run_planner` therefore adds the energy between the two origins
+(`utils/soc_bounds.py::wait_mode_reserve_above_hardware_floor`):
+
+```text
+wait_mode_reserve_kwh = calculate_required_battery_for_plan(slots, now, current_kwh)
+                        + rated_kwh × (effective_floor_pct − hardware_floor_pct) / 100
+```
+
+`effective_floor_pct` is the dynamic floor capped at the live SoC (issue
+#1094), so a battery below the floor reserves everything it holds and a
+battery above it keeps the floor's energy and may use the rest. The applier is
+unchanged. The time decay above applies to the trajectory reserve only; the
+floor's part is needed now and is never decayed. With the dynamic floor
+disabled both origins are the hardware floor and the published reserve is
+unchanged.
+
 `wait_mode_reserve_kwh` is `None` when it cannot be derived (no future slots
-in the horizon). The applier treats `None` as "fall back to strict Wait":
+in the horizon), with or without a dynamic floor. The applier treats `None`
+as "fall back to strict Wait":
 `self_consumption_with_reserve` self-consumption is never enabled without a
 reliable reserve value.
 
