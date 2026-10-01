@@ -23,6 +23,12 @@ takes the otherwise-exported PV first.  Stage 2 first solves with every
 charge-past-target EV removed, then re-solves with each such EV's
 ``past_target_reserved_ac_kwh`` taken from that house-first plan, so the EV
 only gets the PV the battery target leaves unused.
+
+**Preference cost (issue #1185):** when stage 2 solves, both plans are scored
+with :func:`~custom_components.hsem.planner.cost_function.score_plan` and the
+difference in ``total_cost`` is reported as ``preference_cost``: what the
+target costs over the horizon in money.  It is diagnostics only and never
+enters a plan's ``total_cost`` or ``score``.
 """
 
 from __future__ import annotations
@@ -35,6 +41,7 @@ from custom_components.hsem.planner.battery_target import (
     TARGET_TOLERANCE_KWH,
     BatteryTargetSpec,
 )
+from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.milp._battery_target_rows import (
     BatteryTargetRows,
 )
@@ -58,6 +65,16 @@ DIAGNOSTICS_KEY = "battery_target"
 
 #: Stage-1 diagnostics key holding the LP ``gi[t]`` solution.
 _LP_GRID_IMPORT_KEY = "lp_grid_import_kwh"
+
+#: Diagnostics keys of the preference cost (issue #1185).  ``None`` unless
+#: stage 2 solved and the caller supplied the selector's cost weights.
+PREFERENCE_COST_KEYS = (
+    "stage1_cost",
+    "stage2_cost",
+    "preference_cost",
+    "preference_cost_per_kwh",
+    "terminal_soc_value_delta",
+)
 
 
 def projected_kwh_at(
@@ -170,6 +187,73 @@ def _base_diagnostics(spec: BatteryTargetSpec) -> dict[str, Any]:
         "stage2_status": "not_run",
         "max_import_delta_kwh": 0.0,
         "max_import_increase_after_kwh": 0.0,
+        **dict.fromkeys(PREFERENCE_COST_KEYS),
+    }
+
+
+def preference_cost(
+    stage1_slots: list[PlannedSlot],
+    stage2_slots: list[PlannedSlot],
+    now: datetime,
+    *,
+    cost_weights: CostWeights,
+    slot_duration_hours: float,
+    current_kwh: float,
+    end_value_per_kwh: float | None,
+    gained_kwh: float,
+) -> dict[str, float | None]:
+    """Return what the target costs: stage 2 against stage 1, in money.
+
+    Both plans are scored by :func:`score_plan` with the weights the selector
+    uses, so ``stage2_cost`` is the ``total_cost`` of the MILP plan that is
+    published (grid import cost minus net export revenue plus cycle cost).
+
+    ``preference_cost`` counts the whole horizon: the export given up and the
+    extra cycling, less whatever the stored energy saves later in the
+    horizon.  It does not count what the energy still stored at the horizon
+    end is worth afterwards.  ``terminal_soc_value_delta`` reports that part,
+    ``(E_end,stage1 − E_end,stage2) × V``, which is negative when the target
+    leaves more energy in the battery; it is the selector's terminal-SoC
+    term, not money.
+
+    Args:
+        stage1_slots: The normal plan's slots.
+        stage2_slots: The target plan's slots.
+        now: Timezone-aware current datetime.
+        cost_weights: The selector's cost weights.
+        slot_duration_hours: Slot width in hours.
+        current_kwh: Energy stored above the discharge floor now (kWh).
+        end_value_per_kwh: The terminal-SoC end value ``V``, or ``None``.
+        gained_kwh: ``soc[T]`` of stage 2 minus ``soc[T]`` of stage 1.
+
+    Returns:
+        The values for :data:`PREFERENCE_COST_KEYS`.
+    """
+    stage1, stage2 = (
+        score_plan(
+            slots,
+            cost_weights,
+            slot_duration_hours=slot_duration_hours,
+            now=now,
+            initial_battery_kwh=current_kwh,
+            replacement_price_per_kwh=end_value_per_kwh,
+        )
+        for slots in (stage1_slots, stage2_slots)
+    )
+    # Plain floats: slot flows can be numpy scalars, and this dict is published
+    # as a sensor attribute.
+    stage1_cost, stage2_cost = float(stage1.total_cost), float(stage2.total_cost)
+    cost = stage2_cost - stage1_cost
+    return {
+        "stage1_cost": round(stage1_cost, 4),
+        "stage2_cost": round(stage2_cost, 4),
+        "preference_cost": round(cost, 4),
+        "preference_cost_per_kwh": (
+            round(cost / float(gained_kwh), 4) if gained_kwh > 1e-6 else None
+        ),
+        "terminal_soc_value_delta": round(
+            float(stage2.terminal_soc_value) - float(stage1.terminal_soc_value), 4
+        ),
     }
 
 
@@ -195,6 +279,8 @@ def solve_milp_with_battery_target(
     current_kwh: float,
     ev_configs: list[EVConfig] | None = None,
     charge_efficiency_pct: float = 97.0,
+    cost_weights: CostWeights | None = None,
+    slot_duration_hours: float = 1.0,
     **solve_kwargs: Any,
 ) -> tuple[list[PlannedSlot], dict[str, Any]] | None:
     """Solve the MILP, then re-solve towards the house-battery target if needed.
@@ -203,6 +289,10 @@ def solve_milp_with_battery_target(
     :func:`~custom_components.hsem.planner.milp._past_target_reservation.solve_milp_with_past_target_reservation`
     plus *battery_target*.  With ``battery_target=None`` it is exactly that
     call, so a disabled target is bit-for-bit identical to the normal plan.
+
+    *cost_weights* and *slot_duration_hours* are only used to report the
+    preference cost (issue #1185) when stage 2 solves; without weights those
+    diagnostics stay ``None``.  They never influence either solve.
 
     Returns:
         The stage-2 result when stage 2 ran and succeeded, otherwise the
@@ -282,6 +372,19 @@ def solve_milp_with_battery_target(
     diagnostics["max_import_delta_kwh"] = round(max(abs(d) for d in window), 3)
     diagnostics["max_import_increase_after_kwh"] = round(max([0.0, *after]), 3)
     projected = projected_kwh_at(stage2_slots, future_idx, target_lp_index, current_kwh)
+    if cost_weights is not None:
+        diagnostics.update(
+            preference_cost(
+                stage1_slots,
+                stage2_slots,
+                now,
+                cost_weights=cost_weights,
+                slot_duration_hours=slot_duration_hours,
+                current_kwh=current_kwh,
+                end_value_per_kwh=solve_kwargs.get("replacement_price_per_kwh"),
+                gained_kwh=projected - stage1_projected,
+            )
+        )
     log_planner(
         "debug",
         "[battery_target] stage 2 solved  target=%.3f  stage1=%.3f  "

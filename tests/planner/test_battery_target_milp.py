@@ -26,6 +26,7 @@ from custom_components.hsem.planner.battery_target import (
     next_target_slot_index,
     target_penalty_per_kwh,
 )
+from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.milp import _battery_target, _incumbent
 from custom_components.hsem.planner.milp._battery_target import (
     IMPORT_ZERO_TOLERANCE_KWH,
@@ -705,3 +706,163 @@ def test_house_battery_target_goes_before_a_charge_past_target_ev() -> None:
         battery_ac = slot.batteries_charged_kwh / _CHARGE_EFF
         assert slot.ev_total_planned_load_kwh + battery_ac <= 2.5 + 1e-2
     _assert_import_rule(normal, plan, target_index)
+
+
+# ---------------------------------------------------------------------------
+# Preference cost (issue #1185)
+# ---------------------------------------------------------------------------
+
+_PREFERENCE_KEYS = (
+    "stage1_cost",
+    "stage2_cost",
+    "preference_cost",
+    "preference_cost_per_kwh",
+    "terminal_soc_value_delta",
+)
+
+_WEIGHTS = CostWeights(
+    cycle_cost_per_kwh=_BATTERY["cycle_cost_per_kwh"],
+    charge_efficiency_pct=_BATTERY["charge_efficiency_pct"],
+    discharge_efficiency_pct=_BATTERY["discharge_efficiency_pct"],
+)
+
+
+def _export_only_day() -> tuple[list[PlannedSlot], datetime]:
+    """Three hours of 2 kWh PV at a 0.50 export price, and nothing else.
+
+    No house load and a 0.20 import price, so the normal plan exports all
+    6 kWh and never touches the battery.  Nothing after the target can use
+    stored energy, so the target's cost is exactly the export it gives up
+    plus the cycling.
+    """
+    pv = [0.0] * 12 + [2.0, 2.0, 2.0] + [0.0] * 9
+    slots = _day(pv, [0.0] * 24, [0.20] * 24, [0.50] * 24)
+    return slots, _MIDNIGHT + timedelta(hours=12)
+
+
+class TestPreferenceCost:
+    """What the target costs: stage 2 against stage 1, in money."""
+
+    def test_equals_forgone_export_plus_cycle_cost(self) -> None:
+        """Hand-computed: 2 kWh stored instead of exported.
+
+        Storing 2 kWh takes 2 / 0.97 = 2.062 kWh of PV that is not exported
+        at 0.50 (1.031), and cycles 2 kWh at 0.02 (0.040).
+        """
+        slots, now = _export_only_day()
+        spec = _spec(slots, now, target_kwh=6.0, at=time(15, 0))
+
+        stage2, diagnostics = _solve(
+            slots, now, spec, current_kwh=4.0, cost_weights=_WEIGHTS
+        )
+        report = diagnostics["battery_target"]
+
+        assert report["stage2_status"] == "solved"
+        assert report["stage1_projected_kwh"] == pytest.approx(4.0)
+        assert report["projected_kwh"] == pytest.approx(6.0, abs=_PUBLISHED_TOL)
+        forgone_export = 2.0 / _CHARGE_EFF * 0.50
+        cycle_cost = 2.0 * _BATTERY["cycle_cost_per_kwh"]
+        assert report["stage1_cost"] == pytest.approx(-6.0 * 0.50, abs=2e-3)
+        assert report["preference_cost"] == pytest.approx(
+            forgone_export + cycle_cost, abs=2e-3
+        )
+        assert report["stage2_cost"] == pytest.approx(
+            report["stage1_cost"] + report["preference_cost"], abs=1e-4
+        )
+        assert report["preference_cost_per_kwh"] == pytest.approx(
+            (forgone_export + cycle_cost) / 2.0, abs=2e-3
+        )
+        # No end value in this solve, so the stored 2 kWh carry no credit.
+        assert report["terminal_soc_value_delta"] == pytest.approx(0.0)
+        # stage2_cost is the money figure of the plan that is returned.
+        published = score_plan(stage2, _WEIGHTS, slot_duration_hours=1.0, now=now)
+        assert report["stage2_cost"] == pytest.approx(published.total_cost, abs=1e-4)
+
+    def test_terminal_soc_difference_is_reported_alongside(self) -> None:
+        """With an end value V, the 2 kWh still stored are credited at V."""
+        slots, now = _export_only_day()
+        spec = _spec(slots, now, target_kwh=6.0, at=time(15, 0))
+
+        _stage2, diagnostics = _solve(
+            slots,
+            now,
+            spec,
+            current_kwh=4.0,
+            cost_weights=_WEIGHTS,
+            replacement_price_per_kwh=0.10,
+        )
+        report = diagnostics["battery_target"]
+
+        assert report["stage2_status"] == "solved"
+        assert report["terminal_soc_value_delta"] == pytest.approx(
+            -2.0 * 0.10, abs=2e-3
+        )
+        # The money figure is not reduced by it.
+        assert report["preference_cost"] == pytest.approx(
+            2.0 / _CHARGE_EFF * 0.50 + 2.0 * 0.02, abs=2e-3
+        )
+
+    def test_keys_are_none_when_stage_2_does_not_run(self) -> None:
+        slots, now = _export_only_day()
+        spec = _spec(slots, now, target_kwh=4.0, at=time(15, 0))
+
+        _plan, diagnostics = _solve(
+            slots, now, spec, current_kwh=4.0, cost_weights=_WEIGHTS
+        )
+        report = diagnostics["battery_target"]
+
+        assert report["stage2_status"] == "target_met"
+        assert [report[key] for key in _PREFERENCE_KEYS] == [None] * 5
+
+    def test_keys_are_none_without_cost_weights(self) -> None:
+        """A caller that passes no weights gets the plan, not the figure."""
+        slots, now = _export_only_day()
+        spec = _spec(slots, now, target_kwh=6.0, at=time(15, 0))
+
+        _plan, diagnostics = _solve(slots, now, spec, current_kwh=4.0)
+        report = diagnostics["battery_target"]
+
+        assert report["stage2_status"] == "solved"
+        assert [report[key] for key in _PREFERENCE_KEYS] == [None] * 5
+
+    def test_keys_are_none_when_stage_2_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        slots, now = _export_only_day()
+        spec = _spec(slots, now, target_kwh=6.0, at=time(15, 0))
+        monkeypatch.setattr(_battery_target, "_solve_stage2", lambda *_a, **_k: None)
+
+        _plan, diagnostics = _solve(
+            slots, now, spec, current_kwh=4.0, cost_weights=_WEIGHTS
+        )
+        report = diagnostics["battery_target"]
+
+        assert report["stage2_status"] == "failed"
+        assert [report[key] for key in _PREFERENCE_KEYS] == [None] * 5
+
+    def test_per_kwh_is_none_when_nothing_was_gained(self) -> None:
+        """No PV and no export to give up: stage 2 solves but gains nothing."""
+        slots = _day([0.0] * 24, [0.0] * 24, [0.20] * 24, [0.50] * 24)
+        now = _MIDNIGHT + timedelta(hours=12)
+        spec = _spec(slots, now, target_kwh=6.0, at=time(15, 0))
+
+        _plan, diagnostics = _solve(
+            slots, now, spec, current_kwh=4.0, cost_weights=_WEIGHTS
+        )
+        report = diagnostics["battery_target"]
+
+        assert report["stage2_status"] == "solved"
+        assert report["preference_cost"] == pytest.approx(0.0, abs=1e-4)
+        assert report["preference_cost_per_kwh"] is None
+
+    def test_the_figure_does_not_change_the_plan(self) -> None:
+        """Passing the weights reports the cost; the slots are the same."""
+        slots, now = _export_only_day()
+        spec = _spec(slots, now, target_kwh=6.0, at=time(15, 0))
+
+        with_weights, _ = _solve(
+            slots, now, spec, current_kwh=4.0, cost_weights=_WEIGHTS
+        )
+        without_weights, _ = _solve(slots, now, spec, current_kwh=4.0)
+
+        assert with_weights == without_weights

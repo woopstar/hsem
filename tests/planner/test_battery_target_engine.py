@@ -211,3 +211,73 @@ def test_without_a_milp_plan_the_selected_plan_is_still_reported(
     assert report["stage2_status"] == "milp_unavailable"
     assert report["selected_projected_kwh"] == pytest.approx(9.0, abs=1e-2)
     assert report["selected_shortfall_kwh"] == pytest.approx(0.0, abs=1e-2)
+
+
+# ---------------------------------------------------------------------------
+# Preference cost (issue #1185)
+# ---------------------------------------------------------------------------
+
+_PREFERENCE_KEYS = (
+    "stage1_cost",
+    "stage2_cost",
+    "preference_cost",
+    "preference_cost_per_kwh",
+    "terminal_soc_value_delta",
+)
+
+
+def test_preference_cost_is_reported_on_the_reporters_deadline_day() -> None:
+    """The target's price is the published plan's cost minus the normal plan's."""
+    normal = run_planner(_inp(enabled=False))
+    output = run_planner(_inp(enabled=True))
+
+    report = output.battery_target
+    assert report is not None
+    assert report["stage2_status"] == "solved"
+    assert output.plan_cost is not None and normal.plan_cost is not None
+    # stage2_cost is the money figure of the published MILP plan …
+    assert report["stage2_cost"] == pytest.approx(output.plan_cost.total_cost, abs=1e-3)
+    # … and stage1_cost the one of the plan without the target.
+    assert report["stage1_cost"] == pytest.approx(normal.plan_cost.total_cost, abs=1e-3)
+    assert report["preference_cost"] == pytest.approx(
+        report["stage2_cost"] - report["stage1_cost"], abs=1e-4
+    )
+    # Storing PV that would have been exported at 0.58 costs money.
+    assert report["preference_cost"] > 0.5
+    gained_kwh = report["projected_kwh"] - report["stage1_projected_kwh"]
+    assert report["preference_cost_per_kwh"] == pytest.approx(
+        report["preference_cost"] / gained_kwh, abs=1e-3
+    )
+    # More energy is left at the horizon end, which the selector credits.
+    assert report["terminal_soc_value_delta"] <= 1e-6
+    # Published as a sensor attribute: plain floats, not numpy scalars.
+    assert all(type(report[key]) is float for key in _PREFERENCE_KEYS)
+
+
+def test_preference_cost_keys_are_none_when_the_target_is_already_met() -> None:
+    met = run_planner(_inp(enabled=True, target_pct=63.0))
+
+    assert met.battery_target is not None
+    assert met.battery_target["stage2_ran"] is False
+    assert [met.battery_target[key] for key in _PREFERENCE_KEYS] == [None] * 5
+
+
+def test_preference_cost_never_enters_total_cost_or_score(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Whatever the figure says, the plan and its costs are unchanged."""
+    baseline = run_planner(_inp(enabled=True))
+
+    monkeypatch.setattr(
+        "custom_components.hsem.planner.milp._battery_target.preference_cost",
+        lambda *_args, **_kwargs: dict.fromkeys(_PREFERENCE_KEYS, 1_000_000.0),
+    )
+    inflated = run_planner(_inp(enabled=True))
+
+    assert inflated.battery_target is not None
+    assert inflated.battery_target["preference_cost"] == pytest.approx(1_000_000.0)
+    assert inflated.slots == baseline.slots
+    assert inflated.plan_cost == baseline.plan_cost
+    assert inflated.winner_name == baseline.winner_name
+    for name in ("passive", "milp"):
+        assert _cost(inflated, name) == _cost(baseline, name)

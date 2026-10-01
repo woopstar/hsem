@@ -2459,3 +2459,18 @@ Tests: `tests/planner/test_dynamic_floor_reserve_profile.py` (profile, per-slot 
 The planner-phase floor steps live in `CoordinatorDynamicFloorMixin` (`coordinator_dynamic_floor.py`): `_sync_dynamic_floor_enabled()`, `_async_apply_dynamic_floor()`, `_learn_dynamic_floor_margin()`. `CoordinatorPlannerPhaseMixin` inherits it.
 
 Tests: `tests/test_dynamic_floor_reference_plan.py::TestReferenceSolveKeepsTheBatteryTarget`, `tests/test_coordinator_planner_phase.py::TestFreshPlan::test_reference_solve_keeps_the_battery_target`.
+
+## Battery-Target Preference Cost Is a Report, Scored by `score_plan` (issue #1185)
+
+When the house-battery target's stage 2 solves, `milp/_battery_target.py::preference_cost()` scores the stage-1 and stage-2 slots with `score_plan` and the selector's own `CostWeights`, and writes `stage1_cost`, `stage2_cost`, `preference_cost`, `preference_cost_per_kwh` and `terminal_soc_value_delta` into `diagnostics["battery_target"]`. `summarize_battery_target` carries the record to `PlannerOutput.battery_target`, the diagnostics dump and the working-mode sensor attribute.
+
+**Rules:**
+
+- Use `score_plan`, not `cost_helpers.grid_cash_flow_cost`: `score_plan` blocks battery export below `battery_export_min_price` only on no-PV slots, the helper zeroes any export below `export_min_price`. Only `score_plan` makes `stage2_cost` equal the published plan's `total_cost`.
+- The weights reach the wrapper as `cost_weights=` / `slot_duration_hours=` through `generate_candidates`; `V` comes from `solve_kwargs["replacement_price_per_kwh"]`. Nothing was added to `milp_optimizer.py`.
+- The figure is horizon-wide and recomputed every replan. Never sum it into a daily total; a daily figure needs realised energy.
+- `terminal_soc_value_delta` is the selector's terminal-SoC term, not cash. Report it next to the cost; do not net it.
+- Coerce to plain `float` before publishing: slot flows can be `numpy.float64`.
+- All five keys are `None` unless stage 2 solved and weights were supplied.
+
+Tests: `tests/planner/test_battery_target_milp.py::TestPreferenceCost` (hand-computed: forgone export + cycle cost), `tests/planner/test_battery_target_engine.py` (equals the published `total_cost`; replacing the figure changes no slot and no cost).
