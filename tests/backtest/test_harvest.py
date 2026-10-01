@@ -20,6 +20,7 @@ from tests.backtest.harvest import (
     expected_slots,
     harvest,
     leaks_entity_ids,
+    refresh_corpus,
     situation_of,
     slim_payload,
     write_actuals_days,
@@ -333,3 +334,88 @@ class TestActualsDays:
         )
         assert written == [day]
         assert not any(tmp_path.iterdir())
+
+
+class TestRefreshCorpus:
+    """A new PlannerInput field must be a one-command fix, not a chore."""
+
+    @staticmethod
+    def _corpus(tmp_path: Path, mutate: Any) -> Path:
+        corpus = tmp_path / "corpus"
+        corpus.mkdir()
+        document = json.loads(_SOURCE.read_text(encoding="utf-8"))
+        mutate(document["planner_input"])
+        (corpus / _SOURCE.name).write_text(json.dumps(document), encoding="utf-8")
+        return corpus
+
+    def test_a_faithful_corpus_is_left_alone(self, tmp_path: Path) -> None:
+        corpus = self._corpus(tmp_path, lambda _pi: None)
+        before = (corpus / _SOURCE.name).read_text()
+        result = refresh_corpus(corpus)
+        assert (result.unchanged, result.updated) == (1, [])
+        assert (corpus / _SOURCE.name).read_text() == before
+
+    def test_a_field_the_dump_predates_gets_its_default(self, tmp_path: Path) -> None:
+        corpus = self._corpus(tmp_path, lambda pi: pi.pop("battery_target_soc_enabled"))
+        result = refresh_corpus(corpus)
+        assert result.updated == [
+            (_SOURCE.name, {"battery_target_soc_enabled": False}, [])
+        ]
+        _, report = load_planner_input(corpus / _SOURCE.name)
+        assert report.is_faithful
+        assert "battery_target_soc_enabled = False" in result.describe()
+
+    def test_a_removed_field_is_dropped(self, tmp_path: Path) -> None:
+        corpus = self._corpus(
+            tmp_path, lambda pi: pi.update(battery_schedules=[{"enabled": True}])
+        )
+        result = refresh_corpus(corpus)
+        assert result.updated == [(_SOURCE.name, {}, ["battery_schedules"])]
+        document = json.loads((corpus / _SOURCE.name).read_text())
+        assert "battery_schedules" not in document["planner_input"]
+
+    def test_a_removed_nested_key_is_dropped(self, tmp_path: Path) -> None:
+        def add_legacy(pi: dict[str, Any]) -> None:
+            for row in pi["price_points"]:
+                row["legacy_tariff"] = 0.5
+
+        corpus = self._corpus(tmp_path, add_legacy)
+        result = refresh_corpus(corpus)
+        assert result.updated[0][2] == ["price_points[]"]
+        _, report = load_planner_input(corpus / _SOURCE.name)
+        assert report.is_faithful
+
+    def test_dry_run_reports_without_writing(self, tmp_path: Path) -> None:
+        corpus = self._corpus(tmp_path, lambda pi: pi.pop("battery_target_soc_enabled"))
+        before = (corpus / _SOURCE.name).read_text()
+        result = refresh_corpus(corpus, dry_run=True)
+        assert len(result.updated) == 1
+        assert (corpus / _SOURCE.name).read_text() == before
+
+    def test_an_unparseable_datetime_is_reported_not_guessed(
+        self, tmp_path: Path
+    ) -> None:
+        corpus = self._corpus(
+            tmp_path, lambda pi: pi.update(ev_planned_load_deadline="tomorrow-ish")
+        )
+        result = refresh_corpus(corpus)
+        assert result.updated == []
+        assert result.unfixable[0][0] == _SOURCE.name
+
+    def test_a_refresh_does_not_hide_a_regression(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            harvest_module,
+            "check_invariants",
+            lambda _inp, _out: [InvariantViolation("soc_bounds", "forced")],
+        )
+        corpus = self._corpus(tmp_path, lambda pi: pi.pop("battery_target_soc_enabled"))
+        result = refresh_corpus(corpus)
+        assert [name for name, _ in result.violations] == [_SOURCE.name]
+        assert "now violates an invariant" in result.describe()
+
+    def test_the_committed_corpus_needs_no_refresh(self) -> None:
+        result = refresh_corpus(CORPUS_DIR, dry_run=True)
+        assert result.updated == [], result.describe()
+        assert result.unfixable == []

@@ -37,30 +37,37 @@ settings.
 **Do not commit a dump you have not read.** A dump is a snapshot of someone's
 home.
 
-## Regenerating
+## When `PlannerInput` changes
 
-`PlannerInput` fields get added and removed. When that happens a corpus entry
-stops round-tripping losslessly and `test_corpus_replay.py` fails on
-`ReplayReport.is_faithful` — that failure is the point, not a nuisance: it says
-the recorded cycle no longer describes an input the current planner accepts.
-
-Refresh an entry by replaying it through the current code and re-emitting it:
+Adding or removing a `PlannerInput` field makes every committed cycle stop
+round-tripping, and `test_corpus_replay.py` fails on `ReplayReport.is_faithful`.
+That failure is the point: it says the recorded cycles no longer describe an
+input the current planner accepts. The fix is one command:
 
 ```bash
-python3 scripts/replay_planner_input.py \
-    tests/backtest/corpus/cycle-2026-09-14-1721.json \
-    --regenerate tests/backtest/corpus/cycle-2026-09-14-1721.json
+python3 scripts/backtest_harvest.py --refresh-corpus
 ```
 
-**Check what a new field defaults to before regenerating.** `--regenerate`
-fills a field the dump predates with its dataclass default, and that default
-must describe the recorded site. When #1169 added `PlannerInput.time_zone`, the
-default `None` meant the legacy fixed-offset path, while a current dump carries
-the Home Assistant zone key. So the committed cycle was regenerated with
-`time_zone="Europe/Copenhagen"`, the site's actual zone, and confirmed to plan
-identically.
+It fills each field the dumps predate with its `PlannerInput` default, drops
+fields that no longer exist, replays every rewritten cycle against the spec,
+and lists what it filled:
 
-The regenerated file records the replaying checkout's `hsem_version` and keeps
-the source cycle's `dump_timestamp`, so regenerating an unchanged entry
-produces an unchanged file. Review the diff: a field that silently disappeared
-is exactly the kind of drift this harness exists to catch.
+```text
+0 cycle(s) already round-trip, 9 updated
+  filled with the PlannerInput default — check each describes a site recorded before the field existed:
+    battery_target_soc_enabled = False
+    battery_target_soc_pct = 100.0
+    battery_target_soc_time = '17:00:00'
+    dynamic_floor_profile = None
+```
+
+**Read that list.** A default is right when it means "the feature did not exist
+yet" — a target that is disabled, a profile that is absent. It is wrong when the
+default selects different behaviour from what the site actually had. That was
+the case for `time_zone` (#1169): its default `None` means the legacy
+fixed-offset path, while a current dump carries the Home Assistant zone key, so
+the committed cycle was given `time_zone="Europe/Copenhagen"` by hand. When in
+doubt, set the real value in the file and re-run the refresh to verify.
+
+Commit the refreshed files with the change that added the field. `--dry-run`
+shows the list without writing.

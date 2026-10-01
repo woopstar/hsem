@@ -1267,6 +1267,11 @@ against `docs/planner-spec.md`.
   flags), slim (no `planner_output`), faithful, entity-free; caps 10/run, 50
   total. 340 real cycles held only 8 situations. Actuals are committed per
   complete day in `tests/backtest/actuals/`.
+- **Adding or removing a `PlannerInput` field breaks the corpus tests on
+  purpose.** Fix with `python3 scripts/backtest_harvest.py --refresh-corpus`
+  and commit the result in the same PR. It fills new fields with their defaults
+  and lists them; a default is right only when it means "the feature did not
+  exist yet". `time_zone` (#1169) was the exception — set by hand.
 
 ---
 

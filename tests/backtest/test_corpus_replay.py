@@ -60,7 +60,8 @@ class TestCorpusReplay:
             assert report.is_faithful, (
                 f"{corpus_dump.name} cycle {index} no longer round-trips onto "
                 f"the current PlannerInput:\n{report.describe()}\n"
-                f"Regenerate it — see tests/backtest/corpus/README.md"
+                f"Run: python3 scripts/backtest_harvest.py --refresh-corpus\n"
+                f"(see tests/backtest/corpus/README.md)"
             )
         assert cycles, f"{corpus_dump.name} carries no cycles"
 

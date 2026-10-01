@@ -213,14 +213,16 @@ a fee differs between what the planner used and what was recorded.
 ## When the planner changes
 
 A new `PlannerInput` field makes older dumps report it under `fidelity`, and
-the pytest corpus tests fail on the committed cycle. Both are deliberate.
+the pytest corpus tests fail on the committed cycles. Both are deliberate.
 
+- **The committed corpus**: run
+  `python3 scripts/backtest_harvest.py --refresh-corpus` and commit the result
+  with the change that added the field. It fills the new field with its default
+  and lists what it filled — check that each default means "the feature did not
+  exist yet". `tests/backtest/corpus/README.md` explains the one case so far
+  where it did not (`time_zone`, #1169).
 - **Your live corpus**: nothing to do. New dumps carry the field once Home
   Assistant runs the new build; older ones replay with its default.
-- **The committed cycle**: regenerate it, but first check what the new field
-  defaults to. `--regenerate` fills it with the dataclass default, which must
-  describe the recorded site. See `tests/backtest/corpus/README.md` for the
-  command and for how `time_zone` (#1169) was handled.
 
 ---
 

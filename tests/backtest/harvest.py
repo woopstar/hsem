@@ -38,6 +38,7 @@ from zoneinfo import ZoneInfo
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.planner.engine_core import run_planner
+from custom_components.hsem.utils.diagnostics import _planner_input_to_dict
 from custom_components.hsem.utils.recommendations import SENTINEL_RECS
 from tests.backtest.actuals import ACTUALS_SCHEMA, ENERGY_SERIES
 from tests.backtest.invariants import check_invariants, format_violations
@@ -52,12 +53,14 @@ __all__ = [
     "DEFAULT_MAX_CORPUS",
     "DEFAULT_MAX_NEW",
     "HarvestResult",
+    "RefreshResult",
     "Situation",
     "committed_actuals",
     "cycle_file_name",
     "expected_slots",
     "harvest",
     "leaks_entity_ids",
+    "refresh_corpus",
     "situation_of",
     "slim_payload",
     "write_actuals_days",
@@ -442,3 +445,117 @@ def write_actuals_days(
 def committed_actuals(paths: Sequence[Path]) -> dict[date, Path]:
     """Map each committed actuals file to its day."""
     return {date.fromisoformat(p.stem.removeprefix("actuals-")): p for p in paths}
+
+
+# ---------------------------------------------------------------------------
+# Keeping the committed corpus in step with PlannerInput
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RefreshResult:
+    """What a corpus refresh changed.
+
+    Attributes:
+        unchanged: Cycles that already round-trip.
+        updated: ``(file, filled, removed)`` for every cycle rewritten —
+            ``filled`` maps each added field to the default it received.
+        unfixable: ``(file, reason)`` for cycles a refresh cannot repair.
+        violations: ``(file, report)`` for cycles that round-trip after the
+            refresh but break an invariant on the current code.
+    """
+
+    unchanged: int = 0
+    updated: list[tuple[str, dict[str, Any], list[str]]] = field(default_factory=list)
+    unfixable: list[tuple[str, str]] = field(default_factory=list)
+    violations: list[tuple[str, str]] = field(default_factory=list)
+
+    def describe(self) -> str:
+        """Render the refresh summary, naming every default that was filled in."""
+        lines = [
+            f"{self.unchanged} cycle(s) already round-trip, {len(self.updated)} updated"
+        ]
+        filled: dict[str, Any] = {}
+        removed: set[str] = set()
+        for _name, file_filled, file_removed in self.updated:
+            filled.update(file_filled)
+            removed.update(file_removed)
+        if filled:
+            lines.append(
+                "  filled with the PlannerInput default — check each describes "
+                "a site recorded before the field existed:"
+            )
+            lines.extend(
+                f"    {name} = {value!r}" for name, value in sorted(filled.items())
+            )
+        if removed:
+            lines.append(f"  removed, no longer on PlannerInput: {sorted(removed)}")
+        for name, reason in self.unfixable:
+            lines.append(f"  cannot repair {name}: {reason}")
+        for name, report in self.violations:
+            lines.append(f"  {name} now violates an invariant:\n{report}")
+        return "\n".join(lines)
+
+
+def refresh_corpus(corpus_dir: Path, *, dry_run: bool = False) -> RefreshResult:
+    """Bring every committed cycle back in step with the current ``PlannerInput``.
+
+    Adding a field to ``PlannerInput`` makes every committed cycle stop
+    round-tripping, and the corpus tests fail — deliberately.  For a dump
+    recorded before the field existed, the dataclass default is normally the
+    truthful value (the feature was off), so a refresh fills it in; a field
+    removed from ``PlannerInput`` is dropped.  Every filled default is listed
+    so it can be checked: when the default does *not* describe the recorded
+    site — as with ``time_zone`` (#1169) — set the real value by hand instead.
+
+    A refresh never hides a regression: each rewritten cycle is replayed, and
+    one that now breaks an invariant is reported.
+
+    Args:
+        corpus_dir: The committed corpus directory.
+        dry_run: Report what would change, writing nothing.
+
+    Returns:
+        A :class:`RefreshResult`.
+    """
+    result = RefreshResult()
+    defaults = _planner_input_to_dict(PlannerInput())
+    with generous_solver_limit():
+        for path in sorted(corpus_dir.glob("*.json")):
+            document = json.loads(path.read_text(encoding="utf-8"))
+            payload = document.get("data", document)
+            _inp, report = planner_input_from_dict(payload)
+            if report.is_faithful:
+                result.unchanged += 1
+                continue
+            if report.malformed_datetimes:
+                result.unfixable.append(
+                    (path.name, f"unparseable {sorted(report.malformed_datetimes)}")
+                )
+                continue
+
+            planner_input = payload["planner_input"]
+            filled = {name: defaults[name] for name in report.missing}
+            planner_input.update(copy.deepcopy(filled))
+            for name in report.dropped:
+                del planner_input[name]
+            for list_name, keys in report.dropped_nested.items():
+                for row in planner_input[list_name]:
+                    for key in keys:
+                        row.pop(key, None)
+
+            inp, after = planner_input_from_dict(payload)
+            if not after.is_faithful:
+                result.unfixable.append((path.name, after.describe()))
+                continue
+            removed = [*report.dropped, *(f"{k}[]" for k in report.dropped_nested)]
+            result.updated.append((path.name, filled, removed))
+            if not dry_run:
+                path.write_text(
+                    json.dumps(document, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+            violations = check_invariants(inp, run_planner(inp))
+            if violations:
+                result.violations.append((path.name, format_violations(violations)))
+    return result

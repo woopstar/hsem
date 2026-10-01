@@ -5,6 +5,11 @@ Front end for ``tests/backtest/harvest.py``; usually run through
 
 Only cycles newer than the last run are replayed: the resume point is kept in a
 ``.harvested-until`` file beside the live corpus.  ``--all`` ignores it.
+
+After a ``PlannerInput`` field is added or removed, the corpus tests fail until
+the committed cycles are refreshed::
+
+    python3 scripts/backtest_harvest.py --refresh-corpus
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ from tests.backtest.harvest import (  # noqa: E402
     DEFAULT_MAX_CORPUS,
     DEFAULT_MAX_NEW,
     harvest,
+    refresh_corpus,
     write_actuals_days,
 )
 
@@ -75,7 +81,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--dry-run", action="store_true", help="Report only; write nothing"
     )
+    parser.add_argument(
+        "--refresh-corpus",
+        action="store_true",
+        help=(
+            "Bring the committed cycles back in step with PlannerInput after a "
+            "field was added or removed, then exit. Needs no live corpus."
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.refresh_corpus:
+        refreshed = refresh_corpus(args.corpus_dir, dry_run=args.dry_run)
+        print(refreshed.describe())
+        if args.dry_run:
+            print("[dry run] nothing written")
+        return 1 if refreshed.unfixable or refreshed.violations else 0
     # A .env value is taken literally, so a leading ~ arrives unexpanded.
     args.live = args.live.expanduser()
     args.actuals = args.actuals.expanduser()
