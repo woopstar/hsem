@@ -16,6 +16,8 @@ Acceptance criteria verified here
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from homeassistant.const import STATE_UNKNOWN
@@ -282,6 +284,38 @@ class TestStrategyDetection:
         inp = make_summer_day_input(battery_soc_pct=100.0)
         output = run_planner(inp)
         assert "battery_full" in output.explanation.constraints
+
+    def test_no_dynamic_floor_reports_no_floor_constraint(self):
+        """Without a dynamic floor neither floor tag is listed (issue #1227)."""
+        output = run_planner(make_summer_day_input())
+        assert "dynamic_discharge_floor" not in output.explanation.constraints
+        assert "battery_below_dynamic_floor" not in output.explanation.constraints
+
+    def test_dynamic_floor_at_hardware_floor_reports_no_floor_constraint(self):
+        """A released floor (at the hardware floor) reserves nothing (issue #1227)."""
+        inp = replace(make_summer_day_input(), dynamic_discharge_floor_pct=10.0)
+        output = run_planner(inp)
+        assert "dynamic_discharge_floor" not in output.explanation.constraints
+        assert "battery_below_dynamic_floor" not in output.explanation.constraints
+
+    def test_dynamic_floor_below_soc_reports_floor_only(self):
+        """A floor that reserves energy below the live SoC is named (issue #1227)."""
+        inp = replace(make_summer_day_input(), dynamic_discharge_floor_pct=30.0)
+        output = run_planner(inp)
+        assert "dynamic_discharge_floor" in output.explanation.constraints
+        assert "battery_below_dynamic_floor" not in output.explanation.constraints
+
+    @pytest.mark.parametrize("floor_pct", [50.0, 84.0])
+    def test_dynamic_floor_at_or_above_soc_reports_battery_held(self, floor_pct):
+        """A floor at or above the live SoC says the battery is held (issue #1227).
+
+        The reporter's plan kept the live 66 % for the whole horizon and the
+        explanation listed only ``winter_month`` and ``excess_export_enabled``.
+        """
+        inp = replace(make_summer_day_input(), dynamic_discharge_floor_pct=floor_pct)
+        output = run_planner(inp)
+        assert "dynamic_discharge_floor" in output.explanation.constraints
+        assert "battery_below_dynamic_floor" in output.explanation.constraints
 
 
 # ===========================================================================

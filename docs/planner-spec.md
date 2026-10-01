@@ -4738,6 +4738,11 @@ effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
   from the configured minimum, where a bridge starts; it never rises within
   a bridge (issue #1214).
 - `floor_pct[now]`, the first profile entry, equals `effective_floor_pct`.
+- The plan explanation's `constraints` list names the floor: it contains
+  `dynamic_discharge_floor` when `dynamic_discharge_floor_pct` is above the
+  hardware floor, and also `battery_below_dynamic_floor` when the live SoC is
+  at or below it. Neither tag is listed without a floor or with a floor at the
+  hardware floor (issue #1227).
   The profile is non-increasing up to the refill slot and equals
   `configured_min_soc_pct` from the refill slot on (issues #1188, #1214).
 - For every non-past slot of every candidate,

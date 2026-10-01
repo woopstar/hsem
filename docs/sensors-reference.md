@@ -611,6 +611,8 @@ The sensor reports the reserve at the start of the current slot. The planner doe
 
 The refill scan reads planned grid charges from a floor-free reference solve in the same replan (issue #1140). When that plan grid-charges enough to cover the load until the charge, the `refill_type` attribute is `grid_charge`, `reserve_kwh` is `0`, and the floor equals the configured minimum SoC. When it charges less than that, `refill_type` is still `grid_charge` and `reserve_kwh` is the load until the charge; the load behind the charge is not reserved (issue #1214). A planned charge counts from the first slot priced like the one it is planned in (within one battery cycle cost), so `next_refill_slot` can be earlier than the slot the plan charges in (issue #1198). When it does not, but a slot before the next solar surplus is priced within one battery cycle cost of the cheapest import price in the next 48 h and the battery could charge enough there, the floor is released the same way with `refill_type: grid_available` (issue #1156). Otherwise the floor bridges to the next solar surplus (`refill_type: solar_surplus`). Between replans the sensor keeps the floor the current plan was solved with.
 
+While the floor reserves energy, the `constraints` attribute of `sensor.hsem_plan_explanation_sensor` lists `dynamic_discharge_floor`, and `battery_below_dynamic_floor` when the live SoC is at or below it (issue #1227). A plan that keeps the live SoC through expensive hours with that tag listed is the floor holding its reserve.
+
 **Entities:**
 
 - `sensor.hsem_effective_discharge_floor_sensor` — Current effective floor SoC (%)
