@@ -151,8 +151,8 @@ def compute_dynamic_floor_from_plan(
     reference_input: PlannerInput,
     live: LiveState,
     now: datetime,
-) -> tuple[float, dict]:
-    """Return the dynamic floor for this replan and its diagnostics.
+) -> tuple[float, dict, list[tuple[str, float]]]:
+    """Return the dynamic floor for this replan, its diagnostics and profile.
 
     Args:
         dynamic_floor: The coordinator's self-learning floor instance.
@@ -167,14 +167,17 @@ def compute_dynamic_floor_from_plan(
         now: Timezone-aware current datetime.
 
     Returns:
-        ``(floor_pct, diagnostics)`` from
-        :meth:`~custom_components.hsem.utils.dynamic_floor.DynamicDischargeFloor.compute_floor`.
+        ``(floor_pct, diagnostics, profile)`` from
+        :meth:`~custom_components.hsem.utils.dynamic_floor.DynamicDischargeFloor.compute_floor_profile`.
+        The profile is the floor at the start of every look-ahead slot as
+        ``(slot start ISO-8601, floor SoC %)``, ready for
+        ``PlannerInput.dynamic_floor_profile`` (issue #1188).
     """
     rated_kwh = (live.huawei_batteries_rated_capacity_wh or 0.0) / 1000.0
     min_soc_pct = live.huawei_batteries_end_of_discharge_soc_pct or 0.0
     max_soc_pct = live.huawei_batteries_charging_cutoff_capacity_pct or 100.0
     usable_kwh = usable_kwh_from_rated(rated_kwh, min_soc_pct, max_soc_pct)
-    return dynamic_floor.compute_floor(
+    floor_pct, diag, profile = dynamic_floor.compute_floor_profile(
         now=now,
         slots=build_dynamic_floor_bridge_slots(hourly_recommendations, reference_plan),
         usable_kwh=usable_kwh,
@@ -188,3 +191,32 @@ def compute_dynamic_floor_from_plan(
         ),
         max_grid_charge_kw=reference_input.battery_max_charge_power_w / 1000.0,
     )
+    return floor_pct, diag, [(start.isoformat(), pct) for start, pct in profile]
+
+
+def floor_required_at_slot_end(
+    profile: list[tuple[str, float]] | None, now: datetime, floor_now_pct: float
+) -> float:
+    """Return the floor the plan may reach by the end of the slot holding *now*.
+
+    The plan follows the declining reserve (issue #1188): within a slot the
+    battery may go down to the floor at the start of the next slot.  That is
+    the floor the safety-margin learner must judge the live SoC against; the
+    floor at the start of the current slot would report every planned slot of
+    self-consumption as a shortfall.
+
+    Args:
+        profile: ``(slot start ISO-8601, floor SoC %)`` of the replan whose
+            floor is in force, or ``None``.
+        now: Timezone-aware current datetime.
+        floor_now_pct: The floor in force, used when the profile has no slot
+            starting after *now*.
+
+    Returns:
+        The floor at the start of the first profile slot that begins after
+        *now*, or *floor_now_pct*.
+    """
+    for start_iso, floor_pct in profile or ():
+        if utc_key(datetime.fromisoformat(start_iso)) > utc_key(now):
+            return floor_pct
+    return floor_now_pct

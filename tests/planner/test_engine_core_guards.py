@@ -14,13 +14,14 @@ from unittest.mock import patch
 import pytest
 
 from custom_components.hsem.planner.candidate_generator import CANDIDATE_MILP
-from custom_components.hsem.planner.engine_core import (
-    _resolve_effective_discharge_floor_pct,
-    run_planner,
+from custom_components.hsem.planner.discharge_reserve import (
+    resolve_effective_discharge_floor_pct as _resolve_effective_discharge_floor_pct,
 )
+from custom_components.hsem.planner.engine_core import run_planner
 from tests.planner.fixtures import make_summer_day_input
 
 _MODULE = "custom_components.hsem.planner.engine_core"
+_RESERVE_MODULE = "custom_components.hsem.planner.discharge_reserve"
 
 
 class TestBatteryCapacityWarnings:
@@ -95,14 +96,21 @@ class TestDynamicDischargeFloor:
         inp = make_summer_day_input(battery_end_of_discharge_soc_pct=10.0)
         inp.dynamic_discharge_floor_pct = 30.0
 
-        with patch(f"{_MODULE}.log_planner") as log:
-            run_planner(inp)
+        with patch(f"{_RESERVE_MODULE}.log_planner") as log:
+            output = run_planner(inp)
 
         assert any(
-            call.args[1].startswith("[core] Dynamic discharge floor active")
+            call.args[1].startswith("[core] Dynamic discharge reserve active")
             for call in log.call_args_list
             if len(call.args) > 1
         )
+        # 30 % - 10 % of the fixture's rated capacity, on every future slot.
+        reserves = {
+            round(slot.discharge_reserve_kwh, 6)
+            for slot in output.slots
+            if slot.discharge_reserve_kwh > 0.0
+        }
+        assert reserves == {round(inp.battery_rated_capacity_kwh * 0.20, 6)}
 
     def test_resolver_returns_the_hardware_floor_when_no_learned_floor(self) -> None:
         """Without a learned floor the hardware floor is effective."""

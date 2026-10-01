@@ -9,8 +9,11 @@ converted that 0 kWh back to "floor %".  The same origin also capped the
 model's charge headroom at ``rated × (100 − 75.74) %`` = 2.43 kWh, so the plan
 called the battery full at a real ~35 % and exported PV it could have stored.
 
-The dynamic floor is now capped at the live SoC, so the origin is a SoC the
-battery is actually at.
+The first fix capped the dynamic floor at the live SoC, so the model origin
+was a SoC the battery was actually at.  Since issue #1188 the origin is always
+the hardware floor and the dynamic floor is a per-slot lower bound on stored
+energy that never exceeds what the battery holds, so the same guarantees hold
+without moving the origin.
 """
 
 from __future__ import annotations
@@ -48,53 +51,63 @@ def _plan(
 
 
 @pytest.mark.parametrize(
-    ("soc_pct", "dynamic_floor_pct", "origin_pct"),
+    ("soc_pct", "dynamic_floor_pct"),
     [
         pytest.param(
-            _REPORTED_SOC_PCT,
-            _REPORTED_FLOOR_PCT,
-            _REPORTED_SOC_PCT,
-            id="below_dynamic_floor_issue_1094",
+            _REPORTED_SOC_PCT, _REPORTED_FLOOR_PCT, id="below_dynamic_floor_issue_1094"
         ),
-        pytest.param(80.0, _REPORTED_FLOOR_PCT, _REPORTED_FLOOR_PCT, id="above_floor"),
-        pytest.param(
-            _REPORTED_SOC_PCT, None, _HARDWARE_FLOOR_PCT, id="dynamic_floor_disabled"
-        ),
+        pytest.param(80.0, _REPORTED_FLOOR_PCT, id="above_floor"),
+        pytest.param(_REPORTED_SOC_PCT, None, id="dynamic_floor_disabled"),
     ],
 )
 def test_published_soc_and_capacity_describe_the_same_battery(
-    soc_pct: float, dynamic_floor_pct: float | None, origin_pct: float
+    soc_pct: float, dynamic_floor_pct: float | None
 ) -> None:
-    """Every slot's SoC equals the model origin plus its capacity above it.
+    """Every slot's SoC equals the hardware floor plus its capacity above it.
 
-    Before the fix the below-floor case published ``75.74 + cap`` — a SoC the
+    Before #1094 the below-floor case published ``75.74 + cap`` — a SoC the
     battery never had — so the two projected trajectories disagreed with the
-    live reading by the whole floor-to-SoC gap.
+    live reading by the whole floor-to-SoC gap.  Since #1188 the origin is the
+    hardware floor whatever the dynamic floor is.
     """
     _output, future = _plan(soc_pct, dynamic_floor_pct)
 
     assert future
     for slot in future:
         expected_soc = (
-            origin_pct + slot.estimated_battery_capacity_kwh / _RATED_KWH * 100
+            _HARDWARE_FLOOR_PCT + slot.estimated_battery_capacity_kwh / _RATED_KWH * 100
         )
         assert slot.estimated_battery_soc_pct == pytest.approx(expected_soc, abs=0.01)
 
 
 def test_current_slot_starts_from_the_live_soc_not_the_floor() -> None:
-    """The reporter's current slot: 11 % and 0.0 kWh, never 75.74 % and 0.0 kWh."""
+    """The reporter's current slot: 11 % and 0.6 kWh, never 75.74 % and 0.0 kWh."""
     _output, future = _plan(_REPORTED_SOC_PCT, _REPORTED_FLOOR_PCT)
     current = future[0]
 
-    assert current.estimated_battery_capacity_kwh == pytest.approx(0.0, abs=1e-6)
+    stored_kwh = _RATED_KWH * (_REPORTED_SOC_PCT - _HARDWARE_FLOOR_PCT) / 100
+    assert current.estimated_battery_capacity_kwh == pytest.approx(stored_kwh)
     assert current.estimated_battery_soc_pct == pytest.approx(_REPORTED_SOC_PCT)
+    # The reserve is capped at what the battery holds: no discharge, no
+    # forced charge.
+    assert current.discharge_reserve_kwh == pytest.approx(stored_kwh)
+    assert current.batteries_discharged_kwh == pytest.approx(0.0)
+
+
+def test_above_the_floor_only_the_energy_above_it_is_dischargeable() -> None:
+    """A battery above a constant floor never plans below that floor."""
+    _output, future = _plan(80.0, _REPORTED_FLOOR_PCT)
+
+    assert min(slot.estimated_battery_soc_pct for slot in future) >= (
+        _REPORTED_FLOOR_PCT - 0.01
+    )
 
 
 def test_soc_stays_within_live_soc_and_ceiling() -> None:
     """SoC-bounds invariant: never below the live SoC, never above the ceiling.
 
     Being below the dynamic floor still forbids discharging below the current
-    level — the model origin is the live SoC, and capacity above it is >= 0.
+    level — the slot reserve is capped at the energy the battery holds.
     """
     _output, future = _plan(_REPORTED_SOC_PCT, _REPORTED_FLOOR_PCT)
 
@@ -111,13 +124,16 @@ def test_charge_headroom_is_the_real_battery_not_the_floor_gap() -> None:
     75.74 % origin allowed — and never beyond the physical headroom.
     """
     _output, future = _plan(_REPORTED_SOC_PCT, _REPORTED_FLOOR_PCT)
+    stored_kwh = _RATED_KWH * (_REPORTED_SOC_PCT - _HARDWARE_FLOOR_PCT) / 100
     old_ceiling_kwh = _RATED_KWH * (100.0 - _REPORTED_FLOOR_PCT) / 100
     real_headroom_kwh = _RATED_KWH * (100.0 - _REPORTED_SOC_PCT) / 100
 
-    peak_kwh = max(slot.estimated_battery_capacity_kwh for slot in future)
+    peak_gain_kwh = (
+        max(slot.estimated_battery_capacity_kwh for slot in future) - stored_kwh
+    )
 
-    assert peak_kwh > old_ceiling_kwh + 1e-6
-    assert peak_kwh <= real_headroom_kwh + 1e-6
+    assert peak_gain_kwh > old_ceiling_kwh + 1e-6
+    assert peak_gain_kwh <= real_headroom_kwh + 1e-6
 
 
 def test_winner_cost_is_the_published_cost() -> None:

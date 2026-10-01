@@ -385,11 +385,10 @@ SoC[t] >= forecast_reserve_kwh - usable_kwh * (1 - z_export[t])
 Unlike the checkpoint reserve, this row is indexed by the _same_ slot `t`, so
 it binds the SoC immediately after the exporting slot itself — a later PV or
 grid refill can never justify spending it first. `forecast_reserve_kwh` is
-computed from the configured percentage above the effective (dynamic-floor
-aware) discharge floor, so it never double-counts SoC already protected by
-the dynamic floor. When the live SoC is below the dynamic floor, the
-effective floor is the live SoC (issue #1094), matching the MILP's own
-inventory origin. See `docs/planner-spec.md` § _Battery export forecast
+the configured percentage above the hardware discharge floor, which is the
+MILP's inventory origin. The dynamic discharge floor is a separate per-slot
+lower bound on stored energy above that same origin (issue #1188), so the
+two never add up: the higher one binds. See `docs/planner-spec.md` § _Battery export forecast
 reserve_ for the full derivation.
 
 **Battery export minimum price floor (issue #752):**

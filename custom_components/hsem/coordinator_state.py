@@ -84,6 +84,7 @@ class CoordinatorSharedState(_Base):
     _data_quality: DataQuality
     _dynamic_floor: DynamicDischargeFloor
     _effective_discharge_floor_diag: dict | None
+    _effective_discharge_floor_profile: list[tuple[str, float]] | None
     _effective_discharge_floor_pct: float | None
     _ev_charging_plan: EVChargingPlan | None
     _ev_delivered_energy_tracker: EVDeliveredEnergyTracker

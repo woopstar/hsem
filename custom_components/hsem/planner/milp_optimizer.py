@@ -12,7 +12,6 @@ repository's 30 KB file limit.
 
 from __future__ import annotations
 
-import math
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -23,6 +22,7 @@ from custom_components.hsem.planner._scipy_probe import (  # noqa: F401
 from custom_components.hsem.utils.datetime_utils import future_slot_indices
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
+from custom_components.hsem.utils.soc_bounds import finite_or
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.planned_slot import PlannedSlot
@@ -503,13 +503,9 @@ def solve_milp(
             battery_target.penalty_per_kwh
         )
 
-    try:
-        forecast_export_reserve_kwh = float(battery_export_forecast_reserve_kwh)
-    except TypeError, ValueError:
-        forecast_export_reserve_kwh = 0.0
-    if not math.isfinite(forecast_export_reserve_kwh):
-        forecast_export_reserve_kwh = 0.0
-    forecast_export_reserve_kwh = min(max(forecast_export_reserve_kwh, 0.0), usable_kwh)
+    forecast_export_reserve_kwh = min(
+        max(finite_or(battery_export_forecast_reserve_kwh, 0.0), 0.0), usable_kwh
+    )
 
     constraints = _build_constraints(
         m,
@@ -558,6 +554,7 @@ def solve_milp(
         max_phase_import_per_slot_kwh=max_phase_import_per_slot_kwh,
         ev_amp_plan=ev_amp_plan,
         battery_target=battery_target,
+        soc_floor_per_slot=[slots[i].discharge_reserve_kwh for i in future_idx],
     )
 
     # Solver-native whole-amp EV lattice (issue #797): link ev_c[t] to the

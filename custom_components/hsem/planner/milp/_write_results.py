@@ -255,10 +255,10 @@ def _write_milp_results_to_slots(
                     ed_kwh = 0.0
             elif net < -_min_action_kwh:
                 # Net discharge candidate: clamp to remaining floor
-                # headroom.  The discharge floor is already baked
-                # into current_kwh/usable_kwh (see usable_capacity),
-                # so 0.0 is the floor reference for running_soc.
-                floor_headroom = running_soc
+                # headroom.  The hardware floor is the origin of
+                # current_kwh/usable_kwh (see usable_capacity); the
+                # slot's discharge reserve sits on top of it (#1188).
+                floor_headroom = running_soc - slots[slot_i].discharge_reserve_kwh
                 if floor_headroom <= _min_action_kwh:
                     ec_kwh = 0.0
                     ed_kwh = 0.0
@@ -325,7 +325,7 @@ def _write_milp_results_to_slots(
                 resolved_charge, math.floor(headroom * 1000.0) / 1000.0
             )
         if resolved_discharge > 0.0:
-            headroom = max(running_soc, 0.0)
+            headroom = max(running_soc - slots[slot_i].discharge_reserve_kwh, 0.0)
             resolved_discharge = min(
                 resolved_discharge,
                 math.floor(headroom * 1000.0) / 1000.0,

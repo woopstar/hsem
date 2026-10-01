@@ -42,10 +42,12 @@ def resolve_soc_bounds_pct(
     The dynamic floor is additionally capped at the live SoC (issue #1094).
     It is a *bridge reserve* — do not discharge below it — not a statement of
     where the battery is.  A battery already below the reserve cannot
-    discharge at all, which an origin at the live SoC expresses exactly; an
-    origin at the unreached reserve would instead report the battery at the
-    reserve SoC and shrink its charge headroom to ``maximum − reserve``.  The
-    hardware floor is never lowered by this cap.
+    discharge at all, but it must not be reported at the reserve SoC or lose
+    charge headroom.  The hardware floor is never lowered by this cap.
+
+    The effective floor is the floor in force now.  The battery model's origin
+    is the hardware floor (issue #1188); the dynamic floor reaches the plan as
+    a per-slot bound, see ``planner/discharge_reserve.py``.
 
     Args:
         hardware_floor_pct: Huawei end-of-discharge SoC (0-100).
