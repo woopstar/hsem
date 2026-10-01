@@ -40,6 +40,7 @@ from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
 )
 from custom_components.hsem.models.data_quality import DataQuality
 from custom_components.hsem.models.financial_tracker import FinancialTracker
+from custom_components.hsem.models.forecast_coverage import ForecastCoverage
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.plan_explanation import PlanExplanation
@@ -82,6 +83,7 @@ class CoordinatorSharedState(_Base):
     _daily_plan_last_accumulated: datetime | None
     _daily_tracker: DailyPlanVsActualTracker
     _data_quality: DataQuality
+    _forecast_coverage: ForecastCoverage | None
     _dynamic_floor: DynamicDischargeFloor
     _effective_discharge_floor_diag: dict | None
     _effective_discharge_floor_profile: list[tuple[str, float]] | None
