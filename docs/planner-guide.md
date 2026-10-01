@@ -642,7 +642,10 @@ recommendation it is not changed by later rules in the same layer.
 > derived from the **selected plan's own simulated SoC trajectory** (issue #914) —
 > how far it dips before its next actual solved charge — not from a raw forecast
 > PV-surplus scan, so a small or short-lived forecast surplus no longer lets the
-> battery discharge energy the plan needs for a later expensive period. If no
+> battery discharge energy the plan needs for a later expensive period. With the
+> dynamic discharge floor enabled the reserve is never below what the floor
+> holds back in the current slot (issue #1200), so the house cannot use the
+> energy the floor set aside. If no
 > reliable reserve can be derived, the applier falls back to strict Wait for that
 > slot. The reserve also **decays with time** (issue #956): the plan's next
 > committed charge/discharge is only protected in full once it's imminent — a

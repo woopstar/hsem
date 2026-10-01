@@ -3155,8 +3155,36 @@ a discharge. When no future action is found in the horizon at all (the scan
 reaches the end without a break), decay does not apply — that case already
 naturally yields the correct result from the min-tracking alone.
 
+**Never below the dynamic floor's reserve (issue #1200).** The trajectory
+reserve is a statement about the plan's next battery action. It says nothing
+about the dynamic discharge floor: while the floor holds the battery the
+trajectory is flat, the dip is zero or small, and the applier would let the
+house use the energy the floor set aside. On the #1125 fixture (10 kWh, 5 %
+hardware floor, 68 % at 21:30, floor 77.72 %) the live slot is
+`batteries_wait_mode` with `discharge_reserve_kwh = 6.3` and a trajectory
+reserve of 0.542 kWh, so 5.76 kWh of a 6.3 kWh battery was released.
+
+`engine_core.run_planner` therefore publishes the larger of the two
+(`planner/discharge_reserve.py::wait_mode_reserve_with_floor`):
+
+```text
+wait_mode_reserve_kwh = max(calculate_required_battery_for_plan(slots, now, current_kwh),
+                            live_slot.discharge_reserve_kwh)
+```
+
+Both are kWh above the hardware floor, the origin of the applier's
+`battery_current_capacity_kwh`, so the applier needs no change: its surplus
+becomes the energy above the dynamic reserve. The live slot's
+`discharge_reserve_kwh` is what the floor requires at the end of that slot
+(see _Per-slot reserve profile_), so the house may follow the declining
+reserve within the slot, as a planned discharge slot does. The time decay
+above applies to the trajectory reserve only; the floor's reserve is needed
+now and is never decayed. With the dynamic floor disabled every
+`discharge_reserve_kwh` is 0 and the published reserve is unchanged.
+
 `wait_mode_reserve_kwh` is `None` when it cannot be derived (no future slots
-in the horizon). The applier treats `None` as "fall back to strict Wait":
+in the horizon), with or without a dynamic floor. The applier treats `None`
+as "fall back to strict Wait":
 `self_consumption_with_reserve` self-consumption is never enabled without a
 reliable reserve value.
 
@@ -4097,7 +4125,11 @@ reserve[t] = 0     for past slots, and when the floor is disabled
 Every candidate reads the same slot field: the MILP as the right-hand side of
 its lower SoC rows (see _Soft SOC bounds_), `simulate_soc()` as the level
 greedy discharge stops at (`no_action`, `passive`), the candidate validation
-as the per-slot SoC floor, and the MILP post-write inventory check.
+as the per-slot SoC floor, and the MILP post-write inventory check. The
+applier reads it through `wait_mode_reserve_kwh`, which is never below the
+live slot's `discharge_reserve_kwh` (issue #1200, see _Wait-mode
+self-consumption reserve_), so `self_consumption_with_reserve` cannot
+discharge a wait slot below the reserve either.
 
 **What the sensor shows.** The sensor state is the floor at the start of the
 live slot. During that slot the plan may take the battery down to the next
@@ -4415,6 +4447,11 @@ effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
   cannot become infeasible because of it.
 - A battery below the reserve does not discharge in the live slot, reports
   its live SoC, and may charge up to the configured maximum (issue #1094).
+- `wait_mode_reserve_kwh >= discharge_reserve_kwh` of the live slot, so a
+  `batteries_wait_mode` slot executed with `self_consumption_with_reserve`
+  holds a battery at or below the reserve (TOU hold, 0 W cap). With the
+  floor disabled `wait_mode_reserve_kwh` is the trajectory reserve alone
+  (issue #1200).
 - From the refill slot on the plan may use the battery down to the hardware
   floor.
 - With the reserve never binding (the battery stays above the profile), the

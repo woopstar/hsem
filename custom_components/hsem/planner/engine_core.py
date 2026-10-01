@@ -34,6 +34,7 @@ from custom_components.hsem.planner.cost_helpers import (
 from custom_components.hsem.planner.discharge_reserve import (
     apply_discharge_reserve,
     resolve_effective_discharge_floor_pct,
+    wait_mode_reserve_with_floor,
 )
 from custom_components.hsem.planner.discharge_scheduler import (
     apply_excess_export,
@@ -658,8 +659,11 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
 
     # Wait-mode self-consumption reserve (issue #914): derived from the
     # *selected* plan's own simulated SoC trajectory, not the raw forecast
-    # scan used by ``rc``/``calculate_required_battery_until_solar`` above.
-    wait_mode_reserve_kwh = calculate_required_battery_for_plan(slots, now, current_kwh)
+    # scan used by ``rc``/``calculate_required_battery_until_solar`` above,
+    # and never below the dynamic floor's reserve on the live slot (#1200).
+    wait_mode_reserve_kwh = wait_mode_reserve_with_floor(
+        calculate_required_battery_for_plan(slots, now, current_kwh), slots, now
+    )
 
     _label_commanded_ev_slots(slots)
 
