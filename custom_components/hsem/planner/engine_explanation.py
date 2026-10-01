@@ -21,6 +21,7 @@ from custom_components.hsem.utils.datetime_utils import slot_is_future
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
 from custom_components.hsem.utils.recommendations import Recommendations
+from custom_components.hsem.utils.soc_bounds import finite_or
 
 # Sets used by _derive_windows — kept here as they reference Recommendations
 _CHARGE_RECOMMENDATIONS = frozenset(
@@ -286,6 +287,16 @@ def _build_explanation(
         constraints.append("battery_empty")
     if battery_soc_at_end <= inp.battery_end_of_discharge_soc_pct:
         constraints.append("battery_low_at_end")
+    # Issue #1227: name the dynamic discharge floor when it reserves energy,
+    # and say so when the battery holds no more than that reserve — the plan
+    # then keeps the live SoC, which otherwise reads as a planner fault.
+    dynamic_floor_pct = finite_or(
+        inp.dynamic_discharge_floor_pct, inp.battery_end_of_discharge_soc_pct
+    )
+    if dynamic_floor_pct - inp.battery_end_of_discharge_soc_pct > 1e-9:
+        constraints.append("dynamic_discharge_floor")
+        if inp.battery_soc_pct - dynamic_floor_pct < 1e-9:
+            constraints.append("battery_below_dynamic_floor")
 
     # --- Rejected plans -------------------------------------------------
     rejected: list[RejectedPlan] = []
