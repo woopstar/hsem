@@ -2534,6 +2534,16 @@ Tests: `tests/planner/test_milp_fill_no_double_pv.py` (the issue's four-slot rep
 
 Tests: `tests/planner/test_battery_target_milp.py` (every acceptance scenario, a 20-seed import-pin property test, bounds capture, EV priority), `tests/planner/test_battery_target_spec.py` (occurrence rollover incl. DST, target kWh, `P`, score, rows), `tests/planner/test_battery_target_engine.py` (disabled is bit-identical; reporter's 63 % day; MILP beats `passive`), `tests/test_battery_target_coordinator.py`.
 
+## Dynamic Floor Credits Planned Charges by Price, Not by Slot (issue #1198)
+
+**Bug:** `_scan_bridge` tested each planned grid charge against the consumption bridged up to the charge's own slot. With several equally priced night slots the floor-free reference solve puts its charge in a different one on each replan, so the floor flipped between the configured minimum and a 24-30 % reserve on consecutive replans (5.0 / 29.8 / 5.0 / 24.0 / 5.0 / 26.6 %), and the executed slot alternated between hold and discharge.
+
+**Rule:** `utils/dynamic_floor.py::_planned_grid_charges()` credits every planned `batteries_charge_grid` slot at the **earliest bridge slot priced within one cycle cost of it** (the tolerance `cheap_refill_price` uses). The bridge is every slot before the first solar surplus. Charges of one price add up in its first slot; a charge without a finite price is not moved. `next_refill_slot` reports the slot the credit is counted in, not the slot the plan charges in. Do not solve this with a tie-break in the MILP objective or with state from the previous replan (#1140).
+
+**Still open (issue #1214):** a _partial_ credit depends on how much the reference plan buys, which depends on the live SoC the floor itself produced. First evening of the replay: floor 35.3 % -> 43.4 % within one bridge when the planned buy-back shrinks from 2.21 to 0.83 kWh. Dropping partial credits removes it but pins the battery through an evening export price (77.7 % floor above a 68 % SoC, 0.90 worse cash over 48 h), so it was not done here.
+
+**Tests:** `tests/planner/test_dynamic_floor_closed_loop.py` (nine hourly replans through the real `run_planner`; a 48-replan loop takes ~25 s, too close to the 30 s test timeout), `tests/utils/test_dynamic_floor.py::TestPlannedChargePlacement`. Hand-built plans with flat prices now credit their charge in the live slot: price the plan (`_plan(cheap_night=True)`) when a test asserts the refill slot.
+
 ## Dynamic Floor Bridge Reads Load and PV From the Reference Plan (issue #1187)
 
 **Bug:** `build_dynamic_floor_bridge_slots()` computed `rec.avg_house_consumption_kwh - rec.solcast_pv_estimate_kwh` on the regenerated recommendations. The load there is kWh per slot, but the PV is the **unscaled hourly** Solcast value: `hourly_data_populator/prices_solcast.py` stores it raw on purpose, the planner splits it per slot, and `_apply_planner_output()` copies the per-slot value back only after the final solve. PV was overstated 4× at 15-minute slots and 2× at 30, so the scan found a `solar_surplus` refill hours early (08:30 against the plan's 10:00 in #1125's log) and reserved too little. Hourly slots were right.

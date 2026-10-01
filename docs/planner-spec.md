@@ -4342,10 +4342,63 @@ solved with the target and the scan must read a plan with the same features.
 Whether stage 2 can still change what the scan reads when an EV is
 co-optimised has not been shown either way.
 
+#### Planned charges are credited by price, not by slot (issue #1198)
+
+When several bridge slots have the same import price, the reference solve is
+free to put its grid charge in any of them, and it does not pick the same one
+on every replan. The scan tests a charge against the consumption bridged **up
+to the slot it is credited in**, so placement decided the floor: a charge
+early in the night covered the little consumption before it and released the
+floor, and the same charge three hours later became a partial credit with a
+24–30 % reserve.
+
+`_planned_grid_charges()` (`utils/dynamic_floor.py`) therefore credits each
+planned grid charge at the **earliest bridge slot priced within one battery
+cycle cost of the charge's own slot**:
+
+```text
+bridge            = every look-ahead slot before the first solar surplus
+target(k)         = min { i ≤ k in bridge : |price[i] − price[k]| ≤ cycle_cost }
+credit[target(k)] += batteries_charged_kwh[k]     for every batteries_charge_grid slot k
+```
+
+The plan could have bought the same energy there at the same cost, so that is
+where the refill can happen. Charges of one price add up in its first slot.
+The tolerance is the one `cheap_refill_price()` uses: the smallest spread the
+planner treats as worth moving energy for. A charge whose slot has no finite
+price is not moved, and a charge behind the solar surplus is never read.
+`next_refill_slot` and `bridge_duration_hours` report the slot the credit is
+counted in, which can be earlier than the slot the reference plan charges in;
+with flat prices it is the live slot.
+
+Measured in a closed-loop replay through the real `run_planner` (hourly
+replans, 48 h, 10 kWh, 5 % hardware floor, 0.15 night at 02:00–06:00, export
+0.45 at 21:00–23:00, each replan's floor from its own reference solve):
+
+| Second night, replan at | 23:00 | 00:00 | 01:00 | 02:00 | 03:00 | 04:00 | 05:00 | 06:00 | 07:00 |
+| ----------------------- | ----: | ----: | ----: | ----: | ----: | ----: | ----: | ----: | ----: |
+| Floor before (%)        |   5.0 |  29.8 |   5.0 |  24.0 |   5.0 |  26.6 |  20.6 |  14.5 |   6.1 |
+| Floor after (%)         |   5.0 |   5.0 |   5.0 |   5.0 |   5.0 |  26.6 |  20.6 |  14.5 |   6.1 |
+
+The floor is released while the reference plan still refills from the grid,
+and steps up once, at 04:00, when that refill has happened and the bridge to
+the solar surplus starts. Over the 48 replans the floor changes direction 8
+times instead of 12.
+
+**What this does not cover.** A partial credit still depends on how much the
+reference plan buys, and that depends on the live SoC. On the first evening of
+the same replay the reference plan sells the battery into the export price and
+plans to buy 2.21 kWh back, the floor permits the sale down to its profile,
+and one replan later the reference plan (now starting from a battery the
+floor held at 27 %) buys only 0.83 kWh. The floor rises from 35.3 % to 43.4 %
+within one bridge and holds the battery for five hours. That is not a
+placement effect and is unchanged by this rule (issue #1214).
+
 #### Grid-charge refill reserve is zero (decision, issue #1140)
 
-The scan credits every planned grid charge it passes. It stops at the first
-charge slot where the cumulative charge covers the consumption bridged so far.
+The scan credits every planned grid charge it passes, at the slot
+`_planned_grid_charges()` assigns it to. It stops at the first credited slot
+where the cumulative charge covers the consumption bridged so far.
 The reserve is `consumption − solar − grid_charge`, clamped at 0, so a
 **covering grid-charge refill always yields `reserve_kwh = 0`**. The floor
 then equals the configured minimum SoC.
@@ -4460,6 +4513,13 @@ effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
   with `avg_house_consumption_kwh < solcast_pv_estimate_kwh` (issue #1187).
 - For fixed inputs the floor is the same on every replan; it does not depend
   on the plan it constrains.
+- The floor, its diagnostics and its profile do not depend on which of
+  several equally priced bridge slots (within one cycle cost) the reference
+  plan charges in (issue #1198).
+- In a closed-loop replay of a night with equally priced charge slots the
+  floor stays at the configured minimum while the reference plan still
+  refills from the grid, and rises once, where the bridge to the solar
+  surplus starts (issue #1198).
 - The reference solve and the real solve differ only in the floor
   (`dynamic_discharge_floor_pct`, `dynamic_floor_profile`). Every other
   planner input, the house-battery target included, is the same in both
