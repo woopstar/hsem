@@ -7,8 +7,11 @@
 # MSDO installs, configures and runs the latest versions of static analysis tools
 # (including, but not limited to, SDL/security and compliance tools).
 #
-# The Microsoft Security DevOps action is currently in beta and runs on the windows-latest queue,
-# as well as Windows self hosted agents. ubuntu-latest support coming soon.
+# The action supports both windows-latest and ubuntu-latest. This workflow runs on Linux: MSDO
+# passes every Python file to bandit on one command line, and on Windows that line is capped at
+# 32,767 characters. The repository outgrew it (issue #1211), so bandit failed to start and the
+# job went red with zero findings. Linux has no comparable limit. The trade-off is the AntiMalware
+# tool, which is Windows-only and no longer runs.
 #
 # For more information about the action , check out https://github.com/microsoft/security-devops-action
 #
@@ -31,8 +34,8 @@ permissions:
 
 jobs:
   MSDO:
-    # currently only windows latest is supported
-    runs-on: windows-latest
+    # Linux, not Windows: see the note on the command-line limit above (issue #1211).
+    runs-on: ubuntu-latest
     # Fork PRs run with a read-only token; this job writes security results.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
