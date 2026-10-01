@@ -55,6 +55,7 @@ from zoneinfo import ZoneInfo
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner.hindsight_oracle import (
     HindsightBattery,
+    HindsightRun,
     HindsightSlot,
     grid_cost,
     simulate_self_consumption,
@@ -388,43 +389,90 @@ def _widened(
     return [max(limit * hours, value) for value in observed]
 
 
-def score_day(
-    actuals: Actuals,
-    day: date,
-    zone: ZoneInfo,
-    site: SiteLimits,
-    *,
-    baseline_start_kwh: float | None = None,
-) -> DayScore:
-    """Score one local day of realized actuals.
+@dataclass(frozen=True)
+class RealizedDay:
+    """One complete local day, prepared for the hindsight functions.
+
+    Attributes:
+        day: The local calendar day.
+        keys: The day's canonical slot keys.
+        slots: The day as it happened: load, prices and curtailable PV.
+        house_net_kwh: House load minus PV per slot, without the EV, where
+            both meters were observed; the slot's whole net load otherwise.
+        configured: The battery's limits as configured.
+        widened: The same limits, widened to contain the realized day.
+        caps: Per-slot battery and grid limits, never below what was measured.
+        start_kwh: Stored energy at the start of the day.
+        grid_import_kwh: Measured grid import per slot.
+        grid_export_kwh: Measured grid export per slot.
+        charged_kwh: Measured battery charge per slot.
+        discharged_kwh: Measured battery discharge per slot.
+        stored_kwh: Stored energy after each slot, from the measured battery
+            flows under the configured efficiencies.
+        notes: Anything about the data that qualifies a score.
+    """
+
+    day: date
+    keys: tuple[datetime, ...]
+    slots: tuple[HindsightSlot, ...]
+    house_net_kwh: tuple[float, ...]
+    configured: HindsightBattery
+    widened: HindsightBattery
+    caps: dict[str, list[float] | None]
+    start_kwh: float
+    grid_import_kwh: tuple[float, ...]
+    grid_export_kwh: tuple[float, ...]
+    charged_kwh: tuple[float, ...]
+    discharged_kwh: tuple[float, ...]
+    stored_kwh: tuple[float, ...]
+    notes: tuple[str, ...] = ()
+
+    @property
+    def realized_cost(self) -> float:
+        """Return the grid cost that was paid."""
+        return grid_cost(self.slots, self.grid_import_kwh, self.grid_export_kwh)
+
+    def oracle(self, min_end_stored_kwh: float) -> HindsightRun | None:
+        """Return the oracle that ends the day with at least the given energy.
+
+        Its limits contain the realized day, so it is a lower bound on the
+        realized cost whenever *min_end_stored_kwh* is at most the energy the
+        day really ended with.
+        """
+        return solve_hindsight_oracle(
+            self.slots, self.widened, self.start_kwh, min_end_stored_kwh, **self.caps
+        )
+
+
+def realized_day(
+    actuals: Actuals, day: date, zone: ZoneInfo, site: SiteLimits
+) -> RealizedDay | str:
+    """Prepare one local day of actuals for scoring.
 
     The oracle's limits are the site's, widened wherever the realized day
     itself went beyond them (a meter that read a little more than the
     configured power, a stored-energy trajectory that drifts under assumed
     efficiencies).  That keeps the realized day inside the oracle's feasible
     set, which is what makes the oracle a lower bound on the realized cost by
-    construction and not only on the days tested.  Every widening is named in
-    :attr:`DayScore.notes`.
+    construction and not only on the days tested.  A widening of more than
+    10 % of a limit is named in :attr:`RealizedDay.notes`.
 
     Args:
         actuals: The loaded realized series.
-        day: The local calendar day to score.
+        day: The local calendar day.
         zone: The site's time zone.
         site: The installation's hard limits.
-        baseline_start_kwh: Stored energy the carried baseline starts the
-            day with, from its own previous day.  ``None`` starts it where the
-            battery really was.
 
     Returns:
-        The day's score, or a :class:`DayScore` whose ``unscorable`` says why
-        there is none.  Missing actuals are never read as zero.
+        The prepared day, or the reason it cannot be scored.  Missing actuals
+        are never read as zero.
     """
     keys = day_slot_keys(day, zone, actuals.slot_minutes)
     if not keys:
-        return DayScore(day=day, unscorable="the day has no slots")
+        return "the day has no slots"
     reason = _missing(actuals, keys)
     if reason is not None:
-        return DayScore(day=day, slot_count=len(keys), unscorable=reason)
+        return reason
 
     def series(name: str) -> list[float]:
         return [_observed(actuals, name, key) for key in keys]
@@ -435,10 +483,15 @@ def score_day(
     charged = series("battery_charged")
     discharged = series("battery_discharged")
     pv = [actuals._lookup("pv_produced", key) for key in keys]
+    house = [actuals._lookup("house_load", key) for key in keys]
+    nets = [
+        grid_import[i] - grid_export[i] - charged[i] + discharged[i]
+        for i in range(len(keys))
+    ]
     slots = [
         HindsightSlot(
             hours=hours,
-            net_load_kwh=grid_import[i] - grid_export[i] - charged[i] + discharged[i],
+            net_load_kwh=nets[i],
             import_price=_observed(actuals, "import_price", key),
             export_price=_observed(actuals, "export_price", key)
             - site.export_fee_per_kwh,
@@ -474,52 +527,102 @@ def score_day(
             f"discharged in a slot, against {charge_limit:.2f} and "
             f"{discharge_limit:.2f}; the oracle's limits were widened"
         )
-    widened = replace(configured, min_stored_kwh=low, max_stored_kwh=high)
-    caps = {
-        "max_charge_kwh": _widened(configured.max_charge_kw, charged, hours),
-        "max_discharge_kwh": _widened(configured.max_discharge_kw, discharged, hours),
-        "max_grid_import_kwh": _widened(site.max_grid_import_kw, grid_import, hours),
-        "max_grid_export_kwh": _widened(site.max_grid_export_kw, grid_export, hours),
-    }
+    return RealizedDay(
+        day=day,
+        keys=tuple(keys),
+        slots=tuple(slots),
+        house_net_kwh=tuple(
+            net if load is None or produced is None else load - produced
+            for net, load, produced in zip(nets, house, pv)
+        ),
+        configured=configured,
+        widened=replace(configured, min_stored_kwh=low, max_stored_kwh=high),
+        caps={
+            "max_charge_kwh": _widened(configured.max_charge_kw, charged, hours),
+            "max_discharge_kwh": _widened(
+                configured.max_discharge_kw, discharged, hours
+            ),
+            "max_grid_import_kwh": _widened(
+                site.max_grid_import_kw, grid_import, hours
+            ),
+            "max_grid_export_kwh": _widened(
+                site.max_grid_export_kw, grid_export, hours
+            ),
+        },
+        start_kwh=start_kwh,
+        grid_import_kwh=tuple(grid_import),
+        grid_export_kwh=tuple(grid_export),
+        charged_kwh=tuple(charged),
+        discharged_kwh=tuple(discharged),
+        stored_kwh=tuple(realized),
+        notes=tuple(notes),
+    )
 
-    oracle = solve_hindsight_oracle(slots, widened, start_kwh, realized[-1], **caps)
-    if oracle is None:
-        return DayScore(
-            day=day,
-            slot_count=len(keys),
-            unscorable="the oracle could not be solved (is scipy installed?)",
-            notes=tuple(notes),
-        )
 
+def score_day(
+    actuals: Actuals,
+    day: date,
+    zone: ZoneInfo,
+    site: SiteLimits,
+    *,
+    baseline_start_kwh: float | None = None,
+) -> DayScore:
+    """Score one local day of realized actuals.
+
+    Args:
+        actuals: The loaded realized series.
+        day: The local calendar day to score.
+        zone: The site's time zone.
+        site: The installation's hard limits.
+        baseline_start_kwh: Stored energy the carried baseline starts the
+            day with, from its own previous day.  ``None`` starts it where the
+            battery really was.
+
+    Returns:
+        The day's score, or a :class:`DayScore` whose ``unscorable`` says why
+        there is none.  Missing actuals are never read as zero.
+    """
+    prepared = realized_day(actuals, day, zone, site)
+    if isinstance(prepared, str):
+        slot_count = len(day_slot_keys(day, zone, actuals.slot_minutes))
+        return DayScore(day=day, slot_count=slot_count, unscorable=prepared)
+
+    slot_count = len(prepared.keys)
+    realized_end = prepared.stored_kwh[-1]
     # Potential: self-consumption and the oracle from the same start to the
     # same end, so the pair is comparable.
-    baseline = simulate_self_consumption(slots, configured, start_kwh)
+    baseline = simulate_self_consumption(
+        prepared.slots, prepared.configured, prepared.start_kwh
+    )
     baseline_end = baseline.stored_kwh[-1]
-    matched = solve_hindsight_oracle(slots, widened, start_kwh, baseline_end, **caps)
-    if matched is None:
+    oracle = prepared.oracle(realized_end)
+    matched = prepared.oracle(baseline_end)
+    if oracle is None or matched is None:
         return DayScore(
             day=day,
-            slot_count=len(keys),
-            unscorable="the oracle could not be solved",
-            notes=tuple(notes),
+            slot_count=slot_count,
+            unscorable="the oracle could not be solved (is scipy installed?)",
+            notes=prepared.notes,
         )
     carried = (
         baseline
         if baseline_start_kwh is None
-        else simulate_self_consumption(slots, configured, baseline_start_kwh)
+        else simulate_self_consumption(
+            prepared.slots, prepared.configured, baseline_start_kwh
+        )
     )
     return DayScore(
         day=day,
-        slot_count=len(keys),
-        realized_cost=grid_cost(slots, grid_import, grid_export),
+        slot_count=slot_count,
+        realized_cost=prepared.realized_cost,
         oracle_cost=oracle.cost,
         baseline_cost=baseline.cost,
         potential=baseline.cost - matched.cost,
-        realized_end_kwh=realized[-1],
+        realized_end_kwh=realized_end,
         baseline_end_kwh=baseline_end,
         carried_baseline_cost=carried.cost,
         carried_baseline_end_kwh=carried.stored_kwh[-1],
-        notes=tuple(notes),
+        notes=prepared.notes,
     )
 
 

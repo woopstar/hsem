@@ -1286,8 +1286,25 @@ against `docs/planner-spec.md`.
   - The site limits come from a recorded `PlannerInput` of the **same**
     installation (`SiteLimits.from_planner_input`); the actuals carry none.
   - Missing actuals make the whole day `not scored`; never read them as zero.
-  - Stage 2c (forecast error vs optimizer error by a rolling simulation) is
-    still open.
+- **Stage 2c attributes the regret (issue #1208):**
+  `tests/backtest/attribution.py` + `scripts/backtest_attribute.py` replay a
+  day slot by slot through the real planner, once on the recorded forecasts
+  and once with realized prices/PV/house load substituted
+  (`with_realized_forecasts`). `execution + forecast + planner = regret`, each
+  run's regret taken against the oracle that ends at **that run's** stored
+  energy. Rules:
+  - Never compare the replays' raw costs: the run that buys the night has the
+    higher bill and the lower regret.
+  - A slot is planned from the first cycle whose **`now_iso`** is in it (dumps
+    repeat one input between replans); under 50 % slot coverage the day is not
+    attributed. Dumps from before 7.0.0 record no `time_zone`: pass `--tz`.
+  - `execute_decision` is the applier model (forced modes move the planned
+    energy, MSC modes follow the real load, held modes only take a surplus,
+    the battery never serves the EV). Plan slot energies are battery-side:
+    convert with the efficiencies before executing. Its error is reported as
+    execution error, never hidden.
+  - It needs a live corpus (a cycle per slot); the committed sample cannot run
+    it. Tests build a synthetic hourly day instead.
 - `hsem.log` is not a corpus — derived `[soc_sim]`/`[avg]`/`[pop]` traces, no
   `planner_input`.
 - **Replays lift the MILP's 2 s solver time limit** (`generous_solver_limit()`,
