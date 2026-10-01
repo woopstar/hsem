@@ -12,6 +12,7 @@ These tests go through the real populator and the real builder.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import patch
@@ -88,7 +89,11 @@ def _hour_values(recs: list[HourlyRecommendation], hour: datetime) -> list[float
 def _planner_pv_by_hour(
     recs: list[HourlyRecommendation], interval_minutes: int
 ) -> dict[tuple[int, int], float]:
-    """Return ``{(day_offset, hour): pv}`` as ``build_planner_input`` emits it."""
+    """Return each hour's PV energy as ``build_planner_input`` emits it.
+
+    A source finer than an hour reaches the planner as one average-power
+    entry per slot (stage 2), so the hour's energy is the mean of its entries.
+    """
     cfg = SensorConfig()
     cfg.recommendation_interval_minutes = interval_minutes
     with patch.object(coordinator_builder, "hsem_now", return_value=_NOW):
@@ -99,7 +104,10 @@ def _planner_pv_by_hour(
             previous_winner_name=None,
             previous_winner_score=0.0,
         )
-    return {(s.day_offset, s.hour): s.pv_estimate for s in planner_input.solcast_slots}
+    by_hour: dict[tuple[int, int], list[float]] = {}
+    for entry in planner_input.solcast_slots:
+        by_hour.setdefault((entry.day_offset, entry.hour), []).append(entry.pv_estimate)
+    return {key: math.fsum(values) / len(values) for key, values in by_hour.items()}
 
 
 class TestPopulator:

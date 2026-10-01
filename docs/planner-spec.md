@@ -90,9 +90,11 @@ time (issue #1160):
   midnight of the slot's date. It equals `(hour × 60 + minute) // interval`
   on ordinary days and stays unique on DST days, so each of the fall-back
   day's two hour-2 prices lands on its own slot.
-- Hour-granular series (consumption averages, Solcast PV, and the hourly
-  price fallback) are keyed by `(day_offset, hour)`, so both occurrences of
-  the repeated hour use the same hourly value.
+- Hour-granular series (consumption averages, an hourly Solcast PV source,
+  and the hourly price fallback) are keyed by `(day_offset, hour)`, so both
+  occurrences of the repeated hour use the same hourly value. A sub-hourly
+  PV source is keyed by `(day_offset, slot_in_day)` like prices, so each
+  occurrence keeps its own values (issue #1191).
 
 ## Recommendation priority rules
 
@@ -2584,12 +2586,17 @@ available), HSEM falls back to the configured interval for prices and to
 
 2. **Planner input** (`coordinator_builder.build_planner_input`):
    Recommendation slots are deduplicated on `(day_offset, hour)` for
-   consumption averages (genuinely hour-granular). Solcast PV is emitted per
-   `(day_offset, hour)` too, as the **mean over that hour's slots**: a
-   half-hourly source leaves different values on the slots of one hour, and
-   the hour's energy is their mean, not the first slot's value (issue #1191).
-   With an hourly source all slots of the hour are equal and the mean is that
-   value. **Price points are emitted per slot** with an explicit `slot_in_day`
+   consumption averages (genuinely hour-granular). Solcast PV is emitted at
+   the source's resolution (issue #1191, `_build_solcast_slots`):
+
+   - When all slots of every hour hold the same value (an hourly source, or
+     60-minute slots), one `SolcastSlot` per `(day_offset, hour)` is emitted
+     with the mean over the hour's slots, which is that value. This is the
+     planner input an hourly source has always produced.
+   - When any hour's slots differ, the source is finer than an hour and one
+     `SolcastSlot` per slot is emitted with its `slot_in_day`.
+
+   **Price points are emitted per slot** with an explicit `slot_in_day`
    field, so quarter-hourly prices survive as distinct `PricePoint`
    entries (192 for a 48 h horizon at 15-minute slots). Stored price values
    are passed through directly to `PricePoint`; there is **no inverse
@@ -2602,9 +2609,35 @@ available), HSEM falls back to the configured interval for prices and to
    use the existing `align_hourly_prices` fan-out unchanged.
 
 4. **PV slot population** (`planner.slot_population.populate_solcast`):
-   Solcast `pv_estimate` remains the full hourly kWh total. When planner
-   slots are shorter than one hour, the slot populator computes the per-slot
-   fraction from that raw hourly total.
+   `SolcastSlot.pv_estimate` is **average PV power in kW** over the entry's
+   period (the unit is defined on `SolcastSlot`). A slot's energy is that
+   power times the slot duration in hours.
+
+   - An hour-granular entry (`slot_in_day` is `None`) is split evenly over
+     the hour's slots (`TimeSeriesIndex.align_hourly_pv`). For an hour, kW
+     and kWh are the same number.
+   - A per-slot entry lands on its own slot, matched by
+     `(day_offset, slot_in_day)` (`TimeSeriesIndex.align_slot_pv`). A slot
+     without its own entry falls back to an hour-granular entry for its
+     `(day_offset, hour)`.
+   - A slot with neither is recorded in `missing_pv_slots`, reported in the
+     `*_pv_missing_hours` data-quality fields and planned with zero PV.
+
+   The solar corrector's factors stay per wall-clock hour and are applied to
+   each slot of that hour. Forecast-accuracy tracking records each planner
+   slot's own PV forecast.
+
+#### Supported PV forecast cadences
+
+| Source cadence              | 15-minute slots      | 30-minute slots       | 60-minute slots  |
+| --------------------------- | -------------------- | --------------------- | ---------------- |
+| 60 min (`detailedHourly`)   | hour split evenly    | hour split evenly     | per hour         |
+| 30 min (`detailedForecast`) | 30-minute resolution | 30-minute resolution  | mean of the hour |
+| 15 min                      | 15-minute resolution | mean of the half-hour | mean of the hour |
+
+When a sensor publishes both Solcast attributes, the finer one is used. A
+source finer than the slot is averaged over the slot by the populator, so the
+plan never resolves PV finer than its own slots.
 
 ### Invariants for tests
 
@@ -2629,6 +2662,18 @@ available), HSEM falls back to the configured interval for prices and to
   30- and 60-minute slots, whichever attribute is processed last
   (issue #1191). An hourly-only sensor must give the planner the same values
   as before.
+- A 30-minute PV source must reach 15- and 30-minute planner slots at
+  30-minute resolution, and a 15-minute source must reach 15-minute slots at
+  15-minute resolution: slot energy = average kW × slot hours (issue #1191).
+- The slot PV energies of an hour must sum to that hour's energy from the
+  source, at every supported source and slot cadence.
+- An hourly PV source must produce hour-granular `SolcastSlot` entries
+  (`slot_in_day` is `None`) and the same plan as before issue #1191.
+- On both DST transition days every physical slot must take the PV of the
+  source period that contains it; the two occurrences of the fall-back hour
+  keep their own values with a sub-hourly source.
+- A slot with no per-slot PV entry and no hourly fallback must appear in the
+  `*_pv_missing_hours` data-quality fields.
 
 ## Candidate plans
 
@@ -3965,9 +4010,10 @@ None`, i.e. only the hardware floor.
      the bridge reads the forecast the plan was solved on (issue #1187).
      Planned EV load is not part of it: the floor reserves for the house only.
    - A slot the plan does not cover keeps the regenerated forecast and has no
-     charge and no price. Its `solcast_pv_estimate_kwh` is still the hourly
-     value the populator stored, so it is multiplied by the slot's duration
-     in hours before it is subtracted.
+     charge and no price. Its `solcast_pv_estimate_kwh` is still the average
+     power (kW) the populator stored, so it is multiplied by the slot's
+     duration in hours before it is subtracted. That holds for hourly and
+     sub-hourly PV sources alike (issue #1191).
 3. **Real solve:** the same input with the resulting floor. Its output is the
    plan that is published and committed.
 

@@ -296,10 +296,9 @@ def _populate_from_attributes(
                 break
 
         # Prices are rates (currency/kWh) — store the raw value unchanged.
-        # Solcast PV is average power over the source period (kW), which for
-        # an hour equals that hour's kWh.  The per-slot fraction is computed
-        # in slot_population.py via `pv_estimate / scale` (scale = 60 /
-        # slot_minutes), so SolcastSlot.pv_estimate must hold the hourly kWh.
+        # Solcast PV is average power over the source period (kW); the unit
+        # is defined on SolcastSlot.  The planner turns it into energy per
+        # slot (kW × slot hours) in slot_population.py.
         #
         # In both cases we store the raw value directly so that
         # coordinator_builder can pass it straight to the planner

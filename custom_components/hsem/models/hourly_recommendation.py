@@ -27,7 +27,10 @@ class HourlyRecommendation:
         avg_house_consumption_3d_kwh: 3-day window contribution (kWh).
         avg_house_consumption_7d_kwh: 7-day window contribution (kWh).
         avg_house_consumption_14d_kwh: 14-day window contribution (kWh).
-        solcast_pv_estimate_kwh: Forecast PV production (kWh).
+        solcast_pv_estimate_kwh: Forecast PV production (kWh) for the slot
+            once the plan is applied.  Between population and the planner
+            run it holds the source's average power in kW instead (see
+            :class:`~custom_components.hsem.models.solcast_slot.SolcastSlot`).
         estimated_net_consumption_kwh: avg_consumption + ev_planned_load_kwh - pv_estimate (kWh).
         ev_planned_load_kwh: Extra EV AC load added to net consumption (kWh, ≥ 0).
             ev_planned_load_kwh:

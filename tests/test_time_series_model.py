@@ -467,6 +467,65 @@ class TestAlignHourlyPv:
             assert val == pytest.approx(3.6)
 
 
+class TestAlignSlotPv:
+    """Per-slot PV power becomes per-slot energy (issue #1191)."""
+
+    def setup_method(self):
+        now = _cph(2024, 6, 15, 0)
+        self.tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
+
+    def test_slot_energy_is_power_times_slot_fraction(self):
+        pv = {(0, i): 0.4 if i % 4 < 2 else 0.8 for i in range(96)}
+        aligned = self.tsi.align_slot_pv(pv)
+        assert aligned[32:36] == pytest.approx([0.1, 0.1, 0.2, 0.2])
+
+    def test_hour_energy_is_conserved(self):
+        pv = {(0, i): float(i % 4) for i in range(96)}
+        aligned = self.tsi.align_slot_pv(pv)
+        for h in range(24):
+            assert sum(aligned[h * 4 : h * 4 + 4]) == pytest.approx(1.5)
+
+    def test_slot_without_entry_uses_the_hourly_fallback(self):
+        pv = {(0, i): 2.0 for i in range(96) if i // 4 != 10}
+        aligned = self.tsi.align_slot_pv(pv, {(0, 10): 4.0})
+        assert aligned[40:44] == pytest.approx([1.0, 1.0, 1.0, 1.0])
+        assert not self.tsi.missing_pv_slots
+
+    def test_slot_entry_wins_over_the_hourly_fallback(self):
+        aligned = self.tsi.align_slot_pv({(0, 40): 2.0}, {(0, 10): 4.0})
+        assert aligned[40:44] == pytest.approx([0.5, 1.0, 1.0, 1.0])
+
+    def test_slot_with_no_data_is_sentinel_and_tracked(self):
+        pv = {(0, i): 2.0 for i in range(96) if i != 41}
+        aligned = self.tsi.align_slot_pv(pv)
+        assert _is_sentinel(aligned[41])
+        assert self.tsi.missing_pv_slots == {SlotKey(0, 41)}
+        assert self.tsi.missing_slots == {SlotKey(0, 41)}
+        assert self.tsi.missing_future_day_pv_hours(0) == {10}
+
+    def test_30min_slots_take_half_the_power(self):
+        now = _cph(2024, 6, 15, 0)
+        tsi = TimeSeriesIndex.from_now(now, interval_minutes=30, horizon_hours=24)
+        aligned = tsi.align_slot_pv({(0, i): 3.0 for i in range(48)})
+        assert aligned == pytest.approx([1.5] * 48)
+
+    def test_second_day_is_keyed_by_day_offset(self):
+        now = _cph(2024, 6, 15, 0)
+        tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=48)
+        pv = {(d, i): 1.0 + d for d in range(2) for i in range(96)}
+        aligned = tsi.align_slot_pv(pv)
+        assert aligned[:96] == pytest.approx([0.25] * 96)
+        assert aligned[96:] == pytest.approx([0.5] * 96)
+
+    def test_fall_back_day_keeps_both_repeated_hours(self):
+        now = _cph(2026, 10, 25, 0)
+        tsi = TimeSeriesIndex.from_now(now, interval_minutes=15, horizon_hours=24)
+        aligned = tsi.align_slot_pv({(0, i): float(i) for i in range(100)})
+        assert len(aligned) == 100
+        assert aligned == pytest.approx([i * 0.25 for i in range(100)])
+        assert not tsi.missing_pv_slots
+
+
 # ---------------------------------------------------------------------------
 # 8. align_hourly_load
 # ---------------------------------------------------------------------------

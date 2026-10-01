@@ -96,8 +96,17 @@ PV forecast sensor configuration.
 
 HSEM reads the forecast from the sensors' `detailedHourly` attribute and, when
 the Solcast integration also publishes it, the half-hourly `detailedForecast`
-attribute. Either one is enough, and both may be enabled: the planner works
-with one PV value per hour, taken as the mean over that hour (issue #1191).
+attribute. Either one is enough, and both may be enabled. Both hold **average
+power in kW** per period (issue #1191):
+
+- With only `detailedHourly`, the planner gets one value per hour and splits
+  it evenly over the hour's slots.
+- With `detailedForecast`, 15- and 30-minute planner slots follow the
+  half-hourly forecast, so the morning ramp and the evening fall-off are
+  planned in half-hour steps. At 60-minute slots the two half-hours are
+  averaged.
+- A source at 15-minute cadence in the same attribute format reaches
+  15-minute slots at 15-minute resolution.
 
 ### Step: `huawei_solar`
 
