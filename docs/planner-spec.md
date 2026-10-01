@@ -4163,7 +4163,31 @@ In a production log (issue #1125) the scan found its solar refill at 08:30
 while the plan's first surplus slot was 10:00. Hourly slots were not affected.
 
 **Cost.** One extra planner solve per replan, only with the floor enabled
-(~75 ms for a 48 h horizon of 15-minute slots without EVs).
+(~75 ms for a 48 h horizon of 15-minute slots without EVs). With the
+house-battery target enabled (issue #1109) the reference solve runs the
+target's stage 2 as well, so up to one more MILP solve (two with a
+charge-past-target EV).
+
+**Why the reference solve keeps the house-battery target (issue #1186).**
+It was proposed to solve the reference plan with the target off, on the
+grounds that stage 2 pins grid import and so cannot change what the scan
+reads. That holds only up to the target slot. Stage 2 pins `gi[t]` to
+stage 1 for `t ≤ T`; for `t > T` it only caps it. When stage 2 keeps energy
+that stage 1 exported before the deadline, the battery is fuller after `T`,
+the plan buys less afterwards, and a grid charge the scan credited
+disappears. Measured on the #1125 fixture (68 % at 21:30, 0.45 export at
+21:00–23:00, target 100 % by 23:00):
+
+| Reference solve    | Grid charge before the PV surplus | `reserve_kwh` |   Floor |
+| ------------------ | --------------------------------: | ------------: | ------: |
+| with the target    |                           0.0 kWh |          6.42 | 77.72 % |
+| without the target |                          2.21 kWh |          3.71 | 44.93 % |
+
+The published plan is solved with the target, so it makes no such charge. A
+reference plan without the target would credit a refill that never happens
+and release 33 points of reserve. With the target at 06:00 the same charge
+lies inside the pinned window and both floors are equal. The reference solve
+therefore uses the planner input unchanged, apart from the missing floor.
 
 #### Grid-charge refill reserve is zero (decision, issue #1140)
 
@@ -4283,6 +4307,10 @@ effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
   with `avg_house_consumption_kwh < solcast_pv_estimate_kwh` (issue #1187).
 - For fixed inputs the floor is the same on every replan; it does not depend
   on the plan it constrains.
+- The reference solve and the real solve differ only in the floor
+  (`dynamic_discharge_floor_pct`, `dynamic_floor_profile`). Every other
+  planner input, the house-battery target included, is the same in both
+  (issue #1186).
 - A grid-charge refill that covers the bridged consumption yields
   `reserve_kwh == 0` and `effective_floor_pct == configured_min_soc_pct`.
 - So does an affordable grid refill (`grid_available`, issue #1156), even when
