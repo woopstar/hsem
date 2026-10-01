@@ -317,11 +317,12 @@ class TestReserveIsHeldAboveTheHardwareFloor:
                 max_soc_pct=max_soc_pct,
             )
 
+            raw_pct = _HARDWARE_FLOOR_PCT + bridge_kwh * _MARGIN * 10.0
             assert floor <= max_soc_pct + 1e-9
-            assert all(pct <= max_soc_pct + 1e-9 for _start, pct in profile)
-            assert floor == pytest.approx(
-                min(_HARDWARE_FLOOR_PCT + bridge_kwh * _MARGIN * 10.0, max_soc_pct)
-            )
+            assert floor == pytest.approx(min(raw_pct, max_soc_pct))
+            # The profile keeps the whole reserve, so the planner can place a
+            # shortfall (issue #1222); only the floor that is reported is capped.
+            assert profile[0][1] == pytest.approx(raw_pct)
 
     def test_a_reduced_maximum_holds_the_same_energy(self) -> None:
         """With a 90 % cut-off the 3.3 kWh bridge is still held as 3.8 kWh."""
@@ -716,19 +717,30 @@ class TestReserveBlocksExportNotTheHouse:
 class TestBatteryBelowTheReserve:
     """The #1094 behaviour without moving the model origin."""
 
-    def test_holds_until_the_reserve_has_declined_to_it(self) -> None:
+    def test_is_not_charged_to_reach_the_reserve(self) -> None:
+        """68 % under a 78.8 % reserve: nothing is bought to "reach" it."""
         floor_pct, _profile, _reference, final = _replan(68.0)
         future = _future(final)
 
         assert floor_pct > 68.0
-        # Live slot: the reserve is above the battery, so no discharge, the
-        # real SoC is reported, and nothing is charged to "reach" the floor.
-        assert future[0].batteries_discharged_kwh == pytest.approx(0.0)
         assert future[0].batteries_charged_kwh == pytest.approx(0.0)
-        assert future[0].estimated_battery_soc_pct == pytest.approx(68.0)
-        assert future[0].discharge_reserve_kwh == pytest.approx(6.3)
-        # Later the reserve drops below the battery and the night is served.
+        assert future[0].discharge_reserve_kwh <= 6.3 + 1e-9
+        # The live slot costs 0.19 and the night 0.15, so the battery serves
+        # it; the shortfall falls on the night (issue #1222).
+        assert future[0].batteries_discharged_kwh > 0.3
         assert sum(s.batteries_discharged_kwh for s in _bridge_slots(final)) > 4.0
+        _assert_invariants(final)
+
+    def test_holds_while_dearer_slots_need_all_it_has(self) -> None:
+        """25 %: 2 kWh is kept for the 0.25 morning; the real SoC is reported."""
+        floor_pct, _profile, _reference, final = _replan(25.0)
+        future = _future(final)
+
+        assert floor_pct > 25.0
+        assert future[0].batteries_discharged_kwh == pytest.approx(0.0, abs=1e-6)
+        assert future[0].batteries_charged_kwh == pytest.approx(0.0)
+        assert future[0].estimated_battery_soc_pct == pytest.approx(25.0)
+        assert future[0].discharge_reserve_kwh == pytest.approx(2.0)
         _assert_invariants(final)
 
     def test_charges_into_the_full_headroom(self) -> None:

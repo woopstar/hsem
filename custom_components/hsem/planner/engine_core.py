@@ -385,11 +385,11 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             "No slots generated; check interval_minutes and interval_length_hours."
         )
         return PlannerOutput(missing_inputs=missing_inputs, warnings=warnings)
-    apply_discharge_reserve(slots, inp, now, current_kwh)
     # Step 1 — populate time-series data
     data_quality, warnings, missing_inputs = _populate_slots(
         slots, inp, tsi, warnings, missing_inputs
     )
+    apply_discharge_reserve(slots, inp, now, current_kwh)
     log_planner(
         "debug",
         "[core] run_planner  step=1_populate_slots COMPLETE  "

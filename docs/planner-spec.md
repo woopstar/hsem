@@ -4186,12 +4186,16 @@ the floor at the **start** of every look-ahead slot:
 ```text
 remaining_kwh[t] = Σ over bridge slots k ≥ t of net consumption of slot k
 floor_pct[t]     = configured_min_soc_pct
-                   + min(remaining_kwh[t] × safety_margin / usable_capacity_kwh, 1)
+                   + remaining_kwh[t] × safety_margin / usable_capacity_kwh
                      × (max_soc_pct − configured_min_soc_pct)
 floor_pct[t]     = configured_min_soc_pct     for every slot at or after the refill slot
 ```
 
-The conversion is the scalar's, so `floor_pct[now] == effective_floor_pct`.
+The conversion is the scalar's without its cap, so
+`min(floor_pct[now], max_soc_pct) == effective_floor_pct`. A profile entry
+may exceed the maximum SoC: it states the reserve the bridge asks for, and the
+planner needs all of it to decide which slots a battery that cannot hold it
+serves (issue #1222).
 The bridge is every slot before the refill slot, and no slot inside it holds
 a grid-charge credit (issue #1214), so the profile only declines. A refill
 that covers the bridge (a covering `grid_charge`, or `grid_available`) has no
@@ -4205,13 +4209,29 @@ The coordinator passes the profile to the planner as
 floor that the plan must still hold at the **end** of each slot:
 
 ```text
-reserve[t] = rated_kwh × (clamp(floor_pct[t + 1], hardware, maximum) − hardware) / 100
-reserve[t] = min(reserve[t], max(current_kwh, 0), reserve[t − 1])
+need[t]    = min over k ≤ t of rated_kwh × (max(floor_pct[k], hardware) − hardware) / 100
+take[t]    = need[t] − need[t + 1]                  what slot t takes out of the reserve
+held       = max(current_kwh, 0)
+
+reserve[t] = need[t + 1]                            when held ≥ need[now]
+reserve[t] = tail + Σ over k > t of assigned[k]     otherwise (issue #1222)
 reserve[t] = 0     for past slots, and when the floor is disabled
 ```
 
-With the conversion above, `reserve[t]` for a battery on the profile is
-`remaining_kwh[t + 1] × safety_margin`, capped at the usable capacity.
+`need` is the reserve at the start of every future slot and at the horizon
+end, never rising. With the conversion above, `reserve[t]` for a battery on
+the profile is `remaining_kwh[t + 1] × safety_margin`.
+
+A battery that holds less than `need[now]` cannot bridge every slot.
+`reserve_bounds_kwh()` assigns what it holds: first `tail = min(need[end],
+held)`, the reserve still required at the horizon end, which is never released
+inside the horizon; then the slots in order of **falling import price**, each
+up to its `take[t]`, until nothing is left. `assigned[t]` is what slot `t` may
+take from the battery, so the bound of a slot is what the later slots were
+assigned. A slot that was assigned nothing leaves the bound where it was: the
+battery is held there and the house imports. Equally priced slots are assigned
+latest first, so with flat prices the bound is `min(held, need[t + 1])`, as
+before issue #1222.
 
 - **End of slot, next slot's floor.** Serving the house in a slot is what the
   reserve is for. A battery on the profile may therefore discharge the slot's
@@ -4220,9 +4240,11 @@ With the conversion above, `reserve[t]` for a battery on the profile is
   battery, or any discharge that would leave less than the rest of the bridge
   needs.
 - **Never above the energy held now** (the #1094 rule). A battery below the
-  reserve cannot discharge until the profile has declined to it. It is not
-  charged to reach the reserve, it reports its real SoC, and it keeps its full
+  reserve is not charged to reach it, reports its real SoC, and keeps its full
   charge headroom.
+- **A shortfall falls on the cheapest slots** (issue #1222). A battery below
+  the reserve serves the bridge's dearest slots and is held in the cheapest
+  ones, where the house imports. See _A battery below its reserve_ below.
 - **Never rising.** The profile `compute_floor_profile()` returns only
   declines. `apply_discharge_reserve()` still ignores a step up in the
   profile it is handed, so a caller's own profile cannot ask the plan to
@@ -4275,6 +4297,73 @@ reference solve and move the same way. In the export rows the floor itself
 changes between replans in both models, because the reference plan moves its
 night charge among equally priced slots (issue #1198); that is not introduced
 here.
+
+#### A battery below its reserve (issue #1222)
+
+The reserve protects the house against importing at high prices. A battery
+that holds less than the reserve has to let the house import somewhere in the
+bridge, and the only question is where.
+
+Until issue #1222 the bound was the reserve capped at the energy held. That
+bound is flat until the profile has declined to the battery, so the battery
+was held through the **first** hours of the bridge and served the last ones,
+whatever their prices. In the evening that is the wrong way round: the house
+imported at the evening peak and the battery was spent on the cheap night. The
+profile was also capped at the maximum SoC, so a bridge longer than the
+battery (a 15-hour evening bridge × margin) held a **full** battery until the
+uncapped reserve had come down to 100 %.
+
+Now the energy held is assigned to the dearest bridge slots
+(`reserve_bounds_kwh()`, formulas under _Per-slot reserve profile_), and the
+profile carries the whole reserve.
+
+What does not change:
+
+- A battery that holds the reserve is bound exactly as before.
+- The bound is still a lower bound on stored energy for every candidate. It
+  never exceeds the energy held and never rises, so no plan charges for it.
+  Battery export and EV charging from the battery below it stay blocked; what
+  a slot may take is at most its own house load × the safety margin.
+- The floor, its diagnostics and its profile are the same. The rule reads the
+  replan's own prices and live SoC, nothing from the previous replan (#1140).
+
+**Measured.** Closed loop through the real `run_planner` (hourly replans,
+48 h from 21:00 at 68 %, each replan's floor from its own reference solve,
+#1125 fixture without an export spike). Second evening, a 100 % battery under
+a reserve of 10.4 kWh:
+
+| Replan at           | 17:00 | 18:00 | 19:00 | 20:00 | 21:00 | 04:00 |
+| ------------------- | ----: | ----: | ----: | ----: | ----: | ----: |
+| Import price        |  0.25 |  0.25 |  0.25 |  0.25 |  0.15 |  0.15 |
+| Import before (kWh) |  0.60 |  0.53 |     0 |     0 |  0.80 |     0 |
+| Import now (kWh)    |     0 |     0 |     0 |     0 |  0.80 |  0.31 |
+
+Before, 1.13 kWh was imported at the 0.25 peak, and 1.8 kWh was still in the
+battery when the PV returned at 08:00, to be exported at 0.15. Now nothing is
+imported at the peak, the night imports 1.11 kWh at 0.15 (0.80 before), and
+the 0.95 kWh left at 08:00 is the safety margin's share of the bridge.
+
+Realised grid cash over the 48 replans, lower is better:
+
+| Scenario (68 % at 21:00)         | Floor off | Before | Now    |
+| -------------------------------- | --------: | -----: | ------ |
+| no export spike (0.15 night)     |    −0.177 |  0.253 | −0.177 |
+| no export spike, cloudy tomorrow |     0.642 |  1.127 | 0.649  |
+| evening export 0.45              |    −2.725 | −2.201 | −2.201 |
+| evening export, cloudy tomorrow  |    −1.882 | −1.758 | −1.758 |
+| 0.03 night                       |    −3.361 | −3.361 | −3.361 |
+
+In the first two rows the end SoC is 69.1 % with the floor off and now, and
+80.7 % before; valued at the 0.25 peak the 1.17 kWh is 0.29, against a cash
+difference of 0.43 and 0.48. The export rows are unchanged: there the battery
+holds its reserve, and the reserve blocks the sale as before.
+
+Over the 108-scenario sweep of _A planned charge ends the bridge_ (start SoC
+30/50/68/95 %, export spike none/0.30/0.45, night 0.15/0.10/0.03, tomorrow's
+PV 100/50/20 %, 48 hourly replans each), with a different end SoC valued at
+0.25 per kWh: 16 scenarios better, 92 equal, none worse; summed cash −170.7
+before, −176.3 now, −179.7 with the floor off. The floor never rose within a
+bridge and the MILP won every replan, before and now.
 
 #### The reserve is held above the hardware floor (issue #1221)
 
@@ -4679,8 +4768,10 @@ and the floor rises from 43.8 % to 59.6 %.
   charge and the house imports 0.19 kWh: the reserve held a little less than
   it bridged. That was the conversion, fixed by issue #1221 (see _The reserve
   is held above the hardware floor_).
-- A battery below its reserve still holds through the first hours of the
-  bridge and serves the last ones, whatever their prices (issue #1222).
+- A battery below its reserve held through the first hours of the bridge and
+  served the last ones, whatever their prices. Issue #1222 changed that: the
+  shortfall now falls on the bridge's cheapest slots (see _A battery below its
+  reserve_).
 
 #### Affordable grid refill (issue #1156)
 
@@ -4810,7 +4901,8 @@ safety_margin       ≤ 1.50                      (after learning period)
 - In a closed-loop replay the floor rises by more than one SoC point only
   from the configured minimum, where a bridge starts; it never rises within
   a bridge (issue #1214).
-- `floor_pct[now]`, the first profile entry, equals `effective_floor_pct`.
+- `floor_pct[now]`, the first profile entry, capped at `max_soc_pct`, equals
+  `effective_floor_pct` (issue #1222: profile entries are not capped).
   The profile is non-increasing up to the refill slot and equals
   `configured_min_soc_pct` from the refill slot on (issues #1188, #1214).
 - For a battery on the profile, the energy `apply_discharge_reserve()` holds
@@ -4827,8 +4919,15 @@ safety_margin       ≤ 1.50                      (after learning period)
 - `discharge_reserve_kwh` never exceeds the energy stored now and never rises
   along the horizon, so no plan has to charge to satisfy it and the MILP
   cannot become infeasible because of it.
-- A battery below the reserve does not discharge in the live slot, reports
-  its live SoC, and may charge up to the configured maximum (issue #1094).
+- A battery below the reserve reports its live SoC and may charge up to the
+  configured maximum (issue #1094).
+- A battery below the reserve is bound by what the later, dearer slots were
+  assigned: no bridge slot imports while the plan later serves a cheaper
+  bridge slot from the battery, and a full battery is not held at the
+  bridge's dearest price (issue #1222). With equally priced bridge slots the
+  bound is `min(stored now, reserve)`, the bound before that issue.
+- What a slot may take out of a battery below the reserve is at most the
+  slot's own share of the reserve (its net house load × the safety margin).
 - `wait_mode_reserve_kwh >= discharge_reserve_kwh` of the live slot, so a
   `batteries_wait_mode` slot executed with `self_consumption_with_reserve`
   holds a battery at or below the reserve (TOU hold, 0 W cap). With the

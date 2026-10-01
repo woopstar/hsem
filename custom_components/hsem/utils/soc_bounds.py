@@ -77,6 +77,8 @@ def reserve_floor_pct(
     usable_kwh: float,
     configured_min_soc_pct: float,
     max_soc_pct: float,
+    *,
+    capped: bool = True,
 ) -> float:
     """Return the SoC that holds *reserve_kwh* above the configured minimum.
 
@@ -91,13 +93,17 @@ def reserve_floor_pct(
         usable_kwh: Capacity between the minimum and the maximum SoC (kWh).
         configured_min_soc_pct: Configured minimum SoC (0-100).
         max_soc_pct: Configured maximum SoC (0-100).
+        capped: ``False`` returns the SoC the reserve asks for even when the
+            battery cannot hold it (issue #1222): the per-slot profile needs
+            the whole reserve to place a shortfall.
 
     Returns:
         The floor in SoC percent: the configured minimum when there is no
-        reserve or no usable capacity, never above *max_soc_pct* (a full
-        battery holds all there is).
+        reserve or no usable capacity, and, unless *capped* is ``False``,
+        never above *max_soc_pct* (a full battery holds all there is).
     """
     span_pct = max_soc_pct - configured_min_soc_pct
     if usable_kwh <= 1e-9 or span_pct <= 1e-9 or reserve_kwh <= 0.0:
         return configured_min_soc_pct
-    return configured_min_soc_pct + min(reserve_kwh / usable_kwh, 1.0) * span_pct
+    share = reserve_kwh / usable_kwh
+    return configured_min_soc_pct + (min(share, 1.0) if capped else share) * span_pct

@@ -115,6 +115,8 @@ class _Replay:
     socs: list[float] = field(default_factory=list)
     floors: list[float] = field(default_factory=list)
     end_floors: list[float] = field(default_factory=list)
+    end_reserves: list[float] = field(default_factory=list)
+    prices: list[float] = field(default_factory=list)
     profiles: list[dict[str, float]] = field(default_factory=list)
     discharged: list[float] = field(default_factory=list)
     imported: list[float] = field(default_factory=list)
@@ -154,6 +156,10 @@ def _replay(soc_pct: float, steps: int, *, with_profile: bool) -> _Replay:
         run.socs.append(soc_pct)
         run.floors.append(floor_pct)
         run.end_floors.append(end_floor_pct)
+        run.end_reserves.append(
+            _HARDWARE_FLOOR_PCT + slot.discharge_reserve_kwh / _RATED_KWH * 100.0
+        )
+        run.prices.append(slot.price.import_price)
         run.profiles.append(dict(profile))
         run.discharged.append(slot.batteries_discharged_kwh)
         run.imported.append(slot.grid_import_kwh)
@@ -219,25 +225,45 @@ class TestClosedLoop:
     def test_executed_soc_never_ends_a_slot_below_its_reserve(
         self, profile_run: _Replay
     ) -> None:
-        """Each slot ends at or above the floor its own replan required."""
-        socs_after = [*profile_run.socs[1:], profile_run.soc_end_pct]
-        for soc_before, soc_after, end_floor in zip(
-            profile_run.socs, socs_after, profile_run.end_floors
-        ):
-            assert soc_after >= min(soc_before, end_floor) - 0.02
+        """Each slot ends at or above the reserve its own replan wrote for it.
 
-    def test_battery_holds_then_serves_the_night(self, profile_run: _Replay) -> None:
-        """Below the reserve it holds one slot, then follows the reserve down."""
+        That reserve is the profile's floor for a battery that holds it, and
+        what the later, dearer slots were assigned for one that does not
+        (issue #1222); it is never above either.
+        """
+        socs_after = [*profile_run.socs[1:], profile_run.soc_end_pct]
+        for soc_before, soc_after, end_floor, end_reserve in zip(
+            profile_run.socs,
+            socs_after,
+            profile_run.end_floors,
+            profile_run.end_reserves,
+        ):
+            assert end_reserve <= min(soc_before, end_floor) + 0.02
+            assert soc_after >= end_reserve - 0.02
+
+    def test_battery_serves_the_evening_and_imports_in_the_night(
+        self, profile_run: _Replay
+    ) -> None:
+        """Below the reserve, the shortfall falls on the cheapest slots (#1222).
+
+        Before, the battery was held for the first slot (0.8 kWh imported at
+        0.19) and then followed the reserve down.
+        """
         bridge = _first_bridge(profile_run)
 
-        assert profile_run.discharged[0] == pytest.approx(0.0)
-        assert profile_run.imported[0] > 0.5
-        # From the second slot on the reserve is below the battery.  The
-        # plan may still buy one cheap night hour to keep energy for the
-        # 0.25 morning peak; that is economics, not the floor.
-        assert sum(profile_run.discharged[i] for i in bridge[1:]) > 5.0
-        assert sum(profile_run.discharged[i] > 0.4 for i in bridge[1:]) >= 9
-        assert sum(profile_run.imported[i] for i in bridge[1:]) < 0.6
+        assert profile_run.floors[0] > profile_run.socs[0]
+        assert profile_run.discharged[0] > 0.5
+        assert profile_run.imported[0] == pytest.approx(0.0, abs=0.01)
+        assert sum(profile_run.discharged[i] for i in bridge) > 5.0
+        assert sum(profile_run.discharged[i] > 0.4 for i in bridge) >= 9
+        # What is imported is imported at the night's 0.15, the bridge's
+        # cheapest price, and it is no more than the shortfall plus one slot.
+        assert all(
+            profile_run.prices[i] == pytest.approx(0.15)
+            for i in bridge
+            if profile_run.imported[i] > 0.05
+        )
+        assert sum(profile_run.imported[i] for i in bridge) < 1.7
 
     def test_constant_floor_held_much_longer(
         self, profile_run: _Replay, constant_run: _Replay

@@ -23,19 +23,27 @@ not export or over-discharge below it.
 
 Two rules keep the bound satisfiable without charging:
 
-1. It never exceeds the energy the battery holds now.  A battery already
-   below the reserve cannot discharge, but it is not forced to charge either,
-   and it keeps its full charge headroom (the issue #1094 behaviour).
+1. It never exceeds the energy the battery holds now.  A battery below the
+   reserve is not forced to charge, and it keeps its full charge headroom
+   (the issue #1094 behaviour).
 2. It never rises along the horizon.  A partial grid charge in the reference
    plan makes the raw floor step up after that charge; the plan this bound
    constrains is not obliged to charge there, so the step is ignored.  The
    next replan recomputes the floor from its own reference solve.
+
+A battery that holds less than the reserve cannot bridge every slot.  The
+energy it does hold is assigned to the bridge's **dearest** slots, and the
+shortfall falls on the cheapest ones (issue #1222): the house imports where
+import costs least.  Before, the bound was the reserve capped at the energy
+held, which held the battery through the first hours of the bridge and spent
+it on the last ones, whatever their prices.
 
 Pure functions — no I/O, no Home Assistant imports.
 """
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
@@ -94,6 +102,51 @@ def _floor_pct_at_slot_starts(
     return floors
 
 
+def reserve_bounds_kwh(
+    need_kwh: list[float], prices: list[float], held_kwh: float
+) -> list[float]:
+    """Return what each slot must still hold at its end (kWh).
+
+    *need_kwh* is the reserve required at the start of every slot and at the
+    horizon end, so ``need_kwh[i] - need_kwh[i + 1]`` is what slot ``i`` takes
+    out of the reserve: its house load times the safety margin.  A battery
+    that holds the whole reserve follows it, and the bound of slot ``i`` is
+    ``need_kwh[i + 1]``.
+
+    A battery that holds less cannot serve every slot.  The energy it holds
+    is assigned to the dearest slots first, each up to what it takes, and the
+    bound of a slot is what the later slots were assigned (issue #1222).  A
+    slot that was assigned nothing leaves the bound unchanged: the battery is
+    held there and the house imports, at one of the bridge's cheapest prices.
+    Equally priced slots are assigned latest first, which is the time order
+    the bound had before.  The reserve still required at the horizon end is
+    never released inside the horizon and is assigned first.
+
+    Args:
+        need_kwh: ``len(prices) + 1`` non-increasing reserve values.
+        prices: Import price of every slot; a non-finite price counts as the
+            cheapest.
+        held_kwh: Energy stored above the hardware floor now.
+
+    Returns:
+        One bound per slot: non-increasing and never above *held_kwh*.
+    """
+    count = len(prices)
+    takes = [need_kwh[i] - need_kwh[i + 1] for i in range(count)]
+    tail_kwh = min(need_kwh[count], max(held_kwh, 0.0))
+    left_kwh = max(held_kwh, 0.0) - tail_kwh
+    assigned = [0.0] * count
+    order = sorted(range(count), key=lambda i: (-finite_or(prices[i], -math.inf), -i))
+    for index in order:
+        assigned[index] = min(takes[index], left_kwh)
+        left_kwh -= assigned[index]
+    bounds = [0.0] * count
+    for index in range(count - 1, -1, -1):
+        bounds[index] = tail_kwh
+        tail_kwh += assigned[index]
+    return bounds
+
+
 def apply_discharge_reserve(
     slots: list[PlannedSlot],
     inp: PlannerInput,
@@ -104,10 +157,12 @@ def apply_discharge_reserve(
 
     The value is the stored energy, in kWh above the hardware floor, that the
     plan must still hold at the end of the slot.  It is zero on every slot
-    when the dynamic floor is disabled, and on past slots.
+    when the dynamic floor is disabled, and on past slots.  Slots must carry
+    their import price: it decides where a battery below the reserve takes
+    its shortfall (:func:`reserve_bounds_kwh`).
 
     Args:
-        slots: Mutable chronological planner slots.
+        slots: Mutable chronological planner slots, prices populated.
         inp: Planner input carrying the scalar floor and the optional profile.
         now: Timezone-aware current datetime.
         current_kwh: Energy stored above the hardware floor now (kWh).
@@ -117,19 +172,31 @@ def apply_discharge_reserve(
     if inp.dynamic_discharge_floor_pct is None and inp.dynamic_floor_profile is None:
         return
 
-    hardware_pct, _floor_now, maximum_pct = resolve_effective_discharge_floor_pct(inp)
+    hardware_pct, _floor_now, _maximum_pct = resolve_effective_discharge_floor_pct(inp)
     rated_kwh = max(finite_or(inp.battery_rated_capacity_kwh, 0.0), 0.0)
     floors = _floor_pct_at_slot_starts(slots, inp, hardware_pct)
+    future = [i for i, slot in enumerate(slots) if slot_is_future(slot.end, now)]
+    if not future:
+        return
 
-    # Never above the energy held now, and never rising along the horizon.
-    bound_kwh = max(current_kwh, 0.0)
+    # The reserve required at the start of every future slot and at the end
+    # of the last one, never rising along the horizon.  It is not capped at
+    # the maximum SoC: a reserve the battery cannot hold is a shortfall to
+    # place, not a reason to hold a full battery.
+    need_kwh: list[float] = []
+    level_kwh = math.inf
+    for index in [*future, future[-1] + 1]:
+        floor_pct = max(floors[index], hardware_pct)
+        level_kwh = min(level_kwh, rated_kwh * (floor_pct - hardware_pct) / 100.0)
+        need_kwh.append(level_kwh)
+    bounds = reserve_bounds_kwh(
+        need_kwh, [slots[i].price.import_price for i in future], current_kwh
+    )
+
     first_kwh: float | None = None
     released_at: datetime | None = None
-    for index, slot in enumerate(slots):
-        if not slot_is_future(slot.end, now):
-            continue
-        floor_pct = min(max(floors[index + 1], hardware_pct), maximum_pct)
-        bound_kwh = min(bound_kwh, rated_kwh * (floor_pct - hardware_pct) / 100.0)
+    for index, bound_kwh in zip(future, bounds):
+        slot = slots[index]
         slot.discharge_reserve_kwh = bound_kwh
         if first_kwh is None:
             first_kwh = bound_kwh

@@ -198,10 +198,13 @@ In the plan each slot must end with at least the next slot's reserve. So:
 - A battery **above** the reserve serves the house through the night and
   ends each slot at or above the declining reserve. Only what goes beyond
   that is blocked: exporting the battery or charging an EV from it.
-- A battery **below** the reserve holds until the reserve has declined to it,
-  then follows it down. It is not charged from the grid to reach the reserve,
-  the plan reports its real SoC, and it can charge into its full headroom
-  (issue #1094).
+- A battery **below** the reserve cannot cover every hour until the refill.
+  It serves the most expensive of those hours and waits in the cheapest ones,
+  where the house imports (issue #1222). A full battery under a long bridge is
+  therefore used at the evening peak and not held. When all those hours cost
+  the same, the battery waits first and serves the last hours. It is not
+  charged from the grid to reach the reserve, the plan reports its real SoC,
+  and it can charge into its full headroom (issue #1094).
 - From the refill slot on the plan may use the battery down to the hardware
   minimum, so the day after the refill is planned with the real battery.
 
@@ -1795,27 +1798,29 @@ Attributes:
 
 Common constraint tags and their meaning:
 
-| Tag                           | Meaning                                                                             |
-| ----------------------------- | ----------------------------------------------------------------------------------- |
-| `winter_month`                | Current month is in `months_winter`; winter scheduling strategy active              |
-| `summer_month`                | Not in winter months; summer scheduling strategy active                             |
-| `no_price_spread`             | Max − min import price is near zero; no grid-charge arbitrage                       |
-| `excess_export_enabled`       | Excess export feature is active in config                                           |
-| `battery_disabled`            | Rated battery capacity is zero or unavailable                                       |
-| `battery_full`                | Initial SoC is at or above the configured maximum                                   |
-| `battery_empty`               | Initial SoC is at or below the configured discharge floor                           |
-| `battery_low_at_end`          | Simulated terminal SoC reaches the configured discharge floor                       |
-| `dynamic_discharge_floor`     | The dynamic discharge floor is above the configured minimum SoC and reserves energy |
-| `battery_below_dynamic_floor` | Initial SoC is at or below the dynamic discharge floor; the battery is held         |
+| Tag                           | Meaning                                                                                         |
+| ----------------------------- | ----------------------------------------------------------------------------------------------- |
+| `winter_month`                | Current month is in `months_winter`; winter scheduling strategy active                          |
+| `summer_month`                | Not in winter months; summer scheduling strategy active                                         |
+| `no_price_spread`             | Max − min import price is near zero; no grid-charge arbitrage                                   |
+| `excess_export_enabled`       | Excess export feature is active in config                                                       |
+| `battery_disabled`            | Rated battery capacity is zero or unavailable                                                   |
+| `battery_full`                | Initial SoC is at or above the configured maximum                                               |
+| `battery_empty`               | Initial SoC is at or below the configured discharge floor                                       |
+| `battery_low_at_end`          | Simulated terminal SoC reaches the configured discharge floor                                   |
+| `dynamic_discharge_floor`     | The dynamic discharge floor is above the configured minimum SoC and reserves energy             |
+| `battery_below_dynamic_floor` | Initial SoC is at or below the dynamic discharge floor; the battery holds less than the reserve |
 
-When `battery_below_dynamic_floor` is listed, the plan keeps the battery at its
-current SoC and only energy charged on top of it is discharged, so the
-timeline shows `batteries_wait_mode` during expensive hours and the plan ends
-at the SoC it started with (issue #1227). That is the
-[dynamic discharge floor](#dynamic-discharge-floor) holding its reserve, not a
-planner fault: `sensor.hsem_effective_discharge_floor_sensor` shows the floor
-and its `refill_type`, and `switch.hsem_dynamic_discharge_floor` turns the
-feature off.
+When `battery_below_dynamic_floor` is listed, the battery holds less than the
+[dynamic discharge floor](#dynamic-discharge-floor) wants to keep for the
+hours until the next refill. The plan then spends the battery on the most
+expensive of those hours and shows `batteries_wait_mode` with grid import in
+the cheapest ones (issue #1222); it does not sell the battery or charge an EV
+from it. That is the floor holding its reserve, not a planner fault:
+`sensor.hsem_effective_discharge_floor_sensor` shows the floor and its
+`refill_type`, and `switch.hsem_dynamic_discharge_floor` turns the feature
+off. On 6.3.x the same tag means the battery is held at its current SoC for
+the whole plan (issue #1227).
 
 ---
 
