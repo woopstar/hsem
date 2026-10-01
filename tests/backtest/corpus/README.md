@@ -21,6 +21,9 @@ and `apply_result` (about 44 KB); `planner_output` is never read, since replays
 recompute it. Each must round-trip losslessly and contain no entity id. The
 corpus is capped at 50 cycles because every test run replays each one.
 
+Fully recorded days, which the regret attribution needs, are not corpus
+cycles: they live in `tests/backtest/days/` (see its README).
+
 ## Which installation a file is from
 
 Every committed cycle and every file in `tests/backtest/actuals/` carries a

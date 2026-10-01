@@ -8,6 +8,7 @@ translations/
 # Generated / vendored
 tests/backtest/corpus/
 tests/backtest/actuals/
+tests/backtest/days/
 .venv/
 htmlcov/
 coverage.xml

@@ -10,6 +10,14 @@ After a ``PlannerInput`` field is added or removed, the corpus tests fail until
 the committed cycles are refreshed::
 
     python3 scripts/backtest_harvest.py --refresh-corpus
+
+A fully recorded day for the regret attribution is written with ``--day``
+(issue #1229)::
+
+    python3 scripts/backtest_harvest.py --day 2026-09-29
+
+It writes ``tests/backtest/days/<date>/`` from the live corpus and the actuals,
+prints the files for review and commits nothing.
 """
 
 from __future__ import annotations
@@ -18,7 +26,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -33,6 +41,12 @@ from tests.backtest.harvest import (  # noqa: E402
     refresh_corpus,
     write_actuals_days,
 )
+from tests.backtest.recorded_day import (  # noqa: E402
+    DAYS_DIR,
+    refresh_recorded_days,
+    write_recorded_day,
+)
+from tests.backtest.replay import iter_dumps  # noqa: E402
 from tests.backtest.site import (  # noqa: E402
     SITE_ENV,
     describe_site,
@@ -50,6 +64,54 @@ def _live_files(target: Path) -> list[Path]:
     if target.is_file():
         return [target]
     raise SystemExit(f"[error] no live corpus at {target}")
+
+
+def _record_day(args: argparse.Namespace) -> int:
+    """Write one fully recorded day and print it for review (issue #1229).
+
+    Args:
+        args: Parsed command-line arguments with ``day`` set.
+
+    Returns:
+        ``0`` when the day passed every check, ``1`` otherwise.
+    """
+    if not args.time_zone:
+        raise SystemExit("[error] --day needs the site's time zone: set TZ")
+    try:
+        zone = ZoneInfo(args.time_zone)
+    except ZoneInfoNotFoundError as err:
+        raise SystemExit(f"[error] unknown time zone {args.time_zone!r}") from err
+    actuals_path = args.actuals.expanduser()
+    if not actuals_path.exists():
+        raise SystemExit(f"[error] no actuals at {actuals_path}")
+    payloads = [
+        payload
+        for path in _live_files(args.live.expanduser())
+        for payload in iter_dumps(path)
+    ]
+    try:
+        result = write_recorded_day(
+            payloads,
+            json.loads(actuals_path.read_text(encoding="utf-8")),
+            args.day,
+            zone,
+            args.site_tag,
+            args.days_dir,
+            dry_run=args.dry_run,
+        )
+    except ValueError as err:
+        raise SystemExit(f"[error] {err}") from err
+    print(result.describe())
+    if result.written and not args.dry_run:
+        print(
+            "\nRead these files before committing them: they are one home's "
+            "data.\n"
+            f"  git add {result.directory}\n"
+            f'  git commit -m "test(backtest): add the recorded day {args.day}"'
+        )
+    if args.dry_run:
+        print("[dry run] nothing written")
+    return 0 if result.written else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -97,6 +159,17 @@ def main(argv: list[str] | None = None) -> int:
         "--dry-run", action="store_true", help="Report only; write nothing"
     )
     parser.add_argument(
+        "--day",
+        type=date.fromisoformat,
+        help=(
+            "Write one fully recorded day (YYYY-MM-DD) for the regret "
+            "attribution into --days-dir, then exit. It needs a cycle in at "
+            "least half of the day's slots and complete actuals for the day "
+            "and the following day."
+        ),
+    )
+    parser.add_argument("--days-dir", type=Path, default=DAYS_DIR)
+    parser.add_argument(
         "--refresh-corpus",
         action="store_true",
         help=(
@@ -108,9 +181,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.refresh_corpus:
         refreshed = refresh_corpus(args.corpus_dir, dry_run=args.dry_run)
         print(refreshed.describe())
+        days = refresh_recorded_days(args.days_dir, dry_run=args.dry_run)
+        if days.unchanged or days.updated or days.unfixable:
+            print(f"recorded days: {days.describe()}")
         if args.dry_run:
             print("[dry run] nothing written")
-        return 1 if refreshed.unfixable or refreshed.violations else 0
+        failed = refreshed.unfixable or refreshed.violations or days.unfixable
+        return 1 if failed else 0
+    if args.day is not None:
+        return _record_day(args)
     # A .env value is taken literally, so a leading ~ arrives unexpanded.
     args.live = args.live.expanduser()
     args.actuals = args.actuals.expanduser()

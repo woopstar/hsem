@@ -615,21 +615,59 @@ different sources:
   wear pricing, hysteresis, the terminal value, the MILP itself).
 
 ```bash
+python3 scripts/backtest_attribute.py                      # the committed day
 python3 scripts/backtest_attribute.py ~/hsem-actuals/actuals.json \
-    --corpus ~/hsem-actuals/corpus --day 2026-09-29
+    --corpus ~/hsem-actuals/corpus --day 2026-09-30
 ```
 
 ```text
 day         realized forecast hindsight   regret = execution + forecast +  planner
-2026-06-10     19.96    11.03     13.10    11.24        5.84       1.65      3.75
+2026-09-29     15.29    11.67     10.42     2.29        0.79       1.25      0.26
 ```
 
-Unlike Stage 2b this cannot run on the committed sample: it needs a planner
-cycle for (almost) every slot of the day, which only a live corpus holds. The
-line above is the synthetic day `tests/backtest/test_attribution.py` builds —
-HSEM expected sun, the sun never came out, and the battery did nothing — so
-it can be reproduced from the repository. A real day takes about half a
-minute at 15-minute slots, because every slot is planned twice.
+The attribution needs a planner cycle for (almost) every slot of the day,
+which the committed corpus does not have: it holds a handful of cycles on
+different days. The line above is the **recorded day** committed for that
+purpose (issue #1229), so it is reproducible from the repository with no live
+system: a 15 kWh installation on 2026-09-29, 96 cycles at 15-minute slots.
+`tests/backtest/test_recorded_day.py` pins these numbers. A day at 15-minute
+slots takes about half a minute, because every slot is planned twice.
+
+### Recorded days
+
+A recorded day lives apart from the corpus, in `tests/backtest/days/<date>/`:
+
+| File                    | Content                                                              |
+| ----------------------- | -------------------------------------------------------------------- |
+| `cycles.jsonl`          | One slim cycle per slot: the first whose `now_iso` falls in the slot |
+| `actuals-<date>.json`   | The day's realized values                                            |
+| `actuals-<date+1>.json` | The following day's: every plan of the day reaches into it           |
+
+It is not part of the corpus because it is neither a new situation nor
+something to replay on every test run: the corpus is capped at 50 cycles that
+are each replayed several times per run, and a day is 96 consecutive cycles
+that only the attribution test reads, once.
+
+`scripts/backtest_harvest.py --day <date>` writes one from the live corpus and
+`~/hsem-actuals/actuals.json` (`tests/backtest/recorded_day.py`). It applies
+the checks a corpus cycle gets and refuses the day otherwise:
+
+- a cycle in at least half of the day's slots (the attribution's own minimum);
+- every cycle slim, round-tripping and free of entity ids, with the site tag;
+- actuals complete for the day **and** the following day, from the same site.
+
+A cycle recorded before a `PlannerInput` field existed gets the field's
+default, and the fields filled are listed for review, exactly as
+`--refresh-corpus` does. `--refresh-corpus` also keeps committed days in step
+when a field is added later.
+
+The script prints the files and commits nothing. **Read them before you
+commit them**: a recorded day is one home's load, PV, prices, battery and EV
+settings for two days, in a public repository.
+
+When the planner's decisions on the day change, the pinned numbers in
+`test_recorded_day.py` change with them. Re-run the script, check the change is
+the intended one, and update them in the same PR.
 
 ### Two replays of the same day
 

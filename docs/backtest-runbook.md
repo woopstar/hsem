@@ -255,8 +255,11 @@ python3 scripts/backtest_attribute.py ~/hsem-actuals/actuals.json \
 
 ```text
 day         realized forecast hindsight   regret = execution + forecast +  planner
-2026-06-10     19.96    11.03     13.10    11.24        5.84       1.65      3.75
+2026-09-29     15.29    11.67     10.42     2.29        0.79       1.25      0.26
 ```
+
+Without arguments the script attributes the recorded day committed in
+`tests/backtest/days/`, which is the line above: no live system needed.
 
 | Column                 | Meaning                                                                    |
 | ---------------------- | -------------------------------------------------------------------------- |
@@ -270,8 +273,9 @@ Cycles and actuals must be from the same installation. The live corpus carries
 no site tags, so its cycles are taken to be from `HSEM_BACKTEST_SITE`, the tag
 your actuals were built with; cycles tagged otherwise are ignored.
 
-It needs the live corpus: a cycle in at least half of the day's slots. Pick a
-day from the scoring table with a high regret. About half a minute per day.
+A day of your own needs the live corpus: a cycle in at least half of the day's
+slots. Pick a day from the scoring table with a high regret. About half a
+minute per day.
 The costs of the two replays are not comparable with each other or with
 `realized` — the runs end the day with different stored energy — which is why
 the split is in regret. `--tz` is needed when the cycles record no time zone
@@ -298,6 +302,27 @@ the replay and its limits.
 | `<day> not attributed: only N of 96 slot(s) have a planner cycle recorded in them` | The corpus automation was not running for most of that day.                                                                          | None. Attribute another day.                                                                                      |
 | `note: realized values cover N % of the planning horizons`                         | The plans reach past the last recorded day.                                                                                          | Expected for the newest day; re-run once the following day's actuals exist.                                       |
 
+### Committing a recorded day
+
+To make another day's attribution reproducible from the repository:
+
+```bash
+python3 scripts/backtest_harvest.py --day 2026-09-29 --dry-run   # checks only
+python3 scripts/backtest_harvest.py --day 2026-09-29
+```
+
+It writes `tests/backtest/days/<date>/` from the live corpus and
+`~/hsem-actuals/actuals.json`: one slim cycle per slot and the actuals of the
+day and of the following day. It needs `TZ` and `HSEM_BACKTEST_SITE`, a cycle
+in at least half of the day's slots, and complete actuals for both days, so
+the earliest day you can record is the day before yesterday. It refuses a day
+that fails a check and says why.
+
+It never commits. Read the three files first: about 2.5 MB of one home's data
+for two days. Then add the day's numbers to `tests/backtest/test_recorded_day.py`
+if they should be pinned. See
+[Recorded days](backtest-harness.md#recorded-days).
+
 ---
 
 ## When the planner changes
@@ -311,6 +336,11 @@ the pytest corpus tests fail on the committed cycles. Both are deliberate.
   and lists what it filled — check that each default means "the feature did not
   exist yet". `tests/backtest/corpus/README.md` explains the one case so far
   where it did not (`time_zone`, #1169).
+- **Recorded days**: the same command refreshes `tests/backtest/days/` too.
+  When a planner change moves the committed day's attribution,
+  `test_recorded_day.py` fails on its pinned numbers: run
+  `python3 scripts/backtest_attribute.py`, check the change is the one you
+  intended, and update them.
 - **Your live corpus**: nothing to do. New dumps carry the field once Home
   Assistant runs the new build; older ones replay with its default.
 
