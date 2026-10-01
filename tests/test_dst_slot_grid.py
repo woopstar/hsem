@@ -37,7 +37,7 @@ from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.time_series import TimeSeriesIndex
-from custom_components.hsem.planner.slot_population import populate_prices
+from custom_components.hsem.planner.slot_price_population import populate_prices
 from custom_components.hsem.utils.datetime_utils import (
     future_slot_indices,
     physical_slot_grid,

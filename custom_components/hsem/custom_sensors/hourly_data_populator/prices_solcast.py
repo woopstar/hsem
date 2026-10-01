@@ -11,6 +11,7 @@ import math
 from datetime import datetime, timedelta
 from typing import Any
 
+from custom_components.hsem.models.forecast_coverage import ForecastCoverage
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
@@ -105,7 +106,7 @@ def populate_price_and_solcast_from_snapshot(
     recommendations: list[HourlyRecommendation],
     snapshot: StateSnapshot,
     cfg: SensorConfig,
-) -> None:
+) -> ForecastCoverage:
     """Populate prices and Solcast PV estimates using a pre-collected snapshot.
 
     Synchronous — no HA state lookups needed.  Uses :attr:`StateSnapshot.sensor_attributes`
@@ -115,9 +116,16 @@ def populate_price_and_solcast_from_snapshot(
         recommendations: Mutable list of recommendation slots to update.
         snapshot: Pre-collected state snapshot.
         cfg: Current sensor configuration.
+
+    Returns:
+        Which slots each price source wrote to (issue #1217).  A slot a
+        source did not cover keeps its ``0.0`` default on the recommendation;
+        the coverage is what tells that default from a published ``0.0``.
     """
     price_fallback = cfg.electricity_price_update_interval
     solcast_fallback = 60
+    import_covered: set[datetime] = set()
+    export_covered: set[datetime] = set()
 
     import_matched = _populate_from_attributes(
         snapshot.sensor_attributes.get(cfg.import_electricity_price_sensor or ""),
@@ -125,6 +133,7 @@ def populate_price_and_solcast_from_snapshot(
         "import_price",
         cfg.solcast_pv_forecast_forecast_likelihood,
         price_fallback,
+        covered=import_covered,
     )
     if cfg.import_electricity_price_forecast_sensor:
         import_matched += _populate_from_attributes(
@@ -135,11 +144,12 @@ def populate_price_and_solcast_from_snapshot(
             "import_price",
             cfg.solcast_pv_forecast_forecast_likelihood,
             price_fallback,
+            covered=import_covered,
         )
     if import_matched == 0:
         _LOGGER.warning(
             "No import price data matched from sensor(s) %s — "
-            "planner will use 0.0 for all slots. "
+            "the planner has no price for any slot and plans with 0.0. "
             "Check that the sensor is available and its attribute format is supported.",
             cfg.import_electricity_price_sensor,
         )
@@ -149,6 +159,7 @@ def populate_price_and_solcast_from_snapshot(
         "export_price",
         cfg.solcast_pv_forecast_forecast_likelihood,
         price_fallback,
+        covered=export_covered,
     )
     if cfg.export_electricity_price_forecast_sensor:
         export_matched += _populate_from_attributes(
@@ -159,11 +170,12 @@ def populate_price_and_solcast_from_snapshot(
             "export_price",
             cfg.solcast_pv_forecast_forecast_likelihood,
             price_fallback,
+            covered=export_covered,
         )
     if export_matched == 0:
         _LOGGER.warning(
             "No export price data matched from sensor(s) %s — "
-            "planner will use 0.0 for all slots. "
+            "the planner has no price for any slot and plans with 0.0. "
             "Check that the sensor is available and its attribute format is supported.",
             cfg.export_electricity_price_sensor,
         )
@@ -195,6 +207,10 @@ def populate_price_and_solcast_from_snapshot(
             "PV estimates will be 0.0 for tomorrow.",
             cfg.solcast_pv_forecast_forecast_tomorrow,
         )
+    return ForecastCoverage(
+        import_price=frozenset(import_covered),
+        export_price=frozenset(export_covered),
+    )
 
 
 def _populate_from_attributes(
@@ -205,6 +221,7 @@ def _populate_from_attributes(
     fallback_interval_minutes: int,
     *,
     mean_over_slot: bool = False,
+    covered: set[datetime] | None = None,
 ) -> int:
     """Match pre-read sensor attribute data to recommendation slots.
 
@@ -236,6 +253,9 @@ def _populate_from_attributes(
             (fewer than 2 parseable timestamps in the array).
         mean_over_slot: Store the overlap-weighted mean of the data points
             covering each slot instead of the point at the slot's start.
+        covered: When given, receives the UTC start of every slot a value
+            was written to (issue #1217).  A slot that is not in it kept the
+            default it was created with.
 
     Returns:
         Number of data points successfully matched to at least one slot.
@@ -355,6 +375,8 @@ def _populate_from_attributes(
                     elif window_start <= obj_start < window_end:
                         setattr(obj, field_name, round(value, 5))
                         matched += 1
+                        if covered is not None:
+                            covered.add(obj_start)
 
         for index, covering in overlaps.items():
             setattr(
@@ -362,5 +384,7 @@ def _populate_from_attributes(
                 field_name,
                 round(_overlap_weighted_mean(covering), 5),
             )
+            if covered is not None:
+                covered.add(utc_key(recommendations[index].start))
 
     return matched

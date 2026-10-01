@@ -20,6 +20,7 @@ import math
 from datetime import datetime
 
 from custom_components.hsem.models.battery_schedule_input import BatteryScheduleInput
+from custom_components.hsem.models.forecast_coverage import ForecastCoverage
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
@@ -145,6 +146,7 @@ def build_planner_input(
     ev_held_power_w: float = 0.0,
     ev_second_held_slot_start: datetime | None = None,
     ev_second_held_power_w: float = 0.0,
+    forecast_coverage: ForecastCoverage | None = None,
 ) -> PlannerInput:
     """Assemble a :class:`PlannerInput` from the coordinator's current pipeline state.
 
@@ -158,6 +160,10 @@ def build_planner_input(
             planner run, or ``None`` for the first run.
         previous_winner_score: Score of the winning candidate from the
             previous planner run.
+        forecast_coverage: Which slots the price sources covered, from the
+            populator (issue #1217).  A slot without a price pair gets no
+            ``PricePoint``, so the planner estimates the price and reports
+            the gap.  ``None`` treats every slot as covered.
 
     Returns:
         A fully populated :class:`PlannerInput` ready for the planner engine.
@@ -199,16 +205,19 @@ def build_planner_input(
         day_offset, slot_in_day = slot_position(
             rec.start, planning_midnight, int(cfg.recommendation_interval_minutes)
         )
-        # Prices are stored at face value by the populator (no scaling).
-        price_points.append(
-            PricePoint(
-                hour=h,
-                import_price=round(rec.import_price, 5),
-                export_price=round(rec.export_price, 5),
-                day_offset=day_offset,
-                slot_in_day=slot_in_day,
+        # Prices are stored at face value by the populator (no scaling).  A
+        # slot no source covered still reads 0.0 there; it is left out, so the
+        # planner estimates its price and reports the gap (issue #1217).
+        if forecast_coverage is None or forecast_coverage.has_price(rec.start):
+            price_points.append(
+                PricePoint(
+                    hour=h,
+                    import_price=round(rec.import_price, 5),
+                    export_price=round(rec.export_price, 5),
+                    day_offset=day_offset,
+                    slot_in_day=slot_in_day,
+                )
             )
-        )
 
         day_hour_key = (day_offset, h)
         pv_by_day_hour.setdefault(day_hour_key, []).append(rec.solcast_pv_estimate_kwh)

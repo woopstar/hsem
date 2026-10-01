@@ -2171,6 +2171,18 @@ available), HSEM falls back to the configured interval for prices and to
    with one point, so its value is stored unchanged. Prices keep the
    start-in-window match.
 
+   **Price coverage (issue #1217).** Every recommendation slot is created
+   with `import_price` and `export_price` at `0.0`, and only the slots a
+   source point covers are written. The value alone cannot tell a published
+   `0.0` from "nothing published", so
+   `populate_price_and_solcast_from_snapshot` returns a `ForecastCoverage`
+   (`models/forecast_coverage.py`): the UTC start of every slot each price
+   source wrote to, per field. The coordinator keeps it for the cycle and
+   passes it to `build_planner_input`. It is not a field of
+   `HourlyRecommendation`, whose list is published as a sensor attribute; an
+   uncovered slot still reads `0.0` there. PV coverage is not tracked on the
+   6.3.x line.
+
 2. **Planner input** (`coordinator_builder.build_planner_input`):
    Recommendation slots are deduplicated on `(day_offset, hour)` for
    consumption averages (genuinely hour-granular). Solcast PV is emitted per
@@ -2178,17 +2190,22 @@ available), HSEM falls back to the configured interval for prices and to
    half-hourly source leaves different values on the slots of one hour, and
    the hour's energy is their mean, not the first slot's value (issue #1191).
    With an hourly source all slots of the hour are equal and the mean is that
-   value. **Price points are emitted per slot** with an explicit `slot_in_day`
-   field, so quarter-hourly prices survive as distinct `PricePoint`
-   entries (192 for a 48 h horizon at 15-minute slots). Stored price values
-   are passed through directly to `PricePoint`; there is **no inverse
-   multiply** in the coordinator.
+   value. **Price points are emitted per covered slot** with an explicit
+   `slot_in_day` field, so quarter-hourly prices survive as distinct
+   `PricePoint` entries (192 for a fully priced 48 h horizon at 15-minute
+   slots, 96 while only today's prices are published). A slot without both
+   an import and an export price gets no `PricePoint` (issue #1217), so the
+   planner's own missing-data handling runs (_Missing-price estimation_,
+   _Missing future data handling_); a caller that passes no coverage gets
+   every slot. Stored price values are passed through directly to
+   `PricePoint`; there is **no inverse multiply** in the coordinator.
 
-3. **Slot population** (`planner.slot_population.populate_prices`):
+3. **Slot population** (`planner.slot_price_population.populate_prices`):
    When price points carry `slot_in_day`, slots are keyed by
    `(day_offset, slot_in_day)` so each quarter-hourly price lands on its
    own planner slot; points without `slot_in_day` (legacy hourly callers)
-   use the existing `align_hourly_prices` fan-out unchanged.
+   use the existing `align_hourly_prices` fan-out unchanged. A slot without
+   a price is estimated, see _Missing-price estimation_.
 
 4. **PV slot population** (`planner.slot_population.populate_solcast`):
    Solcast `pv_estimate` remains the full hourly kWh total. When planner
@@ -2888,6 +2905,43 @@ total_slots = (interval_length_hours * 60) // interval_minutes
 | 48 h    | 192          | 48           |
 | 72 h    | 288          | 72           |
 
+### Missing-price estimation (issues #1002 and #1217)
+
+A slot whose hour has no source price data must never be planned as _free_
+energy. `populate_prices` fills such slots with the **same-hour price from
+the nearest earlier day that has data** (day+1 falls back to day+0; day+2
+falls back to day+1, then day+0). Only when no earlier day has data for
+that hour at all does the slot fall back to 0.0.
+
+The gap is always recorded on `TimeSeriesIndex.missing_price_slots` — on
+both the sub-hourly (`slot_in_day`) path and the hourly alignment path — so
+`DataQuality` warnings (`tomorrow_price_missing_hours`,
+`day2_price_missing_hours`, …) reflect the true data coverage regardless of
+the estimate filled in.
+
+Note: when _no_ price point carries a non-zero `day_offset` **and none
+carries `slot_in_day`** (a hand-built hourly input with only today's
+prices), the legacy hour-only keying applies today's prices cyclically to
+every day of the horizon and nothing is reported missing — this is the
+intended single-day-source behaviour. The coordinator never produces such
+an input: its price points always carry `slot_in_day`.
+
+**On the production path.** `build_planner_input` leaves the slots no price
+source covered out of the planner input (see _How the population pipeline
+works_). Every day until the day-ahead prices publish (around 13:00 for Nord
+Pool) tomorrow is therefore planned with today's same-hour prices and
+`tomorrow_price_missing_hours` lists the hours. Before 6.3.9 those slots
+reached the planner as real-looking `0.0` prices: tomorrow was planned as
+free import and worthless export, and `DataQuality` reported the data as
+complete. A published price of exactly `0.0`, or a negative one, is data: it
+is passed through and not reported.
+
+**72 h horizon.** The 6.3.x line still offers the 72-hour option. Day-ahead
+prices are never published for day+2, so with that horizon the last day is
+always estimated — from tomorrow once tomorrow is published, from today
+before that — and `day2_price_missing_hours` always lists its hours. `main`
+(7.0.0) removes the option.
+
 ### Confidence decay for future days
 
 Price and PV forecast accuracy degrades for days further in the future.
@@ -3144,12 +3198,24 @@ day2_price_missing_hours:HH,HH,...
 day2_pv_missing_hours:HH,HH,...
 ```
 
-These labels are **non-critical** — they do not match battery or house-load
-keywords — so they trigger `DegradedMode.Degraded` (hardware writes allowed)
-rather than `Error` (writes blocked).
+These labels are diagnostics only. They are published in
+`PlannerOutput.missing_inputs`, as planner warnings and in the `data_quality`
+attribute (`is_complete` is `false` while any is present). They do not change
+the degraded mode, which is classified from missing Home Assistant
+**entities** (`LiveState.missing_entities`), and they never block a hardware
+write.
 
-Missing slots default to `0.0` in the planner. The planner **must never**
-silently treat absent data as real zero without surfacing a diagnostic.
+Price-missing slots are filled with the nearest earlier day's same-hour
+price (see _Missing-price estimation_ above); PV-missing slots default to
+`0.0`. The planner **must never** silently treat absent data as real zero
+without surfacing a diagnostic.
+
+A price is missing when no source covered the slot, not when its value is
+zero (issue #1217): the coordinator leaves uncovered slots out of the planner
+input. With a 36, 48 or 72 h horizon `is_complete` is therefore `false` on
+most mornings until tomorrow's prices are published, which is the true state
+of the data. PV has no such coverage on the 6.3.x line: a slot the PV
+forecast does not cover is planned with zero PV and is not reported.
 
 ### DataQuality fields for multi-day horizons
 
@@ -3254,6 +3320,18 @@ the fill's original rationale genuinely applies.
 - On ordinary dates, `DataQuality.horizon_days` equals 1 / 1 / 2 / 2 / 3 for
   12 h / 24 h / 36 h / 48 h / 72 h. A spring-forward physical horizon can touch
   one extra local date.
+- A price-missing slot gets the nearest earlier day's same-hour price
+  (issue #1002) — never silently 0.0 when an earlier day has data — and is
+  still recorded in `missing_price_slots` on both the sub-hourly and hourly
+  population paths.
+- Through the real populator and `build_planner_input`, prices published for
+  today only give tomorrow's slots today's same-hour price, list all of
+  tomorrow's hours in `tomorrow_price_missing_hours` and make `is_complete`
+  false (issue #1217).
+- A published price of `0.0` or below is passed through unchanged and never
+  reported as missing (issue #1217).
+- With a 72-hour horizon day+2 is estimated from tomorrow when tomorrow is
+  published and from today otherwise (issue #1217).
 - Missing day+2 price data surfaces in `day2_price_missing_hours`.
 - Missing day+2 PV data surfaces in `day2_pv_missing_hours`.
 - `DataQuality.is_complete` is `False` when any future-day data is missing.

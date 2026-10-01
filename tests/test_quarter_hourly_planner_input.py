@@ -33,7 +33,7 @@ import pytest
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.time_series import TimeSeriesIndex
-from custom_components.hsem.planner.slot_population import (
+from custom_components.hsem.planner.slot_price_population import (
     populate_prices,
 )
 
