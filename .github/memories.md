@@ -2399,3 +2399,13 @@ Tests: `tests/planner/test_battery_target_milp.py` (every acceptance scenario, a
 **Gotcha:** hand-built reference plans in tests must carry `avg_house_consumption_kwh` / `solcast_pv_estimate_kwh` on their slots, or the bridge sees zero load (`_plan()` in `tests/test_dynamic_floor_reference_plan.py` does). The fix raises floors at sub-hourly slots; the #1156 affordable refill is what keeps a cheap night from pinning the battery, so do not ship one without the other.
 
 Tests: `tests/test_dynamic_floor_reference_plan.py::TestBuildBridgeSlots::test_unplanned_slot_scales_the_hourly_pv_to_the_slot` (real populator, 15/30/60 min), `::test_load_pv_and_charge_come_from_the_plan_slot`, and `TestRealPlanner::test_quarter_hour_bridge_ends_at_the_plans_first_surplus` / `::test_quarter_hour_cheap_night_still_releases_the_floor`.
+
+## Half-Hourly Solcast Data and the Hour's PV (issue #1191, stage 1)
+
+**Bug:** the Solcast sensor can expose `detailedHourly` and the half-hourly `detailedForecast`, both average power in kW. `_populate_from_attributes()` read both, the half-hourly values overwrote the hourly ones, and a slot only took the point whose window contained the slot start (a 60-minute slot never saw the `:30` point). `build_planner_input()` then kept the first slot of each `(day_offset, hour)`. An hour averaging 0.4 kW then 0.8 kW reached the planner as 0.4 kWh instead of 0.6, at every slot interval. Hourly-only sensors were right.
+
+**Rule:** PV population passes `mean_over_slot=True`, so a slot holds the overlap-weighted mean of the source points covering it (a single covering point is stored as is). The builder emits each hour's `SolcastSlot.pv_estimate` as the `math.fsum` mean over the hour's slots. Prices keep start-in-window matching. The planner still receives PV per hour; carrying sub-hourly PV through is stage 2 of #1191.
+
+**Gotcha:** never take "the first slot of the hour" for a quantity a finer source may have written. On affected installs the solar corrector's per-hour factors were learned against the biased forecast and relearn within its four-sample history.
+
+Tests: `tests/test_solcast_subhourly_source.py` (real `populate_price_and_solcast_from_snapshot` and `build_planner_input`; both attributes, half-hourly only, hourly only, attribute order, 15/30/60-minute slots).
