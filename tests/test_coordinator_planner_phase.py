@@ -42,12 +42,16 @@ def _planner_output(**kwargs: Any) -> PlannerOutput:
                 start=_SLOT_START,
                 end=_SLOT_START + _SLOT,
                 recommendation=_CHARGE,
+                avg_house_consumption_kwh=0.5,
+                solcast_pv_estimate_kwh=0.3,
                 batteries_charged_kwh=1.0,
             ),
             PlannedSlot(
                 start=_SLOT_START + _SLOT,
                 end=_SLOT_START + 2 * _SLOT,
                 recommendation=_WAIT,
+                avg_house_consumption_kwh=0.4,
+                solcast_pv_estimate_kwh=0.3,
             ),
         ],
         **kwargs,
@@ -160,10 +164,12 @@ class TestFreshPlan:
             None,
             pytest.approx(12.0),
         ]
+        # Net load is the reference plan's (issue #1187), not the regenerated
+        # recommendations' (0.3 each).
         bridge_slots = compute_floor.call_args.kwargs["slots"]
         assert [slot.estimated_net_consumption_kwh for slot in bridge_slots] == [
-            pytest.approx(0.3),
-            pytest.approx(0.3),
+            pytest.approx(0.2),
+            pytest.approx(0.1),
         ]
         correct_margin.assert_called_once_with(40.0, 12.0, now=_NOW)
 
