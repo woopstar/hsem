@@ -6,6 +6,8 @@ custom_components/**/*.json
 translations/
 
 # Generated / vendored
+tests/backtest/corpus/
+tests/backtest/actuals/
 .venv/
 htmlcov/
 coverage.xml
