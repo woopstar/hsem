@@ -17,6 +17,12 @@ floor is a deterministic function of this replan's inputs.
 The reference plan's slot prices, with the cycle cost and charge power of its
 input, also tell the scan where the grid could refill the battery at an
 affordable price even though the plan does not charge there (issue #1156).
+
+The bridge's house load and PV come from the reference plan's slots too
+(issue #1187).  The regenerated recommendations hold the per-slot house load
+next to the *unscaled hourly* Solcast value, which the planner splits per slot
+itself; subtracting one from the other overstated PV 4× at 15-minute slots and
+ended the bridge at a solar surplus that was not there.
 """
 
 from __future__ import annotations
@@ -35,7 +41,38 @@ from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
 from custom_components.hsem.utils.logger import async_log
 from custom_components.hsem.utils.misc import resolve_cycle_cost
 from custom_components.hsem.utils.recommendations import Recommendations
-from custom_components.hsem.utils.units import usable_kwh_from_rated
+from custom_components.hsem.utils.units import (
+    slot_duration_hours,
+    usable_kwh_from_rated,
+)
+
+
+def _house_net_consumption_kwh(
+    rec: HourlyRecommendation, plan_slot: PlannedSlot | None
+) -> float:
+    """Return a bridge slot's house load minus PV, both in kWh per slot.
+
+    The reference plan's slot carries both per slot, with the planner's PV
+    correction, confidence decay and live injection applied, so the bridge
+    sees the same forecast as the plan it constrains.  Planned EV load is
+    left out: the floor reserves for the house only.
+
+    A recommendation the plan does not cover still holds the Solcast value as
+    the populator stored it, in kWh per hour, so it is scaled to the slot.
+
+    Args:
+        rec: This cycle's regenerated and populated recommendation slot.
+        plan_slot: The reference plan's slot for the same interval, if any.
+
+    Returns:
+        Net house consumption of the slot in kWh; negative is PV surplus.
+    """
+    if plan_slot is not None:
+        return plan_slot.avg_house_consumption_kwh - plan_slot.solcast_pv_estimate_kwh
+    return (
+        rec.avg_house_consumption_kwh
+        - rec.solcast_pv_estimate_kwh * slot_duration_hours(rec.start, rec.end)
+    )
 
 
 def build_dynamic_floor_bridge_slots(
@@ -44,12 +81,12 @@ def build_dynamic_floor_bridge_slots(
 ) -> list[_SimpleSlot]:
     """Return bridge slots for the dynamic floor's refill scan.
 
-    Consumption and PV come from this cycle's freshly populated forecast
-    (house load only, exactly as before issue #1140). The charge decision —
-    ``batteries_charged_kwh`` and ``recommendation`` — and the import price
-    come from the slot of the reference plan with the same ``(start, end)``.
-    A slot the plan does not cover keeps the regenerated values (no charge),
-    which is the pre-#1140 behaviour, and has no price (issue #1156).
+    House load, PV, the charge decision (``batteries_charged_kwh`` and
+    ``recommendation``) and the import price all come from the slot of the
+    reference plan with the same ``(start, end)`` (issues #1140, #1156,
+    #1187).  A slot the plan does not cover keeps the regenerated forecast,
+    with its hourly PV scaled to the slot, has no charge, which is the
+    pre-#1140 behaviour, and has no price.
 
     Args:
         hourly_recommendations: This cycle's regenerated and populated slots.
@@ -86,8 +123,8 @@ def build_dynamic_floor_bridge_slots(
             _SimpleSlot(
                 start=rec.start,
                 end=rec.end,
-                estimated_net_consumption_kwh=(
-                    rec.avg_house_consumption_kwh - rec.solcast_pv_estimate_kwh
+                estimated_net_consumption_kwh=_house_net_consumption_kwh(
+                    rec, plan_slot
                 ),
                 batteries_charged_kwh=source.batteries_charged_kwh,
                 recommendation=source.recommendation,

@@ -47,6 +47,9 @@ from custom_components.hsem.coordinator_dynamic_floor import (
 from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
     ConsumptionPopulation,
 )
+from custom_components.hsem.custom_sensors.hourly_data_populator.prices_solcast import (
+    _populate_from_attributes,
+)
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
@@ -149,8 +152,10 @@ def _snapshot() -> MagicMock:
 def _plan(*, grid_charge: bool, cheap_night: bool = False) -> PlannerOutput:
     """Return a 48 h plan: grid charge 02:00-02:45 (or none), wait otherwise.
 
-    With *cheap_night* the slots are priced 0.20, except 0.03 from 02:00 to
-    06:00 each night; otherwise every price is the default 0.0 (flat).
+    Every slot carries the cycle's house load and PV forecast, as a real plan
+    does; the bridge scan reads them from here (issue #1187).  With
+    *cheap_night* the slots are priced 0.20, except 0.03 from 02:00 to 06:00
+    each night; otherwise every price is the default 0.0 (flat).
     """
     slots: list[PlannedSlot] = []
     start = _MIDNIGHT
@@ -164,6 +169,10 @@ def _plan(*, grid_charge: bool, cheap_night: bool = False) -> PlannerOutput:
                 start=start,
                 end=start + _SLOT,
                 price=price,
+                avg_house_consumption_kwh=_HOUSE_KWH_PER_SLOT,
+                solcast_pv_estimate_kwh=(
+                    _PV_KWH_PER_SLOT if _is_pv_surplus(start) else 0.0
+                ),
                 recommendation=_CHARGE if charging else _WAIT,
                 batteries_charged_kwh=_CHARGE_KWH_PER_SLOT if charging else 0.0,
             )
@@ -445,11 +454,14 @@ class TestBuildBridgeSlots:
         rec.recommendation = None
         return rec
 
-    def test_forecast_comes_from_recommendations_and_charge_from_the_plan(
-        self,
-    ) -> None:
-        """Net load is this cycle's forecast; the charge is the plan's."""
-        recs = [self._rec(_CHARGE_START, 0.4, 0.1)]
+    def test_load_pv_and_charge_come_from_the_plan_slot(self) -> None:
+        """Net load is the plan slot's per-slot house load minus its PV.
+
+        The regenerated recommendation still holds the unscaled hourly
+        Solcast value (0.6 kWh/h here), which is not comparable with a
+        15-minute load (issue #1187).
+        """
+        recs = [self._rec(_CHARGE_START, 0.25, 0.6)]
         plan = PlannerOutput(
             slots=[
                 PlannedSlot(
@@ -457,6 +469,8 @@ class TestBuildBridgeSlots:
                     end=_CHARGE_START + _SLOT,
                     recommendation=_CHARGE,
                     price=SlotPrice(0.45, 0.2),
+                    avg_house_consumption_kwh=0.25,
+                    solcast_pv_estimate_kwh=0.15,
                     batteries_charged_kwh=1.5,
                     estimated_net_consumption_kwh=9.9,  # includes EV — not used
                 )
@@ -465,7 +479,7 @@ class TestBuildBridgeSlots:
 
         (slot,) = build_dynamic_floor_bridge_slots(recs, plan)
 
-        assert slot.estimated_net_consumption_kwh == pytest.approx(0.3)
+        assert slot.estimated_net_consumption_kwh == pytest.approx(0.10)
         assert slot.batteries_charged_kwh == pytest.approx(1.5)
         assert slot.recommendation == _CHARGE
         # The price is the plan's too (issue #1156), not the regenerated 0.0.
@@ -500,6 +514,48 @@ class TestBuildBridgeSlots:
         assert slot.batteries_charged_kwh == pytest.approx(0.0)
         assert slot.recommendation is None
         assert math.isnan(slot.import_price)
+
+    @pytest.mark.parametrize("interval_minutes", [15, 30, 60])
+    def test_unplanned_slot_scales_the_hourly_pv_to_the_slot(
+        self, interval_minutes: int
+    ) -> None:
+        """Without a plan slot the raw hourly PV is split over the slot (#1187).
+
+        One hour with 1.0 kWh of load and 0.6 kWh of PV has a deficit in every
+        slot.  The populator stores the hourly PV on each sub-hourly slot, so
+        an unscaled subtraction reported a surplus at 15 and 30 minutes.
+        """
+        hour_start = _CHARGE_START
+        with patch.object(coordinator_builder, "hsem_now", return_value=_NOW):
+            recs = [
+                rec
+                for rec in coordinator_builder.generate_recommendation_intervals(
+                    interval_minutes, 48
+                )
+                if hour_start <= rec.start < hour_start + timedelta(hours=1)
+            ]
+        assert len(recs) == 60 // interval_minutes
+        for rec in recs:
+            rec.avg_house_consumption_kwh = 1.0 * interval_minutes / 60
+        matched = _populate_from_attributes(
+            {
+                "detailedHourly": [
+                    {"period_start": hour_start.isoformat(), "pv_estimate": 0.6}
+                ]
+            },
+            recs,
+            "solcast_pv_estimate_kwh",
+            "pv_estimate",
+            60,
+        )
+        assert matched == len(recs)
+
+        bridge = build_dynamic_floor_bridge_slots(recs, None)
+
+        for slot in bridge:
+            assert slot.estimated_net_consumption_kwh == pytest.approx(
+                0.4 * interval_minutes / 60
+            )
 
     def test_no_plan_keeps_every_regenerated_value(self) -> None:
         """Without a plan the scan sees no charge and logs why."""
@@ -542,11 +598,13 @@ def _price_points(night: float) -> list[PricePoint]:
     ]
 
 
-def _planner_input(night: float, pv_scale: float = 1.0) -> PlannerInput:
+def _planner_input(
+    night: float, pv_scale: float = 1.0, interval_minutes: int = 60
+) -> PlannerInput:
     """Return the #1125 shape: 68 % at 21:30, cheap-or-not night, PV at 09:00."""
     return PlannerInput(
         now_iso=_NOW.isoformat(),
-        interval_minutes=60,
+        interval_minutes=interval_minutes,
         interval_length_hours=48,
         battery_soc_pct=_LIVE_SOC_PCT,
         battery_rated_capacity_kwh=_RATED_WH / 1000.0,
@@ -574,12 +632,22 @@ def _planner_input(night: float, pv_scale: float = 1.0) -> PlannerInput:
     )
 
 
-def _hourly_recommendations(pv_scale: float = 1.0) -> list[HourlyRecommendation]:
-    """Return this cycle's regenerated hourly slots with the same forecast."""
+def _hourly_recommendations(
+    pv_scale: float = 1.0, interval_minutes: int = 60
+) -> list[HourlyRecommendation]:
+    """Return this cycle's regenerated slots with the same forecast.
+
+    As the populators leave them: the house load is per slot, the PV is the
+    unscaled hourly Solcast value on every slot of that hour.
+    """
     with patch.object(coordinator_builder, "hsem_now", return_value=_NOW):
-        recs = coordinator_builder.generate_recommendation_intervals(60, 48)
+        recs = coordinator_builder.generate_recommendation_intervals(
+            interval_minutes, 48
+        )
     for rec in recs:
-        rec.avg_house_consumption_kwh = _HOURLY_LOAD[rec.start.hour]
+        rec.avg_house_consumption_kwh = (
+            _HOURLY_LOAD[rec.start.hour] * interval_minutes / 60
+        )
         tomorrow = rec.start.date() > _NOW.date()
         rec.solcast_pv_estimate_kwh = (
             _PV_TOMORROW[rec.start.hour] * pv_scale if tomorrow else 0.0
@@ -598,14 +666,14 @@ def _evening_discharge_kwh(output: PlannerOutput) -> float:
 
 
 def _replan(
-    night: float, pv_scale: float = 1.0
+    night: float, pv_scale: float = 1.0, interval_minutes: int = 60
 ) -> tuple[float, dict, PlannerOutput, PlannerOutput]:
     """Run one replan the way the coordinator does: reference, floor, final."""
-    planner_input = _planner_input(night, pv_scale)
+    planner_input = _planner_input(night, pv_scale, interval_minutes)
     reference = run_planner(planner_input)
     floor_pct, diag = compute_dynamic_floor_from_plan(
         DynamicDischargeFloor(),
-        _hourly_recommendations(pv_scale),
+        _hourly_recommendations(pv_scale, interval_minutes),
         reference,
         planner_input,
         _live(),
@@ -667,6 +735,38 @@ class TestRealPlanner:
         )
         # Deterministic per replan: the same inputs give the same floor.
         assert _replan(night=0.03)[0] == pytest.approx(floor_pct)
+
+    def test_quarter_hour_bridge_ends_at_the_plans_first_surplus(self) -> None:
+        """#1187: at 15-minute slots the bridge ends where the plan has surplus.
+
+        Tomorrow's 07:00 hour has 0.2 kWh of PV against 0.7 kWh of load: a
+        deficit.  Compared per slot against the unscaled hourly PV it looked
+        like a surplus (0.2 > 0.175), so the bridge ended an hour early.
+        """
+        floor_pct, diag, reference, _final = _replan(night=0.15, interval_minutes=15)
+
+        first_surplus = next(
+            s.start
+            for s in reference.slots
+            if s.end > _NOW
+            and s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh < -1e-9
+        )
+        assert first_surplus == _MIDNIGHT + timedelta(days=1, hours=8)
+        assert diag["refill_type"] == "solar_surplus"
+        assert diag["next_refill_slot"] == first_surplus.isoformat()
+        assert floor_pct > _LIVE_SOC_PCT
+
+    def test_quarter_hour_cheap_night_still_releases_the_floor(self) -> None:
+        """#1187 does not undo #1156: a cheap night releases at 15 minutes too."""
+        floor_pct, diag, reference, final = _replan(night=0.03, interval_minutes=15)
+
+        assert diag["refill_type"] == "grid_available"
+        assert floor_pct == pytest.approx(_HARDWARE_FLOOR_PCT)
+        assert final.plan_cost is not None
+        assert reference.plan_cost is not None
+        assert final.plan_cost.total_cost == pytest.approx(
+            reference.plan_cost.total_cost, abs=0.01
+        )
 
     def test_moderate_night_keeps_the_solar_bridge_and_is_stable(self) -> None:
         """A 0.15 night is not refilled from the grid: pre-#1140 floor, no flip."""
