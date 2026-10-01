@@ -4330,7 +4330,9 @@ enabled the coordinator (`coordinator_planner_phase.py`) therefore solves
 **twice**:
 
 1. **Reference solve:** the planner input with `dynamic_discharge_floor_pct =
-None`, i.e. only the hardware floor.
+None`, i.e. only the hardware floor, and without the house-battery target
+   when no EV feature is enabled (`reference_solve_input()`, see _When the
+   reference solve keeps the house-battery target_ below).
 2. `compute_dynamic_floor_from_plan()` (`coordinator_dynamic_floor.py`) builds
    the bridge slots with `build_dynamic_floor_bridge_slots()` and runs
    `compute_floor()`:
@@ -4382,27 +4384,61 @@ while the plan's first surplus slot was 10:00. Hourly slots were not affected.
 
 **Cost.** One extra planner solve per replan, only with the floor enabled
 (~75 ms for a 48 h horizon of 15-minute slots without EVs). With the
-house-battery target enabled (issue #1109) the reference solve runs the
-target's stage 2 as well, so up to one more MILP solve (two with a
-charge-past-target EV).
+house-battery target enabled (issue #1109) **and an EV feature enabled**, the
+reference solve runs the target's stage 2 as well, so up to one more MILP
+solve (two with a charge-past-target EV). Without an EV the reference solve
+skips the target (issue #1207).
 
-**Why the reference solve keeps the house-battery target (issue #1186).**
-It was proposed to solve the reference plan with the target off, on the
-grounds that stage 2 pins grid import and so cannot change what the scan
-reads. At the time that was false: stage 2 pins `gi[t]` to stage 1 only for
-`t ≤ T`, and it could keep battery energy that stage 1 sold before the
-deadline. The plan then bought less after `T`, a grid charge the scan
-credited disappeared, and on the #1125 fixture (68 % at 21:30, 0.45 export at
+**When the reference solve keeps the house-battery target (issues #1186,
+#1207).** `reference_solve_input()` (`coordinator_dynamic_floor.py`) decides:
+
+| Planner input                                              | Reference solve     |
+| ---------------------------------------------------------- | ------------------- |
+| target disabled                                            | the input as is     |
+| target enabled, no EV feature enabled                      | target **disabled** |
+| target enabled, `ev_planned_load_enabled` or the second EV | the input as is     |
+
+The published plan is always solved with the target as configured.
+
+_Why it can be dropped without an EV._ The target's stage 2 can raise the
+battery only by holding back PV the normal plan exports: grid import is pinned
+per slot for `t ≤ T`, and since issue #1203 `ge[t]` is bounded from below by
+stage 1's battery-origin export (`planner/milp/_battery_target.py::build_target_rows`).
+That PV is in a slot with a PV surplus. The bridge scan ends at the first slot
+whose net house load is negative, which is that slot or an earlier one, so the
+`batteries_charge_grid` slots it reads are the same in both stages. Measured
+on 700 random days (400 with hourly slots, 300 with 15-minute slots; random
+time of day, SoC, prices, export spike, PV, load, target level and deadline;
+stage 2 ran on 494 and returned a plan of its own on 90): the floor, its diagnostics and
+its profile were identical on every one.
+
+_Why it is kept with an EV._ The pin fixes `gi[t]` but not how the imported
+energy is split between the EV and the house battery. Stage 2 can give the EV
+a little less in a grid-import slot and put the rest into the battery, and
+that is a `batteries_charge_grid` slot in front of the PV surplus. With a
+deadline EV that charges from the grid overnight this happened on 1 of 400
+random days: 3.45 kWh to the EV and 0.22 kWh to the battery instead of
+3.68 kWh to the EV, same 4.09 kWh import. The scan read the 0.22 kWh as a
+covering refill in the live slot and released a 41.5 % floor to 5 %. With a
+charge-past-target EV it did not happen on 400 days, but the same split is
+possible, so any enabled EV feature keeps the target.
+
+_What it saves._ Stage 2 ran on about 70 % of the swept days. Per
+replan, solved serially under the production solver limit, 48 h horizon:
+
+| Slots     | Battery export | Reference solve without the target | Stage 2 adds (mean / median) |
+| --------- | -------------- | ---------------------------------: | ---------------------------: |
+| 15 minute | on             |                            1651 ms |              767 ms / 442 ms |
+| 15 minute | off            |                             142 ms |                60 ms / 60 ms |
+| hourly    | on             |                             105 ms |                32 ms / 27 ms |
+| hourly    | off            |                              18 ms |                10 ms / 10 ms |
+
+_History._ Issue #1186 first proposed this and was rejected by measurement:
+before #1203 stage 2 could keep battery energy that stage 1 sold before the
+deadline, the plan bought less after `T`, a grid charge the scan credited
+disappeared, and on the #1125 fixture (68 % at 21:30, 0.45 export at
 21:00–23:00, target 100 % by 23:00) the floor was 77.72 % with the target and
-44.93 % without.
-
-Since issue #1203 stage 2 may only hold back PV, so that case no longer
-exists: on the same fixture the target changes nothing and the floor is
-44.93 % either way. The rule stays. The reference solve uses the planner
-input unchanged, apart from the missing floor, because the published plan is
-solved with the target and the scan must read a plan with the same features.
-Whether stage 2 can still change what the scan reads when an EV is
-co-optimised has not been shown either way.
+44.93 % without. Since #1203 that fixture gives 44.93 % either way.
 
 #### Planned charges are credited by price, not by slot (issue #1198)
 
@@ -4674,10 +4710,15 @@ effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
   floor stays at the configured minimum while the reference plan still
   refills from the grid, and rises once, where the bridge to the solar
   surplus starts (issue #1198).
-- The reference solve and the real solve differ only in the floor
-  (`dynamic_discharge_floor_pct`, `dynamic_floor_profile`). Every other
-  planner input, the house-battery target included, is the same in both
+- The reference solve and the real solve differ in the floor
+  (`dynamic_discharge_floor_pct`, `dynamic_floor_profile`) and, when no EV
+  feature is enabled, in the house-battery target, which the reference solve
+  then leaves out (issue #1207). Every other planner input is the same in
+  both. With an EV feature enabled the target is the same in both too
   (issue #1186).
+- Without an EV the floor, its diagnostics and its profile are the same
+  whether or not the reference solve carries the house-battery target
+  (issue #1207).
 - A grid-charge refill that covers the consumption bridged up to it yields
   `reserve_kwh == 0` and `effective_floor_pct == configured_min_soc_pct`.
 - So does an affordable grid refill (`grid_available`, issue #1156), even when

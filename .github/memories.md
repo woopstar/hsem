@@ -2664,19 +2664,21 @@ Tests: `tests/test_solcast_subhourly_planner.py` (real populator → `build_plan
 
 Tests: `tests/planner/test_dynamic_floor_reserve_profile.py` (profile, per-slot bound, every consumer, real planner at 60 and 15 minutes, export spike, battery below the reserve, all candidates, margin learning), `tests/planner/test_dynamic_floor_reserve_replay.py` (closed loop).
 
-## The Dynamic-Floor Reference Solve Keeps the Battery Target (issue #1186)
+## When the Dynamic-Floor Reference Solve Keeps the Battery Target (issues #1186, #1207)
 
-**Proposal rejected by measurement:** solve the floor's reference plan with `battery_target_soc_enabled=False` to save the target's stage-2 solve. The argument was that stage 2 pins grid import, so it cannot change what the bridge scan reads.
+**Rule:** `coordinator_dynamic_floor.py::reference_solve_input()` drops the house-battery target from the floor's reference solve when **no EV feature is enabled** (`ev_planned_load_enabled` and `ev_second_planned_load_enabled` both false), and keeps it otherwise. The published plan always has the target as configured.
 
-**Why it was wrong then:** `milp/_battery_target.py::build_target_rows` pins `gi[t]` to stage 1 only for `t <= T`, and before #1203 stage 2 could keep battery energy that stage 1 sold before the deadline. The plan then bought less after `T` and a night grid charge the scan credited disappeared. #1125 fixture, 68 % at 21:30, 0.45 export at 21:00-23:00, target 100 % by 23:00: floor 77.72 % with the target in the reference solve, 44.93 % without.
+**Why it is safe without an EV:** since #1203 the target's stage 2 can only hold back PV the normal plan exports, i.e. in a slot with a PV surplus, and the bridge scan never reads past the first such slot. 700 random days (400 hourly, 300 at 15 minutes): floor, diagnostics and profile identical on all. It saves a median 0.44 s (mean 0.77 s) per replan at 15-minute slots with battery export on, 60 ms with it off.
 
-**Since #1203 that counterexample is gone:** stage 2 may only hold back PV, so on the same fixture the target changes nothing (`stage2_status: no_gain`) and the floor is 44.93 % either way. Whether stage 2 can still change what the scan reads with a co-optimised EV is not shown either way, so the rule below stays.
+**Why not with an EV:** the import pin fixes `gi[t]`, not its split. On 1 of 400 days with a deadline EV, stage 2 gave the EV 3.45 instead of 3.68 kWh in the live slot and the battery 0.22 kWh; that `batteries_charge_grid` slot was read as a covering refill and a 41.5 % floor went to 5 %. Pinned in `tests/test_dynamic_floor_reference_target.py::TestWhyTheEvCaseKeepsTheTarget`.
 
-**Rule:** the reference solve and the real solve differ only in the floor (`dynamic_discharge_floor_pct`, `dynamic_floor_profile`). Do not strip features from the reference input to save a solve without a test that shows the floor is unchanged on a day where the feature acts.
+**History:** #1186 proposed the same and was rejected (floor 77.72 % with the target, 44.93 % without) by a counterexample that was itself the bug #1203 fixed.
+
+**How to apply:** do not strip another feature from the reference input without a sweep of a few hundred random days that shows the floor unchanged, and build the counterexample from where the invariant's scope ends. A new MILP feature that can move a `batteries_charge_grid` slot in front of the first PV surplus needs the same check.
 
 The planner-phase floor steps live in `CoordinatorDynamicFloorMixin` (`coordinator_dynamic_floor.py`): `_sync_dynamic_floor_enabled()`, `_async_apply_dynamic_floor()`, `_learn_dynamic_floor_margin()`. `CoordinatorPlannerPhaseMixin` inherits it.
 
-Tests: `tests/test_dynamic_floor_reference_plan.py::TestReferenceSolveKeepsTheBatteryTarget`, `tests/test_coordinator_planner_phase.py::TestFreshPlan::test_reference_solve_keeps_the_battery_target`.
+Tests: `tests/test_dynamic_floor_reference_target.py`, `tests/test_dynamic_floor_reference_plan.py::TestReferenceSolveKeepsTheBatteryTarget`, `tests/test_coordinator_planner_phase.py::TestFreshPlan::test_reference_solve_drops_the_battery_target_without_an_ev` and `::test_reference_solve_keeps_the_battery_target_with_an_ev`.
 
 ## Battery-Target Preference Cost Is a Report, Scored by `score_plan` (issue #1185)
 

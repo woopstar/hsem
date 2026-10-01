@@ -184,13 +184,56 @@ class TestFreshPlan:
         correct_margin.assert_called_once_with(40.0, 9.0, now=_NOW)
 
     @pytest.mark.asyncio
-    async def test_reference_solve_keeps_the_battery_target(
+    @pytest.mark.parametrize(
+        ("primary_ev", "second_ev"), [(True, False), (False, True)]
+    )
+    async def test_reference_solve_keeps_the_battery_target_with_an_ev(
+        self, tmp_path: Path, primary_ev: bool, second_ev: bool
+    ) -> None:
+        """With an EV feature on, both solves run with the target (#1186, #1207).
+
+        The target's second stage can move a grid charge between the EV and
+        the house battery, which the bridge scan reads.
+        """
+        coordinator, executor = _coordinator(
+            tmp_path, _planner_output(), {"hsem_dynamic_discharge_floor": True}
+        )
+        live = LiveState()
+        live.huawei_batteries_soc_pct = 40.0
+        live.huawei_batteries_rated_capacity_wh = 10_000.0
+        build = MagicMock(
+            return_value=PlannerInput(
+                battery_target_soc_enabled=True,
+                battery_target_soc_pct=80.0,
+                battery_target_soc_time="16:00:00",
+                ev_planned_load_enabled=primary_ev,
+                ev_second_planned_load_enabled=second_ev,
+            )
+        )
+
+        with patch(f"{_MODULE}.build_planner_input", build):
+            await coordinator._run_planner_phase(
+                _NOW, live, coordinator._cfg, None, True, 0
+            )
+
+        solved = [call.args[1] for call in executor.await_args_list]
+        assert len(solved) == 2
+        assert [i.dynamic_discharge_floor_pct is None for i in solved] == [True, False]
+        for field_name in (
+            "battery_target_soc_enabled",
+            "battery_target_soc_pct",
+            "battery_target_soc_time",
+        ):
+            assert getattr(solved[0], field_name) == getattr(solved[1], field_name)
+        assert solved[0].battery_target_soc_enabled is True
+
+    @pytest.mark.asyncio
+    async def test_reference_solve_drops_the_battery_target_without_an_ev(
         self, tmp_path: Path
     ) -> None:
-        """Both solves run with the house-battery target as configured (#1186).
+        """No EV feature: the reference solve skips the target's stage 2 (#1207).
 
-        The two solves differ only in the floor, so the scan reads a plan
-        with the same features as the one that is published.
+        The published plan is still solved with the target.
         """
         coordinator, executor = _coordinator(
             tmp_path, _planner_output(), {"hsem_dynamic_discharge_floor": True}
@@ -211,16 +254,13 @@ class TestFreshPlan:
                 _NOW, live, coordinator._cfg, None, True, 0
             )
 
-        solved = [call.args[1] for call in executor.await_args_list]
-        assert len(solved) == 2
-        assert [i.dynamic_discharge_floor_pct is None for i in solved] == [True, False]
-        for field_name in (
-            "battery_target_soc_enabled",
-            "battery_target_soc_pct",
-            "battery_target_soc_time",
-        ):
-            assert getattr(solved[0], field_name) == getattr(solved[1], field_name)
-        assert solved[0].battery_target_soc_enabled is True
+        reference, published = (call.args[1] for call in executor.await_args_list)
+        assert reference.dynamic_discharge_floor_pct is None
+        assert reference.battery_target_soc_enabled is False
+        assert published.dynamic_discharge_floor_pct is not None
+        assert published.battery_target_soc_enabled is True
+        for field_name in ("battery_target_soc_pct", "battery_target_soc_time"):
+            assert getattr(reference, field_name) == getattr(published, field_name)
 
     @pytest.mark.asyncio
     async def test_stale_cycle_during_the_reference_solve_is_dropped(
