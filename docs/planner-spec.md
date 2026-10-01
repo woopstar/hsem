@@ -90,9 +90,11 @@ time (issue #1160):
   midnight of the slot's date. It equals `(hour × 60 + minute) // interval`
   on ordinary days and stays unique on DST days, so each of the fall-back
   day's two hour-2 prices lands on its own slot.
-- Hour-granular series (consumption averages, Solcast PV, and the hourly
-  price fallback) are keyed by `(day_offset, hour)`, so both occurrences of
-  the repeated hour use the same hourly value.
+- Hour-granular series (consumption averages, an hourly Solcast PV source,
+  and the hourly price fallback) are keyed by `(day_offset, hour)`, so both
+  occurrences of the repeated hour use the same hourly value. A sub-hourly
+  PV source is keyed by `(day_offset, slot_in_day)` like prices, so each
+  occurrence keeps its own values (issue #1191).
 
 ## Recommendation priority rules
 
@@ -561,6 +563,10 @@ soc_after_kwh
 The simulator must enforce:
 
 - `soc_after_kwh >= min_soc_kwh`
+- `soc_after_kwh >= slot.discharge_reserve_kwh` for battery discharge: the
+  dynamic discharge floor's per-slot reserve above the hardware floor
+  (issue #1188, see _Dynamic discharge floor_). It limits discharge only; a
+  battery already below it is not charged to reach it.
 - `soc_after_kwh <= max_soc_kwh`
 - charge power limit
 - discharge power limit
@@ -629,8 +635,21 @@ variables to prevent infeasibility when the initial SoC is outside bounds
 
 ```text
 Upper: soc[t] - s_max_pen[t] <= usable_kwh
-Lower: -soc[t] - s_min_pen[t] <= 0
+Lower: -soc[t] - s_min_pen[t] <= -reserve[t]
 ```
+
+`reserve[t]` is the slot's `discharge_reserve_kwh` (issue #1188): the stored
+energy above the hardware floor that the dynamic discharge floor requires at
+the end of slot `t`. It is `0` for every slot without a dynamic floor, which
+gives the plain `soc[t] >= 0` row. The reserve changes the right-hand side of
+the existing lower row only; it adds no row and no column.
+
+`reserve[t]` never exceeds the energy stored now and never rises along the
+horizon (`planner/discharge_reserve.py`), so holding the battery satisfies
+every lower row and the reserve needs no penalty variable of its own. A
+penalised slack was rejected on purpose: with `p_soc` at 100 × the highest
+import price the solver would grid-charge at any price to climb back to a
+reserve the battery is below, which is not what the floor is for.
 
 ### Penalty cost
 
@@ -645,7 +664,10 @@ never uses penalties unless forced by an out-of-bounds initial SoC.
 ### Invariants
 
 - The MILP is **never** infeasible due to initial SoC boundary violations.
-- When `current_kwh` is within `[0, usable_kwh]`, all penalty values are zero.
+- When `current_kwh` is within `[0, usable_kwh]`, all penalty values are zero,
+  with or without a dynamic discharge floor.
+- With a dynamic discharge floor the MILP is never infeasible because of the
+  reserve: `reserve[t] <= max(current_kwh, 0)` and `reserve[t+1] <= reserve[t]`.
 - When `current_kwh > usable_kwh`, `s_max_pen[0]` absorbs the excess and
   decreases over time as the solver discharges.
 - Violations are logged at WARNING level.
@@ -847,7 +869,9 @@ on the first cycle after the sensor reports again.
      charge-past-target EV (`EVConfig.past_target_reserved_ac_kwh`). One
      shared per-slot row caps those EVs at the PV stage 1 left unused:
 
-  $$\sum_{ev} \frac{ev_c[t]}{\eta_{charger}} \le \max\bigl(0,\ S_{full}[t] - reserved[t]\bigr) \cdot remaining\_fraction[t]$$
+  $$
+  \sum_{ev} \frac{ev\\_c[t]}{\eta_{charger}} \le \max\bigl(0,\ S_{full}[t] - reserved[t]\bigr) \cdot remaining\\_fraction[t]
+  $$
 
   The EV gains nothing from the battery yielding surplus, so the battery needs
   no row at all and is free to grid-charge. Session-pinned EV columns are
@@ -957,7 +981,9 @@ The deadline soft goal therefore uses `executable_need`: the effective need
 amp-slots `T` that full-width slots deliver exactly. `T` amp-slots are
 executable in `k` full slots when `k · min_amp ≤ T ≤ k · rated_amp`:
 
-$$executable\_need = q \cdot \min\{\,T \in \mathbb{Z} : T \ge S / q,\ \exists k \le K : k \cdot min\_amp \le T \le k \cdot rated\_amp\,\}$$
+$$
+executable\\_need = q \cdot \min\\{\\,T \in \mathbb{Z} : T \ge S / q,\ \exists k \le K : k \cdot min\\_amp \le T \le k \cdot rated\\_amp\\,\\}
+$$
 
 where `K` is the number of full-width slots up to `D`. A live-slot
 combination must then displace at least one whole future amp-step (`q` kWh)
@@ -1155,6 +1181,7 @@ how that plays out per slot, from cheapest to most expensive action.
 Σ_t [ p_imp[t]·gi[t] − p_exp[t]·ge[t] + cycle_cost·m[t]
       + p_soc·(s_max_pen[t] + s_min_pen[t]) ]
 + Σ_ev [ ev_penalty·ev_pen + tiebreaker·Σ_t ev_c[t] ]
++ P·battery_target_pen            (house-battery target stage 2 only, issue #1109)
 ```
 
 #### 1. Serve house load from PV (free)
@@ -1592,6 +1619,18 @@ hardware minimum, and the final plan costs the same as the floor-free
 reference plan (0.097); before #1156 the floor held 77.5 % and the plan cost
 0.917. See `tests/test_dynamic_floor_reference_plan.py`.
 
+#### 6. House-battery target SoC (opt-in, issue #1109)
+
+When `hsem_batteries_target_soc_enabled` is on and the normal plan misses the
+target at the next occurrence, a second solve adds a shortfall slack priced at
+`P` and **pins grid import to the normal plan**. The slack then only competes
+against export revenue: the MILP stores the lowest-value otherwise-exported PV
+first and never buys grid energy for the target. `P` sits above the best
+export value before the deadline and below every EV deadline penalty, so the
+order is: house load and EV deadlines, then the battery target, then export
+and charge-past-target EVs. See
+[House-battery target SoC by deadline](#house-battery-target-soc-by-deadline-issue-1109).
+
 #### Key constraint: EV surplus-only for charge-past-target
 
 The constraint `ev_c[t]/charger_eff ≤ surplus_remaining[t]` ensures
@@ -1667,6 +1706,238 @@ is `None`, e.g. missing forecast), the MILP falls back to a tiny fixed
 tiebreaker (`0.0001`/kWh AC) so surplus PV still prefers the EV over being
 wastefully curtailed/exported at near-zero or negative prices — but only
 after the battery has taken its share.
+
+### House-battery target SoC by deadline (issue #1109)
+
+An **opt-in** user preference (`hsem_batteries_target_soc_enabled`, default
+off): build an extra house-battery reserve towards
+`hsem_batteries_target_soc_pct` by the daily
+`hsem_batteries_target_soc_time`, using **only PV the normal plan would
+otherwise export**. It exists to cover forecast error, which better economics
+cannot: the optimiser only knows what the forecast says.
+
+Agreed semantics, in priority order:
+
+1. **The normal plan is untouched.** The target never _increases_ grid import
+   and never _reduces or replaces_ grid import the normal plan already needs.
+   Discharge that covers expected house load (for example a 06:00–10:00
+   window) is not weakened to protect the target.
+2. **Otherwise-exported PV** builds the reserve towards the target.
+3. **Remaining PV** is exported when that is economically optimal.
+
+Step 2 is optimised against step 3: the target is a **deadline**, not "charge
+as soon as possible". If the forecast shows enough surplus later, HSEM may
+export now at a better price; if not, it stores the current surplus; with no
+surplus at all the battery stays where the normal plan leaves it.
+
+#### Why a single solve cannot do this
+
+`ec[t]` is the battery's total charge: grid- and PV-sourced energy share one
+column. A linear shortfall penalty high enough to outbid export also outbids
+cheap grid import, so a single solve would grid-charge for the target and hold
+back morning discharge. Charge-past-target EVs hit the same limitation
+(issue #1015) and are solved the same way: with a counterfactual.
+
+#### Two-stage solve
+
+`planner/milp/_battery_target.py::solve_milp_with_battery_target` wraps the
+existing solve. `candidate_generator.py` calls it instead of
+`solve_milp_with_past_target_reservation`.
+
+```mermaid
+flowchart TD
+    A[Stage 1: normal plan<br/>solve_milp_with_past_target_reservation] --> B{Target enabled and<br/>next occurrence in horizon?}
+    B -- no --> R1[Return stage 1 unchanged]
+    B -- yes --> C{Stage-1 SoC at T<br/>meets the target?}
+    C -- yes --> R1
+    C -- no --> D[Stage 2: re-solve with<br/>target slack + grid import pinned]
+    D --> E{Solved?}
+    E -- yes --> R2[Return stage 2]
+    E -- no --> R3[Log a warning,<br/>return stage 1]
+```
+
+**Next occurrence only.** `T` is the LP index of the last future slot ending
+at or before the next occurrence of the target time, in the Home Assistant
+time zone. An occurrence that falls before the end of the current slot rolls
+to the next day; an occurrence beyond the horizon is not enforced. Later
+days' targets are picked up by the receding horizon, so tomorrow's target
+cannot interfere with using tonight's reserve. The build window is
+$W = \\{t \le T\\}$.
+
+**Target in model coordinates.** `battery_target.target_kwh_for_pct` converts
+the absolute SoC percentage with `resolve_soc_bounds_pct`, the resolver the
+engine's model capacity uses. The origin is the hardware floor; the dynamic
+discharge floor does not move it (issue #1188):
+
+$$
+E_{target} = \operatorname{clamp}\left(E_{rated} \cdot \frac{\min(pct, soc_{max}) - floor_{hw}}{100},\ 0,\ E_{usable}\right)
+$$
+
+**Stage 2 adds three things to the stage-1 model:**
+
+- A width-1 `battery_target_penalty` slack column $pen \ge 0$ and one soft row:
+
+$$
+-\sum_{k \le T} (ec[k] - ed[k]) - pen \le E_0 - E_{target}
+$$
+
+- A **grid-import pin**, the core of the design. With $gi^{(1)}[t]$ the
+  stage-1 LP import (published in `diagnostics["lp_grid_import_kwh"]`):
+
+$$
+gi[t] = gi^{(1)}[t] \quad (t \le T), \qquad gi[t] \le gi^{(1)}[t] \quad (t > T)
+$$
+
+The upper side is applied in `_export_cap.resolve_grid_bounds`
+(`grid_import_cap_per_slot`), before the grid-direction big-M rows are
+built, so those rows use the tightened bound. The lower side is the
+`grid_import` column lower bound (`grid_import_floor_per_slot` in
+`_bounds.build_bounds`). A slot where stage 1 imported nothing
+($gi^{(1)}[t] \le 10^{-6}$) is fixed at exactly 0, which leaves its
+grid-direction binary free to export.
+
+- The slack cost, undiscounted:
+
+$$
+P = \min\left(\max_{t \le T} \frac{\max(p_{exp}[t], 0)}{\eta_{chg}} + c_{cycle} + \varepsilon,\ P_{ev} - \varepsilon\right)
+$$
+
+$P_{ev}$ is the smallest active EV deadline penalty per kWh
+(`_objective.ev_deadline_penalty_per_kwh`) and $\varepsilon = 0.001$.
+
+The pin is **exact**, not a $\pm 10^{-6}$ band. A band turns every slot that
+imported nothing into a `gi[t] ≤ 1e-6 · z[t]` grid-direction row, a
+coefficient at HiGHS's own feasibility tolerance. Measured over 300 random
+days, the band made HiGHS abort stage 2 with "Solve error" in 23 of 183
+solves (12.6 %); the exact pin failed in none of them, nor in a further 569
+solves on 1,000 fresh days.
+
+| Requirement                                    | Mechanism                                                                                                                  |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| No extra grid charging                         | Import cannot rise in any slot.                                                                                            |
+| Existing grid charging kept                    | Import in $W$ is fixed at stage 1, so grid energy the normal plan buys is neither removed nor replaced by PV.              |
+| Earlier discharge unchanged                    | House load is fixed and import in $W$ is fixed, so battery coverage of the house cannot drop.                              |
+| Only otherwise-exported PV builds the reserve  | With import fixed, the only way to raise `soc[T]` is to export (or curtail) less.                                          |
+| Deadline, not ASAP                             | Only `soc[T]` is priced. The MILP gives up the lowest-value export slots first.                                            |
+| Surplus above the target is exported           | No benefit for SoC above the target; the terminal-SoC valuation is unchanged.                                              |
+| Normal after the target time                   | No penalty after $T$. Import may fall there when the reserve covers evening load, but it can never rise.                   |
+| Never infeasible, never worse on its objective | The stage-1 solution satisfies every stage-2 bound, and the slack absorbs any shortfall.                                   |
+| A time-limited or tied solution cannot cheat   | The pin is a hard bound, so any incumbent HiGHS returns obeys it. A cap alone would rely on proven optimality (2 s limit). |
+
+The limit is **per slot**, not on total import: a total would let the MILP
+move import into the morning and weaken the morning discharge.
+
+**Side effects.** Deliberate battery-to-grid export before $T$ (when
+`batteries_enable_excess_export` is on) may be reduced; that energy is also
+"otherwise exported". PV that stage 1 curtailed may be stored instead. Stage 2
+adds one solve (2 s limit) only when stage 1 misses the target.
+
+**EV priority.** $P < P_{ev}$, so a deadline-bound EV keeps its energy. For
+**charge-past-target EVs the house battery goes first** (Option A, agreed on
+the issue): both want the same otherwise-exported PV, and the battery target
+is an explicit resilience preference with a deadline while charging past
+target is opportunistic. When such an EV is active, stage 2 first solves with
+it removed (house-first plan), then re-solves with its
+`past_target_reserved_ac_kwh` taken from that plan, so the EV only gets the PV
+the battery target leaves unused. A cycle then needs up to four solves:
+two for #1015, two for stage 2.
+
+**Execution.** No new applier behaviour: the extra charge is solar-funded and
+runs through `batteries_charge_solar`. Every replan recomputes both stages
+from the latest SoC and forecast, so when afternoon PV under-delivers, stage 2
+keeps more of the remaining surplus.
+
+**Selector score.** `PlanCostBreakdown.battery_target_penalty` is
+$P \times \max(E_{target} - E[T], 0)$ for **every** candidate, read from
+`estimated_battery_capacity_kwh` at slot `T`. It enters `score` only, never
+`total_cost`, so a candidate that ignores the target cannot win on price
+alone and `winner.cost == final_output.cost` still holds. One
+`BatteryTargetSpec` (`planner/battery_target.py::resolve_battery_target`)
+feeds both the MILP and `CostWeights.battery_target`.
+
+**Diagnostics** for the next occurrence are written to
+`diagnostics["battery_target"]` on the MILP candidate, to
+`PlannerOutput.battery_target`, and to the working-mode sensor's
+`battery_target` attribute:
+
+| Key                             | Meaning                                                                                             |
+| ------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `target_time`                   | Next occurrence of the target time (ISO).                                                           |
+| `target_slot_end`               | End of slot `T`.                                                                                    |
+| `target_pct` / `target_kwh`     | Configured target and its model kWh.                                                                |
+| `penalty_per_kwh`               | `P`.                                                                                                |
+| `stage1_projected_kwh`          | `soc[T]` in the normal plan.                                                                        |
+| `projected_kwh`                 | `soc[T]` in the returned MILP plan.                                                                 |
+| `shortfall_kwh`                 | `max(target_kwh − projected_kwh, 0)`.                                                               |
+| `stage2_ran`                    | Whether a stage-2 solve was attempted.                                                              |
+| `stage2_status`                 | `target_met`, `solved`, `failed`, `no_occurrence`, `stage1_import_unavailable`, `milp_unavailable`. |
+| `max_import_delta_kwh`          | Largest import difference to stage 1 inside `W` (≈ 0).                                              |
+| `max_import_increase_after_kwh` | Largest import increase after `T` (≈ 0).                                                            |
+| `selected_projected_kwh`        | `soc[T]` in the selected plan (differs from `projected_kwh` only on a `passive` fallback).          |
+| `selected_shortfall_kwh`        | Shortfall of the selected plan.                                                                     |
+| `stage1_cost`                   | `total_cost` of the normal plan over the horizon (money). `None` unless stage 2 solved.             |
+| `stage2_cost`                   | `total_cost` of the target plan: the MILP plan that is returned. `None` unless stage 2 solved.      |
+| `preference_cost`               | `stage2_cost − stage1_cost`: what the target costs in money over the horizon.                       |
+| `preference_cost_per_kwh`       | `preference_cost / (projected_kwh − stage1_projected_kwh)`; `None` when nothing was gained.         |
+| `terminal_soc_value_delta`      | Stage 2 minus stage 1 of the terminal-SoC term `(E_0 − E_end) × V`; not money.                      |
+
+**Preference cost (issue #1185).** When stage 2 solves, the wrapper scores
+both plans with `score_plan` and the selector's own `CostWeights`
+(`planner/milp/_battery_target.py::preference_cost`). `stage2_cost` is
+therefore the `total_cost` of the published MILP plan: grid import cost minus
+net export revenue plus cycle cost. The figure is a report only. It is
+written into the diagnostics after both solves and is never added to
+`total_cost` or `score`.
+
+How to read it:
+
+- `preference_cost` covers the **whole horizon**. It counts the export given
+  up and the extra cycling, less whatever the stored energy saves later in
+  the horizon (import avoided, or a later export). It is recomputed on every
+  replan and overlaps with the previous replan's figure, so the per-replan
+  values must not be summed into a daily total.
+- It does not count what the energy still stored at the horizon end is worth
+  afterwards. That is `terminal_soc_value_delta`: negative when the target
+  leaves more energy in the battery. It is the selector's terminal-SoC term
+  at the end value `V` (issue #1138), which is an estimate and not cash, so it
+  is reported next to the cost and not subtracted from it.
+- All five keys are `None` when stage 2 did not run (`target_met`,
+  `no_occurrence`), when it failed, and when the MILP is unavailable.
+
+#### Invariants for tests
+
+- Disabled (default): plans, scores, and diagnostics other than the absent
+  `battery_target` key are bit-for-bit identical to a run without the feature.
+- Stage 2 is skipped when stage 1 meets the target within `1e-6` kWh, and the
+  stage-1 result is returned unchanged.
+- For every future slot `t ≤ T`, stage-2 grid import equals stage-1 grid
+  import; for every `t > T` it is not higher (property test over random days).
+- Existing grid charging is kept slot for slot, and no grid energy is bought
+  for the remaining gap to the target.
+- The stage-2 model carries the pin as hard variable bounds, so a time-limited
+  or tied solution cannot swap grid charging for PV.
+- Battery discharge in every slot before `T` is not lower than in stage 1.
+- With enough later surplus, the current surplus is exported and the target is
+  still reached; with too little, the current surplus is stored.
+- With no surplus, `soc[T]` equals stage 1 and the shortfall is reported.
+- Surplus above the target is exported.
+- `P` is below the smallest active EV deadline penalty.
+- A charge-past-target EV gets only the PV the battery target leaves unused.
+- A failed stage-2 solve returns the stage-1 plan with a warning.
+- An occurrence inside or before the current slot rolls to the next day.
+- `score` includes `battery_target_penalty` for every candidate;
+  `total_cost` never does.
+- When stage 2 solved, `stage2_cost` equals the published MILP plan's
+  `total_cost` and `preference_cost == stage2_cost − stage1_cost`; the
+  preference-cost keys are `None` otherwise (issue #1185).
+- The preference cost never enters `total_cost` or `score`: replacing the
+  reported figure leaves every slot and every candidate's cost unchanged.
+- In a day where the stored energy has no later use, `preference_cost` equals
+  the export revenue given up plus the cycle cost of the stored energy.
+
+See `tests/planner/test_battery_target_milp.py`,
+`tests/planner/test_battery_target_spec.py`, and
+`tests/planner/test_battery_target_engine.py`.
 
 ### Grid import power limit (main fuse / tariff protection)
 
@@ -1986,6 +2257,7 @@ score
 + soc_guard_penalty
 + grid_limit_penalty
 + terminal_soc_value
++ battery_target_penalty
 ```
 
 Where:
@@ -1998,6 +2270,9 @@ Where:
   (penalty) when the plan empties the battery. It prevents the selector
   from preferring plans that look cheap only because they drained the
   battery to zero before end-of-horizon.
+- `battery_target_penalty` is **selector-only** and zero unless the opt-in
+  house-battery target is active (issue #1109). See
+  [Battery target penalty](#battery-target-penalty-issue-1109).
 
 The implementation exposes both numbers on `PlanCostBreakdown` together with
 a deprecated `total` alias that equals `score` (kept so older code and tests
@@ -2248,6 +2523,21 @@ without horizon context (e.g. simple per-slot arithmetic checks) do not need
 the term and may omit both inputs; in that case `terminal_soc_value = 0.0` and
 `score == total_cost + penalties`.
 
+### Battery target penalty (issue #1109)
+
+When the opt-in house-battery target is active, `score` gains
+`battery_target_penalty`: the shortfall at the next target occurrence priced
+at the same `P` the MILP stage-2 slack uses, undiscounted.
+
+$$
+battery\\_target\\_penalty = P \times \max(E_{target} - E[T],\ 0)
+$$
+
+`E[T]` is `estimated_battery_capacity_kwh` at the target slot. A shortfall
+below the 3-decimal resolution of that field (`1e-3` kWh) is ignored. The term
+is computed for every candidate, and it is zero when the target is disabled.
+See [House-battery target SoC by deadline](#house-battery-target-soc-by-deadline-issue-1109).
+
 ### Invariants for tests
 
 - `total_cost` must equal
@@ -2256,7 +2546,10 @@ the term and may omit both inputs; in that case `terminal_soc_value = 0.0` and
 - `conversion_loss_cost` is a compatibility field and must remain exactly zero
   because physical losses are already present in grid flows.
 - `score` must equal
-  `total_cost + soc_penalty + grid_limit_penalty + terminal_soc_value` exactly.
+  `total_cost + soc_penalty + grid_limit_penalty + terminal_soc_value
+
+* battery_target_penalty` exactly.
+
 - Recommendation labels such as `batteries_charge_grid` must not incur a
   separate synthetic override cost; their economics are already represented
   by energy flows, losses, cycle wear, and terminal inventory value.
@@ -2332,17 +2625,37 @@ available), HSEM falls back to the configured interval for prices and to
 
    - Prices are rates (`currency / kWh`) and are stored **unchanged** on each
      covered `HourlyRecommendation` slot.
-   - Solcast entries are hourly energy totals (`kWh`) and are also stored
+   - Solcast entries are average power over their period (`kW`), which for
+     an hourly entry equals that hour's energy in `kWh`. They are also stored
      **unchanged** on each covered slot.
 
    This means a 15-minute price point only covers its own quarter-hour slot,
    while an hourly price or Solcast point fans out to all four quarter-hour
    slots inside that hour when `recommendation_interval_minutes = 15`.
 
+   **PV sources finer than the slot (issue #1191).** The Solcast integration
+   can publish `detailedHourly` and the half-hourly `detailedForecast` on the
+   same sensor; both are read, the half-hourly one last. For the PV field a
+   slot takes the **overlap-weighted mean** of every source point that
+   overlaps it, not the point at the slot's start. A 60-minute slot under a
+   half-hourly source therefore holds the mean of its two half-hours instead
+   of the first one. A source at or above the slot width overlaps each slot
+   with one point, so its value is stored unchanged. Prices keep the
+   start-in-window match.
+
 2. **Planner input** (`coordinator_builder.build_planner_input`):
    Recommendation slots are deduplicated on `(day_offset, hour)` for
-   consumption averages and Solcast PV (genuinely hour-granular), but
-   **price points are emitted per slot** with an explicit `slot_in_day`
+   consumption averages (genuinely hour-granular). Solcast PV is emitted at
+   the source's resolution (issue #1191, `_build_solcast_slots`):
+
+   - When all slots of every hour hold the same value (an hourly source, or
+     60-minute slots), one `SolcastSlot` per `(day_offset, hour)` is emitted
+     with the mean over the hour's slots, which is that value. This is the
+     planner input an hourly source has always produced.
+   - When any hour's slots differ, the source is finer than an hour and one
+     `SolcastSlot` per slot is emitted with its `slot_in_day`.
+
+   **Price points are emitted per slot** with an explicit `slot_in_day`
    field, so quarter-hourly prices survive as distinct `PricePoint`
    entries (192 for a 48 h horizon at 15-minute slots). Stored price values
    are passed through directly to `PricePoint`; there is **no inverse
@@ -2355,9 +2668,35 @@ available), HSEM falls back to the configured interval for prices and to
    use the existing `align_hourly_prices` fan-out unchanged.
 
 4. **PV slot population** (`planner.slot_population.populate_solcast`):
-   Solcast `pv_estimate` remains the full hourly kWh total. When planner
-   slots are shorter than one hour, the slot populator computes the per-slot
-   fraction from that raw hourly total.
+   `SolcastSlot.pv_estimate` is **average PV power in kW** over the entry's
+   period (the unit is defined on `SolcastSlot`). A slot's energy is that
+   power times the slot duration in hours.
+
+   - An hour-granular entry (`slot_in_day` is `None`) is split evenly over
+     the hour's slots (`TimeSeriesIndex.align_hourly_pv`). For an hour, kW
+     and kWh are the same number.
+   - A per-slot entry lands on its own slot, matched by
+     `(day_offset, slot_in_day)` (`TimeSeriesIndex.align_slot_pv`). A slot
+     without its own entry falls back to an hour-granular entry for its
+     `(day_offset, hour)`.
+   - A slot with neither is recorded in `missing_pv_slots`, reported in the
+     `*_pv_missing_hours` data-quality fields and planned with zero PV.
+
+   The solar corrector's factors stay per wall-clock hour and are applied to
+   each slot of that hour. Forecast-accuracy tracking records each planner
+   slot's own PV forecast.
+
+#### Supported PV forecast cadences
+
+| Source cadence              | 15-minute slots      | 30-minute slots       | 60-minute slots  |
+| --------------------------- | -------------------- | --------------------- | ---------------- |
+| 60 min (`detailedHourly`)   | hour split evenly    | hour split evenly     | per hour         |
+| 30 min (`detailedForecast`) | 30-minute resolution | 30-minute resolution  | mean of the hour |
+| 15 min                      | 15-minute resolution | mean of the half-hour | mean of the hour |
+
+When a sensor publishes both Solcast attributes, the finer one is used. A
+source finer than the slot is averaged over the slot by the populator, so the
+plan never resolves PV finer than its own slots.
 
 ### Invariants for tests
 
@@ -2377,6 +2716,23 @@ available), HSEM falls back to the configured interval for prices and to
 - With hourly Solcast data and 15-minute slots, one hourly kWh total must fan
   out to four quarter-hour planner slots whose combined energy equals the raw
   hourly input.
+- With half-hourly Solcast data, alone or next to the hourly attribute, the
+  planner's PV for an hour must equal the mean of its two half-hours, at 15-,
+  30- and 60-minute slots, whichever attribute is processed last
+  (issue #1191). An hourly-only sensor must give the planner the same values
+  as before.
+- A 30-minute PV source must reach 15- and 30-minute planner slots at
+  30-minute resolution, and a 15-minute source must reach 15-minute slots at
+  15-minute resolution: slot energy = average kW × slot hours (issue #1191).
+- The slot PV energies of an hour must sum to that hour's energy from the
+  source, at every supported source and slot cadence.
+- An hourly PV source must produce hour-granular `SolcastSlot` entries
+  (`slot_in_day` is `None`) and the same plan as before issue #1191.
+- On both DST transition days every physical slot must take the PV of the
+  source period that contains it; the two occurrences of the fall-back hour
+  keep their own values with a sub-hourly source.
+- A slot with no per-slot PV entry and no hourly fallback must appear in the
+  `*_pv_missing_hours` data-quality fields.
 
 ## Candidate plans
 
@@ -3052,6 +3408,9 @@ Add tests for these invariants:
 - Only an active charge-past-target EV triggers the second solve; stage 1
   failing leaves the past-target EV with no energy, never unbounded
   (issue #1015).
+- The house-battery target (issue #1109) never changes grid import in any
+  slot up to the target slot, never raises it afterwards, and is a no-op when
+  disabled.
 - A genuine surplus below `charger_min_power_w` never starts the charger at any
   point within a slot; slot-tail compression cannot lift a sub-minimum surplus
   over the charger's minimum (issue #1012).
@@ -3181,7 +3540,7 @@ such hours, each window of a missing hour $h$ is estimated from the nearest
 measured hour before ($b$) and after ($a$) on the circular day:
 
 $$
-\hat{v}_{w}(h) = \max\left(v_{w}(b),\ v_{w}(a)\right), \quad w \in \{1d, 3d, 7d, 14d\}
+\hat{v}_{w}(h) = \max\left(v_{w}(b),\ v_{w}(a)\right), \quad w \in \\{1d, 3d, 7d, 14d\\}
 $$
 
 The estimate then goes through the normal weighted blend. It is never below
@@ -3319,17 +3678,15 @@ exceeds forecast; direct PV export is unaffected.
 the configured percentage into model kWh:
 
 ```text
-target_soc_pct      = min(hardware_floor_pct + configured_pct, maximum_soc_pct)
-effective_floor_pct = resolve_soc_bounds_pct(...)  # see "Dynamic discharge floor normalization"
-reserve_kwh         = rated_kwh * max(target_soc_pct - effective_floor_pct, 0) / 100
-reserve_kwh         = min(reserve_kwh, usable_kwh)
+target_soc_pct = min(hardware_floor_pct + configured_pct, maximum_soc_pct)
+reserve_kwh    = rated_kwh * max(target_soc_pct - hardware_floor_pct, 0) / 100
+reserve_kwh    = min(reserve_kwh, usable_kwh)
 ```
 
-Only the remaining distance from the _effective_ (dynamic-floor-aware) origin
-to the configured target is protected, so a dynamic discharge floor already
-raised above the hardware floor is never double-counted against this reserve.
-The origin is resolved by the same function as the engine's model capacity,
-so a dynamic floor capped at the live SoC (issue #1094) moves both together.
+The reserve is measured from the hardware floor, which is the model origin
+(issue #1188). The dynamic discharge floor is a separate per-slot bound on
+stored energy above that same origin. Both bound the same absolute SoC, so
+they cannot be counted twice: in a slot the higher of the two binds.
 
 The MILP (`planner/milp/_export_reserve.py`) enforces this with one row per
 slot, independent of the checkpoint-reserve rows, active whenever
@@ -3348,13 +3705,10 @@ for self-consumption. Diagnostics expose
 
 #### Dynamic discharge floor normalization
 
-`resolve_soc_bounds_pct()` (`utils/soc_bounds.py`, called by
-`_resolve_effective_discharge_floor_pct()` in `planner/engine_core.py` and by
-`_forecast_export_reserve_kwh()` in `planner/candidate_generator.py`)
-normalizes the hardware floor, the dynamic discharge floor, the live SoC, and
-the configured maximum SoC into one finite, bounded triple before any of them
-reach `usable_capacity`, `CostWeights`, the forecast export reserve, or
-candidate selection:
+`resolve_soc_bounds_pct()` (`utils/soc_bounds.py`) normalizes the hardware
+floor, the dynamic discharge floor, the live SoC, and the configured maximum
+SoC into one finite, bounded triple. `resolve_effective_discharge_floor_pct()`
+(`planner/discharge_reserve.py`) applies it to a planner input:
 
 ```text
 hardware_floor_pct  = clamp(battery_end_of_discharge_soc_pct, 0, 100)
@@ -3367,41 +3721,37 @@ effective_floor_pct = clamp(dynamic_floor_pct, hardware_floor_pct, maximum_soc_p
 A missing or non-finite value falls back as follows: hardware floor → `0`,
 maximum → `100`, dynamic floor → the hardware floor, live SoC → no cap.
 
-The upper clamp closes a latent gap where a stale or oversized dynamic-floor
-estimate could produce an effective floor above the battery's own ceiling
-(`effective_floor_pct > maximum_soc_pct`), which would make the SoC bounds
-fed to `usable_capacity` and the MILP internally inconsistent. For a
-well-formed configuration (hardware floor and max SoC already within
-`[0, 100]` and consistent with each other) this is behaviour-preserving.
+`hardware_floor_pct` and `maximum_soc_pct` bound the battery model:
+`usable_capacity`, `CostWeights`, the forecast export reserve, the battery
+target and candidate selection all measure from `hardware_floor_pct`.
+`effective_floor_pct` is the floor in force now. It is **not** the model
+origin (issue #1188); the dynamic floor reaches the plan as a per-slot bound,
+see _Per-slot reserve profile_ under _Dynamic discharge floor_.
 
-**Live-SoC cap (issue #1094).** `effective_floor_pct` is the origin of the
-whole battery model: `usable_kwh` and `current_kwh` are measured above it,
-and `simulate_soc()` converts kWh back to absolute SoC as
-`effective_floor_pct + estimated_battery_capacity_kwh / rated_kwh × 100`.
-The dynamic floor is a bridge reserve ("do not discharge below this"), not a
-statement of where the battery is. Before the cap, a battery below that
-reserve (reported case: live 11 %, floor 75.74 %) was clamped to 0 kWh above
-an origin it had never reached, so the plan:
+**Why the origin does not move (issues #1094, #1188).** Until #1188
+`effective_floor_pct` was the origin of the whole battery model: `usable_kwh`
+and `current_kwh` were measured above it for every slot of the horizon. That
+had two faults.
 
-- published `estimated_battery_soc_pct = 75.74` next to
-  `estimated_battery_capacity_kwh = 0.0` while the inverter read 11 %, and
-  offset the whole SoC trajectory by the floor-to-SoC gap;
-- limited charge headroom to `rated × (maximum − floor)` (2.43 kWh on a
-  10 kWh pack), called the battery full at a real ~35 %, and exported PV
-  surplus the battery could have stored — the opposite of what a reserve
-  meant to keep more energy on hand should do.
+- A battery below the reserve (reported case: live 11 %, floor 75.74 %) was
+  clamped to 0 kWh above an origin it had never reached. The plan published
+  `estimated_battery_soc_pct = 75.74` next to
+  `estimated_battery_capacity_kwh = 0.0`, limited charge headroom to
+  `rated × (maximum − floor)` and exported PV the battery could have stored.
+  Issue #1094 fixed this by capping the origin at the live SoC.
+- The reserve is not constant. It shrinks every slot and is gone after the
+  refill, but a moved origin holds it for the whole horizon. The plan showed
+  a hold that the next replans did not execute and planned the day after the
+  refill inside `[floor, max]` (issue #1188). A floor at or above the maximum
+  SoC with a full battery also left `usable_kwh = 0`, so the MILP was skipped
+  and the passive fallback was executed.
 
-Capping the dynamic floor at the live SoC keeps the discharge semantics
-unchanged: the battery still cannot discharge below its current level (it
-starts at 0 kWh above the origin, and capacity is `>= 0`), and each replan
-recomputes the origin from the fresh live SoC — so while the battery stays
-below the reserve, the current slot (the only slot that is executed) can
-never discharge. Energy the plan charges above the live SoC is dischargeable
-in the plan, exactly as it was before within the smaller headroom. What
-changes is that the published SoC matches the inverter and the charge
-headroom is the battery's real `rated × (maximum − live SoC)`. The
-coordinator's `sensor.hsem_effective_discharge_floor_sensor` keeps reporting the
-uncapped bridge reserve.
+With the origin at the hardware floor the published SoC always matches the
+inverter, the charge headroom is the battery's real
+`rated × (maximum − live SoC)`, and the cycle cost no longer depends on the
+dynamic floor (it is resolved from `usable_kwh`). The coordinator's
+`sensor.hsem_effective_discharge_floor_sensor` keeps reporting the uncapped
+bridge reserve.
 
 #### Invariants for tests
 
@@ -3409,17 +3759,17 @@ uncapped bridge reserve.
   mechanism and is fully backward compatible.
 - A material battery-export slot's post-export SoC never falls below
   `forecast_reserve_kwh` while the reserve is active.
-- The dynamic floor and the forecast reserve never protect the same SoC
-  points twice.
+- The forecast reserve is the same model kWh with and without a dynamic
+  floor; the two bound the same absolute SoC and are never added together.
 - `hardware_floor_pct <= effective_floor_pct <= maximum_soc_pct` always holds,
   even with a stale or out-of-range dynamic-floor estimate.
 - `effective_floor_pct <= max(battery_soc_pct, hardware_floor_pct)` whenever
-  the live SoC is finite — the model origin is never a SoC the battery has not
-  reached (issue #1094).
+  the live SoC is finite (issue #1094).
 - For every non-past slot,
-  `estimated_battery_soc_pct == effective_floor_pct + estimated_battery_capacity_kwh / rated_kwh × 100`,
-  so the published SoC and capacity always describe the same battery, and a
-  battery below the dynamic floor reports its live SoC, not the floor.
+  `estimated_battery_soc_pct == hardware_floor_pct + estimated_battery_capacity_kwh / rated_kwh × 100`,
+  with or without a dynamic floor, so the published SoC and capacity always
+  describe the same battery, and a battery below the dynamic floor reports
+  its live SoC, not the floor (issues #1094, #1188).
 - A genuine `0` value for `battery_soc_pct`, `battery_end_of_discharge_soc_pct`,
   `excess_export_discharge_buffer_pct`, or `battery_forecast_reserve_pct` must
   survive config plumbing unchanged — it must never be silently replaced by a
@@ -3644,16 +3994,119 @@ Where `safety_margin` is a self-learning multiplier that starts at **1.15**
 steps down by 0.02 after 7 consecutive days where actual SoC stayed
 comfortably above the floor (`DynamicDischargeFloor.correct_margin()`,
 `utils/dynamic_floor.py`; see _Safety-margin learning_ below). The floor is
-never lower than the hardware-configured minimum SoC. When the live SoC is
-already below the floor, the planner uses the live SoC as its model origin
-instead (see _Dynamic discharge floor normalization_, issue #1094).
+never lower than the hardware-configured minimum SoC.
+
+`effective_floor_pct` is the reserve **now**, and it is what
+`sensor.hsem_effective_discharge_floor_sensor` reports. The planner does not
+hold it for the whole horizon: the reserve declines with every slot and is
+gone after the refill (see _Per-slot reserve profile_, issue #1188).
+
+#### Per-slot reserve profile (issue #1188)
+
+The reserve is the house load from now to the refill slot. One slot later the
+same bridge is shorter, and from the refill slot on no reserve is needed.
+`DynamicDischargeFloor.compute_floor_profile()` returns, next to the scalar,
+the floor at the **start** of every look-ahead slot:
+
+```text
+remaining_kwh[t] = max(0, Σ over bridge slots k ≥ t of delta[k])
+delta[k]         = + net consumption of slot k        (consumption slot)
+                   − credited grid charge of slot k   (non-covering charge slot)
+floor_pct[t]     = max(configured_min_soc_pct,
+                       remaining_kwh[t] / usable_capacity_kwh × 100 × safety_margin)
+floor_pct[t]     = configured_min_soc_pct     for every slot at or after the refill slot
+```
+
+The conversion is the scalar's, so `floor_pct[now] == effective_floor_pct`.
+A covering refill (`grid_charge`, `grid_available`) has no reserve at all and
+the whole profile is the configured minimum.
+
+The coordinator passes the profile to the planner as
+`PlannerInput.dynamic_floor_profile`, a list of
+`(slot start ISO-8601, floor SoC %)` matched to planner slots by UTC instant.
+`apply_discharge_reserve()` (`planner/discharge_reserve.py`) turns it into
+`PlannedSlot.discharge_reserve_kwh`, the stored energy above the hardware
+floor that the plan must still hold at the **end** of each slot:
+
+```text
+reserve[t] = rated_kwh × (clamp(floor_pct[t + 1], hardware, maximum) − hardware) / 100
+reserve[t] = min(reserve[t], max(current_kwh, 0), reserve[t − 1])
+reserve[t] = 0     for past slots, and when the floor is disabled
+```
+
+- **End of slot, next slot's floor.** Serving the house in a slot is what the
+  reserve is for. A battery on the profile may therefore discharge the slot's
+  house load and end the slot on the next slot's floor. What the reserve
+  forbids is taking more than that: battery export, EV charging from the
+  battery, or any discharge that would leave less than the rest of the bridge
+  needs.
+- **Never above the energy held now** (the #1094 rule). A battery below the
+  reserve cannot discharge until the profile has declined to it. It is not
+  charged to reach the reserve, it reports its real SoC, and it keeps its full
+  charge headroom.
+- **Never rising.** A non-covering grid charge in the reference plan lowers
+  the reserve before that charge and not after it, so the raw profile steps
+  up behind the charge slot. The plan being constrained is not obliged to
+  charge there, so the step is ignored. The next replan computes its own
+  floor from its own reference solve.
+- **No profile.** A caller that passes only `dynamic_discharge_floor_pct`
+  gets that floor as a constant reserve for the whole horizon (capped at the
+  energy held now).
+
+Every candidate reads the same slot field: the MILP as the right-hand side of
+its lower SoC rows (see _Soft SOC bounds_), `simulate_soc()` as the level
+greedy discharge stops at (`no_action`, `passive`), the candidate validation
+as the per-slot SoC floor, and the MILP post-write inventory check.
+
+**What the sensor shows.** The sensor state is the floor at the start of the
+live slot. During that slot the plan may take the battery down to the next
+slot's floor, so the live SoC can read a little below the sensor until the
+next replan (about two SoC points per 15-minute slot at 0.6 kW of house load
+on 10 kWh).
+
+**After the refill.** The reserve is not carried past the first refill. The
+second night's bridge usually ends beyond the price and PV data the horizon
+has, and a reserve for it would hold most of the battery for a forecast that
+does not exist yet (a scan that starts in the afternoon and finds no refill
+asks for more than the battery holds). The terminal-SoC value prices what is
+left at the horizon end, and the next evening's replans compute that night's
+reserve from their own reference solves.
+
+**Measured.** Closed-loop replay through `run_planner`, replanning every
+slot for 48 h from 21:00 with the floor of each replan taken from that
+replan's own reference solve, executing each plan's live slot (#1125 fixture:
+10 kWh, 0.15 night, 0.25 peaks). Realised grid cash, lower is better:
+
+| Case (hourly slots)                 | Floor off | Constant floor (before) | Reserve profile |
+| ----------------------------------- | --------: | ----------------------: | --------------: |
+| 68 % at 21:00, full PV              |    −0.177 |                   0.979 |           0.246 |
+| 68 % at 21:00, cloudy next day      |     0.642 |                   1.853 |           1.112 |
+| 68 % at 21:00, 0.03 night           |    −3.361 |                  −3.334 |          −3.361 |
+| 68 % at 21:00, 0.45 export at 21–23 |    −2.725 |                  −1.815 |          −2.088 |
+| 95 % at 21:00, 0.45 export at 21–23 |    −3.904 |                  −2.523 |          −3.266 |
+
+The first two rows end with different SoC (99.98 % against 80.59 %); 1.94 kWh
+at the 0.25 peak price is 0.49, less than the 0.73 and 0.74 difference in
+cash. The floor series of the two models are the same function of the
+reference solve and move the same way. In the export rows the floor itself
+changes between replans in both models, because the reference plan moves its
+night charge among equally priced slots (issue #1198); that is not introduced
+here.
 
 #### Safety-margin learning (issue #1141)
 
 The coordinator calls `correct_margin(actual_soc_pct, floor_pct, now=now)`
 on every cycle, but the margin learns **per local day**, not per call. Each
-call is judged against the floor **in force**, which is the floor computed on
-the previous call:
+call is judged against the floor **in force**, which is the floor passed on
+the previous call.
+
+The floor it passes is the one the plan may reach by the **end of the slot
+that holds `now`**, i.e. the profile's floor at the start of the next slot
+(`floor_required_at_slot_end()`, `coordinator_dynamic_floor.py`, issue #1188).
+The plan follows the declining reserve, so the floor at the start of the live
+slot would report every slot of planned self-consumption as a shortfall and
+walk the margin to its 1.50 ceiling. Without a later profile slot the floor in
+force is used.
 
 - **Shortfall:** the SoC was at or above that floor and is now more than
   1 SoC point below it (`_SHORTFALL_TOLERANCE_PCT`). The tolerance absorbs a
@@ -3707,11 +4160,18 @@ None`, i.e. only the hardware floor.
 2. `compute_dynamic_floor_from_plan()` (`coordinator_dynamic_floor.py`) builds
    the bridge slots with `build_dynamic_floor_bridge_slots()` and runs
    `compute_floor()`:
-   - **Net load** (`avg_house_consumption_kwh − solcast_pv_estimate_kwh`)
-     comes from this cycle's freshly populated forecast.
-   - **Charge decision** (`batteries_charged_kwh`, `recommendation`) comes from
-     the reference plan's slot with the same UTC `(start, end)`. A slot the
-     plan does not cover keeps the regenerated values (no charge).
+   - **Net load** (`avg_house_consumption_kwh − solcast_pv_estimate_kwh`),
+     the **charge decision** (`batteries_charged_kwh`, `recommendation`) and
+     the import price all come from the reference plan's slot with the same
+     UTC `(start, end)`. Both net-load terms are kWh per slot there, with the
+     planner's PV correction, confidence decay and live injection applied, so
+     the bridge reads the forecast the plan was solved on (issue #1187).
+     Planned EV load is not part of it: the floor reserves for the house only.
+   - A slot the plan does not cover keeps the regenerated forecast and has no
+     charge and no price. Its `solcast_pv_estimate_kwh` is still the average
+     power (kW) the populator stored, so it is multiplied by the slot's
+     duration in hours before it is subtracted. That holds for hourly and
+     sub-hourly PV sources alike (issue #1191).
 3. **Real solve:** the same input with the resulting floor. Its output is the
    plan that is published and committed.
 
@@ -3735,8 +4195,43 @@ morning's PV surplus. It then exceeded the live SoC, and the live-SoC cap
 (issue #1094) pinned the model at 0 kWh, so the plan held the battery in
 `batteries_wait_mode` until its cheap-window grid charge (issue #1125).
 
+**Why not the regenerated recommendations (issue #1187).** Until #1187 the net
+load was read from the regenerated recommendation list. There the house load
+is kWh per slot, but `solcast_pv_estimate_kwh` is the unscaled Solcast value in
+kWh per hour; the planner does the per-slot split itself, and the per-slot
+value is copied back only after the final solve. The subtraction overstated PV
+4× at 15-minute slots and 2× at 30-minute slots, so an hour with PV between
+25 % and 100 % of the load counted as a solar refill. The bridge ended there
+and the reserve was too small on exactly the low-PV days the floor exists for.
+In a production log (issue #1125) the scan found its solar refill at 08:30
+while the plan's first surplus slot was 10:00. Hourly slots were not affected.
+
 **Cost.** One extra planner solve per replan, only with the floor enabled
-(~75 ms for a 48 h horizon of 15-minute slots without EVs).
+(~75 ms for a 48 h horizon of 15-minute slots without EVs). With the
+house-battery target enabled (issue #1109) the reference solve runs the
+target's stage 2 as well, so up to one more MILP solve (two with a
+charge-past-target EV).
+
+**Why the reference solve keeps the house-battery target (issue #1186).**
+It was proposed to solve the reference plan with the target off, on the
+grounds that stage 2 pins grid import and so cannot change what the scan
+reads. That holds only up to the target slot. Stage 2 pins `gi[t]` to
+stage 1 for `t ≤ T`; for `t > T` it only caps it. When stage 2 keeps energy
+that stage 1 exported before the deadline, the battery is fuller after `T`,
+the plan buys less afterwards, and a grid charge the scan credited
+disappears. Measured on the #1125 fixture (68 % at 21:30, 0.45 export at
+21:00–23:00, target 100 % by 23:00):
+
+| Reference solve    | Grid charge before the PV surplus | `reserve_kwh` |   Floor |
+| ------------------ | --------------------------------: | ------------: | ------: |
+| with the target    |                           0.0 kWh |          6.42 | 77.72 % |
+| without the target |                          2.21 kWh |          3.71 | 44.93 % |
+
+The published plan is solved with the target, so it makes no such charge. A
+reference plan without the target would credit a refill that never happens
+and release 33 points of reserve. With the target at 06:00 the same charge
+lies inside the pinned window and both floors are equal. The reference solve
+therefore uses the planner input unchanged, apart from the missing floor.
 
 #### Grid-charge refill reserve is zero (decision, issue #1140)
 
@@ -3851,8 +4346,15 @@ effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
 - The bridge scan reads charge decisions from this replan's floor-free
   reference solve — never from the regenerated recommendation list, and never
   from the previous committed plan (issue #1140).
+- The bridge's net load is per-slot house load minus per-slot PV at every slot
+  interval. Its first `solar_surplus` slot is the reference plan's first slot
+  with `avg_house_consumption_kwh < solcast_pv_estimate_kwh` (issue #1187).
 - For fixed inputs the floor is the same on every replan; it does not depend
   on the plan it constrains.
+- The reference solve and the real solve differ only in the floor
+  (`dynamic_discharge_floor_pct`, `dynamic_floor_profile`). Every other
+  planner input, the house-battery target included, is the same in both
+  (issue #1186).
 - A grid-charge refill that covers the bridged consumption yields
   `reserve_kwh == 0` and `effective_floor_pct == configured_min_soc_pct`.
 - So does an affordable grid refill (`grid_available`, issue #1156), even when
@@ -3864,6 +4366,21 @@ effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
 - The floor is opt-in (`hsem_dynamic_discharge_floor`, default `False`); when
   disabled no floor is computed, one solve runs, and the planner receives
   `None`.
+- `floor_pct[now]`, the first profile entry, equals `effective_floor_pct`.
+  The profile is non-increasing up to the refill slot when the bridge holds
+  no grid-charge credit, and equals `configured_min_soc_pct` from the refill
+  slot on (issue #1188).
+- For every non-past slot of every candidate,
+  `estimated_battery_capacity_kwh >= discharge_reserve_kwh` (within rounding).
+- `discharge_reserve_kwh` never exceeds the energy stored now and never rises
+  along the horizon, so no plan has to charge to satisfy it and the MILP
+  cannot become infeasible because of it.
+- A battery below the reserve does not discharge in the live slot, reports
+  its live SoC, and may charge up to the configured maximum (issue #1094).
+- From the refill slot on the plan may use the battery down to the hardware
+  floor.
+- With the reserve never binding (the battery stays above the profile), the
+  plan and its cost equal the floor-free reference plan.
 
 ### Session EV invariant — bounded by control authority (issue #789)
 

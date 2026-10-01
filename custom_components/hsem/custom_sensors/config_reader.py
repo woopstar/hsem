@@ -416,6 +416,19 @@ def build_sensor_config(
     cfg.batteries_forecast_reserve_pct = (
         _forecast_reserve_pct if _forecast_reserve_pct is not None else 0.0
     )
+    # House-battery target SoC by deadline (issue #1109).
+    cfg.batteries_target_soc_enabled = bool(
+        get_config_value(config_entry, "hsem_batteries_target_soc_enabled")
+    )
+    _target_soc_pct = convert_to_float(
+        get_config_value(config_entry, "hsem_batteries_target_soc_pct")
+    )
+    cfg.batteries_target_soc_pct = (
+        _target_soc_pct if _target_soc_pct is not None else 100.0
+    )
+    cfg.batteries_target_soc_time = str(
+        get_config_value(config_entry, "hsem_batteries_target_soc_time")
+    )
     # Per-slot hard floor for intentional battery-to-grid export (issue #752).
     # 0.0 = disabled — fully backward compatible.
     _battery_export_min_price = convert_to_float(

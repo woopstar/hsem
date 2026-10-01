@@ -58,15 +58,24 @@ prettier_run() {
     run npx --yes "prettier@${PRETTIER_VERSION}" "${mode}" .
 }
 
+# The math in docs/ is rewritten silently by prettier (single-line $$ blocks)
+# and by GitHub's Markdown escapes; see the rules in the script.  It only
+# verifies, so the fixing targets run it after prettier to report what
+# prettier just broke.
+docs_math_check() {
+    run python3 scripts/check_docs_math.py
+}
+
 usage() {
     cat <<EOF
 Usage: quality <command>
 
 Commands:
-  lint      Format and lint code (ruff format + ruff check + prettier --write)
+  lint      Format and lint code (ruff format + ruff check + prettier --write + docs math check)
   typing    Type check with mypy
   quality   Static quality checks (pyright + vulture)
-  format-check  Verify ruff format, ruff lint and prettier without writing (used by CI)
+  format-check  Verify ruff format, ruff lint, prettier and docs math without writing (used by CI)
+  docs-math     Check that the LaTeX math in docs/ survives prettier and GitHub
   translations  Validate en/da/de/es translation files stay in sync
   skylos    Run Skylos static analysis (experimental, not in 'all')
   test      Run tests with pytest and coverage
@@ -81,6 +90,7 @@ case "${1:-}" in
         run ruff format .
         run ruff check . --fix
         prettier_run --write
+        docs_math_check
         ;;
     typing)
         run mypy custom_components tests
@@ -98,6 +108,10 @@ case "${1:-}" in
         run ruff format --check .
         run ruff check .
         prettier_run --check
+        docs_math_check
+        ;;
+    docs-math)
+        docs_math_check
         ;;
     translations)
         run python3 scripts/validate_translations.py
@@ -127,6 +141,7 @@ case "${1:-}" in
         run ruff format .
         run ruff check . --fix
         prettier_run --write
+        docs_math_check
         echo ""
         echo "=== Type Check ==="
         run mypy custom_components tests

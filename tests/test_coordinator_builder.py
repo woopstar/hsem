@@ -211,6 +211,31 @@ class TestFalsyZeroPreservation:
         planner_input = self._build(cfg, LiveState())
         assert planner_input.battery_forecast_reserve_pct == pytest.approx(12.5)
 
+    def test_battery_target_soc_defaults_are_disabled(self) -> None:
+        """The target is off unless configured (issue #1109)."""
+        planner_input = self._build(SensorConfig(), LiveState())
+        assert planner_input.battery_target_soc_enabled is False
+        assert planner_input.battery_target_soc_pct == pytest.approx(100.0)
+        assert planner_input.battery_target_soc_time == "17:00:00"
+
+    def test_battery_target_soc_is_plumbed_through(self) -> None:
+        """Enabled flag, percentage (incl. 0) and time reach the planner."""
+        cfg = SensorConfig()
+        cfg.batteries_target_soc_enabled = True
+        cfg.batteries_target_soc_pct = 0.0
+        cfg.batteries_target_soc_time = "16:30:00"
+        planner_input = self._build(cfg, LiveState())
+        assert planner_input.battery_target_soc_enabled is True
+        assert planner_input.battery_target_soc_pct == pytest.approx(0.0)
+        assert planner_input.battery_target_soc_time == "16:30:00"
+
+    def test_battery_target_soc_non_finite_pct_falls_back_to_full(self) -> None:
+        """A non-finite percentage must not reach the planner."""
+        cfg = SensorConfig()
+        cfg.batteries_target_soc_pct = float("nan")
+        planner_input = self._build(cfg, LiveState())
+        assert planner_input.battery_target_soc_pct == pytest.approx(100.0)
+
 
 class TestLivePowerEstimateOverride:
     """The rolling median overrides each live-power channel independently (#797)."""

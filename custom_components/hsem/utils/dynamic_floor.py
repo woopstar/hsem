@@ -87,7 +87,12 @@ def cheap_refill_price(
 
 
 class _BridgeScan(NamedTuple):
-    """Result of one walk from now to the next refill."""
+    """Result of one walk from now to the next refill.
+
+    ``deltas`` holds, for every slot before the refill, what that slot adds
+    to the reserve: its net consumption, or minus the grid charge credited in
+    it.  Their sum is the bridge's reserve before the safety margin.
+    """
 
     refill_slot: Any
     refill_type: str
@@ -95,6 +100,7 @@ class _BridgeScan(NamedTuple):
     solar_kwh: float
     grid_charge_kwh: float
     duration_hours: float
+    deltas: tuple[float, ...] = ()
 
 
 def _scan_bridge(
@@ -122,6 +128,7 @@ def _scan_bridge(
     solar = 0.0
     grid_charge = 0.0
     hours = 0.0
+    deltas: list[float] = []
     for s in future:
         slot_hours = slot_duration_hours(s.start, s.end)
 
@@ -130,7 +137,13 @@ def _scan_bridge(
         # Check for solar surplus refill.
         if net < -1e-9:
             return _BridgeScan(
-                s, "solar_surplus", consumption, solar, grid_charge, hours
+                s,
+                "solar_surplus",
+                consumption,
+                solar,
+                grid_charge,
+                hours,
+                tuple(deltas),
             )
 
         # Check for grid-charge refill: a slot where the reference plan grid
@@ -155,11 +168,18 @@ def _scan_bridge(
             if grid_charge >= max(consumption - solar, 0.0):
                 refill_type = "grid_charge" if cheap_price is None else "grid_available"
                 return _BridgeScan(
-                    s, refill_type, consumption, solar, grid_charge, hours
+                    s,
+                    refill_type,
+                    consumption,
+                    solar,
+                    grid_charge,
+                    hours,
+                    tuple(deltas),
                 )
             # If it doesn't cover the full reserve yet, continue scanning.
             # The grid charge energy will be counted in the final
             # reserve calculation (subtracted from consumption).
+            deltas.append(-credit)
             hours += slot_hours
             continue
 
@@ -170,9 +190,59 @@ def _scan_bridge(
             # Solar surplus that we didn't catch above (shouldn't happen due to
             # the return above, but be safe).
             solar += abs(net)
+        deltas.append(max(net, 0.0))
 
         hours += slot_hours
-    return _BridgeScan(None, "none", consumption, solar, grid_charge, hours)
+    return _BridgeScan(
+        None, "none", consumption, solar, grid_charge, hours, tuple(deltas)
+    )
+
+
+def _floor_profile(
+    future: list,
+    scan: _BridgeScan,
+    usable_kwh: float,
+    configured_min_soc_pct: float,
+    safety_margin: float,
+) -> list[tuple[datetime, float]]:
+    """Return the floor at the start of every look-ahead slot (issue #1188).
+
+    The reserve at the start of a bridge slot is what remains of the bridge
+    from that slot on: the sum of the remaining ``scan.deltas``, clamped at
+    zero and converted exactly as the scalar floor is.  The first entry is
+    therefore the scalar floor.  From the refill slot on the reserve is no
+    longer needed and the floor is the configured minimum.  A refill that
+    covers the bridge (``grid_charge`` / ``grid_available``) leaves no reserve
+    at all, as for the scalar.
+
+    Args:
+        future: Chronological look-ahead slots the scan walked.
+        scan: The bridge scan whose reserve becomes the scalar floor.
+        usable_kwh: Maximum usable battery capacity (kWh).
+        configured_min_soc_pct: Configured minimum SoC (0-100).
+        safety_margin: The margin applied to the reserve.
+
+    Returns:
+        ``(slot start, floor SoC %)`` for every slot in *future*.
+    """
+    remaining = [0.0] * len(future)
+    if scan.refill_type in ("solar_surplus", "none") and usable_kwh > 1e-9:
+        total = 0.0
+        for index in range(len(scan.deltas) - 1, -1, -1):
+            total += scan.deltas[index]
+            remaining[index] = max(total, 0.0)
+    return [
+        (
+            slot.start,
+            max(
+                configured_min_soc_pct,
+                (reserve_kwh / usable_kwh) * 100.0 * safety_margin
+                if usable_kwh > 1e-9
+                else 0.0,
+            ),
+        )
+        for slot, reserve_kwh in zip(future, remaining)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +301,40 @@ class DynamicDischargeFloor:
     ) -> tuple[float, dict]:
         """Compute the effective discharge floor as SoC percentage.
 
+        The scalar part of :meth:`compute_floor_profile`; see there for the
+        algorithm and the arguments.
+
+        Returns:
+            ``(effective_floor_pct, diagnostics)``.
+        """
+        floor_pct, diag, _profile = self.compute_floor_profile(
+            now,
+            slots,
+            usable_kwh,
+            configured_min_soc_pct,
+            hours_ahead,
+            cycle_cost_per_kwh=cycle_cost_per_kwh,
+            max_grid_charge_kw=max_grid_charge_kw,
+        )
+        return floor_pct, diag
+
+    def compute_floor_profile(
+        self,
+        now: datetime,
+        slots: list,  # list[PlannedSlot] — kept typing-free for pure-Python testability
+        usable_kwh: float,
+        configured_min_soc_pct: float,
+        hours_ahead: int = 48,
+        *,
+        cycle_cost_per_kwh: float = 0.0,
+        max_grid_charge_kw: float = 0.0,
+    ) -> tuple[float, dict, list[tuple[datetime, float]]]:
+        """Compute the discharge floor now and for every look-ahead slot.
+
+        The reserve shrinks as the bridge to the refill gets shorter and is
+        gone once the refill has happened (issue #1188), so next to the
+        scalar floor this returns the floor at the start of each slot.
+
         Algorithm
         ---------
         1. Scan slots from *now* forward looking for the first refill slot.
@@ -272,11 +376,16 @@ class DynamicDischargeFloor:
                 disables affordable refills.
 
         Returns:
-            A ``(effective_floor_pct, diagnostics)`` tuple where
+            A ``(effective_floor_pct, diagnostics, profile)`` tuple where
             *effective_floor_pct* is the greater of *configured_min_soc_pct*
-            and the computed reserve SoC, and *diagnostics* is a dict with
+            and the computed reserve SoC, *diagnostics* is a dict with
             ``reserve_kwh``, ``bridge_duration_hours``, ``next_refill_slot``,
-            ``safety_margin``, ``refill_type`` and ``cheap_refill_price``.
+            ``safety_margin``, ``refill_type`` and ``cheap_refill_price``,
+            and *profile* is ``(slot start, floor SoC %)`` for every
+            look-ahead slot.  The first profile entry equals
+            *effective_floor_pct*; entries from the refill slot on equal
+            *configured_min_soc_pct*.  The profile is empty when there are no
+            future slots.
         """
         # Default diagnostics when no slots or no refill is found.
         diag: dict = {
@@ -294,7 +403,7 @@ class DynamicDischargeFloor:
                 "[dynamic_floor] No slots provided — using configured min %.1f%%",
                 configured_min_soc_pct,
             )
-            return configured_min_soc_pct, diag
+            return configured_min_soc_pct, diag, []
 
         # Filter to future slots only, ordered chronologically, bounded to
         # the look-ahead window — low-confidence day+2/day+3 forecasts
@@ -307,7 +416,7 @@ class DynamicDischargeFloor:
                 "[dynamic_floor] No future slots — using configured min %.1f%%",
                 configured_min_soc_pct,
             )
-            return configured_min_soc_pct, diag
+            return configured_min_soc_pct, diag, []
 
         # Scan forward to the first refill.  The reference plan's own grid
         # charges come first; only if they do not cover the bridge does a
@@ -370,7 +479,10 @@ class DynamicDischargeFloor:
             usable_kwh,
         )
 
-        return effective_floor_pct, diag
+        profile = _floor_profile(
+            future, scan, usable_kwh, configured_min_soc_pct, self.safety_margin
+        )
+        return effective_floor_pct, diag, profile
 
     def correct_margin(
         self, actual_soc_pct: float, floor_pct: float, *, now: datetime

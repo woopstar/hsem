@@ -17,25 +17,68 @@ floor is a deterministic function of this replan's inputs.
 The reference plan's slot prices, with the cycle cost and charge power of its
 input, also tell the scan where the grid could refill the battery at an
 affordable price even though the plan does not charge there (issue #1156).
+
+The bridge's house load and PV come from the reference plan's slots too
+(issue #1187).  The regenerated recommendations hold the per-slot house load
+next to the *unscaled hourly* Solcast value, which the planner splits per slot
+itself; subtracting one from the other overstated PV 4× at 15-minute slots and
+ended the bridge at a solar surplus that was not there.
 """
 
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from datetime import datetime
 
-from custom_components.hsem.coordinator_helpers import _SimpleSlot
+from custom_components.hsem.coordinator_helpers import (
+    _SimpleSlot,
+    _StaleUpdateCycle,
+)
+from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.planner import run_planner
 from custom_components.hsem.utils.datetime_utils import utc_key
 from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
 from custom_components.hsem.utils.logger import async_log
-from custom_components.hsem.utils.misc import resolve_cycle_cost
+from custom_components.hsem.utils.misc import get_config_value, resolve_cycle_cost
 from custom_components.hsem.utils.recommendations import Recommendations
-from custom_components.hsem.utils.units import usable_kwh_from_rated
+from custom_components.hsem.utils.units import (
+    slot_duration_hours,
+    usable_kwh_from_rated,
+)
+
+
+def _house_net_consumption_kwh(
+    rec: HourlyRecommendation, plan_slot: PlannedSlot | None
+) -> float:
+    """Return a bridge slot's house load minus PV, both in kWh per slot.
+
+    The reference plan's slot carries both per slot, with the planner's PV
+    correction, confidence decay and live injection applied, so the bridge
+    sees the same forecast as the plan it constrains.  Planned EV load is
+    left out: the floor reserves for the house only.
+
+    A recommendation the plan does not cover still holds the Solcast value as
+    the populator stored it, in kWh per hour, so it is scaled to the slot.
+
+    Args:
+        rec: This cycle's regenerated and populated recommendation slot.
+        plan_slot: The reference plan's slot for the same interval, if any.
+
+    Returns:
+        Net house consumption of the slot in kWh; negative is PV surplus.
+    """
+    if plan_slot is not None:
+        return plan_slot.avg_house_consumption_kwh - plan_slot.solcast_pv_estimate_kwh
+    return (
+        rec.avg_house_consumption_kwh
+        - rec.solcast_pv_estimate_kwh * slot_duration_hours(rec.start, rec.end)
+    )
 
 
 def build_dynamic_floor_bridge_slots(
@@ -44,12 +87,12 @@ def build_dynamic_floor_bridge_slots(
 ) -> list[_SimpleSlot]:
     """Return bridge slots for the dynamic floor's refill scan.
 
-    Consumption and PV come from this cycle's freshly populated forecast
-    (house load only, exactly as before issue #1140). The charge decision —
-    ``batteries_charged_kwh`` and ``recommendation`` — and the import price
-    come from the slot of the reference plan with the same ``(start, end)``.
-    A slot the plan does not cover keeps the regenerated values (no charge),
-    which is the pre-#1140 behaviour, and has no price (issue #1156).
+    House load, PV, the charge decision (``batteries_charged_kwh`` and
+    ``recommendation``) and the import price all come from the slot of the
+    reference plan with the same ``(start, end)`` (issues #1140, #1156,
+    #1187).  A slot the plan does not cover keeps the regenerated forecast,
+    with its hourly PV scaled to the slot, has no charge, which is the
+    pre-#1140 behaviour, and has no price.
 
     Args:
         hourly_recommendations: This cycle's regenerated and populated slots.
@@ -86,8 +129,8 @@ def build_dynamic_floor_bridge_slots(
             _SimpleSlot(
                 start=rec.start,
                 end=rec.end,
-                estimated_net_consumption_kwh=(
-                    rec.avg_house_consumption_kwh - rec.solcast_pv_estimate_kwh
+                estimated_net_consumption_kwh=_house_net_consumption_kwh(
+                    rec, plan_slot
                 ),
                 batteries_charged_kwh=source.batteries_charged_kwh,
                 recommendation=source.recommendation,
@@ -114,8 +157,8 @@ def compute_dynamic_floor_from_plan(
     reference_input: PlannerInput,
     live: LiveState,
     now: datetime,
-) -> tuple[float, dict]:
-    """Return the dynamic floor for this replan and its diagnostics.
+) -> tuple[float, dict, list[tuple[str, float]]]:
+    """Return the dynamic floor for this replan, its diagnostics and profile.
 
     Args:
         dynamic_floor: The coordinator's self-learning floor instance.
@@ -130,14 +173,17 @@ def compute_dynamic_floor_from_plan(
         now: Timezone-aware current datetime.
 
     Returns:
-        ``(floor_pct, diagnostics)`` from
-        :meth:`~custom_components.hsem.utils.dynamic_floor.DynamicDischargeFloor.compute_floor`.
+        ``(floor_pct, diagnostics, profile)`` from
+        :meth:`~custom_components.hsem.utils.dynamic_floor.DynamicDischargeFloor.compute_floor_profile`.
+        The profile is the floor at the start of every look-ahead slot as
+        ``(slot start ISO-8601, floor SoC %)``, ready for
+        ``PlannerInput.dynamic_floor_profile`` (issue #1188).
     """
     rated_kwh = (live.huawei_batteries_rated_capacity_wh or 0.0) / 1000.0
     min_soc_pct = live.huawei_batteries_end_of_discharge_soc_pct or 0.0
     max_soc_pct = live.huawei_batteries_charging_cutoff_capacity_pct or 100.0
     usable_kwh = usable_kwh_from_rated(rated_kwh, min_soc_pct, max_soc_pct)
-    return dynamic_floor.compute_floor(
+    floor_pct, diag, profile = dynamic_floor.compute_floor_profile(
         now=now,
         slots=build_dynamic_floor_bridge_slots(hourly_recommendations, reference_plan),
         usable_kwh=usable_kwh,
@@ -151,3 +197,125 @@ def compute_dynamic_floor_from_plan(
         ),
         max_grid_charge_kw=reference_input.battery_max_charge_power_w / 1000.0,
     )
+    return floor_pct, diag, [(start.isoformat(), pct) for start, pct in profile]
+
+
+def floor_required_at_slot_end(
+    profile: list[tuple[str, float]] | None, now: datetime, floor_now_pct: float
+) -> float:
+    """Return the floor the plan may reach by the end of the slot holding *now*.
+
+    The plan follows the declining reserve (issue #1188): within a slot the
+    battery may go down to the floor at the start of the next slot.  That is
+    the floor the safety-margin learner must judge the live SoC against; the
+    floor at the start of the current slot would report every planned slot of
+    self-consumption as a shortfall.
+
+    Args:
+        profile: ``(slot start ISO-8601, floor SoC %)`` of the replan whose
+            floor is in force, or ``None``.
+        now: Timezone-aware current datetime.
+        floor_now_pct: The floor in force, used when the profile has no slot
+            starting after *now*.
+
+    Returns:
+        The floor at the start of the first profile slot that begins after
+        *now*, or *floor_now_pct*.
+    """
+    for start_iso, floor_pct in profile or ():
+        if utc_key(datetime.fromisoformat(start_iso)) > utc_key(now):
+            return floor_pct
+    return floor_now_pct
+
+
+class CoordinatorDynamicFloorMixin(CoordinatorSharedState):
+    """Dynamic discharge floor steps of the coordinator's planner phase.
+
+    Moved out of ``coordinator_planner_phase.py`` to keep that module under
+    the 30 KB file limit (issue #1186).  The methods run on the coordinator
+    through the mixin chain, so ``self`` and every attribute are unchanged.
+    """
+
+    def _sync_dynamic_floor_enabled(self) -> bool:
+        """Return whether the dynamic floor is enabled; clear its state if not.
+
+        The floor is computed from a floor-free reference solve in the same
+        replan (issue #1140), never from the plan it constrains; between
+        replans the floor in force is kept.
+        """
+        enabled = bool(
+            get_config_value(self._config_entry, "hsem_dynamic_discharge_floor")
+        )
+        if not enabled:
+            self._effective_discharge_floor_pct = None
+            self._effective_discharge_floor_diag = None
+            self._effective_discharge_floor_profile = None
+        return enabled
+
+    async def _async_apply_dynamic_floor(
+        self,
+        planner_input: PlannerInput,
+        live: LiveState,
+        now: datetime,
+        captured_generation: int,
+    ) -> PlannerInput:
+        """Solve the reference plan and return the input with this replan's floor.
+
+        The reference solve uses *planner_input* unchanged apart from the
+        missing floor.  In particular it keeps the house-battery target
+        (issue #1109): the target's stage 2 can remove a night grid charge
+        the scan would otherwise credit, so a reference plan without it gives
+        a different floor (issue #1186).
+
+        Args:
+            planner_input: This replan's floor-free planner input.
+            live: Live state; supplies the battery's capacity and SoC limits.
+            now: Timezone-aware current datetime.
+            captured_generation: The update generation this cycle started in.
+
+        Returns:
+            *planner_input* with ``dynamic_discharge_floor_pct`` and
+            ``dynamic_floor_profile`` set.
+
+        Raises:
+            _StaleUpdateCycle: A newer update cycle started during the solve.
+        """
+        reference_output = await self.hass.async_add_executor_job(
+            run_planner, planner_input
+        )
+        if getattr(self, "_update_generation", 0) != captured_generation:
+            raise _StaleUpdateCycle
+        floor_pct, floor_diag, floor_profile = compute_dynamic_floor_from_plan(
+            self._dynamic_floor,
+            self._hourly_recommendations,
+            reference_output,
+            planner_input,
+            live,
+            now,
+        )
+        self._effective_discharge_floor_pct = floor_pct
+        self._effective_discharge_floor_diag = floor_diag
+        self._effective_discharge_floor_profile = floor_profile
+        return replace(
+            planner_input,
+            dynamic_discharge_floor_pct=floor_pct,
+            dynamic_floor_profile=floor_profile,
+        )
+
+    def _learn_dynamic_floor_margin(self, live: LiveState, now: datetime) -> None:
+        """Feed the live SoC and the floor in force to the margin learner.
+
+        The floor passed is the one the plan may reach by the end of the live
+        slot: the plan follows the reserve down to the next slot's floor
+        (issue #1188).
+        """
+        floor_in_force = self._effective_discharge_floor_pct
+        if floor_in_force is None or live.huawei_batteries_soc_pct is None:
+            return
+        self._dynamic_floor.correct_margin(
+            live.huawei_batteries_soc_pct,
+            floor_required_at_slot_end(
+                self._effective_discharge_floor_profile, now, floor_in_force
+            ),
+            now=now,
+        )

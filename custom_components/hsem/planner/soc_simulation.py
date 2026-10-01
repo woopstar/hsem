@@ -2,7 +2,9 @@
 
 This module implements a forward-pass SoC simulator that:
 
-- Respects the minimum SoC floor (``end_of_discharge_soc_pct``).
+- Respects the minimum SoC floor (``end_of_discharge_soc_pct``) and, on
+  top of it, each slot's ``discharge_reserve_kwh`` from the dynamic discharge
+  floor (issue #1188).
 - Respects the maximum SoC ceiling (``battery_max_soc_pct``).
 - Clamps charge energy to the remaining capacity up to max SoC and to the
   per-slot charge power limit.
@@ -271,7 +273,8 @@ def simulate_soc(
                 )
                 grid_export = 0.0
             else:
-                max_discharge_cap = cap
+                # Never below this slot's discharge reserve (issue #1188).
+                max_discharge_cap = max(cap - slot.discharge_reserve_kwh, 0.0)
                 if max_discharge_per_slot is not None:
                     max_discharge_cap = min(max_discharge_cap, max_discharge_per_slot)
 

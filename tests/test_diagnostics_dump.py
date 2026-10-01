@@ -9,6 +9,9 @@ Covers:
 
 from __future__ import annotations
 
+import json
+from dataclasses import replace
+
 import pytest
 
 from homeassistant.const import STATE_UNKNOWN
@@ -162,6 +165,31 @@ class TestBuildDiagnosticsDump:
         assert "data_quality" in po
         assert "explanation" in po
         assert "candidates" in po
+
+    def test_battery_target_record_is_dumped(self) -> None:
+        """The house-battery target record is part of the dump (issue #1109)."""
+        disabled = make_summer_day_input()
+        enabled = replace(disabled, battery_target_soc_enabled=True)
+
+        off = build_diagnostics_dump(disabled, run_planner(disabled))
+        on = build_diagnostics_dump(enabled, run_planner(enabled))
+
+        assert off["planner_output"]["battery_target"] is None
+        record = on["planner_output"]["battery_target"]
+        assert record["target_pct"] == pytest.approx(100.0)
+        assert "stage2_status" in record
+        # The preference cost travels with the record (issue #1185).
+        for key in (
+            "stage1_cost",
+            "stage2_cost",
+            "preference_cost",
+            "preference_cost_per_kwh",
+            "terminal_soc_value_delta",
+        ):
+            assert key in record
+        json.dumps(record)
+        assert on["planner_input"]["battery_target_soc_enabled"] is True
+        assert on["planner_input"]["battery_target_soc_time"] == "17:00:00"
 
     def test_slots_contain_expected_fields(self) -> None:
         inp = make_summer_day_input()

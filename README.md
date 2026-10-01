@@ -29,6 +29,7 @@
 - **Temperature-adaptive charge rate learning** — 7 temperature buckets track actual charge power at p90, adapting to cold-weather limitations
 - **Battery capacity auto-detection** — learns usable capacity from BMS kWh-remaining readings in the 15-85 % SoC range
 - **Cycle cost accounting** — wear-and-tear costs factored into every charge/discharge decision
+- **Battery target SoC by deadline** (issue #1109) — optional: build an extra reserve towards a target SoC by a daily time (e.g. 100 % by 17:00) using only PV that would otherwise be exported. Never buys extra grid energy and never changes the grid charging or discharge the normal plan needs
 - **Battery export minimum price floor** (issue #752) — optional per-slot hard floor below which intentional battery-to-grid export is forbidden (the optimizer still decides above the floor)
 - **Grid overcurrent protection** — respects main fuse rating, caps total grid draw
 - **Weekday/weekend consumption profiling** — separate EWMA load profiles for workdays and weekends improve prediction accuracy
@@ -110,7 +111,7 @@ The [Huawei Solar integration by wlcrs](https://github.com/wlcrs/huawei_solar) p
 
 ### EMMA-managed batteries
 
-If a Huawei EMMA controls your batteries, the Huawei Solar integration only accepts TOU and grid export limit writes on the EMMA device. In the `huawei_solar` config step, select the EMMA as **Huawei TOU Controller Device**, and pick the EMMA's working-mode (ESS Control Mode), excess-PV-in-TOU, and TOU-periods entities (the EMMA TOU-periods sensor is disabled by default — enable it first). Leave **Huawei Inverter Active Power Control Sensor** empty: Huawei Solar has no such sensor for EMMA, so HSEM writes the export limit without read-back. Leave the controller empty for direct LUNA2000 control. See [`docs/huawei_entities.md`](docs/huawei_entities.md#emma-managed-batteries).
+If a Huawei EMMA controls your batteries, the Huawei Solar integration only accepts TOU and grid export limit writes on the EMMA device. In the `huawei_solar` config step, select the EMMA as **Huawei TOU Controller Device**, and pick the EMMA's working-mode (ESS Control Mode), excess-PV-in-TOU, and TOU-periods entities (the EMMA TOU-periods sensor is disabled by default — enable it first). Leave **Huawei Inverter Active Power Control Sensor** empty: Huawei Solar has no such sensor for EMMA, so HSEM writes the export limit without read-back. EMMA grid export limits in watts (the negative-price block and a configured export cap) need **Huawei Solar 2.1.6 or newer**; older versions fail them with a `P_max` error, and HSEM logs a warning telling you to update. Leave the controller empty for direct LUNA2000 control. See [`docs/huawei_entities.md`](docs/huawei_entities.md#emma-managed-batteries).
 
 ---
 

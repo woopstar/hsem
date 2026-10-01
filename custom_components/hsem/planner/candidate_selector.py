@@ -141,9 +141,10 @@ def select_best_candidate(  # NOSONAR
         rated_kwh:
             Nameplate battery capacity (kWh).
         end_of_discharge_soc_pct:
-            Effective model end-of-discharge SoC floor (0-100 %). When the
-            dynamic floor is active, this is the raised floor that defines the
-            origin of ``current_kwh`` and ``usable_kwh``.
+            Hardware end-of-discharge SoC floor (0-100 %), the origin of
+            ``current_kwh`` and ``usable_kwh``.  The dynamic discharge floor
+            does not move it; it is read per slot from
+            ``PlannedSlot.discharge_reserve_kwh`` (issue #1188).
         cost_weights:
             Cost weights for :func:`~cost_function.score_plan`.
         slot_duration_hours:
@@ -264,7 +265,7 @@ def select_best_candidate(  # NOSONAR
             milp_prepopulated=(candidate.name == CANDIDATE_MILP),
         )
         candidate.is_valid, candidate.rejection_reason = _validate_candidate(
-            candidate, end_of_discharge_soc_pct
+            candidate, end_of_discharge_soc_pct, rated_kwh
         )
         log_planner(
             "debug",
@@ -540,30 +541,37 @@ def select_best_candidate(  # NOSONAR
 def _validate_candidate(
     candidate: CandidatePlan,
     end_of_discharge_soc_pct: float,
+    rated_kwh: float = 0.0,
 ) -> tuple[bool, str]:
     """Return ``(is_valid, rejection_reason)`` for *candidate*.
 
     A plan is invalid when any slot's ``estimated_battery_soc`` falls below
-    the end-of-discharge floor by more than :data:`_SOC_TOLERANCE_PCT`.
-    The SoC simulation already clamps discharges, so this catches numerical
-    edge cases only.
+    that slot's floor by more than :data:`_SOC_TOLERANCE_PCT`.  The floor is
+    the end-of-discharge SoC plus the slot's ``discharge_reserve_kwh`` from
+    the dynamic discharge floor (issue #1188), so every candidate is held to
+    the same per-slot bound.  The SoC simulation already clamps discharges,
+    so this catches numerical edge cases only.
 
     Args:
         candidate: The candidate to validate.
         end_of_discharge_soc_pct: Minimum allowed battery SoC (0-100).
+        rated_kwh: Nameplate capacity (kWh), to express the slot reserve in
+            SoC points.  ``0`` skips the reserve.
 
     Returns:
         ``(True, "")`` when valid; ``(False, reason_string)`` when invalid.
     """
-    floor = end_of_discharge_soc_pct - _SOC_TOLERANCE_PCT
     for slot in candidate.slots:
         soc = slot.estimated_battery_soc_pct
-        if soc > 0 and soc < floor:
+        floor = end_of_discharge_soc_pct
+        if rated_kwh > 1e-9:
+            floor += slot.discharge_reserve_kwh / rated_kwh * 100.0
+        if soc > 0 and soc < floor - _SOC_TOLERANCE_PCT:
             return (
                 False,
                 (
                     f"SoC {soc:.1f}% dropped below floor "
-                    f"{end_of_discharge_soc_pct:.1f}% "
+                    f"{floor:.1f}% "
                     f"at slot starting {slot.start.isoformat()}."
                 ),
             )

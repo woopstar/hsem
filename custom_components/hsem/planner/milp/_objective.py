@@ -31,6 +31,33 @@ _EV_TARGET_ENERGY_TIEBREAK_COST = 1e-7
 _EV_DEADLINE_ESCALATION_PENALTY_MULTIPLIER = 5.0
 
 
+def ev_deadline_penalty_per_kwh(ev: EVConfig, p_imp_max: float, m: int) -> float | None:
+    """Return the EV's deadline-shortfall cost per kWh, or ``None`` if inactive.
+
+    Penalty per kWh shortfall: proportional to the energy needed, not the full
+    capacity, so the MILP prioritises the EV when it needs significant energy
+    but does not force a small top-up (e.g. 90% -> 100%) at the expense of a
+    critically low house battery.  Shared with the house-battery target
+    (issue #1109), whose penalty must stay below every active EV's.
+
+    Args:
+        ev: EV configuration.
+        p_imp_max: Highest objective import price over the LP horizon.
+        m: Number of LP slots (for the escalation check).
+    """
+    if (
+        ev.deadline_slot is None
+        or ev.target_kwh <= ev.initial_soc_kwh + 1e-9
+        or ev.charge_past_target
+    ):
+        return None
+    energy_needed = ev.effective_deadline_target_kwh - ev.initial_soc_kwh
+    penalty = max(p_imp_max, 0.1) * max(energy_needed, 1.0) * 10.0
+    if ev.deadline_escalated(m):
+        penalty *= _EV_DEADLINE_ESCALATION_PENALTY_MULTIPLIER
+    return penalty
+
+
 def _build_objective(
     slots: list[PlannedSlot],
     future_idx: list[int],
@@ -136,17 +163,8 @@ def _build_objective(
     # Must be high enough that the MILP always prefers meeting the target
     # when it is physically possible within the available slots.
     for ev_idx, ev in enumerate(active_evs):
-        if (
-            ev.deadline_slot is not None
-            and ev.target_kwh > ev.initial_soc_kwh + 1e-9
-            and not ev.charge_past_target
-        ):
-            # Penalty per kWh shortfall: proportional to energy needed,
-            # not full capacity. This ensures the MILP prioritizes the EV
-            # when it needs significant energy, but doesn't force EV charging
-            # when it only needs a small top-up (e.g., 90% -> 100%) at the
-            # expense of a critically low house battery.
-            #
+        ev_penalty_cost = ev_deadline_penalty_per_kwh(ev, p_imp_max, m)
+        if ev_penalty_cost is not None:
             # No direct per-kWh benefit is placed on ev_c[t] (issue #797):
             # the slack penalty alone already prices meeting the deadline at
             # ev_penalty_cost per kWh shortfall, which is almost always far
@@ -157,15 +175,11 @@ def _build_objective(
             # executable (whole-amp) energy that clears the target-cap
             # constraint, rather than leaving it indifferent among
             # cost-equivalent solutions above the target.
-            energy_needed = ev.effective_deadline_target_kwh - ev.initial_soc_kwh
-            ev_penalty_cost = max(p_imp_max, 0.1) * max(energy_needed, 1.0) * 10.0
-            if ev.deadline_escalated(m):
-                ev_penalty_cost *= _EV_DEADLINE_ESCALATION_PENALTY_MULTIPLIER
             c_obj[ev_pen_offsets[ev_idx]] = ev_penalty_cost
 
             ev_off = ev_var_offsets[ev_idx]
-            d = ev.deadline_slot
-            d = max(0, min(d, m - 1))
+            # Non-None whenever a penalty is returned; ``or 0`` narrows the type.
+            d = max(0, min(ev.deadline_slot or 0, m - 1))
             for t in range(d + 1):
                 c_obj[ev_off + t] += _EV_TARGET_ENERGY_TIEBREAK_COST
 

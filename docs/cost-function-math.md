@@ -20,11 +20,15 @@ The selector picks the plan with the **lowest score**, not the lowest money cost
 
 ## Total cost (money terms)
 
-$$ C*{total} = C*{import} - R*{export} + C*{cycle} + C*{loss} + C*{tariff} $$
+$$
+C_{total} = C_{import} - R_{export} + C_{cycle} + C_{loss} + C_{tariff}
+$$
 
 ### Grid import cost
 
-$$ C*{import} = \sum*{t \in slots} gi[t] \cdot p\_{imp}[t] $$
+$$
+C_{import} = \sum_{t \in slots} gi[t] \cdot p_{imp}[t]
+$$
 
 Where $gi[t]$ is the actual grid import in kWh and $p_{imp}[t]$ is the import
 price in currency/kWh.
@@ -35,7 +39,9 @@ price in currency/kWh.
 
 ### Export revenue
 
-$$ R*{export} = \sum*{t \in slots} ge[t] \cdot p\_{exp}[t] $$
+$$
+R_{export} = \sum_{t \in slots} ge[t] \cdot p_{exp}[t]
+$$
 
 Where $ge[t]$ is the grid export in kWh and $p_{exp}[t]$ is the export price.
 
@@ -44,7 +50,9 @@ Where $ge[t]$ is the grid export in kWh and $p_{exp}[t]$ is the export price.
 
 ### Battery cycle cost (depreciation)
 
-$$ C*{cycle} = \sum*{t \in slots} \max(charge[t], discharge[t]) \cdot c\_{cycle} $$
+$$
+C_{cycle} = \sum_{t \in slots} \max(charge[t], discharge[t]) \cdot c_{cycle}
+$$
 
 Where $c_{cycle}$ is the cycle cost per kWh throughput.
 
@@ -52,24 +60,32 @@ The cycle cost counts the **maximum** of charge and discharge per slot, not
 their sum. This matches the MILP formulation where $m[t] = \max(ec[t], ed[t])$
 and the 2× denominator in the cycle cost formula:
 
-$$ c\_{cycle} = \frac{purchase_price}{2 \cdot usable_kwh \cdot expected_cycles} $$
+$$
+c_{cycle} = \frac{purchase\\_price}{2 \cdot usable\\_kwh \cdot expected\\_cycles}
+$$
 
 The 2× denominator accounts for one full round-trip (charge + discharge = 2 ×
-usable*kwh throughput per cycle). With this factor, charging $x$ kWh and
-discharging $x$ kWh costs $c*{cycle} \cdot \max(x, x) = c\_{cycle} \cdot x$,
-which equals $\frac{purchase\_price \cdot x}{2 \cdot usable \cdot cycles}$ —
+`usable_kwh` throughput per cycle). With this factor, charging $x$ kWh and
+discharging $x$ kWh costs $c_{cycle} \cdot \max(x, x) = c_{cycle} \cdot x$,
+which equals $\frac{purchase\\_price \cdot x}{2 \cdot usable \cdot cycles}$ —
 matching the expected wear for moving $x$ kWh through the battery in one
 direction.
 
 ### Conversion-loss compatibility field
 
-$$ C\_{loss} = 0 $$
+$$
+C_{loss} = 0
+$$
 
 For battery-side charge and discharge energy, the physical AC flows are:
 
-$$ charge*{AC}[t] = \frac{charge[t]}{\eta*{chg}} $$
+$$
+charge_{AC}[t] = \frac{charge[t]}{\eta_{chg}}
+$$
 
-$$ discharge*{AC}[t] = discharge[t] \cdot \eta*{dis} $$
+$$
+discharge_{AC}[t] = discharge[t] \cdot \eta_{dis}
+$$
 
 The first quantity increases import or consumes otherwise-exportable PV. The
 second reduces import or creates AC export. Import cost and export revenue thus
@@ -77,7 +93,9 @@ price efficiency exactly once; another loss-price term would double-count it.
 
 ### Tariff cost
 
-$$ C*{tariff} = \sum*{t \in slots} tariff[t] $$
+$$
+C_{tariff} = \sum_{t \in slots} tariff[t]
+$$
 
 An optional per-slot fixed tariff cost, typically zero unless the user
 configures grid tariff fees.
@@ -86,7 +104,11 @@ configures grid tariff fees.
 
 ## Score (selector objective)
 
-$$ S = C*{total} + P*{soc} + P*{grid} + V*{terminal} $$
+$$
+S = C_{total} + P_{soc} + P_{grid} + V_{terminal} + B
+$$
+
+$B$ is the battery target penalty, zero unless that opt-in feature is active.
 
 ### SoC penalties (quadratic guard)
 
@@ -110,14 +132,18 @@ but log-misleading.
 
 ### Grid limit penalty
 
-$$ P*{grid} = \sum*{t \in slots} \max(0, \frac{|gi[t] - ge[t]|}{\Delta t} - L*{grid}) \cdot \Delta t \cdot w*{grid} $$
+$$
+P_{grid} = \sum_{t \in slots} \max(0, \frac{|gi[t] - ge[t]|}{\Delta t} - L_{grid}) \cdot \Delta t \cdot w_{grid}
+$$
 
 Where $\Delta t$ is slot duration in hours, $L_{grid}$ is the configured grid
 power limit in kW, and $w_{grid}$ is the penalty weight per excess kWh.
 
 ### Terminal SoC value (opportunity cost)
 
-$$ V*{terminal} = (E*{initial} - E*{final}) \cdot p*{replacement} $$
+$$
+V_{terminal} = (E_{initial} - E_{final}) \cdot p_{replacement}
+$$
 
 Where:
 
@@ -143,7 +169,9 @@ every discharge variable, through the shared helper
 $V$ is estimated from the last known day of prices, standing in for the unknown
 day after the horizon:
 
-$$ V = \max\left(0, \min\left(0.9 \cdot (\eta*{dis} \cdot p*{peak} - c), \frac{p*{night}}{\eta*{chg}} + c\right)\right) $$
+$$
+V = \max\left(0, \min\left(0.9 \cdot (\eta_{dis} \cdot p_{peak} - c), \frac{p_{night}}{\eta_{chg}} + c\right)\right)
+$$
 
 - $p_{peak}$ = mean of that day's top-N import prices, N = `ceil(usable / max_discharge_per_slot)`
 - $p_{night}$ = mean import price of that day from 00:00 to 06:00
@@ -152,6 +180,24 @@ $$ V = \max\left(0, \min\left(0.9 \cdot (\eta*{dis} \cdot p*{peak} - c), \frac{p
 A leftover kWh is worth the lower of its discounted use at the next peak and the
 cost of storing it again overnight. See `docs/planner-spec.md` § Terminal SoC for
 why it is not derived from any price inside the horizon.
+
+### Battery target penalty (issue #1109)
+
+Zero unless the opt-in house-battery target SoC is active. It prices the
+shortfall against the target at the next target occurrence, for every
+candidate, undiscounted:
+
+$$
+B = P \cdot \max(E_{target} - E[T],\ 0)
+$$
+
+- $E[T]$ = `estimated_battery_capacity_kwh` at the target slot $T$
+- $E_{target}$ = the configured target in model kWh (above the discharge floor)
+- $P$ = the shortfall price the MILP stage-2 slack uses:
+  $P = \min\left(\max_{t \le T} \frac{p_{exp}[t]}{\eta_{chg}} + c + \varepsilon,\ P_{ev} - \varepsilon\right)$
+
+$B$ enters the score only, never the total cost. See `docs/planner-spec.md`
+§ House-battery target SoC by deadline.
 
 ---
 
@@ -176,5 +222,5 @@ For every planner run:
 3. $S = C_{total} + P_{soc} + P_{grid} + P_{override} + V_{terminal}$ (exact)
 4. When all penalties = 0 and terminal-SoC is disabled: $S = C_{total}$
 5. Selector picks minimum $S$, not minimum $C_{total}$
-6. $score_{winner} = score_{final\_output}$ (no post-selection mutation)
+6. $score_{winner} = score_{final\\_output}$ (no post-selection mutation)
 7. Two identical plans, one ending with more stored energy → lower $V_{terminal}$ → lower $S$

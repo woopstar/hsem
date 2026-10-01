@@ -11,7 +11,9 @@ suppression, and reliability weighting.
 HSEM predicts house load using a **multi-window weighted average** of historical
 consumption data. The prediction feeds the planner's net consumption calculation:
 
-$$ net\\\_consumption[t] = load\\\_forecast[t] + ev\\\_load[t] - pv\\\_forecast[t] $$
+$$
+net\\_consumption[t] = load\\_forecast[t] + ev\\_load[t] - pv\\_forecast[t]
+$$
 
 Accurate load prediction is critical: over-prediction leads to unnecessary grid
 imports; under-prediction leads to insufficient battery charging for peak hours.
@@ -73,9 +75,9 @@ without temperature — see "Forecast wind" below.
 For a target slot $(\text{DOW} = d, \text{slot} = s)$ on day-of-year $\delta$:
 
 $$
-\hat{E}_{d,s} = \beta_{d,s} + \beta_{\sin} \cdot \sin\left(\frac{2\pi\delta}{365}\right)
-+ \beta_{\cos} \cdot \cos\left(\frac{2\pi\delta}{365}\right)
-+ \beta_T \cdot T + \beta_W \cdot W + \beta_{\text{lag}} \cdot E_{t-1}
+\hat{E}_{d,s} = \beta_{d,s} + \beta_{\sin} \cdot \sin\left(\frac{2\pi\delta}{365}\right) +
+\beta_{\cos} \cdot \cos\left(\frac{2\pi\delta}{365}\right) +
+\beta_T \cdot T + \beta_W \cdot W + \beta_{\text{lag}} \cdot E_{t-1}
 $$
 
 where $\beta_{d,s}$ is the fitted coefficient for that (DOW, slot) pair,
@@ -94,7 +96,7 @@ $$
 \hat{E}_0 &= f(d, 0, \delta, T_0, 0) \\
 \hat{E}_1 &= f(d, 1, \delta, T_1, \hat{E}_0) \\
 \hat{E}_2 &= f(d, 2, \delta, T_2, \hat{E}_1) \\
-&\;\vdots
+&\\;\vdots
 \end{aligned}
 $$
 
@@ -115,7 +117,7 @@ When an optional `hsem_ml_consumption_weather_forecast_entity` (a HA
 per-slot forecast temperature, linearly interpolated from the entity's
 hourly (or daily, as a fallback) forecast points to the planning slot's
 exact start time — including 15-minute slots. A genuine forecast value of
-$0\,^\circ\text{C}$ is valid data, never treated as missing. A slot falls
+$0\\,^\circ\text{C}$ is valid data, never treated as missing. A slot falls
 back to the broadcast measured reading above when:
 
 - no weather forecast entity is configured, or the measured-temperature
@@ -332,7 +334,9 @@ class HourlyConsumptionAverage:
 
 The raw forecast for hour `h` is:
 
-$$ \mathrm{forecast}[h] = \frac{w*1 \cdot avg_1 + w_3 \cdot avg_3 + w_7 \cdot avg_7 + w*{14} \cdot avg*{14}}{w_1 + w_3 + w_7 + w*{14}} $$
+$$
+\mathrm{forecast}[h] = \frac{w_1 \cdot avg_1 + w_3 \cdot avg_3 + w_7 \cdot avg_7 + w_{14} \cdot avg_{14}}{w_1 + w_3 + w_7 + w_{14}}
+$$
 
 Before this weighted average, the weights undergo three transformations:
 
@@ -361,7 +365,9 @@ Replaces the old ratio-based spike detection with the standard Tukey fence.
 For each clock-hour, the four window values form a set of four data points.
 The interquartile range (IQR) is computed, and values outside
 
-$$ [Q_1 - k \cdot \mathrm{IQR}, Q_3 + k \cdot \mathrm{IQR}] $$
+$$
+[Q_1 - k \cdot \mathrm{IQR}, Q_3 + k \cdot \mathrm{IQR}]
+$$
 
 are flagged as outliers, where $k = 1.5$ (standard Tukey fence).
 
@@ -402,15 +408,21 @@ flagged as a spike:
 **Severity scaling:** The fraction of weight actually removed interpolates
 between 0 at the `_MIN` ratio and the maximum at the `_MAX` ratio:
 
-$$ reduced\\\_fraction = \frac{\mathrm{ratio} - ratio\\\_min}{ratio\\\_max - ratio\\\_min} \cdot max\\\_reduction $$
+$$
+reduced\\_fraction = \frac{\mathrm{ratio} - ratio\\_min}{ratio\\_max - ratio\\_min} \cdot max\\_reduction
+$$
 
 ### Baseline capping
 
 Short windows (1-day, 3-day) are also capped against a blended baseline:
 
-$$ \mathrm{baseline} = 0.70 \cdot avg*7 + 0.30 \cdot avg*{14} $$
+$$
+\mathrm{baseline} = 0.70 \cdot avg_7 + 0.30 \cdot avg_{14}
+$$
 
-$$ capped\\\_value = \mathrm{clamp}(value, 0.80 \cdot \mathrm{baseline}, 1.20 \cdot \mathrm{baseline}) $$
+$$
+capped\\_value = \mathrm{clamp}(value, 0.80 \cdot \mathrm{baseline}, 1.20 \cdot \mathrm{baseline})
+$$
 
 The 3-day uses slightly looser bounds (0.85 – 1.15) to avoid removing legitimate
 multi-day trends.
@@ -422,7 +434,9 @@ multi-day trends.
 After spike suppression, each window's weight is further scaled by its
 agreement with the other windows:
 
-$$ w_i' = w_i \cdot \frac{1}{\epsilon + |avg_i - \mathrm{median}|} $$
+$$
+w_i' = w_i \cdot \frac{1}{\epsilon + |avg_i - \mathrm{median}|}
+$$
 
 Where $\epsilon = 0.05$ kWh (prevents division by zero and over-sensitivity).
 

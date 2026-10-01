@@ -12,7 +12,6 @@ repository's 30 KB file limit.
 
 from __future__ import annotations
 
-import math
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -23,9 +22,13 @@ from custom_components.hsem.planner._scipy_probe import (  # noqa: F401
 from custom_components.hsem.utils.datetime_utils import future_slot_indices
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
+from custom_components.hsem.utils.soc_bounds import finite_or
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.planned_slot import PlannedSlot
+    from custom_components.hsem.planner.milp._battery_target_rows import (
+        BatteryTargetRows,
+    )
 
 # Name exported so the engine and tests can reference it without re-defining
 CANDIDATE_MILP = "milp"
@@ -63,6 +66,7 @@ def solve_milp(
     battery_export_forecast_reserve_kwh: float = 0.0,
     excess_export_discharge_buffer_pct: float = 0.0,
     export_fee_per_kwh: float = 0.0,
+    battery_target: BatteryTargetRows | None = None,
 ) -> tuple[list[PlannedSlot], dict] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
 
@@ -175,6 +179,9 @@ def solve_milp(
             the reported per-slot cost — never for the battery-export floor
             mask, which stays on the raw price.  ``0.0`` (default) is fully
             backward compatible.
+        battery_target:
+            House-battery target stage-2 rows (issue #1109): target slack,
+            per-slot grid-import pin/cap.  ``None`` (default) = stage 1.
 
     Returns:
         A tuple ``(slots, diagnostics)`` where ``slots`` is a list of
@@ -360,18 +367,8 @@ def solve_milp(
     session_slots_by_ev = _session_windows.session_slots_by_ev
     _has_session_demand = _session_windows.has_session_demand
 
-    # ------------------------------------------------------------------
-    # Variable layout:
-    #   x = [ec(0..m-1), ed(0..m-1), gi(0..m-1), ge(0..m-1),
-    #        pv(0..m-1), m(0..m-1),
-    #        s_max_pen(0..m-1), s_min_pen(0..m-1),
-    #        curt(0..m-1), bx(0..m-1), z_export(0..m-1)]
-    #   + [evN_c(0..m-1) for each active EV]      ← EV DC charge per slot
-    #   + [evN_target_pen for each active EV]      ← deadline target slack
-    # ------------------------------------------------------------------
-    # The declared layout is the single source of truth for the decision-vector
-    # shape; every offset below is read from it rather than recomputed by hand,
-    # so the constraint matrices and the bounds assembly cannot drift apart.
+    # Variable layout: declared once in milp/_layout.py, the single source of
+    # truth for the decision-vector shape; every offset is read from it.
     fuse_active = main_fuse_amps is not None and main_fuse_amps > 1e-9
 
     # Solver-native whole-amp EV lattice (issue #797): resolved before the
@@ -392,6 +389,7 @@ def solve_milp(
         ev_on_widths=ev_amp_plan.on_widths(m),
         ev_amp3_widths=ev_amp_plan.amp3_widths(m),
         ev_mode3_widths=ev_amp_plan.mode3_widths(m),
+        battery_target=battery_target is not None,
     )
     _off = derive_milp_offsets(column_layout, len(active_evs))
     ev_amp_offsets = _off.ev_amp_offsets
@@ -453,6 +451,9 @@ def solve_milp(
         max_grid_export_power_kw=max_grid_export_power_kw,
         slots=slots,
         future_idx=future_idx,
+        grid_import_cap_per_slot=(
+            None if battery_target is None else battery_target.grid_import_cap
+        ),
     )
 
     # ------------------------------------------------------------------
@@ -497,14 +498,14 @@ def solve_milp(
         base_load=base_load,
         export_fee_per_kwh=export_fee_per_kwh,
     )
+    if battery_target is not None:  # undiscounted target slack (issue #1109)
+        c_obj[column_layout.offset("battery_target_penalty")] = (
+            battery_target.penalty_per_kwh
+        )
 
-    try:
-        forecast_export_reserve_kwh = float(battery_export_forecast_reserve_kwh)
-    except TypeError, ValueError:
-        forecast_export_reserve_kwh = 0.0
-    if not math.isfinite(forecast_export_reserve_kwh):
-        forecast_export_reserve_kwh = 0.0
-    forecast_export_reserve_kwh = min(max(forecast_export_reserve_kwh, 0.0), usable_kwh)
+    forecast_export_reserve_kwh = min(
+        max(finite_or(battery_export_forecast_reserve_kwh, 0.0), 0.0), usable_kwh
+    )
 
     constraints = _build_constraints(
         m,
@@ -552,6 +553,8 @@ def solve_milp(
         phase_fuse_active=phase_fuse_active,
         max_phase_import_per_slot_kwh=max_phase_import_per_slot_kwh,
         ev_amp_plan=ev_amp_plan,
+        battery_target=battery_target,
+        soc_floor_per_slot=[slots[i].discharge_reserve_kwh for i in future_idx],
     )
 
     # Solver-native whole-amp EV lattice (issue #797): link ev_c[t] to the
@@ -748,6 +751,7 @@ def solve_milp(
         _min_action_kwh=_MIN_ACTION_KWH,
     )
     diagnostics["primary_postwrite_inventory_validation"] = inventory_validation
+    diagnostics["lp_grid_import_kwh"] = result.x[gi_off : gi_off + m].tolist()
     if phase_fuse_active:
         diagnostics.update(
             phase_fuse_validation=phase_validation,

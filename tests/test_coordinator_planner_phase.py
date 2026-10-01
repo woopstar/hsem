@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
+from custom_components.hsem.coordinator_helpers import _StaleUpdateCycle
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planned_slot import PlannedSlot
@@ -42,12 +43,16 @@ def _planner_output(**kwargs: Any) -> PlannerOutput:
                 start=_SLOT_START,
                 end=_SLOT_START + _SLOT,
                 recommendation=_CHARGE,
+                avg_house_consumption_kwh=0.5,
+                solcast_pv_estimate_kwh=0.3,
                 batteries_charged_kwh=1.0,
             ),
             PlannedSlot(
                 start=_SLOT_START + _SLOT,
                 end=_SLOT_START + 2 * _SLOT,
                 recommendation=_WAIT,
+                avg_house_consumption_kwh=0.4,
+                solcast_pv_estimate_kwh=0.3,
             ),
         ],
         **kwargs,
@@ -142,11 +147,14 @@ class TestFreshPlan:
         live = LiveState()
         live.huawei_batteries_soc_pct = 40.0
         live.huawei_batteries_rated_capacity_wh = 10_000.0
-        compute_floor = MagicMock(return_value=(12.0, {"reason": "bridge"}))
+        profile = [(_SLOT_START, 12.0), (_SLOT_START + _SLOT, 9.0)]
+        compute_floor = MagicMock(return_value=(12.0, {"reason": "bridge"}, profile))
         correct_margin = MagicMock()
 
         with (
-            patch.object(coordinator._dynamic_floor, "compute_floor", compute_floor),
+            patch.object(
+                coordinator._dynamic_floor, "compute_floor_profile", compute_floor
+            ),
             patch.object(coordinator._dynamic_floor, "correct_margin", correct_margin),
         ):
             _, build = await _run_phase(coordinator, live)
@@ -160,12 +168,80 @@ class TestFreshPlan:
             None,
             pytest.approx(12.0),
         ]
+        # So does the per-slot profile (issue #1188), keyed by ISO slot start.
+        iso_profile = [(start.isoformat(), pct) for start, pct in profile]
+        assert [i.dynamic_floor_profile for i in solved] == [None, iso_profile]
+        assert coordinator._effective_discharge_floor_profile == iso_profile
+        # Net load is the reference plan's (issue #1187), not the regenerated
+        # recommendations' (0.3 each).
         bridge_slots = compute_floor.call_args.kwargs["slots"]
         assert [slot.estimated_net_consumption_kwh for slot in bridge_slots] == [
-            pytest.approx(0.3),
-            pytest.approx(0.3),
+            pytest.approx(0.2),
+            pytest.approx(0.1),
         ]
-        correct_margin.assert_called_once_with(40.0, 12.0, now=_NOW)
+        # The margin learner is judged against the floor the plan may reach
+        # by the end of the live slot: the next slot's 9 %, not this slot's 12 %.
+        correct_margin.assert_called_once_with(40.0, 9.0, now=_NOW)
+
+    @pytest.mark.asyncio
+    async def test_reference_solve_keeps_the_battery_target(
+        self, tmp_path: Path
+    ) -> None:
+        """Both solves run with the house-battery target as configured (#1186).
+
+        The target's stage 2 can remove a night grid charge the floor scan
+        credits, so the reference plan must not be solved without it.
+        """
+        coordinator, executor = _coordinator(
+            tmp_path, _planner_output(), {"hsem_dynamic_discharge_floor": True}
+        )
+        live = LiveState()
+        live.huawei_batteries_soc_pct = 40.0
+        live.huawei_batteries_rated_capacity_wh = 10_000.0
+        build = MagicMock(
+            return_value=PlannerInput(
+                battery_target_soc_enabled=True,
+                battery_target_soc_pct=80.0,
+                battery_target_soc_time="16:00:00",
+            )
+        )
+
+        with patch(f"{_MODULE}.build_planner_input", build):
+            await coordinator._run_planner_phase(
+                _NOW, live, coordinator._cfg, None, True, 0
+            )
+
+        solved = [call.args[1] for call in executor.await_args_list]
+        assert len(solved) == 2
+        assert [i.dynamic_discharge_floor_pct is None for i in solved] == [True, False]
+        for field_name in (
+            "battery_target_soc_enabled",
+            "battery_target_soc_pct",
+            "battery_target_soc_time",
+        ):
+            assert getattr(solved[0], field_name) == getattr(solved[1], field_name)
+        assert solved[0].battery_target_soc_enabled is True
+
+    @pytest.mark.asyncio
+    async def test_stale_cycle_during_the_reference_solve_is_dropped(
+        self, tmp_path: Path
+    ) -> None:
+        """A newer update cycle during the reference solve aborts this one."""
+        coordinator, executor = _coordinator(
+            tmp_path, _planner_output(), {"hsem_dynamic_discharge_floor": True}
+        )
+
+        async def _solve_and_bump(*_args: Any) -> PlannerOutput:
+            coordinator._update_generation = 1
+            return _planner_output()
+
+        executor.side_effect = _solve_and_bump
+
+        with pytest.raises(_StaleUpdateCycle):
+            await _run_phase(coordinator, LiveState())
+
+        executor.assert_awaited_once()
+        assert coordinator._effective_discharge_floor_pct is None
 
     @pytest.mark.asyncio
     async def test_dynamic_floor_without_live_soc_skips_margin_correction(
@@ -191,11 +267,13 @@ class TestFreshPlan:
         coordinator, _ = _coordinator(tmp_path, _planner_output())
         coordinator._effective_discharge_floor_pct = 30.0
         coordinator._effective_discharge_floor_diag = {"stale": True}
+        coordinator._effective_discharge_floor_profile = [("stale", 30.0)]
 
         _, build = await _run_phase(coordinator, LiveState())
 
         assert coordinator._effective_discharge_floor_pct is None
         assert coordinator._effective_discharge_floor_diag is None
+        assert coordinator._effective_discharge_floor_profile is None
         assert build.call_args.kwargs["dynamic_discharge_floor_pct"] is None
 
     @pytest.mark.asyncio

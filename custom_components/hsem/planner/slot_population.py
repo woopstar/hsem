@@ -118,6 +118,31 @@ def index_by_hour(items: list, hour_attr: str = "hour") -> dict[int, Any]:
 # keep this module under the 30 KB file-size limit).
 
 
+def _hourly_pv_by_hour(solcast_slots: list[SolcastSlot]) -> dict[int, float]:
+    """Return one hourly PV value per wall-clock hour for the index-free path.
+
+    Per-slot entries (``slot_in_day`` set, issue #1191) cannot be matched to a
+    slot without the shared index, so they are collapsed to the mean power of
+    their hour, which keeps the hour's energy.
+
+    Args:
+        solcast_slots: Hour-granular and/or per-slot PV entries.
+
+    Returns:
+        Average PV power in kW (kWh per hour) keyed by hour.
+    """
+    by_hour = {
+        sc.hour: sc.pv_estimate for sc in solcast_slots if sc.slot_in_day is None
+    }
+    per_slot: dict[int, list[float]] = {}
+    for sc in solcast_slots:
+        if sc.slot_in_day is not None:
+            per_slot.setdefault(sc.hour, []).append(sc.pv_estimate)
+    for hour, values in per_slot.items():
+        by_hour[hour] = math.fsum(values) / len(values)
+    return by_hour
+
+
 def populate_solcast(
     slots: list[PlannedSlot],
     solcast_slots: list[SolcastSlot],
@@ -127,20 +152,29 @@ def populate_solcast(
 ) -> None:
     """Write PV estimates into each slot, scaled to the slot duration.
 
-    Solcast data is provided per *hour*; if the slot duration is shorter
-    (e.g. 15 min) the estimate is divided proportionally.
+    ``SolcastSlot.pv_estimate`` is average power in kW over the entry's
+    period, so a slot's energy is that power times the slot duration.
+
+    - Hour-granular entries (``slot_in_day`` is ``None``) are split evenly
+      over the hour's slots.
+    - Per-slot entries (issue #1191) land on their own slot, keyed by
+      ``(day_offset, slot_in_day)`` through the shared index.  A slot without
+      its own entry falls back to an hour-granular entry for its hour, and a
+      slot with neither is recorded in ``tsi.missing_pv_slots`` and planned
+      with zero PV.
 
     When a :class:`TimeSeriesIndex` is provided the PV series is aligned via
     the shared slot index and missing slots are tracked centrally.
 
     When *corrector* is provided the raw PV estimate is corrected using the
     learned per-hour accuracy factor and intra-hour residual before being
-    written to the slot.  This keeps the raw Solcast data unchanged (the
-    correction is only applied at consumption time).
+    written to the slot.  The factor is the one of the slot's wall-clock hour
+    whatever the source cadence.  This keeps the raw Solcast data unchanged
+    (the correction is only applied at consumption time).
 
     Args:
         slots: Mutable list of planned slots to update.
-        solcast_slots: Per-hour Solcast PV estimate data.
+        solcast_slots: Hour-granular or per-slot Solcast PV estimate data.
         interval_minutes: Slot width in minutes.
         tsi: Optional shared time-series index.
         corrector: Optional :class:`~custom_components.hsem.utils.solar_corrector.SolarForecastCorrector`
@@ -155,7 +189,28 @@ def populate_solcast(
         interval_minutes,
         tsi is not None,
     )
-    if tsi is not None:
+    if tsi is None:
+        solcast_by_hour = _hourly_pv_by_hour(solcast_slots)
+        scale = 60.0 / interval_minutes  # e.g. 4 for 15-min slots
+        estimates = [
+            round(solcast_by_hour.get(slot.start.hour, 0.0) / scale, 3)
+            for slot in slots
+        ]
+    elif any(sc.slot_in_day is not None for sc in solcast_slots):
+        aligned = tsi.align_slot_pv(
+            {
+                (sc.day_offset, sc.slot_in_day): sc.pv_estimate
+                for sc in solcast_slots
+                if sc.slot_in_day is not None
+            },
+            {
+                (sc.day_offset, sc.hour): sc.pv_estimate
+                for sc in solcast_slots
+                if sc.slot_in_day is None
+            },
+        )
+        estimates = [0.0 if math.isnan(val) else val for val in aligned]
+    else:
         # Use (day_offset, hour) keys when any entry carries a non-zero
         # day_offset so that tomorrow's PV forecast is not shadowed by today's.
         pv_by_hour: dict[int, float] | dict[tuple[int, int], float]
@@ -166,29 +221,9 @@ def populate_solcast(
         else:
             pv_by_hour = {sc.hour: sc.pv_estimate for sc in solcast_slots}
         aligned = tsi.align_hourly_pv(pv_by_hour)
-        for i, (slot, val) in enumerate(zip(slots, aligned)):
-            raw_estimate = 0.0 if math.isnan(val) else val
-            if corrector is not None and raw_estimate > 0:
-                slot.solcast_pv_estimate_kwh = round(
-                    corrector.get_corrected_pv(
-                        slot.start.hour,
-                        raw_estimate,
-                        slots_ahead=corrector.slots_ahead_for(
-                            slot.start, interval_minutes, fallback=i
-                        ),
-                    ),
-                    3,
-                )
-            else:
-                slot.solcast_pv_estimate_kwh = round(raw_estimate, 3)
-        return
+        estimates = [0.0 if math.isnan(val) else val for val in aligned]
 
-    solcast_by_hour = index_by_hour(solcast_slots)
-    scale = 60.0 / interval_minutes  # e.g. 4 for 15-min slots
-
-    for i, slot in enumerate(slots):
-        sc = solcast_by_hour.get(slot.start.hour)
-        raw_estimate = round(sc.pv_estimate / scale, 3) if sc else 0.0
+    for i, (slot, raw_estimate) in enumerate(zip(slots, estimates)):
         if corrector is not None and raw_estimate > 0:
             slot.solcast_pv_estimate_kwh = round(
                 corrector.get_corrected_pv(
@@ -201,7 +236,7 @@ def populate_solcast(
                 3,
             )
         else:
-            slot.solcast_pv_estimate_kwh = raw_estimate
+            slot.solcast_pv_estimate_kwh = round(raw_estimate, 3)
 
 
 def populate_consumption(

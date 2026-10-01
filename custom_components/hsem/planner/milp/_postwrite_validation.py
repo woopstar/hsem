@@ -16,7 +16,12 @@ def validate_primary_inventory(
     current_kwh: float,
     usable_kwh: float,
 ) -> dict[str, object]:
-    """Validate cumulative rounded primary-battery energy fields."""
+    """Validate cumulative rounded primary-battery energy fields.
+
+    Each slot's inventory must stay at or above its
+    ``discharge_reserve_kwh`` (issue #1188), which is 0 without a dynamic
+    discharge floor.
+    """
     initial = float(current_kwh)
     capacity = float(usable_kwh)
     if not math.isfinite(initial) or not math.isfinite(capacity) or capacity < 0.0:
@@ -41,7 +46,7 @@ def validate_primary_inventory(
                 "slot": sequence,
             }
         running += charge - discharge
-        if running < lower - _TOLERANCE_KWH:
+        if running < min(initial, slot.discharge_reserve_kwh) - _TOLERANCE_KWH:
             return {
                 "valid": False,
                 "reason": "primary_inventory_below_floor",

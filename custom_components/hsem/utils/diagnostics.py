@@ -220,6 +220,7 @@ def _slot_to_dict(slot: Any) -> dict[str, Any]:
         "estimated_net_consumption_kwh": round(slot.estimated_net_consumption_kwh, 3),
         "estimated_cost_currency": round(slot.estimated_cost_currency, 4),
         "estimated_battery_soc_pct": round(slot.estimated_battery_soc_pct, 1),
+        "discharge_reserve_kwh": round(getattr(slot, "discharge_reserve_kwh", 0.0), 3),
         "batteries_charged_kwh": round(slot.batteries_charged_kwh, 3),
         "batteries_discharged_kwh": round(slot.batteries_discharged_kwh, 3),
         "grid_import_kwh": round(slot.grid_import_kwh, 3),
@@ -339,6 +340,9 @@ def _planner_output_summary(output: PlannerOutput) -> dict[str, Any]:
         "data_quality": output.data_quality.as_dict(),
         "explanation": output.explanation.as_dict(),
         "plan_cost": plan_cost,
+        # House-battery target record for the next occurrence (issue #1109);
+        # None when the target is disabled.
+        "battery_target": output.battery_target,
         "candidates": candidates_summary,
         "slots": [_slot_to_dict(s) for s in output.slots],
         "charge_windows": [_window_to_dict(w) for w in output.charge_windows],

@@ -156,6 +156,14 @@ floor drops to the configured minimum. The battery can then cover evening
 load, and the cost function decides whether that beats holding it. The floor
 never reads the previous plan, so it cannot flip from one replan to the next.
 
+The reference plan also supplies the house load and PV the floor bridges
+over, so the floor and the plan work from the same forecast. Before issue
+#1187 the floor compared the load of one slot with a whole hour of PV, which
+at 15- or 30-minute slots made it see a solar refill too early and reserve too
+little. Floors on such setups are higher since that fix on days when PV stays
+below the house load. Hourly setups keep the same arithmetic; their floor can
+still move a little, because the bridge now uses the planner's corrected PV.
+
 A cheap night releases the floor even when the reference plan does not buy
 there (issue #1156). This happens when tomorrow's PV will refill the battery
 anyway. A slot counts as an **affordable refill** when its import price is
@@ -165,14 +173,42 @@ A night that is not the cheapest time of the look-ahead does not count, for
 example a 0.15 night before a 0.12 day. Neither do flat prices. The sensor then
 reports `refill_type: grid_available`.
 
-The floor is also the origin of the planner's battery model: planned
-capacity is measured in kWh above it, and the planned SoC is
-`floor + capacity`. When the battery is already **below** the dynamic floor
-(for example 11 % against a 75.74 % bridge reserve), the planner uses the live
-SoC as that origin instead. The battery still cannot discharge (it starts
-with 0 kWh above the origin), but the plan reports the real SoC rather than
-the unreached floor, and it can plan charging into the battery's full
-remaining headroom (issue #1094).
+**The reserve declines through the night (issue #1188).** The floor above is
+the reserve needed _now_. One slot later the bridge is one slot shorter, and
+after the refill no reserve is needed at all. The planner therefore gets the
+floor for every slot, not one number:
+
+```text
+reserve at the start of slot t = (house load from slot t to the refill slot
+                                  − grid charges credited from slot t on) × safety_margin
+reserve from the refill slot on = 0
+```
+
+In the plan each slot must end with at least the next slot's reserve. So:
+
+- A battery **above** the reserve serves the house through the night and
+  ends each slot at or above the declining reserve. Only what goes beyond
+  that is blocked: exporting the battery or charging an EV from it.
+- A battery **below** the reserve holds until the reserve has declined to it,
+  then follows it down. It is not charged from the grid to reach the reserve,
+  the plan reports its real SoC, and it can charge into its full headroom
+  (issue #1094).
+- From the refill slot on the plan may use the battery down to the hardware
+  minimum, so the day after the refill is planned with the real battery.
+
+Before this change the planner held the floor constant for all 48 hours. The
+timeline then showed `batteries_wait_mode` with grid import all night, while
+in reality each replan lowered the floor and the battery kept feeding the
+house (issue #1125).
+
+`sensor.hsem_effective_discharge_floor_sensor` still shows the reserve at the
+start of the current slot. During the slot the battery may go down to the next
+slot's reserve, so the live SoC can read slightly below the sensor until the
+next replan.
+
+The planner's battery model always starts at the hardware minimum SoC:
+planned capacity (`estimated_battery_capacity_kwh`) is kWh above the hardware
+minimum, with or without the dynamic floor.
 
 ### Consumption prediction
 
@@ -231,14 +267,31 @@ See [Price interval semantics](planner-spec.md#price-interval-semantics) in the 
 
 ### PV forecast
 
-| Field           | Type                | Description                     |
-| --------------- | ------------------- | ------------------------------- |
-| `solcast_slots` | `list[SolcastSlot]` | Forecast PV production per hour |
+| Field           | Type                | Description                                          |
+| --------------- | ------------------- | ---------------------------------------------------- |
+| `solcast_slots` | `list[SolcastSlot]` | Forecast PV production, per hour or per planner slot |
 
 Each `SolcastSlot` carries:
 
 - `hour` — 0-based clock-hour
-- `pv_estimate` — expected PV energy (kWh) for that hour
+- `pv_estimate` — average PV power (kW) over the entry's period. For an
+  hourly entry that is also the hour's energy in kWh
+- `day_offset` — whole days from the planning midnight
+- `slot_in_day` — optional index of the planner slot within its day. `None`
+  means the entry covers the whole hour and is split evenly over its slots
+
+The forecast reaches the plan at the source's resolution (issue #1191):
+
+| Solcast attribute    | Cadence | What the planner uses                                  |
+| -------------------- | ------- | ------------------------------------------------------ |
+| `detailedHourly`     | 60 min  | One value per hour, split evenly over the hour's slots |
+| `detailedForecast`   | 30 min  | One value per half-hour at 15- and 30-minute slots     |
+| any source at 15 min | 15 min  | One value per quarter-hour at 15-minute slots          |
+
+A source finer than the planner slot is averaged over the slot, so the hour's
+energy is the same at every slot interval. With both Solcast attributes
+enabled the half-hourly one is used. A slot with no PV data is planned with
+zero PV and listed in the `*_pv_missing_hours` data-quality fields.
 
 For multi-day horizons, a **confidence decay** factor is applied to PV estimates
 for future days to account for forecast uncertainty:
@@ -322,6 +375,60 @@ PV-surplus run. That checkpoint follows the run's demand window—immediately
 before the next distinct surplus run, or horizon end. Planned PV or grid charge
 may restore the reserve before it is measured. If it cannot, battery-origin
 export may be suppressed while direct PV export remains available.
+
+### House-battery target SoC by deadline (issue #1109)
+
+| Field                        | Default      | Description                                                                   |
+| ---------------------------- | ------------ | ----------------------------------------------------------------------------- |
+| `battery_target_soc_enabled` | `False`      | Opt-in. Off keeps every plan exactly as it is today.                          |
+| `battery_target_soc_pct`     | `100.0`      | Target as absolute SoC (includes the hardware end-of-discharge limit).        |
+| `battery_target_soc_time`    | `"17:00:00"` | Daily local time by which the target should be reached. Next occurrence only. |
+
+The target is a preference for building an extra reserve, for example for the
+evening, to cover days when the forecast is wrong. It is **not** a force-charge
+function:
+
+- Only PV that the normal plan would export is used. HSEM never buys extra
+  grid energy for the target.
+- The grid charging and the discharge the normal plan already needs stay
+  exactly as they are, including an earlier discharge window in the morning.
+- It is a deadline, not "charge as soon as possible". If the forecast shows
+  enough surplus later, HSEM may still export now when that pays better. If
+  not, it stores the current surplus. With no surplus, the battery stays where
+  the normal plan leaves it.
+- Surplus above the target is exported, and after the target time the battery
+  behaves normally.
+
+HSEM first computes the normal plan. Only if that plan misses the target does
+it plan again with one extra rule: grid import is fixed at the normal plan's
+value in every slot up to the target time, and may not rise afterwards. The
+only way left to raise the battery level at the target time is then to export
+less PV, and the planner gives up the lowest-paid export first.
+
+A charge-past-target EV wants the same spare PV. The house battery goes first;
+the EV gets what is left once the battery has what it needs.
+
+The working-mode sensor's `battery_target` attribute shows the result for the
+next occurrence: the target, the level the normal plan would reach
+(`stage1_projected_kwh`), the level the plan reaches (`projected_kwh`), and
+any `shortfall_kwh`.
+
+It also shows what the target costs (issue #1185). `preference_cost` is the
+plan's money cost with the target minus its cost without it
+(`stage2_cost − stage1_cost`), over the planning horizon, and
+`preference_cost_per_kwh` divides it by the extra energy held at the target
+time. Two things to keep in mind when reading it:
+
+- It is a per-plan figure. Every replan recomputes it for the hours ahead, so
+  adding up the values of one day counts the same hours many times.
+- The battery usually ends the horizon with more energy because of the
+  target. That energy is worth something later, which the money figure does
+  not include. `terminal_soc_value_delta` shows the planner's estimate of it
+  (negative means the target leaves more in the battery).
+
+These fields are empty when the normal plan already meets the target. See
+[planner-spec.md](planner-spec.md#house-battery-target-soc-by-deadline-issue-1109)
+for the model.
 
 ### Seasonal configuration
 
@@ -924,7 +1031,12 @@ score
   + soc_penalty
   + grid_limit_penalty
   + terminal_soc_value
+  + battery_target_penalty
 ```
+
+`battery_target_penalty` is zero unless the opt-in house-battery target is
+active (issue #1109). It prices a shortfall against the target at the next
+target time, for every candidate, and never enters `total_cost`.
 
 ### Grid import cost
 

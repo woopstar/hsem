@@ -11,6 +11,10 @@ This module holds the two configuration/result types that were extracted from
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from custom_components.hsem.planner.battery_target import BatteryTargetSpec
 
 
 @dataclass
@@ -134,6 +138,11 @@ class CostWeights:
     # Time discount for selector score (1.0 = no discount)
     time_discount_rate: float = 0.995
 
+    # House-battery target SoC by deadline (issue #1109).  When set, every
+    # candidate's ``score`` (never ``total_cost``) gains
+    # ``penalty_per_kwh × shortfall`` at the target slot.  ``None`` disables it.
+    battery_target: BatteryTargetSpec | None = None
+
 
 @dataclass
 class PlanCostBreakdown:
@@ -169,6 +178,10 @@ class PlanCostBreakdown:
             Penalty for exceeding the configured grid power limit.
             Selector-only — does not enter :attr:`total_cost`.
 
+        battery_target_penalty:
+            House-battery target shortfall at the next target occurrence
+            priced at ``P`` (issue #1109), undiscounted.  Selector-only —
+            does not enter :attr:`total_cost`.
         terminal_soc_value:
             Net change in stored energy valued at the single end value
             ``V`` (``replacement_price_per_kwh``): ``(E_0 − E_end) × V``,
@@ -183,7 +196,7 @@ class PlanCostBreakdown:
         score:
             Selector objective.  Equal to
             ``total_cost + soc_penalty + grid_limit_penalty
-            + terminal_soc_value``.
+            + terminal_soc_value + battery_target_penalty``.
             **Lower is better.**  The candidate selector picks the plan
             with the lowest score.
         total:
@@ -200,6 +213,7 @@ class PlanCostBreakdown:
     soc_penalty: float = 0.0
     grid_limit_penalty: float = 0.0
     terminal_soc_value: float = 0.0
+    battery_target_penalty: float = 0.0
     total_cost: float = 0.0
     score: float = 0.0
     # Deprecated alias for ``score``; kept for backward compatibility.

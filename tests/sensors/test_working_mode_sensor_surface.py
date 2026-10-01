@@ -73,6 +73,66 @@ class TestAttributesBeforeReady:
         assert attributes["last_updated"] == "2026-06-01T12:00:00+00:00"
 
 
+class TestPlanningAttributes:
+    """A ready snapshot exposes the planning attributes."""
+
+    def test_battery_target_diagnostics_are_exposed(self) -> None:
+        """The next-occurrence target record is an attribute (issue #1109)."""
+        sensor = _make_sensor()
+        report = {
+            "target_time": "2026-09-14T17:00:00+02:00",
+            "target_kwh": 9.0,
+            "stage2_ran": True,
+            "stage2_status": "solved",
+            "shortfall_kwh": 0.0,
+            # Preference cost (issue #1185): what the target costs in money.
+            "stage1_cost": -18.2572,
+            "stage2_cost": -15.9423,
+            "preference_cost": 2.3149,
+            "preference_cost_per_kwh": 0.6256,
+            "terminal_soc_value_delta": -1.8456,
+        }
+        sensor.coordinator.data = CoordinatorData(
+            cfg=SensorConfig(), live=_live(), battery_target=report
+        )
+
+        attributes = sensor.extra_state_attributes
+
+        assert attributes["battery_target"] == report
+        assert attributes["status"] == "ok"
+        assert list(attributes) == sorted(attributes)
+
+    def test_battery_target_is_none_when_disabled(self) -> None:
+        """A disabled target publishes ``None``, not a stale record."""
+        sensor = _make_sensor()
+        sensor.coordinator.data = CoordinatorData(cfg=SensorConfig(), live=_live())
+
+        assert sensor.extra_state_attributes["battery_target"] is None
+
+    def test_extended_attributes_add_the_source_entities(self) -> None:
+        """Extended mode adds the configured entity IDs on top."""
+        sensor = _make_sensor()
+        cfg = SensorConfig()
+        plain = CoordinatorData(cfg=cfg, live=_live())
+        sensor.coordinator.data = plain
+        without = sensor.extra_state_attributes
+
+        extended_cfg = SensorConfig()
+        extended_cfg.extended_attributes = True
+        extended_cfg.read_only = True
+        sensor.coordinator.data = CoordinatorData(
+            cfg=extended_cfg, live=_live(), next_update="2026-06-01T12:05:00+00:00"
+        )
+        extended = sensor.extra_state_attributes
+
+        assert "house_consumption_power_entity" not in without
+        assert "house_consumption_power_entity" in extended
+        assert extended["next_update"] == "2026-06-01T12:05:00+00:00"
+        assert extended["read_only"] is True
+        assert extended["status"] == "read_only"
+        assert set(without) < set(extended)
+
+
 class TestHardwareWriteGuards:
     """Writes are skipped whenever the snapshot cannot be acted on."""
 

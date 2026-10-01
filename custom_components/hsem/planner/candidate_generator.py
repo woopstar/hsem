@@ -46,14 +46,18 @@ from datetime import datetime
 from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.planner.battery_target import BatteryTargetSpec
 from custom_components.hsem.planner.candidates._mutations import (
     _apply_passive_solar,
     _clear_all_charge_discharge,
     _copy_slots,
 )
-from custom_components.hsem.planner.cost_function import PlanCostBreakdown
-from custom_components.hsem.planner.milp._past_target_reservation import (
-    solve_milp_with_past_target_reservation,
+from custom_components.hsem.planner.cost_function import (
+    CostWeights,
+    PlanCostBreakdown,
+)
+from custom_components.hsem.planner.milp._battery_target import (
+    solve_milp_with_battery_target,
 )
 from custom_components.hsem.planner.milp_optimizer import (
     CANDIDATE_MILP,
@@ -92,28 +96,24 @@ def _forecast_export_reserve_kwh(inp: PlannerInput, usable_kwh: float) -> float:
     """Return model kWh protected from deliberate battery export.
 
     The configured percentage is expressed as absolute SoC points above the
-    Huawei hardware end-of-discharge limit. The MILP inventory origin may
-    already be raised by the dynamic discharge floor, so only the remaining
-    distance from that effective floor to the configured target is protected.
-    The origin comes from the same resolver as the engine's model capacity, so
-    both agree when the live SoC caps the dynamic floor (issue #1094).
+    Huawei hardware end-of-discharge limit, which is also the MILP inventory
+    origin (issue #1188). The dynamic discharge floor is a separate per-slot
+    bound on stored energy (``PlannedSlot.discharge_reserve_kwh``); the two
+    protect the same absolute SoC range, so the higher one binds.
     """
     model_usable_kwh = max(finite_or(usable_kwh, 0.0), 0.0)
     rated_kwh = max(finite_or(inp.battery_rated_capacity_kwh, 0.0), 0.0)
     if model_usable_kwh <= 1e-9 or rated_kwh <= 1e-9:
         return 0.0
 
-    hardware_floor_pct, effective_floor_pct, maximum_soc_pct = resolve_soc_bounds_pct(
-        inp.battery_end_of_discharge_soc_pct,
-        inp.battery_max_soc_pct,
-        inp.dynamic_discharge_floor_pct,
-        inp.battery_soc_pct,
+    hardware_floor_pct, _, maximum_soc_pct = resolve_soc_bounds_pct(
+        inp.battery_end_of_discharge_soc_pct, inp.battery_max_soc_pct
     )
     configured_pct = min(
         max(finite_or(inp.battery_forecast_reserve_pct, 0.0), 0.0), 50.0
     )
     target_soc_pct = min(hardware_floor_pct + configured_pct, maximum_soc_pct)
-    reserve_kwh = rated_kwh * max(target_soc_pct - effective_floor_pct, 0.0) / 100.0
+    reserve_kwh = rated_kwh * max(target_soc_pct - hardware_floor_pct, 0.0) / 100.0
     return min(reserve_kwh, model_usable_kwh)
 
 
@@ -169,6 +169,9 @@ def generate_candidates(
     max_discharge_per_slot: float | None = None,
     replacement_price_per_kwh: float | None = None,
     ev_configs: list[EVConfig] | None = None,
+    battery_target: BatteryTargetSpec | None = None,
+    cost_weights: CostWeights | None = None,
+    slot_duration_hours: float = 1.0,
 ) -> list[CandidatePlan]:
     """Generate all candidate plans from the already-populated baseline slots.
 
@@ -210,6 +213,15 @@ def generate_candidates(
             The engine computes the deadline slot mapping before passing the
             configs here.  ``None`` means no EV co-optimisation
             (backward-compatible behaviour).
+        battery_target:
+            Next house-battery target occurrence (issue #1109), or ``None``
+            when the target is disabled.  Adds the stage-2 solve described
+            in ``planner/milp/_battery_target.py``.
+        cost_weights:
+            The selector's cost weights.  Only used to report the battery
+            target's preference cost (issue #1185); never changes a plan.
+        slot_duration_hours:
+            Slot width in hours, for the same report.
 
     Returns:
         Ordered list of :class:`CandidatePlan` objects: ``no_action``,
@@ -266,9 +278,12 @@ def generate_candidates(
         )
         forecast_export_reserve_kwh = _forecast_export_reserve_kwh(inp, usable_kwh)
 
-        milp_result = solve_milp_with_past_target_reservation(
+        milp_result = solve_milp_with_battery_target(
             baseline_slots,
             now,
+            battery_target=battery_target,
+            cost_weights=cost_weights,
+            slot_duration_hours=slot_duration_hours,
             current_kwh=current_kwh,
             usable_kwh=usable_kwh,
             max_charge_per_slot=max_charge_per_slot,

@@ -108,6 +108,14 @@ class PlannedSlot:
             the go-e (or compatible) API instead of running at full speed.
         ev_second_charger_calculated_power:
             Same as ``ev_charger_calculated_power``, but for the second EV.
+        discharge_reserve_kwh:
+            Stored energy, in kWh above the hardware discharge floor, that
+            the plan must still hold at the *end* of this slot.  It is the
+            dynamic discharge floor's reserve for the rest of the bridge to
+            the next refill (issue #1188); 0 when the floor is disabled, on
+            past slots, and from the refill slot on.  Written once per
+            planner run by ``planner/discharge_reserve.py`` and read by every
+            candidate, so all plans are held to the same bound.
     """
 
     start: datetime
@@ -135,3 +143,4 @@ class PlannedSlot:
     primary_battery_export_kwh: float = 0.0
     pv_export_kwh: float = 0.0
     recommendation: str | None = None
+    discharge_reserve_kwh: float = 0.0

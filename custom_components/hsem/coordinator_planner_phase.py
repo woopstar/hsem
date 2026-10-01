@@ -20,7 +20,7 @@ from custom_components.hsem.coordinator_cycle import (
     EV_DELIVERED_ENERGY_REPLAN_MIN_SECONDS,
 )
 from custom_components.hsem.coordinator_dynamic_floor import (
-    compute_dynamic_floor_from_plan,
+    CoordinatorDynamicFloorMixin,
 )
 from custom_components.hsem.coordinator_helpers import (
     LoadForecastSignature,
@@ -32,9 +32,6 @@ from custom_components.hsem.coordinator_helpers import (
     load_forecast_signatures_match,
 )
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
-from custom_components.hsem.coordinator_state import (
-    CoordinatorSharedState,
-)
 from custom_components.hsem.coordinator_tracking import (
     accumulate_daily_plan_actuals,
     accumulate_financials,
@@ -59,7 +56,7 @@ from custom_components.hsem.utils.logger import (
 from custom_components.hsem.utils.misc import get_config_value
 
 
-class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
+class CoordinatorPlannerPhaseMixin(CoordinatorDynamicFloorMixin):
     """Planner invocation and replan-decision behaviour for the coordinator."""
 
     async def _run_planner_phase(
@@ -79,15 +76,8 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
 
         Returns the updated working-mode state string.
         """
-        # Dynamic discharge floor (issue #600). It is computed from a floor-free
-        # reference solve in the same replan (issue #1140), never from the
-        # plan it constrains; between replans the floor in force is kept.
-        dynamic_floor_enabled = bool(
-            get_config_value(self._config_entry, "hsem_dynamic_discharge_floor")
-        )
-        if not dynamic_floor_enabled:
-            self._effective_discharge_floor_pct = None
-            self._effective_discharge_floor_diag = None
+        # Dynamic discharge floor (issue #600): see coordinator_dynamic_floor.py.
+        dynamic_floor_enabled = self._sync_dynamic_floor_enabled()
 
         # Collect session EV charge power for session-aware MILP (issue #615).
         ev_session_kw: dict[str, float] = {}
@@ -142,23 +132,8 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
             )
             planner_input.solar_corrector = self._solar_corrector
             if dynamic_floor_enabled:
-                reference_output = await self.hass.async_add_executor_job(
-                    run_planner, planner_input
-                )
-                if getattr(self, "_update_generation", 0) != captured_generation:
-                    raise _StaleUpdateCycle
-                floor_pct, floor_diag = compute_dynamic_floor_from_plan(
-                    self._dynamic_floor,
-                    self._hourly_recommendations,
-                    reference_output,
-                    planner_input,
-                    live,
-                    now,
-                )
-                self._effective_discharge_floor_pct = floor_pct
-                self._effective_discharge_floor_diag = floor_diag
-                planner_input = replace(
-                    planner_input, dynamic_discharge_floor_pct=floor_pct
+                planner_input = await self._async_apply_dynamic_floor(
+                    planner_input, live, now, captured_generation
                 )
             self._last_planner_input = planner_input
 
@@ -239,11 +214,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                 else "(unknown)",
             )
 
-        floor_in_force = self._effective_discharge_floor_pct
-        if floor_in_force is not None and live.huawei_batteries_soc_pct is not None:
-            self._dynamic_floor.correct_margin(
-                live.huawei_batteries_soc_pct, floor_in_force, now=now
-            )
+        self._learn_dynamic_floor_margin(live, now)
 
         # Window-level hysteresis (issue #315).
         window_hys_minutes = cfg.planner_window_hysteresis_minutes

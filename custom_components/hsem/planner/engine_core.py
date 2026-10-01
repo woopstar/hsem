@@ -14,6 +14,10 @@ from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.planner.battery_target import (
+    resolve_battery_target,
+    summarize_battery_target,
+)
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_MILP,
     CANDIDATE_PASSIVE,
@@ -26,6 +30,10 @@ from custom_components.hsem.planner.charging.opportunistic_charge import (
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.cost_helpers import (
     terminal_end_value_from_last_day,
+)
+from custom_components.hsem.planner.discharge_reserve import (
+    apply_discharge_reserve,
+    resolve_effective_discharge_floor_pct,
 )
 from custom_components.hsem.planner.discharge_scheduler import (
     apply_excess_export,
@@ -79,28 +87,10 @@ from custom_components.hsem.utils.misc import (
     resolve_cycle_cost,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
-from custom_components.hsem.utils.soc_bounds import resolve_soc_bounds_pct
 from custom_components.hsem.utils.units import (
     max_energy_per_slot_kwh,
     slot_duration_hours,
 )
-
-
-def _resolve_effective_discharge_floor_pct(
-    inp: PlannerInput,
-) -> tuple[float, float, float]:
-    """Return finite ``(hardware, effective, maximum)`` SoC bounds in percent.
-
-    Thin adapter over :func:`resolve_soc_bounds_pct`, which normalizes the
-    three limits (issue #807) and caps the dynamic floor at the live SoC so
-    the model origin is never a SoC the battery has not reached (issue #1094).
-    """
-    return resolve_soc_bounds_pct(
-        inp.battery_end_of_discharge_soc_pct,
-        inp.battery_max_soc_pct,
-        inp.dynamic_discharge_floor_pct,
-        inp.battery_soc_pct,
-    )
 
 
 def _schedule_slots(
@@ -310,6 +300,9 @@ def _select_candidate(
         max_discharge_per_slot=mdps,
         replacement_price_per_kwh=rppk,
         ev_configs=ev_configs,
+        battery_target=cw.battery_target,
+        cost_weights=cw,
+        slot_duration_hours=sdh,
     )
     _sanitize_passive_ev_fallback(candidates, ev_configs, now)
     winner, rejected, hyst = select_best_candidate(
@@ -359,30 +352,14 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         inp.interval_minutes,
         inp.interval_length_hours,
     )
-    # Dynamic discharge floor (issue #600): when enabled and higher than the
-    # configured minimum, use it as the effective discharge floor.  This
-    # reduces usable capacity and current capacity above the floor, which
-    # naturally limits export and preserves reserve energy.  A floor the
-    # battery has not reached yet is capped at the live SoC (issue #1094).
-    (
-        _hardware_eod_soc,
-        _effective_eod_soc,
-        _maximum_soc,
-    ) = _resolve_effective_discharge_floor_pct(inp)
-    if _effective_eod_soc > _hardware_eod_soc + 1e-9:
-        log_planner(
-            "debug",
-            "[core] Dynamic discharge floor active: %.1f%% (configured min: %.1f%%, "
-            "requested: %s, live SoC: %.1f%%)",
-            _effective_eod_soc,
-            _hardware_eod_soc,
-            inp.dynamic_discharge_floor_pct,
-            inp.battery_soc_pct,
-        )
+    # The battery model's origin is the hardware floor.  The dynamic
+    # discharge floor (issue #600) is a per-slot reserve on top of it,
+    # written onto the slots below (issue #1188).
+    _hardware_eod_soc, _, _maximum_soc = resolve_effective_discharge_floor_pct(inp)
     usable_kwh, current_kwh = usable_capacity(
         inp.battery_rated_capacity_kwh,
         inp.battery_soc_pct,
-        _effective_eod_soc,
+        _hardware_eod_soc,
         _maximum_soc,
     )
     if inp.battery_rated_capacity_kwh <= 0:
@@ -407,6 +384,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             "No slots generated; check interval_minutes and interval_length_hours."
         )
         return PlannerOutput(missing_inputs=missing_inputs, warnings=warnings)
+    apply_discharge_reserve(slots, inp, now, current_kwh)
     # Step 1 — populate time-series data
     data_quality, warnings, missing_inputs = _populate_slots(
         slots, inp, tsi, warnings, missing_inputs
@@ -549,7 +527,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     )
     # Step 4 — candidate plan generation and selection
     cw = CostWeights(
-        min_soc_pct=_effective_eod_soc,
+        min_soc_pct=_hardware_eod_soc,
         max_soc_pct=_maximum_soc,
         cycle_cost_per_kwh=effective_cycle_cost,
         battery_purchase_price=inp.battery_purchase_price,
@@ -598,6 +576,16 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             live_ev_removal.second,
         ),
     )
+    # House-battery target SoC (issue #1109): one spec drives the MILP stage-2
+    # solve and every candidate's score.
+    cw.battery_target = resolve_battery_target(
+        inp,
+        slots,
+        now,
+        usable_kwh=usable_kwh,
+        cycle_cost_per_kwh=effective_cycle_cost,
+        ev_configs=ev_configs,
+    )
     candidates, winner, candidate_rejected, hysteresis_result = _select_candidate(
         slots,
         inp,
@@ -607,7 +595,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         mcps,
         mdps,
         max_soc_kwh,
-        _effective_eod_soc,
+        _hardware_eod_soc,
         rppk,
         cw,
         sdh,
@@ -803,4 +791,5 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         ev_held_power_w=ev_held_power_w,
         ev_second_held_slot_start=ev_second_held_slot_start,
         ev_second_held_power_w=ev_second_held_power_w,
+        battery_target=summarize_battery_target(cw.battery_target, candidates, slots),
     )

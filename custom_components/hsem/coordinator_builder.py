@@ -41,6 +41,7 @@ from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
     get_max_discharge_power,
 )
+from custom_components.hsem.utils.soc_bounds import finite_or
 
 
 def _resolve_max_discharge_power_w(live: LiveState) -> float | None:
@@ -128,6 +129,56 @@ def _resolve_live_house_measurement(
 # ---------------------------------------------------------------------------
 
 
+def _build_solcast_slots(
+    pv_by_day_hour: dict[tuple[int, int], list[tuple[int, float]]],
+) -> list[SolcastSlot]:
+    """Build the planner's PV forecast entries from the populated slots.
+
+    The populator leaves the source's average power (kW) on every slot it
+    covers.  An hourly source therefore leaves one value on all slots of an
+    hour, and a finer source (half-hourly ``detailedForecast``, or a
+    15-minute forecast) leaves different ones.
+
+    - When every hour's slots agree, one hour-granular entry per
+      ``(day_offset, hour)`` is emitted, as before issue #1191.
+    - When any hour's slots differ, the source is finer than an hour and one
+      entry per slot is emitted with its ``slot_in_day``, so the planner sees
+      the forecast at the source's resolution.
+
+    Args:
+        pv_by_day_hour: ``(slot_in_day, average kW)`` of every slot, grouped
+            by ``(day_offset, hour)`` in chronological order.
+
+    Returns:
+        The ``SolcastSlot`` entries for :class:`PlannerInput`.
+    """
+    sub_hourly = any(
+        max(value for _, value in slots) - min(value for _, value in slots) > 1e-9
+        for slots in pv_by_day_hour.values()
+    )
+    if sub_hourly:
+        return [
+            SolcastSlot(
+                hour=hour,
+                pv_estimate=round(value, 3),
+                day_offset=day_offset,
+                slot_in_day=slot_in_day,
+            )
+            for (day_offset, hour), slots in pv_by_day_hour.items()
+            for slot_in_day, value in slots
+        ]
+    # fsum keeps the mean of identical values exact, so an hourly source gives
+    # the planner the same number as its first slot did.
+    return [
+        SolcastSlot(
+            hour=hour,
+            pv_estimate=round(math.fsum(value for _, value in slots) / len(slots), 3),
+            day_offset=day_offset,
+        )
+        for (day_offset, hour), slots in pv_by_day_hour.items()
+    ]
+
+
 def build_planner_input(
     *,
     cfg: SensorConfig,
@@ -166,7 +217,9 @@ def build_planner_input(
     seen_day_hours: set[tuple[int, int]] = set()
     consumption_averages: list[HourlyConsumptionAverage] = []
     price_points: list[PricePoint] = []
-    solcast_slots: list[SolcastSlot] = []
+    # Every slot's (slot_in_day, PV value) per (day_offset, hour), in
+    # first-seen order.
+    pv_by_day_hour: dict[tuple[int, int], list[tuple[int, float]]] = {}
 
     # slots_per_hour is used to up-scale per-slot consumption averages to
     # hourly totals for the planner engine.  Prices and Solcast PV are now
@@ -188,8 +241,9 @@ def build_planner_input(
         # as distinct quarter-hourly points (issue #720).  slot_in_day counts
         # real steps since local midnight, so both occurrences of the DST
         # fall-back hour keep their own price (issue #1160).  Consumption
-        # averages and Solcast PV are genuinely hour-granular and stay
-        # deduplicated below.
+        # averages are hour-granular and stay deduplicated below.  Solcast PV
+        # is collected per slot and emitted by _build_solcast_slots: per hour
+        # for an hourly source, per slot for a finer one (issue #1191).
         day_offset, slot_in_day = slot_position(
             rec.start, planning_midnight, int(cfg.recommendation_interval_minutes)
         )
@@ -205,6 +259,9 @@ def build_planner_input(
         )
 
         day_hour_key = (day_offset, h)
+        pv_by_day_hour.setdefault(day_hour_key, []).append(
+            (slot_in_day, rec.solcast_pv_estimate_kwh)
+        )
         if day_hour_key in seen_day_hours:
             continue
         seen_day_hours.add(day_hour_key)
@@ -219,13 +276,8 @@ def build_planner_input(
                 day_offset=day_offset,
             )
         )
-        solcast_slots.append(
-            SolcastSlot(
-                hour=h,
-                pv_estimate=round(rec.solcast_pv_estimate_kwh, 3),
-                day_offset=day_offset,
-            )
-        )
+
+    solcast_slots = _build_solcast_slots(pv_by_day_hour)
 
     _cycles = convert_to_int(cfg.batteries_expected_cycles)
     _w1d = convert_to_int(cfg.house_consumption_energy_weight_1d)
@@ -331,6 +383,9 @@ def build_planner_input(
         battery_forecast_reserve_pct=(
             forecast_reserve_pct if forecast_reserve_pct is not None else 0.0
         ),
+        battery_target_soc_enabled=bool(cfg.batteries_target_soc_enabled),
+        battery_target_soc_pct=finite_or(cfg.batteries_target_soc_pct, 100.0),
+        battery_target_soc_time=str(cfg.batteries_target_soc_time),
         export_min_price=convert_to_float(cfg.export_electricity_min_price) or 0.0,
         export_fee_per_kwh=convert_to_float(cfg.export_fee_per_kwh) or 0.0,
         main_fuse_amps=(float(cfg.main_fuse_amps) if cfg.main_fuse_amps > 0 else None),

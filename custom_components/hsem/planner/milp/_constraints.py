@@ -5,10 +5,16 @@ Extracted from ``solve_milp`` so the orchestrator remains under 30 KB.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import numpy as np
 
+from custom_components.hsem.planner.milp._battery_target_rows import (
+    BATTERY_TARGET_PENALTY_BLOCK,
+    BatteryTargetRows,
+    add_battery_target_row,
+)
 from custom_components.hsem.planner.milp._bounds import build_bounds
 from custom_components.hsem.planner.milp._ev_constraints import (
     add_ev_and_session_constraint_rows,
@@ -69,8 +75,21 @@ def _build_constraints(
     phase_fuse_active: bool = False,
     max_phase_import_per_slot_kwh: float = 0.0,
     ev_amp_plan: EvAmpPlan | None = None,
+    battery_target: BatteryTargetRows | None = None,
+    soc_floor_per_slot: Sequence[float] | None = None,
 ) -> dict:
     """Build all LP constraint matrices and variable bounds.
+
+    ``soc_floor_per_slot`` (issue #1188) is the dynamic discharge floor's
+    reserve: the stored energy, in kWh above the model origin, the battery
+    must still hold at the end of each LP slot.  It raises the lower SoC row
+    of that slot from 0.  The caller keeps it at or below ``current_kwh`` and
+    non-increasing, so holding the battery always satisfies it and the row
+    needs no penalty of its own.  ``None`` keeps every lower bound at 0.
+
+    ``battery_target`` (issue #1109) adds the house-battery target stage-2
+    soft row and pins ``gi[t]`` from below; its import cap is already folded
+    into ``grid_import_ub_per_slot`` by ``resolve_grid_bounds``.
 
     Returns a dict with keys:
         ``A_eq``, ``b_eq``, ``A_ub``, ``b_ub``, ``bounds``,
@@ -120,7 +139,7 @@ def _build_constraints(
     # Inequality constraints:
     #   1. SoC recurrence: soc[t] = soc[0] + Σ_{k≤t} (ec[k] − ed[k])
     #      Upper (soft): Σ_{k≤t}(ec[k]−ed[k]) − s_max_pen[t] ≤ usable−soc0
-    #      Lower (soft): −Σ_{k≤t}(ec[k]−ed[k]) − s_min_pen[t] ≤ soc0
+    #      Lower (soft): −Σ_{k≤t}(ec[k]−ed[k]) − s_min_pen[t] ≤ soc0 − floor[t]
     #      Penalty variables s_max_pen[t] and s_min_pen[t] absorb violations
     #      at high cost, preventing infeasibility from out-of-bounds initial SoC.
     #   2. Mutual exclusion: ec[t]/max_charge + ed[t]/max_dis ≤ 1
@@ -129,7 +148,7 @@ def _build_constraints(
     # ------------------------------------------------------------------
     # We encode SoC bounds as inequality rows:
     #   upper: cumsum(ec−ed)[t] − s_max_pen[t] ≤ (usable_kwh − current_kwh)
-    #   lower: −cumsum(ec−ed)[t] − s_min_pen[t] ≤ current_kwh
+    #   lower: −cumsum(ec−ed)[t] − s_min_pen[t] ≤ current_kwh − soc_floor[t]
     soc_rows = 2 * m
     # Mutual exclusion rows: ec[t]/max_charge + ed[t]/max_dis <= 1
     mutex_rows = m
@@ -152,7 +171,10 @@ def _build_constraints(
         # Penalty variable absorbs violation in lower bound
         A_ub[m + t, s_min_off + t] = -1.0
         b_ub[t] = usable_kwh - current_kwh  # upper SoC headroom
-        b_ub[m + t] = current_kwh  # lower SoC headroom
+        # Lower SoC headroom, down to this slot's discharge reserve.
+        b_ub[m + t] = current_kwh - (
+            float(soc_floor_per_slot[t]) if soc_floor_per_slot is not None else 0.0
+        )
 
         # Mutual exclusion: ec[t]/max_charge + ed[t]/max_dis <= 1
         A_ub[2 * m + t, ec_off + t] = 1.0 / max_charge_per_slot
@@ -396,6 +418,18 @@ def _build_constraints(
         A_ub = _reserve_output["A_ub"]
         b_ub = _reserve_output["b_ub"]
 
+    # House-battery target stage-2 soft row (issue #1109).
+    if battery_target is not None:
+        A_ub, b_ub = add_battery_target_row(
+            A_ub,
+            b_ub,
+            battery_target,
+            ec_off=ec_off,
+            ed_off=ed_off,
+            penalty_off=column_layout.offset(BATTERY_TARGET_PENALTY_BLOCK),
+            current_kwh=current_kwh,
+        )
+
     # ------------------------------------------------------------------
     # Variable bounds: all ≥ 0, charge/discharge capped by power limits.
     # Penalty variables are unbounded above (can absorb arbitrary
@@ -421,6 +455,9 @@ def _build_constraints(
         reserve_active=reserve_active or forecast_reserve_active,
         fuse_active=fuse_active,
         ev_amp_plan=ev_amp_plan,
+        grid_import_floor_per_slot=(
+            None if battery_target is None else battery_target.grid_import_floor
+        ),
     )
 
     return {

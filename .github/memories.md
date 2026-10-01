@@ -21,7 +21,7 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `coordinator.py`                      | HA lifecycle and collect/populate/plan/publication orchestration                                                     |
 | `coordinator_data.py`                 | Atomic `CoordinatorData` snapshot exposed to entities                                                                |
-| `coordinator_dynamic_floor.py`        | Dynamic floor from a floor-free reference solve: forecast net load + its charge decisions (issue #1140)              |
+| `coordinator_dynamic_floor.py`        | Dynamic floor from a floor-free reference solve: its per-slot net load, charge decisions and prices (#1140, #1187)   |
 | `coordinator_helpers.py`              | Pure override, strict-hold, and load-readiness/signature helpers                                                     |
 | `coordinator_load_forecast.py`        | ML/avg consumption population, load readiness, missing/estimated-hour diagnostics (issue #1110)                      |
 | `coordinator_load_hold.py`            | Non-planner load-forecast safety hold, grid-only EV-only fallback (issue #1106), force-charge re-apply (issue #1103) |
@@ -36,26 +36,29 @@ cycle are durable; stale generations must not publish.
 
 ### Planner layer (`custom_components/hsem/planner/`)
 
-| File                       | Responsibility                                                                                                                                                    |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `engine.py`                | Main entry point — orchestrates the full planning pipeline                                                                                                        |
-| `slot_population.py`       | Builds the 48/96/192-slot time horizon; populates PV/consumption/capacity                                                                                         |
-| `slot_price_population.py` | Populates per-slot prices incl. missing-price estimation (issue #1002) — split out of `slot_population.py` for the 30 KB limit                                    |
-| `candidate_generator.py`   | Generates charge/discharge plan candidates (partial-SoC, MILP, solar)                                                                                             |
-| `candidate_selector.py`    | Picks the best candidate using time-discounted score; also hosts the EV avoided-cost pricing helper (`ev_future_charge_value_per_kwh`)                            |
-| `charge_scheduler.py`      | Assigns charge recommendations to slots                                                                                                                           |
-| `discharge_scheduler.py`   | Assigns discharge recommendations to slots; `concentrate_discharge_on_expensive_slots` uses **per-calendar-day** budget pools                                     |
-| `milp_optimizer.py`        | Solves the MILP LP problem — variable vector is 8\*n base, growing to 8n + 2n·E + E with EV co-optimisation. Accepts optional `EVConfig` list for EV integration. |
-| `milp/_price_sanitise.py`  | Pre-solve price transformations: NaN handling, battery-export floor mask, export-≤-import clamp, negative-import clamp.                                           |
-| `milp/_constraints.py`     | Builds LP constraint matrices and variable bounds.                                                                                                                |
-| `milp/_objective.py`       | Builds LP objective vector.                                                                                                                                       |
-| `milp/_write_results.py`   | Translates LP solution back into `PlannedSlot` recommendations and energy flows.                                                                                  |
-| `milp/_diagnostics.py`     | Computes MILP diagnostics and violation reports.                                                                                                                  |
-| `milp/_export_cap.py`      | Resolves DNO/inverter grid-export power cap per slot.                                                                                                             |
-| `cost_function.py`         | Scores a candidate plan — source of truth for cost math                                                                                                           |
-| `soc_simulation.py`        | Simulates battery SoC forward through a slot plan                                                                                                                 |
-| `ev_planner.py`            | EV-specific planning logic                                                                                                                                        |
-| `ev_load_accounting.py`    | Canonical pure-house/EV split for normalized planner slot loads                                                                                                   |
+| File                           | Responsibility                                                                                                                                                    |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `engine.py`                    | Main entry point — orchestrates the full planning pipeline                                                                                                        |
+| `slot_population.py`           | Builds the 48/96/192-slot time horizon; populates PV/consumption/capacity                                                                                         |
+| `slot_price_population.py`     | Populates per-slot prices incl. missing-price estimation (issue #1002) — split out of `slot_population.py` for the 30 KB limit                                    |
+| `candidate_generator.py`       | Generates charge/discharge plan candidates (partial-SoC, MILP, solar)                                                                                             |
+| `candidate_selector.py`        | Picks the best candidate using time-discounted score; also hosts the EV avoided-cost pricing helper (`ev_future_charge_value_per_kwh`)                            |
+| `charge_scheduler.py`          | Assigns charge recommendations to slots                                                                                                                           |
+| `discharge_scheduler.py`       | Assigns discharge recommendations to slots; `concentrate_discharge_on_expensive_slots` uses **per-calendar-day** budget pools                                     |
+| `milp_optimizer.py`            | Solves the MILP LP problem — variable vector is 8\*n base, growing to 8n + 2n·E + E with EV co-optimisation. Accepts optional `EVConfig` list for EV integration. |
+| `milp/_price_sanitise.py`      | Pre-solve price transformations: NaN handling, battery-export floor mask, export-≤-import clamp, negative-import clamp.                                           |
+| `milp/_constraints.py`         | Builds LP constraint matrices and variable bounds.                                                                                                                |
+| `milp/_objective.py`           | Builds LP objective vector.                                                                                                                                       |
+| `milp/_write_results.py`       | Translates LP solution back into `PlannedSlot` recommendations and energy flows.                                                                                  |
+| `milp/_diagnostics.py`         | Computes MILP diagnostics and violation reports.                                                                                                                  |
+| `milp/_export_cap.py`          | Resolves DNO/inverter grid-export power cap per slot.                                                                                                             |
+| `cost_function.py`             | Scores a candidate plan — source of truth for cost math                                                                                                           |
+| `soc_simulation.py`            | Simulates battery SoC forward through a slot plan                                                                                                                 |
+| `ev_planner.py`                | EV-specific planning logic                                                                                                                                        |
+| `battery_target.py`            | House-battery target SoC by deadline (issue #1109): resolves the next occurrence into a `BatteryTargetSpec`, prices the shortfall, scores it                      |
+| `milp/_battery_target.py`      | Two-stage solve wrapper for the battery target; `candidate_generator.py` calls this, not `solve_milp`                                                             |
+| `milp/_battery_target_rows.py` | Stage-2 LP rows: target slack row, grid-import cap/floor helpers                                                                                                  |
+| `ev_load_accounting.py`        | Canonical pure-house/EV split for normalized planner slot loads                                                                                                   |
 
 ### ML layer (`custom_components/hsem/ml/`)
 
@@ -428,7 +431,13 @@ Index range      Variable     Meaning
 [11n+1]          ev1_pen      EV1 deadline target slack (if second EV active)
 --- Main-fuse soft constraint (when main_fuse_amps > 0) ---
 [... .. +n-1]    gi_pen[t]    Grid-import excess above fuse limit per slot (kWh)
+--- House-battery target stage 2 only (issue #1109) ---
+[...]            bt_pen       Target shortfall at slot T (kWh), width 1
 ```
+
+Offsets are never computed by hand: `milp/_layout.py::build_milp_column_layout`
+declares the blocks (`battery_target_penalty` only when `battery_target=True`)
+and `derive_milp_offsets` resolves them by name.
 
 Grid export power cap (issue #726): when `max_grid_export_power_kw > 0` the
 `ge[t]` upper bound is `max_grid_export_power_kw * slot_hours` (hard bound, no
@@ -448,12 +457,20 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 - If a file exceeds either limit, split it before adding more features.
 - Current oversized files (as of 2026-09-18):
 
-  - `coordinator_planner_phase.py` — ~31.2 KB (over 30 KB; bridge-slot build moved out in #1140)
   - `coordinator_tracking.py` — 31,036 bytes (over 30 KB)
 
-  - `custom_sensors/working_mode_sensor.py` — 33,137 bytes (over 30 KB; +139 in #1114)
   - `planner/candidate_selector.py` — 31,401 bytes (over 30 KB)
 
+- Resolved in issue #1186: the dynamic-floor steps of the planner phase
+  (enable/clear, reference solve, margin learning) moved from
+  `coordinator_planner_phase.py` (31.7 KB) to `CoordinatorDynamicFloorMixin`
+  in `coordinator_dynamic_floor.py`; the phase module is now ~29.9 KB.
+- Resolved in issue #1109: the attribute dict moved from
+  `custom_sensors/working_mode_sensor.py` (33.1 KB) to
+  `custom_sensors/working_mode_attributes.py`; the sensor is now ~21 KB.
+  `planner/milp_optimizer.py` (30,579 B) and `planner/engine_core.py`
+  (30,368 B) are within ~150–350 bytes of the limit: move code out before
+  adding to either.
 - Resolved in issue #1110: the load-forecast population/readiness block moved
   from `coordinator_cycle.py` to `coordinator_load_forecast.py` (cycle now
   ~28.5 KB).
@@ -473,7 +490,27 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 
 - Use Mermaid fenced code blocks for architecture and flow diagrams.
 - Do not use ASCII/Markdown box diagrams for architecture.
-- Use math equations (`$$ ... $$`) for formulas instead of plain text or code-block formulas.
+- Use math equations for formulas instead of plain text or code-block formulas.
+- **Display math uses the block form** (issue #1184): `$$` alone on a line, the
+  formula, `$$` alone on a line. Never write `$$ ... $$` on one line: prettier
+  treats it as text and rewrites `C_{total}` to `C*{total}` or `p\_{imp}`, and
+  `./scripts/quality.sh lint` re-applies that on every run.
+- **GitHub strips a backslash before punctuation inside `$...$` and `$$...$$`**
+  (Markdown escapes are applied to math). `\_` becomes a subscript, `\,` a comma
+  and `\{` an opening group. Write them doubled: `\\_`, `\\,`, `\\;`, `\\%`,
+  `\\{`, `\\}`. A `\\` line break must be the last thing on its line; in the
+  middle of a line GitHub turns it into a single backslash.
+- **No Markdown inside a `$$` block**: no blank line, and no line that starts
+  with `+ `, `- `, `* `, `> `, `#` or `1. `. Put a leading operator at the end
+  of the previous line (or write `{} + ...`). Rows indented by four spaces
+  inside `aligned` are fine.
+- A fenced ` ```math ` block and inline ``$`...`$`` are passed through
+  untouched by both tools; there LaTeX is written with single backslashes.
+- `scripts/check_docs_math.py` enforces all of this for `docs/**/*.md`. It
+  runs in `./scripts/quality.sh lint`, `format-check` (CI) and `all`, and alone
+  as `./scripts/quality.sh docs-math`. To see what GitHub will hand to its
+  renderer: `gh api -X POST /markdown -f mode=gfm -F text=@docs/<file>.md` and
+  read the `<math-renderer>` elements.
 
 ---
 
@@ -482,8 +519,11 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 The selector score contains no fixed-schedule/override term:
 
 $$
-score = total\_cost + soc\_penalty + grid\_limit\_penalty + terminal\_soc\_value
+score = total\_cost + soc\_penalty + grid\_limit\_penalty + terminal\_soc\_value + battery\_target\_penalty
 $$
+
+`battery_target_penalty` is zero unless the opt-in house-battery target is
+active (issue #1109). It is selector-only, like the other penalties.
 
 Recommendation labels are not independent economic costs. Their effects are
 already represented by energy flows, conversion losses, cycle wear, and terminal
@@ -1121,10 +1161,13 @@ outlier: the plan-vs-actual sensor is `sensor.daily_plan_vs_actual`, with no
   — accepted → `UNVERIFIED` (battery writes proceed), every attempt errors →
   `FAILED` (still blocks them) — and latched on the sensor so it is only
   rewritten when the target changes.
-- **Upstream gap:** EMMA watt-limit writes (negative-price 100 W floor, the
-  configured export cap) fail upstream with `P_max` `IllegalDataValueError`,
-  because `set_maximum_feed_grid_power` validates against the inverter-only
-  `P_MAX` register. HSEM keeps failing closed on that error.
+- **Huawei Solar ≥ 2.1.6 required for EMMA watt limits (#1131):** older
+  versions validate `set_maximum_feed_grid_power` against the inverter-only
+  `P_MAX` register, so every EMMA watt write (negative-price 100 W floor, the
+  configured export cap) fails with `P_max` `IllegalDataValueError`. Fixed
+  upstream in wlcrs/huawei_solar#1439. HSEM keeps failing closed and logs a
+  one-time update hint (`applier_power_control._warn_emma_p_max_once`); there
+  is deliberately no HSEM-side 0 % workaround.
 
 ---
 
@@ -2435,3 +2478,107 @@ Tests: `tests/utils/test_dynamic_floor.py::TestCheapRefillPrice` and `::TestAffo
 **Test gotcha:** `tests/planner/test_solar_charge_no_double_count.py` used a flat 0.20/0.18 import/export price, where storing PV loses money against the cycle cost. Its charge labels only existed because of this bug; the fixture now exports at 0.02.
 
 Tests: `tests/planner/test_milp_fill_no_double_pv.py` (the issue's four-slot reproduction; non-MILP fill unchanged; every published future slot balances within 1e-3 kWh across the stock fixtures × SoC 10/50/100; the gate reports a deficit and ignores unused supply, past slots and a missing efficiency).
+
+## House-Battery Target SoC Is a Two-Stage Solve (issue #1109)
+
+**Feature:** opt-in (`hsem_batteries_target_soc_{enabled,pct,time}`, in the `batteries_excess_export` flow step). Build a reserve towards a target SoC by a daily time using **only PV the normal plan would otherwise export**. Semantics were agreed with the reporter and must not be reinterpreted: no extra grid import, no reduced or replaced grid import, existing discharge unchanged, a deadline and not "charge ASAP", next occurrence only.
+
+**Why two stages:** `ec[t]` mixes grid- and PV-sourced energy (same limitation as #1015). A penalty high enough to outbid export also outbids cheap grid, so a single solve would grid-charge for the target and hold back morning discharge.
+
+**Rule:** `candidate_generator.py` calls `milp/_battery_target.py::solve_milp_with_battery_target`. Stage 1 is the unchanged `solve_milp_with_past_target_reservation`. Stage 2 runs only when stage 1 misses the target at slot `T`, and re-solves with `BatteryTargetRows`: one slack row `−Σ_{k≤T}(ec−ed) − pen ≤ E_0 − E_target` priced at `P`, and grid import **pinned** to stage 1 for `t ≤ T` and **capped** at stage 1 after. `P = min(max_{t≤T} p_exp/η_chg + cycle_cost + ε, P_ev − ε)`. A failed stage 2 returns stage 1 with a warning.
+
+**The pin is exact, not a ±1e-6 band.** The issue text specified a tolerance band. It turns every slot that imported nothing into a `gi[t] ≤ 1e-6·z[t]` grid-direction row, a coefficient at HiGHS's feasibility tolerance. Measured over 300 random days, HiGHS aborted stage 2 with "Solve error" in 23 of 183 solves; the exact pin (`floor == cap == gi_stage1[t]`, and exactly 0 where stage 1 imported ≤ 1e-6) failed in 0 of those and 0 of 569 more. Don't reintroduce a band.
+
+**Pin against the LP column, not the published slot.** `solve_milp` now writes `diagnostics["lp_grid_import_kwh"]` (the raw `gi[t]` solution). The published `grid_import_kwh` is rounded to 3 decimals and re-derived after mutex resolution; pinning to it can make a fully determined slot infeasible.
+
+**One spec, two consumers.** `planner/battery_target.py::resolve_battery_target` builds one `BatteryTargetSpec` in `engine_core.run_planner`; it is stored on `CostWeights.battery_target` and passed to `generate_candidates`. `score_plan` adds `battery_target_penalty = P × shortfall` to `score` for every candidate (never `total_cost`), read from `estimated_battery_capacity_kwh` at slot `T` with a 1e-3 kWh tolerance (that field is rounded to 3 decimals).
+
+**Charge-past-target EVs: house battery first** (Option A, agreed on the issue). Stage 2 first solves with those EVs removed, then re-solves with their `past_target_reserved_ac_kwh` taken from that house-first plan. Up to four solves per cycle when both features are active and the target is missed.
+
+**Diagnostics path:** MILP `diagnostics["battery_target"]` → `PlannerOutput.battery_target` (`summarize_battery_target`) → coordinator `_battery_target_diagnostics` (part of the accepted-plan rollback state) → `CoordinatorData.battery_target` → working-mode sensor attribute `battery_target`.
+
+**Test gotchas:** the whole-amp EV lattice delivers slightly more than the bare deadline need, so compare EV energy with `>=`. `make_bare_coordinator` bypasses `__init__`; every new coordinator attribute must be set there too. `no_action` includes PV self-consumption, so on a sunny day it meets the target and carries no penalty.
+
+Tests: `tests/planner/test_battery_target_milp.py` (every acceptance scenario, a 20-seed import-pin property test, bounds capture, EV priority), `tests/planner/test_battery_target_spec.py` (occurrence rollover incl. DST, target kWh, `P`, score, rows), `tests/planner/test_battery_target_engine.py` (disabled is bit-identical; reporter's 63 % day; MILP beats `passive`), `tests/test_battery_target_coordinator.py`.
+
+## Dynamic Floor Bridge Reads Load and PV From the Reference Plan (issue #1187)
+
+**Bug:** `build_dynamic_floor_bridge_slots()` computed `rec.avg_house_consumption_kwh - rec.solcast_pv_estimate_kwh` on the regenerated recommendations. The load there is kWh per slot, but the PV is the **unscaled hourly** Solcast value: `hourly_data_populator/prices_solcast.py` stores it raw on purpose, the planner splits it per slot, and `_apply_planner_output()` copies the per-slot value back only after the final solve. PV was overstated 4× at 15-minute slots and 2× at 30, so the scan found a `solar_surplus` refill hours early (08:30 against the plan's 10:00 in #1125's log) and reserved too little. Hourly slots were right.
+
+**Rule:** the bridge's net load is `plan_slot.avg_house_consumption_kwh - plan_slot.solcast_pv_estimate_kwh` from the reference plan (per slot, corrected, decayed, live-injected; house only, never `estimated_net_consumption_kwh`, which adds planned EV load). A recommendation without a plan slot scales its raw PV by `slot_duration_hours()`. Never subtract `rec.solcast_pv_estimate_kwh` from a per-slot quantity before the final plan is applied.
+
+**Gotcha:** hand-built reference plans in tests must carry `avg_house_consumption_kwh` / `solcast_pv_estimate_kwh` on their slots, or the bridge sees zero load (`_plan()` in `tests/test_dynamic_floor_reference_plan.py` does). The fix raises floors at sub-hourly slots; the #1156 affordable refill is what keeps a cheap night from pinning the battery, so do not ship one without the other.
+
+Tests: `tests/test_dynamic_floor_reference_plan.py::TestBuildBridgeSlots::test_unplanned_slot_scales_the_hourly_pv_to_the_slot` (real populator, 15/30/60 min), `::test_load_pv_and_charge_come_from_the_plan_slot`, and `TestRealPlanner::test_quarter_hour_bridge_ends_at_the_plans_first_surplus` / `::test_quarter_hour_cheap_night_still_releases_the_floor`.
+
+## Half-Hourly Solcast Data and the Hour's PV (issue #1191, stage 1)
+
+**Bug:** the Solcast sensor can expose `detailedHourly` and the half-hourly `detailedForecast`, both average power in kW. `_populate_from_attributes()` read both, the half-hourly values overwrote the hourly ones, and a slot only took the point whose window contained the slot start (a 60-minute slot never saw the `:30` point). `build_planner_input()` then kept the first slot of each `(day_offset, hour)`. An hour averaging 0.4 kW then 0.8 kW reached the planner as 0.4 kWh instead of 0.6, at every slot interval. Hourly-only sensors were right.
+
+**Rule:** PV population passes `mean_over_slot=True`, so a slot holds the overlap-weighted mean of the source points covering it (a single covering point is stored as is). The builder emits each hour's `SolcastSlot.pv_estimate` as the `math.fsum` mean over the hour's slots. Prices keep start-in-window matching. The planner still receives PV per hour; carrying sub-hourly PV through is stage 2 of #1191.
+
+**Gotcha:** never take "the first slot of the hour" for a quantity a finer source may have written. On affected installs the solar corrector's per-hour factors were learned against the biased forecast and relearn within its four-sample history.
+
+Tests: `tests/test_solcast_subhourly_source.py` (real `populate_price_and_solcast_from_snapshot` and `build_planner_input`; both attributes, half-hourly only, hourly only, attribute order, 15/30/60-minute slots).
+
+## Sub-Hourly PV Reaches the Planner Per Slot (issue #1191, stage 2)
+
+**Unit:** `SolcastSlot.pv_estimate` is **average power in kW** over the entry's period; the docstring on `SolcastSlot` is the one definition. Slot energy = kW × slot hours. For an hourly entry kW and kWh are the same number, which is why the old "hourly kWh" wording worked.
+
+**Rule:** `SolcastSlot` has an optional `slot_in_day` (as `PricePoint` since #720). `coordinator_builder._build_solcast_slots()` emits hour-granular entries when every hour's slots hold one value (hourly source, or 60-minute slots) and one entry per slot when any hour's slots differ. `populate_solcast()` routes per-slot entries through `TimeSeriesIndex.align_slot_pv()` (`(day_offset, slot_in_day)` key, hour-granular fallback, missing slots into `missing_pv_slots`) and hour-granular ones through `align_hourly_pv()` as before. The corrector's factor is still looked up by `slot.start.hour`.
+
+**Gotchas:**
+
+- An hourly source must keep producing `slot_in_day=None` entries: that is what makes its planner input and plan identical to before. Do not "simplify" the builder to always emit per slot.
+- Anything that reads `inp.solcast_slots` as `{(day_offset, hour): value}` now takes the last slot of the hour with a sub-hourly source. Take the mean of the hour's entries instead (`tests/test_solcast_subhourly_source.py::_planner_pv_by_hour`).
+- The builder cannot tell "no PV data" from "zero PV": uncovered slots still arrive as `0.0`, for prices too. That is issue #1196, not solved here.
+
+Tests: `tests/test_solcast_subhourly_planner.py` (real populator → `build_planner_input` → `run_planner`: 30- and 15-minute sources at 15/30/60-minute slots, energy per hour, both DST days, missing slots, corrector, forecast tracker), `tests/test_time_series_model.py::TestAlignSlotPv`.
+
+## Dynamic Floor Is a Per-Slot Reserve, Not the Model Origin (issue #1188)
+
+**Bug:** the planner held the dynamic floor constant for the whole horizon by moving the battery model's origin up to it (`usable_capacity(rated, soc, effective_floor, max)`). The reserve shrinks every slot and is gone after the refill, so the published plan showed `batteries_wait_mode` with grid import all night while each replan lowered the floor and the battery kept discharging (#1125), and the day after the refill was planned inside `[floor, max]`. A floor at or above the maximum SoC with a full battery also left `usable_kwh = 0`: the MILP was skipped and the passive fallback executed.
+
+**Rule:** the origin is always the hardware floor. `DynamicDischargeFloor.compute_floor_profile()` returns the floor at the start of every look-ahead slot (suffix sums of the same bridge; the first entry is the scalar; the configured minimum from the refill slot on). It reaches the planner as `PlannerInput.dynamic_floor_profile` (`(slot start ISO, floor %)`, matched by UTC instant) and `planner/discharge_reserve.py::apply_discharge_reserve()` writes `PlannedSlot.discharge_reserve_kwh`: the kWh above the hardware floor the plan must hold at the **end** of the slot, which is the **next** slot's floor. Two rules keep it satisfiable without charging: never above the energy held now (the #1094 cap), never rising along the horizon.
+
+**Every consumer reads the slot field:** the MILP as the RHS of its existing lower SoC rows (`b_ub[m + t] = current_kwh - reserve[t]`, no new row or column), `simulate_soc()` as the level greedy discharge stops at, `_validate_candidate()`, the write-out clamps in `milp/_write_results.py` and `validate_primary_inventory()`.
+
+**Gotchas:**
+
+- Do not give the reserve a penalised slack. `p_soc` is 100 x the highest import price, so the solver would grid-charge at any price to climb back to a reserve the battery is below.
+- `resolve_soc_bounds_pct()` still returns an "effective floor" (the floor in force now, capped at the live SoC). It is not the origin any more. `battery_target.target_kwh_for_pct` and `_forecast_export_reserve_kwh` measure from the hardware floor.
+- `estimated_battery_capacity_kwh` is kWh above the **hardware** floor, with or without the dynamic floor.
+- The margin learner must be fed `floor_required_at_slot_end()` (the next slot's floor), not the scalar. The plan follows the reserve down within a slot, so against the slot-start floor every slot of planned self-consumption is a shortfall and the margin walks to 1.50.
+- The sensor still shows the floor at the start of the live slot; the live SoC can read slightly below it until the next replan.
+- A scalar-only caller (`dynamic_discharge_floor_pct` without a profile) gets a constant reserve, capped at the energy held.
+- `planner/milp_optimizer.py` is at 30,485 B.
+- The floor itself still flips between replans when the reference plan's night charge moves among equally priced slots (issue #1198, pre-existing).
+
+Tests: `tests/planner/test_dynamic_floor_reserve_profile.py` (profile, per-slot bound, every consumer, real planner at 60 and 15 minutes, export spike, battery below the reserve, all candidates, margin learning), `tests/planner/test_dynamic_floor_reserve_replay.py` (closed loop).
+
+## The Dynamic-Floor Reference Solve Keeps the Battery Target (issue #1186)
+
+**Proposal rejected by measurement:** solve the floor's reference plan with `battery_target_soc_enabled=False` to save the target's stage-2 solve. The argument was that stage 2 pins grid import, so it cannot change what the bridge scan reads.
+
+**Why it is wrong:** `milp/_battery_target.py::build_target_rows` pins `gi[t]` to stage 1 only for `t <= T`; after the target slot import is merely capped. When stage 2 keeps energy that stage 1 exported before the deadline, the plan buys less after `T` and a night grid charge the scan credited disappears. #1125 fixture, 68 % at 21:30, 0.45 export at 21:00-23:00, target 100 % by 23:00: floor 77.72 % with the target in the reference solve, 44.93 % without. With the target at 06:00 the charge is inside the pinned window and the floors are equal.
+
+**Rule:** the reference solve and the real solve differ only in the floor (`dynamic_discharge_floor_pct`, `dynamic_floor_profile`). Do not strip features from the reference input to save a solve without a test that shows the floor is unchanged on a day where the feature acts.
+
+The planner-phase floor steps live in `CoordinatorDynamicFloorMixin` (`coordinator_dynamic_floor.py`): `_sync_dynamic_floor_enabled()`, `_async_apply_dynamic_floor()`, `_learn_dynamic_floor_margin()`. `CoordinatorPlannerPhaseMixin` inherits it.
+
+Tests: `tests/test_dynamic_floor_reference_plan.py::TestReferenceSolveKeepsTheBatteryTarget`, `tests/test_coordinator_planner_phase.py::TestFreshPlan::test_reference_solve_keeps_the_battery_target`.
+
+## Battery-Target Preference Cost Is a Report, Scored by `score_plan` (issue #1185)
+
+When the house-battery target's stage 2 solves, `milp/_battery_target.py::preference_cost()` scores the stage-1 and stage-2 slots with `score_plan` and the selector's own `CostWeights`, and writes `stage1_cost`, `stage2_cost`, `preference_cost`, `preference_cost_per_kwh` and `terminal_soc_value_delta` into `diagnostics["battery_target"]`. `summarize_battery_target` carries the record to `PlannerOutput.battery_target`, the diagnostics dump and the working-mode sensor attribute.
+
+**Rules:**
+
+- Use `score_plan`, not `cost_helpers.grid_cash_flow_cost`: `score_plan` blocks battery export below `battery_export_min_price` only on no-PV slots, the helper zeroes any export below `export_min_price`. Only `score_plan` makes `stage2_cost` equal the published plan's `total_cost`.
+- The weights reach the wrapper as `cost_weights=` / `slot_duration_hours=` through `generate_candidates`; `V` comes from `solve_kwargs["replacement_price_per_kwh"]`. Nothing was added to `milp_optimizer.py`.
+- The figure is horizon-wide and recomputed every replan. Never sum it into a daily total; a daily figure needs realised energy.
+- `terminal_soc_value_delta` is the selector's terminal-SoC term, not cash. Report it next to the cost; do not net it.
+- Coerce to plain `float` before publishing: slot flows can be `numpy.float64`.
+- All five keys are `None` unless stage 2 solved and weights were supplied.
+
+Tests: `tests/planner/test_battery_target_milp.py::TestPreferenceCost` (hand-computed: forgone export + cycle cost), `tests/planner/test_battery_target_engine.py` (equals the published `total_cost`; replacing the figure changes no slot and no cost).

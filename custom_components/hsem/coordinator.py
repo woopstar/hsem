@@ -212,6 +212,8 @@ class HSEMDataUpdateCoordinator(
         self._plan_explanation: PlanExplanation = PlanExplanation()
         # Most recent data quality report produced by the planner engine.
         self._data_quality: DataQuality = DataQuality()
+        # Most recent house-battery target diagnostics (issue #1109).
+        self._battery_target_diagnostics: dict | None = None
         # Most recent EV charging plans from the planner engine.
         self._ev_charging_plan: EVChargingPlan | None = None
         self._ev_second_charging_plan: EVChargingPlan | None = None
@@ -344,6 +346,7 @@ class HSEMDataUpdateCoordinator(
         self._dynamic_floor: DynamicDischargeFloor = DynamicDischargeFloor()
         self._effective_discharge_floor_pct: float | None = None
         self._effective_discharge_floor_diag: dict | None = None
+        self._effective_discharge_floor_profile: list[tuple[str, float]] | None = None
 
         # Battery capacity learner (issue #605).
         self._capacity_learner: CapacityLearner = CapacityLearner()

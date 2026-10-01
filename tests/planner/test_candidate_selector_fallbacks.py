@@ -63,7 +63,7 @@ def _select(candidates: list[CandidatePlan], **overrides: Any) -> Any:
 
 def _all_invalid() -> Any:
     """Return a ``_validate_candidate`` stub that rejects every candidate."""
-    return lambda _candidate, _floor: (False, "SoC below floor")
+    return lambda _candidate, _floor, _rated: (False, "SoC below floor")
 
 
 class TestFailClosedFallback:
@@ -141,7 +141,7 @@ class TestPercentageHysteresis:
 
         with (
             patch(f"{_MODULE}.score_plan", self._score_stub(scores)),
-            patch(f"{_MODULE}._validate_candidate", lambda _c, _f: (True, "")),
+            patch(f"{_MODULE}._validate_candidate", lambda _c, _f, _r: (True, "")),
         ):
             winner, _rejected, hysteresis = _select(
                 [new_plan, previous],
@@ -165,7 +165,7 @@ class TestPercentageHysteresis:
 
         with (
             patch(f"{_MODULE}.score_plan", self._score_stub(scores)),
-            patch(f"{_MODULE}._validate_candidate", lambda _c, _f: (True, "")),
+            patch(f"{_MODULE}._validate_candidate", lambda _c, _f, _r: (True, "")),
         ):
             winner, _rejected, hysteresis = _select(
                 [new_plan, previous],
@@ -187,7 +187,7 @@ class TestPercentageHysteresis:
 
         with (
             patch(f"{_MODULE}.score_plan", self._score_stub(scores)),
-            patch(f"{_MODULE}._validate_candidate", lambda _c, _f: (True, "")),
+            patch(f"{_MODULE}._validate_candidate", lambda _c, _f, _r: (True, "")),
         ):
             winner, _rejected, hysteresis = _select(
                 [new_plan, previous],

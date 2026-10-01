@@ -24,7 +24,8 @@
       "required": "Dieses Feld ist erforderlich.",
       "invalid_wait_mode_behavior": "Ungültiges Wartemodus-Verhalten. Wähle Strenges Warten oder Eigenverbrauch mit Reserve.",
       "port_conflict": "Der zweite OCPP-Port muss sich vom ersten OCPP-Port unterscheiden.",
-      "ev_min_power_below_start_current": "Die konfigurierte Mindestleistung ist für die gewählte Phasentopologie zu niedrig — ein echtes Ladegerät kann nicht unter 6 A starten. Erhöhe die Mindestleistung oder ändere die Phasentopologie."
+      "ev_min_power_below_start_current": "Die konfigurierte Mindestleistung ist für die gewählte Phasentopologie zu niedrig — ein echtes Ladegerät kann nicht unter 6 A starten. Erhöhe die Mindestleistung oder ändere die Phasentopologie.",
+      "invalid_time_value": "Gib eine gültige Uhrzeit ein (HH:MM)."
     },
     "step": {
       "batteries_excess_export": {
@@ -32,15 +33,21 @@
           "hsem_batteries_enable_excess_export": "Batterie-Überschussexport aktivieren",
           "hsem_batteries_excess_export_discharge_buffer": "Entladepuffer (%)",
           "hsem_batteries_forecast_reserve_pct": "Batterieexport-Prognosereserve (+% SoC)",
-          "hsem_batteries_export_min_price": "Mindestpreis für Batterieexport"
+          "hsem_batteries_export_min_price": "Mindestpreis für Batterieexport",
+          "hsem_batteries_target_soc_enabled": "Batterie-Ziel-SoC aktivieren",
+          "hsem_batteries_target_soc_pct": "Batterie-Ziel-SoC (%)",
+          "hsem_batteries_target_soc_time": "Batterie-Zielzeit"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Aktiviere oder deaktiviere die Funktion für den Export überschüssiger Batteriekapazität, die überschüssige Batteriekapazität automatisch ins Netz einspeist, wenn es wirtschaftlich vorteilhaft ist.",
           "hsem_batteries_excess_export_discharge_buffer": "Lege den Sicherheitspuffer in Prozent fest, um minimale Batteriereserven zu erhalten (0-50 %). Standard sind 10 %, um ausreichend Kapazität für unerwarteten Bedarf sicherzustellen.",
           "hsem_batteries_forecast_reserve_pct": "Zusätzliche SoC-Prozentpunkte über der Huawei-Entladeschluss-Grenze, die der beabsichtigte Batterieexport unmittelbar nach jedem Export-Slot freihalten muss. Zum Beispiel schützt eine Huawei-Grenze von 15 % zuzüglich einer Reserve von 5 % einen SoC von 20 %. Die Reserve bleibt für die Hauslast verfügbar, wenn der tatsächliche Bedarf die Prognose übersteigt. Auf 0 setzen, um zu deaktivieren (Standard).",
-          "hsem_batteries_export_min_price": "Feste Preisuntergrenze pro Slot für beabsichtigten Batterie-zu-Netz-Export (issue #752). Bei Werten > 0 verbietet HSEM, einen Slot als force_batteries_discharge zu markieren, wenn der Exportpreis strikt unter dieser Untergrenze liegt — die Batterie kann in diesen Slots weiterhin die Hausversorgung übernehmen. Das Erreichen der Schwelle löst NICHT automatisch einen Export aus; der Optimierer entscheidet weiterhin, ob sich der Verkauf lohnt. Gilt nur für den beabsichtigten Batterie-zu-Netz-Export, nicht für normalen Eigenverbrauch, PV-Export oder PV-Ladung. Auf 0 setzen, um zu deaktivieren (Standard)."
+          "hsem_batteries_export_min_price": "Feste Preisuntergrenze pro Slot für beabsichtigten Batterie-zu-Netz-Export (issue #752). Bei Werten > 0 verbietet HSEM, einen Slot als force_batteries_discharge zu markieren, wenn der Exportpreis strikt unter dieser Untergrenze liegt — die Batterie kann in diesen Slots weiterhin die Hausversorgung übernehmen. Das Erreichen der Schwelle löst NICHT automatisch einen Export aus; der Optimierer entscheidet weiterhin, ob sich der Verkauf lohnt. Gilt nur für den beabsichtigten Batterie-zu-Netz-Export, nicht für normalen Eigenverbrauch, PV-Export oder PV-Ladung. Auf 0 setzen, um zu deaktivieren (Standard).",
+          "hsem_batteries_target_soc_enabled": "Baue bis zur täglichen Zielzeit eine zusätzliche Reserve in der Hausbatterie bis zum Ziel-SoC auf, ausschließlich mit PV-Strom, der sonst eingespeist würde. HSEM kauft für das Ziel nie zusätzlichen Netzstrom, lässt die Netzladung und Entladung, die der normale Plan bereits braucht, unverändert und entscheidet weiterhin, wann gespeichert und wann eingespeist wird – es kann also jetzt einspeisen, wenn später genug Überschuss prognostiziert ist. Standardmäßig deaktiviert.",
+          "hsem_batteries_target_soc_pct": "Batterie-SoC, der bis zur Zielzeit erreicht werden soll, als absoluter SoC einschließlich der Huawei-Entladeschluss-Grenze (0-100 %). Standard 100 %.",
+          "hsem_batteries_target_soc_time": "Tägliche Uhrzeit, bis zu der die Batterie den Ziel-SoC erreichen soll. Nur das nächste Auftreten wird geplant; danach verhält sich die Batterie normal. Standard 17:00."
         },
-        "description": "Konfiguriere Einstellungen für den Export überschüssiger Batteriekapazität, um überschüssige Energie automatisch ins Netz zu verkaufen, wenn es wirtschaftlich vorteilhaft ist.",
+        "description": "Konfiguriere die Einstellungen für den Export überschüssiger Batterieenergie, um überschüssige Energie automatisch ins Netz einzuspeisen, wenn es wirtschaftlich sinnvoll ist, sowie einen optionalen Batterie-Ziel-SoC, der mit PV-Strom aufgebaut wird, der sonst eingespeist würde.",
         "title": "Batterie-Überschussexport"
       },
       "ev_planned_load": {
@@ -504,7 +511,8 @@
       "required": "Dieses Feld ist erforderlich.",
       "invalid_wait_mode_behavior": "Ungültiges Wartemodus-Verhalten. Wähle Strenges Warten oder Eigenverbrauch mit Reserve.",
       "port_conflict": "Der zweite OCPP-Port muss sich vom ersten OCPP-Port unterscheiden.",
-      "ev_min_power_below_start_current": "Die konfigurierte Mindestleistung ist für die gewählte Phasentopologie zu niedrig — ein echtes Ladegerät kann nicht unter 6 A starten. Erhöhe die Mindestleistung oder ändere die Phasentopologie."
+      "ev_min_power_below_start_current": "Die konfigurierte Mindestleistung ist für die gewählte Phasentopologie zu niedrig — ein echtes Ladegerät kann nicht unter 6 A starten. Erhöhe die Mindestleistung oder ändere die Phasentopologie.",
+      "invalid_time_value": "Gib eine gültige Uhrzeit ein (HH:MM)."
     },
     "step": {
       "batteries_excess_export": {
@@ -512,15 +520,21 @@
           "hsem_batteries_enable_excess_export": "Batterie-Überschussexport aktivieren",
           "hsem_batteries_excess_export_discharge_buffer": "Entladepuffer (%)",
           "hsem_batteries_forecast_reserve_pct": "Batterieexport-Prognosereserve (+% SoC)",
-          "hsem_batteries_export_min_price": "Mindestpreis für Batterieexport"
+          "hsem_batteries_export_min_price": "Mindestpreis für Batterieexport",
+          "hsem_batteries_target_soc_enabled": "Batterie-Ziel-SoC aktivieren",
+          "hsem_batteries_target_soc_pct": "Batterie-Ziel-SoC (%)",
+          "hsem_batteries_target_soc_time": "Batterie-Zielzeit"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Aktiviere oder deaktiviere die Funktion für den Export überschüssiger Batteriekapazität, die überschüssige Batteriekapazität automatisch ins Netz einspeist, wenn es wirtschaftlich vorteilhaft ist.",
           "hsem_batteries_excess_export_discharge_buffer": "Lege den Sicherheitspuffer in Prozent fest, um minimale Batteriereserven zu erhalten (0-50 %). Standard sind 10 %, um ausreichend Kapazität für unerwarteten Bedarf sicherzustellen.",
           "hsem_batteries_forecast_reserve_pct": "Zusätzliche SoC-Prozentpunkte über der Huawei-Entladeschluss-Grenze, die der beabsichtigte Batterieexport unmittelbar nach jedem Export-Slot freihalten muss. Zum Beispiel schützt eine Huawei-Grenze von 15 % zuzüglich einer Reserve von 5 % einen SoC von 20 %. Die Reserve bleibt für die Hauslast verfügbar, wenn der tatsächliche Bedarf die Prognose übersteigt. Auf 0 setzen, um zu deaktivieren (Standard).",
-          "hsem_batteries_export_min_price": "Feste Preisuntergrenze pro Slot für beabsichtigten Batterie-zu-Netz-Export (issue #752). Bei Werten > 0 verbietet HSEM, einen Slot als force_batteries_discharge zu markieren, wenn der Exportpreis strikt unter dieser Untergrenze liegt — die Batterie kann in diesen Slots weiterhin die Hausversorgung übernehmen. Das Erreichen der Schwelle löst NICHT automatisch einen Export aus; der Optimierer entscheidet weiterhin, ob sich der Verkauf lohnt. Gilt nur für den beabsichtigten Batterie-zu-Netz-Export, nicht für normalen Eigenverbrauch, PV-Export oder PV-Ladung. Auf 0 setzen, um zu deaktivieren (Standard)."
+          "hsem_batteries_export_min_price": "Feste Preisuntergrenze pro Slot für beabsichtigten Batterie-zu-Netz-Export (issue #752). Bei Werten > 0 verbietet HSEM, einen Slot als force_batteries_discharge zu markieren, wenn der Exportpreis strikt unter dieser Untergrenze liegt — die Batterie kann in diesen Slots weiterhin die Hausversorgung übernehmen. Das Erreichen der Schwelle löst NICHT automatisch einen Export aus; der Optimierer entscheidet weiterhin, ob sich der Verkauf lohnt. Gilt nur für den beabsichtigten Batterie-zu-Netz-Export, nicht für normalen Eigenverbrauch, PV-Export oder PV-Ladung. Auf 0 setzen, um zu deaktivieren (Standard).",
+          "hsem_batteries_target_soc_enabled": "Baue bis zur täglichen Zielzeit eine zusätzliche Reserve in der Hausbatterie bis zum Ziel-SoC auf, ausschließlich mit PV-Strom, der sonst eingespeist würde. HSEM kauft für das Ziel nie zusätzlichen Netzstrom, lässt die Netzladung und Entladung, die der normale Plan bereits braucht, unverändert und entscheidet weiterhin, wann gespeichert und wann eingespeist wird – es kann also jetzt einspeisen, wenn später genug Überschuss prognostiziert ist. Standardmäßig deaktiviert.",
+          "hsem_batteries_target_soc_pct": "Batterie-SoC, der bis zur Zielzeit erreicht werden soll, als absoluter SoC einschließlich der Huawei-Entladeschluss-Grenze (0-100 %). Standard 100 %.",
+          "hsem_batteries_target_soc_time": "Tägliche Uhrzeit, bis zu der die Batterie den Ziel-SoC erreichen soll. Nur das nächste Auftreten wird geplant; danach verhält sich die Batterie normal. Standard 17:00."
         },
-        "description": "Konfiguriere Einstellungen für den Export überschüssiger Batteriekapazität, um überschüssige Energie automatisch ins Netz zu verkaufen, wenn es wirtschaftlich vorteilhaft ist.",
+        "description": "Konfiguriere die Einstellungen für den Export überschüssiger Batterieenergie, um überschüssige Energie automatisch ins Netz einzuspeisen, wenn es wirtschaftlich sinnvoll ist, sowie einen optionalen Batterie-Ziel-SoC, der mit PV-Strom aufgebaut wird, der sonst eingespeist würde.",
         "title": "Batterie-Überschussexport"
       },
       "ev_planned_load": {
