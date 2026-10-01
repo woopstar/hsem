@@ -193,6 +193,7 @@ def _slot_to_dict(slot: Any) -> dict[str, Any]:
         "estimated_net_consumption_kwh": round(slot.estimated_net_consumption_kwh, 3),
         "estimated_cost_currency": round(slot.estimated_cost_currency, 4),
         "estimated_battery_soc_pct": round(slot.estimated_battery_soc_pct, 1),
+        "discharge_reserve_kwh": round(getattr(slot, "discharge_reserve_kwh", 0.0), 3),
         "batteries_charged_kwh": round(slot.batteries_charged_kwh, 3),
         "batteries_discharged_kwh": round(slot.batteries_discharged_kwh, 3),
         "grid_import_kwh": round(slot.grid_import_kwh, 3),

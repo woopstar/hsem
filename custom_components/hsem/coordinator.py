@@ -346,6 +346,7 @@ class HSEMDataUpdateCoordinator(
         self._dynamic_floor: DynamicDischargeFloor = DynamicDischargeFloor()
         self._effective_discharge_floor_pct: float | None = None
         self._effective_discharge_floor_diag: dict | None = None
+        self._effective_discharge_floor_profile: list[tuple[str, float]] | None = None
 
         # Battery capacity learner (issue #605).
         self._capacity_learner: CapacityLearner = CapacityLearner()

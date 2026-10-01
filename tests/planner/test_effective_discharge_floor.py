@@ -14,8 +14,8 @@ from __future__ import annotations
 import pytest
 
 from custom_components.hsem.models.planner_input import PlannerInput
-from custom_components.hsem.planner.engine_core import (
-    _resolve_effective_discharge_floor_pct,
+from custom_components.hsem.planner.discharge_reserve import (
+    resolve_effective_discharge_floor_pct as _resolve_effective_discharge_floor_pct,
 )
 
 

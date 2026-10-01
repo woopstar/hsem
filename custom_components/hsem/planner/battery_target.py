@@ -109,20 +109,17 @@ def target_kwh_for_pct(
 ) -> float:
     """Convert an absolute SoC target to model kWh above the MILP SoC origin.
 
-    Uses the same resolver as the engine's model capacity (and as
-    ``_forecast_export_reserve_kwh``), so a dynamic floor or the live-SoC cap
-    moves the origin consistently.  Clamped to ``[0, usable_kwh]``.
+    The origin is the hardware floor, as for the engine's model capacity and
+    ``_forecast_export_reserve_kwh``; the dynamic discharge floor does not
+    move it (issue #1188).  Clamped to ``[0, usable_kwh]``.
     """
     rated_kwh = max(finite_or(inp.battery_rated_capacity_kwh, 0.0), 0.0)
     model_usable_kwh = max(finite_or(usable_kwh, 0.0), 0.0)
-    _hardware_floor, effective_floor_pct, maximum_soc_pct = resolve_soc_bounds_pct(
-        inp.battery_end_of_discharge_soc_pct,
-        inp.battery_max_soc_pct,
-        inp.dynamic_discharge_floor_pct,
-        inp.battery_soc_pct,
+    hardware_floor_pct, _, maximum_soc_pct = resolve_soc_bounds_pct(
+        inp.battery_end_of_discharge_soc_pct, inp.battery_max_soc_pct
     )
     clamped_pct = min(max(target_pct, 0.0), maximum_soc_pct)
-    target_kwh = rated_kwh * max(clamped_pct - effective_floor_pct, 0.0) / 100.0
+    target_kwh = rated_kwh * max(clamped_pct - hardware_floor_pct, 0.0) / 100.0
     return min(max(target_kwh, 0.0), model_usable_kwh)
 
 

@@ -191,7 +191,7 @@ Each entry in the `hourly_recommendations` list is a dictionary with these keys:
 | `estimated_cost_currency`            | float             | Estimated grid cost for the slot (local currency)     |
 | `batteries_charged_kwh`              | float             | Energy scheduled to charge into battery (kWh)         |
 | `batteries_discharged_kwh`           | float             | Energy drawn from battery by SoC simulation (kWh)     |
-| `estimated_battery_capacity_kwh`     | float             | kWh above the effective discharge floor at slot end   |
+| `estimated_battery_capacity_kwh`     | float             | kWh above the hardware discharge floor at slot end    |
 | `estimated_battery_soc_pct`          | float             | Simulated absolute SoC at slot end (0–100 %)          |
 | `grid_import_kwh`                    | float             | Energy imported from grid (kWh)                       |
 | `grid_export_kwh`                    | float             | Energy exported to grid (kWh)                         |
@@ -605,9 +605,9 @@ Snapshot of the battery state of charge with optional learned capacity tracking.
 
 ## Dynamic discharge floor
 
-Controls and reports the effective discharge floor SoC, which the planner uses as a minimum battery SoC when the dynamic floor feature is enabled.
+Controls and reports the effective discharge floor SoC: the reserve the battery needs now to carry the house to the next refill, when the dynamic floor feature is enabled.
 
-The sensor reports the bridge reserve itself. When the live battery SoC is below it, the planner measures its battery model from the live SoC instead, so `estimated_battery_soc_pct` in the plan starts at the inverter's reading, not at this sensor's value (issue #1094).
+The sensor reports the reserve at the start of the current slot. The planner does not hold that value for the whole horizon: the reserve declines slot by slot and is gone after the refill (issue #1188). Within the current slot the plan may take the battery down to the next slot's reserve, so the live SoC can read slightly below this sensor until the next replan. When the live SoC is already below the reserve, the battery holds until the reserve has declined to it; `estimated_battery_soc_pct` in the plan always starts at the inverter's reading (issue #1094).
 
 The refill scan reads planned grid charges from a floor-free reference solve in the same replan (issue #1140). When that plan grid-charges enough to cover the load until the charge, the `refill_type` attribute is `grid_charge`, `reserve_kwh` is `0`, and the floor equals the configured minimum SoC. When it does not, but a slot before the next solar surplus is priced within one battery cycle cost of the cheapest import price in the next 48 h and the battery could charge enough there, the floor is released the same way with `refill_type: grid_available` (issue #1156). Otherwise the floor bridges to the next solar surplus (`refill_type: solar_surplus`). Between replans the sensor keeps the floor the current plan was solved with.
 

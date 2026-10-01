@@ -2,9 +2,9 @@
 
 ``_forecast_export_reserve_kwh()`` converts the configured
 ``hsem_batteries_forecast_reserve_pct`` (absolute SoC points above the Huawei
-hardware end-of-discharge floor) into a model kWh value, while making sure the
-dynamic discharge floor is never double-counted and the result never exceeds
-the model's usable capacity.
+hardware end-of-discharge floor) into a model kWh value above that floor, which
+is the model origin (issue #1188), and makes sure the result never exceeds the
+model's usable capacity.
 """
 
 from __future__ import annotations
@@ -45,53 +45,34 @@ def test_configured_pct_converted_to_kwh_above_hardware_floor() -> None:
     assert _forecast_export_reserve_kwh(inp, usable_kwh=9.0) == pytest.approx(1.0)
 
 
-def test_dynamic_floor_overlap_is_not_double_counted() -> None:
-    """A dynamic floor already above the hardware floor shrinks the remaining reserve.
+@pytest.mark.parametrize(
+    ("dynamic_floor_pct", "soc_pct"),
+    [
+        pytest.param(15.0, 50.0, id="floor_below_the_target"),
+        pytest.param(25.0, 50.0, id="floor_above_the_target"),
+        pytest.param(75.74, 11.0, id="floor_not_reached_issue_1094"),
+    ],
+)
+def test_dynamic_floor_does_not_move_the_reserve(
+    dynamic_floor_pct: float, soc_pct: float
+) -> None:
+    """The reserve is measured from the hardware floor whatever the dynamic floor.
 
-    Hardware floor 10%, dynamic floor already raised to 15%, configured
-    reserve target is hardware_floor + 10% = 20%. Only the remaining 5 points
-    (20% - 15%) between the dynamic floor and the target must be protected —
-    the 5 points already covered by the dynamic floor are not reserved twice.
+    Hardware floor 10 %, configured reserve 10 points: the protected range is
+    10-20 % absolute, 1.0 kWh above the model origin.  Since issue #1188 the
+    origin is always the hardware floor and the dynamic floor is a separate
+    per-slot bound (``PlannedSlot.discharge_reserve_kwh``), so the two cannot
+    be counted twice: both bound the same absolute SoC and the higher binds.
     """
     inp = _input(
         battery_rated_capacity_kwh=10.0,
         battery_end_of_discharge_soc_pct=10.0,
         battery_max_soc_pct=100.0,
         battery_forecast_reserve_pct=10.0,
-        dynamic_discharge_floor_pct=15.0,
+        dynamic_discharge_floor_pct=dynamic_floor_pct,
+        battery_soc_pct=soc_pct,
     )
-    assert _forecast_export_reserve_kwh(inp, usable_kwh=9.0) == pytest.approx(0.5)
-
-
-def test_dynamic_floor_at_or_above_target_reserves_nothing() -> None:
-    """When the dynamic floor already meets or exceeds the target, reserve is zero."""
-    inp = _input(
-        battery_rated_capacity_kwh=10.0,
-        battery_end_of_discharge_soc_pct=10.0,
-        battery_max_soc_pct=100.0,
-        battery_forecast_reserve_pct=10.0,
-        dynamic_discharge_floor_pct=25.0,
-    )
-    assert _forecast_export_reserve_kwh(inp, usable_kwh=9.0) == pytest.approx(0.0)
-
-
-def test_unreached_dynamic_floor_measures_reserve_from_live_soc() -> None:
-    """Below the dynamic floor, the origin is the live SoC, not the floor (#1094).
-
-    Hardware floor 5 %, reserve target 5 + 10 = 15 %, dynamic floor 75.74 %
-    but the battery is at 11 %.  The engine's model origin is the live 11 %,
-    so the reserve must protect the 4 points up to the target (0.4 kWh).
-    Measuring from the unreached 75.74 % floor would protect nothing.
-    """
-    inp = _input(
-        battery_rated_capacity_kwh=10.0,
-        battery_end_of_discharge_soc_pct=5.0,
-        battery_max_soc_pct=100.0,
-        battery_forecast_reserve_pct=10.0,
-        dynamic_discharge_floor_pct=75.74,
-        battery_soc_pct=11.0,
-    )
-    assert _forecast_export_reserve_kwh(inp, usable_kwh=8.9) == pytest.approx(0.4)
+    assert _forecast_export_reserve_kwh(inp, usable_kwh=9.0) == pytest.approx(1.0)
 
 
 def test_result_clamped_to_usable_capacity() -> None:

@@ -671,7 +671,7 @@ def _replan(
     """Run one replan the way the coordinator does: reference, floor, final."""
     planner_input = _planner_input(night, pv_scale, interval_minutes)
     reference = run_planner(planner_input)
-    floor_pct, diag = compute_dynamic_floor_from_plan(
+    floor_pct, diag, profile = compute_dynamic_floor_from_plan(
         DynamicDischargeFloor(),
         _hourly_recommendations(pv_scale, interval_minutes),
         reference,
@@ -679,7 +679,13 @@ def _replan(
         _live(),
         _NOW,
     )
-    final = run_planner(replace(planner_input, dynamic_discharge_floor_pct=floor_pct))
+    final = run_planner(
+        replace(
+            planner_input,
+            dynamic_discharge_floor_pct=floor_pct,
+            dynamic_floor_profile=profile,
+        )
+    )
     return floor_pct, diag, reference, final
 
 
@@ -778,6 +784,20 @@ class TestRealPlanner:
         assert diag["cheap_refill_price"] < 0.15
         assert diag["refill_type"] == "solar_surplus"
         assert floor_pct > _LIVE_SOC_PCT
-        assert _evening_discharge_kwh(final) == pytest.approx(0.0)
+        # The reserve is above the battery in the live slot, so it holds there.
+        live_slot = next(s for s in final.slots if s.start <= _NOW < s.end)
+        assert live_slot.batteries_discharged_kwh == pytest.approx(0.0)
+        # It then follows the declining reserve (issue #1188) instead of
+        # holding until morning, and never ends a slot below its reserve.
+        assert _evening_discharge_kwh(final) > 2.0
+        for slot in final.slots:
+            if slot.end > _NOW:
+                assert (
+                    slot.estimated_battery_capacity_kwh
+                    >= slot.discharge_reserve_kwh - 1e-3
+                )
         # Deterministic per replan: the committed plan never feeds back.
         assert second[0] == pytest.approx(floor_pct)
+        assert _evening_discharge_kwh(second[3]) == pytest.approx(
+            _evening_discharge_kwh(final)
+        )

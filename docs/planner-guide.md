@@ -173,14 +173,42 @@ A night that is not the cheapest time of the look-ahead does not count, for
 example a 0.15 night before a 0.12 day. Neither do flat prices. The sensor then
 reports `refill_type: grid_available`.
 
-The floor is also the origin of the planner's battery model: planned
-capacity is measured in kWh above it, and the planned SoC is
-`floor + capacity`. When the battery is already **below** the dynamic floor
-(for example 11 % against a 75.74 % bridge reserve), the planner uses the live
-SoC as that origin instead. The battery still cannot discharge (it starts
-with 0 kWh above the origin), but the plan reports the real SoC rather than
-the unreached floor, and it can plan charging into the battery's full
-remaining headroom (issue #1094).
+**The reserve declines through the night (issue #1188).** The floor above is
+the reserve needed _now_. One slot later the bridge is one slot shorter, and
+after the refill no reserve is needed at all. The planner therefore gets the
+floor for every slot, not one number:
+
+```text
+reserve at the start of slot t = (house load from slot t to the refill slot
+                                  − grid charges credited from slot t on) × safety_margin
+reserve from the refill slot on = 0
+```
+
+In the plan each slot must end with at least the next slot's reserve. So:
+
+- A battery **above** the reserve serves the house through the night and
+  ends each slot at or above the declining reserve. Only what goes beyond
+  that is blocked: exporting the battery or charging an EV from it.
+- A battery **below** the reserve holds until the reserve has declined to it,
+  then follows it down. It is not charged from the grid to reach the reserve,
+  the plan reports its real SoC, and it can charge into its full headroom
+  (issue #1094).
+- From the refill slot on the plan may use the battery down to the hardware
+  minimum, so the day after the refill is planned with the real battery.
+
+Before this change the planner held the floor constant for all 48 hours. The
+timeline then showed `batteries_wait_mode` with grid import all night, while
+in reality each replan lowered the floor and the battery kept feeding the
+house (issue #1125).
+
+`sensor.hsem_effective_discharge_floor_sensor` still shows the reserve at the
+start of the current slot. During the slot the battery may go down to the next
+slot's reserve, so the live SoC can read slightly below the sensor until the
+next replan.
+
+The planner's battery model always starts at the hardware minimum SoC:
+planned capacity (`estimated_battery_capacity_kwh`) is kWh above the hardware
+minimum, with or without the dynamic floor.
 
 ### Consumption prediction
 

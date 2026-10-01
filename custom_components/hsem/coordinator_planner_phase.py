@@ -21,6 +21,7 @@ from custom_components.hsem.coordinator_cycle import (
 )
 from custom_components.hsem.coordinator_dynamic_floor import (
     compute_dynamic_floor_from_plan,
+    floor_required_at_slot_end,
 )
 from custom_components.hsem.coordinator_helpers import (
     LoadForecastSignature,
@@ -88,6 +89,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
         if not dynamic_floor_enabled:
             self._effective_discharge_floor_pct = None
             self._effective_discharge_floor_diag = None
+            self._effective_discharge_floor_profile = None
 
         # Collect session EV charge power for session-aware MILP (issue #615).
         ev_session_kw: dict[str, float] = {}
@@ -147,7 +149,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                 )
                 if getattr(self, "_update_generation", 0) != captured_generation:
                     raise _StaleUpdateCycle
-                floor_pct, floor_diag = compute_dynamic_floor_from_plan(
+                floor_pct, floor_diag, floor_profile = compute_dynamic_floor_from_plan(
                     self._dynamic_floor,
                     self._hourly_recommendations,
                     reference_output,
@@ -157,8 +159,11 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                 )
                 self._effective_discharge_floor_pct = floor_pct
                 self._effective_discharge_floor_diag = floor_diag
+                self._effective_discharge_floor_profile = floor_profile
                 planner_input = replace(
-                    planner_input, dynamic_discharge_floor_pct=floor_pct
+                    planner_input,
+                    dynamic_discharge_floor_pct=floor_pct,
+                    dynamic_floor_profile=floor_profile,
                 )
             self._last_planner_input = planner_input
 
@@ -241,8 +246,13 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
 
         floor_in_force = self._effective_discharge_floor_pct
         if floor_in_force is not None and live.huawei_batteries_soc_pct is not None:
+            # The plan may follow the reserve down to the next slot's floor.
             self._dynamic_floor.correct_margin(
-                live.huawei_batteries_soc_pct, floor_in_force, now=now
+                live.huawei_batteries_soc_pct,
+                floor_required_at_slot_end(
+                    self._effective_discharge_floor_profile, now, floor_in_force
+                ),
+                now=now,
             )
 
         # Window-level hysteresis (issue #315).

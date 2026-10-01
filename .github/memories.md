@@ -2423,3 +2423,24 @@ Tests: `tests/test_solcast_subhourly_source.py` (real `populate_price_and_solcas
 - The builder cannot tell "no PV data" from "zero PV": uncovered slots still arrive as `0.0`, for prices too. That is issue #1196, not solved here.
 
 Tests: `tests/test_solcast_subhourly_planner.py` (real populator → `build_planner_input` → `run_planner`: 30- and 15-minute sources at 15/30/60-minute slots, energy per hour, both DST days, missing slots, corrector, forecast tracker), `tests/test_time_series_model.py::TestAlignSlotPv`.
+
+## Dynamic Floor Is a Per-Slot Reserve, Not the Model Origin (issue #1188)
+
+**Bug:** the planner held the dynamic floor constant for the whole horizon by moving the battery model's origin up to it (`usable_capacity(rated, soc, effective_floor, max)`). The reserve shrinks every slot and is gone after the refill, so the published plan showed `batteries_wait_mode` with grid import all night while each replan lowered the floor and the battery kept discharging (#1125), and the day after the refill was planned inside `[floor, max]`. A floor at or above the maximum SoC with a full battery also left `usable_kwh = 0`: the MILP was skipped and the passive fallback executed.
+
+**Rule:** the origin is always the hardware floor. `DynamicDischargeFloor.compute_floor_profile()` returns the floor at the start of every look-ahead slot (suffix sums of the same bridge; the first entry is the scalar; the configured minimum from the refill slot on). It reaches the planner as `PlannerInput.dynamic_floor_profile` (`(slot start ISO, floor %)`, matched by UTC instant) and `planner/discharge_reserve.py::apply_discharge_reserve()` writes `PlannedSlot.discharge_reserve_kwh`: the kWh above the hardware floor the plan must hold at the **end** of the slot, which is the **next** slot's floor. Two rules keep it satisfiable without charging: never above the energy held now (the #1094 cap), never rising along the horizon.
+
+**Every consumer reads the slot field:** the MILP as the RHS of its existing lower SoC rows (`b_ub[m + t] = current_kwh - reserve[t]`, no new row or column), `simulate_soc()` as the level greedy discharge stops at, `_validate_candidate()`, the write-out clamps in `milp/_write_results.py` and `validate_primary_inventory()`.
+
+**Gotchas:**
+
+- Do not give the reserve a penalised slack. `p_soc` is 100 x the highest import price, so the solver would grid-charge at any price to climb back to a reserve the battery is below.
+- `resolve_soc_bounds_pct()` still returns an "effective floor" (the floor in force now, capped at the live SoC). It is not the origin any more. `battery_target.target_kwh_for_pct` and `_forecast_export_reserve_kwh` measure from the hardware floor.
+- `estimated_battery_capacity_kwh` is kWh above the **hardware** floor, with or without the dynamic floor.
+- The margin learner must be fed `floor_required_at_slot_end()` (the next slot's floor), not the scalar. The plan follows the reserve down within a slot, so against the slot-start floor every slot of planned self-consumption is a shortfall and the margin walks to 1.50.
+- The sensor still shows the floor at the start of the live slot; the live SoC can read slightly below it until the next replan.
+- A scalar-only caller (`dynamic_discharge_floor_pct` without a profile) gets a constant reserve, capped at the energy held.
+- `planner/milp_optimizer.py` is at 30,485 B and `coordinator_planner_phase.py` is over the limit (issue #1186 moves the reference-solve block out).
+- The floor itself still flips between replans when the reference plan's night charge moves among equally priced slots (issue #1198, pre-existing).
+
+Tests: `tests/planner/test_dynamic_floor_reserve_profile.py` (profile, per-slot bound, every consumer, real planner at 60 and 15 minutes, export spike, battery below the reserve, all candidates, margin learning), `tests/planner/test_dynamic_floor_reserve_replay.py` (closed loop).

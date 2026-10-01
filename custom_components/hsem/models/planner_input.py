@@ -391,6 +391,15 @@ class PlannerInput:
     #: Effective discharge floor SoC percentage computed by
     #: :class:`~custom_components.hsem.utils.dynamic_floor.DynamicDischargeFloor`.
     #: When ``None`` the feature is disabled and the configured minimum is used.
-    #: When set, the planner's discharge/export logic uses this floor instead
-    #: of the raw ``battery_end_of_discharge_soc_pct``.
+    #: When set, it is the floor in force now.  The battery model keeps its
+    #: origin at ``battery_end_of_discharge_soc_pct``; the floor becomes a
+    #: per-slot lower bound on stored energy (issue #1188, see
+    #: ``planner/discharge_reserve.py``).  Without ``dynamic_floor_profile``
+    #: the bound is this value for the whole horizon.
     dynamic_discharge_floor_pct: float | None = None
+    #: The floor at the start of every look-ahead slot, as
+    #: ``(slot start ISO-8601, floor SoC %)`` pairs matched to planner slots
+    #: by UTC instant (issue #1188).  The reserve declines as the bridge to
+    #: the next refill gets shorter and is the hardware floor from the refill
+    #: slot on.  ``None`` means no profile is known.
+    dynamic_floor_profile: list[tuple[str, float]] | None = None

@@ -226,11 +226,14 @@ class TestTargetKwh:
         inp = _inp(battery_max_soc_pct=90.0)
         assert target_kwh_for_pct(inp, 100.0, 8.0) == pytest.approx(8.0)
 
-    def test_dynamic_floor_moves_the_origin(self) -> None:
-        inp = _inp(dynamic_discharge_floor_pct=30.0)
-        # Origin at 30 %: 100 % is 7 kWh above it.
-        assert target_kwh_for_pct(inp, 100.0, 7.0) == pytest.approx(7.0)
-        assert target_kwh_for_pct(inp, 50.0, 7.0) == pytest.approx(2.0)
+    def test_dynamic_floor_does_not_move_the_origin(self) -> None:
+        """The origin is the hardware floor with a dynamic floor too (#1188)."""
+        plain = _inp()
+        floored = _inp(dynamic_discharge_floor_pct=30.0)
+        for target_pct in (100.0, 50.0):
+            assert target_kwh_for_pct(floored, target_pct, 9.0) == pytest.approx(
+                target_kwh_for_pct(plain, target_pct, 9.0)
+            )
 
     def test_clamped_to_the_model_usable_capacity(self) -> None:
         assert target_kwh_for_pct(_inp(), 100.0, 6.5) == pytest.approx(6.5)

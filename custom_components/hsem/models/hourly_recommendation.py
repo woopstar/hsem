@@ -51,10 +51,9 @@ class HourlyRecommendation:
         batteries_charged_kwh: Energy scheduled to be charged into battery (kWh).
         batteries_discharged_kwh: Energy drawn from battery by the SoC simulation (kWh).
         estimated_battery_capacity_kwh: Remaining usable battery energy above the
-            planner's effective discharge floor at the end of the slot (kWh).
-            With the dynamic floor active this is not the hardware-floor
-            capacity the battery sensors report; ``estimated_battery_soc_pct``
-            is always that floor plus this energy (issue #1094).
+            hardware discharge floor at the end of the slot (kWh), with or
+            without the dynamic discharge floor (issue #1188);
+            ``estimated_battery_soc_pct`` is that floor plus this energy.
         estimated_battery_soc_pct: Simulated absolute battery SoC (0-100 %) at the
             end of the slot, relative to the rated capacity.  Populated by
             :func:`~planner.soc_simulation.simulate_soc` and suitable for
