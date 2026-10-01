@@ -7,6 +7,7 @@ or from a pre-collected :class:`StateSnapshot` (snapshot).
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -74,6 +75,25 @@ def _detect_interval_minutes(
     median_gap = gaps_minutes[len(gaps_minutes) // 2]
     rounded = round(median_gap)
     return rounded if rounded > 0 else fallback
+
+
+def _overlap_weighted_mean(covering: list[tuple[float, float]]) -> float:
+    """Return the overlap-weighted mean of the data points covering a slot.
+
+    A single covering point is returned as is, so a source at or above the
+    slot width stores exactly the value it published.
+
+    Args:
+        covering: ``(value, overlap seconds)`` of each data point that
+            overlaps the slot; never empty, overlaps strictly positive.
+
+    Returns:
+        The mean value, weighted by how long each point covers the slot.
+    """
+    if len(covering) == 1:
+        return covering[0][0]
+    covered_seconds = math.fsum(seconds for _, seconds in covering)
+    return math.fsum(value * seconds for value, seconds in covering) / covered_seconds
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +173,7 @@ def populate_price_and_solcast_from_snapshot(
         "solcast_pv_estimate_kwh",
         cfg.solcast_pv_forecast_forecast_likelihood,
         solcast_fallback,
+        mean_over_slot=True,
     )
     if solcast_today_matched == 0:
         _LOGGER.debug(
@@ -166,6 +187,7 @@ def populate_price_and_solcast_from_snapshot(
         "solcast_pv_estimate_kwh",
         cfg.solcast_pv_forecast_forecast_likelihood,
         solcast_fallback,
+        mean_over_slot=True,
     )
     if solcast_tomorrow_matched == 0:
         _LOGGER.debug(
@@ -181,6 +203,8 @@ def _populate_from_attributes(
     field_name: str,
     solcast_likelihood_key: str,
     fallback_interval_minutes: int,
+    *,
+    mean_over_slot: bool = False,
 ) -> int:
     """Match pre-read sensor attribute data to recommendation slots.
 
@@ -195,6 +219,14 @@ def _populate_from_attributes(
     :class:`HourlyRecommendation` slot — no scaling is applied.
     ``coordinator_builder`` passes the value straight through to the planner.
 
+    By default a slot takes the data point whose window contains the slot's
+    start.  With *mean_over_slot* a slot instead takes the time-weighted mean
+    of every data point that overlaps it, which is what an average-power
+    series such as Solcast PV needs when the source is finer than the slot
+    (issue #1191): a 60-minute slot under a half-hourly source would otherwise
+    keep the first half-hour and drop the second.  A source at or above the
+    slot width overlaps each slot with one point, so the value is unchanged.
+
     Args:
         attributes: The ``.attributes`` dict of the sensor, or ``None``.
         recommendations: Mutable recommendation list.
@@ -202,6 +234,8 @@ def _populate_from_attributes(
         solcast_likelihood_key: Attribute key for Solcast PV estimate field.
         fallback_interval_minutes: Interval assumed when auto-detection fails
             (fewer than 2 parseable timestamps in the array).
+        mean_over_slot: Store the overlap-weighted mean of the data points
+            covering each slot instead of the point at the slot's start.
 
     Returns:
         Number of data points successfully matched to at least one slot.
@@ -262,10 +296,10 @@ def _populate_from_attributes(
                 break
 
         # Prices are rates (currency/kWh) — store the raw value unchanged.
-        # Solcast PV is energy — the Solcast sensor publishes hourly kWh
-        # totals; the per-slot fraction is computed in slot_population.py
-        # via `pv_estimate / scale` (scale = 60 / slot_minutes), so
-        # SolcastSlot.pv_estimate must hold the full hourly kWh.
+        # Solcast PV is average power over the source period (kW), which for
+        # an hour equals that hour's kWh.  The per-slot fraction is computed
+        # in slot_population.py via `pv_estimate / scale` (scale = 60 /
+        # slot_minutes), so SolcastSlot.pv_estimate must hold the hourly kWh.
         #
         # In both cases we store the raw value directly so that
         # coordinator_builder can pass it straight to the planner
@@ -273,6 +307,8 @@ def _populate_from_attributes(
         # round-trip is gone; with per-attribute auto-detection the raw
         # value is the only value that remains correct across mixed cadences.
         source_window = timedelta(minutes=detected_interval)
+        # Per slot index: (value, overlap seconds) of each covering data point.
+        overlaps: dict[int, list[tuple[float, float]]] = {}
 
         for data in sensor_data:
             for kv in kv_list:
@@ -303,10 +339,28 @@ def _populate_from_attributes(
                 # wall clock, which cannot tell the DST fall-back hour's two
                 # occurrences apart (issue #1160).
                 window_start = utc_key(dt_key)
-                for obj in recommendations:
+                window_end = window_start + source_window
+                for index, obj in enumerate(recommendations):
                     obj_start = utc_key(obj.start)
-                    if window_start <= obj_start < window_start + source_window:
+                    if mean_over_slot:
+                        overlap_seconds = (
+                            min(window_end, utc_key(obj.end))
+                            - max(window_start, obj_start)
+                        ).total_seconds()
+                        if overlap_seconds > 0:
+                            overlaps.setdefault(index, []).append(
+                                (value, overlap_seconds)
+                            )
+                            matched += 1
+                    elif window_start <= obj_start < window_end:
                         setattr(obj, field_name, round(value, 5))
                         matched += 1
+
+        for index, covering in overlaps.items():
+            setattr(
+                recommendations[index],
+                field_name,
+                round(_overlap_weighted_mean(covering), 5),
+            )
 
     return matched
