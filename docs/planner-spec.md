@@ -1871,6 +1871,34 @@ feeds both the MILP and `CostWeights.battery_target`.
 | `max_import_increase_after_kwh` | Largest import increase after `T` (≈ 0).                                                            |
 | `selected_projected_kwh`        | `soc[T]` in the selected plan (differs from `projected_kwh` only on a `passive` fallback).          |
 | `selected_shortfall_kwh`        | Shortfall of the selected plan.                                                                     |
+| `stage1_cost`                   | `total_cost` of the normal plan over the horizon (money). `None` unless stage 2 solved.             |
+| `stage2_cost`                   | `total_cost` of the target plan: the MILP plan that is returned. `None` unless stage 2 solved.      |
+| `preference_cost`               | `stage2_cost − stage1_cost`: what the target costs in money over the horizon.                       |
+| `preference_cost_per_kwh`       | `preference_cost / (projected_kwh − stage1_projected_kwh)`; `None` when nothing was gained.         |
+| `terminal_soc_value_delta`      | Stage 2 minus stage 1 of the terminal-SoC term `(E_0 − E_end) × V`; not money.                      |
+
+**Preference cost (issue #1185).** When stage 2 solves, the wrapper scores
+both plans with `score_plan` and the selector's own `CostWeights`
+(`planner/milp/_battery_target.py::preference_cost`). `stage2_cost` is
+therefore the `total_cost` of the published MILP plan: grid import cost minus
+net export revenue plus cycle cost. The figure is a report only. It is
+written into the diagnostics after both solves and is never added to
+`total_cost` or `score`.
+
+How to read it:
+
+- `preference_cost` covers the **whole horizon**. It counts the export given
+  up and the extra cycling, less whatever the stored energy saves later in
+  the horizon (import avoided, or a later export). It is recomputed on every
+  replan and overlaps with the previous replan's figure, so the per-replan
+  values must not be summed into a daily total.
+- It does not count what the energy still stored at the horizon end is worth
+  afterwards. That is `terminal_soc_value_delta`: negative when the target
+  leaves more energy in the battery. It is the selector's terminal-SoC term
+  at the end value `V` (issue #1138), which is an estimate and not cash, so it
+  is reported next to the cost and not subtracted from it.
+- All five keys are `None` when stage 2 did not run (`target_met`,
+  `no_occurrence`), when it failed, and when the MILP is unavailable.
 
 #### Invariants for tests
 
@@ -1895,6 +1923,13 @@ feeds both the MILP and `CostWeights.battery_target`.
 - An occurrence inside or before the current slot rolls to the next day.
 - `score` includes `battery_target_penalty` for every candidate;
   `total_cost` never does.
+- When stage 2 solved, `stage2_cost` equals the published MILP plan's
+  `total_cost` and `preference_cost == stage2_cost − stage1_cost`; the
+  preference-cost keys are `None` otherwise (issue #1185).
+- The preference cost never enters `total_cost` or `score`: replacing the
+  reported figure leaves every slot and every candidate's cost unchanged.
+- In a day where the stored energy has no later use, `preference_cost` equals
+  the export revenue given up plus the cycle cost of the stored energy.
 
 See `tests/planner/test_battery_target_milp.py`,
 `tests/planner/test_battery_target_spec.py`, and

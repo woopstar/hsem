@@ -52,7 +52,10 @@ from custom_components.hsem.planner.candidates._mutations import (
     _clear_all_charge_discharge,
     _copy_slots,
 )
-from custom_components.hsem.planner.cost_function import PlanCostBreakdown
+from custom_components.hsem.planner.cost_function import (
+    CostWeights,
+    PlanCostBreakdown,
+)
 from custom_components.hsem.planner.milp._battery_target import (
     solve_milp_with_battery_target,
 )
@@ -167,6 +170,8 @@ def generate_candidates(
     replacement_price_per_kwh: float | None = None,
     ev_configs: list[EVConfig] | None = None,
     battery_target: BatteryTargetSpec | None = None,
+    cost_weights: CostWeights | None = None,
+    slot_duration_hours: float = 1.0,
 ) -> list[CandidatePlan]:
     """Generate all candidate plans from the already-populated baseline slots.
 
@@ -212,6 +217,11 @@ def generate_candidates(
             Next house-battery target occurrence (issue #1109), or ``None``
             when the target is disabled.  Adds the stage-2 solve described
             in ``planner/milp/_battery_target.py``.
+        cost_weights:
+            The selector's cost weights.  Only used to report the battery
+            target's preference cost (issue #1185); never changes a plan.
+        slot_duration_hours:
+            Slot width in hours, for the same report.
 
     Returns:
         Ordered list of :class:`CandidatePlan` objects: ``no_action``,
@@ -272,6 +282,8 @@ def generate_candidates(
             baseline_slots,
             now,
             battery_target=battery_target,
+            cost_weights=cost_weights,
+            slot_duration_hours=slot_duration_hours,
             current_kwh=current_kwh,
             usable_kwh=usable_kwh,
             max_charge_per_slot=max_charge_per_slot,

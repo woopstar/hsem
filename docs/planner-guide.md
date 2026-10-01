@@ -411,7 +411,22 @@ the EV gets what is left once the battery has what it needs.
 The working-mode sensor's `battery_target` attribute shows the result for the
 next occurrence: the target, the level the normal plan would reach
 (`stage1_projected_kwh`), the level the plan reaches (`projected_kwh`), and
-any `shortfall_kwh`. See
+any `shortfall_kwh`.
+
+It also shows what the target costs (issue #1185). `preference_cost` is the
+plan's money cost with the target minus its cost without it
+(`stage2_cost − stage1_cost`), over the planning horizon, and
+`preference_cost_per_kwh` divides it by the extra energy held at the target
+time. Two things to keep in mind when reading it:
+
+- It is a per-plan figure. Every replan recomputes it for the hours ahead, so
+  adding up the values of one day counts the same hours many times.
+- The battery usually ends the horizon with more energy because of the
+  target. That energy is worth something later, which the money figure does
+  not include. `terminal_soc_value_delta` shows the planner's estimate of it
+  (negative means the target leaves more in the battery).
+
+These fields are empty when the normal plan already meets the target. See
 [planner-spec.md](planner-spec.md#house-battery-target-soc-by-deadline-issue-1109)
 for the model.
 

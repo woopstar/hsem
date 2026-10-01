@@ -301,6 +301,8 @@ def _select_candidate(
         replacement_price_per_kwh=rppk,
         ev_configs=ev_configs,
         battery_target=cw.battery_target,
+        cost_weights=cw,
+        slot_duration_hours=sdh,
     )
     _sanitize_passive_ev_fallback(candidates, ev_configs, now)
     winner, rejected, hyst = select_best_candidate(

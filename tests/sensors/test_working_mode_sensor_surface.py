@@ -85,6 +85,12 @@ class TestPlanningAttributes:
             "stage2_ran": True,
             "stage2_status": "solved",
             "shortfall_kwh": 0.0,
+            # Preference cost (issue #1185): what the target costs in money.
+            "stage1_cost": -18.2572,
+            "stage2_cost": -15.9423,
+            "preference_cost": 2.3149,
+            "preference_cost_per_kwh": 0.6256,
+            "terminal_soc_value_delta": -1.8456,
         }
         sensor.coordinator.data = CoordinatorData(
             cfg=SensorConfig(), live=_live(), battery_target=report
