@@ -9,6 +9,7 @@
 #      that cover a new situation, plus actuals for the days they cover
 #                                                     (scripts/backtest_harvest.py)
 #   4. run the backtest suite over the committed corpus
+#   5. score every complete day of the actuals         (scripts/backtest_score.py)
 #
 # It never commits to git: review the new files and commit them yourself.
 
@@ -68,7 +69,7 @@ done
 step() { echo ""; echo "=== $* ==="; }
 
 # 1. Live corpus -------------------------------------------------------------
-step "1/4 live corpus"
+step "1/5 live corpus"
 mkdir -p "${LIVE_DIR}"
 if [[ "${SKIP_FETCH}" -eq 1 ]]; then
     echo "[info] --skip-fetch: using ${LIVE_DIR} as is"
@@ -85,7 +86,7 @@ else
 fi
 
 # 2. Actuals -----------------------------------------------------------------
-step "2/4 actuals"
+step "2/5 actuals"
 actuals_args=(--days "${DAYS}" --out "${DATA_DIR}")
 [[ "${SKIP_FETCH}" -eq 1 ]] && actuals_args+=(--skip-fetch)
 if [[ "${SKIP_FETCH}" -eq 1 && ! -d "${DATA_DIR}/raw" ]]; then
@@ -95,7 +96,7 @@ else
 fi
 
 # 3. Backtest + harvest ------------------------------------------------------
-step "3/4 backtest new cycles and harvest"
+step "3/5 backtest new cycles and harvest"
 harvest_status=0
 "${PYTHON}" "${REPO_ROOT}/scripts/backtest_harvest.py" \
     --live "${LIVE_DIR}" \
@@ -104,10 +105,18 @@ harvest_status=0
     "${HARVEST_ARGS[@]}" || harvest_status=$?
 
 # 4. Committed suite ---------------------------------------------------------
-step "4/4 backtest suite over the committed corpus"
+step "4/5 backtest suite over the committed corpus"
 suite_status=0
 (cd "${REPO_ROOT}" && "${PYTHON}" -m pytest tests/backtest/ -q --no-cov \
     -p no:cacheprovider) || suite_status=$?
+
+# 5. Score ---------------------------------------------------------------------
+step "5/5 score the days"
+# Informational: a day that cannot be scored is reported, not a failure.
+score_args=()
+[[ -f "${DATA_DIR}/actuals.json" ]] && score_args+=("${DATA_DIR}/actuals.json")
+[[ -n "${TZ:-}" ]] && score_args+=(--tz "${TZ}")
+"${PYTHON}" "${REPO_ROOT}/scripts/backtest_score.py" "${score_args[@]}" || true
 
 echo ""
 echo "=== summary ==="

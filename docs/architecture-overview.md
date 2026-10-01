@@ -121,6 +121,7 @@ HA-dependent sensor entities that consume coordinator data.
 | `planner/milp_optimizer.py`        | LP solver for global optimum (scipy)                           |
 | `planner/ev_planner.py`            | EV charging plan builder                                       |
 | `planner/engine_explanation.py`    | Human-readable plan explanations                               |
+| `planner/hindsight_oracle.py`      | Hindsight baseline and perfect-foresight oracle for scoring    |
 
 ### Utils layer (shared, minimal HA imports)
 

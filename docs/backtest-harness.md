@@ -10,17 +10,14 @@ produces are close to the best achievable from the same inputs. Those are
 different questions, and only the second one says whether the MILP, the cost
 function and the forecasts are worth their complexity.
 
-The harness is built in two stages.
+The harness is built in stages.
 
-| Stage                                 | Answers                                               | Status                           |
-| ------------------------------------- | ----------------------------------------------------- | -------------------------------- |
-| **1 — replay**                        | Does the planner hold the spec on _real_ inputs?      | **implemented**                  |
-| **2a — collection + actuals loading** | Can realized outcomes be lined up with the plan?      | **implemented**                  |
-| **2b — scoring** (savings + regret)   | Was the plan any good, and whose fault when it isn't? | not implemented — needs a corpus |
-
-Stage 2b is deliberately not built yet. Scoring code written before there is
-data to run it on would answer the alignment and attribution questions below
-by guessing. Stage 2a exists so the collection clock can start now.
+| Stage                                 | Answers                                               | Status                              |
+| ------------------------------------- | ----------------------------------------------------- | ----------------------------------- |
+| **1 — replay**                        | Does the planner hold the spec on _real_ inputs?      | **implemented**                     |
+| **2a — collection + actuals loading** | Can realized outcomes be lined up with the plan?      | **implemented**                     |
+| **2b — scoring** (savings + regret)   | Was the day run well, against the best it could be?   | **implemented** (issue #1208)       |
+| **2c — attribution**                  | Whose fault when it is not: forecasts or the planner? | not implemented — see the end of 2b |
 
 ---
 
@@ -61,6 +58,8 @@ flowchart LR
 | `tests/backtest/replay.py`        | Rebuild a `PlannerInput` from a dump; report anything it cannot map    |
 | `tests/backtest/invariants.py`    | Check one `(input, output)` pair against `planner-spec.md`             |
 | `tests/backtest/actuals.py`       | Load realized outcomes and align them to planner slots                 |
+| `tests/backtest/scoring.py`       | Score realized days: cost, regret, savings and capture                 |
+| `planner/hindsight_oracle.py`     | Self-consumption baseline and perfect-foresight oracle (no HA imports) |
 | `tests/backtest/conftest.py`      | Corpus discovery, including a private out-of-repo corpus               |
 | `tests/backtest/harvest.py`       | Grow the committed corpus from a live one, one new situation at a time |
 | `tests/backtest/actuals/`         | Committed per-day actuals for the days committed cycles cover          |
@@ -69,6 +68,7 @@ flowchart LR
 | `scripts/backtest_update.sh`      | One command: copy corpus, collect actuals, backtest, harvest, test     |
 | `scripts/backtest_harvest.py`     | Backtest new cycles and harvest new situations                         |
 | `scripts/backtest_corpus.py`      | Replay every cycle of a corpus and report                              |
+| `scripts/backtest_score.py`       | Score every complete day of an actuals file                            |
 | `scripts/collect_actuals.sh`      | One command: fetch a week of history, convert, verify                  |
 | `scripts/build_actuals.py`        | Turn an HA history export into an actuals file                         |
 
@@ -439,29 +439,145 @@ refused rather than performed quietly.
 
 ---
 
-## Stage 2b — savings and regret (not implemented)
+## Stage 2b — scoring a day
 
-### Two comparisons
+```bash
+python3 scripts/backtest_score.py                              # the committed days
+python3 scripts/backtest_score.py ~/hsem-actuals/actuals.json  # your own collection
+```
 
-| Comparison                                                                              | Measures    |
-| --------------------------------------------------------------------------------------- | ----------- |
-| plan vs **no-action baseline**                                                          | **savings** |
-| plan vs **perfect-foresight oracle** — the same MILP, actuals substituted for forecasts | **regret**  |
+```text
+site limits from cycle-2026-09-25-0816.json: 15 kWh, 5-100 % SoC, 5/5 kW, efficiency 0.98/0.98
+day         realized   oracle   regret potential  savings  capture
+2026-09-15     13.45    10.19     3.26      9.32     6.05    65.0%
+2026-09-26     84.19    64.68    19.51     15.40    -4.12   -26.7%
+   2 day(s)    97.64    74.87    22.78     24.71     1.94     7.8%
+```
 
-Savings say what the integration delivered. **Regret is the metric worth
-building this for**, because it separates two failure modes that are
-indistinguishable today:
+Costs are in the currency of the price sensors. That table is produced from the
+committed actuals alone, with no live system, and
+`tests/backtest/test_scoring.py` pins it.
+
+### Three ways the same day could have gone
+
+Every run uses the same slots, the same realized prices and the same load.
+
+| Run          | What it is                                                                |
+| ------------ | ------------------------------------------------------------------------- |
+| **realized** | What was paid: grid import × import price − grid export × export price    |
+| **baseline** | Plain inverter self-consumption — the hardware with nobody controlling it |
+| **oracle**   | The cheapest the day could have been, with perfect foresight              |
+
+The oracle is a small mixed-integer program
+(`planner/hindsight_oracle.py::solve_hindsight_oracle`) over the realized
+slots. Per slot it chooses the battery's charge and discharge and how much PV
+to curtail; the grid takes the rest. It gets **hard limits only** — capacity,
+power, conversion losses, the main fuse and the export limit. No dynamic floor,
+reserve, hysteresis, export price threshold or terminal value: those are
+policy, and policy is what is being measured. A slot cannot both charge and
+discharge, or both import and export, so the oracle's day is one the hardware
+could execute.
+
+The **load** is everything that is not the battery — house, EV and losses —
+read off the meters as `grid_import − grid_export − battery_charged +
+battery_discharged`. That is the grid flow each slot would have had with the
+battery idle, and it needs no house meter. The EV is therefore a fixed load:
+what moving its charging saved is not measured here.
+
+### Stored energy at the end of the day is part of the result
+
+A run that ends the day with a fuller battery has paid for energy it has not
+used yet. Compare it with a run that ends empty and it looks expensive; give
+the oracle a free hand and it wins by draining the battery, and HSEM is
+punished for planning tomorrow. So two costs are only compared when both runs
+start and end at the same stored energy:
+
+| Number        | Definition                                                                                                 |
+| ------------- | ---------------------------------------------------------------------------------------------------------- |
+| **regret**    | realized − oracle. The oracle starts where the day started and must end at least as full as the day ended. |
+| **potential** | baseline − oracle. Both start where the day started; the oracle must end where self-consumption ends.      |
+| **savings**   | potential − regret: what the control was worth against self-consumption, with the end difference priced.   |
+| **capture**   | savings ÷ potential: the share of the day's potential that was realized.                                   |
+
+Regret is never negative. Capture is at most 100 % and **can be negative**:
+the 26th above is a day on which the battery did worse than the inverter would
+have alone, and the number says so. Capture is `unknown`, never clamped, when
+the potential is below 0.05: on a day no control could have improved, there is
+no share to report.
+
+`savings` here is not "baseline bill minus real bill". That plain difference
+mixes in whatever the two runs happen to leave in the battery (14 kWh on the
+26th). Over a period it is still worth having, so the summary line also runs
+self-consumption as **one battery carried across consecutive days** and prints
+its total next to the stored energy it ends with:
+
+```text
+self-consumption as one battery across consecutive days: 68.09, -29.55 against realized; it ends with -14.35 kWh against what the battery held
+```
+
+With two unconnected days that line is dominated by the end difference; over
+weeks of consecutive days it is the honest "what would the bill have been".
+
+### Why the oracle is a lower bound
+
+Regret is only meaningful if no real day can beat the oracle. That holds by
+construction, not just on the days tested: the realized day itself is always a
+feasible answer to the oracle's problem.
+
+- The load is derived from the realized flows, so the realized flows satisfy
+  the oracle's energy balance exactly.
+- The required end energy is the one the **measured battery flows** imply
+  under the configured efficiencies, so the realized day meets it.
+- Every limit is widened wherever the realized day went beyond it: a slot
+  that charged a little more than the configured power, or a stored-energy
+  trajectory that drifts outside the capacity because the real efficiency is
+  not the configured one. A widening of more than 10 % of the limit is printed
+  as a `note:` under the day, because it means the limits do not describe
+  this battery.
+
+`tests/planner/test_hindsight_oracle.py` checks the same property from the
+other side: on random days, no random feasible run that ends at least as full
+is cheaper than the oracle. On the committed days regret is 3.26 and 19.51.
+
+### Days that cannot be scored
+
+A day needs grid import and export, battery charge and discharge, and both
+prices in **every** slot, plus the battery SoC at its first slot. Anything
+missing makes the whole day `not scored`, with the reason — missing is never
+read as zero, because a fabricated zero does not cancel out of a difference of
+costs. PV is optional: without it the oracle cannot curtail.
+
+### Which installation's limits
+
+The actuals carry no battery data, so the limits come from a recorded planner
+input: by default the newest committed cycle, or `--site <dump>`. They must be
+from the installation the actuals were recorded on. A mismatch shows up as a
+"leave the configured capacity" note.
+
+### What it does not measure
+
+- **EV scheduling.** The EV's energy is in the load as it happened.
+- **Battery wear.** All costs are grid cash. The planner also prices each kWh
+  cycled, so it declines trades the oracle makes; that shows up as regret.
+- **More curtailment than happened.** The oracle may curtail the PV that was
+  produced, not PV that had already been curtailed.
+- **Why the regret is there.** That is the next stage.
+
+## Stage 2c — attribution (not implemented)
+
+Regret says how much was left on the table, not what to fix. It separates into
+two failure modes that are indistinguishable today:
 
 - the oracle beats us mainly on PV-variable days → the **forecasts** are the
   problem (Solcast handling, solar correction);
 - the oracle beats us even where forecasts were near-perfect → the **optimizer**
-  is the problem (MILP formulation or cost function).
+  is the problem (MILP formulation, cost function, floors and reserves).
 
-Those are completely different fixes.
+Those are completely different fixes. Splitting them needs a rolling
+simulation over a day, cycle by cycle, run once with the forecasts HSEM had
+and once with the realized values in their place.
 
 ### Open design questions
-
-These need real paired data to answer, which is why Stage 2b waits.
 
 1. **Alignment.** Dump cadence (~5 min) does not match slot width (15 min), and
    several dumps fall inside one slot. Which cycle's plan is the one being
@@ -471,9 +587,9 @@ These need real paired data to answer, which is why Stage 2b waits.
    result is already in every dump (`apply_result`), so scored days can exclude
    cycles where it reports a failed or blocked write — but "exclude" versus
    "annotate" is a judgement call that changes the headline number.
-3. **Oracle scope.** A perfect-foresight oracle over a 48 h horizon needs 48 h of
-   actuals _after_ the cycle, so the last two days of any corpus can never be
-   scored.
+3. **Horizon.** A rolling run with realized values needs actuals for the whole
+   planning horizon after each cycle, so the last two days of any corpus can
+   never be run that way.
 4. **Which price is the realized price.** A dump carries the price the planner
    _used_, which is not always the price that applied. Day-ahead prices publish
    around 13:00, so a morning cycle's second day has none, and `populate_prices`
@@ -482,9 +598,8 @@ These need real paired data to answer, which is why Stage 2b waits.
    genuine price-forecast error —
    `data_quality.tomorrow_price_missing_hours` marks exactly which hours.
    The realized price comes from the price sensor's recorded state instead
-   (exported as `import_price`/`export_price`), or equivalently from any later
-   dump covering the same slot. What a scoring pass must not do is read it off
-   the cycle being scored.
+   (exported as `import_price`/`export_price`), which is what Stage 2b uses.
+   What a scoring pass must not do is read it off the cycle being scored.
 
 Home Assistant's `mcp_server` integration was evaluated for collection and
 rejected: it exposes Assist-oriented tools returning a plain-text snapshot
