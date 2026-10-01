@@ -128,7 +128,9 @@ The stage-2 solve of the opt-in house-battery target adds one column,
 `battery_target_penalty` (width 1, `[0, ∞)`), the shortfall in kWh against the
 target at slot $T$. It is declared only for that solve, so the stage-1 model
 is unchanged. The same solve also replaces the `gi[t]` bounds with the
-stage-1 import: fixed for $t \le T$, capped for $t > T$. See
+stage-1 import (fixed for $t \le T$, capped for $t > T$) and raises the
+`ge[t]` lower bound to the stage-1 battery-origin export for $t \le T$
+(issue #1203). See
 [planner-spec.md](planner-spec.md#house-battery-target-soc-by-deadline-issue-1109).
 
 The max grid import per slot is converted from amps to kWh/slot:
@@ -328,9 +330,10 @@ $$
 $$
 
 with $\mathrm{bt\\_pen}$ priced at $P$ in the objective (undiscounted) and
-$gi[t]$ pinned to the stage-1 plan as variable bounds. With import fixed, the
-only way to raise $soc[T]$ is to export less PV
-(`planner/milp/_battery_target.py`).
+$gi[t]$ pinned to the stage-1 plan as variable bounds, and $ge[t]$ bounded
+from below by the stage-1 battery-origin export for $t \le T$ (issue #1203).
+With import fixed and the battery's own export kept, the only way to raise
+$soc[T]$ is to export less PV (`planner/milp/_battery_target.py`).
 
 **Main fuse grid import limit (soft):**
 

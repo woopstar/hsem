@@ -34,7 +34,9 @@ from custom_components.hsem.planner.milp._battery_target_rows import (
     BatteryTargetRows,
     add_battery_target_row,
     cap_grid_import,
+    grid_export_bounds,
     grid_import_bounds,
+    lp_pin_flows,
 )
 from custom_components.hsem.planner.milp._layout import (
     build_milp_column_layout,
@@ -552,6 +554,33 @@ class TestRows:
         bounds = grid_import_bounds([1.0, 1.0, 1.0], [0.4, 3.0, -2.0])
         assert bounds == [(0.4, 1.0), (1.0, 1.0), (0.0, 1.0)]
 
+    def test_export_bounds_without_a_floor_start_at_zero(self) -> None:
+        assert grid_export_bounds([1.5, -0.2], None) == [(0.0, 1.5), (0.0, 0.0)]
+
+    def test_export_floor_is_clamped_into_the_bound(self) -> None:
+        bounds = grid_export_bounds([1.0, 1.0, 1.0], [0.4, 3.0, -2.0])
+        assert bounds == [(0.4, 1.0), (1.0, 1.0), (0.0, 1.0)]
+
+    def test_lp_pin_flows_reports_import_and_battery_origin_export(self) -> None:
+        """Battery export is AC and never more than the slot really exported."""
+        layout = build_milp_column_layout(3, 0, fuse_active=False)
+        offsets = derive_milp_offsets(layout, 0)
+        solution = np.zeros(offsets.n_vars)
+        solution[offsets.gi_off : offsets.gi_off + 3] = [0.7, 0.0, 0.0]
+        solution[offsets.ge_off : offsets.ge_off + 3] = [0.0, 3.0, 0.5]
+        # Slot 1: 2 kWh DC of battery export next to PV; slot 2: the declared
+        # battery export exceeds what was exported.
+        solution[offsets.battery_export_off : offsets.battery_export_off + 3] = [
+            0.0,
+            2.0,
+            1.0,
+        ]
+
+        flows = lp_pin_flows(solution, 3, offsets, 0.9)
+
+        assert flows["lp_grid_import_kwh"] == pytest.approx([0.7, 0.0, 0.0])
+        assert flows["lp_battery_export_ac_kwh"] == pytest.approx([0.0, 1.8, 0.5])
+
     def test_layout_declares_the_slack_only_when_asked(self) -> None:
         plain = build_milp_column_layout(4, 0, fuse_active=True)
         staged = build_milp_column_layout(4, 0, fuse_active=True, battery_target=True)
@@ -571,6 +600,7 @@ class TestRows:
             penalty_per_kwh=1.2,
             grid_import_floor=(0.0, 0.0, 0.0),
             grid_import_cap=(1.0, 1.0, 1.0),
+            grid_export_floor=(0.0, 0.0, 0.0),
         )
 
         a_ub, b_ub = add_battery_target_row(

@@ -1,10 +1,11 @@
-"""Two-stage house-battery target solve (issue #1109).
+"""Two-stage house-battery target solve (issues #1109, #1203).
 
 The target is an opt-in preference agreed with the reporter: build a reserve
 towards a target SoC by a daily deadline using **only PV the normal plan
 would otherwise export**.  It must never increase grid import, never reduce
 or replace grid import the normal plan already needs, never weaken existing
-discharge, and it is a *deadline*, not "charge as soon as possible".
+discharge, never cancel a sale of battery energy (issue #1203), and it is a
+*deadline*, not "charge as soon as possible".
 
 Every scenario solves the normal plan (stage 1) and the target plan side by
 side and compares them slot for slot.
@@ -45,6 +46,7 @@ _TZ = ZoneInfo("Europe/Copenhagen")
 _MIDNIGHT = datetime(2026, 9, 14, 0, 0, tzinfo=_TZ)
 _USABLE_KWH = 10.0
 _CHARGE_EFF = 0.97
+_DISCHARGE_EFF = 0.97
 
 #: Published flows are rounded to 3 decimals, so two solves that agree on the
 #: LP value can differ by one rounding step each.
@@ -171,6 +173,16 @@ def _assert_import_rule(
             assert two.grid_import_kwh <= one.grid_import_kwh + _PUBLISHED_TOL, (
                 f"slot {i}: import increased after the target"
             )
+
+
+def _assert_battery_export_rule(
+    stage1: list[PlannedSlot], stage2: list[PlannedSlot], target_index: int
+) -> None:
+    """Battery energy stage 1 sells in ``t ≤ T`` is still sold (issue #1203)."""
+    for i in range(target_index + 1):
+        assert stage2[i].grid_export_kwh >= (
+            stage1[i].primary_battery_export_kwh - _PUBLISHED_TOL
+        ), f"slot {i}: battery export of the normal plan was cancelled"
 
 
 # ---------------------------------------------------------------------------
@@ -447,11 +459,12 @@ def test_import_is_pinned_in_the_window_and_never_higher_after(seed: int) -> Non
     target_index = _target_index(slots, spec)
 
     _assert_import_rule(normal, plan, target_index)
+    _assert_battery_export_rule(normal, plan, target_index)
     report = diagnostics["battery_target"]
     if report["stage2_ran"]:
         # The solver's own import column obeys the pin exactly.
         tolerance = IMPORT_ZERO_TOLERANCE_KWH + 1e-7
-        assert report["stage2_status"] == "solved"
+        assert report["stage2_status"] in ("solved", "no_gain")
         for t, (one, two) in enumerate(
             zip(
                 normal_diag["lp_grid_import_kwh"],
@@ -546,13 +559,132 @@ def test_rows_leave_export_slots_free_and_cap_after_the_window() -> None:
         penalty_per_kwh=1.2,
     )
 
-    rows = build_target_rows(spec, 1, [0.8, 5e-7, 0.5, -1e-9])
+    rows = build_target_rows(spec, 1, [0.8, 5e-7, 0.5, -1e-9], [0.0, 1.7, 2.0, 0.0])
 
     assert rows.grid_import_floor == pytest.approx((0.8, 0.0, 0.0, 0.0))
     assert rows.grid_import_cap == pytest.approx((0.8, 0.0, 0.5, 0.0))
+    # Battery export is kept inside the window only (issue #1203).
+    assert rows.grid_export_floor == pytest.approx((0.0, 1.7, 0.0, 0.0))
     assert rows.target_index == 1
     assert rows.target_kwh == pytest.approx(9.0)
     assert rows.penalty_per_kwh == pytest.approx(1.2)
+
+
+# ---------------------------------------------------------------------------
+# Battery export of the normal plan is not cancelled (issue #1203)
+# ---------------------------------------------------------------------------
+
+
+def _evening_sale_day(*, pv_at_19: float = 0.0) -> tuple[list[PlannedSlot], datetime]:
+    """18:00, battery at 70 %, export pays 0.90 at 19:00-21:00, target by 22:00.
+
+    Import is a flat 0.30 and the house draws 0.5 kWh an hour, so the normal
+    plan sells the battery into the evening price.  There is no PV unless
+    *pv_at_19* adds a surplus to the first sale hour.
+    """
+    start = _MIDNIGHT.replace(hour=18)
+    n = 24
+    pv = [0.0, pv_at_19] + [0.0] * (n - 2)
+    house = [0.5] * n
+    import_price = [0.30] * n
+    export_price = [0.05, 0.90, 0.90] + [0.05] * (n - 3)
+    return _day(pv, house, import_price, export_price, start=start), start
+
+
+_EVENING_SALE: dict[str, Any] = {"current_kwh": 7.0, "no_export": False}
+
+
+def test_battery_sale_before_the_deadline_is_not_cancelled_without_pv() -> None:
+    """No PV in the build window: the target cannot stop a sale of battery energy.
+
+    Before #1203 stage 2 kept the energy stage 1 sold at 19:00-21:00: import
+    was unchanged, the target row was served and the penalty outbid the
+    export price.  The feature was agreed to cost forgone PV export only.
+    """
+    slots, now = _evening_sale_day()
+    normal, _ = _solve(slots, now, None, **_EVENING_SALE)
+    spec = _spec(slots, now, at=time(22, 0))
+    target_index = _target_index(slots, spec)
+
+    plan, diagnostics = _solve(slots, now, spec, **_EVENING_SALE)
+
+    sold = sum(s.primary_battery_export_kwh for s in normal[: target_index + 1])
+    assert sold > 3.0, "the scenario must sell battery energy before the deadline"
+    report = diagnostics["battery_target"]
+    assert report["stage2_ran"] is True
+    assert report["stage2_status"] == "no_gain"
+    assert report["projected_kwh"] == pytest.approx(report["stage1_projected_kwh"])
+    assert plan == normal
+
+
+def test_only_the_pv_share_of_a_mixed_export_slot_is_held_back() -> None:
+    """PV surplus and battery export in one slot: the battery's sale stays."""
+    slots, now = _evening_sale_day(pv_at_19=2.0)
+    normal, _ = _solve(slots, now, None, **_EVENING_SALE)
+    spec = _spec(slots, now, at=time(22, 0))
+    target_index = _target_index(slots, spec)
+
+    plan, diagnostics = _solve(slots, now, spec, **_EVENING_SALE)
+
+    # The 19:00 slot exports its 1.5 kWh PV surplus and battery energy on top.
+    assert normal[1].primary_battery_export_kwh > 1.0
+    assert normal[1].grid_export_kwh > normal[1].primary_battery_export_kwh + 1.0
+    report = diagnostics["battery_target"]
+    assert report["stage2_status"] == "solved"
+    _assert_import_rule(normal, plan, target_index)
+    _assert_battery_export_rule(normal, plan, target_index)
+    # What the target gains is the PV that was exported, and no more.  The
+    # 1.5 kWh of PV now covers part of the sale, so the battery discharges
+    # 1.5 / η_dis less: no round trip through the battery is needed.
+    gained = report["projected_kwh"] - report["stage1_projected_kwh"]
+    pv_exported = sum(
+        s.grid_export_kwh - s.primary_battery_export_kwh
+        for s in normal[: target_index + 1]
+    )
+    assert pv_exported == pytest.approx(1.5, abs=_PUBLISHED_TOL)
+    assert gained == pytest.approx(pv_exported / _DISCHARGE_EFF, abs=_PUBLISHED_TOL)
+    assert plan[1].grid_export_kwh == pytest.approx(
+        normal[1].primary_battery_export_kwh, abs=_PUBLISHED_TOL
+    )
+
+
+def test_stage2_model_keeps_battery_export_as_hard_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The export floor is a column bound, so any incumbent obeys it."""
+    slots, now = _evening_sale_day(pv_at_19=2.0)
+    captured: list[dict[str, Any]] = []
+    real = _incumbent.solve_and_validate
+
+    def _capture(linprog: Any, **kwargs: Any) -> Any:
+        captured.append(kwargs)
+        return real(linprog, **kwargs)
+
+    monkeypatch.setattr(_incumbent, "solve_and_validate", _capture)
+    spec = _spec(slots, now, at=time(22, 0))
+
+    _, diagnostics = _solve(slots, now, spec, **_EVENING_SALE)
+
+    assert diagnostics["battery_target"]["stage2_ran"] is True
+    stage1_model, stage2_model = captured
+    offset, width = stage2_model["variable_blocks"]["grid_export"]
+    sold = _solve(slots, now, None, **_EVENING_SALE)[1]["lp_battery_export_ac_kwh"]
+    target_index = _target_index(slots, spec)
+    kept = 0
+    for t, (lower, upper) in enumerate(stage2_model["bounds"][offset : offset + width]):
+        if t <= target_index and sold[t] > IMPORT_ZERO_TOLERANCE_KWH:
+            assert lower == pytest.approx(sold[t], abs=1e-12)
+            assert lower <= upper
+            kept += 1
+        else:
+            assert lower == pytest.approx(0.0)
+    assert kept >= 2
+    # Stage 1 has no export floor at all.
+    offset, width = stage1_model["variable_blocks"]["grid_export"]
+    assert all(
+        lower == pytest.approx(0.0)
+        for lower, _upper in stage1_model["bounds"][offset : offset + width]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -600,17 +732,18 @@ def test_stage1_failure_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result is None
 
 
-def test_missing_stage1_import_keeps_the_normal_plan(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("missing", ["lp_grid_import_kwh", "lp_battery_export_ac_kwh"])
+def test_missing_stage1_flows_keep_the_normal_plan(
+    monkeypatch: pytest.MonkeyPatch, missing: str
 ) -> None:
-    """Without the stage-1 import column there is nothing to pin against."""
+    """Without the stage-1 LP flows there is nothing to pin against."""
     slots, now = _deadline_day()
     real = _battery_target.solve_milp_with_past_target_reservation
 
     def _without_lp_import(*args: Any, **kwargs: Any) -> Any:
         result = real(*args, **kwargs)
         assert result is not None
-        result[1].pop("lp_grid_import_kwh")
+        result[1].pop(missing)
         return result
 
     monkeypatch.setattr(
@@ -840,8 +973,8 @@ class TestPreferenceCost:
         assert report["stage2_status"] == "failed"
         assert [report[key] for key in _PREFERENCE_KEYS] == [None] * 5
 
-    def test_per_kwh_is_none_when_nothing_was_gained(self) -> None:
-        """No PV and no export to give up: stage 2 solves but gains nothing."""
+    def test_keys_are_none_when_nothing_was_gained(self) -> None:
+        """No PV and no export to give up: the normal plan is kept, at no cost."""
         slots = _day([0.0] * 24, [0.0] * 24, [0.20] * 24, [0.50] * 24)
         now = _MIDNIGHT + timedelta(hours=12)
         spec = _spec(slots, now, target_kwh=6.0, at=time(15, 0))
@@ -851,9 +984,10 @@ class TestPreferenceCost:
         )
         report = diagnostics["battery_target"]
 
-        assert report["stage2_status"] == "solved"
-        assert report["preference_cost"] == pytest.approx(0.0, abs=1e-4)
-        assert report["preference_cost_per_kwh"] is None
+        assert report["stage2_ran"] is True
+        assert report["stage2_status"] == "no_gain"
+        assert report["projected_kwh"] == pytest.approx(report["stage1_projected_kwh"])
+        assert [report[key] for key in _PREFERENCE_KEYS] == [None] * 5
 
     def test_the_figure_does_not_change_the_plan(self) -> None:
         """Passing the weights reports the cost; the slots are the same."""

@@ -1773,7 +1773,7 @@ $$
 E_{target} = \operatorname{clamp}\left(E_{rated} \cdot \frac{\min(pct, soc_{max}) - floor_{hw}}{100},\ 0,\ E_{usable}\right)
 $$
 
-**Stage 2 adds three things to the stage-1 model:**
+**Stage 2 adds four things to the stage-1 model:**
 
 - A width-1 `battery_target_penalty` slack column $pen \ge 0$ and one soft row:
 
@@ -1796,6 +1796,25 @@ built, so those rows use the tightened bound. The lower side is the
 ($gi^{(1)}[t] \le 10^{-6}$) is fixed at exactly 0, which leaves its
 grid-direction binary free to export.
 
+- A **battery-export floor** (issue #1203). With $bx^{(1)}[t]$ the stage-1
+  battery-origin export in AC kWh (published in
+  `diagnostics["lp_battery_export_ac_kwh"]` as
+  `min(ge[t], η_dis · primary_battery_export[t])` from the LP solution):
+
+$$
+ge[t] \ge bx^{(1)}[t] \quad (t \le T)
+$$
+
+It is the `grid_export` column lower bound (`grid_export_floor_per_slot` in
+`_bounds.build_bounds`), 0 where stage 1 sold nothing from the battery and 0
+after $T$. Import and house load are fixed in $W$, so without it stage 2
+raises `soc[T]` by cancelling a sale of battery energy: the target row is
+served and $P$ outbids the export price by construction. With it, only the PV
+share of a slot's export can be held back. The bound is on `ge[t]`, not on
+the `primary_battery_export` column: that column is only an upper bound on
+the battery's share of the export, so pinning it leaves the real export free
+to fall.
+
 - The slack cost, undiscounted:
 
 $$
@@ -1812,24 +1831,43 @@ days, the band made HiGHS abort stage 2 with "Solve error" in 23 of 183
 solves (12.6 %); the exact pin failed in none of them, nor in a further 569
 solves on 1,000 fresh days.
 
-| Requirement                                    | Mechanism                                                                                                                  |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| No extra grid charging                         | Import cannot rise in any slot.                                                                                            |
-| Existing grid charging kept                    | Import in $W$ is fixed at stage 1, so grid energy the normal plan buys is neither removed nor replaced by PV.              |
-| Earlier discharge unchanged                    | House load is fixed and import in $W$ is fixed, so battery coverage of the house cannot drop.                              |
-| Only otherwise-exported PV builds the reserve  | With import fixed, the only way to raise `soc[T]` is to export (or curtail) less.                                          |
-| Deadline, not ASAP                             | Only `soc[T]` is priced. The MILP gives up the lowest-value export slots first.                                            |
-| Surplus above the target is exported           | No benefit for SoC above the target; the terminal-SoC valuation is unchanged.                                              |
-| Normal after the target time                   | No penalty after $T$. Import may fall there when the reserve covers evening load, but it can never rise.                   |
-| Never infeasible, never worse on its objective | The stage-1 solution satisfies every stage-2 bound, and the slack absorbs any shortfall.                                   |
-| A time-limited or tied solution cannot cheat   | The pin is a hard bound, so any incumbent HiGHS returns obeys it. A cap alone would rely on proven optimality (2 s limit). |
+| Requirement                                    | Mechanism                                                                                                              |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| No extra grid charging                         | Import cannot rise in any slot.                                                                                        |
+| Existing grid charging kept                    | Import in $W$ is fixed at stage 1, so grid energy the normal plan buys is neither removed nor replaced by PV.          |
+| Earlier discharge unchanged                    | House load is fixed and import in $W$ is fixed, so battery coverage of the house cannot drop.                          |
+| Only otherwise-exported PV builds the reserve  | With import fixed and battery export kept, the only way to raise `soc[T]` is to export (or curtail) less PV.           |
+| Battery arbitrage of the normal plan is kept   | Export in $W$ is not lower than the battery-origin export of stage 1 (issue #1203).                                    |
+| Deadline, not ASAP                             | Only `soc[T]` is priced. The MILP gives up the lowest-value export slots first.                                        |
+| Surplus above the target is exported           | No benefit for SoC above the target; the terminal-SoC valuation is unchanged.                                          |
+| Normal after the target time                   | No penalty after $T$. Import may fall there when the reserve covers evening load, but it can never rise.               |
+| Never infeasible, never worse on its objective | The stage-1 solution satisfies every stage-2 bound, and the slack absorbs any shortfall.                               |
+| A time-limited or tied solution cannot cheat   | Pin and floor are hard bounds, so any incumbent HiGHS returns obeys them. A cap alone would rely on proven optimality. |
+| A stage 2 that gains nothing changes nothing   | When `soc[T]` is not higher than in stage 1, the stage-1 plan is returned unchanged (`stage2_status: no_gain`).        |
 
 The limit is **per slot**, not on total import: a total would let the MILP
 move import into the morning and weaken the morning discharge.
 
-**Side effects.** Deliberate battery-to-grid export before $T$ (when
-`batteries_enable_excess_export` is on) may be reduced; that energy is also
-"otherwise exported". PV that stage 1 curtailed may be stored instead. Stage 2
+**Battery export is not "otherwise-exported PV" (issue #1203).** Deliberate
+battery-to-grid export before $T$ (when `batteries_enable_excess_export` is
+on) is an economic decision of the normal plan and stays. Before #1203 stage 2
+could cancel it: on an evening with no PV at all, a 10 kWh battery at 68 %
+and a 0.45 export price at 21:00–23:00, a target of 100 % by 23:00 cancelled
+4.61 kWh of export and made the plan 1.26 more expensive, without reaching
+the target. In a slot that exports PV and battery energy together, the PV
+share may be held back; the battery then discharges that much less, which
+needs no round trip through the battery.
+
+When stage 2 solves but `soc[T]` is not higher than in stage 1 (nothing the
+normal plan exports before $T$ is PV), the stage-1 plan is returned unchanged
+with `stage2_status: no_gain`, so a tied or time-limited stage-2 solution can
+never replace the normal plan for no benefit.
+
+Measured over 1,000 random days with battery export enabled (625 stage-2
+solves): the previous model cancelled battery export on 432 days (740 kWh);
+with the floor, on none, and HiGHS failed in none of the solves.
+
+**Side effects.** PV that stage 1 curtailed may be stored instead. Stage 2
 adds one solve (2 s limit) only when stage 1 misses the target.
 
 **EV priority.** $P < P_{ev}$, so a deadline-bound EV keeps its energy. For
@@ -1860,26 +1898,26 @@ feeds both the MILP and `CostWeights.battery_target`.
 `PlannerOutput.battery_target`, and to the working-mode sensor's
 `battery_target` attribute:
 
-| Key                             | Meaning                                                                                             |
-| ------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `target_time`                   | Next occurrence of the target time (ISO).                                                           |
-| `target_slot_end`               | End of slot `T`.                                                                                    |
-| `target_pct` / `target_kwh`     | Configured target and its model kWh.                                                                |
-| `penalty_per_kwh`               | `P`.                                                                                                |
-| `stage1_projected_kwh`          | `soc[T]` in the normal plan.                                                                        |
-| `projected_kwh`                 | `soc[T]` in the returned MILP plan.                                                                 |
-| `shortfall_kwh`                 | `max(target_kwh − projected_kwh, 0)`.                                                               |
-| `stage2_ran`                    | Whether a stage-2 solve was attempted.                                                              |
-| `stage2_status`                 | `target_met`, `solved`, `failed`, `no_occurrence`, `stage1_import_unavailable`, `milp_unavailable`. |
-| `max_import_delta_kwh`          | Largest import difference to stage 1 inside `W` (≈ 0).                                              |
-| `max_import_increase_after_kwh` | Largest import increase after `T` (≈ 0).                                                            |
-| `selected_projected_kwh`        | `soc[T]` in the selected plan (differs from `projected_kwh` only on a `passive` fallback).          |
-| `selected_shortfall_kwh`        | Shortfall of the selected plan.                                                                     |
-| `stage1_cost`                   | `total_cost` of the normal plan over the horizon (money). `None` unless stage 2 solved.             |
-| `stage2_cost`                   | `total_cost` of the target plan: the MILP plan that is returned. `None` unless stage 2 solved.      |
-| `preference_cost`               | `stage2_cost − stage1_cost`: what the target costs in money over the horizon.                       |
-| `preference_cost_per_kwh`       | `preference_cost / (projected_kwh − stage1_projected_kwh)`; `None` when nothing was gained.         |
-| `terminal_soc_value_delta`      | Stage 2 minus stage 1 of the terminal-SoC term `(E_0 − E_end) × V`; not money.                      |
+| Key                             | Meaning                                                                                                        |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `target_time`                   | Next occurrence of the target time (ISO).                                                                      |
+| `target_slot_end`               | End of slot `T`.                                                                                               |
+| `target_pct` / `target_kwh`     | Configured target and its model kWh.                                                                           |
+| `penalty_per_kwh`               | `P`.                                                                                                           |
+| `stage1_projected_kwh`          | `soc[T]` in the normal plan.                                                                                   |
+| `projected_kwh`                 | `soc[T]` in the returned MILP plan.                                                                            |
+| `shortfall_kwh`                 | `max(target_kwh − projected_kwh, 0)`.                                                                          |
+| `stage2_ran`                    | Whether a stage-2 solve was attempted.                                                                         |
+| `stage2_status`                 | `target_met`, `solved`, `no_gain`, `failed`, `no_occurrence`, `stage1_import_unavailable`, `milp_unavailable`. |
+| `max_import_delta_kwh`          | Largest import difference to stage 1 inside `W` (≈ 0).                                                         |
+| `max_import_increase_after_kwh` | Largest import increase after `T` (≈ 0).                                                                       |
+| `selected_projected_kwh`        | `soc[T]` in the selected plan (differs from `projected_kwh` only on a `passive` fallback).                     |
+| `selected_shortfall_kwh`        | Shortfall of the selected plan.                                                                                |
+| `stage1_cost`                   | `total_cost` of the normal plan over the horizon (money). `None` unless stage 2 solved.                        |
+| `stage2_cost`                   | `total_cost` of the target plan: the MILP plan that is returned. `None` unless stage 2 solved.                 |
+| `preference_cost`               | `stage2_cost − stage1_cost`: what the target costs in money over the horizon.                                  |
+| `preference_cost_per_kwh`       | `preference_cost / (projected_kwh − stage1_projected_kwh)`; `None` when nothing was gained.                    |
+| `terminal_soc_value_delta`      | Stage 2 minus stage 1 of the terminal-SoC term `(E_0 − E_end) × V`; not money.                                 |
 
 **Preference cost (issue #1185).** When stage 2 solves, the wrapper scores
 both plans with `score_plan` and the selector's own `CostWeights`
@@ -1902,7 +1940,8 @@ How to read it:
   at the end value `V` (issue #1138), which is an estimate and not cash, so it
   is reported next to the cost and not subtracted from it.
 - All five keys are `None` when stage 2 did not run (`target_met`,
-  `no_occurrence`), when it failed, and when the MILP is unavailable.
+  `no_occurrence`), when it gained nothing (`no_gain`), when it failed, and
+  when the MILP is unavailable.
 
 #### Invariants for tests
 
@@ -1917,6 +1956,13 @@ How to read it:
 - The stage-2 model carries the pin as hard variable bounds, so a time-limited
   or tied solution cannot swap grid charging for PV.
 - Battery discharge in every slot before `T` is not lower than in stage 1.
+- For every future slot `t ≤ T`, stage-2 grid export is not lower than the
+  stage-1 battery-origin export (`primary_battery_export_kwh`); the stage-2
+  model carries that as `grid_export` lower bounds (issue #1203, property
+  test over random days).
+- With no PV before `T`, a target cannot change the plan: stage 2 returns the
+  stage-1 slots (`stage2_status: no_gain`), and the plan cost equals the cost
+  with the target off.
 - With enough later surplus, the current surplus is exported and the target is
   still reached; with too little, the current surplus is stored.
 - With no surplus, `soc[T]` equals stage 1 and the shortfall is reported.
@@ -4215,23 +4261,20 @@ charge-past-target EV).
 **Why the reference solve keeps the house-battery target (issue #1186).**
 It was proposed to solve the reference plan with the target off, on the
 grounds that stage 2 pins grid import and so cannot change what the scan
-reads. That holds only up to the target slot. Stage 2 pins `gi[t]` to
-stage 1 for `t ≤ T`; for `t > T` it only caps it. When stage 2 keeps energy
-that stage 1 exported before the deadline, the battery is fuller after `T`,
-the plan buys less afterwards, and a grid charge the scan credited
-disappears. Measured on the #1125 fixture (68 % at 21:30, 0.45 export at
-21:00–23:00, target 100 % by 23:00):
+reads. At the time that was false: stage 2 pins `gi[t]` to stage 1 only for
+`t ≤ T`, and it could keep battery energy that stage 1 sold before the
+deadline. The plan then bought less after `T`, a grid charge the scan
+credited disappeared, and on the #1125 fixture (68 % at 21:30, 0.45 export at
+21:00–23:00, target 100 % by 23:00) the floor was 77.72 % with the target and
+44.93 % without.
 
-| Reference solve    | Grid charge before the PV surplus | `reserve_kwh` |   Floor |
-| ------------------ | --------------------------------: | ------------: | ------: |
-| with the target    |                           0.0 kWh |          6.42 | 77.72 % |
-| without the target |                          2.21 kWh |          3.71 | 44.93 % |
-
-The published plan is solved with the target, so it makes no such charge. A
-reference plan without the target would credit a refill that never happens
-and release 33 points of reserve. With the target at 06:00 the same charge
-lies inside the pinned window and both floors are equal. The reference solve
-therefore uses the planner input unchanged, apart from the missing floor.
+Since issue #1203 stage 2 may only hold back PV, so that case no longer
+exists: on the same fixture the target changes nothing and the floor is
+44.93 % either way. The rule stays. The reference solve uses the planner
+input unchanged, apart from the missing floor, because the published plan is
+solved with the target and the scan must read a plan with the same features.
+Whether stage 2 can still change what the scan reads when an EV is
+co-optimised has not been shown either way.
 
 #### Grid-charge refill reserve is zero (decision, issue #1140)
 

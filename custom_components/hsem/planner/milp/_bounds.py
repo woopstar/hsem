@@ -14,6 +14,7 @@ import numpy as np
 
 from custom_components.hsem.planner.milp._battery_target_rows import (
     BATTERY_TARGET_PENALTY_BLOCK,
+    grid_export_bounds,
     grid_import_bounds,
 )
 from custom_components.hsem.planner.milp._layout import (
@@ -50,12 +51,17 @@ def build_bounds(
     fuse_active: bool,
     ev_amp_plan: EvAmpPlan | None = None,
     grid_import_floor_per_slot: Sequence[float] | None = None,
+    grid_export_floor_per_slot: Sequence[float] | None = None,
 ) -> list[Bound]:
     """Return the complete, validated solver bounds vector.
 
     ``grid_import_floor_per_slot`` (issue #1109) is the per-slot lower bound
     on ``gi[t]`` used by the house-battery target stage-2 solve to pin grid
     import to the stage-1 plan; ``None`` keeps every lower bound at 0.
+
+    ``grid_export_floor_per_slot`` (issue #1203) is the per-slot lower bound
+    on ``ge[t]`` the same solve uses to keep the battery-origin export of the
+    stage-1 plan; ``None`` keeps every lower bound at 0.
     """
     unbounded: tuple[float, float | None] = (0.0, None)
     bounds_builder = MilpBoundsBuilder(column_layout)
@@ -70,7 +76,7 @@ def build_bounds(
     )
     bounds_builder.set(
         "grid_export",
-        [(0.0, max(float(grid_export_ub_per_slot[t]), 0.0)) for t in range(m)],
+        grid_export_bounds(grid_export_ub_per_slot[:m], grid_export_floor_per_slot),
     )
     bounds_builder.set(
         "pv",

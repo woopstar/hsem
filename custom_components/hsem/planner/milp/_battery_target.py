@@ -1,4 +1,4 @@
-"""Two-stage MILP solve for the house-battery target SoC (issue #1109).
+"""Two-stage MILP solve for the house-battery target SoC (issues #1109, #1203).
 
 The target may only be funded by PV the normal plan would otherwise export.
 The battery charge column ``ec[t]`` mixes grid- and PV-sourced energy, so no
@@ -11,12 +11,15 @@ The counterfactual is solved directly instead:
    re-solves with the same inputs plus the rows of
    :mod:`._battery_target_rows`: a soft target row priced at ``P``, grid
    import **pinned** to stage 1 in every build-window slot ``t ≤ T`` and
-   **capped** at stage 1 after it.  With import fixed, the only way left to
-   raise ``soc[T]`` is to export less PV, lowest-value slots first.
+   **capped** at stage 1 after it, and grid export in the build window kept
+   at or above stage 1's **battery-origin** export.  With import fixed and
+   the battery's own sales kept, the only way left to raise ``soc[T]`` is to
+   export less PV, lowest-value slots first.
 
 Stage 2 is skipped when the target is disabled, has no occurrence in the
 horizon, or stage 1 already meets it; the stage-1 result is then returned
-unchanged.  When stage 2 fails, the stage-1 result is returned with a warning.
+unchanged.  When stage 2 fails, or solves without raising ``soc[T]``, the
+stage-1 result is returned (with a warning on failure).
 
 **Charge-past-target EVs (Option A, agreed on the issue):** the house battery
 takes the otherwise-exported PV first.  Stage 2 first solves with every
@@ -43,6 +46,8 @@ from custom_components.hsem.planner.battery_target import (
 )
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.milp._battery_target_rows import (
+    LP_BATTERY_EXPORT_KEY,
+    LP_GRID_IMPORT_KEY,
     BatteryTargetRows,
 )
 from custom_components.hsem.planner.milp._past_target_reservation import (
@@ -57,14 +62,12 @@ if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
     from custom_components.hsem.models.planned_slot import PlannedSlot
 
-#: Stage-1 grid import at or below this (kWh) counts as "imported nothing".
+#: Stage-1 grid import or battery export at or below this (kWh) counts as
+#: "nothing".
 IMPORT_ZERO_TOLERANCE_KWH = 1e-6
 
 #: Diagnostics key the wrapper writes into the MILP diagnostics dict.
 DIAGNOSTICS_KEY = "battery_target"
-
-#: Stage-1 diagnostics key holding the LP ``gi[t]`` solution.
-_LP_GRID_IMPORT_KEY = "lp_grid_import_kwh"
 
 #: Diagnostics keys of the preference cost (issue #1185).  ``None`` unless
 #: stage 2 solved and the caller supplied the selector's cost weights.
@@ -96,30 +99,45 @@ def build_target_rows(
     spec: BatteryTargetSpec,
     target_lp_index: int,
     stage1_lp_import: list[float],
+    stage1_lp_battery_export: list[float],
 ) -> BatteryTargetRows:
-    """Return the stage-2 rows: pin import in ``W = {t ≤ T}``, cap it after.
+    """Return the stage-2 rows for the build window ``W = {t ≤ T}``.
 
-    The pin is **exact** (``floor == cap == gi_stage1[t]``), not a ±tolerance
-    band: a band turns every slot that imported nothing into a
-    ``gi[t] ≤ 1e-6 · z[t]`` grid-direction row, a coefficient at HiGHS's own
-    feasibility tolerance, and the solver then aborted with "Solve error" on
-    roughly one stage-2 model in eight.  Slots where stage 1 imported nothing
-    get ``gi[t] = 0``, which leaves the grid-direction binary free to export.
+    Grid import is pinned in ``W`` and capped after it.  The pin is **exact**
+    (``floor == cap == gi_stage1[t]``), not a ±tolerance band: a band turns
+    every slot that imported nothing into a ``gi[t] ≤ 1e-6 · z[t]``
+    grid-direction row, a coefficient at HiGHS's own feasibility tolerance,
+    and the solver then aborted with "Solve error" on roughly one stage-2
+    model in eight.  Slots where stage 1 imported nothing get ``gi[t] = 0``,
+    which leaves the grid-direction binary free to export.
+
+    Grid export in ``W`` is bounded from below by stage 1's battery-origin
+    export (issue #1203).  Import and house load are fixed there, so without
+    that floor stage 2 could raise ``soc[T]`` by cancelling a sale of battery
+    energy; with it only the PV share of the export can be held back.  It is
+    a plain column bound, never a coefficient on a binary.
+
     The stage-1 solution satisfies every bound, so stage 2 is never
     infeasible and never worse on its own objective.
     """
     floor: list[float] = []
     cap: list[float] = []
+    export_floor: list[float] = []
     for t, raw in enumerate(stage1_lp_import):
         gi = float(raw) if float(raw) > IMPORT_ZERO_TOLERANCE_KWH else 0.0
         cap.append(gi)
         floor.append(gi if t <= target_lp_index else 0.0)
+        sold = float(stage1_lp_battery_export[t])
+        export_floor.append(
+            sold if t <= target_lp_index and sold > IMPORT_ZERO_TOLERANCE_KWH else 0.0
+        )
     return BatteryTargetRows(
         target_index=target_lp_index,
         target_kwh=spec.target_kwh,
         penalty_per_kwh=spec.penalty_per_kwh,
         grid_import_floor=tuple(floor),
         grid_import_cap=tuple(cap),
+        grid_export_floor=tuple(export_floor),
     )
 
 
@@ -331,19 +349,24 @@ def solve_milp_with_battery_target(
         diagnostics["stage2_status"] = "target_met"
         return _finish(stage1, diagnostics, stage1_projected, spec)
 
-    stage1_lp_import = stage1_diag.get(_LP_GRID_IMPORT_KEY)
-    if not isinstance(stage1_lp_import, list) or len(stage1_lp_import) != len(
-        future_idx
+    stage1_lp_import = stage1_diag.get(LP_GRID_IMPORT_KEY)
+    stage1_lp_battery_export = stage1_diag.get(LP_BATTERY_EXPORT_KEY)
+    if (
+        not isinstance(stage1_lp_import, list)
+        or not isinstance(stage1_lp_battery_export, list)
+        or len(stage1_lp_import) != len(future_idx)
+        or len(stage1_lp_battery_export) != len(future_idx)
     ):
         log_planner(
             "warning",
-            "[battery_target] stage-1 grid import unavailable — keeping the "
-            "normal plan",
+            "[battery_target] stage-1 grid flows unavailable — keeping the normal plan",
         )
         diagnostics["stage2_status"] = "stage1_import_unavailable"
         return _finish(stage1, diagnostics, stage1_projected, spec)
 
-    rows = build_target_rows(spec, target_lp_index, stage1_lp_import)
+    rows = build_target_rows(
+        spec, target_lp_index, stage1_lp_import, stage1_lp_battery_export
+    )
     stage2 = _solve_stage2(
         slots,
         now,
@@ -362,6 +385,12 @@ def solve_milp_with_battery_target(
         return _finish(stage1, diagnostics, stage1_projected, spec)
 
     stage2_slots = stage2[0]
+    projected = projected_kwh_at(stage2_slots, future_idx, target_lp_index, current_kwh)
+    if projected <= stage1_projected + TARGET_TOLERANCE_KWH:
+        # Nothing the normal plan exports before T is PV: the target cannot
+        # be served, so the normal plan is published untouched (issue #1203).
+        diagnostics["stage2_status"] = "no_gain"
+        return _finish(stage1, diagnostics, stage1_projected, spec)
     deltas = [
         float(stage2_slots[i].grid_import_kwh) - float(stage1_slots[i].grid_import_kwh)
         for i in future_idx
@@ -371,7 +400,6 @@ def solve_milp_with_battery_target(
     diagnostics["stage2_status"] = "solved"
     diagnostics["max_import_delta_kwh"] = round(max(abs(d) for d in window), 3)
     diagnostics["max_import_increase_after_kwh"] = round(max([0.0, *after]), 3)
-    projected = projected_kwh_at(stage2_slots, future_idx, target_lp_index, current_kwh)
     if cost_weights is not None:
         diagnostics.update(
             preference_cost(
