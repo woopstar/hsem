@@ -123,20 +123,25 @@ class TestPublishedReserveThroughRunPlanner:
     """The #1125 fixture: 10 kWh, 5 % hardware floor, 0.15 night, 21:30."""
 
     def test_floor_held_wait_slot_reserves_the_floor(self) -> None:
-        """68 %: the floor (78.8 %) holds the battery; the reserve is all of it."""
-        floor_pct, _profile, _reference, final = _replan(68.0)
+        """25 %: the floor (41.8 %) holds the battery; the reserve is all of it.
+
+        The bridge to the planned 02:00 charge costs 0.19 throughout, so the
+        battery is held in the live slot (issue #1222 only moves a shortfall
+        between differently priced slots).
+        """
+        floor_pct, _profile, _reference, final = _replan(25.0)
         live_slot = _future(final)[0]
 
-        assert floor_pct > 68.0
+        assert floor_pct > 25.0
         assert live_slot.recommendation == _WAIT
-        assert live_slot.discharge_reserve_kwh == pytest.approx(6.3)
-        # The trajectory reserve alone would release almost everything.
-        plan_reserve = _plan_reserve(final, 68.0)
+        assert live_slot.discharge_reserve_kwh == pytest.approx(2.0)
+        # The trajectory reserve alone would release part of it.
+        plan_reserve = _plan_reserve(final, 25.0)
         assert plan_reserve is not None
-        assert plan_reserve < 1.0
+        assert plan_reserve < 2.0 - 0.05
         assert final.wait_mode_reserve_kwh is not None
         assert final.wait_mode_reserve_kwh >= live_slot.discharge_reserve_kwh - 1e-9
-        assert final.wait_mode_reserve_kwh == pytest.approx(6.3)
+        assert final.wait_mode_reserve_kwh == pytest.approx(2.0)
 
     def test_reserve_is_at_least_the_live_slots_floor_reserve(self) -> None:
         """40 % and 90 %: whatever the live slot does, the floor part is kept."""
@@ -190,11 +195,11 @@ class TestApplierUsesTheFloorReserve:
 
     @pytest.mark.asyncio
     async def test_battery_at_the_floor_reserve_is_held(self) -> None:
-        """68 % = 6.3 kWh stored, 6.3 kWh reserved: TOU hold and a 0 W cap."""
-        _floor, _profile, _reference, final = _replan(68.0)
+        """25 % = 2.0 kWh stored, 2.0 kWh reserved: TOU hold and a 0 W cap."""
+        _floor, _profile, _reference, final = _replan(25.0)
 
         modes, caps = await _apply(
-            6.3,
+            2.0,
             final.wait_mode_reserve_kwh,
             working_mode=WorkingModes.MaximizeSelfConsumption,
         )
@@ -204,11 +209,11 @@ class TestApplierUsesTheFloorReserve:
 
     @pytest.mark.asyncio
     async def test_trajectory_reserve_alone_released_the_floor(self) -> None:
-        """What happened before #1200: 0.54 kWh reserved, 5.76 kWh released."""
-        _floor, _profile, _reference, final = _replan(68.0)
+        """What happened before #1200: the floor's 2.0 kWh was not reserved."""
+        _floor, _profile, _reference, final = _replan(25.0)
 
         modes, caps = await _apply(
-            6.3, _plan_reserve(final, 68.0), working_mode=WorkingModes.TimeOfUse
+            2.0, _plan_reserve(final, 25.0), working_mode=WorkingModes.TimeOfUse
         )
 
         assert modes == [WorkingModes.MaximizeSelfConsumption.value]

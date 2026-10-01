@@ -260,10 +260,13 @@ def _floor_profile(
 
     The reserve at the start of a bridge slot is what remains of the bridge
     from that slot on: the sum of the remaining ``scan.deltas``, clamped at
-    zero and converted exactly as the scalar floor is.  The first entry is
-    therefore the scalar floor.  From the refill slot on the reserve is no
-    longer needed and the floor is the configured minimum.  A refill that
-    covers the bridge leaves no reserve at all, as for the scalar.
+    zero and converted as the scalar floor is, except that an entry is not
+    capped at the maximum SoC: the planner needs the whole reserve to decide
+    which bridge slots a battery that cannot hold it serves (issue #1222).
+    The first entry, capped, is therefore the scalar floor.  From the refill
+    slot on the reserve is no longer needed and the floor is the configured
+    minimum.  A refill that covers the bridge leaves no reserve at all, as
+    for the scalar.
 
     Args:
         future: Chronological look-ahead slots the scan walked.
@@ -290,6 +293,7 @@ def _floor_profile(
                 usable_kwh,
                 configured_min_soc_pct,
                 max_soc_pct,
+                capped=False,
             ),
         )
         for slot, reserve_kwh in zip(future, remaining)
@@ -440,10 +444,10 @@ class DynamicDischargeFloor:
             ``reserve_kwh``, ``bridge_duration_hours``, ``next_refill_slot``,
             ``safety_margin``, ``refill_type`` and ``cheap_refill_price``,
             and *profile* is ``(slot start, floor SoC %)`` for every
-            look-ahead slot.  The first profile entry equals
-            *effective_floor_pct*; entries from the refill slot on equal
-            *configured_min_soc_pct*.  The profile is empty when there are no
-            future slots.
+            look-ahead slot.  The first profile entry, capped at
+            *max_soc_pct*, equals *effective_floor_pct*; entries from the
+            refill slot on equal *configured_min_soc_pct*.  The profile is
+            empty when there are no future slots.
         """
         # Default diagnostics when no slots or no refill is found.
         diag: dict = {

@@ -794,11 +794,13 @@ class TestRealPlanner:
         assert diag["cheap_refill_price"] < 0.15
         assert diag["refill_type"] == "solar_surplus"
         assert floor_pct > _LIVE_SOC_PCT
-        # The reserve is above the battery in the live slot, so it holds there.
+        # The reserve is above the battery.  The 0.19 evening is dearer than
+        # the 0.15 night, so the battery serves the live slot and takes the
+        # shortfall in the night (issue #1222) instead of holding now.
         live_slot = next(s for s in final.slots if s.start <= _NOW < s.end)
-        assert live_slot.batteries_discharged_kwh == pytest.approx(0.0)
-        # It then follows the declining reserve (issue #1188) instead of
-        # holding until morning, and never ends a slot below its reserve.
+        assert live_slot.batteries_discharged_kwh > 0.3
+        # It follows its reserve (issue #1188) instead of holding until
+        # morning, and never ends a slot below it.
         assert _evening_discharge_kwh(final) > 2.0
         for slot in final.slots:
             if slot.end > _NOW:
