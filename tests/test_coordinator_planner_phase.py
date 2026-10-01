@@ -189,8 +189,8 @@ class TestFreshPlan:
     ) -> None:
         """Both solves run with the house-battery target as configured (#1186).
 
-        The target's stage 2 can remove a night grid charge the floor scan
-        credits, so the reference plan must not be solved without it.
+        The two solves differ only in the floor, so the scan reads a plan
+        with the same features as the one that is published.
         """
         coordinator, executor = _coordinator(
             tmp_path, _planner_output(), {"hsem_dynamic_discharge_floor": True}

@@ -263,9 +263,8 @@ class CoordinatorDynamicFloorMixin(CoordinatorSharedState):
 
         The reference solve uses *planner_input* unchanged apart from the
         missing floor.  In particular it keeps the house-battery target
-        (issue #1109): the target's stage 2 can remove a night grid charge
-        the scan would otherwise credit, so a reference plan without it gives
-        a different floor (issue #1186).
+        (issue #1109), so the scan reads a plan with the same features as the
+        one that is published (issue #1186).
 
         Args:
             planner_input: This replan's floor-free planner input.

@@ -88,8 +88,9 @@ def _build_constraints(
     needs no penalty of its own.  ``None`` keeps every lower bound at 0.
 
     ``battery_target`` (issue #1109) adds the house-battery target stage-2
-    soft row and pins ``gi[t]`` from below; its import cap is already folded
-    into ``grid_import_ub_per_slot`` by ``resolve_grid_bounds``.
+    soft row, pins ``gi[t]`` from below and keeps stage 1's battery-origin
+    export as a floor on ``ge[t]`` (issue #1203); its import cap is already
+    folded into ``grid_import_ub_per_slot`` by ``resolve_grid_bounds``.
 
     Returns a dict with keys:
         ``A_eq``, ``b_eq``, ``A_ub``, ``b_ub``, ``bounds``,
@@ -457,6 +458,9 @@ def _build_constraints(
         ev_amp_plan=ev_amp_plan,
         grid_import_floor_per_slot=(
             None if battery_target is None else battery_target.grid_import_floor
+        ),
+        grid_export_floor_per_slot=(
+            None if battery_target is None else battery_target.grid_export_floor
         ),
     )
 
