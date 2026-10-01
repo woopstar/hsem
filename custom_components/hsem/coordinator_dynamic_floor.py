@@ -137,6 +137,16 @@ def build_dynamic_floor_bridge_slots(
                 import_price=(
                     plan_slot.price.import_price if plan_slot is not None else math.nan
                 ),
+                battery_export_kwh=(
+                    plan_slot.primary_battery_export_kwh
+                    if plan_slot is not None
+                    else 0.0
+                ),
+                stored_kwh_at_end=(
+                    plan_slot.estimated_battery_capacity_kwh
+                    if plan_slot is not None
+                    else math.nan
+                ),
             )
         )
 
@@ -197,8 +207,31 @@ def compute_dynamic_floor_from_plan(
         ),
         max_grid_charge_kw=reference_input.battery_max_charge_power_w / 1000.0,
         max_soc_pct=max_soc_pct,
+        export_buffer_kwh=export_buffer_kwh(reference_input, usable_kwh),
     )
     return floor_pct, diag, [(start.isoformat(), pct) for start, pct in profile]
+
+
+def export_buffer_kwh(planner_input: PlannerInput, usable_kwh: float) -> float:
+    """Return the export reserve's checkpoint buffer in kWh, 0 when inactive.
+
+    The MILP holds ``excess_export_discharge_buffer_pct`` of the usable
+    capacity at the checkpoint before the next PV surplus whenever a plan
+    exports battery energy (``planner/milp/_export_reserve.py``).  The
+    bridge scan needs the same number to tell a buffer buy-back from a
+    refill (issue #1239).
+
+    Args:
+        planner_input: The reference solve's input.
+        usable_kwh: Usable battery capacity between the SoC limits (kWh).
+
+    Returns:
+        The buffer in kWh; 0 with excess export disabled or no buffer.
+    """
+    if not planner_input.excess_export_enabled or usable_kwh <= 1e-9:
+        return 0.0
+    buffer_pct = max(min(planner_input.excess_export_discharge_buffer_pct, 100.0), 0.0)
+    return usable_kwh * buffer_pct / 100.0
 
 
 def reference_solve_input(planner_input: PlannerInput) -> PlannerInput:

@@ -57,6 +57,11 @@ class _SimpleSlot:
     batteries_charged_kwh: float
     recommendation: str | None
     import_price: float = math.nan
+    #: Battery-origin export of the reference plan's slot (kWh, AC side).
+    battery_export_kwh: float = 0.0
+    #: Energy the reference plan holds above the hardware floor at the end
+    #: of the slot (kWh); NaN for a slot the plan does not cover.
+    stored_kwh_at_end: float = math.nan
 
 
 # ---------------------------------------------------------------------------

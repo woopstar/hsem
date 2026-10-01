@@ -90,7 +90,49 @@ def _cycle_cost_tolerance(cycle_cost_per_kwh: float) -> float:
     return 0.0
 
 
-def _planned_grid_charges(future: list, price_tolerance: float) -> list[float]:
+#: Resolution of the stored energy the plan publishes per slot (1 Wh): what is
+#: left of a planned charge after the buffer buy-back within it is rounding.
+_STORED_ENERGY_RESOLUTION_KWH = 1e-3
+
+
+def _export_buffer_buy_back_kwh(bridge: list, export_buffer_kwh: float) -> float:
+    """Return the part of the bridge's grid charges that only restores the export buffer.
+
+    A plan that exports battery energy before the PV surplus must hold
+    *export_buffer_kwh* at the checkpoint before that surplus (the MILP
+    export reserve).  What it sold below the buffer it has to buy back, and
+    that purchase supplies the checkpoint, not the house: it is no refill
+    for the bridge (issue #1239).  The buy-back is the buffer minus the
+    least the plan holds from its last battery export in the bridge on.
+
+    Args:
+        bridge: The look-ahead slots before the first solar surplus.
+        export_buffer_kwh: The export reserve's checkpoint buffer (kWh);
+            0 when excess export is disabled.
+
+    Returns:
+        kWh of the bridge's planned grid charges that are not a refill.
+    """
+    if export_buffer_kwh <= 1e-9:
+        return 0.0
+    last_export = None
+    for index, slot in enumerate(bridge):
+        if (getattr(slot, "battery_export_kwh", 0.0) or 0.0) > 1e-9:
+            last_export = index
+    if last_export is None:
+        return 0.0
+    stored = [
+        getattr(slot, "stored_kwh_at_end", math.nan) for slot in bridge[last_export:]
+    ]
+    finite = [value for value in stored if math.isfinite(value)]
+    if not finite:
+        return 0.0
+    return max(export_buffer_kwh - min(finite), 0.0)
+
+
+def _planned_grid_charges(
+    future: list, price_tolerance: float, export_buffer_kwh: float = 0.0
+) -> list[float]:
     """Return the reference plan's grid charge per slot, placement-invariant.
 
     The reference solve is free to put a grid charge in any of several
@@ -105,28 +147,50 @@ def _planned_grid_charges(future: list, price_tolerance: float) -> list[float]:
     before the first solar surplus; charges behind it are never read.  A
     charge whose slot has no finite price stays where it is.
 
+    A charge that only buys back the export reserve's buffer after a battery
+    export is not credited (issue #1239, :func:`_export_buffer_buy_back_kwh`);
+    it is taken off the latest credits first, since the buffer is what the
+    plan still holds at the end of the bridge.
+
     Args:
         future: Chronological look-ahead slots.
         price_tolerance: Largest price difference between two slots that
             still counts as equally priced (the battery cycle cost).
+        export_buffer_kwh: The export reserve's checkpoint buffer (kWh).
 
     Returns:
         One credit in kWh per slot of *future*.
     """
     credits = [0.0] * len(future)
     prices: list[float] = []
+    charges: list[tuple[int, float]] = []
     for index, slot in enumerate(future):
         if (getattr(slot, "estimated_net_consumption_kwh", 0.0) or 0.0) < -1e-9:
             break
-        price = getattr(slot, "import_price", math.nan)
-        prices.append(price)
+        prices.append(getattr(slot, "import_price", math.nan))
         charged = getattr(slot, "batteries_charged_kwh", 0.0) or 0.0
         if (
-            charged <= 1e-9
-            or getattr(slot, "recommendation", None)
-            != Recommendations.BatteriesChargeGrid.value
+            charged > 1e-9
+            and getattr(slot, "recommendation", None)
+            == Recommendations.BatteriesChargeGrid.value
+        ):
+            charges.append((index, charged))
+    # The buffer is what the plan still holds at the end of the bridge, so
+    # it is the energy bought last: take the buy-back off the latest charges.
+    buy_back = _export_buffer_buy_back_kwh(future[: len(prices)], export_buffer_kwh)
+    for position in reversed(range(len(charges))):
+        if buy_back <= 1e-9:
+            break
+        index, charged = charges[position]
+        taken = min(charged, buy_back)
+        charges[position] = (index, charged - taken)
+        buy_back -= taken
+    for index, charged in charges:
+        if charged <= 1e-9 + (
+            _STORED_ENERGY_RESOLUTION_KWH if export_buffer_kwh > 1e-9 else 0.0
         ):
             continue
+        price = prices[index]
         target = index
         if math.isfinite(price):
             target = next(
@@ -361,6 +425,7 @@ class DynamicDischargeFloor:
         cycle_cost_per_kwh: float = 0.0,
         max_grid_charge_kw: float = 0.0,
         max_soc_pct: float = 100.0,
+        export_buffer_kwh: float = 0.0,
     ) -> tuple[float, dict]:
         """Compute the effective discharge floor as SoC percentage.
 
@@ -379,6 +444,7 @@ class DynamicDischargeFloor:
             cycle_cost_per_kwh=cycle_cost_per_kwh,
             max_grid_charge_kw=max_grid_charge_kw,
             max_soc_pct=max_soc_pct,
+            export_buffer_kwh=export_buffer_kwh,
         )
         return floor_pct, diag
 
@@ -393,6 +459,7 @@ class DynamicDischargeFloor:
         cycle_cost_per_kwh: float = 0.0,
         max_grid_charge_kw: float = 0.0,
         max_soc_pct: float = 100.0,
+        export_buffer_kwh: float = 0.0,
     ) -> tuple[float, dict, list[tuple[datetime, float]]]:
         """Compute the discharge floor now and for every look-ahead slot.
 
@@ -443,6 +510,11 @@ class DynamicDischargeFloor:
                 disables affordable refills.
             max_soc_pct:
                 Configured maximum SoC (0-100); the floor never exceeds it.
+            export_buffer_kwh:
+                The MILP export reserve's checkpoint buffer (kWh); a planned
+                charge that only buys it back after a battery export is no
+                refill (issue #1239).  ``0`` (the default) credits every
+                planned charge.
 
         Returns:
             A ``(effective_floor_pct, diagnostics, profile)`` tuple where
@@ -491,7 +563,7 @@ class DynamicDischargeFloor:
         # charges come first; when they leave a reserve, a second pass
         # credits affordable slots (issue #1156), which can only release it.
         planned = _planned_grid_charges(
-            future, _cycle_cost_tolerance(cycle_cost_per_kwh)
+            future, _cycle_cost_tolerance(cycle_cost_per_kwh), export_buffer_kwh
         )
         scan = _scan_bridge(future, planned, None, 0.0)
         cheap_price = cheap_refill_price(

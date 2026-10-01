@@ -4699,6 +4699,9 @@ configured minimum SoC.
   supply. Behind the planned charge the plan has one; in front of it the
   battery is the only supply besides importing at the prices of those hours.
 - The size of the charge plays no part (issue #1220, next section).
+- A charge that only buys back the export reserve's buffer after a battery
+  export is not a refill and is not credited (issue #1239, _The export
+  reserve's buffer buy-back is no refill_).
 - A night at the look-ahead's cheapest price still releases the floor
   completely, whether or not the plan charges in it (_Affordable grid
   refill_).
@@ -4787,6 +4790,106 @@ reference plan's last small charge appears and disappears between replans, and
 the floor alternates between the configured minimum (a charge in the live
 slot) and the bridge to the PV surplus (no charge left). The battery is below
 that reserve and the plan is the same either way.
+
+#### The export reserve's buffer buy-back is no refill (issue #1239)
+
+A plan that exports battery energy before the PV surplus must hold the export
+reserve's buffer at the checkpoint before that surplus (_Conditional
+battery-export reserve_). The floor-free reference plan therefore sells the
+battery into an evening export price and buys the buffer back from the grid
+before the surplus, 0.95 kWh for a 10 % buffer on 9.5 kWh usable, even on a
+night where no grid charge is worth planning for its own sake. Credited by
+price, that purchase sat in the first night slot and ended the bridge there:
+the floor reserved the export hours and nothing of the night behind them,
+which the plan imports directly.
+
+`_planned_grid_charges()` takes the buy-back off the reference plan's bridge
+charges before it credits them:
+
+```text
+bridge       = every look-ahead slot before the first solar surplus
+last_export  = last bridge slot with battery-origin export
+buy_back     = max(buffer_kwh − min over bridge[last_export:] of stored_kwh_at_end, 0)
+charges      = the bridge's planned grid charges, the buy-back taken off the latest first
+```
+
+`buffer_kwh` is the MILP's own, `usable_kwh × excess_export_discharge_buffer_pct / 100`,
+and 0 with excess export disabled (`coordinator_dynamic_floor.py::export_buffer_kwh`).
+The battery export and the stored energy of each slot come from the reference
+plan's `primary_battery_export_kwh` and `estimated_battery_capacity_kwh`
+through the bridge slots. The least the plan holds from its last export on is
+what it sold below the buffer and has to buy back; that purchase supplies the
+checkpoint, not the house. What the plan buys beyond it is a refill at any
+size (issue #1220). A plan with no battery export in the bridge, or one that
+kept the buffer when it sold, has no buy-back, and a slot the plan does not
+cover has no stored energy and shows none.
+
+The buy-back comes off the latest charges because the buffer is what the plan
+holds at the end of the bridge, so it is the energy bought last. An earlier
+charge at a price of its own keeps its credit and still ends the bridge in
+its own slot.
+
+What is left of a charge after the buy-back is a credit only above 1 Wh
+(`_STORED_ENERGY_RESOLUTION_KWH`), the resolution the plan publishes its
+stored energy with: a plan sold to a published 0.001 kWh shows a buy-back of
+0.949 kWh, and the 1 Wh left of its 0.95 kWh charge is rounding, not a refill.
+Without a buffer the usual 1 nWh materiality applies.
+
+**Measured.** Closed loop through the real `run_planner`, each replan's floor
+from its own reference solve (10 kWh, 5 % hardware floor, 10 % export buffer,
+export 0.45 at 21:00–23:00, 48 hourly replans from 21:00). The probe of
+issue #1239 is the #1125 house with one import price, 0.29, from 23:00 to
+the PV surplus, so the only grid charge the reference plan makes before the
+surplus is the buffer buy-back:
+
+| Start SoC, tomorrow's PV | Floor at 21:00 before → after | Cash before | Cash after | Floor off |
+| ------------------------ | ----------------------------: | ----------: | ---------: | --------: |
+| 50 %, 100 %              |                 22.2 → 78.8 % |      −1.244 |     −0.762 |    −1.314 |
+| 68 %, 100 %              |                 22.2 → 78.8 % |      −2.042 |     −1.245 |    −2.099 |
+| 95 %, 100 %              |                 22.2 → 78.8 % |      −3.221 |     −2.261 |    −3.278 |
+| 68 %, 50 %               |                 79.9 → 83.8 % |      −0.387 |     −0.387 |    −1.216 |
+| 95 %, 50 %               |                 79.9 → 83.8 % |      −1.358 |     −1.385 |    −2.395 |
+
+Before, the bridge ended at 23:00 and the battery was sold to the hardware
+floor; the night was imported at 0.29. After, the bridge runs to the PV
+surplus and the reserve is held: the house is served from the battery and
+about 5 kWh less is sold at 0.45, which with a perfect forecast costs 0.5–1.0
+over the 48 h. With a cloudy tomorrow the reference plan buys back more than
+the buffer for the day, at a price of its own, so before the bridge already
+ended at that charge (08:00) and now runs one slot further to the surplus.
+Over the 108-scenario sweep of _A planned charge ends the bridge_ (start SoC
+30/50/68/95 %, export spike none/0.30/0.45, night 0.15/0.10/0.03, tomorrow's
+PV 100/50/20 %) nothing changes: the reference plan buys back more than the
+buffer on every 0.15 night, and the other nights are affordable refills.
+Realised cash is equal within 0.01 in every scenario (sum −172.1 before and
+after, −179.7 with the floor off), the floor never rises within a bridge and
+is never released and re-armed within one, before or after.
+
+At 15-minute replans (44 from 21:00, the probe with 95 % and with 68 %) the
+floor declines from 78.8 % to 6.4 % by each slot's load, instead of 22.2 →
+7.0 % and a jump to 61.6 % at 23:00 once the battery had been sold and the
+buy-back with it. The first version of the rule still alternated at 68 %
+(17.6 / 71.9 / 13.0 / 67.6 %): the plan published 0.001 kWh held after the
+sale, so 1 Wh of the 0.95 kWh charge was left as a credit on every other
+replan; that is the 1 Wh resolution above. Replays with battery export at
+15-minute slots are not deterministic under the solver's time limit, and
+single replans where the reference plan buys nothing before the surplus
+(a dip to the minimum or a step to the solar bridge, no buy-back involved)
+are the alternation of issue #1238, before and after.
+
+**Rejected.** Solving the reference plan with battery export disabled, so
+that the floor is the reserve of a plan that never sells the battery, also
+removes the dependency. But it asks the no-export plan whether it needs to
+buy for the night, and a 68 % or fuller battery on a 0.15 night does not, so
+the floor is the full bridge (78–84 %) and nothing is sold into the spike:
+over the sweep realised cash is worse in 36 scenarios and better in none
+(sum −138.0). A floor that blocks every profitable export is not the bound
+on the export decision the floor is meant to be.
+
+**Not on 6.3.x.** `v6.3.0-hotfix` has no planned-charge credit (issues #1198,
+#1214, #1220): a charge smaller than the consumption before it is subtracted
+from the bridge, so the buy-back shortens the reserve by its size and does
+not end the bridge.
 
 #### A planned charge ends the bridge (issue #1214)
 
