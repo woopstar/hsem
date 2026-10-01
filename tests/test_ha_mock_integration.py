@@ -235,6 +235,7 @@ def make_bare_coordinator(
 
     coord._plan_explanation = PlanExplanation()
     coord._data_quality = DataQuality()
+    coord._battery_target_diagnostics = None
     coord._ev_charging_plan = None
     coord._ev_second_charging_plan = None
     coord._ev_soc_economics = None

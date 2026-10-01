@@ -1155,6 +1155,7 @@ how that plays out per slot, from cheapest to most expensive action.
 Σ_t [ p_imp[t]·gi[t] − p_exp[t]·ge[t] + cycle_cost·m[t]
       + p_soc·(s_max_pen[t] + s_min_pen[t]) ]
 + Σ_ev [ ev_penalty·ev_pen + tiebreaker·Σ_t ev_c[t] ]
++ P·battery_target_pen            (house-battery target stage 2 only, issue #1109)
 ```
 
 #### 1. Serve house load from PV (free)
@@ -1592,6 +1593,18 @@ hardware minimum, and the final plan costs the same as the floor-free
 reference plan (0.097); before #1156 the floor held 77.5 % and the plan cost
 0.917. See `tests/test_dynamic_floor_reference_plan.py`.
 
+#### 6. House-battery target SoC (opt-in, issue #1109)
+
+When `hsem_batteries_target_soc_enabled` is on and the normal plan misses the
+target at the next occurrence, a second solve adds a shortfall slack priced at
+`P` and **pins grid import to the normal plan**. The slack then only competes
+against export revenue: the MILP stores the lowest-value otherwise-exported PV
+first and never buys grid energy for the target. `P` sits above the best
+export value before the deadline and below every EV deadline penalty, so the
+order is: house load and EV deadlines, then the battery target, then export
+and charge-past-target EVs. See
+[House-battery target SoC by deadline](#house-battery-target-soc-by-deadline-issue-1109).
+
 #### Key constraint: EV surplus-only for charge-past-target
 
 The constraint `ev_c[t]/charger_eff ≤ surplus_remaining[t]` ensures
@@ -1667,6 +1680,203 @@ is `None`, e.g. missing forecast), the MILP falls back to a tiny fixed
 tiebreaker (`0.0001`/kWh AC) so surplus PV still prefers the EV over being
 wastefully curtailed/exported at near-zero or negative prices — but only
 after the battery has taken its share.
+
+### House-battery target SoC by deadline (issue #1109)
+
+An **opt-in** user preference (`hsem_batteries_target_soc_enabled`, default
+off): build an extra house-battery reserve towards
+`hsem_batteries_target_soc_pct` by the daily
+`hsem_batteries_target_soc_time`, using **only PV the normal plan would
+otherwise export**. It exists to cover forecast error, which better economics
+cannot: the optimiser only knows what the forecast says.
+
+Agreed semantics, in priority order:
+
+1. **The normal plan is untouched.** The target never _increases_ grid import
+   and never _reduces or replaces_ grid import the normal plan already needs.
+   Discharge that covers expected house load (for example a 06:00–10:00
+   window) is not weakened to protect the target.
+2. **Otherwise-exported PV** builds the reserve towards the target.
+3. **Remaining PV** is exported when that is economically optimal.
+
+Step 2 is optimised against step 3: the target is a **deadline**, not "charge
+as soon as possible". If the forecast shows enough surplus later, HSEM may
+export now at a better price; if not, it stores the current surplus; with no
+surplus at all the battery stays where the normal plan leaves it.
+
+#### Why a single solve cannot do this
+
+`ec[t]` is the battery's total charge: grid- and PV-sourced energy share one
+column. A linear shortfall penalty high enough to outbid export also outbids
+cheap grid import, so a single solve would grid-charge for the target and hold
+back morning discharge. Charge-past-target EVs hit the same limitation
+(issue #1015) and are solved the same way: with a counterfactual.
+
+#### Two-stage solve
+
+`planner/milp/_battery_target.py::solve_milp_with_battery_target` wraps the
+existing solve. `candidate_generator.py` calls it instead of
+`solve_milp_with_past_target_reservation`.
+
+```mermaid
+flowchart TD
+    A[Stage 1: normal plan<br/>solve_milp_with_past_target_reservation] --> B{Target enabled and<br/>next occurrence in horizon?}
+    B -- no --> R1[Return stage 1 unchanged]
+    B -- yes --> C{Stage-1 SoC at T<br/>meets the target?}
+    C -- yes --> R1
+    C -- no --> D[Stage 2: re-solve with<br/>target slack + grid import pinned]
+    D --> E{Solved?}
+    E -- yes --> R2[Return stage 2]
+    E -- no --> R3[Log a warning,<br/>return stage 1]
+```
+
+**Next occurrence only.** `T` is the LP index of the last future slot ending
+at or before the next occurrence of the target time, in the Home Assistant
+time zone. An occurrence that falls before the end of the current slot rolls
+to the next day; an occurrence beyond the horizon is not enforced. Later
+days' targets are picked up by the receding horizon, so tomorrow's target
+cannot interfere with using tonight's reserve. The build window is
+$W = \{t \le T\}$.
+
+**Target in model coordinates.** `battery_target.target_kwh_for_pct` converts
+the absolute SoC percentage with `resolve_soc_bounds_pct`, the resolver the
+engine's model capacity uses, so a dynamic floor or the live-SoC cap moves the
+origin consistently:
+
+$$
+E_{target} = \operatorname{clamp}\left(E_{rated} \cdot \frac{\min(pct, soc_{max}) - floor_{eff}}{100},\ 0,\ E_{usable}\right)
+$$
+
+**Stage 2 adds three things to the stage-1 model:**
+
+- A width-1 `battery_target_penalty` slack column $pen \ge 0$ and one soft row:
+
+$$
+-\sum_{k \le T} (ec[k] - ed[k]) - pen \le E_0 - E_{target}
+$$
+
+- A **grid-import pin**, the core of the design. With $gi^{(1)}[t]$ the
+  stage-1 LP import (published in `diagnostics["lp_grid_import_kwh"]`):
+
+$$
+gi[t] = gi^{(1)}[t] \quad (t \le T), \qquad gi[t] \le gi^{(1)}[t] \quad (t > T)
+$$
+
+The upper side is applied in `_export_cap.resolve_grid_bounds`
+(`grid_import_cap_per_slot`), before the grid-direction big-M rows are
+built, so those rows use the tightened bound. The lower side is the
+`grid_import` column lower bound (`grid_import_floor_per_slot` in
+`_bounds.build_bounds`). A slot where stage 1 imported nothing
+($gi^{(1)}[t] \le 10^{-6}$) is fixed at exactly 0, which leaves its
+grid-direction binary free to export.
+
+- The slack cost, undiscounted:
+
+$$
+P = \min\left(\max_{t \le T} \frac{\max(p_{exp}[t], 0)}{\eta_{chg}} + c_{cycle} + \varepsilon,\ P_{ev} - \varepsilon\right)
+$$
+
+$P_{ev}$ is the smallest active EV deadline penalty per kWh
+(`_objective.ev_deadline_penalty_per_kwh`) and $\varepsilon = 0.001$.
+
+The pin is **exact**, not a $\pm 10^{-6}$ band. A band turns every slot that
+imported nothing into a `gi[t] ≤ 1e-6 · z[t]` grid-direction row, a
+coefficient at HiGHS's own feasibility tolerance. Measured over 300 random
+days, the band made HiGHS abort stage 2 with "Solve error" in 23 of 183
+solves (12.6 %); the exact pin failed in none of them, nor in a further 569
+solves on 1,000 fresh days.
+
+| Requirement                                    | Mechanism                                                                                                                  |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| No extra grid charging                         | Import cannot rise in any slot.                                                                                            |
+| Existing grid charging kept                    | Import in $W$ is fixed at stage 1, so grid energy the normal plan buys is neither removed nor replaced by PV.              |
+| Earlier discharge unchanged                    | House load is fixed and import in $W$ is fixed, so battery coverage of the house cannot drop.                              |
+| Only otherwise-exported PV builds the reserve  | With import fixed, the only way to raise `soc[T]` is to export (or curtail) less.                                          |
+| Deadline, not ASAP                             | Only `soc[T]` is priced. The MILP gives up the lowest-value export slots first.                                            |
+| Surplus above the target is exported           | No benefit for SoC above the target; the terminal-SoC valuation is unchanged.                                              |
+| Normal after the target time                   | No penalty after $T$. Import may fall there when the reserve covers evening load, but it can never rise.                   |
+| Never infeasible, never worse on its objective | The stage-1 solution satisfies every stage-2 bound, and the slack absorbs any shortfall.                                   |
+| A time-limited or tied solution cannot cheat   | The pin is a hard bound, so any incumbent HiGHS returns obeys it. A cap alone would rely on proven optimality (2 s limit). |
+
+The limit is **per slot**, not on total import: a total would let the MILP
+move import into the morning and weaken the morning discharge.
+
+**Side effects.** Deliberate battery-to-grid export before $T$ (when
+`batteries_enable_excess_export` is on) may be reduced; that energy is also
+"otherwise exported". PV that stage 1 curtailed may be stored instead. Stage 2
+adds one solve (2 s limit) only when stage 1 misses the target.
+
+**EV priority.** $P < P_{ev}$, so a deadline-bound EV keeps its energy. For
+**charge-past-target EVs the house battery goes first** (Option A, agreed on
+the issue): both want the same otherwise-exported PV, and the battery target
+is an explicit resilience preference with a deadline while charging past
+target is opportunistic. When such an EV is active, stage 2 first solves with
+it removed (house-first plan), then re-solves with its
+`past_target_reserved_ac_kwh` taken from that plan, so the EV only gets the PV
+the battery target leaves unused. A cycle then needs up to four solves:
+two for #1015, two for stage 2.
+
+**Execution.** No new applier behaviour: the extra charge is solar-funded and
+runs through `batteries_charge_solar`. Every replan recomputes both stages
+from the latest SoC and forecast, so when afternoon PV under-delivers, stage 2
+keeps more of the remaining surplus.
+
+**Selector score.** `PlanCostBreakdown.battery_target_penalty` is
+$P \times \max(E_{target} - E[T], 0)$ for **every** candidate, read from
+`estimated_battery_capacity_kwh` at slot `T`. It enters `score` only, never
+`total_cost`, so a candidate that ignores the target cannot win on price
+alone and `winner.cost == final_output.cost` still holds. One
+`BatteryTargetSpec` (`planner/battery_target.py::resolve_battery_target`)
+feeds both the MILP and `CostWeights.battery_target`.
+
+**Diagnostics** for the next occurrence are written to
+`diagnostics["battery_target"]` on the MILP candidate, to
+`PlannerOutput.battery_target`, and to the working-mode sensor's
+`battery_target` attribute:
+
+| Key                             | Meaning                                                                                             |
+| ------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `target_time`                   | Next occurrence of the target time (ISO).                                                           |
+| `target_slot_end`               | End of slot `T`.                                                                                    |
+| `target_pct` / `target_kwh`     | Configured target and its model kWh.                                                                |
+| `penalty_per_kwh`               | `P`.                                                                                                |
+| `stage1_projected_kwh`          | `soc[T]` in the normal plan.                                                                        |
+| `projected_kwh`                 | `soc[T]` in the returned MILP plan.                                                                 |
+| `shortfall_kwh`                 | `max(target_kwh − projected_kwh, 0)`.                                                               |
+| `stage2_ran`                    | Whether a stage-2 solve was attempted.                                                              |
+| `stage2_status`                 | `target_met`, `solved`, `failed`, `no_occurrence`, `stage1_import_unavailable`, `milp_unavailable`. |
+| `max_import_delta_kwh`          | Largest import difference to stage 1 inside `W` (≈ 0).                                              |
+| `max_import_increase_after_kwh` | Largest import increase after `T` (≈ 0).                                                            |
+| `selected_projected_kwh`        | `soc[T]` in the selected plan (differs from `projected_kwh` only on a `passive` fallback).          |
+| `selected_shortfall_kwh`        | Shortfall of the selected plan.                                                                     |
+
+#### Invariants for tests
+
+- Disabled (default): plans, scores, and diagnostics other than the absent
+  `battery_target` key are bit-for-bit identical to a run without the feature.
+- Stage 2 is skipped when stage 1 meets the target within `1e-6` kWh, and the
+  stage-1 result is returned unchanged.
+- For every future slot `t ≤ T`, stage-2 grid import equals stage-1 grid
+  import; for every `t > T` it is not higher (property test over random days).
+- Existing grid charging is kept slot for slot, and no grid energy is bought
+  for the remaining gap to the target.
+- The stage-2 model carries the pin as hard variable bounds, so a time-limited
+  or tied solution cannot swap grid charging for PV.
+- Battery discharge in every slot before `T` is not lower than in stage 1.
+- With enough later surplus, the current surplus is exported and the target is
+  still reached; with too little, the current surplus is stored.
+- With no surplus, `soc[T]` equals stage 1 and the shortfall is reported.
+- Surplus above the target is exported.
+- `P` is below the smallest active EV deadline penalty.
+- A charge-past-target EV gets only the PV the battery target leaves unused.
+- A failed stage-2 solve returns the stage-1 plan with a warning.
+- An occurrence inside or before the current slot rolls to the next day.
+- `score` includes `battery_target_penalty` for every candidate;
+  `total_cost` never does.
+
+See `tests/planner/test_battery_target_milp.py`,
+`tests/planner/test_battery_target_spec.py`, and
+`tests/planner/test_battery_target_engine.py`.
 
 ### Grid import power limit (main fuse / tariff protection)
 
@@ -1986,6 +2196,7 @@ score
 + soc_guard_penalty
 + grid_limit_penalty
 + terminal_soc_value
++ battery_target_penalty
 ```
 
 Where:
@@ -1998,6 +2209,9 @@ Where:
   (penalty) when the plan empties the battery. It prevents the selector
   from preferring plans that look cheap only because they drained the
   battery to zero before end-of-horizon.
+- `battery_target_penalty` is **selector-only** and zero unless the opt-in
+  house-battery target is active (issue #1109). See
+  [Battery target penalty](#battery-target-penalty-issue-1109).
 
 The implementation exposes both numbers on `PlanCostBreakdown` together with
 a deprecated `total` alias that equals `score` (kept so older code and tests
@@ -2248,6 +2462,21 @@ without horizon context (e.g. simple per-slot arithmetic checks) do not need
 the term and may omit both inputs; in that case `terminal_soc_value = 0.0` and
 `score == total_cost + penalties`.
 
+### Battery target penalty (issue #1109)
+
+When the opt-in house-battery target is active, `score` gains
+`battery_target_penalty`: the shortfall at the next target occurrence priced
+at the same `P` the MILP stage-2 slack uses, undiscounted.
+
+$$
+battery\_target\_penalty = P \times \max(E_{target} - E[T],\ 0)
+$$
+
+`E[T]` is `estimated_battery_capacity_kwh` at the target slot. A shortfall
+below the 3-decimal resolution of that field (`1e-3` kWh) is ignored. The term
+is computed for every candidate, and it is zero when the target is disabled.
+See [House-battery target SoC by deadline](#house-battery-target-soc-by-deadline-issue-1109).
+
 ### Invariants for tests
 
 - `total_cost` must equal
@@ -2256,7 +2485,10 @@ the term and may omit both inputs; in that case `terminal_soc_value = 0.0` and
 - `conversion_loss_cost` is a compatibility field and must remain exactly zero
   because physical losses are already present in grid flows.
 - `score` must equal
-  `total_cost + soc_penalty + grid_limit_penalty + terminal_soc_value` exactly.
+  `total_cost + soc_penalty + grid_limit_penalty + terminal_soc_value
+
+* battery_target_penalty` exactly.
+
 - Recommendation labels such as `batteries_charge_grid` must not incur a
   separate synthetic override cost; their economics are already represented
   by energy flows, losses, cycle wear, and terminal inventory value.
@@ -3047,6 +3279,9 @@ Add tests for these invariants:
 - Only an active charge-past-target EV triggers the second solve; stage 1
   failing leaves the past-target EV with no energy, never unbounded
   (issue #1015).
+- The house-battery target (issue #1109) never changes grid import in any
+  slot up to the target slot, never raises it afterwards, and is a no-op when
+  disabled.
 - A genuine surplus below `charger_min_power_w` never starts the charger at any
   point within a slot; slot-tail compression cannot lift a sub-minimum surplus
   over the charger's minimum (issue #1012).

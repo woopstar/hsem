@@ -78,6 +78,7 @@ class CoordinatorSharedState(_Base):
     _current_load_forecast_signature: LoadForecastSignature | None
     _current_required_battery: float
     _current_wait_mode_reserve: float | None
+    _battery_target_diagnostics: dict | None
     _daily_plan_last_accumulated: datetime | None
     _daily_tracker: DailyPlanVsActualTracker
     _data_quality: DataQuality

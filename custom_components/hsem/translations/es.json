@@ -24,7 +24,8 @@
       "required": "Este campo es obligatorio.",
       "invalid_wait_mode_behavior": "Comportamiento de modo de espera no válido. Elige Espera estricta o Autoconsumo con reserva.",
       "port_conflict": "El segundo puerto OCPP debe ser diferente del primer puerto OCPP.",
-      "ev_min_power_below_start_current": "La potencia mínima configurada es demasiado baja para la topología de fases seleccionada — un cargador real no puede arrancar por debajo de 6 A. Aumenta la potencia mínima o cambia la topología de fases."
+      "ev_min_power_below_start_current": "La potencia mínima configurada es demasiado baja para la topología de fases seleccionada — un cargador real no puede arrancar por debajo de 6 A. Aumenta la potencia mínima o cambia la topología de fases.",
+      "invalid_time_value": "Introduce una hora del día válida (HH:MM)."
     },
     "step": {
       "batteries_excess_export": {
@@ -32,15 +33,21 @@
           "hsem_batteries_enable_excess_export": "Activar exportación de batería excedente",
           "hsem_batteries_excess_export_discharge_buffer": "Búfer de descarga (%)",
           "hsem_batteries_forecast_reserve_pct": "Reserva de previsión para exportación de batería (+% SoC)",
-          "hsem_batteries_export_min_price": "Precio mínimo de exportación de batería"
+          "hsem_batteries_export_min_price": "Precio mínimo de exportación de batería",
+          "hsem_batteries_target_soc_enabled": "Activar SoC objetivo de la batería",
+          "hsem_batteries_target_soc_pct": "SoC objetivo de la batería (%)",
+          "hsem_batteries_target_soc_time": "Hora objetivo de la batería"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Activa o desactiva la función de exportación de batería excedente, que exporta automáticamente la capacidad de batería excedente a la red cuando resulta económicamente beneficioso.",
           "hsem_batteries_excess_export_discharge_buffer": "Define el porcentaje del búfer de seguridad para mantener las reservas mínimas de batería (0-50 %). El valor predeterminado es 10 % para garantizar capacidad suficiente ante una demanda inesperada.",
           "hsem_batteries_forecast_reserve_pct": "Puntos porcentuales adicionales de SoC por encima del límite de fin de descarga de Huawei que la exportación intencionada de batería debe dejar inmediatamente después de cada intervalo de exportación. Por ejemplo, un límite de Huawei del 15 % más una reserva del 5 % protege un 20 % de SoC. La reserva sigue disponible para la carga de la vivienda cuando la demanda real supera la previsión. Ajusta a 0 para desactivar (predeterminado).",
-          "hsem_batteries_export_min_price": "Límite mínimo estricto por intervalo para la exportación intencionada de batería a la red (issue #752). Cuando es > 0, HSEM prohíbe marcar un intervalo como force_batteries_discharge cuando el precio de exportación está estrictamente por debajo de este límite; la batería puede seguir sirviendo la carga de la vivienda en esos intervalos. Alcanzar el umbral NO activa automáticamente la exportación; el optimizador sigue decidiendo si vender resulta rentable. Se aplica únicamente a la exportación intencionada de batería a la red, no al autoconsumo normal, la exportación de PV ni la carga de PV. Ajusta a 0 para desactivar (predeterminado)."
+          "hsem_batteries_export_min_price": "Límite mínimo estricto por intervalo para la exportación intencionada de batería a la red (issue #752). Cuando es > 0, HSEM prohíbe marcar un intervalo como force_batteries_discharge cuando el precio de exportación está estrictamente por debajo de este límite; la batería puede seguir sirviendo la carga de la vivienda en esos intervalos. Alcanzar el umbral NO activa automáticamente la exportación; el optimizador sigue decidiendo si vender resulta rentable. Se aplica únicamente a la exportación intencionada de batería a la red, no al autoconsumo normal, la exportación de PV ni la carga de PV. Ajusta a 0 para desactivar (predeterminado).",
+          "hsem_batteries_target_soc_enabled": "Crea una reserva adicional en la batería de la vivienda hasta el SoC objetivo antes de la hora objetivo diaria, usando solo la energía solar que de otro modo se exportaría. HSEM nunca compra energía adicional de la red para el objetivo, mantiene sin cambios la carga desde la red y la descarga que el plan normal ya necesita, y sigue decidiendo cuándo almacenar y cuándo exportar, por lo que puede exportar ahora si se prevé suficiente excedente más tarde. Desactivado por defecto.",
+          "hsem_batteries_target_soc_pct": "SoC de la batería que debe alcanzarse antes de la hora objetivo, como SoC absoluto incluido el límite de fin de descarga de Huawei (0-100 %). Predeterminado 100 %.",
+          "hsem_batteries_target_soc_time": "Hora diaria a la que la batería debe alcanzar el SoC objetivo. Solo se planifica la próxima ocurrencia; después, la batería funciona con normalidad. Predeterminado 17:00."
         },
-        "description": "Configura los ajustes de exportación de batería excedente para vender automáticamente el exceso de energía a la red cuando resulte económicamente beneficioso.",
+        "description": "Configura la exportación del excedente de la batería para vender automáticamente la energía sobrante a la red cuando sea económicamente beneficioso, y un SoC objetivo opcional de la batería que se alcanza con energía solar que de otro modo se exportaría.",
         "title": "Exportación de batería excedente"
       },
       "ev_planned_load": {
@@ -504,7 +511,8 @@
       "required": "Este campo es obligatorio.",
       "invalid_wait_mode_behavior": "Comportamiento de modo de espera no válido. Elige Espera estricta o Autoconsumo con reserva.",
       "port_conflict": "El segundo puerto OCPP debe ser diferente del primer puerto OCPP.",
-      "ev_min_power_below_start_current": "La potencia mínima configurada es demasiado baja para la topología de fases seleccionada — un cargador real no puede arrancar por debajo de 6 A. Aumenta la potencia mínima o cambia la topología de fases."
+      "ev_min_power_below_start_current": "La potencia mínima configurada es demasiado baja para la topología de fases seleccionada — un cargador real no puede arrancar por debajo de 6 A. Aumenta la potencia mínima o cambia la topología de fases.",
+      "invalid_time_value": "Introduce una hora del día válida (HH:MM)."
     },
     "step": {
       "batteries_excess_export": {
@@ -512,15 +520,21 @@
           "hsem_batteries_enable_excess_export": "Activar exportación de batería excedente",
           "hsem_batteries_excess_export_discharge_buffer": "Búfer de descarga (%)",
           "hsem_batteries_forecast_reserve_pct": "Reserva de previsión para exportación de batería (+% SoC)",
-          "hsem_batteries_export_min_price": "Precio mínimo de exportación de batería"
+          "hsem_batteries_export_min_price": "Precio mínimo de exportación de batería",
+          "hsem_batteries_target_soc_enabled": "Activar SoC objetivo de la batería",
+          "hsem_batteries_target_soc_pct": "SoC objetivo de la batería (%)",
+          "hsem_batteries_target_soc_time": "Hora objetivo de la batería"
         },
         "data_description": {
           "hsem_batteries_enable_excess_export": "Activa o desactiva la función de exportación de batería excedente, que exporta automáticamente la capacidad de batería excedente a la red cuando resulta económicamente beneficioso.",
           "hsem_batteries_excess_export_discharge_buffer": "Define el porcentaje del búfer de seguridad para mantener las reservas mínimas de batería (0-50 %). El valor predeterminado es 10 % para garantizar capacidad suficiente ante una demanda inesperada.",
           "hsem_batteries_forecast_reserve_pct": "Puntos porcentuales adicionales de SoC por encima del límite de fin de descarga de Huawei que la exportación intencionada de batería debe dejar inmediatamente después de cada intervalo de exportación. Por ejemplo, un límite de Huawei del 15 % más una reserva del 5 % protege un 20 % de SoC. La reserva sigue disponible para la carga de la vivienda cuando la demanda real supera la previsión. Ajusta a 0 para desactivar (predeterminado).",
-          "hsem_batteries_export_min_price": "Límite mínimo estricto por intervalo para la exportación intencionada de batería a la red (issue #752). Cuando es > 0, HSEM prohíbe marcar un intervalo como force_batteries_discharge cuando el precio de exportación está estrictamente por debajo de este límite; la batería puede seguir sirviendo la carga de la vivienda en esos intervalos. Alcanzar el umbral NO activa automáticamente la exportación; el optimizador sigue decidiendo si vender resulta rentable. Se aplica únicamente a la exportación intencionada de batería a la red, no al autoconsumo normal, la exportación de PV ni la carga de PV. Ajusta a 0 para desactivar (predeterminado)."
+          "hsem_batteries_export_min_price": "Límite mínimo estricto por intervalo para la exportación intencionada de batería a la red (issue #752). Cuando es > 0, HSEM prohíbe marcar un intervalo como force_batteries_discharge cuando el precio de exportación está estrictamente por debajo de este límite; la batería puede seguir sirviendo la carga de la vivienda en esos intervalos. Alcanzar el umbral NO activa automáticamente la exportación; el optimizador sigue decidiendo si vender resulta rentable. Se aplica únicamente a la exportación intencionada de batería a la red, no al autoconsumo normal, la exportación de PV ni la carga de PV. Ajusta a 0 para desactivar (predeterminado).",
+          "hsem_batteries_target_soc_enabled": "Crea una reserva adicional en la batería de la vivienda hasta el SoC objetivo antes de la hora objetivo diaria, usando solo la energía solar que de otro modo se exportaría. HSEM nunca compra energía adicional de la red para el objetivo, mantiene sin cambios la carga desde la red y la descarga que el plan normal ya necesita, y sigue decidiendo cuándo almacenar y cuándo exportar, por lo que puede exportar ahora si se prevé suficiente excedente más tarde. Desactivado por defecto.",
+          "hsem_batteries_target_soc_pct": "SoC de la batería que debe alcanzarse antes de la hora objetivo, como SoC absoluto incluido el límite de fin de descarga de Huawei (0-100 %). Predeterminado 100 %.",
+          "hsem_batteries_target_soc_time": "Hora diaria a la que la batería debe alcanzar el SoC objetivo. Solo se planifica la próxima ocurrencia; después, la batería funciona con normalidad. Predeterminado 17:00."
         },
-        "description": "Configura los ajustes de exportación de batería excedente para vender automáticamente el exceso de energía a la red cuando resulte económicamente beneficioso.",
+        "description": "Configura la exportación del excedente de la batería para vender automáticamente la energía sobrante a la red cuando sea económicamente beneficioso, y un SoC objetivo opcional de la batería que se alcanza con energía solar que de otro modo se exportaría.",
         "title": "Exportación de batería excedente"
       },
       "ev_planned_load": {

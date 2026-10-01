@@ -312,6 +312,9 @@ def _planner_output_summary(output: PlannerOutput) -> dict[str, Any]:
         "data_quality": output.data_quality.as_dict(),
         "explanation": output.explanation.as_dict(),
         "plan_cost": plan_cost,
+        # House-battery target record for the next occurrence (issue #1109);
+        # None when the target is disabled.
+        "battery_target": output.battery_target,
         "candidates": candidates_summary,
         "slots": [_slot_to_dict(s) for s in output.slots],
         "charge_windows": [_window_to_dict(w) for w in output.charge_windows],

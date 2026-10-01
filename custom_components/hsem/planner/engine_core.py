@@ -14,6 +14,10 @@ from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.planner.battery_target import (
+    resolve_battery_target,
+    summarize_battery_target,
+)
 from custom_components.hsem.planner.candidate_generator import (
     CANDIDATE_MILP,
     CANDIDATE_PASSIVE,
@@ -310,6 +314,7 @@ def _select_candidate(
         max_discharge_per_slot=mdps,
         replacement_price_per_kwh=rppk,
         ev_configs=ev_configs,
+        battery_target=cw.battery_target,
     )
     _sanitize_passive_ev_fallback(candidates, ev_configs, now)
     winner, rejected, hyst = select_best_candidate(
@@ -598,6 +603,16 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
             live_ev_removal.second,
         ),
     )
+    # House-battery target SoC (issue #1109): one spec drives the MILP stage-2
+    # solve and every candidate's score.
+    cw.battery_target = resolve_battery_target(
+        inp,
+        slots,
+        now,
+        usable_kwh=usable_kwh,
+        cycle_cost_per_kwh=effective_cycle_cost,
+        ev_configs=ev_configs,
+    )
     candidates, winner, candidate_rejected, hysteresis_result = _select_candidate(
         slots,
         inp,
@@ -803,4 +818,5 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         ev_held_power_w=ev_held_power_w,
         ev_second_held_slot_start=ev_second_held_slot_start,
         ev_second_held_power_w=ev_second_held_power_w,
+        battery_target=summarize_battery_target(cw.battery_target, candidates, slots),
     )

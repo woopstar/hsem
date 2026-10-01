@@ -45,6 +45,9 @@ Selector-only terms (added on top of ``total_cost`` to produce ``score``):
    adds nothing.  Computed through ``cost_helpers.terminal_soc_value``, the
    helper the MILP objective also uses, so the selector's score matches what
    the LP optimised for.
+8. **Battery target penalty** — the house-battery target shortfall at the
+   next target occurrence priced at ``P`` (issue #1109), undiscounted, the
+   same slack price the MILP stage-2 solve uses.  Zero when disabled.
 
 All monetary values are in the caller's local currency.
 
@@ -74,6 +77,7 @@ from collections.abc import Sequence
 from datetime import datetime
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.planner.battery_target import battery_target_penalty
 from custom_components.hsem.planner.cost_helpers import (
     _resolve_cycle_cost,
     terminal_soc_value,
@@ -388,6 +392,10 @@ def score_plan(
     # ``total_cost`` is money only — never includes synthetic penalties.
     total_cost = import_cost - export_revenue + conversion_loss_cost + cycle_cost_total
 
+    # 8. House-battery target shortfall (issue #1109): selector-only and
+    #    undiscounted, like the MILP stage-2 slack it mirrors.
+    target_penalty = battery_target_penalty(slots, weights.battery_target)
+
     # ``score`` is the selector objective.  It uses discounted values when
     # time_discount_rate < 1.0 so that uncertain distant savings are weighted
     # less than near-term certain savings.  ``total_cost`` is always raw
@@ -401,9 +409,16 @@ def score_plan(
             + soc_penalty_disc
             + grid_limit_penalty_disc
             + terminal_soc_value_total
+            + target_penalty
         )
     else:
-        score = total_cost + soc_penalty + grid_limit_penalty + terminal_soc_value_total
+        score = (
+            total_cost
+            + soc_penalty
+            + grid_limit_penalty
+            + terminal_soc_value_total
+            + target_penalty
+        )
 
     score_rounded = round(score, 6)
 
@@ -415,6 +430,7 @@ def score_plan(
         soc_penalty=round(soc_penalty, 6),
         grid_limit_penalty=round(grid_limit_penalty, 6),
         terminal_soc_value=round(terminal_soc_value_total, 6),
+        battery_target_penalty=round(target_penalty, 6),
         total_cost=round(total_cost, 6),
         score=score_rounded,
         # ``total`` is a deprecated alias for ``score`` (issue #413).

@@ -323,6 +323,45 @@ before the next distinct surplus run, or horizon end. Planned PV or grid charge
 may restore the reserve before it is measured. If it cannot, battery-origin
 export may be suppressed while direct PV export remains available.
 
+### House-battery target SoC by deadline (issue #1109)
+
+| Field                        | Default      | Description                                                                   |
+| ---------------------------- | ------------ | ----------------------------------------------------------------------------- |
+| `battery_target_soc_enabled` | `False`      | Opt-in. Off keeps every plan exactly as it is today.                          |
+| `battery_target_soc_pct`     | `100.0`      | Target as absolute SoC (includes the hardware end-of-discharge limit).        |
+| `battery_target_soc_time`    | `"17:00:00"` | Daily local time by which the target should be reached. Next occurrence only. |
+
+The target is a preference for building an extra reserve, for example for the
+evening, to cover days when the forecast is wrong. It is **not** a force-charge
+function:
+
+- Only PV that the normal plan would export is used. HSEM never buys extra
+  grid energy for the target.
+- The grid charging and the discharge the normal plan already needs stay
+  exactly as they are, including an earlier discharge window in the morning.
+- It is a deadline, not "charge as soon as possible". If the forecast shows
+  enough surplus later, HSEM may still export now when that pays better. If
+  not, it stores the current surplus. With no surplus, the battery stays where
+  the normal plan leaves it.
+- Surplus above the target is exported, and after the target time the battery
+  behaves normally.
+
+HSEM first computes the normal plan. Only if that plan misses the target does
+it plan again with one extra rule: grid import is fixed at the normal plan's
+value in every slot up to the target time, and may not rise afterwards. The
+only way left to raise the battery level at the target time is then to export
+less PV, and the planner gives up the lowest-paid export first.
+
+A charge-past-target EV wants the same spare PV. The house battery goes first;
+the EV gets what is left once the battery has what it needs.
+
+The working-mode sensor's `battery_target` attribute shows the result for the
+next occurrence: the target, the level the normal plan would reach
+(`stage1_projected_kwh`), the level the plan reaches (`projected_kwh`), and
+any `shortfall_kwh`. See
+[planner-spec.md](planner-spec.md#house-battery-target-soc-by-deadline-issue-1109)
+for the model.
+
 ### Seasonal configuration
 
 | Field                     | Default            | Description                                                                                                          |
@@ -924,7 +963,12 @@ score
   + soc_penalty
   + grid_limit_penalty
   + terminal_soc_value
+  + battery_target_penalty
 ```
+
+`battery_target_penalty` is zero unless the opt-in house-battery target is
+active (issue #1109). It prices a shortfall against the target at the next
+target time, for every candidate, and never enters `total_cost`.
 
 ### Grid import cost
 

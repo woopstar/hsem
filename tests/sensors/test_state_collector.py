@@ -245,6 +245,33 @@ class TestBuildSensorConfig:
         )
         assert cfg.batteries_forecast_reserve_pct == pytest.approx(0.0)
 
+    def test_battery_target_soc_defaults_to_disabled(self):
+        """A fresh or not-yet-reconfigured entry has the target off (issue #1109)."""
+        cfg = build_sensor_config(_make_config_entry())
+        assert cfg.batteries_target_soc_enabled is False
+        assert cfg.batteries_target_soc_pct == pytest.approx(100.0)
+        assert cfg.batteries_target_soc_time == "17:00:00"
+
+    def test_battery_target_soc_configured_values_are_read(self):
+        """All three target settings come from the config entry (issue #1109)."""
+        cfg = build_sensor_config(
+            _make_config_entry(
+                hsem_batteries_target_soc_enabled=True,
+                hsem_batteries_target_soc_pct=0,
+                hsem_batteries_target_soc_time="16:30:00",
+            )
+        )
+        assert cfg.batteries_target_soc_enabled is True
+        assert cfg.batteries_target_soc_pct == pytest.approx(0.0)
+        assert cfg.batteries_target_soc_time == "16:30:00"
+
+    def test_battery_target_soc_unparsable_pct_falls_back_to_full(self):
+        """An unreadable percentage falls back to the 100 % default."""
+        cfg = build_sensor_config(
+            _make_config_entry(hsem_batteries_target_soc_pct="unknown")
+        )
+        assert cfg.batteries_target_soc_pct == pytest.approx(100.0)
+
     def test_forecast_reserve_pct_configured_value_is_read(self):
         cfg = build_sensor_config(
             _make_config_entry(hsem_batteries_forecast_reserve_pct=12.5)

@@ -46,14 +46,15 @@ from datetime import datetime
 from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.planner.battery_target import BatteryTargetSpec
 from custom_components.hsem.planner.candidates._mutations import (
     _apply_passive_solar,
     _clear_all_charge_discharge,
     _copy_slots,
 )
 from custom_components.hsem.planner.cost_function import PlanCostBreakdown
-from custom_components.hsem.planner.milp._past_target_reservation import (
-    solve_milp_with_past_target_reservation,
+from custom_components.hsem.planner.milp._battery_target import (
+    solve_milp_with_battery_target,
 )
 from custom_components.hsem.planner.milp_optimizer import (
     CANDIDATE_MILP,
@@ -169,6 +170,7 @@ def generate_candidates(
     max_discharge_per_slot: float | None = None,
     replacement_price_per_kwh: float | None = None,
     ev_configs: list[EVConfig] | None = None,
+    battery_target: BatteryTargetSpec | None = None,
 ) -> list[CandidatePlan]:
     """Generate all candidate plans from the already-populated baseline slots.
 
@@ -210,6 +212,10 @@ def generate_candidates(
             The engine computes the deadline slot mapping before passing the
             configs here.  ``None`` means no EV co-optimisation
             (backward-compatible behaviour).
+        battery_target:
+            Next house-battery target occurrence (issue #1109), or ``None``
+            when the target is disabled.  Adds the stage-2 solve described
+            in ``planner/milp/_battery_target.py``.
 
     Returns:
         Ordered list of :class:`CandidatePlan` objects: ``no_action``,
@@ -266,9 +272,10 @@ def generate_candidates(
         )
         forecast_export_reserve_kwh = _forecast_export_reserve_kwh(inp, usable_kwh)
 
-        milp_result = solve_milp_with_past_target_reservation(
+        milp_result = solve_milp_with_battery_target(
             baseline_slots,
             now,
+            battery_target=battery_target,
             current_kwh=current_kwh,
             usable_kwh=usable_kwh,
             max_charge_per_slot=max_charge_per_slot,

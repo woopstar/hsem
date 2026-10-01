@@ -9,6 +9,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from custom_components.hsem.planner.milp._battery_target_rows import (
+    BATTERY_TARGET_PENALTY_BLOCK,
+    BatteryTargetRows,
+    add_battery_target_row,
+)
 from custom_components.hsem.planner.milp._bounds import build_bounds
 from custom_components.hsem.planner.milp._ev_constraints import (
     add_ev_and_session_constraint_rows,
@@ -69,8 +74,13 @@ def _build_constraints(
     phase_fuse_active: bool = False,
     max_phase_import_per_slot_kwh: float = 0.0,
     ev_amp_plan: EvAmpPlan | None = None,
+    battery_target: BatteryTargetRows | None = None,
 ) -> dict:
     """Build all LP constraint matrices and variable bounds.
+
+    ``battery_target`` (issue #1109) adds the house-battery target stage-2
+    soft row and pins ``gi[t]`` from below; its import cap is already folded
+    into ``grid_import_ub_per_slot`` by ``resolve_grid_bounds``.
 
     Returns a dict with keys:
         ``A_eq``, ``b_eq``, ``A_ub``, ``b_ub``, ``bounds``,
@@ -396,6 +406,18 @@ def _build_constraints(
         A_ub = _reserve_output["A_ub"]
         b_ub = _reserve_output["b_ub"]
 
+    # House-battery target stage-2 soft row (issue #1109).
+    if battery_target is not None:
+        A_ub, b_ub = add_battery_target_row(
+            A_ub,
+            b_ub,
+            battery_target,
+            ec_off=ec_off,
+            ed_off=ed_off,
+            penalty_off=column_layout.offset(BATTERY_TARGET_PENALTY_BLOCK),
+            current_kwh=current_kwh,
+        )
+
     # ------------------------------------------------------------------
     # Variable bounds: all ≥ 0, charge/discharge capped by power limits.
     # Penalty variables are unbounded above (can absorb arbitrary
@@ -421,6 +443,9 @@ def _build_constraints(
         reserve_active=reserve_active or forecast_reserve_active,
         fuse_active=fuse_active,
         ev_amp_plan=ev_amp_plan,
+        grid_import_floor_per_slot=(
+            None if battery_target is None else battery_target.grid_import_floor
+        ),
     )
 
     return {

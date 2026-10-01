@@ -97,6 +97,7 @@ def build_milp_column_layout(
     ev_on_widths: Sequence[int | None] | None = None,
     ev_amp3_widths: Sequence[int | None] | None = None,
     ev_mode3_widths: Sequence[int | None] | None = None,
+    battery_target: bool = False,
 ) -> MilpColumnLayout:
     """Return the canonical column layout for one MILP model.
 
@@ -124,6 +125,8 @@ def build_milp_column_layout(
         ev_mode3_widths: Per-EV width of the phase-mode binary block
             (``ev_{i}_mode3``) for an auto-phase-switching charger, or
             ``None`` to omit it for that EV.
+        battery_target: Whether the house-battery target stage-2 solve adds
+            its width-1 ``battery_target_penalty`` slack (issue #1109).
 
     Returns:
         A validated :class:`MilpColumnLayout`.
@@ -147,6 +150,8 @@ def build_milp_column_layout(
         blocks.append((f"ev_{ev_idx}_target_penalty", 1))
     if fuse_active:
         blocks.append(("grid_import_penalty", m))
+    if battery_target:
+        blocks.append(("battery_target_penalty", 1))
     # Managed-EV amp/on columns are declared last, after every physical
     # block, so intermediate dense-matrix extenders built against the
     # pre-amp-lattice width stay valid for every row that never references
