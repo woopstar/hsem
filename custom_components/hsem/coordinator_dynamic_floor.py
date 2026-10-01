@@ -196,6 +196,7 @@ def compute_dynamic_floor_from_plan(
             user_margin=reference_input.battery_cycle_cost_per_kwh,
         ),
         max_grid_charge_kw=reference_input.battery_max_charge_power_w / 1000.0,
+        max_soc_pct=max_soc_pct,
     )
     return floor_pct, diag, [(start.isoformat(), pct) for start, pct in profile]
 

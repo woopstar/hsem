@@ -92,9 +92,9 @@ class TestBridgeComputation:
             usable_kwh=10.0,
             configured_min_soc_pct=10.0,
         )
-        # Reserve = (0.5 + 0.3 + 0.4) * 1.15 = 1.38 kWh
-        # Reserve SoC = 1.38 / 10.0 * 100 = 13.8%
-        assert floor_pct == pytest.approx(13.8, rel=1e-4)
+        # Reserve = (0.5 + 0.3 + 0.4) * 1.15 = 1.38 kWh, held on top of the
+        # 10 % minimum: 10 + 1.38 / 10.0 * (100 - 10) = 22.42 % (issue #1221).
+        assert floor_pct == pytest.approx(22.42, rel=1e-4)
         assert diag["refill_type"] == "solar_surplus"
         assert diag["reserve_kwh"] == pytest.approx(1.2, rel=1e-4)
         assert diag["bridge_duration_hours"] == pytest.approx(3.0, rel=1e-4)
@@ -126,11 +126,13 @@ class TestBridgeComputation:
         assert diag["reserve_kwh"] == pytest.approx(0.0)
         assert floor_pct == pytest.approx(10.0)
 
-    def test_configured_min_is_absolute_floor(self) -> None:
-        """Dynamic floor must be at least the configured minimum."""
+    def test_a_small_reserve_sits_on_top_of_the_configured_min(self) -> None:
+        """The reserve is held above the configured minimum (issue #1221).
+
+        Before, 0.0575 kWh was 0.575 % and vanished under the 15 % minimum.
+        """
         now = datetime(2025, 6, 15, 12, 0)
         df = DynamicDischargeFloor()
-        # Very low consumption → computed floor would be below configured min.
         slots = _make_slots(now, [0.05, -1.0, 0.2])
         floor_pct, diag = df.compute_floor(
             now=now,
@@ -138,7 +140,7 @@ class TestBridgeComputation:
             usable_kwh=10.0,
             configured_min_soc_pct=15.0,
         )
-        assert floor_pct == pytest.approx(15.0, rel=1e-4)
+        assert floor_pct == pytest.approx(15.0 + 0.05 * 1.15 / 10.0 * 85.0, rel=1e-6)
 
     def test_no_future_refill_uses_full_horizon(self) -> None:
         """When no refill is found, accumulate over full horizon."""
@@ -154,7 +156,7 @@ class TestBridgeComputation:
         )
         assert diag["refill_type"] == "none"
         assert diag["reserve_kwh"] == pytest.approx(2.0, rel=1e-4)
-        assert floor_pct == pytest.approx(23.0, rel=1e-4)
+        assert floor_pct == pytest.approx(5.0 + 2.3 / 10.0 * 95.0, rel=1e-4)
 
     def test_empty_slots(self) -> None:
         """Empty slot list returns configured minimum."""
@@ -215,7 +217,7 @@ class TestBridgeComputation:
         assert diag["refill_type"] == "solar_surplus"
         assert diag["reserve_kwh"] == pytest.approx(0.6, rel=1e-4)
         assert diag["bridge_duration_hours"] == pytest.approx(1.75, rel=1e-4)
-        assert floor_pct == pytest.approx(6.9, rel=1e-4)
+        assert floor_pct == pytest.approx(5.0 + 0.69 / 10.0 * 95.0, rel=1e-4)
 
     def test_30min_slot_resolution(self) -> None:
         """Bridge computation works with 30-minute slots."""
@@ -365,7 +367,7 @@ class TestAffordableGridRefill:
         assert diag["refill_type"] == "solar_surplus"
         assert diag["cheap_refill_price"] is None
         assert diag["reserve_kwh"] == pytest.approx(5.0)
-        assert floor_pct == pytest.approx(5.0 / 10.0 * 100.0 * 1.15)
+        assert floor_pct == pytest.approx(5.0 + 5.0 * 1.15 / 10.0 * 95.0)
 
     def test_moderate_night_is_not_cheap(self) -> None:
         """A 0.15 night before a 0.12 day is not a refill: solar bridge."""
@@ -417,7 +419,7 @@ class TestAffordableGridRefill:
 
         assert planned_diag["refill_type"] == "grid_charge"
         assert planned_diag["reserve_kwh"] == pytest.approx(3.0)
-        assert planned_only == pytest.approx(3.0 / 10.0 * 100.0 * 1.15)
+        assert planned_only == pytest.approx(5.0 + 3.0 * 1.15 / 10.0 * 95.0)
         assert diag["refill_type"] == "grid_available"
         assert diag["reserve_kwh"] == pytest.approx(0.0)
         assert floor_pct == pytest.approx(5.0)
@@ -602,7 +604,7 @@ class TestPlannedChargePlacement:
             assert diag["refill_type"] == "grid_charge"
             assert diag["next_refill_slot"] == "2026-09-30T02:00:00"
             assert diag["reserve_kwh"] == pytest.approx(1.0)
-            assert floor_pct == pytest.approx(1.0 / 9.5 * 100.0 * 1.15)
+            assert floor_pct == pytest.approx(5.0 + 1.0 * 1.15 / 9.5 * 95.0)
             assert profile == results[0][2]
 
     def test_charges_of_one_price_add_up_at_its_first_slot(self) -> None:

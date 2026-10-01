@@ -12,7 +12,11 @@ from typing import Any
 
 import pytest
 
-from custom_components.hsem.utils.soc_bounds import finite_or, resolve_soc_bounds_pct
+from custom_components.hsem.utils.soc_bounds import (
+    finite_or,
+    reserve_floor_pct,
+    resolve_soc_bounds_pct,
+)
 
 
 @pytest.mark.parametrize(
@@ -88,3 +92,53 @@ def test_bounds_are_always_ordered(dynamic: float | None, soc: float) -> None:
     """hardware <= effective <= maximum holds for any dynamic floor and SoC."""
     hardware, effective, maximum = resolve_soc_bounds_pct(10.0, 90.0, dynamic, soc)
     assert hardware <= effective <= maximum
+
+
+class TestReserveFloorPct:
+    """Issue #1221: a reserve is held on top of the configured minimum SoC."""
+
+    @pytest.mark.parametrize(
+        ("reserve_kwh", "expected_pct"),
+        [
+            pytest.param(1.38, 18.8, id="1.2 kWh bridge"),
+            pytest.param(1.955, 24.55, id="1.7 kWh bridge"),
+            pytest.param(3.795, 42.95, id="3.3 kWh bridge"),
+            pytest.param(7.36, 78.6, id="6.4 kWh bridge"),
+        ],
+    )
+    def test_ten_kwh_battery_with_a_five_percent_floor(
+        self, reserve_kwh: float, expected_pct: float
+    ) -> None:
+        """9.5 kWh usable between 5 % and 100 %: ten SoC points per kWh."""
+        floor_pct = reserve_floor_pct(reserve_kwh, 9.5, 5.0, 100.0)
+
+        assert floor_pct == pytest.approx(expected_pct)
+        # What the planner turns it back into: rated × (floor − hardware) / 100.
+        assert 10.0 * (floor_pct - 5.0) / 100.0 == pytest.approx(reserve_kwh)
+
+    def test_no_reserve_is_the_configured_minimum(self) -> None:
+        assert reserve_floor_pct(0.0, 9.5, 5.0, 100.0) == pytest.approx(5.0)
+        assert reserve_floor_pct(-1.0, 9.5, 5.0, 100.0) == pytest.approx(5.0)
+
+    def test_a_reserve_beyond_the_battery_is_the_maximum(self) -> None:
+        assert reserve_floor_pct(12.0, 9.5, 5.0, 100.0) == pytest.approx(100.0)
+        assert reserve_floor_pct(12.0, 8.5, 5.0, 90.0) == pytest.approx(90.0)
+
+    def test_a_reduced_maximum_keeps_the_energy(self) -> None:
+        """8.5 kWh usable between 5 % and 90 % is still a 10 kWh battery."""
+        assert reserve_floor_pct(3.795, 8.5, 5.0, 90.0) == pytest.approx(42.95)
+
+    @pytest.mark.parametrize(
+        ("usable_kwh", "minimum_pct", "maximum_pct"),
+        [
+            pytest.param(0.0, 5.0, 100.0, id="no usable capacity"),
+            pytest.param(9.5, 100.0, 100.0, id="no span"),
+            pytest.param(9.5, 60.0, 50.0, id="minimum above maximum"),
+        ],
+    )
+    def test_without_capacity_the_floor_is_the_configured_minimum(
+        self, usable_kwh: float, minimum_pct: float, maximum_pct: float
+    ) -> None:
+        assert reserve_floor_pct(
+            3.0, usable_kwh, minimum_pct, maximum_pct
+        ) == pytest.approx(minimum_pct)

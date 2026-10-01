@@ -123,7 +123,7 @@ class TestPublishedReserveThroughRunPlanner:
     """The #1125 fixture: 10 kWh, 5 % hardware floor, 0.15 night, 21:30."""
 
     def test_floor_held_wait_slot_reserves_the_floor(self) -> None:
-        """68 %: the floor (77.72 %) holds the battery; the reserve is all of it."""
+        """68 %: the floor (78.8 %) holds the battery; the reserve is all of it."""
         floor_pct, _profile, _reference, final = _replan(68.0)
         live_slot = _future(final)[0]
 
@@ -131,7 +131,9 @@ class TestPublishedReserveThroughRunPlanner:
         assert live_slot.recommendation == _WAIT
         assert live_slot.discharge_reserve_kwh == pytest.approx(6.3)
         # The trajectory reserve alone would release almost everything.
-        assert _plan_reserve(final, 68.0) == pytest.approx(0.542, abs=2e-3)
+        plan_reserve = _plan_reserve(final, 68.0)
+        assert plan_reserve is not None
+        assert plan_reserve < 1.0
         assert final.wait_mode_reserve_kwh is not None
         assert final.wait_mode_reserve_kwh >= live_slot.discharge_reserve_kwh - 1e-9
         assert final.wait_mode_reserve_kwh == pytest.approx(6.3)

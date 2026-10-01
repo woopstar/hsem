@@ -269,7 +269,7 @@ class TestFloorDoesNotRiseWithinABridge:
 
         assert [replan.refill_type for replan in evening] == ["grid_charge"] * 3
         assert [replan.floor_pct for replan in evening] == pytest.approx(
-            [kwh / 9.5 * 100.0 * 1.15 for kwh in (3.2, 2.4, 1.7)], abs=0.1
+            [5.0 + kwh * 1.15 / 10.0 * 100.0 for kwh in (3.2, 2.4, 1.7)], abs=0.1
         )
 
     def test_battery_is_not_held_after_the_sale(

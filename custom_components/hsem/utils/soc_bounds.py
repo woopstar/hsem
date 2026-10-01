@@ -70,3 +70,34 @@ def resolve_soc_bounds_pct(
     dynamic_floor = min(dynamic_floor, finite_or(current_soc_pct, dynamic_floor))
     effective_floor = min(max(dynamic_floor, hardware_floor), maximum_soc)
     return hardware_floor, effective_floor, maximum_soc
+
+
+def reserve_floor_pct(
+    reserve_kwh: float,
+    usable_kwh: float,
+    configured_min_soc_pct: float,
+    max_soc_pct: float,
+) -> float:
+    """Return the SoC that holds *reserve_kwh* above the configured minimum.
+
+    The reserve sits **on top of** the configured minimum SoC (issue #1221):
+    *usable_kwh* is the capacity between the minimum and the maximum, so the
+    reserve's share of it is a share of that span, not of the whole battery.
+    Read as an absolute SoC instead, the share counted the energy below the
+    minimum as reserve, and a 1.7 kWh bridge was held as 1.56 kWh.
+
+    Args:
+        reserve_kwh: Energy to hold, safety margin included (kWh).
+        usable_kwh: Capacity between the minimum and the maximum SoC (kWh).
+        configured_min_soc_pct: Configured minimum SoC (0-100).
+        max_soc_pct: Configured maximum SoC (0-100).
+
+    Returns:
+        The floor in SoC percent: the configured minimum when there is no
+        reserve or no usable capacity, never above *max_soc_pct* (a full
+        battery holds all there is).
+    """
+    span_pct = max_soc_pct - configured_min_soc_pct
+    if usable_kwh <= 1e-9 or span_pct <= 1e-9 or reserve_kwh <= 0.0:
+        return configured_min_soc_pct
+    return configured_min_soc_pct + min(reserve_kwh / usable_kwh, 1.0) * span_pct

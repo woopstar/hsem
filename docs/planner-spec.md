@@ -4153,10 +4153,15 @@ The dynamic discharge floor computes a per-cycle minimum SoC that bridges the
 gap between the last discharge slot and the next solar refill window:
 
 ```text
-effective_floor_pct = max(configured_min_soc_pct, bridge_reserve_pct)
-bridge_reserve_pct  = (next_refill_need_kwh / usable_capacity_kwh) × 100
-                    × safety_margin
+reserve_share       = min(next_refill_need_kwh × safety_margin / usable_capacity_kwh, 1)
+effective_floor_pct = configured_min_soc_pct
+                    + reserve_share × (max_soc_pct − configured_min_soc_pct)
 ```
+
+`usable_capacity_kwh` is what the battery holds between the configured minimum
+and the maximum SoC, so the reserve sits **on top of** the configured minimum
+and the floor never exceeds the maximum (see _The reserve is held above the
+hardware floor_, issue #1221).
 
 Where `safety_margin` is a self-learning multiplier that starts at **1.15**
 (a 15 % buffer) and self-corrects within **[1.05, 1.50]**: it steps up by
@@ -4180,8 +4185,9 @@ the floor at the **start** of every look-ahead slot:
 
 ```text
 remaining_kwh[t] = Σ over bridge slots k ≥ t of net consumption of slot k
-floor_pct[t]     = max(configured_min_soc_pct,
-                       remaining_kwh[t] / usable_capacity_kwh × 100 × safety_margin)
+floor_pct[t]     = configured_min_soc_pct
+                   + min(remaining_kwh[t] × safety_margin / usable_capacity_kwh, 1)
+                     × (max_soc_pct − configured_min_soc_pct)
 floor_pct[t]     = configured_min_soc_pct     for every slot at or after the refill slot
 ```
 
@@ -4203,6 +4209,9 @@ reserve[t] = rated_kwh × (clamp(floor_pct[t + 1], hardware, maximum) − hardwa
 reserve[t] = min(reserve[t], max(current_kwh, 0), reserve[t − 1])
 reserve[t] = 0     for past slots, and when the floor is disabled
 ```
+
+With the conversion above, `reserve[t]` for a battery on the profile is
+`remaining_kwh[t + 1] × safety_margin`, capped at the usable capacity.
 
 - **End of slot, next slot's floor.** Serving the house in a slot is what the
   reserve is for. A battery on the profile may therefore discharge the slot's
@@ -4266,6 +4275,70 @@ reference solve and move the same way. In the export rows the floor itself
 changes between replans in both models, because the reference plan moves its
 night charge among equally priced slots (issue #1198); that is not introduced
 here.
+
+#### The reserve is held above the hardware floor (issue #1221)
+
+`reserve_floor_pct()` (`utils/soc_bounds.py`) converts a reserve in kWh to the
+floor SoC, for the scalar and for every profile entry:
+
+```text
+floor_pct = configured_min_soc_pct
+          + min(reserve_kwh / usable_capacity_kwh, 1) × (max_soc_pct − configured_min_soc_pct)
+          = configured_min_soc_pct + reserve_kwh / rated_kwh × 100     (capped at max_soc_pct)
+```
+
+`reserve_kwh` includes the safety margin. `apply_discharge_reserve()` turns
+the floor back into `rated_kwh × (floor_pct − hardware_pct) / 100`, which is
+`reserve_kwh` again: both directions use the same origin.
+
+Until issue #1221 the floor was `reserve_kwh / usable_capacity_kwh × 100`,
+read as an absolute SoC. The energy below the hardware floor then counted as
+part of the reserve, and a floor of more than 100 % was possible. 10 kWh
+rated, 5 % hardware floor, margin 1.15:
+
+| Bridge (kWh) | Bridge × margin (kWh) | Floor before (%) | Held before (kWh) | Floor now (%) | Held now (kWh) |
+| -----------: | --------------------: | ---------------: | ----------------: | ------------: | -------------: |
+|          1.2 |                  1.38 |             14.5 |              0.95 |          18.8 |           1.38 |
+|          1.7 |                  1.96 |             20.6 |              1.56 |          24.6 |           1.96 |
+|          3.3 |                  3.80 |             39.9 |              3.49 |          43.0 |           3.80 |
+|          6.4 |                  7.36 |             77.5 |              7.25 |          78.6 |           7.36 |
+|          9.0 |                 10.35 |            108.9 |              9.50 |         100.0 |           9.50 |
+
+Below about 2.4 kWh the battery held less than the bridge itself. Every floor
+is now higher by the hardware-floor share of its reserve: about four SoC
+points for a small bridge, one for a large one. Floors quoted in the measured
+tables of the other subsections predate this and are that much lower.
+
+**Measured.** The closed-loop replay of _A planned charge ends the bridge_
+(hourly replans, 48 h, 68 % at 21:00, each replan's floor from its own
+reference solve). First evening with the 0.45 export at 21:00–23:00:
+
+| Replan at        | 21:00 | 22:00 | 23:00 | 00:00 | 01:00 | 02:00 |
+| ---------------- | ----: | ----: | ----: | ----: | ----: | ----: |
+| Floor before (%) |  38.7 |  29.1 |  20.6 |   5.0 |   5.0 |   5.0 |
+| Import before    |     0 |     0 |  0.19 |     0 |     0 |  0.50 |
+| Floor now (%)    |  41.8 |  32.6 |  24.6 |  16.5 |   5.0 |   5.0 |
+| Import now       |     0 |     0 |     0 |     0 |     0 |  0.50 |
+
+Before, the battery reached the hardware floor during the 23:00 slot and the
+house imported 0.19 kWh at 0.19. Now nothing is imported between the export
+price and the 0.15 night, where the plan buys.
+
+Realised grid cash over the 48 replans, lower is better. With a perfect
+forecast a floor can only cost, so the columns show what the larger reserve
+costs, not what it protects:
+
+| Scenario (68 % at 21:00)        | Floor off | Before | Now    |
+| ------------------------------- | --------: | -----: | ------ |
+| evening export 0.45             |    −2.725 | −2.332 | −2.201 |
+| evening export, cloudy tomorrow |    −1.882 | −1.881 | −1.758 |
+| no export spike (0.15 night)    |    −0.177 |  0.246 | 0.253  |
+| 0.03 night                      |    −3.361 | −3.361 | −3.361 |
+
+In the export rows the reserve is 0.3 kWh larger at 21:00, and that energy is
+not sold at 0.45. The #1125 fixture (68 % at 21:30, 0.15 night, bridge to the
+PV surplus) moves from 77.7 % to 78.8 %, and the 7.2 kWh bridge of
+`tests/test_dynamic_floor_reference_plan.py` from 87.2 % to 87.8 %.
 
 #### Safety-margin learning (issue #1141)
 
@@ -4602,11 +4675,10 @@ and the floor rises from 43.8 % to 59.6 %.
   both ways (26.9 / 5.0 / 5.0 / 20.6 / 18.5 / 16.3 / 5.0 % from 22:15; before
   this change 37.7 / 5.0 / 5.0 / 42.8 / 40.7 / 38.6 / 5.0 %). The battery is
   sold while the floor is released, so the step holds nothing (issue #1220).
-- A reserve this small holds a little less than it bridges: the floor is a
-  share of the usable capacity read as an absolute SoC, so the energy below
-  the hardware floor counts as reserve (issue #1221). At 23:00 above the
-  battery reaches the hardware floor before the night charge and the house
-  imports 0.19 kWh.
+- At 23:00 above the battery reaches the hardware floor before the night
+  charge and the house imports 0.19 kWh: the reserve held a little less than
+  it bridged. That was the conversion, fixed by issue #1221 (see _The reserve
+  is held above the hardware floor_).
 - A battery below its reserve still holds through the first hours of the
   bridge and serves the last ones, whatever their prices (issue #1222).
 
@@ -4692,7 +4764,8 @@ one ends the bridge at day 3's 0.12 daytime slots.
 
 ```text
 effective_floor_pct ≥ configured_min_soc_pct    (always)
-effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
+effective_floor_pct ≤ max_soc_pct               (always, issue #1221)
+safety_margin       ≤ 1.50                      (after learning period)
 ```
 
 - The bridge scan reads charge decisions from this replan's floor-free
@@ -4738,13 +4811,17 @@ effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
   from the configured minimum, where a bridge starts; it never rises within
   a bridge (issue #1214).
 - `floor_pct[now]`, the first profile entry, equals `effective_floor_pct`.
+  The profile is non-increasing up to the refill slot and equals
+  `configured_min_soc_pct` from the refill slot on (issues #1188, #1214).
+- For a battery on the profile, the energy `apply_discharge_reserve()` holds
+  above the hardware floor equals the remaining bridge × `safety_margin`,
+  capped at the usable capacity, for small and large bridges alike
+  (issue #1221).
 - The plan explanation's `constraints` list names the floor: it contains
   `dynamic_discharge_floor` when `dynamic_discharge_floor_pct` is above the
   hardware floor, and also `battery_below_dynamic_floor` when the live SoC is
   at or below it. Neither tag is listed without a floor or with a floor at the
   hardware floor (issue #1227).
-  The profile is non-increasing up to the refill slot and equals
-  `configured_min_soc_pct` from the refill slot on (issues #1188, #1214).
 - For every non-past slot of every candidate,
   `estimated_battery_capacity_kwh >= discharge_reserve_kwh` (within rounding).
 - `discharge_reserve_kwh` never exceeds the energy stored now and never rises

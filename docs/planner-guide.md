@@ -128,11 +128,13 @@ minimum SoC that prevents the battery from being discharged below the
 level needed to reach the next solar refill window:
 
 ```text
-bridge_reserve_pct = (next_refill_kwh − expected_charge_kwh)
-                    / usable_capacity_kwh × 100
-effective_floor   = max(configured_min_soc_pct,
-                        bridge_reserve_pct × safety_margin)
+reserve_kwh     = house load until the next refill × safety_margin
+effective_floor = configured_min_soc_pct + reserve_kwh / rated_capacity_kwh × 100
+                  (never above the configured maximum SoC)
 ```
+
+The reserve is held on top of the configured minimum SoC: a 2 kWh reserve on a
+10 kWh battery with a 5 % minimum is a 25 % floor (issue #1221).
 
 where `safety_margin` is a **self-correcting multiplier** that starts at
 1.15 and stays within 1.05–1.50. It learns once per day: two days in a row

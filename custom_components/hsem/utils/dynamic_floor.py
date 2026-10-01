@@ -22,6 +22,7 @@ from typing import Any, NamedTuple
 
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.recommendations import Recommendations
+from custom_components.hsem.utils.soc_bounds import reserve_floor_pct
 from custom_components.hsem.utils.units import slot_duration_hours
 
 # ---------------------------------------------------------------------------
@@ -252,6 +253,7 @@ def _floor_profile(
     scan: _BridgeScan,
     usable_kwh: float,
     configured_min_soc_pct: float,
+    max_soc_pct: float,
     safety_margin: float,
 ) -> list[tuple[datetime, float]]:
     """Return the floor at the start of every look-ahead slot (issue #1188).
@@ -266,15 +268,16 @@ def _floor_profile(
     Args:
         future: Chronological look-ahead slots the scan walked.
         scan: The bridge scan whose reserve becomes the scalar floor.
-        usable_kwh: Maximum usable battery capacity (kWh).
+        usable_kwh: Capacity between the minimum and the maximum SoC (kWh).
         configured_min_soc_pct: Configured minimum SoC (0-100).
+        max_soc_pct: Configured maximum SoC (0-100).
         safety_margin: The margin applied to the reserve.
 
     Returns:
         ``(slot start, floor SoC %)`` for every slot in *future*.
     """
     remaining = [0.0] * len(future)
-    if not scan.covered and usable_kwh > 1e-9:
+    if not scan.covered:
         total = 0.0
         for index in range(len(scan.deltas) - 1, -1, -1):
             total += scan.deltas[index]
@@ -282,11 +285,11 @@ def _floor_profile(
     return [
         (
             slot.start,
-            max(
+            reserve_floor_pct(
+                reserve_kwh * safety_margin,
+                usable_kwh,
                 configured_min_soc_pct,
-                (reserve_kwh / usable_kwh) * 100.0 * safety_margin
-                if usable_kwh > 1e-9
-                else 0.0,
+                max_soc_pct,
             ),
         )
         for slot, reserve_kwh in zip(future, remaining)
@@ -346,6 +349,7 @@ class DynamicDischargeFloor:
         *,
         cycle_cost_per_kwh: float = 0.0,
         max_grid_charge_kw: float = 0.0,
+        max_soc_pct: float = 100.0,
     ) -> tuple[float, dict]:
         """Compute the effective discharge floor as SoC percentage.
 
@@ -363,6 +367,7 @@ class DynamicDischargeFloor:
             hours_ahead,
             cycle_cost_per_kwh=cycle_cost_per_kwh,
             max_grid_charge_kw=max_grid_charge_kw,
+            max_soc_pct=max_soc_pct,
         )
         return floor_pct, diag
 
@@ -376,6 +381,7 @@ class DynamicDischargeFloor:
         *,
         cycle_cost_per_kwh: float = 0.0,
         max_grid_charge_kw: float = 0.0,
+        max_soc_pct: float = 100.0,
     ) -> tuple[float, dict, list[tuple[datetime, float]]]:
         """Compute the discharge floor now and for every look-ahead slot.
 
@@ -398,7 +404,8 @@ class DynamicDischargeFloor:
            as ``grid_available`` (issue #1156); otherwise the first scan
            stands.
         6. Reserve = net_consumption × safety_margin.
-        7. Convert reserve to SoC pct and return max(configured_min, reserve).
+        7. The floor holds that reserve on top of the configured minimum SoC
+           (:func:`reserve_floor_pct`, issue #1221), capped at *max_soc_pct*.
 
         Args:
             now:
@@ -410,7 +417,8 @@ class DynamicDischargeFloor:
                 and optionally ``import_price``; a slot without a finite
                 price is never an affordable refill).
             usable_kwh:
-                Maximum usable battery capacity (kWh).
+                Usable battery capacity: what the battery holds between
+                *configured_min_soc_pct* and *max_soc_pct* (kWh).
             configured_min_soc_pct:
                 User-configured minimum SoC for export (0-100).  This is the
                 absolute floor — the dynamic floor can only be higher.
@@ -422,11 +430,13 @@ class DynamicDischargeFloor:
             max_grid_charge_kw:
                 Battery charge power limit (kW).  ``0`` (the default)
                 disables affordable refills.
+            max_soc_pct:
+                Configured maximum SoC (0-100); the floor never exceeds it.
 
         Returns:
             A ``(effective_floor_pct, diagnostics, profile)`` tuple where
-            *effective_floor_pct* is the greater of *configured_min_soc_pct*
-            and the computed reserve SoC, *diagnostics* is a dict with
+            *effective_floor_pct* is *configured_min_soc_pct* plus the SoC
+            share of the reserve, *diagnostics* is a dict with
             ``reserve_kwh``, ``bridge_duration_hours``, ``next_refill_slot``,
             ``safety_margin``, ``refill_type`` and ``cheap_refill_price``,
             and *profile* is ``(slot start, floor SoC %)`` for every
@@ -489,13 +499,13 @@ class DynamicDischargeFloor:
         # The consumption bridged to the refill; 0 when the refill covers it.
         reserve_kwh = scan.reserve_kwh
 
-        # Convert reserve to SoC percentage.
-        if usable_kwh > 1e-9:
-            reserve_soc_pct = (reserve_kwh / usable_kwh) * 100.0 * self.safety_margin
-        else:
-            reserve_soc_pct = 0.0
-
-        effective_floor_pct = max(configured_min_soc_pct, reserve_soc_pct)
+        # Hold the reserve on top of the configured minimum (issue #1221).
+        effective_floor_pct = reserve_floor_pct(
+            reserve_kwh * self.safety_margin,
+            usable_kwh,
+            configured_min_soc_pct,
+            max_soc_pct,
+        )
 
         diag = {
             "reserve_kwh": round(reserve_kwh, 3),
@@ -511,22 +521,27 @@ class DynamicDischargeFloor:
         log_planner(
             "debug",
             "[dynamic_floor] compute_floor: reserve=%.3f kWh  bridge=%.1f h  "
-            "refill=%s(%s)  cheap_refill_price=%s  margin=%.2f  raw_soc=%.1f%%  "
-            "effective=%.1f%%  configured_min=%.1f%%  usable=%.3f",
+            "refill=%s(%s)  cheap_refill_price=%s  margin=%.2f  "
+            "effective=%.1f%%  configured_min=%.1f%%  max=%.1f%%  usable=%.3f",
             reserve_kwh,
             bridge_duration_hours,
             refill_type,
             diag["next_refill_slot"] or "none",
             diag["cheap_refill_price"],
             self.safety_margin,
-            reserve_soc_pct,
             effective_floor_pct,
             configured_min_soc_pct,
+            max_soc_pct,
             usable_kwh,
         )
 
         profile = _floor_profile(
-            future, scan, usable_kwh, configured_min_soc_pct, self.safety_margin
+            future,
+            scan,
+            usable_kwh,
+            configured_min_soc_pct,
+            max_soc_pct,
+            self.safety_margin,
         )
         return effective_floor_pct, diag, profile
 

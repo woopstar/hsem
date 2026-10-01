@@ -98,8 +98,12 @@ def _bridge(
 
 
 def _pct(reserve_kwh: float) -> float:
-    """Return the floor the scalar formula gives for *reserve_kwh*."""
-    return max(_HARDWARE_FLOOR_PCT, reserve_kwh / _USABLE_KWH * 100.0 * _MARGIN)
+    """Return the floor that holds *reserve_kwh* × margin above the hardware floor.
+
+    9.5 kWh usable above a 5 % floor is a 10 kWh battery, so each kWh is ten
+    SoC points on top of the hardware floor (issue #1221).
+    """
+    return _HARDWARE_FLOOR_PCT + reserve_kwh * _MARGIN / 10.0 * 100.0
 
 
 def _profile(slots: list[_BridgeSlot]) -> tuple[float, dict, list[float]]:
@@ -262,6 +266,66 @@ def _reserves(
     slots = _slots()
     apply_discharge_reserve(slots, inp, now, stored_kwh)
     return [slot.discharge_reserve_kwh for slot in slots]
+
+
+class TestReserveIsHeldAboveTheHardwareFloor:
+    """Issue #1221: the plan holds bridge × margin, not a share that counts
+    the energy below the hardware floor as reserve."""
+
+    @staticmethod
+    def _held_kwh(bridge_kwh: float, *, max_soc_pct: float = 100.0) -> float:
+        """Return what a full battery must hold at the end of the live slot.
+
+        The live slot has no load, so the reserve at its end is the whole
+        bridge: *bridge_kwh* spread over the four slots before the PV surplus.
+        """
+        nets = [0.0, *([bridge_kwh / 4.0] * 4), -1.0]
+        usable_kwh = _RATED_KWH * (max_soc_pct - _HARDWARE_FLOOR_PCT) / 100.0
+        floor, _diag, profile = DynamicDischargeFloor().compute_floor_profile(
+            _T0, _bridge(nets), usable_kwh, _HARDWARE_FLOOR_PCT, max_soc_pct=max_soc_pct
+        )
+        inp = _reserve_input(
+            battery_soc_pct=max_soc_pct,
+            battery_max_soc_pct=max_soc_pct,
+            dynamic_discharge_floor_pct=floor,
+            dynamic_floor_profile=[(start.isoformat(), pct) for start, pct in profile],
+        )
+        return _reserves(inp, stored_kwh=usable_kwh)[0]
+
+    @pytest.mark.parametrize("bridge_kwh", [1.2, 1.7, 3.3, 6.4])
+    def test_the_reserve_held_is_the_bridge_times_the_margin(
+        self, bridge_kwh: float
+    ) -> None:
+        """Before: 0.95, 1.56, 3.49 and 7.25 kWh for 1.38, 1.96, 3.80 and 7.36."""
+        assert self._held_kwh(bridge_kwh) == pytest.approx(bridge_kwh * _MARGIN)
+
+    def test_a_bridge_larger_than_the_battery_holds_all_of_it(self) -> None:
+        """9 kWh × 1.15 is more than the 9.5 kWh above the hardware floor."""
+        assert self._held_kwh(9.0) == pytest.approx(9.5)
+
+    @pytest.mark.parametrize("bridge_kwh", [3.3, 9.0, 20.0])
+    def test_the_floor_never_exceeds_the_maximum_soc(self, bridge_kwh: float) -> None:
+        """A 15-hour bridge used to give a floor of 114 % (issue #1222)."""
+        nets = [*([bridge_kwh / 4.0] * 4), -1.0]
+        for max_soc_pct in (100.0, 90.0):
+            usable_kwh = _RATED_KWH * (max_soc_pct - _HARDWARE_FLOOR_PCT) / 100.0
+            floor, _diag, profile = DynamicDischargeFloor().compute_floor_profile(
+                _T0,
+                _bridge(nets),
+                usable_kwh,
+                _HARDWARE_FLOOR_PCT,
+                max_soc_pct=max_soc_pct,
+            )
+
+            assert floor <= max_soc_pct + 1e-9
+            assert all(pct <= max_soc_pct + 1e-9 for _start, pct in profile)
+            assert floor == pytest.approx(
+                min(_HARDWARE_FLOOR_PCT + bridge_kwh * _MARGIN * 10.0, max_soc_pct)
+            )
+
+    def test_a_reduced_maximum_holds_the_same_energy(self) -> None:
+        """With a 90 % cut-off the 3.3 kWh bridge is still held as 3.8 kWh."""
+        assert self._held_kwh(3.3, max_soc_pct=90.0) == pytest.approx(3.3 * _MARGIN)
 
 
 class TestApplyDischargeReserve:
@@ -515,10 +579,20 @@ class TestPlanFollowsTheDecliningReserve:
 
         assert floor_pct > 70.0
         bridge = _bridge_slots(final)
-        assert sum(s.batteries_discharged_kwh for s in bridge) > 6.0
-        assert sum(s.grid_import_kwh for s in bridge) == pytest.approx(0.0, abs=0.01)
-        assert not any(s.recommendation == _WAIT for s in bridge)
+        assert sum(s.batteries_discharged_kwh for s in bridge) > 5.0
         assert bridge[0].recommendation == _DISCHARGE
+        # The battery stays clear of the reserve in every bridge slot ...
+        assert all(
+            s.estimated_battery_capacity_kwh - s.discharge_reserve_kwh > 1.0
+            for s in bridge
+        )
+        # ... so nothing is imported above the night's own price.  The plan
+        # may still buy one 0.15 slot and export the same energy at 0.15 in
+        # the morning: an exact tie the solver is free to break either way.
+        night_price = min(s.price.import_price for s in bridge)
+        dear = [s for s in bridge if s.price.import_price > night_price + 1e-9]
+        assert sum(s.grid_import_kwh for s in dear) == pytest.approx(0.0, abs=0.01)
+        assert not any(s.recommendation == _WAIT for s in dear)
         # The reserve never binds here, so the plan is the floor-free one.
         assert final.plan_cost is not None
         assert reference.plan_cost is not None
@@ -576,6 +650,37 @@ class TestPlanFollowsTheDecliningReserve:
         assert floors[refill_index:] == pytest.approx(
             [_HARDWARE_FLOOR_PCT] * (len(floors) - refill_index)
         )
+
+
+class TestCoordinatorFloorIsAboveTheHardwareFloor:
+    """Issue #1221 through ``compute_dynamic_floor_from_plan``."""
+
+    @pytest.mark.parametrize("cutoff_pct", [100.0, 60.0])
+    def test_floor_is_the_reserve_on_top_of_the_hardware_floor(
+        self, cutoff_pct: float
+    ) -> None:
+        """The #1125 fixture at 21:30: a bridge of 6.42 kWh, 78.8 % (was 77.7 %)."""
+        planner_input = replace(_planner_input(0.15, 1.0, 60), battery_soc_pct=95.0)
+        reference = run_planner(planner_input)
+        live = _live()
+        live.huawei_batteries_soc_pct = 95.0
+        live.huawei_batteries_charging_cutoff_capacity_pct = cutoff_pct
+
+        floor_pct, diag, _profile = compute_dynamic_floor_from_plan(
+            DynamicDischargeFloor(),
+            _hourly_recommendations(1.0, 60),
+            reference,
+            planner_input,
+            live,
+            _NOW,
+        )
+
+        held_pct = diag["reserve_kwh"] * _MARGIN / _RATED_KWH * 100.0
+        assert diag["refill_type"] == "solar_surplus"
+        assert floor_pct == pytest.approx(
+            min(_HARDWARE_FLOOR_PCT + held_pct, cutoff_pct), abs=0.01
+        )
+        assert floor_pct <= cutoff_pct + 1e-9
 
 
 class TestReserveBlocksExportNotTheHouse:

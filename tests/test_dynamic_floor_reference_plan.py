@@ -94,7 +94,9 @@ _PLANNED_REFILL = _CHARGE_START
 # per quarter-hour first covers the 2.7 kWh in the 02:30 slot.
 _EXPECTED_REFILL = datetime(2026, 9, 29, 2, 30, tzinfo=_TZ)
 # 21:30 → 09:30 is 12 h of 0.6 kW = 7.2 kWh; × 1.15 margin / 9.5 kWh.
-_SOLAR_BRIDGE_FLOOR_PCT = 7.2 / _USABLE_KWH * 100.0 * 1.15
+# 7.2 kWh × margin on top of the 5 % hardware floor of a 10 kWh battery
+# (issue #1221): 87.8 %.
+_SOLAR_BRIDGE_FLOOR_PCT = 5.0 + 7.2 * 1.15 / _USABLE_KWH * 95.0
 
 _CHARGE = Recommendations.BatteriesChargeGrid.value
 _WAIT = Recommendations.BatteriesWaitMode.value
