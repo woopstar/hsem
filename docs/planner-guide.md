@@ -155,6 +155,15 @@ floor drops to the configured minimum. The battery can then cover evening
 load, and the cost function decides whether that beats holding it. The floor
 never reads the previous plan, so it cannot flip from one replan to the next.
 
+A cheap night releases the floor even when the reference plan does not buy
+there (issue #1156). This happens when tomorrow's PV will refill the battery
+anyway. A slot counts as an **affordable refill** when its import price is
+within one battery cycle cost of the cheapest import price in the next 48 h,
+and the battery could charge enough there to cover the load bridged so far.
+A night that is not the cheapest time of the look-ahead does not count, for
+example a 0.15 night before a 0.12 day. Neither do flat prices. The sensor then
+reports `refill_type: grid_available`.
+
 The floor is also the origin of the planner's battery model: planned
 capacity is measured in kWh above it, and the planned SoC is
 `floor + capacity`. When the battery is already **below** the dynamic floor

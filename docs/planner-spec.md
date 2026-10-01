@@ -3347,7 +3347,83 @@ This is deliberate:
 If the reference plan's charges do not cover the bridge, the scan continues to
 the PV surplus. The reserve is then the bridged consumption minus those partial
 charges, × the safety margin; without any charge it is the full bridged
-consumption × the margin, as before issue #1140.
+consumption × the margin, as before issue #1140. An affordable grid refill can
+still end the bridge earlier (next section).
+
+#### Affordable grid refill (issue #1156)
+
+The reference plan buys at night only when the cost function makes that
+worthwhile. When tomorrow's PV refills the battery anyway, or the battery cycle
+cost makes a night buy pay for the morning peak only, it plans no charge or a
+small one. A scan that credits only planned charges then runs to the solar
+surplus and pins the evening again (the #1125 shape). The floor protects
+against draining the battery and then importing at peak prices (#600). A night
+at the cheapest price of the look-ahead already bounds that risk: if the
+forecast is wrong, the next replan refills there. So the scan treats an
+affordable slot as a refill whether or not the plan charges in it.
+
+**Threshold.** `cheap_refill_price()` (`utils/dynamic_floor.py`) over the
+import prices of the scan's look-ahead window (`hours_ahead`, 48 h):
+
+```text
+tolerance          = cycle_cost_per_kwh              (0 if negative or non-finite)
+cheap_refill_price = min(prices) + tolerance
+                     None when no price is finite, or when
+                     max(prices) − min(prices) ≤ tolerance      (no valley)
+affordable(slot)   = slot.import_price ≤ cheap_refill_price
+```
+
+A slot is affordable when its price is within one battery cycle cost of the
+cheapest price in the look-ahead. The cycle cost is the smallest spread the
+planner treats as worth moving energy for, so such a slot is as cheap a refill
+as the horizon offers. The minimum is taken over the whole window, not just
+the bridge: a 0.15 night before a 0.12 day is not affordable, because the day
+is cheaper, and the #1140 floor stands. Flat prices, or a spread the cycle cost
+absorbs, have no valley and no affordable slot. A slot without a finite price
+(no reference-plan slot, or a `nan` price) is never affordable.
+
+The coordinator (`compute_dynamic_floor_from_plan()`) takes each slot's price
+from the reference plan, the cycle cost from `resolve_cycle_cost()` over the
+reference solve's input (the value the planner itself uses), and the credit
+power from `battery_max_charge_power_w`.
+
+**Scan.** `compute_floor()` runs the bridge scan up to twice:
+
+1. Planned charges only, exactly as above. If a planned grid charge covers
+   the bridge (`grid_charge`), that result stands, even when an earlier
+   affordable slot would also have covered it.
+2. Otherwise, and only when a threshold exists and the charge power is
+   positive, it scans again. This time each affordable slot is credited with
+   `max(planned charge, max_grid_charge_kw × slot_hours)`: the energy the
+   battery could take there. The first slot where the credit covers the
+   consumption bridged so far ends the bridge as `grid_available`, and the
+   reserve is 0, for the same reasons as a covering planned charge.
+3. If the second scan finds no covering refill (the cheap window is too
+   short for the bridge, or it lies beyond the solar surplus), the first
+   scan's result stands unchanged. The affordable refill can only release
+   the floor, never raise it.
+
+With 15-minute slots and 5 kW, each affordable slot can take 1.25 kWh. A
+2.7 kWh bridge therefore ends in the third cheap slot.
+
+**Why this threshold.** An absolute price bound depends on currency, tariffs
+and season, and a configured one would be another setting to tune. A
+break-even rule, `p_night / (η_chg · η_dis) + cycle_cost < p_evening`, was
+rejected because it passes the 0.15 night, which #1156 requires to keep the
+floor: in the fixture (η = 0.97 each way, cycle cost 0.0079) it gives
+0.167 < 0.19.
+
+**Measured (6.3.x).** A rolling replay of the #1125 fixture replanned hourly
+from 22:00 for 24 h, executing each plan's first hour. At a 0.09 night with
+full PV the reference plan charges nothing at night. The pre-#1156 floor held
+the evening (68 % at 22:00, falling to 21 % by 05:00) and the run cost 0.654
+against −0.135 with the floor off; the new floor stayed at 5 % through the
+night and matched the floor-off run. With a cloudy tomorrow the pre-#1156
+floor flipped between replans (5 → 56 → 5 → 38 → 5 → 25 %) as the reference
+plan moved its night charge, and the run cost 0.369; the affordable refill
+held it at 5 % and matched the floor-off 0.180. At a 0.03 night (the reference
+plan charges and covers the bridge) and at a 0.15 night (not the cheapest
+price of the look-ahead) the floor and the cash were unchanged.
 
 #### Dynamic floor invariant
 
@@ -3363,6 +3439,12 @@ effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
   on the plan it constrains.
 - A grid-charge refill that covers the bridged consumption yields
   `reserve_kwh == 0` and `effective_floor_pct == configured_min_soc_pct`.
+- So does an affordable grid refill (`grid_available`, issue #1156), even when
+  the reference plan does not charge in it. A slot is affordable only if its
+  price is within one cycle cost of the look-ahead's cheapest price, and only
+  if the look-ahead has a price valley wider than that cycle cost.
+- The affordable refill only releases: when it does not cover the bridge, the
+  floor is the planned-charge scan's floor unchanged.
 - The floor is opt-in (`hsem_dynamic_discharge_floor`, default `False`); when
   disabled no floor is computed, one solve runs, and the planner receives
   `None`.

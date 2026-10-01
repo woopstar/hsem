@@ -153,6 +153,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                     self._dynamic_floor,
                     self._hourly_recommendations,
                     reference_output,
+                    planner_input,
                     live,
                     now,
                 )
