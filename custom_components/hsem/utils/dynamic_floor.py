@@ -141,17 +141,25 @@ class _BridgeScan(NamedTuple):
     """Result of one walk from now to the next refill.
 
     ``deltas`` holds, for every slot before the refill, what that slot adds
-    to the reserve: its net consumption, or minus the grid charge credited in
-    it.  Their sum is the bridge's reserve before the safety margin.
+    to the reserve: its net consumption.  ``covered`` is true when the grid
+    credit at the refill slot covers what was bridged up to it; such a refill
+    leaves no reserve.
     """
 
     refill_slot: Any
     refill_type: str
     consumption_kwh: float
     solar_kwh: float
-    grid_charge_kwh: float
+    covered: bool
     duration_hours: float
     deltas: tuple[float, ...] = ()
+
+    @property
+    def reserve_kwh(self) -> float:
+        """Return the bridge's reserve before the safety margin."""
+        if self.covered:
+            return 0.0
+        return max(self.consumption_kwh - self.solar_kwh, 0.0)
 
 
 def _scan_bridge(
@@ -163,10 +171,15 @@ def _scan_bridge(
     """Walk *future* to the first refill and total the energy bridged.
 
     With *cheap_price* ``None`` only the reference plan's grid charges are
-    credited, and a covering one is a ``grid_charge`` refill.  Otherwise a
-    slot priced at or below *cheap_price* is also credited with what the
-    battery can take at *max_grid_charge_kw*, and a covering credit is a
-    ``grid_available`` refill (issue #1156).
+    credited, and the first credited slot is a ``grid_charge`` refill: the
+    bridge ends where the plan refills.  A charge that covers what was bridged
+    up to it leaves no reserve; a smaller one leaves the consumption before
+    it (issue #1214).  The reserve never reaches past a planned charge, so
+    holding it cannot shrink that charge on the next replan.
+
+    Otherwise a slot priced at or below *cheap_price* is also credited with
+    what the battery can take at *max_grid_charge_kw*, credits add up, and a
+    covering total is a ``grid_available`` refill (issue #1156).
 
     Args:
         future: Chronological look-ahead slots.
@@ -178,7 +191,8 @@ def _scan_bridge(
 
     Returns:
         The refill slot and type (``None`` / ``"none"`` when no refill is
-        found) and the bridge's consumption, solar, grid credit and hours.
+        found), the bridge's consumption, solar and hours, and whether the
+        refill covers the bridge.
     """
     consumption = 0.0
     solar = 0.0
@@ -193,13 +207,7 @@ def _scan_bridge(
         # Check for solar surplus refill.
         if net < -1e-9:
             return _BridgeScan(
-                s,
-                "solar_surplus",
-                consumption,
-                solar,
-                grid_charge,
-                hours,
-                tuple(deltas),
+                s, "solar_surplus", consumption, solar, False, hours, tuple(deltas)
             )
 
         # Check for grid-charge refill: a slot the reference plan's grid
@@ -212,23 +220,17 @@ def _scan_bridge(
         )
         if credit > 1e-9:
             grid_charge += credit
-            # Check if the accumulated grid charge covers the reserve need.
-            # The reserve need is consumption - solar so far.
-            if grid_charge >= max(consumption - solar, 0.0):
+            # The credit covers the bridge when it is at least what was
+            # consumed up to this slot (consumption - solar so far).
+            covered = grid_charge >= max(consumption - solar, 0.0)
+            if covered or cheap_price is None:
                 refill_type = "grid_charge" if cheap_price is None else "grid_available"
                 return _BridgeScan(
-                    s,
-                    refill_type,
-                    consumption,
-                    solar,
-                    grid_charge,
-                    hours,
-                    tuple(deltas),
+                    s, refill_type, consumption, solar, covered, hours, tuple(deltas)
                 )
-            # If it doesn't cover the full reserve yet, continue scanning.
-            # The grid charge energy will be counted in the final
-            # reserve calculation (subtracted from consumption).
-            deltas.append(-credit)
+            # An affordable credit that does not cover the bridge yet: keep
+            # scanning, later affordable slots add to it.
+            deltas.append(0.0)
             hours += slot_hours
             continue
 
@@ -242,9 +244,7 @@ def _scan_bridge(
         deltas.append(max(net, 0.0))
 
         hours += slot_hours
-    return _BridgeScan(
-        None, "none", consumption, solar, grid_charge, hours, tuple(deltas)
-    )
+    return _BridgeScan(None, "none", consumption, solar, False, hours, tuple(deltas))
 
 
 def _floor_profile(
@@ -261,8 +261,7 @@ def _floor_profile(
     zero and converted exactly as the scalar floor is.  The first entry is
     therefore the scalar floor.  From the refill slot on the reserve is no
     longer needed and the floor is the configured minimum.  A refill that
-    covers the bridge (``grid_charge`` / ``grid_available``) leaves no reserve
-    at all, as for the scalar.
+    covers the bridge leaves no reserve at all, as for the scalar.
 
     Args:
         future: Chronological look-ahead slots the scan walked.
@@ -275,7 +274,7 @@ def _floor_profile(
         ``(slot start, floor SoC %)`` for every slot in *future*.
     """
     remaining = [0.0] * len(future)
-    if scan.refill_type in ("solar_surplus", "none") and usable_kwh > 1e-9:
+    if not scan.covered and usable_kwh > 1e-9:
         total = 0.0
         for index in range(len(scan.deltas) - 1, -1, -1):
             total += scan.deltas[index]
@@ -389,17 +388,17 @@ class DynamicDischargeFloor:
         1. Scan slots from *now* forward looking for the first refill slot.
         2. A refill slot is one of:
            - Solar surplus (net_consumption_kwh < 0)
-           - Grid-charge planned AND the charged energy ≥ accumulated reserve
-        3. Accumulate house consumption for every non-refill future slot.
-        4. Subtract solar surplus (negative net) between now and the refill.
-        5. Subtract grid-charge energy planned between now and the refill.
-        6. If no planned grid charge covers the bridge, scan again and also
+           - The first slot a planned grid charge is credited to
+        3. Accumulate house consumption for every slot before the refill.
+        4. A planned charge of at least that consumption covers the bridge:
+           the reserve is 0.  A smaller one leaves it whole (issue #1214).
+        5. If no planned grid charge covers the bridge, scan again and also
            credit every affordable slot (see :func:`cheap_refill_price`) with
            ``max_grid_charge_kw × hours``.  A covering credit ends the bridge
            as ``grid_available`` (issue #1156); otherwise the first scan
            stands.
-        7. Reserve = net_consumption × safety_margin.
-        8. Convert reserve to SoC pct and return max(configured_min, reserve).
+        6. Reserve = net_consumption × safety_margin.
+        7. Convert reserve to SoC pct and return max(configured_min, reserve).
 
         Args:
             now:
@@ -479,11 +478,7 @@ class DynamicDischargeFloor:
             (getattr(s, "import_price", math.nan) for s in future),
             cycle_cost_per_kwh,
         )
-        if (
-            scan.refill_type != "grid_charge"
-            and cheap_price is not None
-            and max_grid_charge_kw > 1e-9
-        ):
+        if not scan.covered and cheap_price is not None and max_grid_charge_kw > 1e-9:
             cheap_scan = _scan_bridge(future, planned, cheap_price, max_grid_charge_kw)
             if cheap_scan.refill_type == "grid_available":
                 scan = cheap_scan
@@ -491,9 +486,8 @@ class DynamicDischargeFloor:
         refill_type = scan.refill_type
         bridge_duration_hours = scan.duration_hours
 
-        # Compute reserve: net consumption minus solar contribution and grid charge.
-        reserve_kwh = scan.consumption_kwh - scan.solar_kwh - scan.grid_charge_kwh
-        reserve_kwh = max(reserve_kwh, 0.0)
+        # The consumption bridged to the refill; 0 when the refill covers it.
+        reserve_kwh = scan.reserve_kwh
 
         # Convert reserve to SoC percentage.
         if usable_kwh > 1e-9:

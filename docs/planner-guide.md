@@ -153,7 +153,10 @@ floor and reads that reference plan's charges (issue #1140); then it solves
 again with the resulting floor. If the reference plan grid-charges enough
 overnight to cover the evening load, the grid charge is the refill and the
 floor drops to the configured minimum. The battery can then cover evening
-load, and the cost function decides whether that beats holding it. The floor
+load, and the cost function decides whether that beats holding it. If it
+charges less than that, the charge is still the refill: the floor reserves
+the load up to the charge and nothing behind it, so how much the plan buys
+never moves the floor (issue #1214). The floor
 never reads the previous plan, and it does not depend on which of several
 equally priced night slots the reference plan happens to charge in
 (issue #1198): a planned charge counts from the first slot of its price.
@@ -184,8 +187,7 @@ after the refill no reserve is needed at all. The planner therefore gets the
 floor for every slot, not one number:
 
 ```text
-reserve at the start of slot t = (house load from slot t to the refill slot
-                                  − grid charges credited from slot t on) × safety_margin
+reserve at the start of slot t = house load from slot t to the refill slot × safety_margin
 reserve from the refill slot on = 0
 ```
 
