@@ -154,6 +154,9 @@ assert result == pytest.approx(expected, rel=1e-6)
 # nearest earlier day that has data; 0.0 only when NO earlier day has that
 # hour. The gap is always recorded on tsi.missing_price_slots (both the
 # slot_in_day and hourly paths) so DataQuality warnings still fire.
+# Sub-hourly points (issue #1219): the same wall-clock QUARTER of that day,
+# keyed (day_offset, hour, slot_in_day * interval % 60) -- never by
+# slot_in_day itself, which shifts on DST days -- else the hour's MEAN.
 ```
 
 The planner only sees a gap because `build_planner_input` leaves uncovered

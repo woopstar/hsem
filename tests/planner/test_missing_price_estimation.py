@@ -16,6 +16,10 @@ Fixed behaviour:
   path too, which previously bypassed tracking entirely.
 - Only when no earlier day has data for that hour at all does the slot fall
   back to 0.0 (backward-compatible pathological case).
+- With sub-hourly price points the estimate is per quarter (issue #1219): the
+  same wall-clock quarter of the nearest earlier day, and the hour's mean when
+  that day lacks the quarter.  Before, every quarter of an estimated hour got
+  the earlier day's last quarter.
 """
 
 from __future__ import annotations
@@ -229,3 +233,129 @@ class TestSubHourlyPathEstimation:
 
         for meta, slot in zip(tsi.slots, slots, strict=True):
             assert slot.price.import_price == pytest.approx(_TODAY_IMP[meta.hour])
+
+
+def _quarter_points(
+    day_offset: int,
+    slots_per_hour: int = 4,
+    *,
+    base: float = 1.0,
+    quarters: tuple[int, ...] | None = None,
+) -> list[PricePoint]:
+    """Sub-hourly points whose price identifies the hour and the quarter.
+
+    Import is ``base + hour + quarter / 10`` and export one less.  *quarters*
+    limits which quarters of every hour carry a point.
+    """
+    return [
+        PricePoint(
+            hour=h,
+            import_price=base + h + q / 10.0,
+            export_price=base + h + q / 10.0 - 1.0,
+            day_offset=day_offset,
+            slot_in_day=h * slots_per_hour + q,
+        )
+        for h in range(24)
+        for q in range(slots_per_hour)
+        if quarters is None or q in quarters
+    ]
+
+
+class TestPerQuarterEstimation:
+    """Issue #1219: a missing quarter is estimated from the same quarter."""
+
+    def test_each_quarter_gets_the_earlier_days_same_quarter(self) -> None:
+        """Before: all four quarters of 10:00 got today's 10:45 price, 11.3."""
+        slots, tsi = _build(horizon_hours=48, interval_minutes=15)
+        populate_prices(slots, _quarter_points(0), tsi)
+
+        tomorrow_ten = [
+            slot.price.import_price
+            for meta, slot in zip(tsi.slots, slots, strict=True)
+            if meta.key.day_offset == 1 and meta.hour == 10
+        ]
+        assert tomorrow_ten == pytest.approx([11.0, 11.1, 11.2, 11.3])
+        for meta, slot in zip(tsi.slots, slots, strict=True):
+            if meta.key.day_offset == 1:
+                expected = 1.0 + meta.hour + (meta.minute // 15) / 10.0
+                assert slot.price.import_price == pytest.approx(expected)
+                assert slot.price.export_price == pytest.approx(expected - 1.0)
+
+    def test_half_hourly_slots_get_the_same_half_hour(self) -> None:
+        slots, tsi = _build(horizon_hours=48, interval_minutes=30)
+        populate_prices(slots, _quarter_points(0, 2), tsi)
+
+        for meta, slot in zip(tsi.slots, slots, strict=True):
+            if meta.key.day_offset == 1:
+                assert slot.price.import_price == pytest.approx(
+                    1.0 + meta.hour + (meta.minute // 30) / 10.0
+                )
+
+    def test_the_gap_is_still_recorded(self) -> None:
+        slots, tsi = _build(horizon_hours=48, interval_minutes=15)
+        populate_prices(slots, _quarter_points(0), tsi)
+
+        assert tsi.missing_future_day_price_hours(1) == set(range(24))
+        assert tsi.missing_future_day_price_hours(0) == set()
+
+    def test_a_quarter_the_earlier_day_lacks_gets_the_hours_mean(self) -> None:
+        """Today has only :00 (h) and :15 (h + 0.1): the mean is h + 0.05."""
+        slots, tsi = _build(horizon_hours=48, interval_minutes=15)
+        populate_prices(slots, _quarter_points(0, quarters=(0, 1)), tsi)
+
+        for meta, slot in zip(tsi.slots, slots, strict=True):
+            if meta.key.day_offset != 1:
+                continue
+            quarter = meta.minute // 15
+            expected = 1.0 + meta.hour + (quarter / 10.0 if quarter < 2 else 0.05)
+            assert slot.price.import_price == pytest.approx(expected)
+            assert slot.price.export_price == pytest.approx(expected - 1.0)
+
+    def test_the_nearest_earlier_day_wins_over_an_exact_quarter(self) -> None:
+        """Day 2 reads day 1's hour before it reads day 0's quarter."""
+        slots, tsi = _build(horizon_hours=72, interval_minutes=15)
+        points = _quarter_points(0) + _quarter_points(1, base=100.0, quarters=(0, 1))
+        populate_prices(slots, points, tsi)
+
+        for meta, slot in zip(tsi.slots, slots, strict=True):
+            if meta.key.day_offset != 2:
+                continue
+            quarter = meta.minute // 15
+            assert slot.price.import_price == pytest.approx(
+                100.0 + meta.hour + (quarter / 10.0 if quarter < 2 else 0.05)
+            )
+
+    def test_an_hourly_price_on_every_quarter_is_unchanged(self) -> None:
+        """An hourly source feeding 15-minute slots: the hour's one price, exactly."""
+        slots, tsi = _build(horizon_hours=48, interval_minutes=15)
+        populate_prices(slots, _subhourly_points(_TODAY_IMP, _TODAY_EXP, 0, 4), tsi)
+
+        for meta, slot in zip(tsi.slots, slots, strict=True):
+            assert slot.price.import_price == pytest.approx(
+                _TODAY_IMP[meta.hour], abs=0.0, rel=0.0
+            )
+            assert slot.price.export_price == pytest.approx(
+                _TODAY_EXP[meta.hour], abs=0.0, rel=0.0
+            )
+
+    def test_an_hour_no_earlier_day_has_keeps_the_zero_fallback(self) -> None:
+        slots, tsi = _build(horizon_hours=48, interval_minutes=15)
+        points = [p for p in _quarter_points(0) if p.hour != 5]
+        populate_prices(slots, points, tsi)
+
+        for meta, slot in zip(tsi.slots, slots, strict=True):
+            if meta.hour == 5:
+                assert slot.price.import_price == pytest.approx(0.0)
+                assert slot.price.export_price == pytest.approx(0.0)
+        assert 5 in tsi.missing_future_day_price_hours(1)
+
+    def test_a_same_day_gap_gets_the_hours_mean(self) -> None:
+        """The source skips today's :30 and :45: both get the mean of :00 and :15."""
+        slots, tsi = _build(horizon_hours=24, interval_minutes=15)
+        populate_prices(slots, _quarter_points(0, quarters=(0, 1)), tsi)
+
+        for meta, slot in zip(tsi.slots, slots, strict=True):
+            quarter = meta.minute // 15
+            expected = 1.0 + meta.hour + (quarter / 10.0 if quarter < 2 else 0.05)
+            assert slot.price.import_price == pytest.approx(expected)
+        assert tsi.missing_price_slots == set()

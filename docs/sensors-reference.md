@@ -902,7 +902,8 @@ input-completeness report. Example structure:
 
 The `*_price_missing_hours` lists name the hours no price source covered
 (issue #1217). A missing price is planned with the same-hour price of the
-nearest earlier day. With a 36, 48 or 72 h horizon
+nearest earlier day (the same quarter of the hour when prices are
+quarter-hourly). With a 36, 48 or 72 h horizon
 `tomorrow_price_missing_hours` is therefore filled, and `is_complete` false,
 every day until the day-ahead prices are published; a price forecast sensor
 that covers tomorrow closes the gap. A published price of exactly `0` is data
