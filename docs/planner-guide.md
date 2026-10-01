@@ -160,9 +160,12 @@ leaves nothing to reserve, and the floor is the configured minimum. The floor
 never reads the previous plan, and it does not depend on which of several
 equally priced night slots the reference plan happens to charge in
 (issue #1198): a planned charge counts from the first slot of its price.
-The floor can still step up once during a night, when the planned grid
-refill has happened and the reserve for the rest of the night to the solar
-surplus takes over.
+With excess export enabled, a plan that sells the battery in the evening has
+to buy the configured discharge buffer back before the next solar surplus;
+that purchase is not a refill (issue #1239), so the night behind it is still
+reserved. The floor can still step up once during a night, when the planned
+grid refill has happened and the reserve for the rest of the night to the
+solar surplus takes over.
 
 The reference plan also supplies the house load and PV the floor bridges
 over, so the floor and the plan work from the same forecast. Before issue

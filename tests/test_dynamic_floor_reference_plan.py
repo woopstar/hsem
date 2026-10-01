@@ -43,6 +43,7 @@ from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.coordinator_dynamic_floor import (
     build_dynamic_floor_bridge_slots,
     compute_dynamic_floor_from_plan,
+    export_buffer_kwh,
 )
 from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
     ConsumptionPopulation,
@@ -497,6 +498,35 @@ class TestBuildBridgeSlots:
         # The price is the plan's too (issue #1156), not the regenerated 0.0.
         assert slot.import_price == pytest.approx(0.45)
 
+    def test_battery_export_and_stored_energy_come_from_the_plan_slot(
+        self,
+    ) -> None:
+        """The buffer buy-back check reads both from the plan (issue #1239)."""
+        recs = [
+            self._rec(_CHARGE_START, 0.25, 0.0),
+            self._rec(_CHARGE_START + _SLOT, 0.25, 0.0),
+        ]
+        plan = PlannerOutput(
+            slots=[
+                PlannedSlot(
+                    start=_CHARGE_START,
+                    end=_CHARGE_START + _SLOT,
+                    recommendation=Recommendations.ForceBatteriesDischarge.value,
+                    price=SlotPrice(0.45, 0.2),
+                    avg_house_consumption_kwh=0.25,
+                    primary_battery_export_kwh=2.0,
+                    estimated_battery_capacity_kwh=3.5,
+                )
+            ]
+        )
+
+        covered, uncovered = build_dynamic_floor_bridge_slots(recs, plan)
+
+        assert covered.battery_export_kwh == pytest.approx(2.0)
+        assert covered.stored_kwh_at_end == pytest.approx(3.5)
+        assert uncovered.battery_export_kwh == pytest.approx(0.0)
+        assert math.isnan(uncovered.stored_kwh_at_end)
+
     def test_matches_slots_across_timezones(self) -> None:
         """The same instant in another tzinfo still matches (UTC keyed)."""
         recs = [self._rec(_CHARGE_START, 0.2, 0.0)]
@@ -590,6 +620,43 @@ _PV_TOMORROW = [0.0] * 7 + [0.2, 0.8, 1.6, 2.4, 2.8, 3.0, 2.8, 2.3, 1.6, 0.8, 0.
 _PV_TOMORROW += [0.0] * (24 - len(_PV_TOMORROW))
 # Half the PV: tomorrow's surplus no longer refills the battery on its own.
 _CLOUDY = 0.5
+
+
+class TestExportBufferKwh:
+    """The bridge scan's copy of the MILP export reserve's buffer (#1239)."""
+
+    def test_share_of_the_usable_capacity(self) -> None:
+        planner_input = replace(
+            _planner_input(0.15),
+            excess_export_enabled=True,
+            excess_export_discharge_buffer_pct=10.0,
+        )
+
+        assert export_buffer_kwh(planner_input, 9.5) == pytest.approx(0.95)
+
+    def test_zero_without_excess_export(self) -> None:
+        planner_input = replace(
+            _planner_input(0.15),
+            excess_export_enabled=False,
+            excess_export_discharge_buffer_pct=10.0,
+        )
+
+        assert export_buffer_kwh(planner_input, 9.5) == pytest.approx(0.0)
+
+    @pytest.mark.parametrize(
+        ("buffer_pct", "usable_kwh", "expected"),
+        [(0.0, 9.5, 0.0), (150.0, 9.5, 9.5), (-5.0, 9.5, 0.0), (10.0, 0.0, 0.0)],
+    )
+    def test_clamped_like_the_milp(
+        self, buffer_pct: float, usable_kwh: float, expected: float
+    ) -> None:
+        planner_input = replace(
+            _planner_input(0.15),
+            excess_export_enabled=True,
+            excess_export_discharge_buffer_pct=buffer_pct,
+        )
+
+        assert export_buffer_kwh(planner_input, usable_kwh) == pytest.approx(expected)
 
 
 def _price_points(night: float) -> list[PricePoint]:

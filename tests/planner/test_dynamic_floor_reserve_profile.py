@@ -21,6 +21,7 @@ from datetime import UTC, datetime, timedelta, timezone
 import pytest
 
 from custom_components.hsem.coordinator_dynamic_floor import (
+    build_dynamic_floor_bridge_slots,
     compute_dynamic_floor_from_plan,
     floor_required_at_slot_end,
 )
@@ -556,6 +557,117 @@ def _replan(
         )
     )
     return floor_pct, profile, reference, final
+
+
+def _flat_night_input(
+    soc_pct: float, *, night_price: float = 0.29, export_spike: float = 0.45
+) -> PlannerInput:
+    """Return the #1239 probe: an export spike, then one import price to the surplus.
+
+    No grid charge is worth planning for its own sake at *night_price*, so
+    the only charge the floor-free reference plan makes before tomorrow's
+    PV surplus is the export reserve's buffer buy-back.
+    """
+    planner_input = replace(
+        _planner_input(0.15, 1.0, 60),
+        battery_soc_pct=soc_pct,
+        excess_export_enabled=True,
+    )
+    points = []
+    for point in planner_input.price_points:
+        import_price, export_price = point.import_price, point.export_price
+        if point.day_offset == 0 and point.hour in (21, 22):
+            import_price = max(import_price, export_spike + 0.02)
+            export_price = export_spike
+        elif (point.day_offset == 0 and point.hour == 23) or (
+            point.day_offset == 1 and point.hour < _REFILL.hour
+        ):
+            import_price = night_price
+        points.append(
+            PricePoint(
+                hour=point.hour,
+                import_price=import_price,
+                export_price=export_price,
+                day_offset=point.day_offset,
+            )
+        )
+    planner_input.price_points = points
+    return planner_input
+
+
+class TestExportBufferBuyBackDoesNotEndTheBridge:
+    """Issue #1239: the export reserve's buffer buy-back is no refill.
+
+    The reference plan sells the battery into the evening spike, imports the
+    night directly and buys the 10 % buffer back before the PV surplus, as
+    the MILP export reserve requires.  Credited by price, that buy-back sat
+    in the first night slot and ended the bridge there: the floor reserved
+    the two spike hours and nothing of the night.
+    """
+
+    @pytest.fixture(scope="class")
+    def probe(self) -> tuple[PlannerInput, PlannerOutput, float, dict]:
+        planner_input = _flat_night_input(95.0)
+        reference = run_planner(planner_input)
+        live = _live()
+        live.huawei_batteries_soc_pct = 95.0
+        floor_pct, diag, _profile = compute_dynamic_floor_from_plan(
+            DynamicDischargeFloor(),
+            _hourly_recommendations(1.0, 60),
+            reference,
+            planner_input,
+            live,
+            _NOW,
+        )
+        return planner_input, reference, floor_pct, diag
+
+    def test_the_reference_plan_buys_only_the_buffer(
+        self, probe: tuple[PlannerInput, PlannerOutput, float, dict]
+    ) -> None:
+        planner_input, reference, _floor_pct, _diag = probe
+        bridge = [s for s in reference.slots if s.end > _NOW and s.start < _REFILL]
+        buffer_kwh = (
+            _USABLE_KWH * planner_input.excess_export_discharge_buffer_pct / 100
+        )
+
+        assert max(s.primary_battery_export_kwh for s in bridge) > 1.0
+        assert sum(
+            s.batteries_charged_kwh for s in bridge if s.recommendation == _CHARGE_GRID
+        ) == pytest.approx(buffer_kwh, abs=0.02)
+
+    def test_the_bridge_runs_to_the_pv_surplus(
+        self, probe: tuple[PlannerInput, PlannerOutput, float, dict]
+    ) -> None:
+        _planner_input_, reference, floor_pct, diag = probe
+        bridge = [s for s in reference.slots if s.end > _NOW and s.start < _REFILL]
+        night_kwh = sum(
+            s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh for s in bridge
+        )
+
+        assert diag["refill_type"] == "solar_surplus"
+        assert diag["next_refill_slot"] == _REFILL.isoformat()
+        assert diag["reserve_kwh"] == pytest.approx(night_kwh, abs=0.01)
+        assert floor_pct > 70.0
+
+    def test_crediting_the_buy_back_ended_the_bridge_at_the_first_night_slot(
+        self, probe: tuple[PlannerInput, PlannerOutput, float, dict]
+    ) -> None:
+        """The behaviour before #1239, kept as the counterexample."""
+        _planner_input_, reference, _floor_pct, _diag = probe
+        slots = build_dynamic_floor_bridge_slots(
+            _hourly_recommendations(1.0, 60), reference
+        )
+
+        _floor_pct, diag, _profile = DynamicDischargeFloor().compute_floor_profile(
+            now=_NOW,
+            slots=slots,
+            usable_kwh=_USABLE_KWH,
+            configured_min_soc_pct=_HARDWARE_FLOOR_PCT,
+        )
+
+        assert diag["refill_type"] == "grid_charge"
+        assert diag["next_refill_slot"] == (_MIDNIGHT + timedelta(hours=23)).isoformat()
+        assert diag["reserve_kwh"] == pytest.approx(1.5, abs=0.05)
 
 
 def _future(output: PlannerOutput) -> list[PlannedSlot]:

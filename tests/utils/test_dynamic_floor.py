@@ -32,6 +32,8 @@ class _FakeSlot:
     batteries_charged_kwh: float = 0.0
     recommendation: str | None = None
     import_price: float = math.nan
+    battery_export_kwh: float = 0.0
+    stored_kwh_at_end: float = math.nan
 
 
 def _make_slots(
@@ -41,6 +43,8 @@ def _make_slots(
     charged_kwh: list[float] | None = None,
     recommendations: list[str | None] | None = None,
     import_prices: list[float] | None = None,
+    battery_export_kwh: list[float] | None = None,
+    stored_kwh_at_end: list[float] | None = None,
 ) -> list[_FakeSlot]:
     """Build a list of fake slots starting from *now*.
 
@@ -51,6 +55,9 @@ def _make_slots(
         charged_kwh: Batteries charged per slot (None → all zero).
         recommendations: Recommendation per slot (None → all None).
         import_prices: Import price per slot (None → no price).
+        battery_export_kwh: Battery-origin export per slot (None → all zero).
+        stored_kwh_at_end: Energy held above the hardware floor at the end
+            of each slot (None → unknown).
     """
     slots: list[_FakeSlot] = []
     for i, net in enumerate(net_kwh_values):
@@ -67,6 +74,10 @@ def _make_slots(
                 batteries_charged_kwh=chg,
                 recommendation=rec,
                 import_price=price,
+                battery_export_kwh=battery_export_kwh[i] if battery_export_kwh else 0.0,
+                stored_kwh_at_end=stored_kwh_at_end[i]
+                if stored_kwh_at_end
+                else math.nan,
             )
         )
     return slots
@@ -769,6 +780,229 @@ class TestPlannedChargeSizeDoesNotMoveTheFloor:
         assert diag["refill_type"] == "grid_charge"
         assert diag["next_refill_slot"] == "2026-09-30T02:00:00"
         assert diag["reserve_kwh"] == pytest.approx(1.0)
+
+
+class TestExportBufferBuyBackIsNoRefill:
+    """Issue #1239: a charge that only restores the export buffer is no refill.
+
+    A plan that sells the battery before the PV surplus must hold the export
+    reserve's buffer at the checkpoint before that surplus, so it buys the
+    buffer back from the grid.  That charge supplies the checkpoint, not the
+    house, so it does not end the bridge.
+    """
+
+    _BUFFER = 0.95
+    _BRIDGE_KWH = sum(net for net in _TIE_NET if net > 0.0)
+
+    @staticmethod
+    def _floor(
+        charges: dict[int, float],
+        *,
+        buffer_kwh: float = 0.95,
+        export_slot: int | None = 0,
+        stored_after_export: float = 0.0,
+        prices: list[float] | None = None,
+    ) -> tuple[float, dict]:
+        """Sell the battery in *export_slot*, then buy *charges* back."""
+        count = len(_TIE_NET)
+        charged = [0.0] * count
+        recs: list[str | None] = [None] * count
+        for slot, kwh in charges.items():
+            charged[slot] = kwh
+            recs[slot] = "batteries_charge_grid"
+        export = [0.0] * count
+        stored = [3.0] * count
+        if export_slot is not None:
+            export[export_slot] = 2.0
+            held = stored_after_export
+            for slot in range(export_slot, count):
+                held += charged[slot]
+                stored[slot] = held
+        slots = _make_slots(
+            datetime(2026, 9, 30, 0, 0),
+            _TIE_NET,
+            charged_kwh=charged,
+            recommendations=recs,
+            import_prices=[0.2] * count if prices is None else prices,
+            battery_export_kwh=export,
+            stored_kwh_at_end=stored,
+        )
+        floor_pct, diag, _profile = DynamicDischargeFloor().compute_floor_profile(
+            now=datetime(2026, 9, 30, 0, 0),
+            slots=slots,
+            usable_kwh=9.5,
+            configured_min_soc_pct=5.0,
+            cycle_cost_per_kwh=_CYCLE_COST,
+            export_buffer_kwh=buffer_kwh,
+        )
+        return floor_pct, diag
+
+    def test_a_buffer_buy_back_alone_leaves_the_solar_bridge(self) -> None:
+        """Sold to the floor, bought the buffer back: the night is bridged."""
+        floor_pct, diag = self._floor({6: self._BUFFER})
+
+        assert diag["refill_type"] == "solar_surplus"
+        assert diag["reserve_kwh"] == pytest.approx(self._BRIDGE_KWH)
+        assert floor_pct == pytest.approx(5.0 + self._BRIDGE_KWH * 1.15 / 9.5 * 95.0)
+
+    def test_without_the_buffer_the_same_charge_ended_the_bridge(self) -> None:
+        """What issue #1239 reported: credited now, nothing bridged."""
+        floor_pct, diag = self._floor({6: self._BUFFER}, buffer_kwh=0.0)
+
+        assert diag["refill_type"] == "grid_charge"
+        assert diag["reserve_kwh"] == pytest.approx(0.0)
+        assert floor_pct == pytest.approx(5.0)
+
+    @pytest.mark.parametrize("charge_kwh", [1.0, 1.5, 3.0])
+    def test_a_charge_beyond_the_buffer_is_still_a_refill(
+        self, charge_kwh: float
+    ) -> None:
+        """What exceeds the buffer supplies the house, at any size (#1220)."""
+        floor_pct, diag = self._floor({6: charge_kwh})
+
+        assert diag["refill_type"] == "grid_charge"
+        assert diag["reserve_kwh"] == pytest.approx(0.0)
+        assert floor_pct == pytest.approx(5.0)
+
+    def test_without_a_battery_export_every_charge_is_a_refill(self) -> None:
+        """The export reserve binds only a plan that exports the battery."""
+        floor_pct, diag = self._floor({6: self._BUFFER}, export_slot=None)
+
+        assert diag["refill_type"] == "grid_charge"
+        assert floor_pct == pytest.approx(5.0)
+
+    def test_a_plan_that_kept_the_buffer_bought_nothing_for_it(self) -> None:
+        """Sold only down to the buffer: the whole charge is for the house."""
+        floor_pct, diag = self._floor({6: 0.5}, stored_after_export=1.0)
+
+        assert diag["refill_type"] == "grid_charge"
+        assert floor_pct == pytest.approx(5.0)
+
+    def test_only_what_was_sold_below_the_buffer_is_bought_back(self) -> None:
+        """Sold to 0.5 kWh: 0.45 kWh of the charge is buy-back, 0.5 a refill."""
+        floor_pct, diag = self._floor({6: self._BUFFER}, stored_after_export=0.5)
+
+        assert diag["refill_type"] == "grid_charge"
+        assert floor_pct == pytest.approx(5.0)
+
+    def test_a_rounding_remainder_is_no_credit(self) -> None:
+        """The plan publishes stored energy to 1 Wh; 1 Wh left is not a refill.
+
+        In the 15-minute replay of the issue the plan showed 0.001 kWh held
+        after its sale, the buy-back came to 0.949 kWh and the 1 Wh left of
+        the 0.95 kWh charge ended the bridge on every other replan.
+        """
+        floor_pct, diag = self._floor({6: self._BUFFER}, stored_after_export=0.001)
+
+        assert diag["refill_type"] == "solar_surplus"
+        assert floor_pct == pytest.approx(5.0 + self._BRIDGE_KWH * 1.15 / 9.5 * 95.0)
+
+    def test_without_a_buffer_a_tiny_charge_still_counts(self) -> None:
+        """The 1 Wh tolerance applies to a buy-back remainder only."""
+        floor_pct, diag = self._floor({6: 0.0008}, buffer_kwh=0.0, export_slot=None)
+
+        assert diag["refill_type"] == "grid_charge"
+        assert floor_pct == pytest.approx(5.0)
+
+    def test_the_buy_back_comes_off_the_latest_charge(self) -> None:
+        """An early charge for the house stands; the late one is the buffer.
+
+        The early charge sits at a price of its own, so it is credited in
+        its own slot; the bridge ends there, not at the live slot where the
+        later, equally priced charge would have been credited.
+        """
+        prices = [0.2, 0.1, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
+
+        floor_pct, diag = self._floor({1: 1.0, 6: self._BUFFER}, prices=prices)
+
+        assert diag["refill_type"] == "grid_charge"
+        assert diag["next_refill_slot"] == "2026-09-30T01:00:00"
+        assert diag["reserve_kwh"] == pytest.approx(0.5)
+        assert floor_pct == pytest.approx(5.0 + 0.5 * 1.15 / 9.5 * 95.0)
+
+    def test_the_least_held_after_the_last_export_counts(self) -> None:
+        """Discharging for the house after the sale deepens the buy-back."""
+        count = len(_TIE_NET)
+        charged = [0.0] * count
+        charged[6] = 0.9
+        recs: list[str | None] = [None] * count
+        recs[6] = "batteries_charge_grid"
+        export = [2.0] + [0.0] * (count - 1)
+        # Sold to 0.6 kWh, served the house down to 0.1 kWh, bought 0.9.
+        stored = [0.6, 0.4, 0.2, 0.1, 0.1, 0.1, 1.0, 1.0, 1.0]
+        slots = _make_slots(
+            datetime(2026, 9, 30, 0, 0),
+            _TIE_NET,
+            charged_kwh=charged,
+            recommendations=recs,
+            import_prices=[0.2] * count,
+            battery_export_kwh=export,
+            stored_kwh_at_end=stored,
+        )
+
+        _floor_pct, diag, _profile = DynamicDischargeFloor().compute_floor_profile(
+            now=datetime(2026, 9, 30, 0, 0),
+            slots=slots,
+            usable_kwh=9.5,
+            configured_min_soc_pct=5.0,
+            export_buffer_kwh=0.95,
+        )
+
+        # 0.85 kWh of the 0.9 kWh is buy-back; 0.05 kWh still refills.
+        assert diag["refill_type"] == "grid_charge"
+        assert diag["reserve_kwh"] == pytest.approx(0.0)
+
+    def test_unknown_stored_energy_credits_the_charge(self) -> None:
+        """Slots without the plan's SoC cannot show a buy-back."""
+        count = len(_TIE_NET)
+        charged = [0.0] * count
+        charged[6] = 0.95
+        recs: list[str | None] = [None] * count
+        recs[6] = "batteries_charge_grid"
+        slots = _make_slots(
+            datetime(2026, 9, 30, 0, 0),
+            _TIE_NET,
+            charged_kwh=charged,
+            recommendations=recs,
+            import_prices=[0.2] * count,
+            battery_export_kwh=[2.0] + [0.0] * (count - 1),
+        )
+
+        _floor_pct, diag, _profile = DynamicDischargeFloor().compute_floor_profile(
+            now=datetime(2026, 9, 30, 0, 0),
+            slots=slots,
+            usable_kwh=9.5,
+            configured_min_soc_pct=5.0,
+            export_buffer_kwh=0.95,
+        )
+
+        assert diag["refill_type"] == "grid_charge"
+
+    def test_compute_floor_passes_the_buffer_through(self) -> None:
+        count = len(_TIE_NET)
+        charged = [0.0] * count
+        charged[6] = 0.95
+        recs: list[str | None] = [None] * count
+        recs[6] = "batteries_charge_grid"
+        slots = _make_slots(
+            datetime(2026, 9, 30, 0, 0),
+            _TIE_NET,
+            charged_kwh=charged,
+            recommendations=recs,
+            import_prices=[0.2] * count,
+            battery_export_kwh=[2.0] + [0.0] * (count - 1),
+            stored_kwh_at_end=[0.0] * 6 + [0.95] * 3,
+        )
+
+        _floor_pct, diag = DynamicDischargeFloor().compute_floor(
+            datetime(2026, 9, 30, 0, 0),
+            slots,
+            9.5,
+            5.0,
+            export_buffer_kwh=0.95,
+        )
+
+        assert diag["refill_type"] == "solar_surplus"
 
 
 class TestMarginCorrection:
