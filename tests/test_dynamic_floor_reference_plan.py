@@ -291,10 +291,12 @@ class TestFloorReadsReferencePlan:
 
         diag = coordinator._effective_discharge_floor_diag
         assert diag is not None
-        assert diag["refill_type"] == "grid_charge"
+        # The plan charges in the cheap night, the look-ahead's cheapest
+        # price: an affordable refill (#1156), so the 2.7 kWh bridged until
+        # then (4.5 h of 0.6 kW load) is not reserved.  A planned charge at
+        # any other price reserves the load before it (issue #1220).
+        assert diag["refill_type"] == "grid_available"
         assert diag["next_refill_slot"] == _PLANNED_REFILL.isoformat()
-        # 4.5 h of 0.6 kW load (2.7 kWh) is covered by the planned charge, so
-        # the bridge reserve is zero (documented in planner-spec.md, #1140).
         assert diag["reserve_kwh"] == pytest.approx(0.0)
         assert diag["bridge_duration_hours"] == pytest.approx(4.5)
 
@@ -711,7 +713,8 @@ class TestRealPlanner:
         """
         floor_pct, diag, reference, final = _replan(night=0.03, pv_scale=_CLOUDY)
 
-        assert diag["refill_type"] == "grid_charge"
+        # The plan charges at the look-ahead's cheapest price (#1156).
+        assert diag["refill_type"] == "grid_available"
         assert floor_pct == pytest.approx(_HARDWARE_FLOOR_PCT)
         # Same plan as with the floor off: the evening is served from the
         # battery and refilled in the cheap window.
