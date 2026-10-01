@@ -36,29 +36,30 @@ cycle are durable; stale generations must not publish.
 
 ### Planner layer (`custom_components/hsem/planner/`)
 
-| File                           | Responsibility                                                                                                                                                    |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `engine.py`                    | Main entry point — orchestrates the full planning pipeline                                                                                                        |
-| `slot_population.py`           | Builds the 48/96/192-slot time horizon; populates PV/consumption/capacity                                                                                         |
-| `slot_price_population.py`     | Populates per-slot prices incl. missing-price estimation (issue #1002) — split out of `slot_population.py` for the 30 KB limit                                    |
-| `candidate_generator.py`       | Generates charge/discharge plan candidates (partial-SoC, MILP, solar)                                                                                             |
-| `candidate_selector.py`        | Picks the best candidate using time-discounted score; also hosts the EV avoided-cost pricing helper (`ev_future_charge_value_per_kwh`)                            |
-| `charge_scheduler.py`          | Assigns charge recommendations to slots                                                                                                                           |
-| `discharge_scheduler.py`       | Assigns discharge recommendations to slots; `concentrate_discharge_on_expensive_slots` uses **per-calendar-day** budget pools                                     |
-| `milp_optimizer.py`            | Solves the MILP LP problem — variable vector is 8\*n base, growing to 8n + 2n·E + E with EV co-optimisation. Accepts optional `EVConfig` list for EV integration. |
-| `milp/_price_sanitise.py`      | Pre-solve price transformations: NaN handling, battery-export floor mask, export-≤-import clamp, negative-import clamp.                                           |
-| `milp/_constraints.py`         | Builds LP constraint matrices and variable bounds.                                                                                                                |
-| `milp/_objective.py`           | Builds LP objective vector.                                                                                                                                       |
-| `milp/_write_results.py`       | Translates LP solution back into `PlannedSlot` recommendations and energy flows.                                                                                  |
-| `milp/_diagnostics.py`         | Computes MILP diagnostics and violation reports.                                                                                                                  |
-| `milp/_export_cap.py`          | Resolves DNO/inverter grid-export power cap per slot.                                                                                                             |
-| `cost_function.py`             | Scores a candidate plan — source of truth for cost math                                                                                                           |
-| `soc_simulation.py`            | Simulates battery SoC forward through a slot plan                                                                                                                 |
-| `ev_planner.py`                | EV-specific planning logic                                                                                                                                        |
-| `battery_target.py`            | House-battery target SoC by deadline (issue #1109): resolves the next occurrence into a `BatteryTargetSpec`, prices the shortfall, scores it                      |
-| `milp/_battery_target.py`      | Two-stage solve wrapper for the battery target; `candidate_generator.py` calls this, not `solve_milp`                                                             |
-| `milp/_battery_target_rows.py` | Stage-2 LP rows: target slack row, grid-import cap/floor helpers                                                                                                  |
-| `ev_load_accounting.py`        | Canonical pure-house/EV split for normalized planner slot loads                                                                                                   |
+| File                           | Responsibility                                                                                                                                                          |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `engine.py`                    | Main entry point — orchestrates the full planning pipeline                                                                                                              |
+| `slot_population.py`           | Builds the 48/96/192-slot time horizon; populates PV/consumption/capacity                                                                                               |
+| `slot_price_population.py`     | Populates per-slot prices incl. missing-price estimation (issue #1002) — split out of `slot_population.py` for the 30 KB limit                                          |
+| `candidate_generator.py`       | Generates charge/discharge plan candidates (partial-SoC, MILP, solar)                                                                                                   |
+| `candidate_selector.py`        | Picks the best candidate using time-discounted score; also hosts the EV avoided-cost pricing helper (`ev_future_charge_value_per_kwh`)                                  |
+| `charge_scheduler.py`          | Assigns charge recommendations to slots                                                                                                                                 |
+| `discharge_scheduler.py`       | Assigns discharge recommendations to slots; `concentrate_discharge_on_expensive_slots` uses **per-calendar-day** budget pools                                           |
+| `milp_optimizer.py`            | Solves the MILP LP problem — variable vector is 8\*n base, growing to 8n + 2n·E + E with EV co-optimisation. Accepts optional `EVConfig` list for EV integration.       |
+| `milp/_price_sanitise.py`      | Pre-solve price transformations: NaN handling, battery-export floor mask, export-≤-import clamp, negative-import clamp.                                                 |
+| `milp/_constraints.py`         | Builds LP constraint matrices and variable bounds.                                                                                                                      |
+| `milp/_objective.py`           | Builds LP objective vector.                                                                                                                                             |
+| `milp/_write_results.py`       | Translates LP solution back into `PlannedSlot` recommendations and energy flows.                                                                                        |
+| `milp/_diagnostics.py`         | Computes MILP diagnostics and violation reports.                                                                                                                        |
+| `milp/_export_cap.py`          | Resolves DNO/inverter grid-export power cap per slot.                                                                                                                   |
+| `cost_function.py`             | Scores a candidate plan — source of truth for cost math                                                                                                                 |
+| `soc_simulation.py`            | Simulates battery SoC forward through a slot plan                                                                                                                       |
+| `ev_planner.py`                | EV-specific planning logic                                                                                                                                              |
+| `battery_target.py`            | House-battery target SoC by deadline (issue #1109): resolves the next occurrence into a `BatteryTargetSpec`, prices the shortfall, scores it                            |
+| `milp/_battery_target.py`      | Two-stage solve wrapper for the battery target; `candidate_generator.py` calls this, not `solve_milp`                                                                   |
+| `milp/_battery_target_rows.py` | Stage-2 LP rows: target slack row, grid-import cap/floor helpers                                                                                                        |
+| `ev_load_accounting.py`        | Canonical pure-house/EV split for normalized planner slot loads                                                                                                         |
+| `hindsight_oracle.py`          | Hindsight scoring of a past window (issues #1208, #1182): grid cost, self-consumption baseline, perfect-foresight oracle with hard limits only; not used by the planner |
 
 ### ML layer (`custom_components/hsem/ml/`)
 
@@ -1264,10 +1265,29 @@ against `docs/planner-spec.md`.
   dump. Verified on a real install: `import_electricity_price_state` equalled
   the plan slot's `import_price` exactly. `collect_actuals.sh --verify` proves
   it per install rather than assuming.
-- Stage 2b (savings vs a no-action baseline, regret vs a perfect-foresight
-  oracle) is designed in `docs/backtest-harness.md` but **not implemented**: it
-  needs a corpus of paired inputs and actuals, and three open questions
-  (alignment, attribution, oracle scope) need real data to answer.
+- **Stage 2b scores days (issue #1208):** `tests/backtest/scoring.py` +
+  `scripts/backtest_score.py`, on top of the HA-free
+  `planner/hindsight_oracle.py` (self-consumption baseline and a
+  perfect-foresight MILP with hard limits only; shared with #1182). Rules it
+  must keep:
+  - **Compare only runs that start and end at the same stored energy.**
+    `regret = realized − oracle(end ≥ realized end)`,
+    `potential = baseline − oracle(end ≥ baseline end)`,
+    `savings = potential − regret`, `capture = savings ÷ potential`
+    (`None` below `MIN_POTENTIAL`, never clamped; it can be negative). A plain
+    "baseline bill − real bill" is dominated by what each run leaves in the
+    battery (14 kWh on a committed day).
+  - **The oracle is a lower bound by construction:** the load is
+    `grid_import − grid_export − battery_charged + battery_discharged` (EV
+    included, as a fixed load), the end energy is the one the measured battery
+    flows imply, and every limit is widened to what the realized day did. So
+    the realized day is always feasible for the oracle. Do not tighten a limit
+    below the realized flows.
+  - The site limits come from a recorded `PlannerInput` of the **same**
+    installation (`SiteLimits.from_planner_input`); the actuals carry none.
+  - Missing actuals make the whole day `not scored`; never read them as zero.
+  - Stage 2c (forecast error vs optimizer error by a rolling simulation) is
+    still open.
 - `hsem.log` is not a corpus — derived `[soc_sim]`/`[avg]`/`[pop]` traces, no
   `planner_input`.
 - **Replays lift the MILP's 2 s solver time limit** (`generous_solver_limit()`,

@@ -114,7 +114,7 @@ so anything you might want later has to be fetched now.
 ./scripts/backtest_update.sh
 ```
 
-That is the whole routine. It runs four steps and prints a summary:
+That is the whole routine. It runs five steps and prints a summary:
 
 1. **Copies the live corpus** off Home Assistant with `scp` (skipped when
    `HA_SSH_HOST` is empty — then copy `hsem-corpus.jsonl` into
@@ -124,6 +124,9 @@ That is the whole routine. It runs four steps and prints a summary:
    ones worth keeping into `tests/backtest/corpus/`, plus actuals for the days
    they cover into `tests/backtest/actuals/`.
 4. **Runs the backtest suite** over the committed corpus.
+5. **Scores every complete day** of the actuals it has: what was paid, what a
+   perfect-foresight oracle would have paid, and the share of the day's
+   potential that was captured.
 
 It never commits to git. The summary lists new files; review and commit them:
 
@@ -188,6 +191,7 @@ Each step is a script you can run alone:
 python3 scripts/backtest_harvest.py --dry-run             # backtest + harvest
 python3 scripts/backtest_corpus.py ~/hsem-actuals/corpus  # replay everything
 HSEM_BACKTEST_CORPUS=~/hsem-actuals/corpus python -m pytest tests/backtest/ -q
+python3 scripts/backtest_score.py ~/hsem-actuals/actuals.json  # score the days
 ```
 
 `backtest_corpus.py` replays every cycle regardless of the resume point and
@@ -195,18 +199,49 @@ names the first cycle for each violated invariant. `collect_actuals.sh
 --verify` also cross-checks recorded prices: `systematic offset` means stop —
 a fee differs between what the planner used and what was recorded.
 
+### Scoring the days
+
+```bash
+python3 scripts/backtest_score.py ~/hsem-actuals/actuals.json
+```
+
+```text
+day         realized   oracle   regret potential  savings  capture
+2026-09-15     13.45    10.19     3.26      9.32     6.05    65.0%
+```
+
+| Column      | Meaning                                                                                  |
+| ----------- | ---------------------------------------------------------------------------------------- |
+| `realized`  | What the day cost: import paid minus export earned, at the recorded prices.              |
+| `oracle`    | The cheapest it could have cost with perfect foresight, ending the day at least as full. |
+| `regret`    | `realized − oracle`. Never negative.                                                     |
+| `potential` | What the best control could have saved over plain self-consumption.                      |
+| `savings`   | `potential − regret`: what HSEM saved over plain self-consumption.                       |
+| `capture`   | `savings ÷ potential`. Negative when the day went worse than self-consumption.           |
+
+The battery and grid limits come from a recorded planner input: the newest
+committed cycle by default. Score a collection from another installation with
+`--site path/to/its/dump.json`. The time zone is read from the actuals files,
+then from that dump; `--tz` overrides both.
+
+[Stage 2b](backtest-harness.md#stage-2b--scoring-a-day) explains what each
+number compares and why the end-of-day battery level is part of it.
+
 ---
 
 ## Reading the results
 
-| Output                                      | Meaning                                                        | Action                                                                                                            |
-| ------------------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `invariants: none violated`                 | The planner held the spec on every real cycle.                 | None.                                                                                                             |
-| `<invariant>: N`                            | A real input broke a spec rule.                                | Replay the named cycle with `scripts/replay_planner_input.py` and file an issue. This is what the harness is for. |
-| `fidelity: … <field>: N cycle(s)`           | The dumps predate or outlive a `PlannerInput` field.           | Expected after a planner change. The replay still runs, with that field at its default — see below.               |
-| `corrupt dump in the middle of the corpus`  | A line other than the last is not valid JSON.                  | Lost data; the line number is in the message.                                                                     |
-| `HSEM_BACKTEST_CORPUS=… is not a directory` | The path is wrong or not created yet.                          | Create it and copy the corpus in.                                                                                 |
-| `no price series` hint                      | The price sensors were added after these days were downloaded. | Re-run `collect_actuals.sh` with `--refresh`.                                                                     |
+| Output                                                            | Meaning                                                                                                                              | Action                                                                                                            |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `invariants: none violated`                                       | The planner held the spec on every real cycle.                                                                                       | None.                                                                                                             |
+| `<invariant>: N`                                                  | A real input broke a spec rule.                                                                                                      | Replay the named cycle with `scripts/replay_planner_input.py` and file an issue. This is what the harness is for. |
+| `fidelity: … <field>: N cycle(s)`                                 | The dumps predate or outlive a `PlannerInput` field.                                                                                 | Expected after a planner change. The replay still runs, with that field at its default — see below.               |
+| `corrupt dump in the middle of the corpus`                        | A line other than the last is not valid JSON.                                                                                        | Lost data; the line number is in the message.                                                                     |
+| `HSEM_BACKTEST_CORPUS=… is not a directory`                       | The path is wrong or not created yet.                                                                                                | Create it and copy the corpus in.                                                                                 |
+| `no price series` hint                                            | The price sensors were added after these days were downloaded.                                                                       | Re-run `collect_actuals.sh` with `--refresh`.                                                                     |
+| `<day> not scored: <series> missing in N/96 slot(s)`              | The recorder has a gap on that day.                                                                                                  | None. The day is left out; missing is never read as zero.                                                         |
+| `note: measured battery flows leave the configured capacity by …` | The limits do not describe this battery: `--site` is from another installation, or the configured capacity or efficiency is far off. | Score with a dump from the right installation. Small drifts are expected and not reported.                        |
+| `capture` is `unknown`                                            | No control could have saved anything that day.                                                                                       | None.                                                                                                             |
 
 ---
 
