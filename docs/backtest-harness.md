@@ -12,12 +12,12 @@ function and the forecasts are worth their complexity.
 
 The harness is built in stages.
 
-| Stage                                 | Answers                                               | Status                              |
-| ------------------------------------- | ----------------------------------------------------- | ----------------------------------- |
-| **1 — replay**                        | Does the planner hold the spec on _real_ inputs?      | **implemented**                     |
-| **2a — collection + actuals loading** | Can realized outcomes be lined up with the plan?      | **implemented**                     |
-| **2b — scoring** (savings + regret)   | Was the day run well, against the best it could be?   | **implemented** (issue #1208)       |
-| **2c — attribution**                  | Whose fault when it is not: forecasts or the planner? | not implemented — see the end of 2b |
+| Stage                                 | Answers                                               | Status                        |
+| ------------------------------------- | ----------------------------------------------------- | ----------------------------- |
+| **1 — replay**                        | Does the planner hold the spec on _real_ inputs?      | **implemented**               |
+| **2a — collection + actuals loading** | Can realized outcomes be lined up with the plan?      | **implemented**               |
+| **2b — scoring** (savings + regret)   | Was the day run well, against the best it could be?   | **implemented** (issue #1208) |
+| **2c — attribution**                  | Whose fault when it is not: forecasts or the planner? | **implemented** (issue #1208) |
 
 ---
 
@@ -59,6 +59,7 @@ flowchart LR
 | `tests/backtest/invariants.py`    | Check one `(input, output)` pair against `planner-spec.md`             |
 | `tests/backtest/actuals.py`       | Load realized outcomes and align them to planner slots                 |
 | `tests/backtest/scoring.py`       | Score realized days: cost, regret, savings and capture                 |
+| `tests/backtest/attribution.py`   | Split a day's regret into execution, forecast and planner error        |
 | `planner/hindsight_oracle.py`     | Self-consumption baseline and perfect-foresight oracle (no HA imports) |
 | `tests/backtest/conftest.py`      | Corpus discovery, including a private out-of-repo corpus               |
 | `tests/backtest/harvest.py`       | Grow the committed corpus from a live one, one new situation at a time |
@@ -69,6 +70,7 @@ flowchart LR
 | `scripts/backtest_harvest.py`     | Backtest new cycles and harvest new situations                         |
 | `scripts/backtest_corpus.py`      | Replay every cycle of a corpus and report                              |
 | `scripts/backtest_score.py`       | Score every complete day of an actuals file                            |
+| `scripts/backtest_attribute.py`   | Replay a day on forecasts and on realized values; attribute its regret |
 | `scripts/collect_actuals.sh`      | One command: fetch a week of history, convert, verify                  |
 | `scripts/build_actuals.py`        | Turn an HA history export into an actuals file                         |
 
@@ -563,43 +565,115 @@ from the installation the actuals were recorded on. A mismatch shows up as a
   produced, not PV that had already been curtailed.
 - **Why the regret is there.** That is the next stage.
 
-## Stage 2c — attribution (not implemented)
+## Stage 2c — where the regret came from
 
-Regret says how much was left on the table, not what to fix. It separates into
-two failure modes that are indistinguishable today:
+Regret says how much was left on the table, not what to fix. It has two very
+different sources:
 
-- the oracle beats us mainly on PV-variable days → the **forecasts** are the
-  problem (Solcast handling, solar correction);
-- the oracle beats us even where forecasts were near-perfect → the **optimizer**
-  is the problem (MILP formulation, cost function, floors and reserves).
+- the **forecasts** were wrong (Solcast handling, solar correction, the load
+  profile, prices not yet published);
+- the **planner** does not make the best of what it knows (floors, reserves,
+  wear pricing, hysteresis, the terminal value, the MILP itself).
 
-Those are completely different fixes. Splitting them needs a rolling
-simulation over a day, cycle by cycle, run once with the forecasts HSEM had
-and once with the realized values in their place.
+```bash
+python3 scripts/backtest_attribute.py ~/hsem-actuals/actuals.json \
+    --corpus ~/hsem-actuals/corpus --day 2026-09-29
+```
 
-### Open design questions
+```text
+day         realized forecast hindsight   regret = execution + forecast +  planner
+2026-06-10     19.96    11.03     13.10    11.24        5.84       1.65      3.75
+```
 
-1. **Alignment.** Dump cadence (~5 min) does not match slot width (15 min), and
-   several dumps fall inside one slot. Which cycle's plan is the one being
-   scored — the first in the slot, or the one the applier last wrote?
-2. **Attribution.** Realized grid flows reflect what the _hardware_ did,
-   including manual overrides, degraded mode and write failures. The apply
-   result is already in every dump (`apply_result`), so scored days can exclude
-   cycles where it reports a failed or blocked write — but "exclude" versus
-   "annotate" is a judgement call that changes the headline number.
-3. **Horizon.** A rolling run with realized values needs actuals for the whole
-   planning horizon after each cycle, so the last two days of any corpus can
-   never be run that way.
-4. **Which price is the realized price.** A dump carries the price the planner
-   _used_, which is not always the price that applied. Day-ahead prices publish
-   around 13:00, so a morning cycle's second day has none, and `populate_prices`
-   fills those hours from the nearest earlier day (issue #1002). Scoring against
-   that measures the planner as if its own estimate were the truth, hiding
-   genuine price-forecast error —
-   `data_quality.tomorrow_price_missing_hours` marks exactly which hours.
-   The realized price comes from the price sensor's recorded state instead
-   (exported as `import_price`/`export_price`), which is what Stage 2b uses.
-   What a scoring pass must not do is read it off the cycle being scored.
+Unlike Stage 2b this cannot run on the committed sample: it needs a planner
+cycle for (almost) every slot of the day, which only a live corpus holds. The
+line above is the synthetic day `tests/backtest/test_attribution.py` builds —
+HSEM expected sun, the sun never came out, and the battery did nothing — so
+it can be reproduced from the repository. A real day takes about half a
+minute at 15-minute slots, because every slot is planned twice.
+
+### Two replays of the same day
+
+The day is replayed slot by slot through the real planner
+(`tests/backtest/attribution.py::rolling_run`). At each slot the planner input
+HSEM recorded for it is replanned from the slot's start, with the battery the
+replay has left, and the decision for that one slot is executed against the
+slot's **real** load. Then the next slot.
+
+| Replay            | Inputs at each slot                                           | Its cost is                                   |
+| ----------------- | ------------------------------------------------------------- | --------------------------------------------- |
+| **forecast run**  | what HSEM recorded: its price, PV and load forecasts          | what HSEM's decisions cost                    |
+| **hindsight run** | the same input with realized prices, PV and house load put in | what the same planner does knowing the future |
+| **oracle**        | (Stage 2b)                                                    | the best achievable                           |
+
+Each run's regret is its cost above the oracle that ends the day with the
+**same stored energy** as that run. That matters here as much as in Stage 2b:
+the run that buys the night ends the day fuller and has the higher bill and
+the lower regret. The split is then:
+
+| Error               | Definition                                   | What it means                                             |
+| ------------------- | -------------------------------------------- | --------------------------------------------------------- |
+| **forecast error**  | regret(forecast run) − regret(hindsight run) | What better forecasts would have saved the same planner.  |
+| **planner error**   | regret(hindsight run)                        | What the planner leaves on the table with perfect inputs. |
+| **execution error** | regret(realized) − regret(forecast run)      | What separates the replay from the meters.                |
+
+The three add up to the realized regret. Forecast and execution error can be
+negative: a wrong forecast can turn out lucky, and the real system replans
+inside a slot where the replay decides once.
+
+### The answers to the design questions
+
+1. **Alignment.** A slot is planned from the first cycle whose input was built
+   in that slot (`cycles_by_slot`, by the input's own `now_iso`: the planner
+   does not replan on every dump, so several dumps carry one input). A slot
+   with no cycle of its own uses the latest earlier one of the same day, which
+   is the input HSEM was still acting on, and the result says how many slots
+   that was. A day with a cycle in fewer than half of its slots is not
+   attributed.
+2. **Execution.** The replay does not try to detect failed writes or manual
+   overrides. It executes every decision through one model of the applier
+   (`execute_decision`): forced modes move the planned energy, the
+   self-consumption modes follow the real load, held modes only take a
+   surplus, and the battery serves the house's own deficit, never the EV.
+   Whatever the real system did differently — and whatever the model gets
+   wrong — is the execution error. It is reported, not excluded.
+3. **Horizon.** The hindsight run puts realized values into every horizon slot
+   the actuals cover and keeps the forecast for the rest. A day whose plans
+   reach past the recorded days is therefore only partly "hindsight", and the
+   result says what share was realized (50 % for the last recorded day of a
+   48 h planner).
+4. **Which price is the realized price.** The recorded price sensors, as in
+   Stage 2b. The hindsight run gets them for every covered slot, including the
+   hours HSEM had to estimate because the day-ahead prices were not out yet,
+   so price-forecast error is part of the forecast error. What a scoring pass
+   must not do is read a realized price off the cycle being scored.
+
+### What the hindsight run replaces
+
+`with_realized_forecasts()` rewrites three inputs for the slots and hours the
+actuals cover: the price points, the PV forecast (as the average power of each
+slot) and the hourly house load. The live readings the planner blends into the
+current slot are switched off, since the realized slot is already in the
+forecast's place. Everything else is as recorded: the EV's state and deadline,
+the configuration, and the dynamic floor the cycle was solved with.
+
+So the planner still applies its own policy to the realized numbers — the PV
+confidence decay for tomorrow, for example. That is deliberate: the hindsight
+run is _this planner_ with perfect inputs, and what it still loses is planner
+error.
+
+### Limits
+
+- **The execution model is a model.** It decides once per slot and knows
+  nothing of the applier's own guards (the reserve below which it stops
+  discharging, for example). On one recorded day the real battery was held
+  through the evening while the replay discharged it; that difference is in
+  the execution error.
+- **The EV is replayed as it really charged**, in both runs. A different plan
+  would have moved it; that is not modelled.
+- **The dynamic floor is the recorded one.** The replay does not re-run the
+  floor's reference solve for its own battery.
+- **Dumps and actuals must be from the same installation** (#1225).
 
 Home Assistant's `mcp_server` integration was evaluated for collection and
 rejected: it exposes Assist-oriented tools returning a plain-text snapshot

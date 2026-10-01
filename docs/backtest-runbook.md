@@ -227,21 +227,53 @@ then from that dump; `--tz` overrides both.
 [Stage 2b](backtest-harness.md#stage-2b--scoring-a-day) explains what each
 number compares and why the end-of-day battery level is part of it.
 
+### Finding out why a day went badly
+
+```bash
+python3 scripts/backtest_attribute.py ~/hsem-actuals/actuals.json \
+    --corpus ~/hsem-actuals/corpus --day 2026-09-29 --day 2026-09-30
+```
+
+```text
+day         realized forecast hindsight   regret = execution + forecast +  planner
+2026-06-10     19.96    11.03     13.10    11.24        5.84       1.65      3.75
+```
+
+| Column                 | Meaning                                                                    |
+| ---------------------- | -------------------------------------------------------------------------- |
+| `forecast` (cost)      | Cost of replaying the day on the forecasts HSEM recorded.                  |
+| `hindsight`            | Cost of replaying it with the realized prices, PV and load in their place. |
+| `execution`            | Regret that comes from the real system not doing what the replay does.     |
+| `forecast` (the split) | Regret that better forecasts would have removed.                           |
+| `planner`              | Regret the planner keeps even with perfect inputs.                         |
+
+It needs the live corpus: a cycle in at least half of the day's slots. Pick a
+day from the scoring table with a high regret. About half a minute per day.
+The costs of the two replays are not comparable with each other or with
+`realized` — the runs end the day with different stored energy — which is why
+the split is in regret. `--tz` is needed when the cycles record no time zone
+(builds before 7.0.0).
+
+[Stage 2c](backtest-harness.md#stage-2c--where-the-regret-came-from) explains
+the replay and its limits.
+
 ---
 
 ## Reading the results
 
-| Output                                                            | Meaning                                                                                                                              | Action                                                                                                            |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `invariants: none violated`                                       | The planner held the spec on every real cycle.                                                                                       | None.                                                                                                             |
-| `<invariant>: N`                                                  | A real input broke a spec rule.                                                                                                      | Replay the named cycle with `scripts/replay_planner_input.py` and file an issue. This is what the harness is for. |
-| `fidelity: … <field>: N cycle(s)`                                 | The dumps predate or outlive a `PlannerInput` field.                                                                                 | Expected after a planner change. The replay still runs, with that field at its default — see below.               |
-| `corrupt dump in the middle of the corpus`                        | A line other than the last is not valid JSON.                                                                                        | Lost data; the line number is in the message.                                                                     |
-| `HSEM_BACKTEST_CORPUS=… is not a directory`                       | The path is wrong or not created yet.                                                                                                | Create it and copy the corpus in.                                                                                 |
-| `no price series` hint                                            | The price sensors were added after these days were downloaded.                                                                       | Re-run `collect_actuals.sh` with `--refresh`.                                                                     |
-| `<day> not scored: <series> missing in N/96 slot(s)`              | The recorder has a gap on that day.                                                                                                  | None. The day is left out; missing is never read as zero.                                                         |
-| `note: measured battery flows leave the configured capacity by …` | The limits do not describe this battery: `--site` is from another installation, or the configured capacity or efficiency is far off. | Score with a dump from the right installation. Small drifts are expected and not reported.                        |
-| `capture` is `unknown`                                            | No control could have saved anything that day.                                                                                       | None.                                                                                                             |
+| Output                                                                             | Meaning                                                                                                                              | Action                                                                                                            |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `invariants: none violated`                                                        | The planner held the spec on every real cycle.                                                                                       | None.                                                                                                             |
+| `<invariant>: N`                                                                   | A real input broke a spec rule.                                                                                                      | Replay the named cycle with `scripts/replay_planner_input.py` and file an issue. This is what the harness is for. |
+| `fidelity: … <field>: N cycle(s)`                                                  | The dumps predate or outlive a `PlannerInput` field.                                                                                 | Expected after a planner change. The replay still runs, with that field at its default — see below.               |
+| `corrupt dump in the middle of the corpus`                                         | A line other than the last is not valid JSON.                                                                                        | Lost data; the line number is in the message.                                                                     |
+| `HSEM_BACKTEST_CORPUS=… is not a directory`                                        | The path is wrong or not created yet.                                                                                                | Create it and copy the corpus in.                                                                                 |
+| `no price series` hint                                                             | The price sensors were added after these days were downloaded.                                                                       | Re-run `collect_actuals.sh` with `--refresh`.                                                                     |
+| `<day> not scored: <series> missing in N/96 slot(s)`                               | The recorder has a gap on that day.                                                                                                  | None. The day is left out; missing is never read as zero.                                                         |
+| `note: measured battery flows leave the configured capacity by …`                  | The limits do not describe this battery: `--site` is from another installation, or the configured capacity or efficiency is far off. | Score with a dump from the right installation. Small drifts are expected and not reported.                        |
+| `capture` is `unknown`                                                             | No control could have saved anything that day.                                                                                       | None.                                                                                                             |
+| `<day> not attributed: only N of 96 slot(s) have a planner cycle recorded in them` | The corpus automation was not running for most of that day.                                                                          | None. Attribute another day.                                                                                      |
+| `note: realized values cover N % of the planning horizons`                         | The plans reach past the last recorded day.                                                                                          | Expected for the newest day; re-run once the following day's actuals exist.                                       |
 
 ---
 
