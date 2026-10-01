@@ -3593,6 +3593,11 @@ effective_floor_pct ≤ 1.50 × bridge_reserve_raw  (after learning period)
 - The floor is opt-in (`hsem_dynamic_discharge_floor`, default `False`); when
   disabled no floor is computed, one solve runs, and the planner receives
   `None`.
+- The plan explanation's `constraints` list names the floor: it contains
+  `dynamic_discharge_floor` when `dynamic_discharge_floor_pct` is above the
+  hardware floor, and also `battery_below_dynamic_floor` when the live SoC is
+  at or below it. Neither tag is listed without a floor or with a floor at the
+  hardware floor (issue #1227).
 
 ### Session EV invariant — bounded by control authority (issue #789)
 

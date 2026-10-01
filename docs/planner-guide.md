@@ -1693,15 +1693,26 @@ Attributes:
 
 Common constraint tags and their meaning:
 
-| Tag                            | Meaning                                                                |
-| ------------------------------ | ---------------------------------------------------------------------- |
-| `winter_month`                 | Current month is in `months_winter`; winter scheduling strategy active |
-| `summer_month`                 | Not in winter months; summer scheduling strategy active                |
-| `no_price_spread`              | Max − min import price is near zero; no grid-charge arbitrage          |
-| `grid_charge_price_spread_met` | Price spread exceeds min_price_difference threshold                    |
-| `excess_export_enabled`        | Excess export feature is active in config                              |
-| `export_price_above_threshold` | Export price exceeds `excess_export_price_threshold`                   |
-| `schedule_window_active`       | At least one `battery_schedules` entry is enabled and active           |
+| Tag                            | Meaning                                                                             |
+| ------------------------------ | ----------------------------------------------------------------------------------- |
+| `winter_month`                 | Current month is in `months_winter`; winter scheduling strategy active              |
+| `summer_month`                 | Not in winter months; summer scheduling strategy active                             |
+| `no_price_spread`              | Max − min import price is near zero; no grid-charge arbitrage                       |
+| `grid_charge_price_spread_met` | Price spread exceeds min_price_difference threshold                                 |
+| `excess_export_enabled`        | Excess export feature is active in config                                           |
+| `export_price_above_threshold` | Export price exceeds `excess_export_price_threshold`                                |
+| `schedule_window_active`       | At least one `battery_schedules` entry is enabled and active                        |
+| `dynamic_discharge_floor`      | The dynamic discharge floor is above the configured minimum SoC and reserves energy |
+| `battery_below_dynamic_floor`  | Initial SoC is at or below the dynamic discharge floor; the battery is held         |
+
+When `battery_below_dynamic_floor` is listed, the plan keeps the battery at its
+current SoC and only energy charged on top of it is discharged, so the
+timeline shows `batteries_wait_mode` during expensive hours and the plan ends
+at the SoC it started with (issue #1227). That is the
+[dynamic discharge floor](#dynamic-discharge-floor) holding its reserve, not a
+planner fault: `sensor.hsem_effective_discharge_floor_sensor` shows the floor
+and its `refill_type`, and `switch.hsem_dynamic_discharge_floor` turns the
+feature off.
 
 ---
 
