@@ -648,6 +648,7 @@ def solve_milp(
     ed_sol = result.x[ed_off : ed_off + m]
 
     # Import helpers here to avoid circular imports with the milp package __init__
+    from custom_components.hsem.planner.milp._battery_target_rows import lp_pin_flows
     from custom_components.hsem.planner.milp._diagnostics import (
         _compute_milp_diagnostics,
         _compute_terminal_soc_credit,
@@ -751,7 +752,7 @@ def solve_milp(
         _min_action_kwh=_MIN_ACTION_KWH,
     )
     diagnostics["primary_postwrite_inventory_validation"] = inventory_validation
-    diagnostics["lp_grid_import_kwh"] = result.x[gi_off : gi_off + m].tolist()
+    diagnostics.update(lp_pin_flows(result.x, m, _off, discharge_eff))
     if phase_fuse_active:
         diagnostics.update(
             phase_fuse_validation=phase_validation,

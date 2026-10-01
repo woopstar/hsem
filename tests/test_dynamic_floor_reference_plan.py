@@ -860,36 +860,55 @@ def _night_grid_charge_kwh(reference: PlannerOutput) -> float:
 
 
 class TestReferenceSolveKeepsTheBatteryTarget:
-    """Issue #1186 proposed solving the reference plan with the target off.
+    """The reference solve and the real solve differ only in the floor.
 
-    The idea was that the target's stage 2 pins grid import and so cannot
-    change what the floor reads.  It pins import only up to the target slot;
-    after it, import is merely capped.  When stage 2 keeps energy that stage 1
-    exported before the deadline, the plan needs less grid charge afterwards,
-    and a night charge the bridge scan credited disappears.
+    Issue #1186 proposed solving the reference plan with the target off.  At
+    the time the target's stage 2 could keep battery energy that stage 1 sold
+    before the deadline; the plan then bought less afterwards, a night charge
+    the bridge scan credited disappeared, and the floor moved by 33 points.
+    Since #1203 stage 2 may only hold back PV, so that case is gone: with no
+    PV before the deadline the target changes neither the plan nor the floor.
+    The reference solve still runs with the target as configured.
     """
 
-    def test_floor_differs_when_stage_2_removes_the_night_charge(self) -> None:
-        """Target by 23:00: skipping stage 2 would lower the floor by 33 points."""
+    def test_target_without_pv_before_the_deadline_changes_nothing(self) -> None:
+        """Issue #1203: target by 23:00, no PV until 08:00, 0.45 export at 21-23.
+
+        Stage 1 sells the battery into the spike and buys back at night.  The
+        target must not cancel that sale: it is funded only by PV the normal
+        plan would otherwise export, and there is none.
+        """
         with_target, diag, reference = _floor_with_battery_target(
             enabled=True, target_time="23:00:00"
         )
-        without_target, _diag, stage1_only = _floor_with_battery_target(
+        without_target, diag_off, stage1_only = _floor_with_battery_target(
             enabled=False, target_time="23:00:00"
         )
 
-        assert reference.battery_target is not None
-        assert reference.battery_target["stage2_ran"] is True
-        assert reference.battery_target["stage2_status"] == "solved"
-        # Stage 1 alone sells the battery at the spike and buys back at night.
-        assert _night_grid_charge_kwh(stage1_only) > 2.0
-        # With the target the battery is kept, and nothing is bought at night.
-        assert _night_grid_charge_kwh(reference) == pytest.approx(0.0, abs=1e-3)
-        # The whole night to tomorrow's PV is bridged: 6.42 kWh, uncredited.
-        assert diag["refill_type"] == "solar_surplus"
-        assert diag["reserve_kwh"] == pytest.approx(6.42)
-        assert with_target == pytest.approx(6.42 / _USABLE_KWH * 100.0 * 1.15)
-        assert without_target < with_target - 30.0
+        report = reference.battery_target
+        assert report is not None
+        assert report["stage2_ran"] is True
+        assert report["stage2_status"] == "no_gain"
+        assert report["stage1_projected_kwh"] == pytest.approx(0.0, abs=1e-3)
+        assert report["projected_kwh"] == pytest.approx(0.0, abs=1e-3)
+        assert report["max_import_delta_kwh"] == pytest.approx(0.0)
+        # The spike is sold exactly as without the target …
+        spike = [
+            slot
+            for slot in stage1_only.slots
+            if slot.end > _NOW and slot.start.day == _NOW.day
+        ]
+        assert sum(slot.primary_battery_export_kwh for slot in spike) > 4.0
+        assert reference.slots == stage1_only.slots
+        # … the plan costs the same …
+        assert reference.plan_cost is not None and stage1_only.plan_cost is not None
+        assert reference.plan_cost.total_cost == pytest.approx(
+            stage1_only.plan_cost.total_cost
+        )
+        # … and the night charge the scan credits is still there.
+        assert _night_grid_charge_kwh(reference) > 2.0
+        assert diag == diag_off
+        assert with_target == pytest.approx(without_target)
 
     def test_floor_is_the_same_when_the_charge_lies_before_the_target(self) -> None:
         """Target by 06:00: the night charge is inside the pinned window."""

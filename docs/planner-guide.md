@@ -390,6 +390,9 @@ function:
 
 - Only PV that the normal plan would export is used. HSEM never buys extra
   grid energy for the target.
+- Battery energy the normal plan sells before the target time is still sold
+  (issue #1203). The target never cancels a sale from the battery, so on an
+  evening without PV it changes nothing.
 - The grid charging and the discharge the normal plan already needs stay
   exactly as they are, including an earlier discharge window in the morning.
 - It is a deadline, not "charge as soon as possible". If the forecast shows
@@ -400,10 +403,13 @@ function:
   behaves normally.
 
 HSEM first computes the normal plan. Only if that plan misses the target does
-it plan again with one extra rule: grid import is fixed at the normal plan's
-value in every slot up to the target time, and may not rise afterwards. The
-only way left to raise the battery level at the target time is then to export
-less PV, and the planner gives up the lowest-paid export first.
+it plan again with two extra rules. Grid import is fixed at the normal plan's
+value in every slot up to the target time, and may not rise afterwards. And
+what the normal plan sells from the battery up to the target time is still
+exported. The only way left to raise the battery level at the target time is
+then to export less PV, and the planner gives up the lowest-paid export
+first. If that second plan cannot raise the level at all, the normal plan is
+kept as it is (`stage2_status: no_gain`).
 
 A charge-past-target EV wants the same spare PV. The house battery goes first;
 the EV gets what is left once the battery has what it needs.
@@ -426,7 +432,8 @@ time. Two things to keep in mind when reading it:
   not include. `terminal_soc_value_delta` shows the planner's estimate of it
   (negative means the target leaves more in the battery).
 
-These fields are empty when the normal plan already meets the target. See
+These fields are empty when the normal plan already meets the target, and
+when the target could not add anything to it. See
 [planner-spec.md](planner-spec.md#house-battery-target-soc-by-deadline-issue-1109)
 for the model.
 
