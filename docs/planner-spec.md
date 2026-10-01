@@ -2913,6 +2913,37 @@ the nearest earlier day that has data** (day+1 falls back to day+0; day+2
 falls back to day+1, then day+0). Only when no earlier day has data for
 that hour at all does the slot fall back to 0.0.
 
+**With a sub-hourly price source the estimate is per quarter (issue #1219).**
+On the `slot_in_day` path the lookup is by wall-clock time:
+
+```text
+quarter_price[d, hour, minute] = mean of day d's points that start at hour:minute
+hour_price[d, hour]            = mean of day d's points in that hour
+estimate(slot)                 = for d = slot.day − 1 down to 0:
+                                   quarter_price[d, slot.hour, slot.minute] if present,
+                                   else hour_price[d, slot.hour] if present
+                                 0.0 when no earlier day has the hour
+```
+
+- The nearest earlier day wins: when it has the hour but not the quarter, its
+  hour mean is used, and an older day's exact quarter is not.
+- `minute` is `slot_in_day × interval_minutes mod 60`, not `slot_in_day`
+  itself. `slot_in_day` counts real steps since local midnight (issue #1160),
+  so after a DST transition the same index is a different clock time; a
+  whole-hour shift does not move the minute within the hour. Both passes of
+  the repeated fall-back hour share a key and are averaged. An hour the
+  spring-forward day skipped has no earlier price and gets the 0.0 fallback.
+- A key whose points all hold the same price keeps that price exactly, so an
+  hourly source repeated on every 15-minute slot gives the same result as
+  before.
+- The same hour mean fills a slot of a **covered** day that the source skips
+  (a 60-minute source feeding 15-minute slots). That slot is not reported
+  missing.
+
+Until issue #1219 both lookups used the **last** point of the hour, so with
+quarter-hourly prices all four quarters of an estimated hour got the earlier
+day's `:45` price.
+
 The gap is always recorded on `TimeSeriesIndex.missing_price_slots` — on
 both the sub-hourly (`slot_in_day`) path and the hourly alignment path — so
 `DataQuality` warnings (`tomorrow_price_missing_hours`,
@@ -3205,8 +3236,9 @@ the degraded mode, which is classified from missing Home Assistant
 **entities** (`LiveState.missing_entities`), and they never block a hardware
 write.
 
-Price-missing slots are filled with the nearest earlier day's same-hour
-price (see _Missing-price estimation_ above); PV-missing slots default to
+Price-missing slots are filled with the nearest earlier day's price for the
+same hour, and the same quarter of it when the source is sub-hourly
+(see _Missing-price estimation_ above); PV-missing slots default to
 `0.0`. The planner **must never** silently treat absent data as real zero
 without surfacing a diagnostic.
 
@@ -3324,6 +3356,12 @@ the fill's original rationale genuinely applies.
   (issue #1002) — never silently 0.0 when an earlier day has data — and is
   still recorded in `missing_price_slots` on both the sub-hourly and hourly
   population paths.
+- With sub-hourly price points, each quarter of a price-missing hour gets the
+  nearest earlier day's price for the **same wall-clock quarter**, and the
+  hour's mean when that day has the hour but not the quarter. On the DST
+  fall-back and spring-forward days the quarter is matched by clock time, not
+  by `slot_in_day`. An hourly source feeding sub-hourly slots is unchanged
+  (issue #1219).
 - Through the real populator and `build_planner_input`, prices published for
   today only give tomorrow's slots today's same-hour price, list all of
   tomorrow's hours in `tomorrow_price_missing_hours` and make `is_complete`
