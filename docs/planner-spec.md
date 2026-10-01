@@ -4965,7 +4965,7 @@ rejected:
   0.15-night scenarios) and realised cash over those 36 replays of 11 h is
   4.3 lower (0.2 against 4.5); with 192 slots and battery export those solves
   run into the solver's time limit, so that difference is not attributed to
-  the rule. It is kept as a follow-up, not shipped here.
+  the rule. It is kept as a follow-up (issue #1247), not shipped here.
 - _Hysteresis on the sensor._ Hides the flip without removing it, and
   carries state from one replan to the next.
 
