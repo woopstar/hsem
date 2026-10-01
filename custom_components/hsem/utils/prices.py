@@ -15,7 +15,7 @@ Design goals
 dicts into per-slot ``SlotPrice`` lists via a standalone
 :class:`~custom_components.hsem.models.time_series.TimeSeriesIndex` — were
 removed as dead code in issue #967. The actual planner integration
-(``planner/slot_population.py::populate_prices``) calls
+(``planner/slot_price_population.py::populate_prices``) calls
 ``TimeSeriesIndex.align_hourly_prices()`` directly on its own already-built
 index instead, so this wrapper never had a production caller.
 """

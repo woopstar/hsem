@@ -77,6 +77,7 @@ from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
 )
 from custom_components.hsem.models.data_quality import DataQuality
 from custom_components.hsem.models.financial_tracker import FinancialTracker
+from custom_components.hsem.models.forecast_coverage import ForecastCoverage
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.plan_explanation import PlanExplanation
@@ -258,6 +259,8 @@ class HSEMDataUpdateCoordinator(
         self._last_plan_import_price: float | None = None
         self._last_plan_load_forecast_signature: LoadForecastSignature | None = None
         self._current_load_forecast_signature: LoadForecastSignature | None = None
+        # Slots the price sources covered this cycle (issue #1217).
+        self._forecast_coverage: ForecastCoverage | None = None
         self._load_forecast_recovery_replan_pending: bool = False
         self._last_load_forecast_readiness_reason: str | None = None
         # EV planned-load config that affects planner optimisation.

@@ -1734,11 +1734,15 @@ The planner treats all `price_points` as equally reliable. In practice:
 
 - Today's prices are firm (EDS publishes by ~13:00).
 - Tomorrow's prices arrive around 13:00 CET and are typically available before the evening planning run.
-- Day +2 prices (72-hour horizon) may be unavailable or estimated.
+- Day +2 prices (72-hour horizon) are never published and are always estimated.
 
-Missing price data is surfaced in `data_quality` and triggers `Degraded` mode,
-but the planner proceeds using `0.0` as a fallback — which means it cannot
-meaningfully optimise slots where prices are absent.
+Missing price data is surfaced in `data_quality`; it does not change the
+degraded mode. The planner fills price-missing slots with the same-hour price
+from the nearest earlier day that has data, instead of planning against a
+fictitious `0.0` ("free energy") price; only hours missing on every earlier
+day still fall back to `0.0` (issue #1217). The estimate is always flagged in
+`data_quality.*_price_missing_hours`, so diagnostics reflect the true data
+coverage.
 
 ### No intra-day re-planning of past slots
 

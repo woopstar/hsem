@@ -107,19 +107,20 @@ HA-dependent sensor entities that consume coordinator data.
 
 **No Home Assistant imports.** Fully testable with plain `pytest`.
 
-| Module                           | Responsibility                                                 |
-| -------------------------------- | -------------------------------------------------------------- |
-| `planner/engine_core.py`         | Orchestrates the full planning pipeline                        |
-| `planner/slot_population.py`     | Builds time horizon, populates prices/PV/consumption           |
-| `planner/charge_scheduler.py`    | Assigns charge recommendations (planner/charging/ sub-package) |
-| `planner/discharge_scheduler.py` | Assigns discharge recommendations                              |
-| `planner/candidate_generator.py` | Generates 8+ candidate strategies                              |
-| `planner/candidate_selector.py`  | Scores, validates, picks best candidate                        |
-| `planner/cost_function.py`       | 8-term cost function (money + selector)                        |
-| `planner/soc_simulation.py`      | Forward battery SoC simulation                                 |
-| `planner/milp_optimizer.py`      | LP solver for global optimum (scipy)                           |
-| `planner/ev_planner.py`          | EV charging plan builder                                       |
-| `planner/engine_explanation.py`  | Human-readable plan explanations                               |
+| Module                             | Responsibility                                                 |
+| ---------------------------------- | -------------------------------------------------------------- |
+| `planner/engine_core.py`           | Orchestrates the full planning pipeline                        |
+| `planner/slot_population.py`       | Builds time horizon, populates PV/consumption                  |
+| `planner/slot_price_population.py` | Populates per-slot prices incl. missing-price estimation       |
+| `planner/charge_scheduler.py`      | Assigns charge recommendations (planner/charging/ sub-package) |
+| `planner/discharge_scheduler.py`   | Assigns discharge recommendations                              |
+| `planner/candidate_generator.py`   | Generates 8+ candidate strategies                              |
+| `planner/candidate_selector.py`    | Scores, validates, picks best candidate                        |
+| `planner/cost_function.py`         | 8-term cost function (money + selector)                        |
+| `planner/soc_simulation.py`        | Forward battery SoC simulation                                 |
+| `planner/milp_optimizer.py`        | LP solver for global optimum (scipy)                           |
+| `planner/ev_planner.py`            | EV charging plan builder                                       |
+| `planner/engine_explanation.py`    | Human-readable plan explanations                               |
 
 ### Utils layer (shared, minimal HA imports)
 
