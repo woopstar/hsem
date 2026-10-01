@@ -412,7 +412,11 @@ class TestAffordableGridRefill:
         assert diag["refill_type"] == "solar_surplus"
 
     def test_a_covering_planned_charge_keeps_its_refill(self) -> None:
-        """The reference plan's own charge wins, even after a cheap slot."""
+        """The reference plan's own charge wins, even after a cheap slot.
+
+        The 04:00 charge is credited at 02:00, the first slot of its price
+        (issue #1198), so that is where the bridge ends.
+        """
         now = datetime(2026, 9, 28, 22, 0)
         charged = [0.0] * 6 + [4.0, 0.0, 0.0]
         recs: list[str | None] = [None] * 9
@@ -428,7 +432,7 @@ class TestAffordableGridRefill:
         _floor_pct, diag = self._floor(slots)
 
         assert diag["refill_type"] == "grid_charge"
-        assert diag["next_refill_slot"] == slots[6].start.isoformat()
+        assert diag["next_refill_slot"] == slots[4].start.isoformat()
         assert diag["reserve_kwh"] == pytest.approx(0.0)
 
     def test_cheap_slot_now_ends_the_bridge_at_once(self) -> None:
@@ -481,6 +485,184 @@ def _day_start(df: DynamicDischargeFloor, day: int, soc: float, floor: float) ->
 _SHORTFALL_DAY = [25.0] * 96 + [15.0] * 96 + [25.0] * 96
 _WELL_ABOVE_DAY = [30.0] * _CYCLES_PER_DAY  # above 20 % × 1.3
 _NEUTRAL_DAY = [22.0] * _CYCLES_PER_DAY  # between 20 % and 26 %
+
+
+# ---------------------------------------------------------------------------
+# Placement-invariant planned charges (issue #1198)
+# ---------------------------------------------------------------------------
+
+# 00:00 and 01:00 cost 0.19, 02:00-05:00 cost 0.15, a 0.25 morning peak, then
+# PV at 08:00.  The 0.15 night is not an affordable refill: the day costs 0.12.
+_TIE_NET = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.7, 0.5, -1.0]
+_TIE_PRICES = [0.19, 0.19, 0.15, 0.15, 0.15, 0.15, 0.25, 0.25, 0.12]
+
+
+class TestPlannedChargePlacement:
+    """Where an equally priced charge sits must not change the floor.
+
+    The reference solve is free to put its night charge in any of several
+    equally priced slots and picks a different one on each replan.  The scan
+    tested the charge against the consumption bridged up to its own slot, so
+    an early charge released the floor and the same charge three hours later
+    left a 24-30 % reserve.
+    """
+
+    @staticmethod
+    def _floor(
+        charge_slot: int | None,
+        charge_kwh: float = 1.24,
+        *,
+        prices: list[float] | None = None,
+        cycle_cost: float = _CYCLE_COST,
+    ) -> tuple[float, dict, list[float]]:
+        now = datetime(2026, 9, 30, 0, 0)
+        charged = [0.0] * len(_TIE_NET)
+        recs: list[str | None] = [None] * len(_TIE_NET)
+        if charge_slot is not None:
+            charged[charge_slot] = charge_kwh
+            recs[charge_slot] = "batteries_charge_grid"
+        slots = _make_slots(
+            now,
+            _TIE_NET,
+            charged_kwh=charged,
+            recommendations=recs,
+            import_prices=_TIE_PRICES if prices is None else prices,
+        )
+        floor_pct, diag, profile = DynamicDischargeFloor().compute_floor_profile(
+            now=now,
+            slots=slots,
+            usable_kwh=9.5,
+            configured_min_soc_pct=5.0,
+            cycle_cost_per_kwh=cycle_cost,
+            max_grid_charge_kw=5.0,
+        )
+        return floor_pct, diag, [pct for _start, pct in profile]
+
+    def test_floor_is_the_same_wherever_the_night_charge_sits(self) -> None:
+        """1.24 kWh at 02:00, 03:00, 04:00 or 05:00: one floor, one profile."""
+        results = [self._floor(charge_slot) for charge_slot in (2, 3, 4, 5)]
+
+        floors = [floor for floor, _diag, _profile in results]
+        assert floors == pytest.approx([5.0] * 4)
+        assert {diag["refill_type"] for _f, diag, _p in results} == {"grid_charge"}
+        assert {diag["next_refill_slot"] for _f, diag, _p in results} == {
+            "2026-09-30T02:00:00"
+        }
+        assert all(profile == results[0][2] for _f, _d, profile in results)
+
+    def test_a_late_charge_used_to_leave_a_reserve(self) -> None:
+        """Before #1198 the 05:00 charge did not cover 00:00-05:00 (2.5 kWh)."""
+        floor_pct, diag, _profile = self._floor(5)
+
+        # Credited at 02:00 it covers the 1.0 kWh bridged until then.
+        assert diag["refill_type"] == "grid_charge"
+        assert diag["reserve_kwh"] == pytest.approx(0.0)
+        assert floor_pct == pytest.approx(5.0)
+
+    def test_a_charge_too_small_for_the_bridge_is_a_partial_credit_anywhere(
+        self,
+    ) -> None:
+        """0.6 kWh does not cover the 1.0 kWh before 02:00, wherever it sits."""
+        results = [self._floor(charge_slot, 0.6) for charge_slot in (2, 3, 4, 5)]
+
+        # 00:00-08:00 is 4.2 kWh; 02:00 holds the credit, so its own 0.5 kWh
+        # is not bridged, and 0.6 kWh is bought: 4.2 - 0.5 - 0.6 = 3.1 kWh.
+        for floor_pct, diag, profile in results:
+            assert diag["refill_type"] == "solar_surplus"
+            assert diag["reserve_kwh"] == pytest.approx(3.1)
+            assert floor_pct == pytest.approx(3.1 / 9.5 * 100.0 * 1.15)
+            assert profile == results[0][2]
+
+    def test_charges_of_one_price_add_up_at_its_first_slot(self) -> None:
+        """Two charges at 03:00 and 05:00 are one 1.2 kWh credit at 02:00."""
+        now = datetime(2026, 9, 30, 0, 0)
+        charged = [0.0, 0.0, 0.0, 0.6, 0.0, 0.6, 0.0, 0.0, 0.0]
+        recs = ["batteries_charge_grid" if kwh else None for kwh in charged]
+        slots = _make_slots(
+            now,
+            _TIE_NET,
+            charged_kwh=charged,
+            recommendations=recs,
+            import_prices=_TIE_PRICES,
+        )
+
+        _floor_pct, diag = DynamicDischargeFloor().compute_floor(
+            now=now,
+            slots=slots,
+            usable_kwh=9.5,
+            configured_min_soc_pct=5.0,
+            cycle_cost_per_kwh=_CYCLE_COST,
+        )
+
+        assert diag["refill_type"] == "grid_charge"
+        assert diag["next_refill_slot"] == slots[2].start.isoformat()
+
+    def test_a_charge_is_not_moved_to_a_differently_priced_slot(self) -> None:
+        """The 0.19 slots are not the 0.15 night: 02:00 is the earliest match."""
+        _floor_pct, diag, _profile = self._floor(4, 0.8)
+
+        # 0.8 kWh at 00:00 would cover the bridge at once; at 02:00 it does
+        # not cover the 1.0 kWh bridged until then.
+        assert diag["refill_type"] == "solar_surplus"
+
+    def test_prices_within_the_cycle_cost_are_the_same_price(self) -> None:
+        """0.155 next to 0.15 is within one 0.008 cycle cost."""
+        prices = [0.19, 0.19, 0.155, 0.15, 0.15, 0.15, 0.25, 0.25, 0.12]
+
+        _floor_pct, diag, _profile = self._floor(5, prices=prices)
+
+        assert diag["refill_type"] == "grid_charge"
+        assert diag["next_refill_slot"] == "2026-09-30T02:00:00"
+
+    def test_without_a_cycle_cost_only_equal_prices_match(self) -> None:
+        prices = [0.19, 0.19, 0.155, 0.15, 0.15, 0.15, 0.25, 0.25, 0.12]
+
+        _floor_pct, diag, _profile = self._floor(5, prices=prices, cycle_cost=0.0)
+
+        # Credited at 03:00, the first 0.15 slot: 1.24 kWh < 1.5 kWh bridged.
+        assert diag["refill_type"] == "solar_surplus"
+
+    def test_flat_prices_credit_the_charge_now(self) -> None:
+        """Every slot costs the same, so the plan could buy that energy now."""
+        _floor_pct, diag, _profile = self._floor(5, prices=[0.2] * len(_TIE_NET))
+
+        assert diag["refill_type"] == "grid_charge"
+        assert diag["next_refill_slot"] == "2026-09-30T00:00:00"
+        assert diag["bridge_duration_hours"] == pytest.approx(0.0)
+
+    def test_a_charge_without_a_price_stays_in_its_slot(self) -> None:
+        """No price, no "equally priced" slot: the pre-#1198 behaviour."""
+        prices = [math.nan] * len(_TIE_NET)
+
+        early = self._floor(1, prices=prices)
+        late = self._floor(5, prices=prices)
+
+        assert early[1]["refill_type"] == "grid_charge"
+        assert early[1]["next_refill_slot"] == "2026-09-30T01:00:00"
+        assert late[1]["refill_type"] == "solar_surplus"
+
+    def test_a_charge_behind_the_solar_surplus_is_never_read(self) -> None:
+        """The bridge ends at the PV surplus; a later charge is not moved in."""
+        now = datetime(2026, 9, 30, 0, 0)
+        net = [0.5, 0.5, -1.0, 0.5, 0.5]
+        slots = _make_slots(
+            now,
+            net,
+            charged_kwh=[0.0, 0.0, 0.0, 0.0, 3.0],
+            recommendations=[None, None, None, None, "batteries_charge_grid"],
+            import_prices=[0.15] * 5,
+        )
+
+        _floor_pct, diag = DynamicDischargeFloor().compute_floor(
+            now=now,
+            slots=slots,
+            usable_kwh=9.5,
+            configured_min_soc_pct=5.0,
+            cycle_cost_per_kwh=_CYCLE_COST,
+        )
+
+        assert diag["refill_type"] == "solar_surplus"
+        assert diag["reserve_kwh"] == pytest.approx(1.0)
 
 
 class TestMarginCorrection:

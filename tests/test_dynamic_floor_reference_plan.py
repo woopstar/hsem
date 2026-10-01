@@ -86,8 +86,12 @@ _PV_LAST_SURPLUS = datetime(2026, 9, 29, 16, 0, tzinfo=_TZ)
 _CHARGE_START = datetime(2026, 9, 29, 2, 0, tzinfo=_TZ)
 _CHARGE_END = datetime(2026, 9, 29, 2, 45, tzinfo=_TZ)
 _CHARGE_KWH_PER_SLOT = 1.0  # 4 kW grid charge
-# 21:30 → 02:00 is 18 slots × 0.15 kWh = 2.7 kWh; the cumulative charge
-# (1.0, 2.0, 3.0 kWh) first covers it in the 02:30 slot.
+# 21:30 → 02:00 is 18 slots × 0.15 kWh = 2.7 kWh.  The three planned charge
+# slots cost the same, so their 3.0 kWh is credited at the first of them
+# (issue #1198) and covers the bridge there.
+_PLANNED_REFILL = _CHARGE_START
+# An affordable refill is credited slot by slot at the charge power: 1.25 kWh
+# per quarter-hour first covers the 2.7 kWh in the 02:30 slot.
 _EXPECTED_REFILL = datetime(2026, 9, 29, 2, 30, tzinfo=_TZ)
 # 21:30 → 09:30 is 12 h of 0.6 kW = 7.2 kWh; × 1.15 margin / 9.5 kWh.
 _SOLAR_BRIDGE_FLOOR_PCT = 7.2 / _USABLE_KWH * 100.0 * 1.15
@@ -272,9 +276,13 @@ class TestFloorReadsReferencePlan:
     async def test_reference_overnight_charge_is_the_refill(
         self, tmp_path: Path
     ) -> None:
-        """At 21:30 the 02:00 grid charge is the refill, so the floor is released."""
+        """At 21:30 the 02:00 grid charge is the refill, so the floor is released.
+
+        The plan is priced: the charge sits in the first slots of a cheap
+        night, where the scan credits it (issue #1198).
+        """
         coordinator, build, solved = _coordinator(
-            tmp_path, reference=_plan(grid_charge=True)
+            tmp_path, reference=_plan(grid_charge=True, cheap_night=True)
         )
 
         await _run_collect_then_plan(coordinator, build)
@@ -282,11 +290,11 @@ class TestFloorReadsReferencePlan:
         diag = coordinator._effective_discharge_floor_diag
         assert diag is not None
         assert diag["refill_type"] == "grid_charge"
-        assert diag["next_refill_slot"] == _EXPECTED_REFILL.isoformat()
+        assert diag["next_refill_slot"] == _PLANNED_REFILL.isoformat()
         # 4.5 h of 0.6 kW load (2.7 kWh) is covered by the planned charge, so
         # the bridge reserve is zero (documented in planner-spec.md, #1140).
         assert diag["reserve_kwh"] == pytest.approx(0.0)
-        assert diag["bridge_duration_hours"] == pytest.approx(5.0)
+        assert diag["bridge_duration_hours"] == pytest.approx(4.5)
 
         floor_pct = coordinator._effective_discharge_floor_pct
         assert floor_pct == pytest.approx(_HARDWARE_FLOOR_PCT)

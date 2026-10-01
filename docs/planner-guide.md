@@ -154,7 +154,12 @@ again with the resulting floor. If the reference plan grid-charges enough
 overnight to cover the evening load, the grid charge is the refill and the
 floor drops to the configured minimum. The battery can then cover evening
 load, and the cost function decides whether that beats holding it. The floor
-never reads the previous plan, so it cannot flip from one replan to the next.
+never reads the previous plan, and it does not depend on which of several
+equally priced night slots the reference plan happens to charge in
+(issue #1198): a planned charge counts from the first slot of its price.
+The floor can still step up once during a night, when the planned grid
+refill has happened and the reserve for the rest of the night to the solar
+surplus takes over.
 
 The reference plan also supplies the house load and PV the floor bridges
 over, so the floor and the plan work from the same forecast. Before issue

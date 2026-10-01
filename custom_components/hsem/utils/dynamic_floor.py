@@ -75,15 +75,66 @@ def cheap_refill_price(
     finite = [p for p in import_prices if math.isfinite(p)]
     if not finite:
         return None
-    tolerance = (
-        cycle_cost_per_kwh
-        if math.isfinite(cycle_cost_per_kwh) and cycle_cost_per_kwh > 0.0
-        else 0.0
-    )
+    tolerance = _cycle_cost_tolerance(cycle_cost_per_kwh)
     lowest = min(finite)
     if max(finite) - lowest <= tolerance + 1e-9:
         return None
     return lowest + tolerance
+
+
+def _cycle_cost_tolerance(cycle_cost_per_kwh: float) -> float:
+    """Return the price tolerance of one battery cycle; 0 when unusable."""
+    if math.isfinite(cycle_cost_per_kwh) and cycle_cost_per_kwh > 0.0:
+        return cycle_cost_per_kwh
+    return 0.0
+
+
+def _planned_grid_charges(future: list, price_tolerance: float) -> list[float]:
+    """Return the reference plan's grid charge per slot, placement-invariant.
+
+    The reference solve is free to put a grid charge in any of several
+    equally priced slots, and it does not pick the same one on every replan.
+    The bridge scan tests each charge against the consumption bridged *up to
+    its slot*, so the same charge released the floor when it sat early in the
+    night and left a reserve when it sat late (issue #1198).
+
+    Each planned charge is therefore credited at the **earliest bridge slot
+    priced within** *price_tolerance* **of its own slot**: the plan could have
+    bought the same energy there at the same cost.  The bridge is every slot
+    before the first solar surplus; charges behind it are never read.  A
+    charge whose slot has no finite price stays where it is.
+
+    Args:
+        future: Chronological look-ahead slots.
+        price_tolerance: Largest price difference between two slots that
+            still counts as equally priced (the battery cycle cost).
+
+    Returns:
+        One credit in kWh per slot of *future*.
+    """
+    credits = [0.0] * len(future)
+    prices: list[float] = []
+    for index, slot in enumerate(future):
+        if (getattr(slot, "estimated_net_consumption_kwh", 0.0) or 0.0) < -1e-9:
+            break
+        price = getattr(slot, "import_price", math.nan)
+        prices.append(price)
+        charged = getattr(slot, "batteries_charged_kwh", 0.0) or 0.0
+        if (
+            charged <= 1e-9
+            or getattr(slot, "recommendation", None)
+            != Recommendations.BatteriesChargeGrid.value
+        ):
+            continue
+        target = index
+        if math.isfinite(price):
+            target = next(
+                earlier
+                for earlier, earlier_price in enumerate(prices)
+                if abs(earlier_price - price) <= price_tolerance + 1e-9
+            )
+        credits[target] += charged
+    return credits
 
 
 class _BridgeScan(NamedTuple):
@@ -104,7 +155,10 @@ class _BridgeScan(NamedTuple):
 
 
 def _scan_bridge(
-    future: list, cheap_price: float | None, max_grid_charge_kw: float
+    future: list,
+    planned_charges: list[float],
+    cheap_price: float | None,
+    max_grid_charge_kw: float,
 ) -> _BridgeScan:
     """Walk *future* to the first refill and total the energy bridged.
 
@@ -116,6 +170,8 @@ def _scan_bridge(
 
     Args:
         future: Chronological look-ahead slots.
+        planned_charges: The reference plan's grid charge credited to each
+            slot, from :func:`_planned_grid_charges`.
         cheap_price: Affordable-refill threshold from
             :func:`cheap_refill_price`, or ``None``.
         max_grid_charge_kw: Battery charge power limit (kW).
@@ -129,7 +185,7 @@ def _scan_bridge(
     grid_charge = 0.0
     hours = 0.0
     deltas: list[float] = []
-    for s in future:
+    for s, planned in zip(future, planned_charges, strict=True):
         slot_hours = slot_duration_hours(s.start, s.end)
 
         net = getattr(s, "estimated_net_consumption_kwh", 0.0) or 0.0
@@ -146,16 +202,9 @@ def _scan_bridge(
                 tuple(deltas),
             )
 
-        # Check for grid-charge refill: a slot where the reference plan grid
-        # charges, or (second pass) an affordable slot it could charge in.
-        charged = getattr(s, "batteries_charged_kwh", 0.0) or 0.0
-        planned = (
-            charged
-            if charged > 1e-9
-            and getattr(s, "recommendation", None)
-            == Recommendations.BatteriesChargeGrid.value
-            else 0.0
-        )
+        # Check for grid-charge refill: a slot the reference plan's grid
+        # charge is credited to, or (second pass) an affordable slot it
+        # could charge in.
         price = getattr(s, "import_price", math.nan)
         affordable = cheap_price is not None and price <= cheap_price + 1e-9
         credit = (
@@ -422,7 +471,10 @@ class DynamicDischargeFloor:
         # charges come first; only if they do not cover the bridge does a
         # second pass also credit affordable slots it does not charge in
         # (issue #1156), so a covering planned charge keeps its refill.
-        scan = _scan_bridge(future, None, 0.0)
+        planned = _planned_grid_charges(
+            future, _cycle_cost_tolerance(cycle_cost_per_kwh)
+        )
+        scan = _scan_bridge(future, planned, None, 0.0)
         cheap_price = cheap_refill_price(
             (getattr(s, "import_price", math.nan) for s in future),
             cycle_cost_per_kwh,
@@ -432,7 +484,7 @@ class DynamicDischargeFloor:
             and cheap_price is not None
             and max_grid_charge_kw > 1e-9
         ):
-            cheap_scan = _scan_bridge(future, cheap_price, max_grid_charge_kw)
+            cheap_scan = _scan_bridge(future, planned, cheap_price, max_grid_charge_kw)
             if cheap_scan.refill_type == "grid_available":
                 scan = cheap_scan
         refill_slot = scan.refill_slot
