@@ -1308,9 +1308,41 @@ negative export price is not a slot field. Past slots are skipped, because they
 keep their planned values for the plan-vs-actual tracker. Every label contract
 held on the #1158 slots, so only this check could see that bug.
 
+##### What counts as material battery energy (issue #1199)
+
+Three thresholds exist, and they answer different questions. Mixing them up
+is what made a published plan carry `batteries_discharged_kwh = 0.001` on a
+`batteries_wait_mode` slot.
+
+| Constant                                            |       Value | Applies to                         | Used by                                                                                                                              |
+| --------------------------------------------------- | ----------: | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `milp/_write_results._MIN_ACTION_KWH`               |    1e-4 kWh | the raw LP values `ec[t]`, `ed[t]` | The write-out: a noise filter that decides whether a slot gets a charge or discharge label at all.                                   |
+| `utils/recommendations.MATERIAL_ENERGY_KWH`         |    1e-9 kWh | the **published** slot fields      | Every planner pass that decides a label from a slot's energy: the `simulate_soc` guards, the concentration reservation and the gate. |
+| `utils/units.PLANNED_ENERGY_ROUNDING_KWH` (applier) | > 0.001 kWh | the published slot fields          | The applier's hold heuristics only (`_primary_battery_hold`, issue #797). Never a reason to relabel a planned slot.                  |
+
+Published energy has 3 decimals, so the smallest value above
+`MATERIAL_ENERGY_KWH` is 0.001 kWh. It is a solved decision and not a rounding
+residue: a raw LP value publishes as non-zero from 0.0005 kWh, and
+`_MIN_ACTION_KWH` is below that, so every published flow cleared the
+write-out's filter and carries its label. A battery 1 Wh above its floor does
+use that watt-hour, and the plan says so under `batteries_discharge_mode`.
+
+`concentrate_discharge_on_expensive_slots` reserved LP slots with the
+applier's threshold until issue #1199. A slot with exactly 0.001 kWh was then
+not reserved, and when another LP discharge on the same calendar day had spent
+the day budget, it was relabelled `batteries_wait_mode` with the energy left
+on it. The reservation now uses `MATERIAL_ENERGY_KWH`.
+
 ##### Invariants for tests
 
 - Every `Recommendations` member has an entry in `LABEL_ENERGY_CONTRACTS`.
+- `_MIN_ACTION_KWH` is below half the publication resolution (0.0005 kWh), so
+  a published non-zero battery flow is always a labelled LP action
+  (issue #1199).
+- A battery 1 Wh above its hardware floor (5.01 % on a 5 % floor, 10 kWh)
+  produces a plan with no violation: the slot that uses the watt-hour is
+  `batteries_discharge_mode` with `batteries_discharged_kwh = 0.001`
+  (issue #1199).
 - A future slot whose flows use more energy than they supply, beyond the
   tolerance, is reported; unused supply and past slots are not (issue #1158).
 - The selected plan produces zero violations across the stock fixtures,
@@ -1413,7 +1445,9 @@ This is enforced **structurally**, not by a cleanup pass.
 `concentrate_discharge_on_expensive_slots` reserves any slot carrying material
 solved `batteries_discharged_kwh` before its greedy pass and charges that energy
 against the day budget, so it only ever relabels slots that had no discharge to
-begin with:
+begin with. Material means above `MATERIAL_ENERGY_KWH`, the gate's own
+threshold: 0.001 kWh is reserved too (issue #1199, see
+_What counts as material battery energy_):
 
 - The function's per-day estimate is deliberately conservative — it "assumes the
   battery starts at full capacity and there is no incoming charge between

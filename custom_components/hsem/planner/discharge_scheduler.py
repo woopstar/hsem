@@ -24,9 +24,9 @@ from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 from custom_components.hsem.utils.recommendations import (
     DISCHARGE_RECS as _DISCHARGE_RECS,
+    MATERIAL_ENERGY_KWH,
     Recommendations,
 )
-from custom_components.hsem.utils.units import is_material_planned_energy_kwh
 
 # ---------------------------------------------------------------------------
 # Excess export
@@ -467,10 +467,10 @@ def concentrate_discharge_on_expensive_slots(
     #
     # Their energy is charged against the day budget up front so the greedy
     # pass below thins the seasonal-fill slots against the capacity that is
-    # genuinely left over.
+    # genuinely left over.  1 Wh is solved discharge, not residue (#1199).
     lp_reserved = 0
     for s in discharge_slots:
-        if not is_material_planned_energy_kwh(s.batteries_discharged_kwh):
+        if s.batteries_discharged_kwh <= MATERIAL_ENERGY_KWH:
             continue
         slot_day = as_tz(s.start, now.tzinfo).date()
         per_day_used[slot_day] += s.batteries_discharged_kwh

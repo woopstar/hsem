@@ -407,6 +407,46 @@ class TestConcentratePreservesLpDischarge:
         assert lp.recommendation == Recommendations.BatteriesDischargeMode.value
         assert lp.batteries_discharged_kwh == pytest.approx(0.683)
 
+    @pytest.mark.parametrize("discharged", [0.001, 0.0005, 0.002])
+    def test_smallest_published_discharge_is_still_lp_dispatched(
+        self, discharged: float
+    ) -> None:
+        """Issue #1199: 1 Wh is a solved discharge, not a rounding residue.
+
+        The write-out labels a slot when the LP's ``ed[t]`` clears 1e-4 kWh and
+        publishes it at 3 decimals, so 0.001 kWh is the smallest discharge a
+        plan can carry.  The reservation used the applier's residue threshold
+        (strictly more than 0.001 kWh), left such a slot unreserved, and with
+        the day budget spent relabelled it to wait with the energy still on it.
+        """
+        residual = self._lp_slot(price=0.19, discharged=discharged)
+        evening = self._lp_slot(price=0.47, discharged=1.0)  # spends the budget
+        concentrate_discharge_on_expensive_slots(
+            [residual, evening],
+            _NOW,
+            current_kwh=1.0,
+            usable_kwh=1.0,
+            max_discharge_per_slot=None,
+            discharge_efficiency_pct=100.0,
+        )
+        assert residual.recommendation == Recommendations.BatteriesDischargeMode.value
+        assert residual.batteries_discharged_kwh == pytest.approx(discharged)
+
+    def test_slot_without_solved_discharge_is_not_reserved(self) -> None:
+        """Zero discharge is the seasonal fill's label, and may still be thinned."""
+        idle = self._lp_slot(price=0.19, discharged=0.0)
+        evening = self._lp_slot(price=0.47, discharged=1.0)
+        stats = concentrate_discharge_on_expensive_slots(
+            [idle, evening],
+            _NOW,
+            current_kwh=1.0,
+            usable_kwh=1.0,
+            max_discharge_per_slot=None,
+            discharge_efficiency_pct=100.0,
+        )
+        assert idle.recommendation == Recommendations.BatteriesWaitMode.value
+        assert stats.lp_reserved == 1
+
     def test_seasonal_fill_slots_are_still_thinned(self) -> None:
         """The function must keep doing the job it exists for."""
         lp = self._lp_slot(price=1.00, discharged=0.683)
@@ -481,8 +521,14 @@ class TestConcentratePreservesLpDischarge:
         assert slots[1].recommendation == Recommendations.BatteriesDischargeMode.value
         assert slots[2].recommendation == Recommendations.BatteriesWaitMode.value
 
-    def test_immaterial_rounding_residue_is_not_reserved(self) -> None:
-        """A 0.001 kWh residue is not an LP dispatch and must not be protected."""
+    def test_one_watt_hour_is_reserved_with_budget_left_for_nothing_else(self) -> None:
+        """Issue #1199 replaced the rule this test used to pin.
+
+        #1033 treated a 0.001 kWh discharge as a rounding residue and let
+        concentration relabel the slot.  It asserted the label only: the
+        energy stayed on the wait slot, which is the contradiction the gate
+        reports.  The slot is LP-dispatched and is kept.
+        """
         residue = self._lp_slot(price=0.50, discharged=0.001)
         expensive = [_make_discharge_slot(demand_kwh=0.7, price=2.30)]
         concentrate_discharge_on_expensive_slots(
@@ -493,4 +539,8 @@ class TestConcentratePreservesLpDischarge:
             max_discharge_per_slot=None,
             discharge_efficiency_pct=100.0,
         )
-        assert residue.recommendation == Recommendations.BatteriesWaitMode.value
+        assert residue.recommendation == Recommendations.BatteriesDischargeMode.value
+        assert residue.batteries_discharged_kwh == pytest.approx(0.001)
+        # Its 1 Wh is charged against the budget, so the 0.7 kWh fill slot
+        # no longer fits and is the one that is thinned.
+        assert expensive[0].recommendation == Recommendations.BatteriesWaitMode.value

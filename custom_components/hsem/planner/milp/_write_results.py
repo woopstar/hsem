@@ -19,9 +19,12 @@ from custom_components.hsem.planner.milp._ev_power_writeout import (
 )
 from custom_components.hsem.utils.units import ev_dc_to_ac_kwh, slot_duration_hours
 
-#: Minimum kWh a slot's EV allocation must clear to be considered "occupied"
-#: rather than solver noise, mirroring ``_write_milp_results_to_slots``'s
-#: ``_min_action_kwh`` default.
+#: Minimum raw LP energy (kWh) a slot's charge, discharge or EV allocation
+#: must clear to count as an action rather than solver noise.  It filters
+#: solver values *before* they are rounded to 3 decimals; it must stay below
+#: 0.0005 kWh, the smallest value that publishes as non-zero, so that every
+#: published flow is a labelled action (issue #1199).  Published fields are
+#: read against ``utils.recommendations.MATERIAL_ENERGY_KWH``.
 _MIN_ACTION_KWH = 1e-4
 
 
@@ -49,7 +52,7 @@ def _write_milp_results_to_slots(
     curt_sol_full: np.ndarray,  # type: ignore[name-defined]
     *,
     ev_writeback_diagnostics: dict[str, dict[str, object]] | None = None,
-    _min_action_kwh: float = 1e-4,
+    _min_action_kwh: float = _MIN_ACTION_KWH,
     export_fee_per_kwh: float = 0.0,
 ) -> list[PlannedSlot]:
     """Write MILP solution into a deep-copied slot list.

@@ -233,11 +233,22 @@ Use :data:`DISCHARGE_RECS` for window/schedule logic; use this set to ask
 # ---------------------------------------------------------------------------
 
 MATERIAL_ENERGY_KWH: float = 1e-9
-"""Epsilon above which a slot's battery energy counts as *material*.
+"""Epsilon above which a slot's *published* battery energy counts as material.
 
-Matches the threshold every existing label/energy guard already uses
-(``soc_simulation.py``, ``concentrate_discharge_on_expensive_slots``), so the
-self-consistency check and the guards that enforce it agree exactly.
+The one threshold for every planner pass that reads a slot's
+``batteries_charged_kwh`` / ``batteries_discharged_kwh`` to decide what the
+slot's label may be: the label/energy guards in ``soc_simulation.py``, the
+LP-slot reservation in ``concentrate_discharge_on_expensive_slots`` and the
+self-consistency check.  They must agree exactly, or one pass relabels a slot
+another one still counts as dispatching (issue #1199).
+
+Published energy has 3 decimals, so the smallest material value is 0.001 kWh.
+It is a solved decision, not noise: the MILP write-out only publishes a flow
+whose raw LP value cleared its own, much larger, noise filter
+(``milp/_write_results._MIN_ACTION_KWH``).  The applier's coarser
+``utils.units.is_material_planned_energy_kwh`` (strictly more than 0.001 kWh)
+is an execution heuristic for holding the inverter and must not be used to
+relabel a planned slot.
 """
 
 
