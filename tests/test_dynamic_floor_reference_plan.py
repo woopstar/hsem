@@ -868,7 +868,7 @@ def _night_grid_charge_kwh(reference: PlannerOutput) -> float:
 
 
 class TestReferenceSolveKeepsTheBatteryTarget:
-    """The reference solve and the real solve differ only in the floor.
+    """The house-battery target does not change the floor of this fixture.
 
     Issue #1186 proposed solving the reference plan with the target off.  At
     the time the target's stage 2 could keep battery energy that stage 1 sold
@@ -876,7 +876,8 @@ class TestReferenceSolveKeepsTheBatteryTarget:
     the bridge scan credited disappeared, and the floor moved by 33 points.
     Since #1203 stage 2 may only hold back PV, so that case is gone: with no
     PV before the deadline the target changes neither the plan nor the floor.
-    The reference solve still runs with the target as configured.
+    That is what lets the reference solve drop the target when no EV is in
+    the plan (issue #1207, ``tests/test_dynamic_floor_reference_target.py``).
     """
 
     def test_target_without_pv_before_the_deadline_changes_nothing(self) -> None:

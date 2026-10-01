@@ -200,6 +200,37 @@ def compute_dynamic_floor_from_plan(
     return floor_pct, diag, [(start.isoformat(), pct) for start, pct in profile]
 
 
+def reference_solve_input(planner_input: PlannerInput) -> PlannerInput:
+    """Return the input the dynamic floor's reference plan is solved with.
+
+    The reference solve is the replan's input without the floor.  It also
+    drops the house-battery target (issue #1109) when **no EV feature is
+    enabled** (issue #1207): the target's second stage may only hold back PV
+    the normal plan exports, which happens at or behind the first PV surplus,
+    and the bridge scan never reads past that slot.  The floor, its
+    diagnostics and its profile are then the same with and without the
+    target, and the reference solve is one MILP solve cheaper.
+
+    With an EV in the plan the target stays.  Its second stage pins each
+    slot's grid import but not how that import is split, so it can move a
+    grid charge between the EV and the house battery in front of the PV
+    surplus, and the scan reads that charge.
+
+    Args:
+        planner_input: This replan's floor-free planner input.
+
+    Returns:
+        *planner_input* itself, or a copy with the battery target disabled.
+    """
+    if not planner_input.battery_target_soc_enabled:
+        return planner_input
+    if planner_input.ev_planned_load_enabled or (
+        planner_input.ev_second_planned_load_enabled
+    ):
+        return planner_input
+    return replace(planner_input, battery_target_soc_enabled=False)
+
+
 def floor_required_at_slot_end(
     profile: list[tuple[str, float]] | None, now: datetime, floor_now_pct: float
 ) -> float:
@@ -261,10 +292,10 @@ class CoordinatorDynamicFloorMixin(CoordinatorSharedState):
     ) -> PlannerInput:
         """Solve the reference plan and return the input with this replan's floor.
 
-        The reference solve uses *planner_input* unchanged apart from the
-        missing floor.  In particular it keeps the house-battery target
-        (issue #1109), so the scan reads a plan with the same features as the
-        one that is published (issue #1186).
+        The reference solve uses :func:`reference_solve_input`: the replan's
+        input without the floor, and without the house-battery target when no
+        EV feature is enabled (issue #1207).  The returned input keeps the
+        target as configured.
 
         Args:
             planner_input: This replan's floor-free planner input.
@@ -280,7 +311,7 @@ class CoordinatorDynamicFloorMixin(CoordinatorSharedState):
             _StaleUpdateCycle: A newer update cycle started during the solve.
         """
         reference_output = await self.hass.async_add_executor_job(
-            run_planner, planner_input
+            run_planner, reference_solve_input(planner_input)
         )
         if getattr(self, "_update_generation", 0) != captured_generation:
             raise _StaleUpdateCycle
