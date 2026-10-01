@@ -20,6 +20,11 @@ version, timestamp and ``apply_result`` — about 44 KB instead of 135.
 Realized actuals are committed per calendar day, for the days a committed
 cycle's horizon covers and only when every energy series is complete, so a
 future scoring pass can be reproduced from the repository alone.
+
+Every committed cycle and actuals day carries the tag of the installation it
+was recorded on (``tests/backtest/site.py``, issue #1225).  Actuals are only
+committed for days covered by a cycle with the same tag, so a plan is never
+paired with another house's meters.
 """
 
 from __future__ import annotations
@@ -45,8 +50,16 @@ from tests.backtest.invariants import check_invariants, format_violations
 from tests.backtest.replay import (
     generous_solver_limit,
     iter_dumps,
+    load_dump,
     load_planner_input,
     planner_input_from_dict,
+)
+from tests.backtest.site import (
+    SITE_KEY,
+    describe_site,
+    same_site,
+    site_of,
+    validate_site,
 )
 
 __all__ = [
@@ -60,6 +73,7 @@ __all__ = [
     "expected_slots",
     "harvest",
     "leaks_entity_ids",
+    "newest_cycle_of_site",
     "refresh_corpus",
     "situation_of",
     "slim_payload",
@@ -74,8 +88,15 @@ DEFAULT_MAX_NEW = 10
 DEFAULT_MAX_CORPUS = 50
 
 #: The sections of a dump the harness reads.  ``planner_output`` is the bulk of
-#: a dump and is never read — replays recompute it.
-_KEEP_KEYS = ("hsem_version", "dump_timestamp", "planner_input", "apply_result")
+#: a dump and is never read — replays recompute it.  ``site`` is the
+#: installation tag a harvest adds (issue #1225).
+_KEEP_KEYS = (
+    "hsem_version",
+    "dump_timestamp",
+    "planner_input",
+    "apply_result",
+    SITE_KEY,
+)
 
 _SENTINELS: frozenset[str] = frozenset(m.value for m in SENTINEL_RECS)
 
@@ -170,7 +191,7 @@ def situation_of(inp: PlannerInput, out: PlannerOutput) -> Situation:
 
 
 def slim_payload(
-    payload: dict[str, Any], time_zone: str | None
+    payload: dict[str, Any], time_zone: str | None, site: str | None = None
 ) -> tuple[dict[str, Any], list[str]]:
     """Reduce a dump to what the harness reads, filling a known site zone.
 
@@ -181,11 +202,16 @@ def slim_payload(
     Args:
         payload: A full diagnostics payload.
         time_zone: The site's IANA zone, used only when the dump lacks the key.
+        site: The tag of the installation the dump was recorded on (issue
+            #1225).  A live dump carries none, so the harvest's tag is written;
+            a tag the payload already carries is kept.
 
     Returns:
         The slim payload and the names of any fields filled in.
     """
     slim = {key: copy.deepcopy(payload[key]) for key in _KEEP_KEYS if key in payload}
+    if site is not None and SITE_KEY not in slim:
+        slim[SITE_KEY] = site
     filled: list[str] = []
     planner_input = slim.get("planner_input")
     if time_zone and isinstance(planner_input, dict):
@@ -217,8 +243,9 @@ class HarvestResult:
         skipped: Why eligible-looking cycles were not committed, with counts.
         capped: New situations left out because a cap was reached.
         latest: Timestamp of the newest cycle seen, for the next run to resume.
-        horizon_days: Calendar days covered by every committed cycle, old and
-            new — the days worth committing actuals for.
+        horizon_days_by_site: Per installation tag, the calendar days covered
+            by its committed cycles, old and new — the days worth committing
+            that installation's actuals for (issue #1225).
     """
 
     checked: int = 0
@@ -227,7 +254,15 @@ class HarvestResult:
     skipped: Counter[str] = field(default_factory=Counter)
     capped: int = 0
     latest: str | None = None
-    horizon_days: set[date] = field(default_factory=set)
+    horizon_days_by_site: dict[str | None, set[date]] = field(default_factory=dict)
+
+    def horizon_days(self, site: str | None) -> set[date]:
+        """Return the days covered by committed cycles of installation *site*."""
+        return set(self.horizon_days_by_site.get(site, ()))
+
+    def cover(self, site: str | None, days: set[date]) -> None:
+        """Record that a committed cycle of installation *site* covers *days*."""
+        self.horizon_days_by_site.setdefault(site, set()).update(days)
 
     def describe(self) -> str:
         """Render the run summary."""
@@ -263,6 +298,7 @@ def harvest(
     corpus_dir: Path,
     *,
     time_zone: str | None,
+    site: str | None = None,
     since: datetime | None = None,
     max_new: int = DEFAULT_MAX_NEW,
     max_corpus: int = DEFAULT_MAX_CORPUS,
@@ -275,6 +311,9 @@ def harvest(
         live_files: Live corpus files (``.json`` or ``.jsonl``).
         corpus_dir: The committed corpus directory.
         time_zone: The site's IANA zone, filled into dumps that predate #1169.
+        site: The tag of the installation the live corpus was recorded on
+            (issue #1225).  Without one every cycle is still replayed and
+            checked, but none is committed.
         since: Only cycles dumped after this moment are processed.
         max_new: Cycles to commit in this run at most.
         max_corpus: Committed cycles in total at most.
@@ -289,6 +328,7 @@ def harvest(
             live_files,
             corpus_dir,
             time_zone=time_zone,
+            site=validate_site(site),
             since=since,
             max_new=max_new,
             max_corpus=max_corpus,
@@ -302,6 +342,7 @@ def _harvest(
     corpus_dir: Path,
     *,
     time_zone: str | None,
+    site: str | None,
     since: datetime | None,
     max_new: int,
     max_corpus: int,
@@ -316,7 +357,7 @@ def _harvest(
         inp, _report = load_planner_input(path)
         out = run_planner(inp)
         known.add(situation_of(inp, out))
-        result.horizon_days |= _horizon_days(out)
+        result.cover(site_of(load_dump(path)), _horizon_days(out))
 
     for live in live_files:
         for payload in iter_dumps(live):
@@ -326,7 +367,7 @@ def _harvest(
             if stamp and (result.latest is None or stamp > result.latest):
                 result.latest = stamp
 
-            slim, _filled = slim_payload(payload, time_zone)
+            slim, _filled = slim_payload(payload, time_zone, site)
             inp, report = planner_input_from_dict(slim)
             out = run_planner(inp)
             result.checked += 1
@@ -348,6 +389,10 @@ def _harvest(
             if leaks_entity_ids(text):
                 result.skipped["contains an entity id"] += 1
                 continue
+            cycle_site = site_of(slim)
+            if cycle_site is None:
+                result.skipped["no site tag (set HSEM_BACKTEST_SITE)"] += 1
+                continue
             situation = situation_of(inp, out)
             if situation in known:
                 result.skipped["situation already covered"] += 1
@@ -367,7 +412,7 @@ def _harvest(
                 target.write_text(text, encoding="utf-8")
             known.add(situation)
             result.added.append((name, situation))
-            result.horizon_days |= _horizon_days(out)
+            result.cover(cycle_site, _horizon_days(out))
     return result
 
 
@@ -391,14 +436,26 @@ def write_actuals_days(
     Args:
         actuals: An ``hsem-actuals-1`` payload, as ``build_actuals.py`` writes.
         out_dir: The committed actuals directory.
-        days: Days worth committing — those a committed cycle's horizon covers.
+        days: Days worth committing — those covered by the horizon of a
+            committed cycle **of the same installation** as *actuals*
+            (:meth:`HarvestResult.horizon_days` with the payload's tag).
         zone: The site's zone, which defines a calendar day.
         dry_run: Report what would happen, writing nothing.
 
     Returns:
         ``(written, incomplete)``.  A day already committed is in neither;
         a day with any energy series short of a full day is ``incomplete``.
+
+    Raises:
+        ValueError: If *actuals* carries no site tag (issue #1225): a
+            committed day must say which installation it is from.
     """
+    site = site_of(actuals)
+    if site is None:
+        raise ValueError(
+            f"the actuals carry {describe_site(site)}: set HSEM_BACKTEST_SITE and "
+            f"rebuild them before committing a day"
+        )
     slot_minutes = int(actuals["slot_minutes"])
     by_day: dict[date, dict[str, dict[str, list[Any]]]] = {}
     for bucket in ("slot_energy_kwh", "slot_values"):
@@ -430,6 +487,7 @@ def write_actuals_days(
             "slot_minutes": slot_minutes,
             "day": day.isoformat(),
             "time_zone": zone.key,
+            SITE_KEY: site,
             **day_buckets,
         }
         if not dry_run:
@@ -445,6 +503,28 @@ def write_actuals_days(
 def committed_actuals(paths: Sequence[Path]) -> dict[date, Path]:
     """Map each committed actuals file to its day."""
     return {date.fromisoformat(p.stem.removeprefix("actuals-")): p for p in paths}
+
+
+def newest_cycle_of_site(corpus_dir: Path, site: str | None) -> Path | None:
+    """Return the newest committed cycle recorded on installation *site*.
+
+    Scoring reads the battery and grid limits from a recorded planner input,
+    and they must be those of the installation the actuals are from (issue
+    #1225).
+
+    Args:
+        corpus_dir: The committed corpus directory.
+        site: The site tag of the actuals being scored.
+
+    Returns:
+        The cycle's path, or ``None`` when no committed cycle carries the tag.
+    """
+    cycles = [
+        path
+        for path in sorted(corpus_dir.glob("cycle-*.json"))
+        if same_site(site_of(load_dump(path)), site)
+    ]
+    return cycles[-1] if cycles else None
 
 
 # ---------------------------------------------------------------------------

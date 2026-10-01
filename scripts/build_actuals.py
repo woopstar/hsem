@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -46,6 +47,7 @@ from tests.backtest.actuals import (  # noqa: E402
     build_actuals_payload,
     readings_from_ha_history,
 )
+from tests.backtest.site import SITE_ENV, validate_site  # noqa: E402
 
 
 def _parse_mapping(pairs: list[str]) -> dict[str, str]:
@@ -107,12 +109,25 @@ def main(argv: list[str] | None = None) -> int:
             "overlaps are treated as a recorder outage (default: 10)."
         ),
     )
+    parser.add_argument(
+        "--site-tag",
+        default=os.environ.get(SITE_ENV),
+        help=(
+            "Tag of the installation the history is from, written to the file "
+            f"as 'site' (default: ${SITE_ENV}). Lower-case letters, digits and "
+            "hyphens; it tells installations apart and must not identify one."
+        ),
+    )
     parser.add_argument("--out", required=True, metavar="PATH")
     args = parser.parse_args(argv)
 
     mapping = _parse_mapping(args.map)
     if not mapping:
         raise SystemExit("at least one --map is required")
+    try:
+        site_tag = validate_site(args.site_tag)
+    except ValueError as err:
+        raise SystemExit(str(err)) from err
 
     readings: dict[str, list[tuple]] = {}
     for path in args.history:
@@ -136,6 +151,7 @@ def main(argv: list[str] | None = None) -> int:
         now,
         args.slot_minutes,
         max_silence=timedelta(minutes=args.max_silence_minutes),
+        site=site_tag,
     )
     Path(args.out).write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -148,6 +164,8 @@ def main(argv: list[str] | None = None) -> int:
     for entity_id, series in sorted(mapping.items()):
         if series not in energy and series not in values:
             print(f"[warn] {entity_id} -> {series}: no usable readings")
+    if site_tag is None:
+        print(f"[warn] no site tag: set {SITE_ENV} so the file says where it is from")
     print(f"wrote {args.out}")
     return 0 if (energy or values) else 1
 

@@ -33,6 +33,12 @@ from tests.backtest.harvest import (  # noqa: E402
     refresh_corpus,
     write_actuals_days,
 )
+from tests.backtest.site import (  # noqa: E402
+    SITE_ENV,
+    describe_site,
+    site_of,
+    validate_site,
+)
 
 _DATA = Path.home() / "hsem-actuals"
 
@@ -75,6 +81,15 @@ def main(argv: list[str] | None = None) -> int:
         default=os.environ.get("TZ"),
         help="The site's IANA zone (default: $TZ)",
     )
+    parser.add_argument(
+        "--site-tag",
+        default=os.environ.get(SITE_ENV),
+        help=(
+            "Tag of the installation the live corpus was recorded on, written "
+            f"to every committed cycle (default: ${SITE_ENV}). Without one "
+            "nothing is committed."
+        ),
+    )
     parser.add_argument("--max-new", type=int, default=DEFAULT_MAX_NEW)
     parser.add_argument("--max-corpus", type=int, default=DEFAULT_MAX_CORPUS)
     parser.add_argument("--all", action="store_true", help="Ignore the resume point")
@@ -114,6 +129,17 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
+    try:
+        site_tag = validate_site(args.site_tag)
+    except ValueError as err:
+        raise SystemExit(f"[error] {err}") from err
+    if site_tag is None:
+        print(
+            f"[warn] {SITE_ENV} not set: cycles are replayed and checked, but "
+            "none is committed",
+            file=sys.stderr,
+        )
+
     live_files = _live_files(args.live)
     state = (args.live if args.live.is_dir() else args.live.parent) / ".harvested-until"
     since = None
@@ -125,6 +151,7 @@ def main(argv: list[str] | None = None) -> int:
         live_files,
         args.corpus_dir,
         time_zone=args.time_zone if zone else None,
+        site=site_tag,
         since=since,
         max_new=args.max_new,
         max_corpus=args.max_corpus,
@@ -136,14 +163,27 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[info] violating cycles copied to {args.quarantine}")
 
     actuals_path = args.actuals
-    if zone is not None and actuals_path.exists():
+    actuals = (
+        json.loads(actuals_path.read_text(encoding="utf-8"))
+        if actuals_path.exists()
+        else None
+    )
+    if zone is not None and actuals is not None and site_of(actuals) is None:
+        print(
+            f"[info] {actuals_path} carries no site tag; no actuals day committed "
+            f"(set {SITE_ENV} and re-run scripts/collect_actuals.sh)"
+        )
+    elif zone is not None and actuals is not None:
+        # Only days covered by a committed cycle of the same installation.
+        actuals_site = site_of(actuals)
         written, incomplete = write_actuals_days(
-            json.loads(actuals_path.read_text(encoding="utf-8")),
+            actuals,
             args.actuals_dir,
-            result.horizon_days,
+            result.horizon_days(actuals_site),
             zone,
             dry_run=args.dry_run,
         )
+        print(f"actuals are from {describe_site(actuals_site)}")
         print(
             f"added actuals for {len(written)} day(s): "
             f"{', '.join(d.isoformat() for d in written) or '-'}"

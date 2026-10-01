@@ -47,6 +47,8 @@ Options:
 
 Settings come from ${ENV_FILE} (see .env.example):
   HA_URL, HA_TOKEN, TZ        for collect_actuals.sh
+  HSEM_BACKTEST_SITE          tag of this installation, written to every committed
+                              cycle and actuals file; without it nothing is committed
   HA_SSH_HOST                 Home Assistant host to scp the corpus from
   HA_SSH_PORT, HA_SSH_USER    default 22 and root
   HA_CORPUS_PATH              default /config/hsem-corpus.jsonl

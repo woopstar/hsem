@@ -30,6 +30,7 @@ from tests.backtest.replay import load_dump, load_planner_input
 
 _ZONE = ZoneInfo("Europe/Copenhagen")
 _SOURCE = CORPUS_DIR / "cycle-2026-09-14-1721.json"
+_SITE = "site-t"
 
 
 def _payload(minute: int = 21, soc: float | None = None) -> dict[str, Any]:
@@ -38,6 +39,7 @@ def _payload(minute: int = 21, soc: float | None = None) -> dict[str, Any]:
     payload["planner_input"]["now_iso"] = f"2026-09-14T17:{minute:02d}:09+02:00"
     payload["dump_timestamp"] = f"2026-09-14T17:{minute:02d}:30+02:00"
     payload["planner_input"].pop("time_zone", None)  # as a pre-#1169 dump
+    payload.pop("site", None)  # a live dump says nothing about where it is from
     if soc is not None:
         payload["planner_input"]["battery_soc_pct"] = soc
     return payload
@@ -56,13 +58,24 @@ def _live(tmp_path: Path, payloads: list[dict[str, Any]]) -> Path:
 
 class TestSlimPayload:
     def test_keeps_only_what_the_harness_reads(self) -> None:
-        slim, _ = slim_payload(load_dump(_SOURCE), "Europe/Copenhagen")
+        slim, _ = slim_payload(_payload(), "Europe/Copenhagen")
         assert set(slim) == {
             "hsem_version",
             "dump_timestamp",
             "planner_input",
             "apply_result",
         }
+
+    def test_writes_the_site_tag(self) -> None:
+        """Issue #1225: a committed cycle says which installation it is from."""
+        slim, _ = slim_payload(_payload(), "Europe/Copenhagen", _SITE)
+        assert slim["site"] == _SITE
+
+    def test_never_overwrites_a_recorded_site_tag(self) -> None:
+        payload = _payload()
+        payload["site"] = "site-other"
+        slim, _ = slim_payload(payload, "Europe/Copenhagen", _SITE)
+        assert slim["site"] == "site-other"
 
     def test_fills_a_missing_time_zone(self) -> None:
         slim, filled = slim_payload(_payload(), "Europe/Copenhagen")
@@ -123,15 +136,51 @@ class TestHarvest:
         corpus = tmp_path / "corpus"
         corpus.mkdir()
         result = harvest(
-            [_live(tmp_path, [_payload()])], corpus, time_zone="Europe/Copenhagen"
+            [_live(tmp_path, [_payload()])],
+            corpus,
+            time_zone="Europe/Copenhagen",
+            site=_SITE,
         )
         assert result.checked == 1
         assert [name for name, _ in result.added] == ["cycle-2026-09-14-1721.json"]
         written = corpus / "cycle-2026-09-14-1721.json"
         assert "planner_output" not in json.loads(written.read_text())
+        assert json.loads(written.read_text())["site"] == _SITE
         _, report = load_planner_input(written)
         assert report.is_faithful
-        assert date(2026, 9, 14) in result.horizon_days
+        assert date(2026, 9, 14) in result.horizon_days(_SITE)
+        assert result.horizon_days("site-other") == set()
+        assert result.horizon_days(None) == set()
+
+    def test_without_a_site_tag_nothing_is_committed(self, tmp_path: Path) -> None:
+        """Issue #1225: the cycle is still replayed and checked, not committed."""
+        corpus = tmp_path / "corpus"
+        corpus.mkdir()
+        result = harvest(
+            [_live(tmp_path, [_payload()])], corpus, time_zone="Europe/Copenhagen"
+        )
+        assert result.checked == 1
+        assert result.added == []
+        assert result.skipped["no site tag (set HSEM_BACKTEST_SITE)"] == 1
+        assert list(corpus.iterdir()) == []
+
+    def test_an_invalid_site_tag_is_refused(self, tmp_path: Path) -> None:
+        corpus = tmp_path / "corpus"
+        corpus.mkdir()
+        with pytest.raises(ValueError, match="invalid site tag"):
+            harvest(
+                [_live(tmp_path, [_payload()])],
+                corpus,
+                time_zone="Europe/Copenhagen",
+                site="Home of Somebody",
+            )
+
+    def test_committed_cycles_cover_days_per_installation(self) -> None:
+        """Issue #1225: the September 14 cycle does not ask for the home's actuals."""
+        result = harvest([], CORPUS_DIR, time_zone="Europe/Copenhagen", dry_run=True)
+        assert date(2026, 9, 15) in result.horizon_days("site-b")
+        assert date(2026, 9, 15) not in result.horizon_days("site-a")
+        assert date(2026, 9, 26) in result.horizon_days("site-a")
 
     def test_a_repeated_situation_is_not_committed(self, tmp_path: Path) -> None:
         corpus = tmp_path / "corpus"
@@ -140,6 +189,7 @@ class TestHarvest:
             [_live(tmp_path, [_payload(21), _payload(26)])],
             corpus,
             time_zone="Europe/Copenhagen",
+            site=_SITE,
         )
         assert len(result.added) == 1
         assert result.skipped["situation already covered"] == 1
@@ -150,6 +200,7 @@ class TestHarvest:
             [_live(tmp_path, [_payload(26)])],
             CORPUS_DIR,
             time_zone="Europe/Copenhagen",
+            site=_SITE,
             dry_run=True,
         )
         assert result.added == []
@@ -164,6 +215,7 @@ class TestHarvest:
             [_live(tmp_path, [_payload(21), _payload(26, soc=10.0)])],
             corpus,
             time_zone="Europe/Copenhagen",
+            site=_SITE,
             since=datetime.fromisoformat("2026-09-14T17:21:30+02:00"),
         )
         assert result.checked == 1
@@ -176,6 +228,7 @@ class TestHarvest:
             [_live(tmp_path, [_payload(21), _payload(26, soc=10.0)])],
             corpus,
             time_zone="Europe/Copenhagen",
+            site=_SITE,
             max_new=1,
         )
         assert len(result.added) == 1
@@ -191,6 +244,7 @@ class TestHarvest:
             [_live(tmp_path, [_payload(26, soc=10.0)])],
             corpus,
             time_zone="Europe/Copenhagen",
+            site=_SITE,
             max_corpus=1,
         )
         assert result.added == []
@@ -203,6 +257,7 @@ class TestHarvest:
             [_live(tmp_path, [_payload()])],
             corpus,
             time_zone="Europe/Copenhagen",
+            site=_SITE,
             dry_run=True,
         )
         assert len(result.added) == 1
@@ -224,7 +279,10 @@ class TestHarvest:
         payload = _payload()
         payload["apply_result"] = {"entity": "sensor.batteries_state_of_capacity"}
         result = harvest(
-            [_live(tmp_path, [payload])], corpus, time_zone="Europe/Copenhagen"
+            [_live(tmp_path, [payload])],
+            corpus,
+            time_zone="Europe/Copenhagen",
+            site=_SITE,
         )
         assert result.added == []
         assert result.skipped["contains an entity id"] == 1
@@ -243,6 +301,7 @@ class TestHarvest:
             [_live(tmp_path, [_payload()])],
             corpus,
             time_zone="Europe/Copenhagen",
+            site=_SITE,
             quarantine_dir=quarantine,
         )
         assert result.added == []
@@ -258,6 +317,7 @@ class TestHarvest:
             [_live(tmp_path, [_payload(21), _payload(26)])],
             corpus,
             time_zone="Europe/Copenhagen",
+            site=_SITE,
         )
         text = result.describe()
         assert "added 1 cycle(s)" in text
@@ -284,6 +344,7 @@ class TestActualsDays:
         return {
             "schema": ACTUALS_SCHEMA,
             "slot_minutes": 15,
+            "site": _SITE,
             "slot_energy_kwh": {s: [[t, 0.1] for t in stamps] for s in ENERGY_SERIES},
             "slot_values": {"battery_soc_pct": [[t, 50.0] for t in stamps]},
         }
@@ -299,6 +360,8 @@ class TestActualsDays:
         document = json.loads(path.read_text())
         assert document["day"] == "2026-09-15"
         assert document["time_zone"] == "Europe/Copenhagen"
+        assert document["site"] == _SITE
+        assert load_actuals(path).site_tag == _SITE
         assert len(load_actuals(path).energy_kwh["house_load"]) == 96
         assert committed_actuals([path]) == {day: path}
 
@@ -326,6 +389,15 @@ class TestActualsDays:
         )
         assert (written, incomplete) == ([], [])
         assert (tmp_path / "actuals-2026-09-15.json").read_text() == "{}"
+
+    def test_untagged_actuals_are_refused(self, tmp_path: Path) -> None:
+        """Issue #1225: a committed day must say which installation it is from."""
+        day = date(2026, 9, 15)
+        actuals = self._actuals(day, 96)
+        del actuals["site"]
+        with pytest.raises(ValueError, match="no site tag"):
+            write_actuals_days(actuals, tmp_path, [day], _ZONE)
+        assert not any(tmp_path.iterdir())
 
     def test_dry_run_writes_nothing(self, tmp_path: Path) -> None:
         day = date(2026, 9, 15)

@@ -5851,5 +5851,6 @@
       "Multi-day horizon (2 day(s)): confidence decay applied to PV estimates.",
       "Recommended price threshold: 0.0660 (battery depreciation)."
     ]
-  }
+  },
+  "site": "site-b"
 }

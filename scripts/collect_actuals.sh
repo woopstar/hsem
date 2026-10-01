@@ -7,6 +7,9 @@
 # in one pass so day boundaries are stitched.  Re-running is safe: a day that
 # was already downloaded is not fetched again.
 #
+# HSEM_BACKTEST_SITE (from .env) is written to the file as its site tag, which
+# says which installation the actuals are from (issue #1225).
+#
 # See docs/backtest-harness.md.
 
 set -euo pipefail

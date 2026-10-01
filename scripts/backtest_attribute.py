@@ -12,11 +12,16 @@ Usage::
 
     python3 scripts/backtest_attribute.py ~/hsem-actuals/actuals.json \\
         --corpus ~/hsem-actuals/corpus --day 2026-09-29
+
+Cycles and actuals are only compared when they carry the same site tag
+(issue #1225).  A live corpus carries none, so its cycles are taken to be from
+``$HSEM_BACKTEST_SITE`` (``--site-tag``), the tag the actuals were built with.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -31,8 +36,8 @@ from tests.backtest.actuals import load_actuals  # noqa: E402
 from tests.backtest.attribution import (  # noqa: E402
     DayAttribution,
     attribute_day,
-    cycles_by_slot,
     describe,
+    site_cycles_by_slot,
 )
 from tests.backtest.replay import (  # noqa: E402
     generous_solver_limit,
@@ -40,6 +45,7 @@ from tests.backtest.replay import (  # noqa: E402
     planner_input_from_dict,
 )
 from tests.backtest.scoring import SiteLimits, merge_actuals  # noqa: E402
+from tests.backtest.site import SITE_ENV, SITE_KEY, validate_site  # noqa: E402
 
 
 def _files(targets: list[str], patterns: tuple[str, ...]) -> list[Path]:
@@ -87,11 +93,23 @@ def main(argv: list[str] | None = None) -> int:
         "--tz",
         help="time zone that defines a day (default: the one the cycles record)",
     )
+    parser.add_argument(
+        "--site-tag",
+        default=os.environ.get(SITE_ENV),
+        help=(
+            "site tag assumed for cycles that carry none, as a live corpus "
+            f"does (default: ${SITE_ENV})"
+        ),
+    )
     args = parser.parse_args(argv)
 
-    actuals = merge_actuals(
-        [load_actuals(path) for path in _files(args.actuals, ("*.json",))]
-    )
+    try:
+        actuals = merge_actuals(
+            [load_actuals(path) for path in _files(args.actuals, ("*.json",))]
+        )
+        corpus_tag = validate_site(args.site_tag)
+    except ValueError as err:
+        raise SystemExit(f"[error] {err}") from err
     payloads: list[dict[str, Any]] = [
         payload
         for path in _files(args.corpus, ("*.json", "*.jsonl"))
@@ -99,6 +117,9 @@ def main(argv: list[str] | None = None) -> int:
     ]
     if not payloads:
         raise SystemExit("[error] the corpus holds no cycles")
+    if corpus_tag is not None:
+        for payload in payloads:
+            payload.setdefault(SITE_KEY, corpus_tag)
 
     zone_name = args.tz or next(
         (
@@ -115,11 +136,11 @@ def main(argv: list[str] | None = None) -> int:
     results: list[DayAttribution] = []
     with generous_solver_limit():
         for day in sorted(set(args.day)):
-            on_day = cycles_by_slot(payloads, day, zone, actuals.slot_minutes)
-            if not on_day:
-                result = DayAttribution(
-                    day=day, unscorable="no planner cycle was recorded on this day"
-                )
+            on_day = site_cycles_by_slot(
+                payloads, day, zone, actuals.slot_minutes, actuals.site_tag
+            )
+            if isinstance(on_day, str):
+                result = DayAttribution(day=day, unscorable=on_day)
             else:
                 # The limits come from a cycle of the day itself, so they
                 # describe the installation that recorded it.

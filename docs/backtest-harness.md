@@ -149,6 +149,9 @@ replayed.
 See `tests/backtest/corpus/README.md`. In short: read the dump before you
 commit it, and regenerate it through the current code so it round-trips.
 
+Every committed cycle carries a `site` tag that says which installation it was
+recorded on; see [Which installation a file is from](#which-installation-a-file-is-from).
+
 The committed corpus is a _sample_. A real collection run is roughly 2.6 MB/day
 and is nobody's business but yours, so keep it out of the repo and point the
 harness at it:
@@ -329,6 +332,7 @@ python3 scripts/build_actuals.py history-*.json \
 {
   "schema": "hsem-actuals-1",
   "slot_minutes": 15,
+  "site": "site-a",
   "slot_energy_kwh": {
     "pv_produced": [["2026-09-14T10:00:00+00:00", 1.02]],
     "house_load": [["2026-09-14T10:00:00+00:00", 0.31]],
@@ -346,7 +350,38 @@ python3 scripts/build_actuals.py history-*.json \
 `slot_energy_kwh` holds integrated per-slot energy; `slot_values` holds one
 scalar per slot. An unrecognised series name is reported and ignored rather
 than silently accepted. The `schema` tag is mandatory so a format change is
-loud.
+loud. `site` is optional and says which installation the file is from.
+
+### Which installation a file is from
+
+A planner input and a history export carry nothing that says where they were
+recorded. Until issue #1225 the harness paired cycles and actuals by date
+alone, and the committed sample paired a bug report's 10 kWh installation with
+the meters of a 15 kWh one.
+
+Both kinds of file therefore carry a **site tag**, the top-level `site` key:
+
+- `scripts/build_actuals.py` (and so `collect_actuals.sh`) writes
+  `HSEM_BACKTEST_SITE` from `.env` into the actuals file.
+- The harvest writes the same tag into every cycle it commits, and commits an
+  actuals day only when a committed cycle **with the same tag** covers it.
+  Without a tag it still replays and checks every cycle, but commits nothing.
+- `tests/backtest/site.py` holds the rule every comparison uses: two files
+  pair when their tags are equal. Two untagged files pair, so a private
+  collection from before the tag keeps working; an untagged file never pairs
+  with a tagged one.
+- `merge_actuals` refuses files with different tags, the attribution ignores
+  cycles of another installation exactly like cycles of another day, and
+  `test_committed_actuals.py` aligns only cycles and days of one installation.
+
+A live corpus on disk is untagged. `backtest_attribute.py` and the `--site`
+dump of `backtest_score.py` take an untagged dump to be from
+`HSEM_BACKTEST_SITE` (`--site-tag`), the tag the actuals were built with.
+
+The tag is committed to a public repository. It is a label that tells the
+installations of one collection apart, not an identity: lower-case letters,
+digits and hyphens, at most 32 characters. Which committed file is which is
+listed in `tests/backtest/corpus/README.md`.
 
 `battery_charged` / `battery_discharged` are optional but worth having: they
 measure what the battery actually did, instead of inferring it from SoC deltas
@@ -552,8 +587,12 @@ costs. PV is optional: without it the oracle cannot curtail.
 ### Which installation's limits
 
 The actuals carry no battery data, so the limits come from a recorded planner
-input: by default the newest committed cycle, or `--site <dump>`. They must be
-from the installation the actuals were recorded on. A mismatch shows up as a
+input: by default the newest committed cycle with the
+[site tag](#which-installation-a-file-is-from) of the actuals, or
+`--site <dump>`. They must be from the installation the actuals were recorded
+on: a `--site` dump with another tag is refused, and when no committed cycle
+carries the actuals' tag the script stops and asks for one. Between two
+untagged files nothing can be checked; there a mismatch only shows up as a
 "leave the configured capacity" note.
 
 ### What it does not measure

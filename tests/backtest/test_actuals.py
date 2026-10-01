@@ -111,6 +111,21 @@ class TestLoading:
         assert actuals.unknown_series == ("inverter_temperature",)
         assert "inverter_temperature" not in actuals.values
 
+    def test_the_site_tag_is_loaded(self, tmp_path: Path) -> None:
+        """Issue #1225: an actuals file says which installation it is from."""
+        payload = _payload(_slots(4))
+        payload["site"] = "site-a"
+        assert load_actuals(_write(tmp_path, payload)).site_tag == "site-a"
+
+    def test_a_file_without_a_site_tag_still_loads(self, tmp_path: Path) -> None:
+        assert load_actuals(_write(tmp_path, _payload(_slots(4)))).site_tag is None
+
+    def test_an_invalid_site_tag_is_refused(self, tmp_path: Path) -> None:
+        payload = _payload(_slots(4))
+        payload["site"] = "sensor.my_house"
+        with pytest.raises(ValueError, match="invalid site tag"):
+            load_actuals(_write(tmp_path, payload))
+
     def test_absent_buckets_load_as_empty(self, tmp_path: Path) -> None:
         path = _write(tmp_path, {"schema": ACTUALS_SCHEMA, "slot_minutes": 60})
         actuals = load_actuals(path)
@@ -598,6 +613,34 @@ class TestBuildActualsPayload:
         with pytest.raises(KeyError, match="unknown actuals series"):
             build_actuals_payload(
                 self._readings(), {"sensor.pv": "moon_phase"}, _START, 15
+            )
+
+    def test_the_site_tag_is_written_and_round_trips(self, tmp_path: Path) -> None:
+        """Issue #1225."""
+        payload = build_actuals_payload(
+            self._readings(),
+            {"sensor.pv": "pv_produced"},
+            _START + timedelta(hours=3),
+            15,
+            site="site-a",
+        )
+        assert payload["site"] == "site-a"
+        assert load_actuals(_write(tmp_path, payload)).site_tag == "site-a"
+
+    def test_no_site_tag_writes_no_key(self) -> None:
+        payload = build_actuals_payload(
+            self._readings(), {"sensor.pv": "pv_produced"}, _START, 15
+        )
+        assert "site" not in payload
+
+    def test_an_invalid_site_tag_is_not_written(self) -> None:
+        with pytest.raises(ValueError, match="invalid site tag"):
+            build_actuals_payload(
+                self._readings(),
+                {"sensor.pv": "pv_produced"},
+                _START,
+                15,
+                site="Elm Street 4",
             )
 
     def test_empty_readings_produce_an_empty_but_valid_payload(
