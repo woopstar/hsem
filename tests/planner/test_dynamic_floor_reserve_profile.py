@@ -703,7 +703,9 @@ class TestPlanFollowsTheDecliningReserve:
             95.0, interval_minutes=interval_minutes
         )
 
-        assert floor_pct > 70.0
+        # The bridge ends at the 02:00 cheap window (issue #1247): the evening's
+        # load, 41.8 % with hourly slots and 37.2 % from 21:30 at 15 minutes.
+        assert 30.0 < floor_pct < 45.0
         bridge = _bridge_slots(final)
         assert sum(s.batteries_discharged_kwh for s in bridge) > 5.0
         assert bridge[0].recommendation == _DISCHARGE
@@ -732,8 +734,8 @@ class TestPlanFollowsTheDecliningReserve:
         floor_pct, _profile, _reference, constant = _replan(95.0, with_profile=False)
 
         bridge = _bridge_slots(constant)
-        assert sum(s.grid_import_kwh for s in bridge) > 4.0
-        assert sum(s.grid_import_kwh for s in bridge if s.recommendation == _WAIT) > 2.0
+        # 95 % under a constant 37.2 %: 5.5 kWh usable for a 6.4 kWh night.
+        assert sum(s.grid_import_kwh for s in bridge) > 0.5
         assert min(s.estimated_battery_soc_pct for s in _future(constant)) >= (
             floor_pct - 0.01
         )
@@ -781,11 +783,19 @@ class TestPlanFollowsTheDecliningReserve:
 class TestCoordinatorFloorIsAboveTheHardwareFloor:
     """Issue #1221 through ``compute_dynamic_floor_from_plan``."""
 
-    @pytest.mark.parametrize("cutoff_pct", [100.0, 60.0])
+    @pytest.mark.parametrize(
+        ("cutoff_pct", "refill_type"),
+        [(100.0, "cheap_window"), (30.0, "grid_available")],
+    )
     def test_floor_is_the_reserve_on_top_of_the_hardware_floor(
-        self, cutoff_pct: float
+        self, cutoff_pct: float, refill_type: str
     ) -> None:
-        """The #1125 fixture at 21:30: a bridge of 6.42 kWh, 78.8 % (was 77.7 %)."""
+        """The #1125 fixture at 21:30: a bridge of 3.2 kWh to the 02:00 window.
+
+        Was 6.42 kWh to the surplus and 78.8 % before issue #1247.  With a
+        30 % cutoff the usable capacity is 2.5 kWh, the cycle cost per kWh
+        grows and the 0.15 night becomes an affordable refill (#1156).
+        """
         planner_input = replace(_planner_input(0.15, 1.0, 60), battery_soc_pct=95.0)
         reference = run_planner(planner_input)
         live = _live()
@@ -802,7 +812,7 @@ class TestCoordinatorFloorIsAboveTheHardwareFloor:
         )
 
         held_pct = diag["reserve_kwh"] * _MARGIN / _RATED_KWH * 100.0
-        assert diag["refill_type"] == "solar_surplus"
+        assert diag["refill_type"] == refill_type
         assert floor_pct == pytest.approx(
             min(_HARDWARE_FLOOR_PCT + held_pct, cutoff_pct), abs=0.01
         )
@@ -843,17 +853,21 @@ class TestBatteryBelowTheReserve:
     """The #1094 behaviour without moving the model origin."""
 
     def test_is_not_charged_to_reach_the_reserve(self) -> None:
-        """68 % under a 78.8 % reserve: nothing is bought to "reach" it."""
-        floor_pct, _profile, _reference, final = _replan(68.0)
+        """30 % under a 39 % reserve: nothing is bought to "reach" it."""
+        floor_pct, _profile, _reference, final = _replan(30.0)
         future = _future(final)
 
-        assert floor_pct > 68.0
+        assert floor_pct > 30.0
         assert future[0].batteries_charged_kwh == pytest.approx(0.0)
-        assert future[0].discharge_reserve_kwh <= 6.3 + 1e-9
-        # The live slot costs 0.19 and the night 0.15, so the battery serves
-        # it; the shortfall falls on the night (issue #1222).
-        assert future[0].batteries_discharged_kwh > 0.3
-        assert sum(s.batteries_discharged_kwh for s in _bridge_slots(final)) > 4.0
+        assert future[0].discharge_reserve_kwh <= 2.5 + 1e-9
+        # The evening bridge is 0.19 throughout, so the shortfall falls on
+        # its earliest slots and the battery serves the later ones (#1222);
+        # the morning peak is bought in the 0.15 window.
+        assert sum(s.batteries_discharged_kwh for s in _bridge_slots(final)) > 2.0
+        assert any(
+            s.recommendation == _CHARGE_GRID and 2 <= s.start.hour < 6
+            for s in _bridge_slots(final)
+        )
         _assert_invariants(final)
 
     def test_holds_while_dearer_slots_need_all_it_has(self) -> None:

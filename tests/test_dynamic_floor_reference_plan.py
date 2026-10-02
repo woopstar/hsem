@@ -823,11 +823,13 @@ class TestRealPlanner:
         assert _replan(night=0.03)[0] == pytest.approx(floor_pct)
 
     def test_quarter_hour_bridge_ends_at_the_plans_first_surplus(self) -> None:
-        """#1187: at 15-minute slots the bridge ends where the plan has surplus.
+        """#1187: at 15-minute slots the surplus is where the plan has it.
 
         Tomorrow's 07:00 hour has 0.2 kWh of PV against 0.7 kWh of load: a
         deficit.  Compared per slot against the unscaled hourly PV it looked
         like a surplus (0.2 > 0.175), so the bridge ended an hour early.
+        Since issue #1247 the floor's bridge ends at the 02:00 window, so the
+        surplus is checked on the bridge slots the scan reads.
         """
         floor_pct, diag, reference, _final = _replan(night=0.15, interval_minutes=15)
 
@@ -838,9 +840,21 @@ class TestRealPlanner:
             and s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh < -1e-9
         )
         assert first_surplus == _MIDNIGHT + timedelta(days=1, hours=8)
-        assert diag["refill_type"] == "solar_surplus"
-        assert diag["next_refill_slot"] == first_surplus.isoformat()
-        assert floor_pct > _LIVE_SOC_PCT
+        bridge_slots = build_dynamic_floor_bridge_slots(
+            _hourly_recommendations(1.0, 15), reference
+        )
+        first_bridge_surplus = next(
+            s.start
+            for s in bridge_slots
+            if s.end > _NOW and s.estimated_net_consumption_kwh < -1e-9
+        )
+        assert first_bridge_surplus == first_surplus
+        assert diag["refill_type"] == "cheap_window"
+        assert (
+            diag["next_refill_slot"]
+            == (_MIDNIGHT + timedelta(days=1, hours=2)).isoformat()
+        )
+        assert _HARDWARE_FLOOR_PCT < floor_pct < _LIVE_SOC_PCT
 
     def test_quarter_hour_cheap_night_still_releases_the_floor(self) -> None:
         """#1187 does not undo #1156: a cheap night releases at 15 minutes too."""
@@ -854,35 +868,38 @@ class TestRealPlanner:
             reference.plan_cost.total_cost, abs=0.01
         )
 
-    def test_moderate_night_keeps_the_solar_bridge_and_is_stable(self) -> None:
-        """A 0.15 night is not refilled from the grid: pre-#1140 floor, no flip."""
+    def test_moderate_night_ends_the_bridge_at_the_window_and_is_stable(
+        self,
+    ) -> None:
+        """A 0.15 night is no affordable refill, but it is the cheap window
+        the bridge ends at (issue #1247): the evening is reserved, the slots
+        behind the window are not, and the floor does not flip."""
         first = _replan(night=0.15)
         second = _replan(night=0.15)
 
-        floor_pct, diag, _reference, final = first
-        # Tomorrow's 0.12 day is cheaper, so the 0.15 night is no cheap refill.
+        floor_pct, diag, reference, final = first
+        # Tomorrow's 0.12 day is cheaper, so the 0.15 night is no cheap refill
+        # (#1156) and the reserve is not released ...
         assert diag["cheap_refill_price"] < 0.15
-        assert diag["refill_type"] == "solar_surplus"
-        assert floor_pct > _LIVE_SOC_PCT
-        # The reserve is above the battery.  The 0.19 evening is dearer than
-        # the 0.15 night, so the battery serves the live slot and takes the
-        # shortfall in the night (issue #1222) instead of holding now.
-        live_slot = next(s for s in final.slots if s.start <= _NOW < s.end)
-        assert live_slot.batteries_discharged_kwh > 0.3
-        # It follows its reserve (issue #1188) instead of holding until
-        # morning, and never ends a slot below it.
-        assert _evening_discharge_kwh(final) > 2.0
-        for slot in final.slots:
-            if slot.end > _NOW:
-                assert (
-                    slot.estimated_battery_capacity_kwh
-                    >= slot.discharge_reserve_kwh - 1e-3
-                )
-        # Deterministic per replan: the committed plan never feeds back.
-        assert second[0] == pytest.approx(floor_pct)
-        assert _evening_discharge_kwh(second[3]) == pytest.approx(
-            _evening_discharge_kwh(final)
+        assert diag["refill_type"] == "cheap_window"
+        assert (
+            diag["next_refill_slot"]
+            == (_MIDNIGHT + timedelta(days=1, hours=2)).isoformat()
         )
+        # ... but the bridge is the evening only: below the 68 % battery.
+        assert _HARDWARE_FLOOR_PCT < floor_pct < _LIVE_SOC_PCT
+        assert diag["reserve_kwh"] == pytest.approx(
+            sum(
+                s.avg_house_consumption_kwh - s.solcast_pv_estimate_kwh
+                for s in reference.slots
+                if s.end > _NOW and s.start < _MIDNIGHT + timedelta(days=1, hours=2)
+            ),
+            abs=0.01,
+        )
+        live_slot = next(s for s in final.slots if s.start <= _NOW < s.end)
+        assert live_slot.recommendation == Recommendations.BatteriesDischargeMode.value
+        assert second[0] == pytest.approx(floor_pct)
+        assert second[1] == diag
 
 
 # ---------------------------------------------------------------------------

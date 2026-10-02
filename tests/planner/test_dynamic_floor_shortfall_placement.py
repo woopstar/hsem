@@ -43,6 +43,7 @@ from tests.test_dynamic_floor_reference_plan import (
 
 _WAIT = Recommendations.BatteriesWaitMode.value
 _DISCHARGE = Recommendations.BatteriesDischargeMode.value
+_CHARGE_GRID = Recommendations.BatteriesChargeGrid.value
 
 
 # ---------------------------------------------------------------------------
@@ -233,27 +234,37 @@ def _assert_shortfall_is_on_the_cheapest_slots(bridge: list[PlannedSlot]) -> Non
 
 @pytestmark_planner
 class TestFullBatteryUnderALongBridge:
-    """17:00 on day 1: a 15-hour bridge asks for more than the battery holds."""
+    """17:00 on day 1: the evening peak bridges to the 21:00 cheap window.
+
+    Before issue #1247 the bridge ran 15 hours to the surplus and asked for
+    more than the battery holds; the evening's four 0.25 hours are 3.0 kWh.
+    """
 
     _NOW = _MIDNIGHT + timedelta(days=1, hours=17)
 
     def test_a_full_battery_is_not_held_at_the_evening_peak(self) -> None:
-        """Before: ``batteries_wait_mode`` and 0.6 kWh imported at 0.25."""
+        """Before #1222: ``batteries_wait_mode`` and 0.6 kWh imported at 0.25."""
         floor_pct, diag, final = _replan(self._NOW, 100.0)
         live_slot = next(s for s in final.slots if s.start <= self._NOW < s.end)
 
-        assert diag["refill_type"] == "solar_surplus"
-        # The reserve is more than the battery holds; the floor says "all of it".
-        assert diag["reserve_kwh"] * 1.15 > 9.5
-        assert floor_pct == pytest.approx(100.0)
+        assert diag["refill_type"] == "cheap_window"
+        assert (
+            diag["next_refill_slot"]
+            == (_MIDNIGHT + timedelta(days=1, hours=21)).isoformat()
+        )
+        # Four 0.8 kWh hours less the 0.2 kWh of PV at 17:00.
+        assert diag["reserve_kwh"] == pytest.approx(3.0, abs=0.05)
+        assert _HARDWARE_FLOOR_PCT < floor_pct < 50.0
         assert live_slot.price.import_price == pytest.approx(0.25)
         assert live_slot.recommendation == _DISCHARGE
         assert live_slot.batteries_discharged_kwh > 0.5
         assert live_slot.grid_import_kwh == pytest.approx(0.0, abs=0.01)
 
     def test_the_house_imports_at_the_cheapest_bridge_prices(self) -> None:
-        _floor, diag, final = _replan(self._NOW, 100.0)
+        """20 %: 1.5 kWh for a 3.0 kWh evening of equal prices."""
+        floor_pct, diag, final = _replan(self._NOW, 20.0)
 
+        assert floor_pct > 20.0
         _assert_shortfall_is_on_the_cheapest_slots(_bridge(final, self._NOW, diag))
 
     def test_the_reserve_is_still_a_bound_nothing_is_charged_for_it(self) -> None:
@@ -272,55 +283,56 @@ class TestFullBatteryUnderALongBridge:
 
 @pytestmark_planner
 class TestBatteryBelowTheReserveInTheEvening:
-    """The #1125 evening: 68 % at 21:00 under a 78.8 % floor, 0.19 now, 0.15 night."""
+    """The #1125 evening: 30 % at 21:00 under a 41.8 % floor, 0.19 to the window.
+
+    Before issue #1247 the bridge ran to the surplus (78.8 %) and a 68 %
+    battery was below it; now it ends at the 02:00 cheap window, and the
+    reserve is the five equally priced 0.19 evening hours (3.2 kWh).
+    """
 
     _NOW = _MIDNIGHT + timedelta(hours=21)
 
-    def test_the_evening_is_served_and_the_night_imports(self) -> None:
-        """Before: held at 21:00 (import at 0.19), then spent on the 0.15 night."""
-        floor_pct, diag, final = _replan(self._NOW, 68.0)
-        live_slot = next(s for s in final.slots if s.start <= self._NOW < s.end)
+    def test_the_shortfall_falls_on_the_earliest_of_equal_prices(self) -> None:
+        """2.4 kWh for 3.2 kWh: the first evening hours import, the later ones
+        are served, nothing imports while a later cheaper slot is served."""
+        floor_pct, diag, final = _replan(self._NOW, 30.0)
+        bridge = _bridge(final, self._NOW, diag)
 
-        assert floor_pct > 68.0
-        assert live_slot.recommendation == _DISCHARGE
-        assert live_slot.grid_import_kwh == pytest.approx(0.0, abs=0.01)
+        # The plan buys for the peak at 02:00, the window's first slot, so the
+        # refill is credited there with its own label; the bridge is the same.
+        assert diag["refill_type"] in {"grid_charge", "cheap_window"}
+        assert (
+            diag["next_refill_slot"]
+            == (_MIDNIGHT + timedelta(days=1, hours=2)).isoformat()
+        )
+        assert floor_pct > 30.0
+        assert all(s.price.import_price == pytest.approx(0.19) for s in bridge)
+        _assert_shortfall_is_on_the_cheapest_slots(bridge)
+        assert sum(s.batteries_discharged_kwh for s in bridge) > 2.0
+
+    def test_the_morning_peak_is_bought_in_the_window(self) -> None:
+        """20 %: the evening goes short, the peak is bought at 0.15 and served."""
+        floor_pct, diag, final = _replan(self._NOW, 20.0)
+        window = [
+            s
+            for s in final.slots
+            if s.end > self._NOW
+            and 2 <= s.start.hour < 6
+            and s.start.day != self._NOW.day
+        ]
+        peak = [
+            s
+            for s in final.slots
+            if s.end > self._NOW
+            and 6 <= s.start.hour < 9
+            and s.start.day != self._NOW.day
+        ]
+
+        assert floor_pct > 20.0
         _assert_shortfall_is_on_the_cheapest_slots(_bridge(final, self._NOW, diag))
-
-    def test_the_morning_peak_and_the_evening_are_served_before_the_night(
-        self,
-    ) -> None:
-        """55 %: 5 kWh for a 7.4 kWh reserve; the four 0.15 hours go short."""
-        floor_pct, diag, final = _replan(self._NOW, 55.0)
-        bridge = _bridge(final, self._NOW, diag)
-
-        assert floor_pct > 55.0
-        for slot in bridge:
-            if slot.price.import_price > 0.18:
-                assert slot.grid_import_kwh == pytest.approx(0.0, abs=0.01)
-                assert slot.batteries_discharged_kwh > 0.4
-        night = [s for s in bridge if s.price.import_price < 0.16]
-        assert len(night) == 4
-        assert sum(s.grid_import_kwh for s in night) > 1.5
-        # The battery waits in the night with what the 0.25 morning needs:
-        # (0.70 + 0.52) kWh of net load × the 1.15 margin.
-        assert sum(s.recommendation == _WAIT for s in night) >= 3
-        assert night[-1].discharge_reserve_kwh == pytest.approx(1.403, abs=0.01)
-
-    def test_a_flat_priced_bridge_keeps_the_time_order(self) -> None:
-        """25 %: the plan refills at 02:00 and every slot before it costs 0.19.
-
-        With nothing to choose between, the first slot goes short, as before.
-        """
-        floor_pct, diag, final = _replan(self._NOW, 25.0)
-        bridge = _bridge(final, self._NOW, diag)
-
-        assert diag["refill_type"] == "grid_charge"
-        assert floor_pct > 25.0
-        assert {round(s.price.import_price, 6) for s in bridge} == {0.19}
-        assert bridge[0].recommendation == _WAIT
-        assert bridge[0].batteries_discharged_kwh == pytest.approx(0.0, abs=1e-6)
-        assert bridge[0].discharge_reserve_kwh == pytest.approx(2.0, abs=1e-6)
-        assert sum(s.batteries_discharged_kwh for s in bridge[2:]) > 1.5
+        assert any(s.recommendation == _CHARGE_GRID for s in window)
+        assert sum(s.batteries_discharged_kwh for s in peak) > 1.0
+        assert all(s.grid_import_kwh == pytest.approx(0.0, abs=0.01) for s in peak)
 
 
 @pytestmark_planner
