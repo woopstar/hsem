@@ -79,13 +79,18 @@ def _wait_mode_self_consumption_cap_w(
     return max_discharge_power_w
 
 
-def _is_positive_finite_number(value: object) -> bool:
-    """Return whether a value is a finite, positive non-boolean number."""
+#: A live EV power reading at or below this is the charger's own standby
+#: draw, not a charging session (issue #1251).
+EV_STANDBY_POWER_W = 50.0
+
+
+def _is_finite_number_above(value: object, threshold: float) -> bool:
+    """Return whether a value is a finite non-boolean number above ``threshold``."""
     return (
         isinstance(value, (int, float))
         and not isinstance(value, bool)
         and math.isfinite(float(value))
-        and float(value) > 1e-9
+        and float(value) > threshold
     )
 
 
@@ -99,11 +104,16 @@ def _ev_is_active_or_planned(
     Broader than "is charging right now": a positive planned command means
     HSEM is about to command this charger, so its discharge permission must
     already be enforced before the hardware catches up (issue #797).
+
+    A live power reading counts only above ``EV_STANDBY_POWER_W``.  An idle
+    charger's electronics draw a few watts; read as a session, that draw held
+    the Huawei discharge cap at 0 W in every slot for an EV without the
+    discharge permission (issue #1251).
     """
     return (
         ev.is_charging
-        or _is_positive_finite_number(ev.power_w)
-        or _is_positive_finite_number(planned_power_w)
+        or _is_finite_number_above(ev.power_w, EV_STANDBY_POWER_W)
+        or _is_finite_number_above(planned_power_w, 1e-9)
     )
 
 

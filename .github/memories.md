@@ -2124,6 +2124,18 @@ Test: `tests/test_coordinator_tracking_solar_corrector.py::test_restored_solar_c
 
 Tests: `tests/test_discharge_mode_cap_oscillation.py` (16 tests: `_primary_battery_cap_hold()` unit coverage including the `ev_smart_charging` relabel and wait-mode cases; no 0 W write on a near-zero discharge slot; a hardware cap left at 0 W restored to rated max; the slot still runs `MaximizeSelfConsumption`; an 8-cycle replay of the reporter's timeline with the solved discharge flipping across the materiality boundary asserting **exactly one** cap write; and precedence regressions for unpermitted EV, permitted-EV rate cap, SoC reserve guard, solar-charge-only, and a genuine held Wait slot). Like #939's tests these assert the exact list of writes to the entity, not just the final value — the pre-fix behaviour passes a final-value-only assertion.
 
+## An Idle EV Charger's Standby Draw Held the Discharge Cap at 0 W (issue #1251)
+
+**Bug, reported on 6.3.10 as "the #941/#984 issue is back":** `batteries_discharge_mode`, a planned discharge, and HSEM still wrote `Maximum discharging power` back to 0 W every cycle. It is neither of those two. `applier_caps._ev_is_active_or_planned()` counted any positive `live.ev.power_w` as an active EV, and the reporter's idle charger reads 4 W. An EV without `force_max_discharge_power` then takes the "Huawei discharge disabled while EV active/planned" branch, which is 0 W whatever the slot's label or planned energy. The bug dates from #806 (issue #797, first stable release 6.3.0) and stayed hidden while the reporter's evenings were held in `batteries_wait_mode` by the dynamic floor (#1125, #1227), where the cap is 0 W anyway.
+
+**Rule:** a live EV power reading is a session only above `EV_STANDBY_POWER_W` (50 W, `applier_caps.py`). `live.ev.is_charging` and a positive planned charger command still make the EV relevant on their own, so a session that has not ramped up yet and a command HSEM is about to send are both still gated (#797).
+
+**Known gap:** a charger with no status entity whose power sensor reports kW without a `kW` unit reads as 1.4-22 "W" and is no longer recognised by its draw. `normalize_ev_power_w()` only warns about that while the charging flag is set.
+
+**Triage:** for a "0 W in a discharge slot" report, read the applier's debug line first: it names the cap reason. Then check the EV power entity's idle reading and the EV's discharge permission before looking at the planner.
+
+Tests: `tests/test_ev_standby_power_discharge_cap.py`.
+
 ## Entity Gating Needs a Targeted Reload, Never a Blanket One (issue #1139)
 
 **Entity creation is gated at platform setup (issue #859).** `switch.py`, `number.py`, `time.py` and `sensor.py` only create EV/OCPP entities when `hsem_ev_planned_load_enabled`, `hsem_ev_second_planned_load_enabled`, `hsem_ocpp_enabled` or `hsem_ocpp_second_enabled` is on. The options update listener used to only call `coordinator.async_options_updated()`, so flipping one of these in the options flow left the entity set unchanged until a manual reload (reported on 6.3.7 in #1120).
