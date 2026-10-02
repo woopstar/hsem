@@ -2388,7 +2388,7 @@ battery and every EV. `EVConfig.force_max_discharge_power` /
 they never create discharge on their own.
 
 When any EV is charging or about to be commanded (`live.ev.is_charging`, a
-positive live EV power reading, or a positive planned
+live EV power reading above the standby threshold, or a positive planned
 `ev_charger_calculated_power`/`ev_second_charger_calculated_power`), the
 applier (`applier._planned_ev_discharge_cap_w()` +
 `applier_caps._ev_is_active_or_planned()`) gates `maximum_discharging_power`:
@@ -2403,6 +2403,14 @@ applier (`applier._planned_ev_discharge_cap_w()` +
   over the slot duration), clamped to the hardware maximum and to every
   opted-in EV's configured ceiling — never more than what the plan and the
   user's configuration both allow.
+
+**Standby threshold (issue #1251)**: a live EV power reading counts as a
+session only above `applier_caps.EV_STANDBY_POWER_W` (50 W). An idle
+charger's electronics draw a few watts; read as a session, that draw kept
+the cap at 0 W in every slot for an EV without the permission, including a
+`batteries_discharge_mode` slot with a planned discharge. The charging flag
+and a planned command are not subject to the threshold: either one makes the
+EV relevant at any power reading.
 
 **Primary battery hold**: independent of any EV, when the solved plan
 scheduled neither charge nor discharge for the primary battery this slot
