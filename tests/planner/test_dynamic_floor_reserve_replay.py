@@ -41,6 +41,8 @@ _TZ = timezone(timedelta(hours=3))
 _DAY0 = datetime(2026, 9, 28, tzinfo=_TZ)
 _START = _DAY0.replace(hour=21)
 _REFILL = _DAY0 + timedelta(days=1, hours=8)
+#: The 0.15 night from 02:00: the cheap window the bridge ends at (#1247).
+_WINDOW = _DAY0 + timedelta(days=1, hours=2)
 _RATED_KWH = 10.0
 _HARDWARE_FLOOR_PCT = 5.0
 _PEAK_PRICE = 0.25
@@ -185,6 +187,17 @@ def constant_run() -> _Replay:
     return _replay(68.0, 24, with_profile=False)
 
 
+@pytest.fixture(scope="module")
+def shortfall_run() -> _Replay:
+    """24 hourly replans from 21:00 at 30 %: below the evening's reserve."""
+    return _replay(30.0, 24, with_profile=True)
+
+
+def _evening_bridge(run: _Replay) -> list[int]:
+    """Return the replan indices before the 02:00 cheap window (issue #1247)."""
+    return [i for i, start in enumerate(run.starts) if start < _WINDOW]
+
+
 def _first_bridge(run: _Replay) -> list[int]:
     """Return the replan indices before the first night's solar refill."""
     return [i for i, start in enumerate(run.starts) if start < _REFILL]
@@ -205,22 +218,49 @@ class TestClosedLoop:
         Exact within a calendar day.  At midnight tomorrow's PV becomes
         today's and loses its 10 % confidence decay, which shortens the bridge
         by 0.02 kWh (0.24 points); that is the forecast moving, not the floor.
+        The one exception is the step a night can have (issue #1247): the
+        profile is the minimum from the cheap window on, and the replan at
+        06:00, where the window has ended, bridges the flat 0.25 peak to the
+        surplus on its own.
         """
         bridge = _first_bridge(profile_run)
 
         assert len(bridge) == 11
+        steps = []
         for prev, cur in zip(bridge, bridge[1:]):
             start = profile_run.starts[cur]
             predicted = profile_run.profiles[prev][start.isoformat()]
             tolerance = 0.3 if start.hour == 0 else 1e-6
-            assert profile_run.floors[cur] == pytest.approx(predicted, abs=tolerance)
+            actual = profile_run.floors[cur]
+            if predicted == pytest.approx(_HARDWARE_FLOOR_PCT) and actual > predicted:
+                steps.append(start)
+                continue
+            assert actual == pytest.approx(predicted, abs=tolerance)
+        assert steps == [_DAY0 + timedelta(days=1, hours=6)]
 
     def test_floor_declines_through_the_night(self, profile_run: _Replay) -> None:
-        floors = [profile_run.floors[i] for i in _first_bridge(profile_run)]
+        """The evening bridge declines to the window, the window is released,
+        the flat peak after it bridges to the surplus (issue #1247)."""
+        evening = [profile_run.floors[i] for i in _evening_bridge(profile_run)]
+        window = [
+            profile_run.floors[i]
+            for i, start in enumerate(profile_run.starts)
+            if _WINDOW <= start < _WINDOW + timedelta(hours=4)
+        ]
+        peak = [
+            profile_run.floors[i]
+            for i, start in enumerate(profile_run.starts)
+            if _WINDOW + timedelta(hours=4) <= start < _REFILL
+        ]
 
-        assert floors[0] > 68.0
-        assert all(a > b for a, b in zip(floors, floors[1:]))
-        assert profile_run.floors[len(floors)] == pytest.approx(_HARDWARE_FLOOR_PCT)
+        assert evening[0] == pytest.approx(41.8, abs=0.1)
+        assert all(a > b for a, b in zip(evening, evening[1:]))
+        assert window == pytest.approx([_HARDWARE_FLOOR_PCT] * 4)
+        assert peak[0] > _HARDWARE_FLOOR_PCT
+        assert all(a > b for a, b in zip(peak, peak[1:]))
+        assert profile_run.floors[len(evening) + 6] == pytest.approx(
+            _HARDWARE_FLOOR_PCT
+        )
 
     def test_executed_soc_never_ends_a_slot_below_its_reserve(
         self, profile_run: _Replay
@@ -242,28 +282,33 @@ class TestClosedLoop:
             assert soc_after >= end_reserve - 0.02
 
     def test_battery_serves_the_evening_and_imports_in_the_night(
-        self, profile_run: _Replay
+        self, shortfall_run: _Replay
     ) -> None:
         """Below the reserve, the shortfall falls on the cheapest slots (#1222).
 
-        Before, the battery was held for the first slot (0.8 kWh imported at
-        0.19) and then followed the reserve down.
+        At 30 % the battery holds 2.4 kWh against a 3.2 kWh evening bridge
+        of equally priced 0.19 slots, so the earliest of them import and the
+        later ones are served; the morning peak is bought in the window.
         """
-        bridge = _first_bridge(profile_run)
+        evening = _evening_bridge(shortfall_run)
+        window = [
+            i
+            for i, start in enumerate(shortfall_run.starts)
+            if _WINDOW <= start < _WINDOW + timedelta(hours=4)
+        ]
 
-        assert profile_run.floors[0] > profile_run.socs[0]
-        assert profile_run.discharged[0] > 0.5
-        assert profile_run.imported[0] == pytest.approx(0.0, abs=0.01)
-        assert sum(profile_run.discharged[i] for i in bridge) > 5.0
-        assert sum(profile_run.discharged[i] > 0.4 for i in bridge) >= 9
-        # What is imported is imported at the night's 0.15, the bridge's
-        # cheapest price, and it is no more than the shortfall plus one slot.
+        assert shortfall_run.floors[0] > shortfall_run.socs[0]
+        imported = [i for i in evening if shortfall_run.imported[i] > 0.05]
+        served = [i for i in evening if shortfall_run.discharged[i] > 0.05]
+        assert imported and served
+        assert max(imported) <= min(served)
         assert all(
-            profile_run.prices[i] == pytest.approx(0.15)
-            for i in bridge
-            if profile_run.imported[i] > 0.05
+            shortfall_run.prices[i] == pytest.approx(0.19) for i in imported + served
         )
-        assert sum(profile_run.imported[i] for i in bridge) < 1.7
+        assert sum(shortfall_run.discharged[i] for i in evening) > 2.0
+        assert any(
+            shortfall_run.recommendations[i] == "batteries_charge_grid" for i in window
+        )
 
     def test_constant_floor_held_much_longer(
         self, profile_run: _Replay, constant_run: _Replay
@@ -272,7 +317,7 @@ class TestClosedLoop:
         bridge = _first_bridge(constant_run)
 
         assert sum(constant_run.imported[i] for i in bridge) > (
-            sum(profile_run.imported[i] for i in bridge) + 1.0
+            sum(profile_run.imported[i] for i in bridge) + 0.5
         )
 
     def test_realised_cash_is_not_worse_than_the_constant_floor(

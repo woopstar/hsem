@@ -62,28 +62,22 @@ class TestTheFloorInsideTheChargeWindow:
         )
         return soc_pct, floor_pct, diag, with_floor, released
 
-    def test_the_floor_is_the_minimum_or_the_bridge_to_the_surplus(
+    def test_the_floor_is_the_minimum_whether_or_not_the_plan_charges(
         self, replan: _Replan
     ) -> None:
-        """A charge in the live slot releases it; no charge bridges the night."""
+        """The live slot is the cheap window's; a charge in it keeps its label."""
         _soc_pct, floor_pct, diag, _with_floor, _released = replan
 
-        if diag["refill_type"] == "grid_charge":
-            assert diag["next_refill_slot"] == _IN_THE_WINDOW.isoformat()
-            assert floor_pct == pytest.approx(_HARDWARE_FLOOR_PCT)
-        else:
-            assert diag["refill_type"] == "solar_surplus"
-            assert (
-                diag["next_refill_slot"]
-                == (_MIDNIGHT + timedelta(days=1, hours=8)).isoformat()
-            )
-            assert floor_pct > 25.0
+        assert diag["refill_type"] in {"grid_charge", "cheap_window"}
+        assert diag["next_refill_slot"] == _IN_THE_WINDOW.isoformat()
+        assert diag["reserve_kwh"] == pytest.approx(0.0)
+        assert floor_pct == pytest.approx(_HARDWARE_FLOOR_PCT)
 
-    def test_the_battery_is_below_the_bridge_reserve(self, replan: _Replan) -> None:
-        soc_pct, floor_pct, diag, _with_floor, _released = replan
+    def test_the_floor_does_not_depend_on_the_soc(self, replan: _Replan) -> None:
+        soc_pct, floor_pct, _diag, _with_floor, _released = replan
 
-        if diag["refill_type"] == "solar_surplus":
-            assert soc_pct < floor_pct
+        assert floor_pct < soc_pct
+        assert floor_pct == pytest.approx(_HARDWARE_FLOOR_PCT)
 
     def test_the_plan_costs_the_same_either_way(self, replan: _Replan) -> None:
         """The reserve the bridge asks for costs nothing: the plan already keeps

@@ -292,8 +292,11 @@ class TestWhyTheEvCaseKeepsTheTarget:
         # The scan reads that grid charge as the refill and releases the floor.
         assert diag["refill_type"] == "grid_charge"
         assert with_target == pytest.approx(_HARDWARE_FLOOR_PCT)
-        assert diag_off["refill_type"] == "solar_surplus"
-        assert without_target > 40.0
+        # Without the target the live slot is a cheap window (issue #1247),
+        # so the floor is the same; before #1247 this day bridged to the
+        # surplus at 41.5 %.  The split is still real, so the target stays.
+        assert diag_off["refill_type"] == "cheap_window"
+        assert without_target == pytest.approx(_HARDWARE_FLOOR_PCT)
 
     def test_so_the_reference_solve_keeps_the_target_for_it(self) -> None:
         _now, planner_input = _random_day(_EV_COUNTEREXAMPLE_SEED, deadline_ev=True)

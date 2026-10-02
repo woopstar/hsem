@@ -202,6 +202,48 @@ def _planned_grid_charges(
     return credits
 
 
+def _cheap_window_slots(future: list, cycle_cost_per_kwh: float) -> frozenset[int]:
+    """Return the indices of the slots where the plan can refill for the dearer slots behind them.
+
+    Inside a cheap window the reference plan's last small grid charge comes
+    and goes with the live SoC, and with it the floor flipped between the
+    configured minimum (a charge credited to the live slot) and the bridge to
+    the solar surplus (issue #1238).  Whether the plan *does* buy depends on
+    the SoC; whether it *can* does not (issue #1247).  A slot is part of a
+    cheap window when its import price is within one battery cycle cost of
+    the cheapest price from that slot to the next solar surplus, and the
+    prices of that remaining bridge spread by more than the cycle cost: the
+    plan can buy there for the slots behind it that cost more.  With flat
+    prices nothing is cheaper to buy now than to import later, so a flat
+    bridge keeps its reserve, and so does a cheap tail with nothing dearer
+    behind it.
+
+    Args:
+        future: Chronological look-ahead slots, the live slot first.
+        cycle_cost_per_kwh: Battery wear per kWh of throughput.
+
+    Returns:
+        Indices into *future* of the cheap-window slots before the first
+        solar surplus; empty when no slot has a price.
+    """
+    bridge: list[float] = []
+    for slot in future:
+        if (getattr(slot, "estimated_net_consumption_kwh", 0.0) or 0.0) < -1e-9:
+            break
+        bridge.append(getattr(slot, "import_price", math.nan))
+    tolerance = _cycle_cost_tolerance(cycle_cost_per_kwh)
+    cheap: set[int] = set()
+    lowest, highest = math.inf, -math.inf
+    for index in range(len(bridge) - 1, -1, -1):
+        price = bridge[index]
+        if not math.isfinite(price):
+            continue
+        lowest, highest = min(lowest, price), max(highest, price)
+        if highest - lowest > tolerance + 1e-9 and price <= lowest + tolerance + 1e-9:
+            cheap.add(index)
+    return frozenset(cheap)
+
+
 class _BridgeScan(NamedTuple):
     """Result of one walk from now to the next refill.
 
@@ -231,6 +273,7 @@ def _scan_bridge(
     planned_charges: list[float],
     cheap_price: float | None,
     max_grid_charge_kw: float,
+    cheap_window: frozenset[int] = frozenset(),
 ) -> _BridgeScan:
     """Walk *future* to the first refill and total the energy bridged.
 
@@ -247,6 +290,12 @@ def _scan_bridge(
     covering total is a ``grid_available`` refill (issue #1156).  A planned
     charge in a slot that is not affordable ends this scan too.
 
+    A slot in *cheap_window* (see :func:`_cheap_window_slots`) ends the
+    bridge like a planned charge, as a ``cheap_window`` refill with the
+    consumption before it as the reserve, whether or not the plan charges
+    there (issue #1247).  A planned charge in the same slot is read first and
+    keeps its label.
+
     Args:
         future: Chronological look-ahead slots.
         planned_charges: The reference plan's grid charge credited to each
@@ -254,6 +303,7 @@ def _scan_bridge(
         cheap_price: Affordable-refill threshold from
             :func:`cheap_refill_price`, or ``None``.
         max_grid_charge_kw: Battery charge power limit (kW).
+        cheap_window: Indices into *future* of the cheap-window slots.
 
     Returns:
         The refill slot and type (``None`` / ``"none"`` when no refill is
@@ -265,7 +315,7 @@ def _scan_bridge(
     grid_charge = 0.0
     hours = 0.0
     deltas: list[float] = []
-    for s, planned in zip(future, planned_charges, strict=True):
+    for index, (s, planned) in enumerate(zip(future, planned_charges, strict=True)):
         slot_hours = slot_duration_hours(s.start, s.end)
 
         net = getattr(s, "estimated_net_consumption_kwh", 0.0) or 0.0
@@ -305,6 +355,14 @@ def _scan_bridge(
             deltas.append(0.0)
             hours += slot_hours
             continue
+
+        # A cheap-window slot is where the plan can refill for the dearer
+        # slots behind it, whether or not it does; the bridge ends there
+        # (issue #1247).  A planned charge in the same slot was read first.
+        if index in cheap_window:
+            return _BridgeScan(
+                s, "cheap_window", consumption, solar, False, hours, tuple(deltas)
+            )
 
         # Regular consumption slot.
         if net > 1e-9:
@@ -473,6 +531,9 @@ class DynamicDischargeFloor:
         2. A refill slot is one of:
            - Solar surplus (net_consumption_kwh < 0)
            - The first slot a planned grid charge is credited to
+           - The first slot of a cheap window: priced within one cycle
+             cost of the cheapest price from there to the surplus, with
+             dearer slots behind it (issue #1247, :func:`_cheap_window_slots`)
         3. Accumulate house consumption for every slot before the refill.
         4. That consumption is the reserve, whatever the size of the planned
            charge (issues #1214, #1220).
@@ -565,13 +626,23 @@ class DynamicDischargeFloor:
         planned = _planned_grid_charges(
             future, _cycle_cost_tolerance(cycle_cost_per_kwh), export_buffer_kwh
         )
-        scan = _scan_bridge(future, planned, None, 0.0)
+        scan = _scan_bridge(
+            future,
+            planned,
+            None,
+            0.0,
+            cheap_window=(
+                _cheap_window_slots(future, cycle_cost_per_kwh)
+                if max_grid_charge_kw > 1e-9
+                else frozenset()
+            ),
+        )
         cheap_price = cheap_refill_price(
             (getattr(s, "import_price", math.nan) for s in future),
             cycle_cost_per_kwh,
         )
         if (
-            scan.reserve_kwh > 1e-9
+            (scan.reserve_kwh > 1e-9 or scan.refill_type == "cheap_window")
             and cheap_price is not None
             and max_grid_charge_kw > 1e-9
         ):

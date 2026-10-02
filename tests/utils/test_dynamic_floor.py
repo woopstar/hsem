@@ -1005,6 +1005,168 @@ class TestExportBufferBuyBackIsNoRefill:
         assert diag["refill_type"] == "solar_surplus"
 
 
+class TestCheapWindowIsTheRefill:
+    """Issue #1247: the bridge ends at the cheap window, charge or not.
+
+    The reference plan's last small charge inside the night window came and
+    went with the live SoC, and the floor alternated between the configured
+    minimum and the bridge to the solar surplus on consecutive 15-minute
+    replans (issue #1238).  Whether the plan can buy in the window does not
+    depend on the SoC: a slot priced within one cycle cost of the cheapest
+    price from there to the surplus, with dearer slots behind it, is a
+    refill for those slots.
+    """
+
+    _NET = [0.5, 0.5, 0.5, 0.5, 0.7, 0.7, -1.0]
+    #: 0.15 night, 0.25 peak, then the surplus; the look-ahead's cheapest
+    #: price (0.05) lies behind the surplus, so nothing here is affordable.
+    _NIGHT = [0.15, 0.15, 0.15, 0.15, 0.25, 0.25, 0.05]
+
+    @classmethod
+    def _floor(
+        cls,
+        prices: list[float],
+        *,
+        charge_slot: int | None = None,
+        charge_power_kw: float = 5.0,
+        cycle_cost: float = _CYCLE_COST,
+    ) -> tuple[float, dict, list[float]]:
+        count = len(cls._NET)
+        charged = [0.0] * count
+        recs: list[str | None] = [None] * count
+        if charge_slot is not None:
+            charged[charge_slot] = 1.0
+            recs[charge_slot] = "batteries_charge_grid"
+        slots = _make_slots(
+            datetime(2026, 9, 30, 2, 0),
+            cls._NET,
+            charged_kwh=charged,
+            recommendations=recs,
+            import_prices=prices,
+        )
+        floor_pct, diag, profile = DynamicDischargeFloor().compute_floor_profile(
+            now=datetime(2026, 9, 30, 2, 0),
+            slots=slots,
+            usable_kwh=9.5,
+            configured_min_soc_pct=5.0,
+            cycle_cost_per_kwh=cycle_cost,
+            max_grid_charge_kw=charge_power_kw,
+        )
+        return floor_pct, diag, [pct for _start, pct in profile]
+
+    def test_cheap_live_slot_before_a_peak_releases_the_floor(self) -> None:
+        """02:00 at 0.15 with a 0.25 peak ahead: the plan can buy now."""
+        floor_pct, diag, profile = self._floor(self._NIGHT)
+
+        assert diag["refill_type"] == "cheap_window"
+        assert diag["next_refill_slot"] == "2026-09-30T02:00:00"
+        assert diag["reserve_kwh"] == pytest.approx(0.0)
+        assert floor_pct == pytest.approx(5.0)
+        assert profile == pytest.approx([5.0] * len(self._NET))
+
+    def test_the_same_floor_whether_or_not_the_plan_charges(self) -> None:
+        """What issue #1238 reported: the charge came and went, the floor with it."""
+        without, _diag, _profile = self._floor(self._NIGHT)
+        with_charge, _diag, _profile = self._floor(self._NIGHT, charge_slot=0)
+        later_charge, _diag, _profile = self._floor(self._NIGHT, charge_slot=2)
+
+        assert without == with_charge == later_charge == pytest.approx(5.0)
+
+    def test_the_bridge_ends_at_the_window_whether_or_not_the_plan_charges(
+        self,
+    ) -> None:
+        """From 23:00 the reserve is the load until the window either way."""
+        prices = [0.19, 0.15, 0.15, 0.15, 0.25, 0.25, 0.05]
+
+        without, diag, profile = self._floor(prices)
+        with_charge, diag_charge, _profile = self._floor(prices, charge_slot=1)
+
+        assert diag["refill_type"] == "cheap_window"
+        assert diag["next_refill_slot"] == "2026-09-30T03:00:00"
+        assert diag["reserve_kwh"] == pytest.approx(0.5)
+        assert without == pytest.approx(5.0 + 0.5 * 1.15 / 9.5 * 95.0)
+        assert profile == pytest.approx([without] + [5.0] * (len(self._NET) - 1))
+        assert diag_charge["refill_type"] == "grid_charge"
+        assert with_charge == pytest.approx(without)
+
+    def test_a_flat_bridge_keeps_its_reserve(self) -> None:
+        """Nothing is cheaper to buy now than to import later."""
+        floor_pct, diag, _profile = self._floor([0.25] * 6 + [0.05])
+
+        assert diag["refill_type"] == "solar_surplus"
+        assert diag["reserve_kwh"] == pytest.approx(sum(self._NET[:6]))
+        assert floor_pct > 5.0
+
+    def test_a_cheap_tail_with_nothing_dearer_behind_it_is_no_window(self) -> None:
+        """Dear then cheap to the surplus: nothing is bought ahead at 0.12."""
+        floor_pct, diag, _profile = self._floor(
+            [0.25, 0.25, 0.12, 0.12, 0.12, 0.12, 0.05]
+        )
+
+        assert diag["refill_type"] == "solar_surplus"
+        assert diag["reserve_kwh"] == pytest.approx(sum(self._NET[:6]))
+        assert floor_pct > 5.0
+
+    def test_the_first_cheap_slot_is_the_refill_from_a_dear_slot(self) -> None:
+        """Dear, then cheap, then dear again: the bridge ends at the window."""
+        floor_pct, diag, profile = self._floor(
+            [0.25, 0.25, 0.12, 0.12, 0.25, 0.25, 0.05]
+        )
+
+        assert diag["refill_type"] == "cheap_window"
+        assert diag["next_refill_slot"] == "2026-09-30T04:00:00"
+        assert diag["reserve_kwh"] == pytest.approx(1.0)
+        # The profile is the configured minimum from the refill on (#1188); a
+        # replan in the flat 0.25 tail computes that tail's own reserve, the
+        # one step up a night can have.
+        assert profile[2:] == pytest.approx([5.0] * (len(self._NET) - 2))
+
+    def test_a_planned_charge_before_the_window_ends_the_bridge_first(self) -> None:
+        floor_pct, diag, _profile = self._floor(
+            [0.19, 0.19, 0.15, 0.15, 0.25, 0.25, 0.05], charge_slot=0
+        )
+
+        assert diag["refill_type"] == "grid_charge"
+        assert diag["next_refill_slot"] == "2026-09-30T02:00:00"
+        assert floor_pct == pytest.approx(5.0)
+
+    def test_the_cheapest_price_behind_the_surplus_does_not_count(self) -> None:
+        """A 0.05 day behind the surplus does not make a 0.15 night dear."""
+        floor_pct, diag, _profile = self._floor(self._NIGHT)
+
+        assert diag["refill_type"] == "cheap_window"
+        assert floor_pct == pytest.approx(5.0)
+
+    def test_spread_within_the_cycle_cost_is_flat(self) -> None:
+        floor_pct, diag, _profile = self._floor(
+            [0.15, 0.15, 0.15, 0.15, 0.16, 0.16, 0.05], cycle_cost=0.02
+        )
+
+        assert diag["refill_type"] == "solar_surplus"
+        assert floor_pct > 5.0
+
+    def test_without_charge_power_the_bridge_stands(self) -> None:
+        floor_pct, diag, _profile = self._floor(self._NIGHT, charge_power_kw=0.0)
+
+        assert diag["refill_type"] == "solar_surplus"
+        assert floor_pct > 5.0
+
+    def test_without_prices_the_bridge_stands(self) -> None:
+        floor_pct, diag, _profile = self._floor([math.nan] * 7)
+
+        assert diag["refill_type"] == "solar_surplus"
+        assert floor_pct > 5.0
+
+    def test_the_look_ahead_cheapest_night_still_releases_completely(self) -> None:
+        """Issue #1156 stands: the look-ahead's cheapest price covers the bridge."""
+        floor_pct, diag, _profile = self._floor(
+            [0.19, 0.03, 0.03, 0.03, 0.25, 0.25, 0.12]
+        )
+
+        assert diag["refill_type"] == "grid_available"
+        assert floor_pct == pytest.approx(5.0)
+
+
 class TestMarginCorrection:
     """Tests for DynamicDischargeFloor.correct_margin() (issues #600, #1141)."""
 
