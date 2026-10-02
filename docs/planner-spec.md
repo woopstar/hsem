@@ -4970,9 +4970,19 @@ planned charge ends the bridge_ with hourly replans (48):
 
 The 36 scenarios on the 0.15 night at 15-minute replans (44), run serially:
 
-_Pending: the serial 15-minute sweeps (baseline and fix, one process each)
-were still running when this was written; their alternation count and
-realised cash follow in this section once they finish._
+| 15 minutes, 36 scenarios on the 0.15 night      |           Before |                              After |
+| ----------------------------------------------- | ---------------: | ---------------------------------: |
+| Scenarios with an alternation inside the window | 6 (10 reversals) |                                  0 |
+| Rises within a bridge                           |                8 |                                  0 |
+| Realised cash, sum over 11 h                    |            −2.06 |                              −2.37 |
+| Scenarios worse / better (> 0.01)               |                  | 7 (at most 0.015) / 4 (up to 0.15) |
+| End SoC differs by more than half a point       |                  |                            4 of 36 |
+
+The 15-minute solves (192 slots, battery export) run into the solver's time
+limit, so a sweep run with four workers while other replays ran gave
+different plans and a cash sum of 4.5 for the same baseline; only the serial
+runs are quoted. The four scenarios whose end SoC differs are not compared
+on cash.
 
 An alternation is a reversal between the minimum and a bridge on three
 consecutive replans inside the 02:00–06:00 window. On the 0.10 and 0.03
