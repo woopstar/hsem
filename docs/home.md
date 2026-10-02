@@ -80,7 +80,9 @@ Yes, but the setting is _permission_, not a command. Huawei exposes one
 global battery discharge limit shared by the house battery and every EV,
 so by default HSEM forces battery discharge to 0 W whenever an EV is
 charging or about to be commanded — 100% of the EV's load then comes from
-the grid. Enabling `hsem_ev_charger_force_max_discharge_power` lifts that
+the grid. An EV counts as charging when its status entity says so or its
+power sensor reads above 50 W, so an idle charger's standby draw does not
+block the battery. Enabling `hsem_ev_charger_force_max_discharge_power` lifts that
 block; `hsem_ev_charger_max_discharge_power` sets the ceiling. The ceiling
 must be above 0 W — enabling the permission while the ceiling stays at its
 0 default still caps discharge at 0 W (the config flow rejects that
