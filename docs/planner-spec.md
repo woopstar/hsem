@@ -3257,6 +3257,26 @@ as "fall back to strict Wait":
 `self_consumption_with_reserve` self-consumption is never enabled without a
 reliable reserve value.
 
+**Published, not planned (issue #1255).** The plan books no discharge on a
+`batteries_wait_mode` slot (`simulate_soc()`, and the label contract in
+_Label/energy self-consistency_), so the slot's `estimated_battery_soc_pct`
+does not include the self-consumption the applier allows. That is left as it
+is: booking it would change the selected plan after selection and would need
+a forecast of a reserve that each replan derives again. The next replan
+starts from the live SoC. The working-mode sensor publishes what the live
+slot does instead, as `wait_mode_self_consumption`:
+
+| Key           | Value                                                             |
+| ------------- | ----------------------------------------------------------------- |
+| `active`      | the live wait slot executes as self-consumption (surplus > 0)     |
+| `reserve_kwh` | `wait_mode_reserve_kwh`; `null` when the behaviour does not apply |
+| `surplus_kwh` | `max(battery_current_capacity_kwh - wait_mode_reserve_kwh, 0)`    |
+
+The applier and the attribute take the decision from one helper,
+`applier_caps.wait_mode_self_consumption_surplus_kwh()`. It returns `None`
+(behaviour does not apply) for another label, `strict`, an active or planned
+EV, an authoritative held export or a `None` reserve.
+
 `calculate_required_battery_until_solar()` and `current_required_battery_kwh`
 are otherwise **unchanged** — they continue to gate the EV discharge-cap SoC
 guard and `apply_excess_export()` exactly as before.

@@ -115,7 +115,10 @@ views:
               action: more-info
           - type: custom:mushroom-template-card
             primary: "{{ state_attr('sensor.hsem_workingmode_sensor', 'batteries_current_capacity') }} kWh"
-            secondary: "Current / Usable: {{ state_attr('sensor.hsem_workingmode_sensor', 'batteries_usable_capacity') }} kWh"
+            secondary: >
+              {% set w = state_attr('sensor.hsem_workingmode_sensor', 'wait_mode_self_consumption') %}
+              {% if w and w.active %}Wait: house may use {{ w.surplus_kwh }} kWh above the reserve
+              {% else %}Current / Usable: {{ state_attr('sensor.hsem_workingmode_sensor', 'batteries_usable_capacity') }} kWh{% endif %}
             icon: mdi:battery
             icon_color: yellow
             grid_options:

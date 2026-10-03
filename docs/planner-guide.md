@@ -674,6 +674,15 @@ recommendation it is not changed by later rules in the same layer.
 > battery for self-consumption right now; the reserve ramps up linearly over
 > the last two hours before that action, trusting the next replan to
 > re-tighten it as the action approaches.
+>
+> **What the plan shows (issue #1255):** the plan books no battery energy on a
+> `batteries_wait_mode` slot, so its estimated SoC stays flat across wait slots
+> and the state still reads "Wait". With `self_consumption_with_reserve` the
+> real battery can discharge down to the reserve in those slots, so the live
+> SoC falls below the estimate. Every replan starts again from the live SoC.
+> The `wait_mode_self_consumption` attribute of `sensor.hsem_workingmode_sensor`
+> says whether the current wait slot runs as self-consumption, and gives the
+> reserve and the energy above it.
 
 **Discharge concentration** (`concentrate_discharge_on_expensive_slots`) runs after the
 seasonal fill but before candidate generation. It re-evaluates all discharge-mode

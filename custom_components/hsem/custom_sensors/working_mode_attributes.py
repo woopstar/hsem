@@ -12,12 +12,44 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 
 from custom_components.hsem.coordinator_data import CoordinatorData
+from custom_components.hsem.custom_sensors.applier_caps import (
+    wait_mode_self_consumption_surplus_kwh,
+)
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
     get_config_value,
 )
+
+
+def _wait_mode_self_consumption(
+    data: CoordinatorData,
+    cfg: SensorConfig,
+    live: LiveState,
+) -> dict[str, Any]:
+    """Return what the live wait slot does with the battery (issue #1255).
+
+    The plan books no discharge on a ``batteries_wait_mode`` slot, so its SoC
+    estimate is flat, while ``self_consumption_with_reserve`` lets the house
+    use the energy above the reserve.  This says which of the two the applier
+    executes, from the same helper the applier reads.
+    """
+    rec = data.hourly_recommendation
+    surplus_kwh = (
+        wait_mode_self_consumption_surplus_kwh(
+            cfg, live, rec, data.current_wait_mode_reserve
+        )
+        if rec is not None
+        else None
+    )
+    if surplus_kwh is None:
+        return {"active": False, "reserve_kwh": None, "surplus_kwh": None}
+    return {
+        "active": surplus_kwh > 1e-9,
+        "reserve_kwh": round(data.current_wait_mode_reserve or 0.0, 3),
+        "surplus_kwh": round(surplus_kwh, 3),
+    }
 
 
 def build_working_mode_attributes(
@@ -87,6 +119,8 @@ def build_working_mode_attributes(
         }
 
     attributes = {
+        "batteries_wait_mode_behavior": cfg.batteries_wait_mode_behavior,
+        "wait_mode_self_consumption": _wait_mode_self_consumption(data, cfg, live),
         "batteries_current_capacity": live.battery_current_capacity_kwh,
         "batteries_usable_capacity": live.battery_usable_capacity_kwh,
         "batteries_recommended_min_price_threshold": calculate_recommended_threshold(

@@ -2048,6 +2048,13 @@ instead of keeping the battery strictly idle.
   above the hardware floor, like the applier's `battery_current_capacity_kwh`,
   so the applier is unchanged. The #954 time decay is not applied to the
   floor's part. `None` stays `None`.
+- **Published on the sensor (issue #1255):** the plan books no discharge on a
+  wait slot, so its SoC estimate is flat while the battery self-consumes.
+  `applier_caps.wait_mode_self_consumption_surplus_kwh()` is the one
+  activation test (label, behaviour, reserve, held export, EV); the applier and
+  the working-mode sensor's `wait_mode_self_consumption` attribute
+  (`active`, `reserve_kwh`, `surplus_kwh`) both read it. Do not restate the
+  test in either place.
 - **Scan stops at the next discharge too, not just the next charge (issue
   #942 follow-up, fixed 2026-09-08):** the scan originally broke only on a
   genuine planned _charge_, so it accumulated through every future discharge

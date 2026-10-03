@@ -638,6 +638,22 @@ correct. HSEM writes that cap deliberately in several situations:
   while the recommendation is `batteries_discharge_mode` and none of the
   above applies, that is the bug fixed in issue #983 — upgrade.
 
+**7j. The plan says "Wait" but the battery discharges**
+
+Expected when **Wait mode behaviour** is `self_consumption_with_reserve`. A
+`batteries_wait_mode` slot then runs as self-consumption while the battery
+holds more than the planner's reserve, so the house is served from the
+battery. The plan books no discharge on a wait slot, so the estimated SoC in
+the plan stays flat while the real SoC falls. The next replan starts from the
+real SoC.
+
+- **Check:** `sensor.hsem_workingmode_sensor` → `wait_mode_self_consumption`.
+  `active: true` means the current wait slot runs as self-consumption;
+  `reserve_kwh` is the energy held back and `surplus_kwh` the energy the house
+  may still use.
+- **Fix:** None needed. To keep the battery idle in wait slots, set **Wait
+  mode behaviour** to `strict`.
+
 ---
 
 ## 8. Home Assistant database growing large

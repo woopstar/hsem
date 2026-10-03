@@ -55,6 +55,7 @@ from custom_components.hsem.custom_sensors.applier_caps import (  # noqa: F401
     _warn_on_zero_ceiling_evs,
     _zero_ceiling_cap_reason,
     _zero_ceiling_ev_names,
+    wait_mode_self_consumption_surplus_kwh,
 )
 from custom_components.hsem.custom_sensors.applier_forcible_discharge import (  # noqa: F401
     _async_apply_forcible_discharge,
@@ -103,7 +104,6 @@ from custom_components.hsem.utils.misc import (
 )
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import slot_duration_hours
-from custom_components.hsem.utils.wait_mode_behavior import WaitModeBehavior
 from custom_components.hsem.utils.workingmodes import (
     WorkingModes,
     canonical_working_mode,
@@ -218,12 +218,8 @@ async def async_apply_battery_settings(
     # dead code for its primary use case. EV-active slots and a held slot
     # with an authoritative solved export keep their existing precedence.
     wait_mode_reserve_active = (
-        recommendation == Recommendations.BatteriesWaitMode.value
-        and not relevant_evs
-        and not held_planned_export
-        and cfg.batteries_wait_mode_behavior
-        == WaitModeBehavior.SelfConsumptionWithReserve
-        and wait_mode_reserve_kwh is not None
+        wait_mode_self_consumption_surplus_kwh(cfg, live, rec, wait_mode_reserve_kwh)
+        is not None
     )
 
     # Compute the single intended max-discharge-power value for this cycle
