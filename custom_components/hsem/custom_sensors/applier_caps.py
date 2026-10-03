@@ -15,6 +15,7 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import is_material_planned_energy_kwh
+from custom_components.hsem.utils.wait_mode_behavior import WaitModeBehavior
 from custom_components.hsem.utils.workingmodes import ExcessPvUseInTou
 
 if TYPE_CHECKING:
@@ -409,3 +410,52 @@ def _held_planned_export_is_authoritative(rec: HourlyRecommendation) -> bool:
     return math.isfinite(planned_export_kwh) and is_material_planned_energy_kwh(
         planned_export_kwh
     )
+
+
+def wait_mode_self_consumption_surplus_kwh(
+    cfg: SensorConfig,
+    live: LiveState,
+    rec: HourlyRecommendation,
+    wait_mode_reserve_kwh: float | None,
+) -> float | None:
+    """Return the energy a wait slot may self-consume, or ``None``.
+
+    ``None`` means the ``self_consumption_with_reserve`` behaviour does not
+    apply to this slot: another label, strict behaviour, an active or planned
+    EV, an authoritative held export (issue #797), or no reliable reserve.
+    Otherwise the result is the energy above the reserve, never negative;
+    the slot executes as ``MaximizeSelfConsumption`` while it is positive
+    (issues #942, #954).
+
+    The applier and the working-mode sensor's ``wait_mode_self_consumption``
+    attribute both read this, so what is published cannot disagree with what
+    is written to the inverter (issue #1255).
+
+    Args:
+        cfg: Current sensor configuration.
+        live: Live state snapshot.
+        rec: The current-interval recommendation.
+        wait_mode_reserve_kwh: Reserve published by the planner, in kWh above
+            the hardware floor; ``None`` when it could not be derived.
+
+    Returns:
+        Surplus above the reserve in kWh, or ``None`` when the behaviour does
+        not apply.
+    """
+    if (
+        rec.recommendation != Recommendations.BatteriesWaitMode.value
+        or cfg.batteries_wait_mode_behavior
+        != WaitModeBehavior.SelfConsumptionWithReserve
+        or wait_mode_reserve_kwh is None
+        or _held_planned_export_is_authoritative(rec)
+    ):
+        return None
+    if any(
+        _ev_is_active_or_planned(ev=ev, planned_power_w=planned_power_w)
+        for ev, planned_power_w in (
+            (live.ev, rec.ev_charger_calculated_power),
+            (live.ev_second, rec.ev_second_charger_calculated_power),
+        )
+    ):
+        return None
+    return max(live.battery_current_capacity_kwh - wait_mode_reserve_kwh, 0.0)
