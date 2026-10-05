@@ -25,11 +25,11 @@ dev = [
     "pytest-timeout==2.4.0",
     "pyright==1.1.414",
     "vulture==2.16",
-    "ruff==0.16.9",
+    "ruff==0.16.10",
     "skylos==4.41.0",
 ]
 lint = [
-    "ruff==0.16.9",
+    "ruff==0.16.10",
     "skylos==4.41.0",
 ]
 typing = [
