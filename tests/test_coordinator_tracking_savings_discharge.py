@@ -25,6 +25,7 @@ from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.models.savings_tracker import SavingsTracker
+from tests.sensors.test_state_collector_live_reads import _collect, _full_cfg
 
 
 def _make_hass(config_dir: Path) -> HomeAssistant:
@@ -179,4 +180,60 @@ async def test_zero_import_price_credits_no_discharge_savings(
 
     await _run_two_cycles(hass, live, savings_tracker, daily_tracker)
 
+    assert savings_tracker.actual_savings == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase_aware", [False, True])
+async def test_discharge_savings_reach_the_tracker_from_collected_state(
+    tmp_path: Path, phase_aware: bool
+) -> None:
+    """The live state as production collects it carries the battery power.
+
+    The reading used to be collected only with phase-aware charging on, so on
+    every other installation the discharge savings were always zero
+    (issue #1266).  This goes through the real collection pass rather than a
+    hand-built ``LiveState``, which is what hid it.
+    """
+    cfg = _full_cfg()
+    cfg.phase_aware_charging_enabled = phase_aware
+    cfg.import_electricity_price_sensor = "sensor.import_price"
+    live = await _collect(
+        cfg,
+        values={
+            "sensor.battery_power": -1000.0,
+            "sensor.import_price": 2.0,
+            "select.force_working_mode": "auto",
+        },
+    )
+    savings_tracker = SavingsTracker()
+
+    await _run_two_cycles(
+        _make_hass(tmp_path), live, savings_tracker, DailyPlanVsActualTracker()
+    )
+
+    assert live.huawei_batteries_charge_discharge_power_w == pytest.approx(-1000.0)
+    # 1 kW for 900 s = 0.25 kWh at 2.0 per kWh, plus nothing else.
+    assert savings_tracker.actual_savings == pytest.approx(0.50, rel=1e-6)
+
+
+@pytest.mark.asyncio
+async def test_no_battery_power_entity_credits_no_discharge_savings(
+    tmp_path: Path,
+) -> None:
+    """Without the optional entity the term is left out, not guessed."""
+    cfg = _full_cfg()
+    cfg.phase_aware_charging_enabled = False
+    cfg.huawei_solar_batteries_charge_discharge_power = None
+    cfg.import_electricity_price_sensor = "sensor.import_price"
+    live = await _collect(
+        cfg, values={"sensor.import_price": 2.0, "select.force_working_mode": "auto"}
+    )
+    savings_tracker = SavingsTracker()
+
+    await _run_two_cycles(
+        _make_hass(tmp_path), live, savings_tracker, DailyPlanVsActualTracker()
+    )
+
+    assert live.huawei_batteries_charge_discharge_power_w is None
     assert savings_tracker.actual_savings == pytest.approx(0.0)

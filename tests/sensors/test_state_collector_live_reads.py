@@ -77,12 +77,19 @@ def _full_cfg() -> SensorConfig:
     return cfg
 
 
-def _reader(values: dict[str, Any], default: Any = 1.0) -> Any:
-    """Return an ``ha_get_entity_state_and_convert`` stub resolving *values*."""
+def _reader(
+    values: dict[str, Any], default: Any = 1.0, failing: set[str] | None = None
+) -> Any:
+    """Return an ``ha_get_entity_state_and_convert`` stub resolving *values*.
+
+    Reading an entity in *failing* raises, as an unavailable entity does.
+    """
 
     def _read(
         sensor: Any, entity_id: str, conv_type: str | None = None, decimals: int = 3
     ) -> Any:
+        if failing and entity_id in failing:
+            raise ValueError(f"{entity_id} is unavailable")
         if entity_id in values:
             return values[entity_id]
         return default
@@ -95,10 +102,14 @@ async def _collect(
     *,
     values: dict[str, Any] | None = None,
     units: dict[str, str] | None = None,
+    failing: set[str] | None = None,
 ) -> LiveState:
     """Run the live collection pass against stubbed HA reads."""
     with (
-        patch(f"{_MODULE}.ha_get_entity_state_and_convert", _reader(values or {})),
+        patch(
+            f"{_MODULE}.ha_get_entity_state_and_convert",
+            _reader(values or {}, failing=failing),
+        ),
         patch(
             f"{_MODULE}.async_resolve_entity_id_from_unique_id",
             AsyncMock(return_value="select.force_working_mode"),
@@ -227,7 +238,69 @@ class TestOptionalLiveInputs:
             ],
         )
         assert state.huawei_batteries_grid_charge_max_power_w is None
+
+    @pytest.mark.asyncio
+    async def test_battery_power_is_read_without_the_phase_limiter(self) -> None:
+        """The savings tracker needs it on every installation (issue #1266)."""
+        cfg = _full_cfg()
+        cfg.phase_aware_charging_enabled = False
+
+        state = await _collect(cfg, values={"sensor.battery_power": -1500.0})
+
+        assert state.huawei_batteries_charge_discharge_power_w == pytest.approx(-1500.0)
+
+    @pytest.mark.asyncio
+    async def test_unconfigured_battery_power_is_not_a_missing_entity(self) -> None:
+        """Without the limiter the entity is optional: nothing is degraded."""
+        cfg = _full_cfg()
+        cfg.phase_aware_charging_enabled = False
+        configured = await _collect(cfg)
+
+        cfg.huawei_solar_batteries_charge_discharge_power = None
+        state = await _collect(cfg)
+
         assert state.huawei_batteries_charge_discharge_power_w is None
+        assert state.missing_entities_list == configured.missing_entities_list
+
+    @pytest.mark.asyncio
+    async def test_unreadable_battery_power_does_not_degrade_without_the_limiter(
+        self,
+    ) -> None:
+        """An unavailable optional reading only leaves the discharge savings out."""
+        cfg = _full_cfg()
+        cfg.phase_aware_charging_enabled = False
+        readable = await _collect(cfg)
+
+        state = await _collect(cfg, failing={"sensor.battery_power"})
+
+        assert state.huawei_batteries_charge_discharge_power_w is None
+        assert state.missing_entities_list == readable.missing_entities_list
+
+    @pytest.mark.asyncio
+    async def test_unreadable_battery_power_is_missing_with_the_limiter(self) -> None:
+        """The limiter cannot work without it, so there the cycle says so."""
+        cfg = _full_cfg()
+        readable = await _collect(cfg)
+
+        state = await _collect(cfg, failing={"sensor.battery_power"})
+
+        assert state.huawei_batteries_charge_discharge_power_w is None
+        missing = set(state.missing_entities_list) - set(readable.missing_entities_list)
+        assert len(missing) == 1
+        assert "batteries_charge_discharge_power" in next(iter(missing))
+
+    @pytest.mark.asyncio
+    async def test_unconfigured_battery_power_is_missing_with_the_limiter(self) -> None:
+        cfg = _full_cfg()
+        cfg.huawei_solar_batteries_charge_discharge_power = None
+
+        state = await _collect(cfg)
+
+        assert state.huawei_batteries_charge_discharge_power_w is None
+        assert (
+            "Missing entity: batteries_charge_discharge_power"
+            in state.missing_entities_list
+        )
 
     @pytest.mark.asyncio
     async def test_missing_switchable_phase_inputs_do_not_degrade_cycle(self) -> None:

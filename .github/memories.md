@@ -2775,3 +2775,13 @@ Tests: `tests/planner/test_battery_target_milp.py::TestPreferenceCost` (hand-com
 **Test harness:** `tests/conftest.py` replaces the cycle's `async_track_performance` with an `AsyncMock` for every test. Cycle tests run on a `MagicMock` Home Assistant, where the real function wrote `MagicMock/mock.config.config_dir/.../hsem_performance_history.json` into the working tree. Test the real function through `tests/test_coordinator_performance.py`.
 
 Tests: `tests/planner/test_hindsight_scoring.py`, `tests/models/test_performance_tracker.py`, `tests/utils/test_performance_scoring.py`, `tests/test_coordinator_performance.py`, `tests/custom_sensors/test_performance_sensors.py`.
+
+## Battery Power Is Read Without the Phase Limiter Too (issue #1266)
+
+`LiveState.huawei_batteries_charge_discharge_power_w` used to be collected only under `cfg.phase_aware_charging_enabled`, so `accumulate_savings()`'s discharge savings (issue #960) were always zero on every installation without the limiter. `state_collector.py` now reads the entity on every cycle: with the limiter on through `_read` (a failed read is a missing entity, as before), otherwise through `_read_optional` (unconfigured or unavailable is `None` and degrades nothing).
+
+**Rules:**
+
+- A reading that is required by one opt-in feature and merely useful to another is read with `_read` or `_read_optional` depending on the feature flag. Do not gate the read itself on the flag.
+- The other consumers (`phase_charge_limiter.py`, `phase_charge_transition.py`, the applier's debug line) check `cfg.phase_aware_charging_enabled` themselves; a non-`None` reading with the limiter off changes nothing for them.
+- A test that sets a `LiveState` field by hand does not prove production fills it. `tests/test_coordinator_tracking_savings_discharge.py` now goes through `async_collect_live_state`.

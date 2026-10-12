@@ -379,14 +379,19 @@ async def async_collect_live_state(
         state.grid_phase_readings, state.grid_phase_voltage_v = read_grid_phase_inputs(
             sensor, cfg, _read_optional
         )
-    if cfg.phase_aware_charging_enabled:
-        state.huawei_batteries_charge_discharge_power_w = convert_to_float(
-            _read(
-                cfg.huawei_solar_batteries_charge_discharge_power,
-                "float",
-                label="batteries_charge_discharge_power",
-            )
+    # Signed battery power. The phase limiter requires it, so there a failed
+    # read is recorded as missing. The savings tracker's discharge savings
+    # (issue #960) also need it on installations without the limiter, where it
+    # stays optional: an unreadable value leaves that term out and nothing
+    # else (issue #1266).
+    _read_battery_power = _read if cfg.phase_aware_charging_enabled else _read_optional
+    state.huawei_batteries_charge_discharge_power_w = convert_to_float(
+        _read_battery_power(
+            cfg.huawei_solar_batteries_charge_discharge_power,
+            "float",
+            label="batteries_charge_discharge_power",
         )
+    )
 
     rated_capacity_wh = convert_to_float(
         _read(
