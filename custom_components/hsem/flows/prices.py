@@ -15,8 +15,6 @@ or any other price source share the same configuration step.
 
 from __future__ import annotations
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
@@ -27,6 +25,7 @@ from custom_components.hsem.utils.config_validator import (
     validate_price,
 )
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.schema import vol
 
 
 async def get_prices_step_schema(

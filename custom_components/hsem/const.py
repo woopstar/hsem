@@ -1,7 +1,6 @@
 """This module defines constants used in the Huawei Solar Energy Management (HSEM) integration."""
 
-import voluptuous as vol
-
+from custom_components.hsem.utils.schema import vol
 from custom_components.hsem.utils.solcast_likelihood import DEFAULT_SOLCAST_LIKELIHOOD
 from custom_components.hsem.utils.wait_mode_behavior import DEFAULT_WAIT_MODE_BEHAVIOR
 

@@ -3,8 +3,6 @@
 import logging
 from typing import Any
 
-import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry, ConfigFlowResult
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
@@ -90,6 +88,7 @@ from custom_components.hsem.flows.weighted_values import (
 )
 from custom_components.hsem.options_flow import HSEMOptionsFlow
 from custom_components.hsem.utils.conversion import convert_months_to_int
+from custom_components.hsem.utils.schema import vol
 
 _LOGGER = logging.getLogger(__name__)
 

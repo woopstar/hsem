@@ -7,8 +7,6 @@ lives in the shared helpers module.
 
 from __future__ import annotations
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
@@ -16,6 +14,7 @@ from custom_components.hsem.flows.ev_planned_load_helpers import (
     build_ev_planned_load_schema,
     validate_ev_planned_load_schema_input,
 )
+from custom_components.hsem.utils.schema import vol
 
 _PREFIX = "hsem_ev_second_planned_load"
 

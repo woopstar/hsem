@@ -7,8 +7,6 @@ to configure Time-of-Use (TOU) periods for batteries.
 from collections.abc import Mapping
 from typing import Any
 
-import voluptuous as vol
-
 from homeassistant.exceptions import (
     HomeAssistantError,
     ServiceNotFound,
@@ -16,6 +14,7 @@ from homeassistant.exceptions import (
 )
 
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+from custom_components.hsem.utils.schema import vol
 
 MAX_TOU_PERIODS = 10
 """Number of TOU period slots a Huawei battery exposes."""

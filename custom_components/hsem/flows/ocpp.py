@@ -5,8 +5,6 @@ wants to use OCPP-based charger control instead of (or in addition to)
 entity-based control via Home Assistant entities.
 """
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
@@ -15,6 +13,7 @@ from custom_components.hsem.custom_sensors.ocpp_control import (
     RATE_UNIT_PREFERENCES,
 )
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.schema import vol
 
 # Charging-profile rate unit preference (issue #1001). ``auto`` negotiates
 # from the charger's reported ChargingScheduleAllowedChargingRateUnit

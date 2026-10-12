@@ -5,14 +5,13 @@ planner anti-flapping hysteresis settings — both plan-level (issue #372)
 and window-level (issue #315).
 """
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import merge_errors, validate_price
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.schema import vol
 
 
 async def get_battery_economics_step_schema(  # NOSONAR

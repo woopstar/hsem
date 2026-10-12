@@ -22,13 +22,12 @@ from __future__ import annotations
 
 from typing import Any
 
-import voluptuous as vol
-
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+from custom_components.hsem.utils.schema import vol
 
 # ---------------------------------------------------------------------------
 # Service name constants

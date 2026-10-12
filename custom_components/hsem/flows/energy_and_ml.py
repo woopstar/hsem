@@ -13,14 +13,13 @@ needed).
 
 from typing import Any
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.schema import vol
 
 
 async def get_energy_and_ml_step_schema(  # NOSONAR

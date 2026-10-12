@@ -5,14 +5,13 @@ consumption energy estimates over 1-day, 3-day, 7-day, and 14-day
 lookback periods.
 """
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import validate_consumption_weights
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.schema import vol
 
 
 async def get_weighted_values_step_schema(  # NOSONAR

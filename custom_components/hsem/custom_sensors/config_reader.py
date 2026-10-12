@@ -13,8 +13,6 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-import voluptuous as vol
-
 from custom_components.hsem.models.sensor_config import (
     EVChargerConfig,
     SensorConfig,
@@ -30,6 +28,7 @@ from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.phase_power import (
     normalize_ev_phase_topology,
 )
+from custom_components.hsem.utils.schema import vol
 from custom_components.hsem.utils.solcast_likelihood import DEFAULT_SOLCAST_LIKELIHOOD
 from custom_components.hsem.utils.wait_mode_behavior import DEFAULT_WAIT_MODE_BEHAVIOR
 

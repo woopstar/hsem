@@ -26,8 +26,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
@@ -61,6 +59,7 @@ from custom_components.hsem.utils.integration_version import (
 )
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.recommendations import USER_SELECTABLE_RECS
+from custom_components.hsem.utils.schema import vol
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_force_working_mode_selector_entity_id,
 )
