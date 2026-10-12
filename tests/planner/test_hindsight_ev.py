@@ -282,6 +282,27 @@ class TestSessions:
         assert session.max_kwh[6] == pytest.approx(7.4)
         assert session.max_kwh[7] == pytest.approx(7.0)
 
+    def test_a_session_cut_by_the_window_is_scored_for_the_part_inside(self) -> None:
+        """Plugged in before the window began, and again past its end.
+
+        Only what was delivered inside the window can be moved, and only to
+        slots inside it: the window has no slots outside to move it to.
+        """
+        early = ev_sessions(
+            _charger({0: 3.0, 1: 2.0}, plugged=range(0, 4)), _STARTS, _HOURS
+        )
+        late = ev_sessions(
+            _charger({22: 3.0, 23: 2.0}, plugged=range(21, 24)), _STARTS, _HOURS
+        )
+
+        (first,) = early
+        (last,) = late
+        assert first.energy_kwh == pytest.approx(5.0)
+        assert [i for i, cap in enumerate(first.max_kwh) if cap > 0] == [0, 1, 2, 3]
+        assert last.energy_kwh == pytest.approx(5.0)
+        assert [i for i, cap in enumerate(last.max_kwh) if cap > 0] == [21, 22, 23]
+        assert len(first.max_kwh) == len(last.max_kwh) == 24
+
     def test_quarter_hour_slots_scale_the_cap(self) -> None:
         starts = [_START + timedelta(minutes=15 * index) for index in range(8)]
         slots: list[ChargerSlot | None] = [
