@@ -100,7 +100,7 @@ from custom_components.hsem.utils.logger import (
 )
 from custom_components.hsem.utils.misc import (
     generate_hash,
-    get_max_discharge_power,
+    resolve_max_discharge_power,
 )
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import slot_duration_hours
@@ -175,8 +175,9 @@ async def async_apply_battery_settings(
     working_mode = None
 
     _rated_capacity = convert_to_int(live.huawei_batteries_rated_capacity_wh)
-    max_discharge_power = get_max_discharge_power(
-        _rated_capacity if _rated_capacity is not None else 0
+    max_discharge_power = resolve_max_discharge_power(
+        _rated_capacity if _rated_capacity is not None else 0,
+        live.huawei_batteries_max_discharge_power_limit_w,
     )
 
     recommendation = rec.recommendation

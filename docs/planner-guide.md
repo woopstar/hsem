@@ -80,7 +80,7 @@ The total number of slots generated is `(interval_length_hours * 60) // interval
 | `battery_end_of_discharge_soc_pct` | `float`         | Minimum allowed SoC floor (%)                                                                                                                                                                                                                    |
 | `battery_max_soc_pct`              | `float`         | Maximum allowed SoC ceiling (%, default 100)                                                                                                                                                                                                     |
 | `battery_max_charge_power_w`       | `float`         | Maximum charge power in Watts                                                                                                                                                                                                                    |
-| `battery_max_discharge_power_w`    | `float \| None` | Maximum discharge power in Watts (`None` = unlimited). Derived from the rated capacity via `get_max_discharge_power()`, which covers S0/S1 single- and two-stack capacities (5–30 kWh); unknown capacities log a warning and fall back to 2500 W |
+| `battery_max_discharge_power_w`    | `float \| None` | Maximum discharge power in Watts (`None` = unlimited). The rated-capacity value from `get_max_discharge_power()` (2500 W with a warning for unlisted capacities), bounded by the discharging-power number entity's `max` attribute (issue #1291) |
 
 The planner converts power limits to per-slot energy limits internally:
 

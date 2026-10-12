@@ -67,6 +67,43 @@ class TestResolveMaxDischargePowerW:
         live = self._live(ev_charging=False, max_discharge_w=0.0, rated_wh=0)
         assert _resolve_max_discharge_power_w(live) is None
 
+    def test_entity_maximum_bounds_the_rated_capability(self) -> None:
+        """A 10 kWh battery whose number entity accepts 4400 W is planned at
+        4400 W, not the table's 5000 W (issue #1291)."""
+        live = self._live(ev_charging=False, max_discharge_w=4400.0)
+        live.huawei_batteries_max_discharge_power_limit_w = 4400.0
+        assert _resolve_max_discharge_power_w(live) == pytest.approx(4400.0)
+
+    def test_capped_entity_state_does_not_lower_the_limit(self) -> None:
+        """Only the entity's ``max`` attribute bounds the limit. Its state,
+        2000 W in the report, is a commanded cap (issues #592, #1291)."""
+        live = self._live(ev_charging=True, max_discharge_w=2000.0)
+        live.huawei_batteries_max_discharge_power_limit_w = 4400.0
+        assert _resolve_max_discharge_power_w(live) == pytest.approx(4400.0)
+
+    @pytest.mark.parametrize("entity_max_w", [None, 0.0, 5000.0, 6000.0])
+    def test_unusable_or_higher_entity_maximum_changes_nothing(
+        self, entity_max_w: float | None
+    ) -> None:
+        live = self._live(ev_charging=False, max_discharge_w=5000.0)
+        live.huawei_batteries_max_discharge_power_limit_w = entity_max_w
+        assert _resolve_max_discharge_power_w(live) == pytest.approx(5000.0)
+
+    def test_planner_input_carries_the_bounded_limit(self) -> None:
+        """The bound reaches ``PlannerInput``, so no slot is planned above it."""
+        live = self._live(ev_charging=False, max_discharge_w=2000.0)
+        live.huawei_batteries_max_discharge_power_limit_w = 4400.0
+
+        planner_input = build_planner_input(
+            cfg=SensorConfig(),
+            live=live,
+            hourly_recommendations=[],
+            previous_winner_name=None,
+            previous_winner_score=0.0,
+        )
+
+        assert planner_input.battery_max_discharge_power_w == pytest.approx(4400.0)
+
 
 def test_builder_prefers_bounded_effective_ev_soc() -> None:
     """Credited energy must reduce planner demand without replacing raw telemetry."""

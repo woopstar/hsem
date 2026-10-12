@@ -40,7 +40,7 @@ from custom_components.hsem.utils.ev_accounting import normalized_baseline_inclu
 from custom_components.hsem.utils.live_power import LivePowerEstimate
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
-    get_max_discharge_power,
+    resolve_max_discharge_power,
 )
 from custom_components.hsem.utils.soc_bounds import finite_or
 
@@ -73,6 +73,11 @@ def _resolve_max_discharge_power_w(live: LiveState) -> float | None:
     irregular cycle planned the whole horizon at ``max_discharge/slot
     =0.010`` after the EV boolean dropped out for a single poll).
 
+    The number entity's ``max`` attribute is a capability too: the highest
+    value the hardware accepts.  It bounds the rated-capacity value, so the
+    planner never plans more discharge than the applier can command
+    (issue #1291).  Only the attribute is used for this, never the state.
+
     Args:
         live: Live state snapshot.
 
@@ -82,7 +87,11 @@ def _resolve_max_discharge_power_w(live: LiveState) -> float | None:
     """
     rated_wh = convert_to_int(live.huawei_batteries_rated_capacity_wh)
     if rated_wh is not None and rated_wh > 0:
-        return float(get_max_discharge_power(rated_wh))
+        return float(
+            resolve_max_discharge_power(
+                rated_wh, live.huawei_batteries_max_discharge_power_limit_w
+            )
+        )
     # Degraded fallback: no rated capacity known — use the live read-back.
     return convert_to_float(live.huawei_batteries_max_discharge_power_w) or None
 

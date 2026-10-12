@@ -1637,6 +1637,18 @@ now unconditional.)
 capacities explicitly (5000–30000 Wh); unknown capacities log a warning
 and fall back to 2500 W rather than failing silently (issue #723).
 
+The rated-capacity value is bounded by the number entity's `max`
+**attribute** (issue #1291): the Huawei Solar integration sets that range
+from what the hardware reports, and Home Assistant rejects a write above
+it. A 10 kWh battery limited to 4400 W got a rejected 5000 W write every
+cycle, so the entity stayed on the last lower cap. The attribute is a
+capability and the state is not, so they live in separate `LiveState`
+fields (`huawei_batteries_max_discharge_power_limit_w` vs
+`huawei_batteries_max_discharge_power_w`). Both the applier and the
+planner input go through `utils.misc.resolve_max_discharge_power()`;
+never call `get_max_discharge_power()` directly for a value that is
+written or planned.
+
 ## EV Discharge Cap Is the Historical Baseline — Live Never Moves It (issue #592)
 
 `applier.compute_ev_discharge_cap_w()` is the single place that computes

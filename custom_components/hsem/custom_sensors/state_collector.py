@@ -28,6 +28,9 @@ from custom_components.hsem.const import FORCE_MODE_AUTO
 from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401 — re-exported for backward compat in coordinator.py
     build_sensor_config,
 )
+from custom_components.hsem.custom_sensors.discharge_power_inputs import (
+    read_max_discharge_power,
+)
 from custom_components.hsem.custom_sensors.ev_deadline import (
     resolve_ev_deadline_from_params as _resolve_ev_deadline_from_params,
 )
@@ -342,18 +345,7 @@ async def async_collect_live_state(
         )
     state.huawei_batteries_max_charge_power_w = max_charge_w
 
-    max_discharge_w = convert_to_float(
-        _read(
-            cfg.huawei_solar_batteries_maximum_discharging_power,
-            "float",
-            label="max_discharging_power",
-        )
-    )
-    if max_discharge_w is None:
-        state.add_missing_entity(
-            "Critical: battery max discharge power returned None (unavailable/invalid)"
-        )
-    state.huawei_batteries_max_discharge_power_w = max_discharge_w
+    read_max_discharge_power(sensor, cfg, state, _read)
 
     # Live phase safety inputs (issues #831 and #1083). Non-critical: both
     # consumers fail closed when any phase is missing, so an unavailable
