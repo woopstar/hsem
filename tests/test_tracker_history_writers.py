@@ -18,6 +18,10 @@ import pytest
 from homeassistant.config_entries import ConfigEntryState
 
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
+from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
+    DailyPlanVsActualTracker,
+)
+from custom_components.hsem.models.daily_record import DailyRecord
 from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.services import _get_coordinator
@@ -139,6 +143,107 @@ class TestAtomicHistoryWrites:
 
         assert _temp_files(tmp_path) == []
         assert not (tmp_path / filename).exists()
+
+
+class TestOneSharedWriter:
+    """Every tracker persists through ``utils.persistence`` (issue #1269)."""
+
+    @pytest.mark.asyncio
+    async def test_daily_history_round_trips(self, tmp_path: Path) -> None:
+        """The daily plan-vs-actual history is written and restored."""
+        path = tmp_path / ".storage" / "hsem_daily_history.json"
+        tracker = DailyPlanVsActualTracker(history_file=str(path))
+
+        assert await tracker._save_record_to_history(DailyRecord(date="2026-06-09"))
+        restored = DailyPlanVsActualTracker(history_file=str(path))
+        await restored.load_history()
+
+        assert [record.date for record in restored.history] == ["2026-06-09"]
+        assert _temp_files(path.parent) == []
+
+    @pytest.mark.asyncio
+    async def test_daily_history_reports_an_unwritable_location(
+        self, tmp_path: Path
+    ) -> None:
+        tracker = DailyPlanVsActualTracker(history_file=str(tmp_path / "daily.json"))
+
+        with patch("tempfile.mkstemp", side_effect=OSError("read-only filesystem")):
+            assert await tracker._write_history_file() is False
+
+    @pytest.mark.asyncio
+    async def test_daily_history_without_a_path_is_not_written(self) -> None:
+        assert await DailyPlanVsActualTracker()._write_history_file() is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("tracker_factory", "save", "indented"),
+        [
+            pytest.param(FinancialTracker, "save_history", True, id="financial"),
+            pytest.param(SavingsTracker, "save_history", True, id="savings"),
+            pytest.param(
+                DailyPlanVsActualTracker, "_write_history_file", True, id="daily"
+            ),
+            pytest.param(PredictionTracker, "save_history", False, id="prediction"),
+        ],
+    )
+    async def test_the_file_format_on_disk_is_unchanged(
+        self, tmp_path: Path, tracker_factory: Any, save: str, indented: bool
+    ) -> None:
+        """Three trackers write indented JSON, the scorecard writes it compact."""
+        path = tmp_path / "history.json"
+        tracker = tracker_factory(history_file=str(path))
+
+        assert await getattr(tracker, save)() is True
+        text = path.read_text(encoding="utf-8")
+
+        assert text.startswith('{\n  "') is indented
+        assert ("\n" in text) is indented
+        assert isinstance(json.loads(text), dict)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("tracker_factory", "save"),
+        [
+            pytest.param(FinancialTracker, "save_history", id="financial"),
+            pytest.param(SavingsTracker, "save_history", id="savings"),
+            pytest.param(DailyPlanVsActualTracker, "_write_history_file", id="daily"),
+            pytest.param(PredictionTracker, "save_history", id="prediction"),
+        ],
+    )
+    async def test_every_tracker_goes_through_the_shared_writer(
+        self, tmp_path: Path, tracker_factory: Any, save: str
+    ) -> None:
+        """No tracker keeps a private copy of the atomic write."""
+        path = tmp_path / ".storage" / "history.json"
+        tracker = tracker_factory(history_file=str(path))
+        module = type(tracker).__module__
+
+        with patch(f"{module}.write_json_history_file", return_value=True) as writer:
+            assert await getattr(tracker, save)() is True
+
+        writer.assert_called_once()
+        assert writer.call_args.args[0] == path
+        assert not path.exists()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("tracker_factory", "save"),
+        [
+            pytest.param(FinancialTracker, "save_history", id="financial"),
+            pytest.param(SavingsTracker, "save_history", id="savings"),
+            pytest.param(DailyPlanVsActualTracker, "_write_history_file", id="daily"),
+            pytest.param(PredictionTracker, "save_history", id="prediction"),
+        ],
+    )
+    async def test_a_directory_that_cannot_be_created_reports_failure(
+        self, tmp_path: Path, tracker_factory: Any, save: str
+    ) -> None:
+        """Creating ``.storage`` failing is a ``False``, not an exception."""
+        blocker = tmp_path / "blocker"
+        blocker.write_text("a file where a directory is needed", encoding="utf-8")
+        tracker = tracker_factory(history_file=str(blocker / "history.json"))
+
+        assert await getattr(tracker, save)() is False
 
 
 class TestGetCoordinator:

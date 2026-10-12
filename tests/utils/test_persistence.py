@@ -123,3 +123,15 @@ class TestWriteJsonHistoryFile:
             assert write_json_history_file(path, {"value": 1}) is False
 
         assert list(tmp_path.iterdir()) == []
+
+    def test_compact_by_default_and_indented_on_request(self, tmp_path: Path) -> None:
+        compact = tmp_path / "compact.json"
+        indented = tmp_path / "indented.json"
+
+        write_json_history_file(compact, {"a": 1, "b": [1, 2]})
+        write_json_history_file(indented, {"a": 1, "b": [1, 2]}, indent=2)
+
+        assert compact.read_text(encoding="utf-8") == '{"a":1,"b":[1,2]}'
+        assert indented.read_text(encoding="utf-8") == (
+            '{\n  "a": 1,\n  "b": [\n    1,\n    2\n  ]\n}'
+        )

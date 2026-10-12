@@ -9,17 +9,16 @@ daily snapshots to a JSON file following the same pattern as
 from __future__ import annotations
 
 import asyncio
-import json
-import os
-import tempfile
-from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from custom_components.hsem.models.savings_day import SavingsDay
-from custom_components.hsem.utils.persistence import read_json_history_file
+from custom_components.hsem.utils.persistence import (
+    read_json_history_file,
+    write_json_history_file,
+)
 
 
 @dataclass
@@ -247,7 +246,9 @@ class SavingsTracker:
             ],
         }
 
-        return await asyncio.to_thread(self._write_history_file_sync, data)
+        return await asyncio.to_thread(
+            write_json_history_file, Path(self.history_file), data, indent=2
+        )
 
     def _prune_history(self) -> None:
         """Keep only the most recent ``max_history_days`` entries."""
@@ -257,30 +258,6 @@ class SavingsTracker:
         to_remove = sorted_dates[: -self.max_history_days]
         for d in to_remove:
             del self.daily[d]
-
-    def _write_history_file_sync(self, data: dict[str, Any]) -> bool:
-        """Write the history file atomically (offloaded to thread)."""
-        path = Path(self.history_file)
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        try:
-            fd, tmp_path = tempfile.mkstemp(
-                suffix=".json",
-                prefix=".hsem_savings_history_",
-                dir=str(path.parent),
-                text=True,
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
-                os.replace(tmp_path, str(path))
-            except Exception:
-                with suppress(OSError):
-                    os.unlink(tmp_path)
-                raise
-            return True
-        except OSError:
-            return False
 
     # ------------------------------------------------------------------
     # Attribute export for the sensor

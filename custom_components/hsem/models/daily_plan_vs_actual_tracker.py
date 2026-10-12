@@ -8,10 +8,6 @@ new day.
 from __future__ import annotations
 
 import asyncio
-import json
-import os
-import tempfile
-from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -20,7 +16,10 @@ from typing import Any
 from custom_components.hsem.models.daily_metrics import DailyMetrics
 from custom_components.hsem.models.daily_record import DailyRecord
 from custom_components.hsem.models.day_rollover_result import DayRolloverResult
-from custom_components.hsem.utils.persistence import read_json_history_file
+from custom_components.hsem.utils.persistence import (
+    read_json_history_file,
+    write_json_history_file,
+)
 
 
 @dataclass
@@ -281,34 +280,9 @@ class DailyPlanVsActualTracker:
             "days": [r.as_dict() for r in self.history],
         }
 
-        path = Path(self.history_file)
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        return await asyncio.to_thread(self._write_history_file_sync, data, path)
-
-    @staticmethod
-    def _write_history_file_sync(data: dict[str, Any], path: Path) -> bool:
-        """Write the history list to disk atomically (sync, offloaded to thread)."""
-        try:
-            # Write to a temp file in the same directory, then atomically rename.
-            fd, tmp_path = tempfile.mkstemp(
-                suffix=".json",
-                prefix=".hsem_daily_history_",
-                dir=str(path.parent),
-                text=True,
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
-                os.replace(tmp_path, str(path))
-            except Exception:
-                # Clean up temp file on failure.
-                with suppress(OSError):
-                    os.unlink(tmp_path)
-                raise
-            return True
-        except OSError:
-            return False
+        return await asyncio.to_thread(
+            write_json_history_file, Path(self.history_file), data, indent=2
+        )
 
     # ------------------------------------------------------------------
     # Attribute export for the sensor
