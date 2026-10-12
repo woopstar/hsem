@@ -12,10 +12,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from custom_components.hsem.utils.dynamic_floor import (
-    DynamicDischargeFloor,
-    cheap_refill_price,
-)
+from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
+from custom_components.hsem.utils.dynamic_floor_bridge import cheap_refill_price
 
 # ---------------------------------------------------------------------------
 # Test helpers
