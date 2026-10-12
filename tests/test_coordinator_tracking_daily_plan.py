@@ -19,8 +19,8 @@ import pytest
 
 from homeassistant.core import HomeAssistant
 
+from custom_components.hsem.coordinator_daily_plan import accumulate_plan_for_slots
 from custom_components.hsem.coordinator_tracking import (
-    _accumulate_plan_for_slots,
     _async_handle_midnight,
     _init_daily_tracker,
     accumulate_daily_plan_actuals,
@@ -271,7 +271,7 @@ class TestAccumulateDailyPlanActuals:
 
 
 # ---------------------------------------------------------------------------
-# _accumulate_plan_for_slots
+# accumulate_plan_for_slots
 # ---------------------------------------------------------------------------
 
 
@@ -287,7 +287,7 @@ class TestAccumulatePlanForSlots:
         ]
         now = _T0 + 2 * _SLOT + timedelta(minutes=1)
 
-        marker = _accumulate_plan_for_slots(tracker, slots, now, None)
+        marker = accumulate_plan_for_slots(tracker, slots, now, None)
 
         assert marker == _T0 + 2 * _SLOT
         assert tracker.plan.grid_import_kwh == pytest.approx(0.0)
@@ -302,7 +302,7 @@ class TestAccumulatePlanForSlots:
         ]
         now = _T0 + 3 * _SLOT + timedelta(minutes=1)
 
-        marker = _accumulate_plan_for_slots(tracker, slots, now, _T0)
+        marker = accumulate_plan_for_slots(tracker, slots, now, _T0)
 
         assert marker == _T0 + 3 * _SLOT
         assert tracker.plan.grid_import_kwh == pytest.approx(6.0)
@@ -312,7 +312,7 @@ class TestAccumulatePlanForSlots:
         tracker = _tracker()
         slots = [_slot(_T0 + _SLOT, grid_import_kwh=1.0)]
 
-        marker = _accumulate_plan_for_slots(tracker, slots, _T0, _T0 - _SLOT)
+        marker = accumulate_plan_for_slots(tracker, slots, _T0, _T0 - _SLOT)
 
         assert marker == _T0 - _SLOT
         assert tracker.plan.grid_import_kwh == pytest.approx(0.0)
@@ -331,7 +331,7 @@ class TestAccumulatePlanForSlots:
             solcast_pv_estimate_kwh=None,
         )
 
-        marker = _accumulate_plan_for_slots(
+        marker = accumulate_plan_for_slots(
             tracker, [unbounded, unpriced], _T0 + timedelta(minutes=1), None
         )
 

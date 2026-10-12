@@ -305,6 +305,12 @@ Displays the planner's strategy rationale and per-candidate cost breakdown.
 Cumulative monetary sensors that track grid import cost and export revenue.
 All three use `total` because signed prices may make their values decrease.
 
+They count on every update cycle, whether or not HSEM is planning: a forced
+working mode, a missing entity or a load forecast that is not ready yet does
+not pause them. Only a stretch in which no cycle ran at all (Home Assistant
+down, or longer than two update intervals between cycles) is left out,
+because a meter delta that old cannot be priced.
+
 **Entities:**
 
 - `sensor.hsem_export_income` — Cumulative export revenue
@@ -752,7 +758,10 @@ total since the integration was installed:
 
 - **actual** — savings that accrued while HSEM was in control (force mode
   `auto`);
-- **missed** — savings that accrued while a working mode was forced;
+- **missed** — savings that accrued while a working mode was forced: export
+  revenue and discharge savings of that time are booked here instead of under
+  actual. Charge savings need a plan and are not counted while a mode is
+  forced;
 - **baseline** — what a passive installation without a battery would have
   paid for the same house load and PV.
 

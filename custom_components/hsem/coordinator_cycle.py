@@ -25,6 +25,9 @@ from custom_components.hsem.coordinator_helpers import (
     ocpp_charge_target,
     ocpp_management_flags,
 )
+from custom_components.hsem.coordinator_meter_tracking import (
+    async_accumulate_meter_trackers,
+)
 from custom_components.hsem.coordinator_performance import async_track_performance
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import (
@@ -436,6 +439,12 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 await self._maybe_compute_ev_soc_economics(
                     now, captured_generation, force=fresh_plan
                 )
+
+            # Daily, financial and savings trackers: every cycle, with or
+            # without a plan, so a forced mode is not a gap (issue #1267).
+            await async_accumulate_meter_trackers(
+                self, now, live, cfg, planner_output_to_commit
+            )
 
         except _StaleUpdateCycle:
             self._restore_accepted_plan_state(accepted_plan_state)

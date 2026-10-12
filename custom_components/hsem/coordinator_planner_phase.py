@@ -31,11 +31,7 @@ from custom_components.hsem.coordinator_helpers import (
     live_demand_contradicts_zero_profile,
     load_forecast_signatures_match,
 )
-from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_tracking import (
-    accumulate_daily_plan_actuals,
-    accumulate_financials,
-    accumulate_savings,
     register_forecasts_from_planner,
 )
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
@@ -319,70 +315,6 @@ class CoordinatorPlannerPhaseMixin(CoordinatorDynamicFloorMixin):
 
         # Register forecasts in the forecast tracker.
         register_forecasts_from_planner(planner_output, self._forecast_tracker, now=now)
-
-        # Daily plan-vs-actual accumulation.
-        try:
-            self._daily_plan_last_accumulated = await accumulate_daily_plan_actuals(
-                now=now,
-                live=live,
-                output=planner_output,
-                daily_tracker=self._daily_tracker,
-                daily_plan_last_accumulated=self._daily_plan_last_accumulated,
-                hass=self.hass,
-            )
-        except Exception as e:
-            async_log(
-                "error",
-                "Daily plan-vs-actual accumulation failed: %s",
-                e,
-            )
-
-        # Financial tracker accumulation (issue #599).
-        try:
-            await accumulate_financials(
-                now=now,
-                live=live,
-                financial_tracker=self._financial_tracker,
-                hass=self.hass,
-                update_interval_minutes=cfg.update_interval,
-            )
-        except Exception as e:
-            async_log(
-                "error",
-                "Financial tracker accumulation failed: %s",
-                e,
-            )
-
-        # Savings tracker accumulation (issue #604).
-        try:
-            await accumulate_savings(
-                now=now,
-                live=live,
-                output=planner_output,
-                savings_tracker=self._savings_tracker,
-                daily_tracker=self._daily_tracker,
-                hourly_recommendation=self._hourly_recommendation,
-                hass=self.hass,
-            )
-        except Exception as e:
-            async_log(
-                "error",
-                "Savings tracker accumulation failed: %s",
-                e,
-            )
-
-        # Persist financial and savings tracker state (issues #599, #604,
-        # #890) through the shared registry -- see coordinator_persistence.py.
-        try:
-            await persist_all_trackers(
-                self, only=["_financial_tracker", "_savings_tracker"]
-            )
-        except Exception as e:
-            async_log(
-                "error",
-                "Tracker persistence failed: %s",
-                e,
-            )
 
         return state, should_replan, planner_output
 
