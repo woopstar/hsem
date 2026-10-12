@@ -1758,6 +1758,18 @@ it is getting better. The figures are defined in
 | Missed opportunity per day | ApexCharts | One stacked column per day: battery dispatch, PV surplus, EV timing ("Not split" for a day without the split)   |
 | Daily shares (%)           | ApexCharts | Savings capture, battery utilisation, solar utilisation and EV charging efficiency per day                      |
 
+**Already have the HSEM dashboard?** `hsem.create_dashboard` does not change a
+dashboard that exists: it only rewrites `<config>/hsem_dashboard.yaml`, so that
+your own edits to the dashboard are not overwritten. To add the view:
+
+1. Run `hsem.create_dashboard` once, to refresh `<config>/hsem_dashboard.yaml`.
+2. Open the HSEM dashboard, choose **Edit dashboard**, then the three-dot menu
+   and **Raw configuration editor**.
+3. From `hsem_dashboard.yaml` (or the YAML above), copy the block that starts
+   with `- title: Performance` and paste it at the end, as a second entry
+   under `views:`.
+4. Save.
+
 Reading it:
 
 - A **new installation** shows "nothing scored yet" and dashes for the first
