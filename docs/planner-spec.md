@@ -4680,7 +4680,7 @@ early in the night covered the little consumption before it and released the
 floor, and the same charge three hours later became a partial credit with a
 24–30 % reserve.
 
-`_planned_grid_charges()` (`utils/dynamic_floor.py`) therefore credits each
+`_planned_grid_charges()` (`utils/dynamic_floor_bridge.py`) therefore credits each
 planned grid charge at the **earliest bridge slot priced within one battery
 cycle cost of the charge's own slot**:
 
@@ -4951,7 +4951,7 @@ refill        = first slot t with cheap(t); reserve = consumption before t
 refill_type   = cheap_window, next_refill_slot = t
 ```
 
-`_cheap_window_slots()` (`utils/dynamic_floor.py`) marks the slots, and
+`_cheap_window_slots()` (`utils/dynamic_floor_bridge.py`) marks the slots, and
 `_scan_bridge()` ends the first pass at the first marked one, after it has
 read a planned charge credited to the same slot (which keeps its
 `grid_charge` label) and before the affordable pass (a window at the
@@ -5135,7 +5135,7 @@ floor protects against draining the battery and then importing at peak prices
 risk: if the forecast is wrong, the next replan refills there. So the scan
 treats an affordable slot as a refill whether or not the plan charges in it.
 
-**Threshold.** `cheap_refill_price()` (`utils/dynamic_floor.py`) over the
+**Threshold.** `cheap_refill_price()` (`utils/dynamic_floor_bridge.py`) over the
 import prices of the scan's look-ahead window (`hours_ahead`, 48 h):
 
 ```text

@@ -75,25 +75,26 @@ cycle are durable; stale generations must not publish.
 
 ### Utils layer (`custom_components/hsem/utils/`)
 
-| File                     | Responsibility                                                                                                                                               |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `recommendations.py`     | `Recommendations` enum + canonical `DISCHARGE_RECS`, `CHARGE_RECS`, and `SENTINEL_RECS` frozensets                                                           |
-| `misc.py`                | Shared math helpers: `clamp_efficiency()`, `calculate_recommended_threshold()`, etc.                                                                         |
-| `sensornames.py`         | All HA entity name constants — never hardcode sensor names elsewhere                                                                                         |
-| `prices.py`              | Price lookup, grid fee calculation, spot price helpers                                                                                                       |
-| `huawei.py`              | Huawei Solar inverter API helpers                                                                                                                            |
-| `logger.py`              | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)                                                              |
-| `solar_corrector.py`     | Per-hour PV forecast accuracy auto-correction (issue #602)                                                                                                   |
-| `dynamic_floor.py`       | Dynamic self-learning discharge floor (bridge-to-refill; an affordable refill → reserve 0, #1156; a planned charge ends the bridge at any size, #1214/#1220) |
-| `soc_bounds.py`          | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094); `reserve_floor_pct()` — reserve kWh to floor SoC (#1221)  |
-| `capacity_learner.py`    | Battery usable capacity auto-detection from BMS readings                                                                                                     |
-| `prediction_tracker.py`  | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                                                                              |
-| `weekday_profile.py`     | Weekday/weekend split house load EWMA profiles                                                                                                               |
-| `ev_mode_resolver.py`    | Auto-Full EV charging on negative electricity prices                                                                                                         |
-| `ev_accounting.py`       | Raw CT versus per-EV normalized-baseline accounting helper                                                                                                   |
-| `unit_normalize.py`      | Generic sensor unit normalization via HA's `unit_conversion` converters (issues #945, #1119)                                                                 |
-| `performance_scoring.py` | Scores recorded performance slots: coverage/limit/residual guards, SoC-derived battery flows, `evaluate_performance` for the executor (issue #1182)          |
-| `persistence.py`         | Validation helpers for restored JSON, bounded `read_json_history_file`, atomic `write_json_history_file` — use these for any new history file                |
+| File                      | Responsibility                                                                                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `recommendations.py`      | `Recommendations` enum + canonical `DISCHARGE_RECS`, `CHARGE_RECS`, and `SENTINEL_RECS` frozensets                                                           |
+| `misc.py`                 | Shared math helpers: `clamp_efficiency()`, `calculate_recommended_threshold()`, etc.                                                                         |
+| `sensornames.py`          | All HA entity name constants — never hardcode sensor names elsewhere                                                                                         |
+| `prices.py`               | Price lookup, grid fee calculation, spot price helpers                                                                                                       |
+| `huawei.py`               | Huawei Solar inverter API helpers                                                                                                                            |
+| `logger.py`               | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)                                                              |
+| `solar_corrector.py`      | Per-hour PV forecast accuracy auto-correction (issue #602)                                                                                                   |
+| `dynamic_floor.py`        | Dynamic self-learning discharge floor (bridge-to-refill; an affordable refill → reserve 0, #1156; a planned charge ends the bridge at any size, #1214/#1220) |
+| `dynamic_floor_bridge.py` | Stateless bridge arithmetic of the dynamic floor: refill detection, planned-charge credit, cheap window, per-slot reserve profile (split out in #1274)       |
+| `soc_bounds.py`           | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094); `reserve_floor_pct()` — reserve kWh to floor SoC (#1221)  |
+| `capacity_learner.py`     | Battery usable capacity auto-detection from BMS readings                                                                                                     |
+| `prediction_tracker.py`   | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                                                                              |
+| `weekday_profile.py`      | Weekday/weekend split house load EWMA profiles                                                                                                               |
+| `ev_mode_resolver.py`     | Auto-Full EV charging on negative electricity prices                                                                                                         |
+| `ev_accounting.py`        | Raw CT versus per-EV normalized-baseline accounting helper                                                                                                   |
+| `unit_normalize.py`       | Generic sensor unit normalization via HA's `unit_conversion` converters (issues #945, #1119)                                                                 |
+| `performance_scoring.py`  | Scores recorded performance slots: coverage/limit/residual guards, SoC-derived battery flows, `evaluate_performance` for the executor (issue #1182)          |
+| `persistence.py`          | Validation helpers for restored JSON, bounded `read_json_history_file`, atomic `write_json_history_file` — use these for any new history file                |
 
 ---
 
@@ -465,9 +466,14 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
   needs splitting. These limits keep files small enough for efficient AI
   development (context window, diff size, review latency).
 - If a file exceeds either limit, split it before adding more features.
-- Current oversized files (as of 2026-10-12):
+- Current oversized files (as of 2026-10-12): none. Within 700 bytes of the
+  limit, so split before adding to them: `planner/discharge_scheduler.py`,
+  `custom_sensors/state_collector.py`, `planner/milp_optimizer.py`,
+  `coordinator_helpers.py`, `utils/forecast_tracker.py`.
 
-  - `utils/dynamic_floor.py` — 35,002 bytes (over 30 KB, issue #1274)
+- Resolved in issue #1274: the stateless bridge arithmetic moved from
+  `utils/dynamic_floor.py` (35.0 KB) to `utils/dynamic_floor_bridge.py`; the
+  two are now ~19 KB and ~17 KB.
 
 - Resolved in issue #1267: the plan-side slot helpers moved from
   `coordinator_tracking.py` (30.6 KB) to `coordinator_daily_plan.py`; the
@@ -2605,7 +2611,7 @@ Tests: `tests/planner/test_battery_target_milp.py` (every acceptance scenario, a
 
 **Bug:** `_scan_bridge` tested each planned grid charge against the consumption bridged up to the charge's own slot. With several equally priced night slots the floor-free reference solve puts its charge in a different one on each replan, so the floor flipped between the configured minimum and a 24-30 % reserve on consecutive replans (5.0 / 29.8 / 5.0 / 24.0 / 5.0 / 26.6 %), and the executed slot alternated between hold and discharge.
 
-**Rule:** `utils/dynamic_floor.py::_planned_grid_charges()` credits every planned `batteries_charge_grid` slot at the **earliest bridge slot priced within one cycle cost of it** (the tolerance `cheap_refill_price` uses). The bridge is every slot before the first solar surplus. Charges of one price add up in its first slot; a charge without a finite price is not moved. `next_refill_slot` reports the slot the credit is counted in, not the slot the plan charges in. Do not solve this with a tie-break in the MILP objective or with state from the previous replan (#1140).
+**Rule:** `utils/dynamic_floor_bridge.py::_planned_grid_charges()` credits every planned `batteries_charge_grid` slot at the **earliest bridge slot priced within one cycle cost of it** (the tolerance `cheap_refill_price` uses). The bridge is every slot before the first solar surplus. Charges of one price add up in its first slot; a charge without a finite price is not moved. `next_refill_slot` reports the slot the credit is counted in, not the slot the plan charges in. Do not solve this with a tie-break in the MILP objective or with state from the previous replan (#1140).
 
 **Tests:** `tests/planner/test_dynamic_floor_closed_loop.py` (nine hourly replans through the real `run_planner`; a 48-replan loop takes ~25 s, too close to the 30 s test timeout), `tests/utils/test_dynamic_floor.py::TestPlannedChargePlacement`. Hand-built plans with flat prices now credit their charge in the live slot: price the plan (`_plan(cheap_night=True)`) when a test asserts the refill slot.
 
@@ -2819,3 +2825,10 @@ Tests: `tests/test_coordinator_meter_tracking.py` (forced periods, missed saving
 - Tests patch `tempfile.mkstemp` / `json.dump` / `os.replace` globally, so they keep working whichever module does the write.
 
 Tests: `tests/test_tracker_history_writers.py::TestOneSharedWriter`, `tests/utils/test_persistence.py::TestWriteJsonHistoryFile`.
+
+## `utils/dynamic_floor.py` Split Into State and Bridge Arithmetic (issue #1274)
+
+`utils/dynamic_floor.py` had grown to 35 KB. The stateless functions (`cheap_refill_price`, `_cycle_cost_tolerance`, `_export_buffer_buy_back_kwh`, `_planned_grid_charges`, `_cheap_window_slots`, `_BridgeScan`, `_scan_bridge`, `_floor_profile`) moved byte-for-byte into `utils/dynamic_floor_bridge.py` (17 KB); `DynamicDischargeFloor` and the margin-learning constants stay in `utils/dynamic_floor.py` (19 KB) and import what they call.
+
+- A new bridge rule goes into `dynamic_floor_bridge.py`; anything that touches the learned safety margin goes into `dynamic_floor.py`.
+- Sections above that say "`utils/dynamic_floor.py`" for one of the moved functions predate the split.
