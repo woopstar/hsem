@@ -7,12 +7,11 @@ the planner's required battery reserve.
 
 from typing import Any
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.schema import vol
 from custom_components.hsem.utils.wait_mode_behavior import (
     WAIT_MODE_BEHAVIOR_VALUES,
     WaitModeBehavior,

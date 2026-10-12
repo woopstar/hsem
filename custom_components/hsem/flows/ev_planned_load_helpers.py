@@ -20,8 +20,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
@@ -40,6 +38,7 @@ from custom_components.hsem.utils.config_validator import (
 )
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.phase_power import EV_PHASE_TOPOLOGIES
+from custom_components.hsem.utils.schema import vol
 
 # Shared number selectors — defined once for reuse across both EV steps.
 _CAPACITY_SELECTOR = selector(

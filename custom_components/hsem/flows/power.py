@@ -11,8 +11,6 @@ grid-charge-maximum-power write entity is configured in the
 
 from typing import Any
 
-import voluptuous as vol
-
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfElectricCurrent, UnitOfPower
@@ -21,6 +19,7 @@ from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import async_validate_entity_ids
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.schema import vol
 
 # A main fuse trips on current, so each live phase field accepts a power or a
 # current sensor (issue #1119); anything else could not be compared with the

@@ -2875,3 +2875,15 @@ Tests: `tests/test_tracker_history_writers.py::TestOneSharedWriter`, `tests/util
 - Every reason code the sensors can publish needs an entry in the Status card's `why` map; `test_every_reason_the_sensors_publish_is_put_in_words` fails when a new `REASON_*` constant has none.
 - `docs/dashboard-setup.md` embeds the full YAML for a manual import. It had silently drifted from the bundled file (a whole series was missing); `test_the_docs_carry_the_same_dashboard` now compares the two as parsed YAML. After editing the dashboard, copy the file into the docs' code block.
 - A period with no scored day publishes amounts of `0.0`; the table blanks those columns itself (`week if week.get('scored_days') else {}`).
+
+## `vol` Comes From `utils/schema.py`, Not From `voluptuous` (issue #1289)
+
+Home Assistant 2026.10 replaced voluptuous with probatio (a drop-in with the same API). Its signatures name `probatio.Schema`, and `homeassistant/__init__.py` calls `probatio.compat.install_as_voluptuous()`, which aliases `voluptuous` to probatio in `sys.modules` for integrations that still import it. So HSEM kept working at runtime, but mypy reported every schema handed to Home Assistant as the wrong type: 35 errors, and `main`'s quality gate was red from the dependabot bump (#1287) on.
+
+**Rules:**
+
+- Import `vol` with `from custom_components.hsem.utils.schema import vol`. Never `import voluptuous` or `import probatio` in another module; `tests/utils/test_schema_compat.py` fails if one does.
+- `utils/schema.py` imports **voluptuous at runtime** and **probatio under `TYPE_CHECKING`**. Do not import probatio at runtime: `hacs.json` allows Home Assistant from 2024.6.0, which does not ship it.
+- A dependabot bump of `homeassistant` can turn the gate red without touching HSEM's code. Its "Quality gates" check must be green before it is merged; #1287 was merged red and every later commit on `main` inherited it.
+- The devcontainer image can be behind the pinned requirements (it had Home Assistant 2026.8.3 while `requirements.txt` pinned 2026.10.0). When CI and a local run disagree, build an isolated environment from the requirements files (`uv venv /tmp/...`, `uv pip install -r requirements.txt -r requirements_test.txt -r requirements_lint.txt`) and run `./scripts/quality.sh` with it first on `PATH`. Do not upgrade the shared container from inside a session.
+- An "INTERNAL ERROR" from mypy right after switching interpreters or mypy versions is a stale cache: clear `/tmp/hsem-cache/mypy/<worktree>`.

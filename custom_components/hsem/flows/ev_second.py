@@ -5,8 +5,6 @@ This module is a thin wrapper around the shared helpers in
 and validation logic lives there.
 """
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
@@ -14,6 +12,7 @@ from custom_components.hsem.flows.ev_helpers import (
     build_ev_charger_schema,
     validate_ev_charger_input,
 )
+from custom_components.hsem.utils.schema import vol
 
 
 async def get_ev_second_step_schema(config_entry: ConfigEntry | None) -> vol.Schema:

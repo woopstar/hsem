@@ -4,14 +4,13 @@ Allows the user to select the Solcast forecast entities for today
 and tomorrow, as well as the PV estimate likelihood level.
 """
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import async_validate_entity_ids
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.schema import vol
 from custom_components.hsem.utils.solcast_likelihood import SOLCAST_LIKELIHOOD_OPTIONS
 
 

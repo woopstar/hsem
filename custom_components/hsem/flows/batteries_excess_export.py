@@ -6,8 +6,6 @@ threshold is auto-calculated at runtime from battery depreciation
 parameters.
 """
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
@@ -19,6 +17,7 @@ from custom_components.hsem.utils.config_validator import (
     validate_time_of_day,
 )
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.schema import vol
 
 
 async def get_batteries_excess_export_step_schema(  # NOSONAR

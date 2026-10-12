@@ -4,14 +4,13 @@ Allows the user to select which months are considered winter months
 for the purpose of seasonal adjustments in the planner.
 """
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import validate_months
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.schema import vol
 
 
 def _month_options() -> list[str]:

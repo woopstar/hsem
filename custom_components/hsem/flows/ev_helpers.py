@@ -19,8 +19,6 @@ Public API
 - :func:`validate_ev_charger_input` — async validator for one EV charger.
 """
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfPower
 from homeassistant.core import HomeAssistant
@@ -32,6 +30,7 @@ from custom_components.hsem.utils.config_validator import (
 )
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.schema import vol
 
 # Domain lists reused for multiple fields — defined once to avoid repetition.
 _STATUS_DOMAINS = ["sensor", "switch", "input_boolean", "binary_sensor", "button"]
