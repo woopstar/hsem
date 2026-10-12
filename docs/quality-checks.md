@@ -33,8 +33,9 @@ can be opened.
 ```
 
 The non-mutating counterpart of `lint`: `ruff format --check`, `ruff check`
-(no `--fix`), prettier `--check` and the docs math check. It never touches the
-tree, so a violation fails instead of being quietly repaired.
+(no `--fix`), prettier `--check`, the docs math check and the file-size check.
+It never touches the tree, so a violation fails instead of being quietly
+repaired.
 
 This is the target that actually gates formatting and lint in CI. `lint` and
 `all` both _fix_ in place, which means that in an ephemeral CI container they
@@ -167,13 +168,31 @@ math, and on Markdown-looking lines inside a block. `lint`, `format-check`
 and `all` run it; `lint` runs it after prettier, so a formula prettier has
 just rewritten is reported in the same run.
 
+### Check the file sizes
+
+```bash
+./scripts/quality.sh file-size
+```
+
+Runs `scripts/check_file_size.py` over every `*.py` file of
+`custom_components/hsem` (30 KiB / 1000 lines) and of `scripts/` and `tests/`
+(60 KiB / 2000 lines), and prints one line per file over a limit with its
+size, its line count and both limits. The rule and its reasons are in
+`CODE_QUALITY_STANDARDS.md` → File Size Limits.
+
+The script's `ALLOWLIST` names the files that were over a limit when the check
+was added, each with the issue that will split it. The check also fails on an
+entry whose file is back within the limits, so the list cannot go stale, and on
+a missing scope directory, so a wrong working directory cannot pass.
+`format-check` and `all` run it.
+
 ## CI Integration
 
 `.github/workflows/lint-and-test.yml` runs the checks in two jobs:
 
 - **`validate`** calls `./scripts/quality.sh format-check`, which verifies
-  `ruff format`, `ruff check`, prettier and the math in `docs/` without
-  writing. This is what gates formatting and lint — `lint` and `all` fix in
+  `ruff format`, `ruff check`, prettier, the math in `docs/` and the file
+  sizes without writing. This is what gates formatting and lint — `lint` and `all` fix in
   place, so in an ephemeral CI container they cannot fail on anything
   auto-fixable.
 - **`quality`** runs `./scripts/quality.sh all` in the devcontainer, covering

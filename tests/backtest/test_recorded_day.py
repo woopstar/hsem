@@ -10,11 +10,9 @@ repository.
 from __future__ import annotations
 
 import copy
-import importlib.util
 import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from types import ModuleType
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -51,13 +49,13 @@ from tests.backtest.test_attribution import (
     _cycles,
     _site,
 )
+from tests.script_loader import load_script
 
 pytestmark = pytest.mark.skipif(
     not is_scipy_available(), reason="scipy not available in this environment"
 )
 
 _SITE = "site-t"
-_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _actuals_payload(days: int = 2) -> dict[str, Any]:
@@ -489,24 +487,13 @@ class TestCommittedDayAttribution:
 # ---------------------------------------------------------------------------
 
 
-def _load_script(name: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(
-        name, _REPO_ROOT / "scripts" / f"{name}.py"
-    )
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 class TestAttributeScriptDefault:
     """``backtest_attribute.py`` without arguments attributes the committed days."""
 
     def test_no_arguments_means_the_committed_days(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        script = _load_script("backtest_attribute")
+        script = load_script("backtest_attribute")
         seen: list[tuple[str | None, int, list[date]]] = []
 
         def fake_attribute(
@@ -537,14 +524,14 @@ class TestAttributeScriptDefault:
     def test_a_day_that_is_not_committed_is_named(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        script = _load_script("backtest_attribute")
+        script = load_script("backtest_attribute")
 
         assert script.main(["--day", "2001-01-01"]) == 1
 
         assert "no recorded day is committed" in capsys.readouterr().out
 
     def test_actuals_need_a_corpus_and_a_day(self) -> None:
-        script = _load_script("backtest_attribute")
+        script = load_script("backtest_attribute")
 
         with pytest.raises(SystemExit, match="--corpus and --day are required"):
             script.main([str(DAYS_DIR)])

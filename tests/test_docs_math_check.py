@@ -9,28 +9,13 @@ so its rules are pinned here, and so is the state of the real ``docs/`` tree.
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-_SCRIPT = _REPO_ROOT / "scripts" / "check_docs_math.py"
+from tests.script_loader import REPO_ROOT, load_script
 
-
-def _load() -> ModuleType:
-    """Load the checker script as a module."""
-    spec = importlib.util.spec_from_file_location("check_docs_math", _SCRIPT)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-_CHECKER = _load()
+_CHECKER = load_script("check_docs_math")
 _DOC = Path("docs/example.md")
 
 
@@ -259,7 +244,7 @@ class TestRepositoryDocs:
         """Includes the acceptance criterion of issue #1184: no formula in
         ``docs/`` carries ``*{`` or ``\\_{``.
         """
-        docs = sorted((_REPO_ROOT / "docs").rglob("*.md"))
+        docs = sorted((REPO_ROOT / "docs").rglob("*.md"))
 
         assert len(docs) > 20
         assert [str(v) for v in _CHECKER.check_files(docs)] == []

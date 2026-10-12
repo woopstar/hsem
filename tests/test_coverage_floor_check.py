@@ -10,27 +10,13 @@ all fail loudly rather than pass by default.
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 
-_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "check_coverage_floor.py"
+from tests.script_loader import load_script
 
-
-def _load() -> ModuleType:
-    """Load the checker script as a module."""
-    spec = importlib.util.spec_from_file_location("check_coverage_floor", _SCRIPT)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-_CHECKER = _load()
+_CHECKER = load_script("check_coverage_floor")
 
 
 def _report(tmp_path: Path, modules: dict[str, tuple[int, int]]) -> Path:

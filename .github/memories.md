@@ -461,15 +461,28 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 
 ## File Size Rules
 
-- **Hard limit: 30 KB AND 1000 lines per file** across the entire codebase.
-  Both limits must be satisfied — a file under 30 KB but over 1000 lines still
-  needs splitting. These limits keep files small enough for efficient AI
-  development (context window, diff size, review latency).
+- **Hard limit for the integration: 30 KiB (30,720 bytes) AND 1000 lines per
+  Python file**; `scripts/` and `tests/` get twice that. Both limits must be
+  satisfied — a file under 30 KiB but over 1000 lines still needs splitting.
+  These limits keep files small enough for efficient AI development (context
+  window, diff size, review latency). `CODE_QUALITY_STANDARDS.md` → File Size
+  Limits is the single statement of the rule.
+- `./scripts/quality.sh file-size` (`scripts/check_file_size.py`) enforces it in
+  `all`, in `format-check` (CI) and as a pre-commit hook (issue #1277).
 - If a file exceeds either limit, split it before adding more features.
-- Current oversized files (as of 2026-10-12): none. Within 700 bytes of the
-  limit, so split before adding to them: `planner/discharge_scheduler.py`,
-  `custom_sensors/state_collector.py`, `planner/milp_optimizer.py`,
-  `coordinator_helpers.py`, `utils/forecast_tracker.py`.
+- Current oversized files (as of 2026-10-12). The `ALLOWLIST` of
+  `scripts/check_file_size.py` is the authoritative list, and the check fails on
+  an entry that is no longer needed:
+
+  - No integration file. Within 700 bytes of the limit, so split before adding
+    to them: `planner/discharge_scheduler.py`,
+    `custom_sensors/state_collector.py`, `planner/milp_optimizer.py`,
+    `coordinator_helpers.py`, `utils/forecast_tracker.py`.
+  - Six test modules over 60 KiB or 2000 lines (issue #1278):
+    `tests/planner/test_ev_planned_load.py`, `tests/test_ha_mock_integration.py`,
+    `tests/custom_sensors/test_ocpp_server.py`,
+    `tests/planner/test_milp_optimizer.py`, `tests/planner/test_invariants.py`,
+    `tests/test_safety_gates.py`
 
 - Resolved in issue #1274: the stateless bridge arithmetic moved from
   `utils/dynamic_floor.py` (35.0 KB) to `utils/dynamic_floor_bridge.py`; the
@@ -494,12 +507,9 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
   ~28.5 KB).
 - Resolved in issue #1057: EV deadline parsing moved from `state_collector.py`
   to `custom_sensors/ev_deadline.py`, bringing the collector below 30 KB.
-- Check before every PR:
+- Check before every PR (also part of `./scripts/quality.sh all` and of CI):
   ```bash
-  # Lines
-  find custom_components/hsem -name '*.py' -exec sh -c 'l=$(wc -l < "$1"); [ "$l" -gt 1000 ] && echo "$l $1"' _ {} \;
-  # Size
-  find custom_components/hsem -name '*.py' -exec sh -c 's=$(wc -c < "$1"); [ "$s" -gt 30720 ] && echo "$s $1"' _ {} \;
+  ./scripts/quality.sh file-size
   ```
 
 ---
@@ -1218,6 +1228,9 @@ outlier: the plan-vs-actual sensor is `sensor.daily_plan_vs_actual`, with no
 - Fixtures cannot contain input combinations nobody thought of. When a planner
   bug reaches production, add the diagnostics dump to `tests/backtest/corpus/`
   as well as writing the unit regression test — see the backtest harness below.
+- `scripts/` is not a package. A test of a script loads it with
+  `tests/script_loader.py::load_script("<name>")`; do not copy the
+  `importlib.util.spec_from_file_location` boilerplate into the test module.
 
 ---
 

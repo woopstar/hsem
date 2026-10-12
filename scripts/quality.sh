@@ -66,6 +66,12 @@ docs_math_check() {
     run python3 scripts/check_docs_math.py
 }
 
+# The 30 KiB / 1000-line rule of CODE_QUALITY_STANDARDS.md (File Size Limits).
+# Nothing can fix an oversized file automatically, so this only verifies.
+file_size_check() {
+    run python3 scripts/check_file_size.py
+}
+
 usage() {
     cat <<EOF
 Usage: quality <command>
@@ -74,13 +80,14 @@ Commands:
   lint      Format and lint code (ruff format + ruff check + prettier --write + docs math check)
   typing    Type check with mypy
   quality   Static quality checks (pyright + vulture)
-  format-check  Verify ruff format, ruff lint, prettier and docs math without writing (used by CI)
+  format-check  Verify ruff format, ruff lint, prettier, docs math and file sizes without writing (used by CI)
   docs-math     Check that the LaTeX math in docs/ survives prettier and GitHub
+  file-size     Assert every Python file is within the file-size limits
   translations  Validate en/da/de/es translation files stay in sync
   skylos    Run Skylos static analysis (experimental, not in 'all')
   test      Run tests with pytest and coverage
   coverage-floor  Assert every module meets the 95% per-module coverage floor
-  all       Run lint, typing, quality, translations, and test in sequence
+  all       Run lint, file-size, typing, quality, translations, and test in sequence
 EOF
     exit 1
 }
@@ -109,9 +116,13 @@ case "${1:-}" in
         run ruff check .
         prettier_run --check
         docs_math_check
+        file_size_check
         ;;
     docs-math)
         docs_math_check
+        ;;
+    file-size)
+        file_size_check
         ;;
     translations)
         run python3 scripts/validate_translations.py
@@ -142,6 +153,9 @@ case "${1:-}" in
         run ruff check . --fix
         prettier_run --write
         docs_math_check
+        echo ""
+        echo "=== File Size ==="
+        file_size_check
         echo ""
         echo "=== Type Check ==="
         run mypy custom_components tests
