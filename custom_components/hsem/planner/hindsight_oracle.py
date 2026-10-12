@@ -33,7 +33,7 @@ from custom_components.hsem.planner._scipy_probe import is_scipy_available
 _ORACLE_MIP_GAP = 1e-9
 #: Wall-clock limit for one oracle solve.  A day of 15-minute slots solves in
 #: milliseconds; the limit only stops a pathological input from hanging.
-_ORACLE_TIME_LIMIT_S = 60.0
+ORACLE_TIME_LIMIT_S = 60.0
 
 
 @dataclass(frozen=True)
@@ -237,6 +237,7 @@ def solve_hindsight_oracle(
     max_discharge_kwh: Sequence[float] | None = None,
     max_grid_import_kwh: Sequence[float] | None = None,
     max_grid_export_kwh: Sequence[float] | None = None,
+    time_limit_s: float = ORACLE_TIME_LIMIT_S,
 ) -> HindsightRun | None:
     """Return the cheapest way the battery could have been run, in hindsight.
 
@@ -266,11 +267,13 @@ def solve_hindsight_oracle(
             ``None``.
         max_grid_export_kwh: Per-slot grid export limit; unlimited when
             ``None``.
+        time_limit_s: Wall-clock limit for the solve.
 
     Returns:
         The optimal flows and their cost, or ``None`` when scipy is not
-        available, the window is empty, or no run satisfies the limits (for
-        example an end energy the battery cannot reach).
+        available, the window is empty, no run satisfies the limits (for
+        example an end energy the battery cannot reach), or the solve ran
+        into *time_limit_s* before proving its result optimal.
     """
     count = len(slots)
     if count == 0 or not is_scipy_available():
@@ -391,7 +394,7 @@ def solve_hindsight_oracle(
         ],
         integrality=integrality,
         bounds=bounds(np.zeros(width), upper),
-        options={"mip_rel_gap": _ORACLE_MIP_GAP, "time_limit": _ORACLE_TIME_LIMIT_S},
+        options={"mip_rel_gap": _ORACLE_MIP_GAP, "time_limit": time_limit_s},
     )
     if not result.success or result.x is None:
         return None

@@ -226,6 +226,11 @@ day         realized   oracle   regret potential  savings  capture
 2026-09-15     13.45    10.19     3.26      9.32     6.05    65.0%
 ```
 
+Add `--battery-flows soc` to take the battery's flows from its SoC instead of
+its energy meters. That is what the on-device
+[performance sensors](sensors-reference.md#performance-sensors) do, so it is
+the mode to use when comparing a day with them.
+
 | Column      | Meaning                                                                                  |
 | ----------- | ---------------------------------------------------------------------------------------- |
 | `realized`  | What the day cost: import paid minus export earned, at the recorded prices.              |

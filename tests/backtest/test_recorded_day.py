@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from custom_components.hsem.planner.hindsight_scoring import SiteLimits
 from custom_components.hsem.planner.milp_optimizer import is_scipy_available
 from tests.backtest.actuals import ACTUALS_SCHEMA, ENERGY_SERIES
 from tests.backtest.attribution import (
@@ -38,7 +39,7 @@ from tests.backtest.recorded_day import (
     write_recorded_day,
 )
 from tests.backtest.replay import generous_solver_limit, planner_input_from_dict
-from tests.backtest.scoring import SiteLimits, day_slot_keys
+from tests.backtest.scoring import day_slot_keys
 from tests.backtest.site import site_of
 from tests.backtest.test_attribution import (
     _DAY,

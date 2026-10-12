@@ -30,11 +30,13 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from custom_components.hsem.planner.hindsight_scoring import (  # noqa: E402
+    SiteLimits,
+)
 from tests.backtest.actuals import load_actuals  # noqa: E402
 from tests.backtest.harvest import newest_cycle_of_site  # noqa: E402
 from tests.backtest.replay import load_dump, load_planner_input  # noqa: E402
 from tests.backtest.scoring import (  # noqa: E402
-    SiteLimits,
     describe,
     merge_actuals,
     observed_days,
@@ -144,6 +146,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--tz", help="time zone that defines a day (default: read from the files)"
     )
+    parser.add_argument(
+        "--battery-flows",
+        choices=("meters", "soc"),
+        default="meters",
+        help=(
+            "where the battery's flows come from: its energy meters (default), "
+            "or the change in its SoC over each slot, which is what the "
+            "on-device performance sensors use and so reproduces their numbers"
+        ),
+    )
     args = parser.parse_args(argv)
 
     files = _actuals_files(args.actuals)
@@ -168,7 +180,13 @@ def main(argv: list[str] | None = None) -> int:
         f"{site.max_charge_kw:g}/{site.max_discharge_kw:g} kW, "
         f"efficiency {site.charge_efficiency:.2f}/{site.discharge_efficiency:.2f}"
     )
-    scores = score_days(actuals, observed_days(actuals, zone), zone, site)
+    scores = score_days(
+        actuals,
+        observed_days(actuals, zone),
+        zone,
+        site,
+        flows_from_soc=args.battery_flows == "soc",
+    )
     print(describe(scores))
     return 0 if any(score.is_scored for score in scores) else 1
 

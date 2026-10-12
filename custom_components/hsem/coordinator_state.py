@@ -43,6 +43,7 @@ from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.forecast_coverage import ForecastCoverage
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
@@ -158,6 +159,8 @@ class CoordinatorSharedState(_Base):
     _options_update_debounce_task: asyncio.Task | None
     _options_update_task: asyncio.Task | None
     _override_expiry: datetime | None
+    _performance_task: asyncio.Task | None
+    _performance_tracker: PerformanceTracker
     _plan_explanation: PlanExplanation
     _prediction_tracker: PredictionTracker
     _previous_planner_winner_name: str | None

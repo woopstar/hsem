@@ -59,6 +59,7 @@ from custom_components.hsem.planner.hindsight_oracle import (
     grid_cost,
     stored_trajectory,
 )
+from custom_components.hsem.planner.hindsight_scoring import SiteLimits
 from custom_components.hsem.utils.datetime_utils import (
     physical_slot_grid,
     slot_key,
@@ -67,7 +68,7 @@ from custom_components.hsem.utils.datetime_utils import (
 from custom_components.hsem.utils.recommendations import Recommendations
 from tests.backtest.actuals import Actuals
 from tests.backtest.replay import planner_input_from_dict
-from tests.backtest.scoring import RealizedDay, SiteLimits, realized_day
+from tests.backtest.scoring import RealizedDay, realized_day
 from tests.backtest.site import describe_site, same_site, site_of
 
 #: Least share of a day's slots that must have a cycle recorded in them.  Below

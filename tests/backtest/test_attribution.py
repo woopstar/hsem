@@ -23,6 +23,7 @@ from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.planner.hindsight_oracle import HindsightBattery
+from custom_components.hsem.planner.hindsight_scoring import SiteLimits
 from custom_components.hsem.planner.milp_optimizer import is_scipy_available
 from custom_components.hsem.utils.datetime_utils import slot_key
 from custom_components.hsem.utils.diagnostics import _planner_input_to_dict
@@ -39,7 +40,7 @@ from tests.backtest.attribution import (
     site_cycles_by_slot,
     with_realized_forecasts,
 )
-from tests.backtest.scoring import SiteLimits, day_slot_keys
+from tests.backtest.scoring import day_slot_keys
 
 pytestmark = pytest.mark.skipif(
     not is_scipy_available(), reason="scipy not available in this environment"
@@ -329,12 +330,17 @@ class TestPartlyRecordedDay:
 
 class TestDescribe:
     def test_an_attributed_day_shows_the_split(self, clouded: DayAttribution) -> None:
-        """The example in docs/backtest-harness.md and docs/backtest-runbook.md."""
+        """The table of docs/backtest-harness.md and docs/backtest-runbook.md.
+
+        The site has battery export switched off, so the oracle may not export
+        from the battery either (issue #1182): what the setting costs is not
+        regret, and the planner error of this day is zero.
+        """
         assert describe([clouded]).splitlines() == [
             "day         realized forecast hindsight   regret = execution + forecast"
             " +  planner",
-            "2026-06-10     19.96    11.03     13.10    11.24        5.84       1.65"
-            "      3.75",
+            "2026-06-10     19.96    11.03     13.10     7.35        6.50       0.85"
+            "      0.00",
         ]
 
 

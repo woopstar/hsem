@@ -1157,6 +1157,15 @@
       "net_grid_balance": {
         "name": "Net Grid Balance"
       },
+      "performance_actual_benefit": {
+        "name": "Performance: Actual Benefit (24 h)"
+      },
+      "performance_missed_opportunity": {
+        "name": "Performance: Missed Opportunity (24 h)"
+      },
+      "performance_savings_capture": {
+        "name": "Performance: Savings Capture (24 h)"
+      },
       "prediction_accuracy": {
         "name": "Prediction Accuracy"
       },

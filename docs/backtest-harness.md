@@ -61,6 +61,7 @@ flowchart LR
 | `tests/backtest/scoring.py`       | Score realized days: cost, regret, savings and capture                 |
 | `tests/backtest/attribution.py`   | Split a day's regret into execution, forecast and planner error        |
 | `planner/hindsight_oracle.py`     | Self-consumption baseline and perfect-foresight oracle (no HA imports) |
+| `planner/hindsight_scoring.py`    | Site limits and the score definitions, shared with the device sensors  |
 | `tests/backtest/conftest.py`      | Corpus discovery, including a private out-of-repo corpus               |
 | `tests/backtest/harvest.py`       | Grow the committed corpus from a live one, one new situation at a time |
 | `tests/backtest/actuals/`         | Committed per-day actuals for the days committed cycles cover          |
@@ -509,11 +510,15 @@ The oracle is a small mixed-integer program
 (`planner/hindsight_oracle.py::solve_hindsight_oracle`) over the realized
 slots. Per slot it chooses the battery's charge and discharge and how much PV
 to curtail; the grid takes the rest. It gets **hard limits only** — capacity,
-power, conversion losses, the main fuse and the export limit. No dynamic floor,
-reserve, hysteresis, export price threshold or terminal value: those are
-policy, and policy is what is being measured. A slot cannot both charge and
-discharge, or both import and export, so the oracle's day is one the hardware
-could execute.
+power, conversion losses, the main fuse, the export limit, and the user's own
+export settings: where battery export is switched off, or the raw export price
+is below the user's export floor (`export_min_price` /
+`battery_export_min_price`), the oracle may export PV surplus but not the
+battery (issue #1182). Money the user's settings forbid is not regret. No
+dynamic floor, reserve, hysteresis, depreciation-based export threshold or
+terminal value: those are HSEM's policy, and policy is what is being measured.
+A slot cannot both charge and discharge, or both import and export, so the
+oracle's day is one the hardware could execute.
 
 The **load** is everything that is not the battery — house, EV and losses —
 read off the meters as `grid_import − grid_export − battery_charged +
@@ -583,6 +588,39 @@ prices in **every** slot, plus the battery SoC at its first slot. Anything
 missing makes the whole day `not scored`, with the reason — missing is never
 read as zero, because a fabricated zero does not cancel out of a difference of
 costs. PV is optional: without it the oracle cannot curtail.
+
+### Battery flows: meters or SoC
+
+By default the battery's charge and discharge are the `battery_charged` and
+`battery_discharged` series of the actuals: the battery's own energy meters.
+Run through the configured efficiencies they do not add up to the measured SoC
+exactly; on the committed days the stored energy they imply ends 0.7 to
+1.6 kWh above where the 15 kWh battery really was.
+
+`--battery-flows soc` takes the flows from the change in SoC over each slot
+instead, through the same efficiencies: storing Δ kWh takes
+`Δ ÷ charge efficiency` on the AC side, removing it delivers
+`Δ × discharge efficiency`. Flows derived that way end the day exactly where
+the battery was, and need the SoC at every slot boundary, including the one
+that ends the day (so the last committed day of a run cannot be scored this
+way).
+
+```bash
+python3 scripts/backtest_score.py tests/backtest/days/2026-09-29 --battery-flows soc
+```
+
+```text
+day         realized   oracle   regret potential  savings  capture
+2026-09-29     15.29    13.27     2.02      5.10     3.08    60.4%
+```
+
+against 54.5 % from the energy meters for the same day. This is the mode the
+on-device [performance sensors](sensors-reference.md#performance-sensors) use
+(issue #1182): HSEM has the battery's SoC on every cycle but not its energy
+meters. The definitions and the code are shared
+(`planner/hindsight_scoring.py`), so a day scored with `--battery-flows soc`
+equals the sensors' `yesterday` figures on the same slots;
+`tests/utils/test_performance_scoring.py` pins that on the recorded day.
 
 ### Which installation's limits
 
@@ -761,6 +799,8 @@ backtesting needs historical series rather than live polling anyway.
 
 ## Related
 
+- [Sensors Reference](sensors-reference.md#performance-sensors) — the
+  on-device performance sensors, which use the Stage 2b definitions
 - [Planner Specification](planner-spec.md) — the invariants this checks
 - [Architecture Overview](architecture-overview.md) — where the planner sits
 - [Services Reference](services-reference.md) — `hsem.export_diagnostics`

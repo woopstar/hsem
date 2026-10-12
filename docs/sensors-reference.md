@@ -40,6 +40,7 @@ sensor's `_unrecorded_attributes` and never reach the recorder:
 | `sensor.hsem_savings_tracker_sensor`           | `daily`                                                                     |
 | `sensor.daily_plan_vs_actual`                  | `today`, `yesterday`, `history`                                             |
 | Export income / import cost / net grid balance | `today`, `last_7_days`, `last_30_days`, `this_month`, `this_year`, `daily`  |
+| `sensor.hsem_performance_*`                    | `yesterday`, `last_7_days`, `last_30_days`, `notes`                         |
 | `sensor.hsem_applier_status_sensor`            | `last_apply_details`, `failed_entities`, `unverified_entities`              |
 | `sensor.hsem_ocpp_*charger_status`             | all attributes                                                              |
 | `sensor.hsem_ocpp_*charger_sessions`           | `sessions`                                                                  |
@@ -73,7 +74,7 @@ dashboards, automations, and Areas.
 | **Controller**                 | _(none — legacy)_     | Working mode, degraded mode, read-only, hardware-writes, missing-entities, force-mode, last/next-updated, update-interval, applier-status, plan-explanation, daily-plan-vs-actual, recommendation-interval, force-working-mode selector, extended-attributes/verbose-logging/ML switches |
 | **Battery & Energy**           | `_battery_energy`     | Battery SoC, effective discharge floor, net consumption, PV curtailment, charge/discharge efficiency numbers, dynamic discharge floor switch                                                                                                                                             |
 | **Hourly Consumption Profile** | `_hourly_consumption` | All 168 per-hour-block entities (`HSEMHouseConsumptionPowerSensor` + integral + utility-meter + 1/3/7/14-day averages × 24 hour blocks)                                                                                                                                                  |
-| **Financial**                  | `_financial`          | Export income, import cost, net grid balance, savings                                                                                                                                                                                                                                    |
+| **Financial**                  | `_financial`          | Export income, import cost, net grid balance, savings, performance (savings capture, actual benefit, missed opportunity)                                                                                                                                                                 |
 | **Forecast**                   | `_forecast`           | Forecast accuracy, prediction accuracy, solar confidence, Solcast likelihood selector                                                                                                                                                                                                    |
 | **EV Primary**                 | `_ev_primary`         | EV charging/plan sensors, calculated power, current limit, target SoC number, deadline time, smart-charging/force-charge-now/force-discharge/auto-full switches, OCPP charger sensors for `charger_index=1`                                                                              |
 | **EV Secondary**               | `_ev_secondary`       | The same set as EV Primary for `charger_index=2` / the second EV (only present when the second EV is configured)                                                                                                                                                                         |
@@ -749,6 +750,200 @@ Missed: {{ state_attr('sensor.hsem_savings_tracker_sensor', 'missed_savings') }}
 
 ---
 
+## Performance sensors
+
+How good the last day's control turned out to be, as three numbers (issue
+#1182). They are the first stage of an HSEM performance dashboard; later
+stages add battery utilisation, solar utilisation and EV charging efficiency
+on the same record, so that a low score also says _where_ it was lost.
+
+**Entities** (on the **HSEM Financial** device, all with the `performance`
+prefix):
+
+| Entity                                       | State                                                        | Unit           |
+| -------------------------------------------- | ------------------------------------------------------------ | -------------- |
+| `sensor.hsem_performance_savings_capture`    | Share of the achievable savings that HSEM actually achieved  | %              |
+| `sensor.hsem_performance_actual_benefit`     | What HSEM's control was worth against plain self-consumption | local currency |
+| `sensor.hsem_performance_missed_opportunity` | What perfect hindsight would have saved on top of that       | local currency |
+
+All three cover the **trailing 24 hours**, are updated once per completed slot,
+and are diagnostic sensors with the `measurement` state class. They are rolling
+values, not totals, so they carry no `monetary` device class (Home Assistant
+allows that one only on totals); the amounts use Home Assistant's currency as
+their unit.
+
+### What is compared
+
+Three ways the same 24 hours could have gone, over the same slots, the same
+realized prices and the same load:
+
+| Run          | What it is                                                                |
+| ------------ | ------------------------------------------------------------------------- |
+| **realized** | What was paid: grid import × import price − grid export × export price    |
+| **baseline** | Plain inverter self-consumption — the hardware with nobody controlling it |
+| **oracle**   | The cheapest the 24 hours could have been, with perfect foresight         |
+
+From them:
+
+| Figure                 | Definition            | Meaning                                                |
+| ---------------------- | --------------------- | ------------------------------------------------------ |
+| **potential**          | `baseline − oracle`   | What the best possible control could have saved        |
+| **missed opportunity** | `realized − oracle`   | What was left on the table (never negative)            |
+| **actual benefit**     | `potential − missed`  | What HSEM's control was worth against self-consumption |
+| **savings capture**    | `benefit ÷ potential` | The share of the potential that was realized           |
+
+**Worked example.** Self-consumption would have cost 5.00, HSEM's day cost
+3.40, and the best possible day costs 3.00, all three ending with the same
+energy in the battery. Potential 2.00, missed opportunity 0.40, actual benefit
+1.60, savings capture 80 %.
+
+Three rules keep the comparison fair:
+
+1. **The battery must end as full as it really did.** A run that ends with a
+   fuller battery has paid for energy it has not used yet. Left alone, the
+   oracle would win every day by emptying the battery, and every reserve would
+   look like a mistake. So each oracle starts with the energy the battery
+   really had and must end with at least the energy of the run it is compared
+   with. Energy HSEM still holds at the end of the window is therefore **not**
+   missed; holding it _during_ the window while importing at a high price is.
+2. **Your own settings are not a missed opportunity.** The oracle respects the
+   hard limits: usable capacity, charge and discharge power, efficiencies, the
+   main fuse, the export limit, the export fee, and whether (and from which
+   export price) you let the battery export at all. It does **not** get HSEM's
+   own caution — dynamic floor, reserves, hysteresis, wear pricing, terminal
+   value — because that is what is being measured.
+3. **The EV is fixed load.** The load is everything that is not the battery,
+   read off the meters as `grid import − grid export − battery charged +
+battery discharged`. The EV is inside it in all three runs, so _when_ the
+   car was charged is not scored yet (that is stage 3).
+
+### Perfect hindsight is an upper bound, not a target
+
+The oracle knows the day's PV, load and prices exactly. HSEM planned from
+forecasts. **100 % is not reachable**, and a capture of 60–80 % on a day with
+an ordinary forecast error is a good result. What the figure is for is the
+trend, and days that stand out. Telling forecast error from planner error is
+what the offline backtest does (`scripts/backtest_attribute.py`, see
+[backtest-harness.md](backtest-harness.md)).
+
+**Which number to watch.** On a day with flat prices there is almost nothing to
+gain, and a share of almost nothing is noise: below a potential of 0.05 (in
+your currency) the savings capture is `unknown`. **Missed opportunity** stays
+meaningful on such days and is the more robust headline. A capture can be
+**negative** — the day cost more than plain self-consumption would have — and
+is reported as such, never clamped to 0.
+
+### Not the savings tracker
+
+`sensor.hsem_savings_tracker_sensor` answers a different question, and its
+`missed` figures mean something else:
+
+|               | Savings tracker                                              | Performance sensors                                                 |
+| ------------- | ------------------------------------------------------------ | ------------------------------------------------------------------- |
+| "Actual"      | Sum of per-cycle estimates (export revenue, cheap charging…) | `baseline − realized`, with the battery's end energy equalised      |
+| "Missed"      | Savings that accrued while force mode was **not** `auto`     | What perfect hindsight would have saved on top                      |
+| Compared with | A live estimate of a house without a battery                 | The same slots run as self-consumption and as the best possible day |
+
+### Attributes
+
+All three sensors publish the same attributes:
+
+| Attribute                                                 | Description                                                            |
+| --------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `reason`                                                  | Why a value is `unknown` (see below); `null` when all three are known  |
+| `actual_benefit`, `missed_opportunity`, `savings_capture` | The three figures of the window (capture in percent)                   |
+| `potential`                                               | `baseline − oracle`                                                    |
+| `realized_cost`, `baseline_cost`, `oracle_cost`           | The cost of each run                                                   |
+| `window_start`, `window_end`, `slot_count`                | The 24 physical hours that were scored                                 |
+| `coverage`                                                | Share of the window that was observed (0–1)                            |
+| `control_coverage`                                        | Share of the observed time in which HSEM was in control (0–1)          |
+| `start_stored_kwh`                                        | Energy in the battery at the start of the window                       |
+| `realized_end_stored_kwh`, `baseline_end_stored_kwh`      | Energy the real run and the self-consumption run end with              |
+| `residual_kwh`                                            | Energy the meters cannot explain (see below)                           |
+| `solver_status`                                           | `optimal`, `unsolved`, `unavailable` or `not_run`                      |
+| `notes`                                                   | Anything about the data that qualifies the score                       |
+| `yesterday`                                               | The same figures for the last completed local day                      |
+| `last_7_days`, `last_30_days`                             | Benefit, missed opportunity, potential and capture over completed days |
+
+**`control_coverage`** tells a planner miss from a day HSEM was not driving:
+it is below 1 when force mode was not `auto`, HSEM was read-only, or the cycle
+was degraded. A poor score with a low control coverage is not the planner's.
+
+**Periods are ratios of sums.** `last_7_days` and `last_30_days` add up the
+costs of the completed local days and divide once; they are never a mean of
+daily percentages, which would let a day with nothing to gain weigh as much as
+a day with a lot. `scored_days` says how many of the period's days carry a
+score; a day that could not be scored is left out, never counted as zero.
+
+### When a value is unknown
+
+No number is published that cannot be stood behind. `reason` is one of:
+
+| `reason`                       | Meaning                                                                                       |
+| ------------------------------ | --------------------------------------------------------------------------------------------- |
+| `not_evaluated`                | Nothing has been scored yet                                                                   |
+| `insufficient_coverage`        | Part of the window was not observed: a slot is missing or was observed for less than 90 %     |
+| `no_site_limits`               | HSEM has not planned yet since it was installed, so the battery's limits are not known        |
+| `potential_below_threshold`    | Almost nothing could have been saved: only the capture is unknown, the two amounts are valid  |
+| `stored_energy_outside_limits` | The battery's SoC ran more than 10 % of the usable capacity outside the configured SoC limits |
+| `energy_balance_residual`      | The meters contradict each other (see `residual_kwh`)                                         |
+| `scipy_unavailable`            | The solver library is not installed                                                           |
+| `oracle_unsolved`              | The best possible day could not be found, or not proven best, within 10 seconds               |
+| `evaluation_failed`            | The scoring raised an error (see the HSEM log)                                                |
+
+A new installation shows `insufficient_coverage` for its first 24 hours. So
+does a restart that kept Home Assistant down for more than about eight
+minutes: the energy meters keep counting, so a short gap loses nothing, but a
+long one cannot be placed in time.
+
+### Requirements
+
+- **Grid import and export energy meters** configured in HSEM (the same ones
+  the financial sensors use). Without them there is no realized cost.
+- **Import and export price sensors** with a current value.
+- The battery's flows are taken from the change in its **state of charge**,
+  through the configured rated capacity and efficiencies. No battery power
+  sensor is needed.
+- PV production (the PV energy meter, or the PV power sensor as a fallback) is
+  used for `residual_kwh` and to let the oracle curtail PV when export prices
+  are negative.
+
+**`residual_kwh`** is a consistency check: a house cannot have a negative
+load, so the running total of `grid import − grid export − battery flows +
+PV` must never fall. The largest fall is energy the meters cannot explain. It
+stays near zero on a consistent installation and grows when a meter, a unit or
+the configured battery capacity is wrong; above the largest of 1 kWh, 15 % of
+the usable capacity and 10 % of the PV produced, the window is not scored.
+
+### The same numbers as the backtest
+
+The definitions and the code are shared with the offline backtest
+(`custom_components/hsem/planner/hindsight_scoring.py`). A local day scored by
+the sensors (`yesterday`) equals
+
+```bash
+python3 scripts/backtest_score.py <actuals> --battery-flows soc
+```
+
+on the same slots. Without `--battery-flows soc` the backtest reads the
+battery's energy meters instead of its SoC, and the two differ by a few
+points of capture on real days; see
+[backtest-harness.md](backtest-harness.md#battery-flows-meters-or-soc).
+
+The record is kept in `.storage/hsem_performance_history.json`: the slots of
+the last 50 hours and the scores of the last 90 completed days. It survives a
+restart.
+
+**Template example:**
+
+```jinja2
+{% set s = 'sensor.hsem_performance_savings_capture' %}
+Last 24 h: {{ states(s) }} % ({{ state_attr(s, 'missed_opportunity') }} missed)
+Last 30 d: {{ state_attr(s, 'last_30_days').savings_capture }} %
+```
+
+---
+
 ## PV curtailment sensor
 
 Detects when the inverter is actively curtailing PV production.
@@ -809,6 +1004,9 @@ Detects when the inverter is actively curtailing PV production.
 | `sensor.hsem_ocpp_charger_info_sensor`           | OCPP Charger Info               | Vendor, model, firmware, serial                 | String                                  |
 | `sensor.hsem_ocpp_charger_sessions_sensor`       | OCPP Charger Sessions           | Completed session log                           | Integer                                 |
 | `sensor.hsem_savings_tracker_sensor`             | Savings Tracker                 | Actual vs missed savings (90-day)               | Monetary                                |
+| `sensor.hsem_performance_savings_capture`        | Performance: Savings Capture    | Share of the achievable savings achieved (24 h) | Percentage                              |
+| `sensor.hsem_performance_actual_benefit`         | Performance: Actual Benefit     | Benefit over plain self-consumption (24 h)      | Local currency                          |
+| `sensor.hsem_performance_missed_opportunity`     | Performance: Missed Opportunity | What perfect hindsight would have added (24 h)  | Local currency                          |
 | `sensor.hsem_pv_curtailment_sensor`              | PV Curtailment                  | PV curtailment detection                        | `curtailed` / `normal`                  |
 
 ---

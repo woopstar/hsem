@@ -20,6 +20,7 @@ from custom_components.hsem.coordinator_persistence import (
 )
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.models.financial_tracker import FinancialTracker
+from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.utils.prediction_tracker import PredictionTracker
 
@@ -27,9 +28,12 @@ _MODULE = "custom_components.hsem.coordinator_persistence"
 
 
 def _coordinator(
-    tmp_path: Path, *, prediction_history: bool = True
+    tmp_path: Path,
+    *,
+    prediction_history: bool = True,
+    performance_history: bool = True,
 ) -> CoordinatorSharedState:
-    """Return a stand-in coordinator owning all three persistable trackers."""
+    """Return a stand-in coordinator owning every persistable tracker."""
     coordinator = MagicMock()
     coordinator._savings_tracker = SavingsTracker(
         history_file=str(tmp_path / "savings.json")
@@ -39,6 +43,9 @@ def _coordinator(
     )
     coordinator._prediction_tracker = PredictionTracker(
         history_file=str(tmp_path / "prediction.json") if prediction_history else ""
+    )
+    coordinator._performance_tracker = PerformanceTracker(
+        history_file=str(tmp_path / "performance.json") if performance_history else ""
     )
     return cast(CoordinatorSharedState, coordinator)
 
@@ -55,7 +62,12 @@ class TestPersistAllTrackers:
 
         await persist_all_trackers(coordinator)
 
-        for name in ("savings.json", "financial.json", "prediction.json"):
+        for name in (
+            "savings.json",
+            "financial.json",
+            "prediction.json",
+            "performance.json",
+        ):
             assert (tmp_path / name).exists(), name
 
     @pytest.mark.asyncio
@@ -98,10 +110,24 @@ class TestPersistAllTrackers:
             "warning", "Failed to persist %s tracker state", "savings"
         )
 
+    @pytest.mark.asyncio
+    async def test_performance_tracker_is_skipped_before_setup(
+        self, tmp_path: Path
+    ) -> None:
+        """Without a history file the performance tracker is not written."""
+        coordinator = _coordinator(tmp_path, performance_history=False)
+        save_history = AsyncMock(return_value=True)
+        coordinator._performance_tracker.save_history = save_history  # type: ignore[method-assign]  # test spy
+
+        await persist_all_trackers(coordinator, only=["_performance_tracker"])
+
+        save_history.assert_not_awaited()
+
     def test_registry_keys_match_coordinator_attributes(self) -> None:
         """Every registry key is the attribute name it reads."""
         assert set(TRACKER_REGISTRY) == {
             "_savings_tracker",
             "_financial_tracker",
+            "_performance_tracker",
             "_prediction_tracker",
         }

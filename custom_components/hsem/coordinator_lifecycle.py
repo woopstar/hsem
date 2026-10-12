@@ -214,6 +214,13 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
             ocpp_event_debounce_task.cancel()
             self._ocpp_event_debounce_task = None
 
+        # A hindsight evaluation still in the executor is not worth waiting
+        # for: its slots are persisted and are scored again after a reload.
+        performance_task = getattr(self, "_performance_task", None)
+        if performance_task is not None and not performance_task.done():
+            performance_task.cancel()
+            self._performance_task = None
+
         # Clear retained live-power state (window, replan budget, source
         # signature) so a stale estimate cannot survive teardown.
         self.reset_live_power_state()

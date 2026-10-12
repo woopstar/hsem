@@ -26,6 +26,7 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | `coordinator_load_forecast.py`        | ML/avg consumption population, load readiness, missing/estimated-hour diagnostics (issue #1110)                      |
 | `coordinator_load_hold.py`            | Non-planner load-forecast safety hold, grid-only EV-only fallback (issue #1106), force-charge re-apply (issue #1103) |
 | `coordinator_tracking.py`             | Forecast, daily, financial, and savings accumulation                                                                 |
+| `coordinator_performance.py`          | Performance record: per-cycle sample, hindsight evaluation as a background executor task (issue #1182)               |
 | `entity_availability.py`              | Per-input unavailable/recovery transition tracking and logging                                                       |
 | `custom_sensors/block_observation.py` | Avg-sensor downtime tracking: heartbeat, unobserved intervals, `block_observed()` (issues #1101/#1110)               |
 
@@ -60,6 +61,7 @@ cycle are durable; stale generations must not publish.
 | `milp/_battery_target_rows.py` | Stage-2 LP rows: target slack row, grid-import cap/floor helpers                                                                                                        |
 | `ev_load_accounting.py`        | Canonical pure-house/EV split for normalized planner slot loads                                                                                                         |
 | `hindsight_oracle.py`          | Hindsight scoring of a past window (issues #1208, #1182): grid cost, self-consumption baseline, perfect-foresight oracle with hard limits only; not used by the planner |
+| `hindsight_scoring.py`         | `SiteLimits`, `realized_window`, `score_window`, `capture_share`: the regret/potential/savings/capture definitions shared by the backtest and the performance sensors   |
 
 ### ML layer (`custom_components/hsem/ml/`)
 
@@ -71,23 +73,25 @@ cycle are durable; stale generations must not publish.
 
 ### Utils layer (`custom_components/hsem/utils/`)
 
-| File                    | Responsibility                                                                                                                                               |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `recommendations.py`    | `Recommendations` enum + canonical `DISCHARGE_RECS`, `CHARGE_RECS`, and `SENTINEL_RECS` frozensets                                                           |
-| `misc.py`               | Shared math helpers: `clamp_efficiency()`, `calculate_recommended_threshold()`, etc.                                                                         |
-| `sensornames.py`        | All HA entity name constants — never hardcode sensor names elsewhere                                                                                         |
-| `prices.py`             | Price lookup, grid fee calculation, spot price helpers                                                                                                       |
-| `huawei.py`             | Huawei Solar inverter API helpers                                                                                                                            |
-| `logger.py`             | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)                                                              |
-| `solar_corrector.py`    | Per-hour PV forecast accuracy auto-correction (issue #602)                                                                                                   |
-| `dynamic_floor.py`      | Dynamic self-learning discharge floor (bridge-to-refill; an affordable refill → reserve 0, #1156; a planned charge ends the bridge at any size, #1214/#1220) |
-| `soc_bounds.py`         | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094); `reserve_floor_pct()` — reserve kWh to floor SoC (#1221)  |
-| `capacity_learner.py`   | Battery usable capacity auto-detection from BMS readings                                                                                                     |
-| `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                                                                              |
-| `weekday_profile.py`    | Weekday/weekend split house load EWMA profiles                                                                                                               |
-| `ev_mode_resolver.py`   | Auto-Full EV charging on negative electricity prices                                                                                                         |
-| `ev_accounting.py`      | Raw CT versus per-EV normalized-baseline accounting helper                                                                                                   |
-| `unit_normalize.py`     | Generic sensor unit normalization via HA's `unit_conversion` converters (issues #945, #1119)                                                                 |
+| File                     | Responsibility                                                                                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `recommendations.py`     | `Recommendations` enum + canonical `DISCHARGE_RECS`, `CHARGE_RECS`, and `SENTINEL_RECS` frozensets                                                           |
+| `misc.py`                | Shared math helpers: `clamp_efficiency()`, `calculate_recommended_threshold()`, etc.                                                                         |
+| `sensornames.py`         | All HA entity name constants — never hardcode sensor names elsewhere                                                                                         |
+| `prices.py`              | Price lookup, grid fee calculation, spot price helpers                                                                                                       |
+| `huawei.py`              | Huawei Solar inverter API helpers                                                                                                                            |
+| `logger.py`              | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)                                                              |
+| `solar_corrector.py`     | Per-hour PV forecast accuracy auto-correction (issue #602)                                                                                                   |
+| `dynamic_floor.py`       | Dynamic self-learning discharge floor (bridge-to-refill; an affordable refill → reserve 0, #1156; a planned charge ends the bridge at any size, #1214/#1220) |
+| `soc_bounds.py`          | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094); `reserve_floor_pct()` — reserve kWh to floor SoC (#1221)  |
+| `capacity_learner.py`    | Battery usable capacity auto-detection from BMS readings                                                                                                     |
+| `prediction_tracker.py`  | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                                                                              |
+| `weekday_profile.py`     | Weekday/weekend split house load EWMA profiles                                                                                                               |
+| `ev_mode_resolver.py`    | Auto-Full EV charging on negative electricity prices                                                                                                         |
+| `ev_accounting.py`       | Raw CT versus per-EV normalized-baseline accounting helper                                                                                                   |
+| `unit_normalize.py`      | Generic sensor unit normalization via HA's `unit_conversion` converters (issues #945, #1119)                                                                 |
+| `performance_scoring.py` | Scores recorded performance slots: coverage/limit/residual guards, SoC-derived battery flows, `evaluate_performance` for the executor (issue #1182)          |
+| `persistence.py`         | Validation helpers for restored JSON, bounded `read_json_history_file`, atomic `write_json_history_file` — use these for any new history file                |
 
 ---
 
@@ -2747,3 +2751,27 @@ When the house-battery target's stage 2 solves, `milp/_battery_target.py::prefer
 - All five keys are `None` unless stage 2 solved and weights were supplied.
 
 Tests: `tests/planner/test_battery_target_milp.py::TestPreferenceCost` (hand-computed: forgone export + cycle cost), `tests/planner/test_battery_target_engine.py` (equals the published `total_cost`; replacing the figure changes no slot and no cost).
+
+## Performance Sensors Score the Last 24 Hours Against Hindsight (issue #1182)
+
+`sensor.hsem_performance_savings_capture`, `..._actual_benefit` and `..._missed_opportunity` are stage 1 of a KPI dashboard. Stages 2 (battery and solar utilisation) and 3 (EV charging efficiency) add KPIs to the same record.
+
+**Layout:**
+
+- `planner/hindsight_scoring.py` holds the definitions and is the only copy: `tests/backtest/scoring.py` imports it. Never re-define regret, potential, savings or capture anywhere else.
+- `models/performance_record.py` (`PerformanceSample`, `PerformanceSlot`, `PerformanceScore`) and `models/performance_tracker.py` (accumulation, retention, period rollups, persistence).
+- `utils/performance_scoring.py` turns slots into a `RealizedWindow` and applies the guards. `coordinator_performance.py` feeds the tracker and runs `evaluate_performance` in the executor.
+
+**Rules:**
+
+- **Battery flows come from SoC deltas, not from battery power or energy meters.** The default cycle is 5 minutes, too coarse to integrate a power reading, and the signed battery power entity is optional and only read with phase-aware charging on. `battery_flows_from_soc` inverts the hindsight battery model, so the realized trajectory equals the measured SoC and a window ends exactly where the battery was. On the committed days the capture differs from the energy-meter backtest by 3 to 6 points; `scripts/backtest_score.py --battery-flows soc` reproduces the device's numbers exactly.
+- **The oracle respects the user's export settings.** `SiteLimits.battery_export_enabled` (`excess_export_enabled`) and `battery_export_min_price` (max of `export_min_price` and `battery_export_min_price`, against the raw price) cap grid export at the slot's PV surplus. The depreciation-based export threshold is HSEM policy and stays out. This changed the backtest too: a site with battery export off no longer shows the forbidden arbitrage as planner error.
+- **Limits are widened to the realized flows, never tightened**, including the export cap on a blocked slot. That is what makes regret ≥ 0 by construction.
+- **The evaluation never touches a cycle.** `async_track_performance` is the last statement of `_async_run_update_cycle`, swallows every exception, and starts the solve with `hass.async_create_background_task`; the executor gets a detached `PerformanceRequest`. Do not call `async_update_listeners()` from the task: it would re-run the applier. The sensors pick the result up on the next cycle.
+- **A period is a ratio of sums** over the persisted daily scores (`sum_scores` over `SUMMED_FIELDS`), never a mean of percentages. A new KPI adds its additive quantities to `SUMMED_FIELDS`.
+- **Missing is not zero.** An interval lacking a grid meter, the SoC or the left-endpoint prices adds no coverage; a slot needs 90 % coverage and a window every slot. A day unscored only for `no_site_limits` is not stored, so it is retried.
+- **Persistence.** Saved at most every 120 s plus after each evaluation; the last sample is part of the file, so a restart shorter than the 10-minute gap tolerance minus that loses nothing.
+
+**Test harness:** `tests/conftest.py` replaces the cycle's `async_track_performance` with an `AsyncMock` for every test. Cycle tests run on a `MagicMock` Home Assistant, where the real function wrote `MagicMock/mock.config.config_dir/.../hsem_performance_history.json` into the working tree. Test the real function through `tests/test_coordinator_performance.py`.
+
+Tests: `tests/planner/test_hindsight_scoring.py`, `tests/models/test_performance_tracker.py`, `tests/utils/test_performance_scoring.py`, `tests/test_coordinator_performance.py`, `tests/custom_sensors/test_performance_sensors.py`.

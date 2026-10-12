@@ -34,6 +34,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from custom_components.hsem.planner.hindsight_scoring import (  # noqa: E402
+    SiteLimits,
+)
 from tests.backtest.actuals import Actuals, load_actuals  # noqa: E402
 from tests.backtest.attribution import (  # noqa: E402
     DayAttribution,
@@ -50,7 +53,7 @@ from tests.backtest.replay import (  # noqa: E402
     iter_dumps,
     planner_input_from_dict,
 )
-from tests.backtest.scoring import SiteLimits, merge_actuals  # noqa: E402
+from tests.backtest.scoring import merge_actuals  # noqa: E402
 from tests.backtest.site import SITE_ENV, SITE_KEY, validate_site  # noqa: E402
 
 
