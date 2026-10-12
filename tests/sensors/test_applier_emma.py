@@ -186,7 +186,7 @@ async def _apply(
         patch(f"{_APPLIER}.async_set_number_value", AsyncMock()),
         patch(f"{_APPLIER}.async_set_tou_periods", tou_writer or AsyncMock()),
         patch(f"{_APPLIER}.async_write_and_verify", AsyncMock(side_effect=_verify)),
-        patch(f"{_APPLIER}.get_max_discharge_power", return_value=5000),
+        patch(f"{_APPLIER}.resolve_max_discharge_power", return_value=5000),
     ):
         summary = await async_apply_battery_settings(
             sensor, cfg or _cfg(), live, _rec(recommendation), 0.0
