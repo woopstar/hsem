@@ -252,7 +252,7 @@ class TestAttributes:
     def test_bulky_attributes_stay_out_of_the_recorder(self) -> None:
         """Rollups and notes live in the history file (issue #1099)."""
         assert HSEMPerformanceSensor._unrecorded_attributes == frozenset(
-            {"yesterday", "last_7_days", "last_30_days", "notes"}
+            {"yesterday", "last_7_days", "last_30_days", "daily", "notes"}
         )
 
 

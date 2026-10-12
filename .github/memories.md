@@ -2863,3 +2863,15 @@ Tests: `tests/test_tracker_history_writers.py::TestOneSharedWriter`, `tests/util
 
 - A new bridge rule goes into `dynamic_floor_bridge.py`; anything that touches the learned safety margin goes into `dynamic_floor.py`.
 - Sections above that say "`utils/dynamic_floor.py`" for one of the moved functions predate the split.
+
+## The Bundled Dashboard Has a Performance View (issue #1284)
+
+`dashboards/dashboard_en.yaml` has a second view, **Performance** (`path: performance`): the performance tiles, a Status card, a Periods table (24 h / yesterday / 7 d / 30 d), and two ApexCharts cards fed from the sensors' `daily` attribute (the newest 30 completed days, `DAILY_ATTRIBUTE_DAYS`, unrecorded). `hsem.create_dashboard` copies the whole file, so a view needs no service change.
+
+**Rules:**
+
+- The dashboard cannot be rendered in the test environment. `tests/test_dashboard_performance_view.py` is the substitute: it renders both Markdown templates with a sandboxed Jinja environment against the attributes a real `PerformanceTracker` publishes, and checks every `day.<field>` a chart's `data_generator` reads against the keys of a `daily` entry. A card added to the view must be covered there.
+- Markdown templates use plain Jinja plus `state_attr` only (no `as_timestamp`, `states.sensor.x`, …), so that test can render them without Home Assistant.
+- Every reason code the sensors can publish needs an entry in the Status card's `why` map; `test_every_reason_the_sensors_publish_is_put_in_words` fails when a new `REASON_*` constant has none.
+- `docs/dashboard-setup.md` embeds the full YAML for a manual import. It had silently drifted from the bundled file (a whole series was missing); `test_the_docs_carry_the_same_dashboard` now compares the two as parsed YAML. After editing the dashboard, copy the file into the docs' code block.
+- A period with no scored day publishes amounts of `0.0`; the table blanks those columns itself (`week if week.get('scored_days') else {}`).

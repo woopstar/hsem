@@ -592,6 +592,27 @@ views:
                     out.push([s, on], [e, on]);
                   }); return out;
                 color: "#f97316"
+              - name: Batteries Discharge Window Mode
+                entity: sensor.hsem_workingmode_sensor
+                attribute: hourly_recommendations
+                type: area
+                opacity: 1
+                show:
+                  legend_value: false
+                data_generator: >
+                  const rows =
+                  (Array.isArray(entity.attributes.hourly_recommendations) ?
+                  entity.attributes.hourly_recommendations : [])
+                    .slice()
+                    .sort((a,b) => new Date(a.start) - new Date(b.start));
+                  const out = []; rows.forEach(({ start, end, recommendation })
+                  => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    const on = recommendation === 'batteries_discharge_window_mode' ? 1 : null;
+                    out.push([s, on], [e, on]);
+                  }); return out;
+                color: "#fdba74"
               - name: Batteries Wait Mode
                 entity: sensor.hsem_workingmode_sensor
                 attribute: hourly_recommendations
@@ -1339,13 +1360,315 @@ views:
                     const e = new Date(end).getTime();
                     out.push([s, import_price], [e, import_price]);
                   }); return out;
+  - title: Performance
+    path: performance
+    type: sections
+    max_columns: 2
+    cards: []
+    badges: []
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Last 24 Hours
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 2
+          - type: tile
+            entity: sensor.hsem_performance_savings_capture
+            name: Savings Capture
+            icon: mdi:bullseye-arrow
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_performance_actual_benefit
+            name: Actual Benefit
+            icon: mdi:cash-check
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_performance_missed_opportunity
+            name: Missed Opportunity
+            icon: mdi:cash-remove
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_performance_battery_utilisation
+            name: Battery Utilisation
+            icon: mdi:battery-charging-high
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_performance_solar_utilisation
+            name: Solar Utilisation
+            icon: mdi:solar-power-variant
+            color: state
+            grid_options:
+              columns: 2
+          - type: conditional
+            conditions:
+              - entity: sensor.hsem_performance_ev_charging_efficiency
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: sensor.hsem_performance_ev_charging_efficiency
+              name: EV Charging Efficiency
+              icon: mdi:ev-station
+              color: state
+          - type: markdown
+            title: Status
+            grid_options:
+              columns: full
+            content: |
+              {%- set s = 'sensor.hsem_performance_savings_capture' -%}
+              {%- set why = {
+                'not_evaluated': 'nothing has been scored yet.',
+                'insufficient_coverage': 'part of the last 24 hours was not observed. A new installation needs 24 hours of data.',
+                'no_site_limits': 'HSEM has not planned yet, so the battery limits are not known.',
+                'potential_below_threshold': 'almost nothing could have been saved, so a share cannot be given. The amounts are still valid.',
+                'stored_energy_outside_limits': 'the battery SoC ran outside the configured SoC limits.',
+                'energy_balance_residual': 'the energy meters contradict each other.',
+                'scipy_unavailable': 'the solver library is not installed.',
+                'oracle_unsolved': 'the best possible day could not be computed in time.',
+                'evaluation_failed': 'the scoring failed; see the HSEM log.',
+                'breakdown_unsolved': 'it could not be computed in time.',
+                'ev_unsolved': 'it could not be computed in time.'
+              } -%}
+              {%- set start = state_attr(s, 'window_start') -%}
+              {%- set end = state_attr(s, 'window_end') -%}
+              {%- set coverage = state_attr(s, 'coverage') -%}
+              {%- set control = state_attr(s, 'control_coverage') -%}
+              {%- set reason = state_attr(s, 'reason') -%}
+              {%- set split = state_attr(s, 'breakdown_reason') -%}
+              {%- set ev = state_attr(s, 'ev_reason') -%}
+              **Window:** {% if start and end %}{{ start[:16] | replace('T', ' ') }} to {{ end[:16] | replace('T', ' ') }}{% else %}nothing scored yet{% endif %}
+
+              **Observed:** {{ '–' if coverage is none else '%.0f %%' | format(coverage * 100) }} · **HSEM in control:** {{ '–' if control is none else '%.0f %%' | format(control * 100) }}
+
+              {% if reason %}**Savings figures unknown:** {{ why.get(reason, reason) }}
+
+              {% endif -%}
+              {%- if split and split != reason %}**Battery / solar split unknown:** {{ why.get(split, split) }}
+
+              {% endif -%}
+              {%- if ev and ev != reason and ev != 'no_ev_session' %}**EV charging efficiency unknown:** {{ why.get(ev, ev) }}
+
+              {% endif -%}
+              {%- if control is not none and control < 0.95 %}HSEM was not in control for part of this window (a forced mode, read-only, or missing entities), so the score is not the planner's alone.
+
+              {% endif -%}
+              {%- if not reason and not split %}All figures of the last 24 hours are available.{% endif %}
+      - type: grid
+        cards:
+          - type: heading
+            heading: Periods
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 2
+          - type: markdown
+            grid_options:
+              columns: full
+            content: |
+              {%- set s = 'sensor.hsem_performance_savings_capture' -%}
+              {%- set now = {
+                'savings_capture': state_attr(s, 'savings_capture'),
+                'actual_benefit': state_attr(s, 'actual_benefit'),
+                'missed_opportunity': state_attr(s, 'missed_opportunity'),
+                'potential': state_attr(s, 'potential'),
+                'battery_utilisation': state_attr(s, 'battery_utilisation'),
+                'battery_loss': state_attr(s, 'battery_loss'),
+                'solar_utilisation': state_attr(s, 'solar_utilisation'),
+                'solar_loss': state_attr(s, 'solar_loss'),
+                'ev_charging_efficiency': state_attr(s, 'ev_charging_efficiency'),
+                'ev_missed_opportunity': state_attr(s, 'ev_missed_opportunity')
+              } -%}
+              {%- set week = state_attr(s, 'last_7_days') or {} -%}
+              {%- set month = state_attr(s, 'last_30_days') or {} -%}
+              {%- set cols = [
+                now,
+                state_attr(s, 'yesterday') or {},
+                week if week.get('scored_days') else {},
+                month if month.get('scored_days') else {}
+              ] -%}
+              {%- set ev = namespace(any=false) -%}
+              {%- for c in cols -%}{%- if c.get('ev_missed_opportunity') is not none -%}{%- set ev.any = true -%}{%- endif -%}{%- endfor -%}
+              {%- macro pct(key) -%}{%- for c in cols %} {{ '–' if c.get(key) is none else '%.0f %%' | format(c.get(key)) }} |{%- endfor -%}{%- endmacro -%}
+              {%- macro money(key) -%}{%- for c in cols %} {{ '–' if c.get(key) is none else '%.2f' | format(c.get(key)) }} |{%- endfor -%}{%- endmacro -%}
+              | | 24 h | Yesterday | 7 days | 30 days |
+              |:--|--:|--:|--:|--:|
+              | **Savings capture** |{{ pct('savings_capture') }}
+              | Actual benefit |{{ money('actual_benefit') }}
+              | Missed opportunity |{{ money('missed_opportunity') }}
+              | Potential |{{ money('potential') }}
+              | **Battery utilisation** |{{ pct('battery_utilisation') }}
+              | Battery loss |{{ money('battery_loss') }}
+              | **Solar utilisation** |{{ pct('solar_utilisation') }}
+              | Solar loss |{{ money('solar_loss') }}
+              {%- if ev.any %}
+              | **EV charging efficiency** |{{ pct('ev_charging_efficiency') }}
+              | EV missed opportunity |{{ money('ev_missed_opportunity') }}
+              {%- endif %}
+
+              Days scored: {{ week.get('scored_days', 0) }} of 7 and {{ month.get('scored_days', 0) }} of 30. Battery loss and solar loss add up to the missed opportunity; the EV figure is on top of it. Perfect hindsight is an upper bound: 100 % is not reachable.
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Where It Was Lost
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 2
+          - type: custom:apexcharts-card
+            update_interval: 15m
+            grid_options:
+              columns: full
+            header:
+              show: true
+              title: Missed opportunity per day
+            graph_span: 30d
+            span:
+              end: day
+            stacked: true
+            apex_config:
+              chart:
+                height: 240
+              xaxis:
+                labels:
+                  format: dd MMM
+                  hideOverlappingLabels: true
+                  style:
+                    fontSize: 10
+                    fontWeight: 500
+              yaxis:
+                decimalsInFloat: 2
+            all_series_config:
+              type: column
+              float_precision: 2
+              show:
+                legend_value: false
+            series:
+              - name: Battery dispatch
+                entity: sensor.hsem_performance_missed_opportunity
+                color: "#3b82f6"
+                data_generator: >
+                  const days = Array.isArray(entity.attributes.daily) ?
+                  entity.attributes.daily : [];
+                  return days.map((day) => [new Date(day.date +
+                  'T00:00:00').getTime(), day.battery_loss]);
+              - name: PV surplus
+                entity: sensor.hsem_performance_missed_opportunity
+                color: "#eab308"
+                data_generator: >
+                  const days = Array.isArray(entity.attributes.daily) ?
+                  entity.attributes.daily : [];
+                  return days.map((day) => [new Date(day.date +
+                  'T00:00:00').getTime(), day.solar_loss]);
+              - name: EV timing
+                entity: sensor.hsem_performance_missed_opportunity
+                color: "#22c55e"
+                data_generator: >
+                  const days = Array.isArray(entity.attributes.daily) ?
+                  entity.attributes.daily : [];
+                  return days.map((day) => [new Date(day.date +
+                  'T00:00:00').getTime(), day.ev_missed_opportunity]);
+              - name: Not split
+                entity: sensor.hsem_performance_missed_opportunity
+                color: "#9ca3af"
+                data_generator: >
+                  const days = Array.isArray(entity.attributes.daily) ?
+                  entity.attributes.daily : [];
+                  return days.map((day) => [new Date(day.date +
+                  'T00:00:00').getTime(), day.battery_loss === null ?
+                  day.missed_opportunity : null]);
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Trend
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 2
+          - type: custom:apexcharts-card
+            update_interval: 15m
+            grid_options:
+              columns: full
+            header:
+              show: true
+              title: Daily shares (%)
+            graph_span: 30d
+            span:
+              end: day
+            apex_config:
+              chart:
+                height: 240
+              stroke:
+                width: 2
+              markers:
+                size: 3
+              xaxis:
+                labels:
+                  format: dd MMM
+                  hideOverlappingLabels: true
+                  style:
+                    fontSize: 10
+                    fontWeight: 500
+              yaxis:
+                decimalsInFloat: 0
+            all_series_config:
+              type: line
+              float_precision: 1
+              show:
+                legend_value: false
+            series:
+              - name: Savings capture
+                entity: sensor.hsem_performance_savings_capture
+                color: "#ef4444"
+                data_generator: >
+                  const days = Array.isArray(entity.attributes.daily) ?
+                  entity.attributes.daily : [];
+                  return days.map((day) => [new Date(day.date +
+                  'T00:00:00').getTime(), day.savings_capture]);
+              - name: Battery utilisation
+                entity: sensor.hsem_performance_savings_capture
+                color: "#3b82f6"
+                data_generator: >
+                  const days = Array.isArray(entity.attributes.daily) ?
+                  entity.attributes.daily : [];
+                  return days.map((day) => [new Date(day.date +
+                  'T00:00:00').getTime(), day.battery_utilisation]);
+              - name: Solar utilisation
+                entity: sensor.hsem_performance_savings_capture
+                color: "#eab308"
+                data_generator: >
+                  const days = Array.isArray(entity.attributes.daily) ?
+                  entity.attributes.daily : [];
+                  return days.map((day) => [new Date(day.date +
+                  'T00:00:00').getTime(), day.solar_utilisation]);
+              - name: EV charging efficiency
+                entity: sensor.hsem_performance_savings_capture
+                color: "#22c55e"
+                data_generator: >
+                  const days = Array.isArray(entity.attributes.daily) ?
+                  entity.attributes.daily : [];
+                  return days.map((day) => [new Date(day.date +
+                  'T00:00:00').getTime(), day.ev_charging_efficiency]);
 ```
 
 ---
 
 ## Dashboard layout
 
-The dashboard uses an eight-section layout within one view:
+The dashboard has two views. The **HSEM** view uses an eight-section layout:
 
 | Section                         | Column span | Cards | Description                                                                                                                                              |
 | ------------------------------- | ----------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1357,6 +1680,16 @@ The dashboard uses an eight-section layout within one view:
 | **Working Mode Recommendation** | 2 columns   | 7     | Recommendation timeline, battery status, charged kWh, consumption breakdown                                                                              |
 | **Planner Output (left)**       | 1 column    | 4     | Net consumption, estimated cost, consumption, export price                                                                                               |
 | **Planner Output (right)**      | 1 column    | 4     | Battery capacity, simulated SoC, PV forecast, import price                                                                                               |
+
+The **Performance** view (`/hsem/performance`) shows how good the last days of
+control turned out to be, scored against perfect hindsight:
+
+| Section               | Column span | Cards | Description                                                                           |
+| --------------------- | ----------- | ----- | ------------------------------------------------------------------------------------- |
+| **Last 24 Hours**     | 1 column    | 8     | The performance tiles and a status card: what was scored, how much of it was observed |
+| **Periods**           | 1 column    | 2     | Every figure for 24 h, yesterday, 7 days and 30 days                                  |
+| **Where It Was Lost** | 2 columns   | 2     | Missed opportunity per day, stacked by battery dispatch, PV surplus and EV timing     |
+| **Trend**             | 2 columns   | 2     | Savings capture, battery and solar utilisation and EV charging efficiency per day     |
 
 ---
 
@@ -1406,8 +1739,45 @@ hindsight (see
 | EV Charging Efficiency (24 h) | `sensor.hsem_performance_ev_charging_efficiency` | Share of what the best charging times save over plug-and-charge that was realized (only with EV planning enabled) |
 
 The 7- and 30-day figures and yesterday's are attributes of each sensor
-(`last_7_days`, `last_30_days`, `yesterday`). The EV tile is a conditional
-card: it is hidden when EV planning is not enabled for any charger.
+(`last_7_days`, `last_30_days`, `yesterday`); the **Performance** view shows
+them. The EV tile is a conditional card: it is hidden when EV planning is not
+enabled for any charger.
+
+### Performance view
+
+A second tab of the dashboard, for the questions the six tiles cannot answer:
+how the last week and month went, where what was missed was lost, and whether
+it is getting better. The figures are defined in
+[Performance sensors](sensors-reference.md#performance-sensors).
+
+| Card                       | Type       | What it shows                                                                                                   |
+| -------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------- |
+| Tiles                      | Tile       | The trailing-24-hour value of each performance sensor                                                           |
+| Status                     | Markdown   | The scored window, the share of it that was observed, the share HSEM was in control, and why a value is unknown |
+| Periods                    | Markdown   | One row per figure, columns for 24 h, yesterday, 7 days and 30 days; EV rows only when there are EV figures     |
+| Missed opportunity per day | ApexCharts | One stacked column per day: battery dispatch, PV surplus, EV timing ("Not split" for a day without the split)   |
+| Daily shares (%)           | ApexCharts | Savings capture, battery utilisation, solar utilisation and EV charging efficiency per day                      |
+
+Reading it:
+
+- A **new installation** shows "nothing scored yet" and dashes for the first
+  24 hours, and the charts stay empty until the first full local day has been
+  scored.
+- The **period columns** are ratios of sums over the scored days, not averages
+  of the daily percentages; "Days scored" under the table says how many days
+  that is.
+- The **stacked column** is the day's missed opportunity (battery plus solar)
+  with the EV figure on top. The EV figure is not part of the missed
+  opportunity sensor.
+- When **HSEM in control** is well below 100 %, a forced mode, read-only mode
+  or missing entities were steering part of the window, and a poor score is
+  not the planner's alone.
+
+Both Markdown cards and all eight chart series read attributes of the
+performance sensors (the charts read `daily`, the newest 30 completed days).
+`tests/test_dashboard_performance_view.py` renders the Markdown templates
+against the attributes the integration really publishes, so a renamed
+attribute fails the test suite instead of showing a dash.
 
 ### Forecast Quality tiles
 
