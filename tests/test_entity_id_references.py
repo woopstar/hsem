@@ -5,6 +5,9 @@ Every HSEM entity sets its ``entity_id`` explicitly from a
 The docs had drifted from them (for example ``sensor.hsem_plan_explanation``
 for ``sensor.hsem_plan_explanation_sensor``), and the bundled dashboard's
 Savings Tracker tile pointed at a non-existent ``sensor.hsem_savings_tracker``.
+
+The same goes for attribute names read with ``state_attr``: the savings
+tracker's documented attributes did not exist (issue #1268).
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ import re
 from pathlib import Path
 
 import custom_components.hsem.utils.sensornames as sensornames
+from custom_components.hsem.models.savings_tracker import SavingsTracker
 
 _REPO = Path(__file__).resolve().parent.parent
 _DASHBOARD = _REPO / "custom_components" / "hsem" / "dashboards" / "dashboard_en.yaml"
@@ -110,3 +114,86 @@ def test_docs_reference_only_registered_entities() -> None:
     }
 
     assert unknown == {}
+
+
+# ---------------------------------------------------------------------------
+# Savings tracker attributes (issue #1268)
+# ---------------------------------------------------------------------------
+
+_SAVINGS_SENSOR = "sensor.hsem_savings_tracker_sensor"
+_STATE_ATTR = re.compile(
+    r"state_attr\(\s*(?P<entity>[^,]+?)\s*,\s*'(?P<name>[a-z0-9_]+)'"
+)
+_JINJA_SET = re.compile(r"{%\s*set\s+(?P<name>\w+)\s*=\s*'(?P<value>[^']+)'\s*%}")
+
+
+def _state_attr_names(text: str, entity_id: str) -> set[str]:
+    """Return the attribute names *text* reads off *entity_id* with ``state_attr``.
+
+    The entity is either quoted in the call or a Jinja variable; a variable
+    stands for whatever the nearest ``{% set name = '<entity id>' %}`` before
+    the call bound it to, since examples reuse short names.
+    """
+    bindings = [
+        (match.start(), match["name"], match["value"])
+        for match in _JINJA_SET.finditer(text)
+    ]
+    names: set[str] = set()
+    for match in _STATE_ATTR.finditer(text):
+        entity = match["entity"]
+        if entity[0] in "'\"":
+            target = entity.strip("'\"")
+        else:
+            bound = [
+                value
+                for at, name, value in bindings
+                if name == entity and at < match.start()
+            ]
+            target = bound[-1] if bound else None
+        if target == entity_id:
+            names.add(match["name"])
+    return names
+
+
+def test_state_attr_names_follow_a_jinja_variable() -> None:
+    """Both the quoted form and a ``{% set %}`` alias are found."""
+    text = (
+        "{{ state_attr('sensor.hsem_savings_tracker_sensor', 'today_actual') }}\n"
+        "{% set s = 'sensor.hsem_savings_tracker_sensor' %}\n"
+        "{{ state_attr(s, 'today_missed') }}\n"
+        "{{ state_attr('sensor.hsem_export_income', 'today') }}\n"
+        "{% set other = 'sensor.hsem_import_cost' %}{{ state_attr(other, 'daily') }}\n"
+        "{% set s = 'sensor.hsem_export_income' %}{{ state_attr(s, 'this_year') }}"
+    )
+
+    assert _state_attr_names(text, _SAVINGS_SENSOR) == {"today_actual", "today_missed"}
+
+
+def test_docs_read_only_savings_attributes_the_sensor_publishes() -> None:
+    """The docs once showed ``actual_savings`` and ``missed_savings``: both ``None``."""
+    published = set(SavingsTracker().as_dict())
+    unknown = {
+        str(path.relative_to(_REPO)): names
+        for path in _DOCS
+        if (
+            names := _state_attr_names(
+                path.read_text(encoding="utf-8"), _SAVINGS_SENSOR
+            )
+            - published
+        )
+    }
+
+    assert unknown == {}
+
+
+def test_the_reference_lists_every_savings_attribute() -> None:
+    """Every key the sensor publishes is named in ``docs/sensors-reference.md``."""
+    reference = (_REPO / "docs" / "sensors-reference.md").read_text(encoding="utf-8")
+    start = reference.index("## Savings tracker sensor")
+    section = reference[start : reference.index("\n## ", start + 1)]
+
+    missing = {
+        name for name in SavingsTracker().as_dict() if f"`{name}`" not in section
+    }
+
+    assert missing == set()
