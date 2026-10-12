@@ -40,7 +40,7 @@ sensor's `_unrecorded_attributes` and never reach the recorder:
 | `sensor.hsem_savings_tracker_sensor`           | `daily`                                                                     |
 | `sensor.daily_plan_vs_actual`                  | `today`, `yesterday`, `history`                                             |
 | Export income / import cost / net grid balance | `today`, `last_7_days`, `last_30_days`, `this_month`, `this_year`, `daily`  |
-| `sensor.hsem_performance_*`                    | `yesterday`, `last_7_days`, `last_30_days`, `notes`                         |
+| `sensor.hsem_performance_*`                    | `yesterday`, `last_7_days`, `last_30_days`, `daily`, `notes`                |
 | `sensor.hsem_applier_status_sensor`            | `last_apply_details`, `failed_entities`, `unverified_entities`              |
 | `sensor.hsem_ocpp_*charger_status`             | all attributes                                                              |
 | `sensor.hsem_ocpp_*charger_sessions`           | `sessions`                                                                  |
@@ -816,6 +816,10 @@ values, not totals, so they carry no `monetary` device class (Home Assistant
 allows that one only on totals); the amounts use Home Assistant's currency as
 their unit.
 
+The bundled dashboard has a **Performance** view that shows all of this,
+including the 7- and 30-day figures and a day-by-day breakdown: see
+[Performance view](dashboard-setup.md#performance-view).
+
 ### What is compared
 
 Three ways the same 24 hours could have gone, over the same slots, the same
@@ -1001,29 +1005,30 @@ is reported as such, never clamped to 0.
 
 All performance sensors publish the same attributes:
 
-| Attribute                                                 | Description                                                                                       |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `reason`                                                  | Why a value is `unknown` (see below); `null` when all three are known                             |
-| `actual_benefit`, `missed_opportunity`, `savings_capture` | The three figures of the window (capture in percent)                                              |
-| `potential`                                               | `baseline − oracle`                                                                               |
-| `battery_loss`, `solar_loss`                              | The two parts of the missed opportunity (they add up to it)                                       |
-| `battery_utilisation`, `solar_utilisation`                | The same as shares of the potential, in percent                                                   |
-| `breakdown_reason`                                        | Why the battery and solar figures are `unknown`; `null` when they are known                       |
-| `ev_missed_opportunity`, `ev_potential`                   | What better EV charging times would have saved, and what the best times save over plug-and-charge |
-| `ev_charging_efficiency`                                  | `1 − ev_missed_opportunity ÷ ev_potential`, in percent                                            |
-| `ev_shiftable_kwh`                                        | EV energy delivered in managed sessions                                                           |
-| `ev_reason`                                               | Why the EV figures are `unknown`; `null` when they are known                                      |
-| `realized_cost`, `baseline_cost`, `oracle_cost`           | The cost of each run                                                                              |
-| `window_start`, `window_end`, `slot_count`                | The 24 physical hours that were scored                                                            |
-| `coverage`                                                | Share of the window that was observed (0–1)                                                       |
-| `control_coverage`                                        | Share of the observed time in which HSEM was in control (0–1)                                     |
-| `start_stored_kwh`                                        | Energy in the battery at the start of the window                                                  |
-| `realized_end_stored_kwh`, `baseline_end_stored_kwh`      | Energy the real run and the self-consumption run end with                                         |
-| `residual_kwh`                                            | Energy the meters cannot explain (see below)                                                      |
-| `solver_status`                                           | `optimal`, `unsolved`, `unavailable` or `not_run`                                                 |
-| `notes`                                                   | Anything about the data that qualifies the score                                                  |
-| `yesterday`                                               | The same figures for the last completed local day                                                 |
-| `last_7_days`, `last_30_days`                             | Benefit, missed opportunity, potential and capture over completed days                            |
+| Attribute                                                 | Description                                                                                                                                                                                                                                    |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reason`                                                  | Why a value is `unknown` (see below); `null` when all three are known                                                                                                                                                                          |
+| `actual_benefit`, `missed_opportunity`, `savings_capture` | The three figures of the window (capture in percent)                                                                                                                                                                                           |
+| `potential`                                               | `baseline − oracle`                                                                                                                                                                                                                            |
+| `battery_loss`, `solar_loss`                              | The two parts of the missed opportunity (they add up to it)                                                                                                                                                                                    |
+| `battery_utilisation`, `solar_utilisation`                | The same as shares of the potential, in percent                                                                                                                                                                                                |
+| `breakdown_reason`                                        | Why the battery and solar figures are `unknown`; `null` when they are known                                                                                                                                                                    |
+| `ev_missed_opportunity`, `ev_potential`                   | What better EV charging times would have saved, and what the best times save over plug-and-charge                                                                                                                                              |
+| `ev_charging_efficiency`                                  | `1 − ev_missed_opportunity ÷ ev_potential`, in percent                                                                                                                                                                                         |
+| `ev_shiftable_kwh`                                        | EV energy delivered in managed sessions                                                                                                                                                                                                        |
+| `ev_reason`                                               | Why the EV figures are `unknown`; `null` when they are known                                                                                                                                                                                   |
+| `realized_cost`, `baseline_cost`, `oracle_cost`           | The cost of each run                                                                                                                                                                                                                           |
+| `window_start`, `window_end`, `slot_count`                | The 24 physical hours that were scored                                                                                                                                                                                                         |
+| `coverage`                                                | Share of the window that was observed (0–1)                                                                                                                                                                                                    |
+| `control_coverage`                                        | Share of the observed time in which HSEM was in control (0–1)                                                                                                                                                                                  |
+| `start_stored_kwh`                                        | Energy in the battery at the start of the window                                                                                                                                                                                               |
+| `realized_end_stored_kwh`, `baseline_end_stored_kwh`      | Energy the real run and the self-consumption run end with                                                                                                                                                                                      |
+| `residual_kwh`                                            | Energy the meters cannot explain (see below)                                                                                                                                                                                                   |
+| `solver_status`                                           | `optimal`, `unsolved`, `unavailable` or `not_run`                                                                                                                                                                                              |
+| `notes`                                                   | Anything about the data that qualifies the score                                                                                                                                                                                               |
+| `yesterday`                                               | The same figures for the last completed local day                                                                                                                                                                                              |
+| `last_7_days`, `last_30_days`                             | Benefit, missed opportunity, potential and capture over completed days                                                                                                                                                                         |
+| `daily`                                                   | The newest 30 completed days one by one, oldest first: `date`, `reason`, the three savings figures, `potential`, the battery and solar losses and utilisations, `ev_missed_opportunity` and `ev_charging_efficiency`. For the dashboard charts |
 
 **`control_coverage`** tells a planner miss from a day HSEM was not driving:
 it is below 1 when force mode was not `auto`, HSEM was read-only, or the cycle

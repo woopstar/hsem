@@ -193,7 +193,7 @@ class HSEMPerformanceSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
     # The period rollups and notes are kept in the tracker's own history
     # file; only the state belongs in the recorder (issue #1099).
     _unrecorded_attributes = frozenset(
-        {"yesterday", "last_7_days", "last_30_days", "notes"}
+        {"yesterday", "last_7_days", "last_30_days", "daily", "notes"}
     )
 
     def __init__(

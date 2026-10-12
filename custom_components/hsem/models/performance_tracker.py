@@ -72,6 +72,26 @@ MAX_DAYS = 90
 #: Reported periods, in completed local days before today.
 PERIODS: dict[str, int] = {"last_7_days": 7, "last_30_days": 30}
 
+#: Completed days published one by one in the sensors' ``daily`` attribute,
+#: for the dashboard's day-by-day charts (issue #1284).
+DAILY_ATTRIBUTE_DAYS = 30
+
+#: What a ``daily`` entry carries next to its date: enough for the charts,
+#: without the cost breakdown the window already publishes.
+_DAILY_FIELDS: tuple[str, ...] = (
+    "reason",
+    "actual_benefit",
+    "missed_opportunity",
+    "savings_capture",
+    "potential",
+    "battery_loss",
+    "solar_loss",
+    "battery_utilisation",
+    "solar_utilisation",
+    "ev_missed_opportunity",
+    "ev_charging_efficiency",
+)
+
 #: Why the sensors have no value before the first evaluation.
 REASON_NOT_EVALUATED = "not_evaluated"
 
@@ -584,7 +604,23 @@ class PerformanceTracker:
         )
         for name, days in PERIODS.items():
             attributes[name] = self.period(today, days)
+        attributes["daily"] = self._daily(today)
         return attributes
+
+    def _daily(self, today: date) -> list[dict[str, Any]]:
+        """Return the newest completed days one by one, oldest first.
+
+        Args:
+            today: The current local day, which is not completed yet.
+        """
+        completed = [day for day in sorted(self.days) if day < today.isoformat()]
+        entries: list[dict[str, Any]] = []
+        for day in completed[-DAILY_ATTRIBUTE_DAYS:]:
+            figures = self._figures(self.days[day])
+            entries.append(
+                {"date": day, **{name: figures[name] for name in _DAILY_FIELDS}}
+            )
+        return entries
 
     # ------------------------------------------------------------------
     # JSON persistence
