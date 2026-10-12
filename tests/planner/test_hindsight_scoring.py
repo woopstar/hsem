@@ -23,6 +23,7 @@ from custom_components.hsem.planner.hindsight_scoring import (
     capture_share,
     realized_window,
     score_window,
+    utilisation_share,
 )
 from custom_components.hsem.planner.milp_optimizer import is_scipy_available
 
@@ -339,6 +340,236 @@ class TestBatteryFlowsFromSoc:
         window = realized_window(slots, 4.0, _SITE)
 
         assert window.stored_kwh == pytest.approx([5.5, 5.5, 3.1, 6.2])
+
+
+class TestBatteryAndSolarSplit:
+    """The regret is split by an oracle that keeps the PV handling (issue #1270)."""
+
+    #: Flat prices with a poor export price: nothing to gain from the grid,
+    #: everything to gain from keeping PV surplus for later.
+    _FLAT = [1.0] * 24
+    #: 3 kWh of surplus in each of three midday hours, load at all other times.
+    _SUNNY = [0.6] * 11 + [-3.0] * 3 + [0.6] * 10
+
+    #: A cheap night and a dear evening on top: the grid has something to
+    #: offer as well.
+    _PEAKY = [0.3] * 6 + [1.0] * 11 + [3.0] * 4 + [0.3] * 3
+
+    def _sunny_idle(self, prices: list[float] | None = None) -> list[RealizedSlot]:
+        """Return a sunny day with an idle battery and an export price of 0.1."""
+        return [
+            replace(slot, export_price=0.1)
+            for slot in _idle_slots(prices or self._FLAT, self._SUNNY)
+        ]
+
+    def test_the_two_parts_add_up_to_the_regret(self) -> None:
+        score = score_window(realized_window(_idle_slots(), 4.0, _SITE), breakdown=True)
+
+        assert score is not None
+        assert score.battery_loss is not None and score.solar_loss is not None
+        assert score.battery_loss + score.solar_loss == pytest.approx(score.regret)
+        assert score.battery_loss >= -1e-9
+        assert score.solar_loss >= -1e-9
+
+    def test_the_costs_are_ordered(self) -> None:
+        """Oracle ≤ PV-as-realized ≤ realized: each can do what the next can."""
+        score = score_window(
+            realized_window(self._sunny_idle(), 1.0, _SITE), breakdown=True
+        )
+
+        assert score is not None and score.pv_as_realized_cost is not None
+        assert score.oracle_cost <= score.pv_as_realized_cost + 1e-9
+        assert score.pv_as_realized_cost <= score.realized_cost + 1e-9
+
+    def test_an_unused_battery_without_pv_is_battery_loss(self) -> None:
+        """No surplus to handle: all that was missed is dispatch."""
+        score = score_window(realized_window(_idle_slots(), 4.0, _SITE), breakdown=True)
+
+        assert score is not None
+        assert score.solar_loss == pytest.approx(0.0, abs=1e-6)
+        assert score.battery_loss == pytest.approx(score.regret)
+        assert score.regret > 1.0
+
+    def test_surplus_sold_cheaply_and_bought_back_is_solar_loss(self) -> None:
+        """With flat prices the grid offers nothing; the PV surplus does."""
+        score = score_window(
+            realized_window(self._sunny_idle(), 0.5, _SITE), breakdown=True
+        )
+
+        assert score is not None
+        assert score.battery_loss == pytest.approx(0.0, abs=1e-6)
+        assert score.solar_loss == pytest.approx(score.regret)
+        # 9 kWh of surplus was sold at 0.1 and bought back at 1.0.
+        assert score.regret > 5.0
+        # Self-consumption alone would have got it right, so there is no
+        # potential to take a share of: the amounts say it, the shares cannot.
+        assert score.potential == pytest.approx(0.0, abs=1e-6)
+        assert score.solar_utilisation is None
+
+    def test_surplus_that_was_stored_but_never_used_is_battery_loss(self) -> None:
+        """The PV handling was right; the energy was then held."""
+        slots = self._sunny_idle(self._PEAKY)
+        for index in (11, 12, 13):
+            slots[index] = replace(slots[index], grid_export_kwh=0.0, charged_kwh=3.0)
+
+        score = score_window(realized_window(slots, 0.5, _SITE), breakdown=True)
+
+        assert score is not None
+        # Using it in the dear evening and refilling in the cheap hours after
+        # would have paid; storing it was already the best use of the surplus.
+        assert score.solar_loss == pytest.approx(0.0, abs=1e-6)
+        assert score.battery_loss == pytest.approx(score.regret)
+        assert score.regret > 5.0
+
+    def test_a_run_like_the_oracle_loses_nothing_on_either(self) -> None:
+        day = self._sunny_idle(self._PEAKY)
+        best = realized_window(day, 0.5, _SITE).oracle(0.5)
+        assert best is not None
+
+        score = score_window(
+            realized_window(_run_as(day, best), 0.5, _SITE), breakdown=True
+        )
+
+        assert score is not None
+        assert score.battery_loss == pytest.approx(0.0, abs=1e-6)
+        assert score.solar_loss == pytest.approx(0.0, abs=1e-6)
+        assert score.battery_utilisation == pytest.approx(1.0, abs=1e-6)
+        assert score.solar_utilisation == pytest.approx(1.0, abs=1e-6)
+
+    def test_the_shortfalls_of_the_shares_add_up_to_the_captures(self) -> None:
+        score = score_window(
+            realized_window(self._sunny_idle(self._PEAKY), 0.5, _SITE),
+            breakdown=True,
+        )
+
+        assert score is not None and score.capture is not None
+        assert score.battery_utilisation is not None
+        assert score.solar_utilisation is not None
+        # An idle battery on a day that offers both: each part lost something.
+        assert score.battery_utilisation < 1.0 - 1e-3
+        assert score.solar_utilisation < 1.0 - 1e-3
+        assert (1 - score.battery_utilisation) + (1 - score.solar_utilisation) == (
+            pytest.approx(1 - score.capture)
+        )
+
+    def test_without_the_split_the_score_is_the_same(self) -> None:
+        window = realized_window(self._sunny_idle(), 0.5, _SITE)
+
+        plain = score_window(window)
+        split = score_window(window, breakdown=True)
+
+        assert plain is not None and split is not None
+        assert plain.pv_as_realized_cost is None
+        assert plain.battery_loss is None and plain.solar_loss is None
+        assert plain.battery_utilisation is None and plain.solar_utilisation is None
+        assert replace(split, pv_as_realized_cost=None) == plain
+
+    def test_a_failed_split_leaves_the_score(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Only the extra solve failed: the stage-1 figures stand."""
+        window = realized_window(self._sunny_idle(), 0.5, _SITE)
+        solve = type(window).oracle
+
+        def without_split(self: object, *args: object, **kwargs: object) -> object:
+            if kwargs.get("pv_as_realized"):
+                return None
+            return solve(self, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(type(window), "oracle", without_split)
+
+        score = score_window(window, breakdown=True)
+
+        assert score is not None
+        assert score.regret > 5.0
+        assert score.pv_as_realized_cost is None
+
+    def test_the_shares_are_not_clamped_and_need_a_potential(self) -> None:
+        assert utilisation_share(3.0, 2.0) == pytest.approx(-0.5)
+        assert utilisation_share(0.0, 2.0) == pytest.approx(1.0)
+        assert utilisation_share(None, 2.0) is None
+        assert utilisation_share(0.01, MIN_POTENTIAL - 0.001) is None
+
+
+class TestPvChargeBounds:
+    """What "the PV handling as it happened" means per slot."""
+
+    def _bounds(self, slot: RealizedSlot) -> tuple[float, float]:
+        window = realized_window([slot], 1.0, _SITE)
+        minimum, maximum = window.pv_charge_bounds()
+        return minimum[0], maximum[0]
+
+    def _slot(
+        self,
+        *,
+        grid_import: float = 0.0,
+        grid_export: float = 0.0,
+        charged: float = 0.0,
+    ) -> RealizedSlot:
+        return RealizedSlot(
+            hours=1.0,
+            grid_import_kwh=grid_import,
+            grid_export_kwh=grid_export,
+            charged_kwh=charged,
+            discharged_kwh=0.0,
+            import_price=1.0,
+            export_price=0.5,
+        )
+
+    def test_a_slot_without_surplus_is_left_free(self) -> None:
+        """Any charge there is grid charge, which the oracle may redo."""
+        assert self._bounds(self._slot(grid_import=2.0, charged=1.5)) == (
+            pytest.approx(0.0),
+            pytest.approx(5.0),
+        )
+
+    def test_surplus_that_was_all_exported_may_not_be_stored(self) -> None:
+        assert self._bounds(self._slot(grid_export=3.0)) == (
+            pytest.approx(0.0),
+            pytest.approx(0.0),
+        )
+
+    def test_surplus_that_was_partly_stored_is_stored_just_as_much(self) -> None:
+        """3 kWh of surplus: 1 stored, 2 exported."""
+        assert self._bounds(self._slot(grid_export=2.0, charged=1.0)) == (
+            pytest.approx(1.0),
+            pytest.approx(1.0),
+        )
+
+    def test_surplus_stored_in_full_leaves_grid_charge_on_top_free(self) -> None:
+        """2 kWh of surplus all stored, plus 1 kWh from the grid."""
+        assert self._bounds(self._slot(grid_import=1.0, charged=3.0)) == (
+            pytest.approx(2.0),
+            pytest.approx(5.0),
+        )
+
+    def test_the_realized_run_satisfies_its_own_bounds(self) -> None:
+        slots = [
+            self._slot(grid_import=2.0, charged=1.5),
+            self._slot(grid_export=3.0),
+            self._slot(grid_export=2.0, charged=1.0),
+            self._slot(grid_import=1.0, charged=3.0),
+        ]
+        window = realized_window(slots, 1.0, _SITE)
+
+        minimum, maximum = window.pv_charge_bounds()
+
+        for charged, low, high in zip(
+            window.charged_kwh, minimum, maximum, strict=True
+        ):
+            assert low - 1e-9 <= charged <= high + 1e-9
+
+    def test_pv_is_not_curtailed_further_either(self) -> None:
+        """A negative export price: the oracle curtails, the held run cannot."""
+        slot = replace(self._slot(grid_export=3.0), export_price=-0.5, pv_kwh=4.0)
+        window = realized_window([slot], 9.5, _SITE)
+
+        free = window.oracle(9.5)
+        held = window.oracle(9.5, pv_as_realized=True)
+
+        assert free is not None and held is not None
+        assert free.grid_export_kwh[0] == pytest.approx(0.0, abs=1e-6)
+        assert held.grid_export_kwh[0] == pytest.approx(3.0, abs=1e-6)
 
 
 class TestTimeLimit:

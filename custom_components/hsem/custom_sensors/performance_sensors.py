@@ -1,8 +1,9 @@
 """Performance (KPI) sensors: how good the last day's control turned out to be.
 
-Stage 1 of the HSEM performance dashboard (issue #1182).  Three sensors score
-the trailing 24 hours against perfect hindsight, over the same slots and the
-same realized prices:
+The trailing 24 hours scored against perfect hindsight, over the same slots
+and the same realized prices.
+
+Stage 1 (issue #1182), the result:
 
 - ``sensor.hsem_performance_savings_capture`` — the share of what the best
   possible control could have saved over plain inverter self-consumption that
@@ -12,10 +13,17 @@ same realized prices:
 - ``sensor.hsem_performance_missed_opportunity`` — what perfect hindsight
   would have saved on top (currency).  The most robust of the three.
 
-All three publish the same attributes: the cost breakdown, the window, how
+Stage 2 (issue #1270), where the missed opportunity was lost:
+
+- ``sensor.hsem_performance_battery_utilisation`` — the share of the potential
+  not lost through battery dispatch (%).
+- ``sensor.hsem_performance_solar_utilisation`` — the share of the potential
+  not lost through the handling of PV surplus (%).
+
+All of them publish the same attributes: the cost breakdown, the window, how
 much of it was observed and how much of that HSEM was in control, why a value
-is unknown (``reason``), and the same figures for yesterday and for the last
-7 and 30 completed days.
+is unknown (``reason``, ``breakdown_reason``), and the same figures for
+yesterday and for the last 7 and 30 completed days.
 
 They are rolling 24-hour values, not totals, so they use the ``measurement``
 state class and carry no ``monetary`` device class (Home Assistant allows
@@ -42,16 +50,30 @@ from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.sensornames.financial import (
     get_performance_actual_benefit_entity_id,
     get_performance_actual_benefit_unique_id,
+    get_performance_battery_utilisation_entity_id,
+    get_performance_battery_utilisation_unique_id,
     get_performance_missed_opportunity_entity_id,
     get_performance_missed_opportunity_unique_id,
     get_performance_savings_capture_entity_id,
     get_performance_savings_capture_unique_id,
+    get_performance_solar_utilisation_entity_id,
+    get_performance_solar_utilisation_unique_id,
 )
 
 
 def _capture_percent(score: PerformanceScore) -> float | None:
     capture = score.capture
     return None if capture is None else round(capture * 100.0, 1)
+
+
+def _battery_utilisation_percent(score: PerformanceScore) -> float | None:
+    share = score.battery_utilisation
+    return None if share is None else round(share * 100.0, 1)
+
+
+def _solar_utilisation_percent(score: PerformanceScore) -> float | None:
+    share = score.solar_utilisation
+    return None if share is None else round(share * 100.0, 1)
 
 
 def _actual_benefit(score: PerformanceScore) -> float | None:
@@ -85,7 +107,8 @@ class PerformanceSensorDescription:
     is_share: bool = False
 
 
-#: The stage-1 KPIs.  Later stages add their sensors here.
+#: The KPIs: stage 1 (issue #1182) and the battery / solar split of stage 2
+#: (issue #1270).  Later stages add their sensors here.
 PERFORMANCE_SENSORS: tuple[PerformanceSensorDescription, ...] = (
     PerformanceSensorDescription(
         key="savings_capture",
@@ -108,6 +131,22 @@ PERFORMANCE_SENSORS: tuple[PerformanceSensorDescription, ...] = (
         value=_missed_opportunity,
         entity_id=get_performance_missed_opportunity_entity_id,
         unique_id=get_performance_missed_opportunity_unique_id,
+    ),
+    PerformanceSensorDescription(
+        key="battery_utilisation",
+        icon="mdi:battery-charging-high",
+        value=_battery_utilisation_percent,
+        entity_id=get_performance_battery_utilisation_entity_id,
+        unique_id=get_performance_battery_utilisation_unique_id,
+        is_share=True,
+    ),
+    PerformanceSensorDescription(
+        key="solar_utilisation",
+        icon="mdi:solar-power-variant",
+        value=_solar_utilisation_percent,
+        entity_id=get_performance_solar_utilisation_entity_id,
+        unique_id=get_performance_solar_utilisation_unique_id,
+        is_share=True,
     ),
 )
 

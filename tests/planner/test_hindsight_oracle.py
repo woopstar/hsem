@@ -414,6 +414,51 @@ class TestOracleDecisions:
         assert run.discharged_kwh[1] == pytest.approx(1.5)
 
 
+class TestMinimumCharge:
+    """Part of a run can be held fixed while the rest is optimised (issue #1270)."""
+
+    def test_a_minimum_charge_is_made_even_when_it_costs(self) -> None:
+        """Charging at the dear price is forced; the oracle would not choose it."""
+        slots = [_slot(0.0, 5.0), _slot(0.0, 0.1)]
+
+        free = solve_hindsight_oracle(slots, _LOSSLESS, 1.0, 1.0)
+        held = solve_hindsight_oracle(
+            slots, _LOSSLESS, 1.0, 1.0, min_charge_kwh=[2.0, 0.0]
+        )
+
+        assert free is not None and held is not None
+        assert free.charged_kwh[0] == pytest.approx(0.0, abs=1e-9)
+        assert held.charged_kwh[0] >= 2.0 - 1e-9
+        assert held.cost >= free.cost - 1e-9
+
+    def test_a_slot_with_a_minimum_charge_cannot_discharge(self) -> None:
+        slots = [_slot(3.0, 5.0), _slot(0.0, 0.1)]
+
+        held = solve_hindsight_oracle(
+            slots, _LOSSLESS, 5.0, 1.0, min_charge_kwh=[0.5, 0.0]
+        )
+
+        assert held is not None
+        assert held.charged_kwh[0] >= 0.5 - 1e-9
+        assert held.discharged_kwh[0] == pytest.approx(0.0, abs=1e-9)
+
+    def test_a_minimum_above_the_slots_limit_is_cut_to_it(self) -> None:
+        """An inconsistent pair of bounds does not make the window infeasible."""
+        slots = [_slot(0.0, 1.0), _slot(0.0, 1.0)]
+
+        held = solve_hindsight_oracle(
+            slots,
+            _LOSSLESS,
+            1.0,
+            1.0,
+            max_charge_kwh=[1.5, 0.0],
+            min_charge_kwh=[4.0, 0.0],
+        )
+
+        assert held is not None
+        assert held.charged_kwh[0] == pytest.approx(1.5)
+
+
 class TestOracleWithoutAnAnswer:
     def test_an_empty_window_has_no_oracle(self) -> None:
         assert solve_hindsight_oracle([], _BATTERY, 5.0, 5.0) is None

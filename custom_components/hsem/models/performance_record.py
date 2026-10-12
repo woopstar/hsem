@@ -34,6 +34,8 @@ REASON_ENERGY_BALANCE_RESIDUAL = "energy_balance_residual"
 REASON_ORACLE_UNSOLVED = "oracle_unsolved"
 #: Why a scored run has no capture share: its other figures are still valid.
 REASON_POTENTIAL_BELOW_THRESHOLD = "potential_below_threshold"
+#: Why a scored run has no battery / solar split: the extra solve failed.
+REASON_BREAKDOWN_UNSOLVED = "breakdown_unsolved"
 
 
 @dataclass(frozen=True)
@@ -274,6 +276,10 @@ class PerformanceScore:
         baseline_cost: Grid cost of plain inverter self-consumption.
         potential: ``baseline_cost`` minus the cost of the oracle that ends
             where self-consumption ends.
+        pv_as_realized_cost: Grid cost of the oracle that keeps the realized
+            handling of PV surplus; splits the regret into a battery and a
+            solar part (issue #1270).  ``None`` on scores from before that
+            split existed and when its solve failed.
         start_kwh: Stored energy the run started with.
         realized_end_kwh: Stored energy the run really ended with.
         baseline_end_kwh: Stored energy self-consumption would have ended with.
@@ -293,6 +299,7 @@ class PerformanceScore:
     oracle_cost: float | None = None
     baseline_cost: float | None = None
     potential: float | None = None
+    pv_as_realized_cost: float | None = None
     start_kwh: float | None = None
     realized_end_kwh: float | None = None
     baseline_end_kwh: float | None = None
@@ -320,6 +327,7 @@ class PerformanceScore:
             potential=self.potential,
             realized_end_kwh=self.realized_end_kwh,
             baseline_end_kwh=self.baseline_end_kwh,
+            pv_as_realized_cost=self.pv_as_realized_cost,
         )
 
     @property
@@ -354,6 +362,41 @@ class PerformanceScore:
             return REASON_POTENTIAL_BELOW_THRESHOLD
         return None
 
+    @property
+    def battery_loss(self) -> float | None:
+        """Return the missed opportunity that lies in battery dispatch."""
+        score = self.window_score
+        return None if score is None else score.battery_loss
+
+    @property
+    def solar_loss(self) -> float | None:
+        """Return the missed opportunity that lies in PV surplus handling."""
+        score = self.window_score
+        return None if score is None else score.solar_loss
+
+    @property
+    def battery_utilisation(self) -> float | None:
+        """Return the battery utilisation as a fraction, if the run has one."""
+        score = self.window_score
+        return None if score is None else score.battery_utilisation
+
+    @property
+    def solar_utilisation(self) -> float | None:
+        """Return the solar utilisation as a fraction, if the run has one."""
+        score = self.window_score
+        return None if score is None else score.solar_utilisation
+
+    @property
+    def breakdown_reason(self) -> str | None:
+        """Return why the run has no battery / solar shares, or ``None``."""
+        if self.reason is not None:
+            return self.reason
+        if self.pv_as_realized_cost is None:
+            return REASON_BREAKDOWN_UNSOLVED
+        if self.battery_utilisation is None:
+            return REASON_POTENTIAL_BELOW_THRESHOLD
+        return None
+
     def for_day(self, day: str) -> PerformanceScore:
         """Return this score labelled as the local calendar day *day*."""
         return replace(self, day=day)
@@ -371,6 +414,7 @@ class PerformanceScore:
             "oracle_cost": self.oracle_cost,
             "baseline_cost": self.baseline_cost,
             "potential": self.potential,
+            "pv_as_realized_cost": self.pv_as_realized_cost,
             "start_kwh": self.start_kwh,
             "realized_end_kwh": self.realized_end_kwh,
             "baseline_end_kwh": self.baseline_end_kwh,
@@ -406,6 +450,7 @@ class PerformanceScore:
             oracle_cost=finite_float(data.get("oracle_cost")),
             baseline_cost=finite_float(data.get("baseline_cost")),
             potential=finite_float(data.get("potential")),
+            pv_as_realized_cost=finite_float(data.get("pv_as_realized_cost")),
             start_kwh=finite_float(data.get("start_kwh")),
             realized_end_kwh=finite_float(data.get("realized_end_kwh")),
             baseline_end_kwh=finite_float(data.get("baseline_end_kwh")),

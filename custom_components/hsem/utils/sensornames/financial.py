@@ -151,3 +151,49 @@ def get_performance_missed_opportunity_entity_id() -> str:
 
     """
     return f"sensor.{s(f'{DOMAIN}_performance_missed_opportunity')}"
+
+
+def get_performance_battery_utilisation_unique_id(entry_id: str) -> str:
+    """Generate a unique ID for the performance battery-utilisation sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+
+    Returns:
+        str: Unique ID of the battery-utilisation sensor.
+
+    """
+    return f"{DOMAIN}_{entry_id}_performance_battery_utilisation_sensor"
+
+
+def get_performance_battery_utilisation_entity_id() -> str:
+    """Generate an Entity ID for the performance battery-utilisation sensor.
+
+    Returns:
+        str: Entity ID of the battery-utilisation sensor.
+
+    """
+    return f"sensor.{s(f'{DOMAIN}_performance_battery_utilisation')}"
+
+
+def get_performance_solar_utilisation_unique_id(entry_id: str) -> str:
+    """Generate a unique ID for the performance solar-utilisation sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+
+    Returns:
+        str: Unique ID of the solar-utilisation sensor.
+
+    """
+    return f"{DOMAIN}_{entry_id}_performance_solar_utilisation_sensor"
+
+
+def get_performance_solar_utilisation_entity_id() -> str:
+    """Generate an Entity ID for the performance solar-utilisation sensor.
+
+    Returns:
+        str: Entity ID of the solar-utilisation sensor.
+
+    """
+    return f"sensor.{s(f'{DOMAIN}_performance_solar_utilisation')}"

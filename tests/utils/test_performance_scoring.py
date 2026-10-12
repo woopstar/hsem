@@ -20,6 +20,7 @@ import pytest
 import homeassistant.util.dt as dt_util
 
 from custom_components.hsem.models.performance_record import (
+    REASON_BREAKDOWN_UNSOLVED,
     REASON_ENERGY_BALANCE_RESIDUAL,
     REASON_INSUFFICIENT_COVERAGE,
     REASON_NO_SITE_LIMITS,
@@ -333,6 +334,66 @@ class TestGuards:
         assert score.residual_kwh is None
 
 
+class TestTheSplit:
+    """Where the missed opportunity was lost: battery or solar (issue #1270)."""
+
+    def test_a_scored_run_carries_both_parts(self) -> None:
+        score = score_slots(_keys(), _idle_day(), 60, _SITE)
+
+        assert score.pv_as_realized_cost is not None
+        assert score.battery_loss is not None and score.solar_loss is not None
+        assert score.battery_loss + score.solar_loss == pytest.approx(score.regret)
+        assert score.breakdown_reason is None
+
+    def test_an_idle_battery_without_pv_lost_it_all_on_dispatch(self) -> None:
+        score = score_slots(_keys(), _idle_day(), 60, _SITE)
+
+        assert score.solar_loss == pytest.approx(0.0, abs=1e-6)
+        assert score.battery_loss == pytest.approx(score.regret)
+        assert score.solar_utilisation == pytest.approx(1.0, abs=1e-6)
+        assert score.battery_utilisation == pytest.approx(score.capture)
+
+    def test_an_unscored_run_has_neither_part(self) -> None:
+        score = score_slots(_keys(), {}, 60, _SITE)
+
+        assert score.battery_loss is None and score.solar_loss is None
+        assert score.battery_utilisation is None and score.solar_utilisation is None
+        assert score.breakdown_reason == REASON_INSUFFICIENT_COVERAGE
+
+    def test_the_shares_are_unknown_when_nothing_could_be_saved(self) -> None:
+        slots = _idle_day(soc=5.0)
+        for slot in slots.values():
+            slot.import_price = 1.0
+            slot.export_price = 0.7
+
+        score = score_slots(_keys(), slots, 60, _SITE)
+
+        assert score.battery_utilisation is None
+        assert score.battery_loss == pytest.approx(0.0, abs=1e-6)
+        assert score.breakdown_reason == REASON_POTENTIAL_BELOW_THRESHOLD
+
+    def test_a_failed_split_keeps_the_score(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Only the extra solve failed: stage 1 is published, stage 2 says why not."""
+        real = performance_scoring.score_window
+
+        def without_split(window: object, **kwargs: object) -> object:
+            kwargs["breakdown"] = False
+            return real(window, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(performance_scoring, "score_window", without_split)
+
+        score = score_slots(_keys(), _idle_day(), 60, _SITE)
+
+        assert score.is_scored
+        assert score.regret is not None and score.regret > 1.0
+        assert score.capture_reason is None
+        assert score.pv_as_realized_cost is None
+        assert score.battery_utilisation is None
+        assert score.breakdown_reason == REASON_BREAKDOWN_UNSOLVED
+
+
 class TestBatteryFlows:
     def test_each_slots_flow_runs_to_the_next_slots_starting_soc(self) -> None:
         """A short gap inside a slot does not break the chain."""
@@ -527,6 +588,23 @@ class TestTheSameDayAsTheBacktest:
         assert device.potential is not None and device.potential >= -1e-6
         # The meters of a real installation explain themselves.
         assert device.residual_kwh is not None and device.residual_kwh < 0.5
+
+    def test_the_split_adds_up_on_the_committed_day(self) -> None:
+        """Battery and solar loss of a real day: 1.53 + 0.48 of 2.02 missed."""
+        day, actuals, site = _recorded()
+        keys = day_slot_keys(day, _TZ, actuals.slot_minutes)
+
+        device = score_slots(
+            keys, _slots_from_actuals(actuals, keys), actuals.slot_minutes, site
+        )
+
+        assert device.battery_loss is not None and device.solar_loss is not None
+        assert device.battery_loss + device.solar_loss == pytest.approx(device.regret)
+        assert device.battery_loss >= -1e-6 and device.solar_loss >= -1e-6
+        assert device.battery_loss == pytest.approx(1.53, abs=0.01)
+        assert device.solar_loss == pytest.approx(0.48, abs=0.01)
+        assert device.battery_utilisation == pytest.approx(0.699, abs=0.002)
+        assert device.solar_utilisation == pytest.approx(0.905, abs=0.002)
 
     def test_the_run_ends_where_the_battery_really_was(self) -> None:
         """SoC-derived flows cannot drift away from the measured SoC."""

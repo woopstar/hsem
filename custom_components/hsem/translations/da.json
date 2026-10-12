@@ -1235,11 +1235,17 @@
       "performance_actual_benefit": {
         "name": "Ydeevne: faktisk gevinst (24 t)"
       },
+      "performance_battery_utilisation": {
+        "name": "Ydeevne: batteriudnyttelse (24 t)"
+      },
       "performance_missed_opportunity": {
         "name": "Ydeevne: mistet besparelse (24 t)"
       },
       "performance_savings_capture": {
         "name": "Ydeevne: besparelsesgrad (24 t)"
+      },
+      "performance_solar_utilisation": {
+        "name": "Ydeevne: soludnyttelse (24 t)"
       },
       "prediction_accuracy": {
         "name": "Forudsigelsesnøjagtighed"

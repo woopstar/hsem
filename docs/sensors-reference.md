@@ -74,7 +74,7 @@ dashboards, automations, and Areas.
 | **Controller**                 | _(none — legacy)_     | Working mode, degraded mode, read-only, hardware-writes, missing-entities, force-mode, last/next-updated, update-interval, applier-status, plan-explanation, daily-plan-vs-actual, recommendation-interval, force-working-mode selector, extended-attributes/verbose-logging/ML switches |
 | **Battery & Energy**           | `_battery_energy`     | Battery SoC, effective discharge floor, net consumption, PV curtailment, charge/discharge efficiency numbers, dynamic discharge floor switch                                                                                                                                             |
 | **Hourly Consumption Profile** | `_hourly_consumption` | All 168 per-hour-block entities (`HSEMHouseConsumptionPowerSensor` + integral + utility-meter + 1/3/7/14-day averages × 24 hour blocks)                                                                                                                                                  |
-| **Financial**                  | `_financial`          | Export income, import cost, net grid balance, savings, performance (savings capture, actual benefit, missed opportunity)                                                                                                                                                                 |
+| **Financial**                  | `_financial`          | Export income, import cost, net grid balance, savings, performance (savings capture, actual benefit, missed opportunity, battery and solar utilisation)                                                                                                                                  |
 | **Forecast**                   | `_forecast`           | Forecast accuracy, prediction accuracy, solar confidence, Solcast likelihood selector                                                                                                                                                                                                    |
 | **EV Primary**                 | `_ev_primary`         | EV charging/plan sensors, calculated power, current limit, target SoC number, deadline time, smart-charging/force-charge-now/force-discharge/auto-full switches, OCPP charger sensors for `charger_index=1`                                                                              |
 | **EV Secondary**               | `_ev_secondary`       | The same set as EV Primary for `charger_index=2` / the second EV (only present when the second EV is configured)                                                                                                                                                                         |
@@ -793,21 +793,23 @@ Last 30 days: {{ state_attr(s, 'last_30_days_actual') }}
 
 ## Performance sensors
 
-How good the last day's control turned out to be, as three numbers (issue
-#1182). They are the first stage of an HSEM performance dashboard; later
-stages add battery utilisation, solar utilisation and EV charging efficiency
-on the same record, so that a low score also says _where_ it was lost.
+How good the last day's control turned out to be (issue #1182), and where
+what was missed was lost: in battery dispatch or in the handling of PV
+surplus (issue #1270). A later stage adds EV charging efficiency on the same
+record.
 
 **Entities** (on the **HSEM Financial** device, all with the `performance`
 prefix):
 
-| Entity                                       | State                                                        | Unit           |
-| -------------------------------------------- | ------------------------------------------------------------ | -------------- |
-| `sensor.hsem_performance_savings_capture`    | Share of the achievable savings that HSEM actually achieved  | %              |
-| `sensor.hsem_performance_actual_benefit`     | What HSEM's control was worth against plain self-consumption | local currency |
-| `sensor.hsem_performance_missed_opportunity` | What perfect hindsight would have saved on top of that       | local currency |
+| Entity                                        | State                                                        | Unit           |
+| --------------------------------------------- | ------------------------------------------------------------ | -------------- |
+| `sensor.hsem_performance_savings_capture`     | Share of the achievable savings that HSEM actually achieved  | %              |
+| `sensor.hsem_performance_actual_benefit`      | What HSEM's control was worth against plain self-consumption | local currency |
+| `sensor.hsem_performance_missed_opportunity`  | What perfect hindsight would have saved on top of that       | local currency |
+| `sensor.hsem_performance_battery_utilisation` | Share of the potential not lost through battery dispatch     | %              |
+| `sensor.hsem_performance_solar_utilisation`   | Share of the potential not lost through PV surplus handling  | %              |
 
-All three cover the **trailing 24 hours**, are updated once per completed slot,
+All of them cover the **trailing 24 hours**, are updated once per completed slot,
 and are diagnostic sensors with the `measurement` state class. They are rolling
 values, not totals, so they carry no `monetary` device class (Home Assistant
 allows that one only on totals); the amounts use Home Assistant's currency as
@@ -858,6 +860,56 @@ Three rules keep the comparison fair:
 battery discharged`. The EV is inside it in all three runs, so _when_ the
    car was charged is not scored yet (that is stage 3).
 
+### Where it was lost: battery and solar
+
+The missed opportunity is split in two by one more hindsight run that sits
+between the realized day and the oracle:
+
+| Run                       | What it may decide                                                                                        |
+| ------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **realized**              | Nothing: what happened                                                                                    |
+| **PV-as-realized oracle** | Grid charging and discharging, with perfect foresight; PV surplus is stored and exported as it really was |
+| **oracle**                | Everything                                                                                                |
+
+Each run can do everything the one above it can, so their costs are ordered,
+and the two differences add up to the missed opportunity exactly:
+
+| Figure                  | Definition                     | Meaning                                                                   |
+| ----------------------- | ------------------------------ | ------------------------------------------------------------------------- |
+| **battery loss**        | `realized − PV-as-realized`    | What better grid charging and better-timed discharging would have saved   |
+| **solar loss**          | `PV-as-realized − oracle`      | What storing or exporting the PV surplus at better times would have saved |
+| **battery utilisation** | `1 − battery loss ÷ potential` | Share of the potential not lost through battery dispatch                  |
+| **solar utilisation**   | `1 − solar loss ÷ potential`   | Share of the potential not lost through PV surplus handling               |
+
+Both percentages use the same potential as the savings capture, so the
+shortfalls add up: a capture of 65 % with battery utilisation 72 % and solar
+utilisation 93 % reads "35 points were lost, 28 on battery dispatch and 7 on
+PV surplus".
+
+A reserve held through an expensive evening is **battery** loss. Surplus sold
+cheaply at noon and bought back in the evening is **solar** loss. A slot's PV
+surplus is what its PV left over after the load; "as it really was" means the
+oracle stores exactly as much of it as was really stored (and may add grid
+charge on top where all of it was stored).
+
+Storing surplus and using it later are two decisions, and the value of the
+pair is booked under **solar**. The split says where a loss became visible,
+not which setting caused it: surplus that could not be stored because the
+battery had been filled from the grid overnight shows up as solar loss.
+
+On the real days committed in the repository (a 15 kWh installation) most of
+what was missed is battery dispatch, with solar utilisation around 90 % on
+the ordinary days:
+
+| Day        | Missed | Battery loss | Solar loss | Capture | Battery | Solar  |
+| ---------- | ------ | ------------ | ---------- | ------- | ------- | ------ |
+| 2026-09-15 | 3.26   | 2.57         | 0.70       | 65.0 %  | 72.4 %  | 92.5 % |
+| 2026-09-26 | 19.51  | 13.03        | 6.48       | −26.7 % | 15.3 %  | 57.9 % |
+| 2026-09-29 | 2.29   | 1.77         | 0.53       | 54.5 %  | 65.0 %  | 89.5 % |
+
+(from the backtest's battery energy meters; the sensors use SoC-derived flows
+and differ by a few points, see _The same numbers as the backtest_ below).
+
 ### Perfect hindsight is an upper bound, not a target
 
 The oracle knows the day's PV, load and prices exactly. HSEM planned from
@@ -887,24 +939,27 @@ is reported as such, never clamped to 0.
 
 ### Attributes
 
-All three sensors publish the same attributes:
+All performance sensors publish the same attributes:
 
-| Attribute                                                 | Description                                                            |
-| --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `reason`                                                  | Why a value is `unknown` (see below); `null` when all three are known  |
-| `actual_benefit`, `missed_opportunity`, `savings_capture` | The three figures of the window (capture in percent)                   |
-| `potential`                                               | `baseline − oracle`                                                    |
-| `realized_cost`, `baseline_cost`, `oracle_cost`           | The cost of each run                                                   |
-| `window_start`, `window_end`, `slot_count`                | The 24 physical hours that were scored                                 |
-| `coverage`                                                | Share of the window that was observed (0–1)                            |
-| `control_coverage`                                        | Share of the observed time in which HSEM was in control (0–1)          |
-| `start_stored_kwh`                                        | Energy in the battery at the start of the window                       |
-| `realized_end_stored_kwh`, `baseline_end_stored_kwh`      | Energy the real run and the self-consumption run end with              |
-| `residual_kwh`                                            | Energy the meters cannot explain (see below)                           |
-| `solver_status`                                           | `optimal`, `unsolved`, `unavailable` or `not_run`                      |
-| `notes`                                                   | Anything about the data that qualifies the score                       |
-| `yesterday`                                               | The same figures for the last completed local day                      |
-| `last_7_days`, `last_30_days`                             | Benefit, missed opportunity, potential and capture over completed days |
+| Attribute                                                 | Description                                                                 |
+| --------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `reason`                                                  | Why a value is `unknown` (see below); `null` when all three are known       |
+| `actual_benefit`, `missed_opportunity`, `savings_capture` | The three figures of the window (capture in percent)                        |
+| `potential`                                               | `baseline − oracle`                                                         |
+| `battery_loss`, `solar_loss`                              | The two parts of the missed opportunity (they add up to it)                 |
+| `battery_utilisation`, `solar_utilisation`                | The same as shares of the potential, in percent                             |
+| `breakdown_reason`                                        | Why the battery and solar figures are `unknown`; `null` when they are known |
+| `realized_cost`, `baseline_cost`, `oracle_cost`           | The cost of each run                                                        |
+| `window_start`, `window_end`, `slot_count`                | The 24 physical hours that were scored                                      |
+| `coverage`                                                | Share of the window that was observed (0–1)                                 |
+| `control_coverage`                                        | Share of the observed time in which HSEM was in control (0–1)               |
+| `start_stored_kwh`                                        | Energy in the battery at the start of the window                            |
+| `realized_end_stored_kwh`, `baseline_end_stored_kwh`      | Energy the real run and the self-consumption run end with                   |
+| `residual_kwh`                                            | Energy the meters cannot explain (see below)                                |
+| `solver_status`                                           | `optimal`, `unsolved`, `unavailable` or `not_run`                           |
+| `notes`                                                   | Anything about the data that qualifies the score                            |
+| `yesterday`                                               | The same figures for the last completed local day                           |
+| `last_7_days`, `last_30_days`                             | Benefit, missed opportunity, potential and capture over completed days      |
 
 **`control_coverage`** tells a planner miss from a day HSEM was not driving:
 it is below 1 when force mode was not `auto`, HSEM was read-only, or the cycle
@@ -931,6 +986,17 @@ No number is published that cannot be stood behind. `reason` is one of:
 | `scipy_unavailable`            | The solver library is not installed                                                           |
 | `oracle_unsolved`              | The best possible day could not be found, or not proven best, within 10 seconds               |
 | `evaluation_failed`            | The scoring raised an error (see the HSEM log)                                                |
+
+`breakdown_reason` takes the same values, and one more: `breakdown_unsolved`
+when the score itself is valid but the extra hindsight run behind the split
+could not be solved in time. The savings capture, actual benefit and missed
+opportunity are then published as usual and only the two utilisation sensors
+are `unknown`.
+
+In the `last_7_days` and `last_30_days` attributes the battery and solar
+figures are taken over the days that carry the split (`breakdown_days`), with
+those days' own potential. Days scored before this split existed count towards
+`scored_days` but not towards `breakdown_days`.
 
 A new installation shows `insufficient_coverage` for its first 24 hours. So
 does a restart that kept Home Assistant down for more than about eight
@@ -1009,46 +1075,48 @@ Detects when the inverter is actively curtailing PV production.
 
 ## Diagnostic sensors
 
-| Entity                                           | Display Name                    | Purpose                                         | State / Value                           |
-| ------------------------------------------------ | ------------------------------- | ----------------------------------------------- | --------------------------------------- |
-| `sensor.hsem_applier_status_sensor`              | Inverter Apply Status           | Hardware write success/failure                  | `ok`, `unverified`, `failed`, `skipped` |
-| `sensor.hsem_battery_soc_sensor`                 | Battery State of Charge         | Battery SoC snapshot                            | Percentage (0–100)                      |
-| `sensor.daily_plan_vs_actual`                    | Daily Plan vs Actual            | Daily energy plan-vs-actual tracking            | Dict with cumulative metrics            |
-| `sensor.hsem_degraded_mode_sensor`               | System Health                   | Overall system health                           | `ok`, `degraded`, `error`               |
-| `sensor.hsem_ev_charger_calculated_power`        | EV Charger Calculated Power     | Planner target power for primary EV charger     | Watts (W)                               |
-| `sensor.hsem_ev_second_charger_calculated_power` | EV 2 Charger Calculated Power   | Planner target power for second EV charger      | Watts (W)                               |
-| `sensor.hsem_ev_charger_current_limit`           | EV Charger Current Limit        | Planner charging ceiling for primary EV charger | Amps (A)                                |
-| `sensor.hsem_ev_second_charger_current_limit`    | EV 2 Charger Current Limit      | Planner charging ceiling for second EV charger  | Amps (A)                                |
-| `sensor.hsem_ev_charging_sensor`                 | EV Charging Active              | Any EV actively charging                        | `on`, `off`                             |
-| `sensor.hsem_ev_optimal_charging_plan`           | EV Optimal Charging Plan        | Primary EV plan state                           | `charging`, `waiting`, etc.             |
-| `sensor.hsem_ev_second_optimal_charging_plan`    | EV Second Optimal Charging Plan | Second EV plan state                            | `charging`, `waiting`, etc.             |
-| `sensor.hsem_force_mode_sensor`                  | Force Working Mode              | Override active indicator                       | `auto` or override mode name            |
-| `sensor.hsem_solar_confidence_sensor`            | Solar Forecast Confidence       | Per-hour PV forecast accuracy factors           | Mean factor (ratio)                     |
-| `sensor.hsem_hardware_writes_sensor`             | Hardware Writes                 | Writes allowed/blocked by safety gate           | `allowed`, `blocked`                    |
-| `sensor.hsem_read_only_sensor`                   | Read-Only Mode                  | Read-only mode indicator                        | `on`, `off`                             |
-| `sensor.hsem_net_consumption_sensor`             | Net Consumption                 | Net load (house minus solar)                    | Watts (W)                               |
-| `sensor.hsem_last_updated_sensor`                | Last Updated                    | Last coordinator cycle timestamp                | ISO-8601 timestamp                      |
-| `sensor.hsem_next_update_sensor`                 | Next Update                     | Next scheduled coordinator cycle                | ISO-8601 timestamp                      |
-| `sensor.hsem_missing_entities_sensor`            | Missing Input Entities          | Count of missing input entities                 | Integer                                 |
-| `sensor.hsem_plan_explanation_sensor`            | Plan Explanation                | Planner strategy and cost breakdown             | Winning candidate name                  |
-| `sensor.hsem_prediction_accuracy_sensor`         | Prediction Accuracy             | Multi-horizon forecast accuracy                 | `soc_mae_7d`                            |
-| `sensor.hsem_forecast_accuracy_sensor`           | Forecast Accuracy               | PV and load forecast MAE                        | kWh                                     |
-| `sensor.hsem_recommendation_interval_sensor`     | Recommendation Interval         | Slot width and horizon info                     | Minutes                                 |
-| `sensor.hsem_update_interval_sensor`             | Update Interval                 | Current polling interval                        | Minutes                                 |
-| `sensor.hsem_workingmode_sensor`                 | Working Mode                    | Active battery recommendation                   | Working mode state                      |
-| `sensor.hsem_export_income`                      | Export Income                   | Cumulative export revenue                       | Monetary (total)                        |
-| `sensor.hsem_import_cost`                        | Import Cost                     | Cumulative import cost                          | Monetary (total)                        |
-| `sensor.hsem_net_grid_balance`                   | Net Grid Balance                | Export income minus import cost                 | Monetary (total)                        |
-| `sensor.hsem_effective_discharge_floor_sensor`   | Effective Discharge Floor       | Current effective floor SoC                     | Percentage                              |
-| `sensor.hsem_ocpp_charger_status_sensor`         | OCPP Charger Status             | Charger connection/charging state               | String                                  |
-| `sensor.hsem_ocpp_charger_power_sensor`          | OCPP Charger Power              | Live charging power                             | kW                                      |
-| `sensor.hsem_ocpp_charger_info_sensor`           | OCPP Charger Info               | Vendor, model, firmware, serial                 | String                                  |
-| `sensor.hsem_ocpp_charger_sessions_sensor`       | OCPP Charger Sessions           | Completed session log                           | Integer                                 |
-| `sensor.hsem_savings_tracker_sensor`             | Savings Tracker                 | Actual vs missed savings (90-day)               | Monetary                                |
-| `sensor.hsem_performance_savings_capture`        | Performance: Savings Capture    | Share of the achievable savings achieved (24 h) | Percentage                              |
-| `sensor.hsem_performance_actual_benefit`         | Performance: Actual Benefit     | Benefit over plain self-consumption (24 h)      | Local currency                          |
-| `sensor.hsem_performance_missed_opportunity`     | Performance: Missed Opportunity | What perfect hindsight would have added (24 h)  | Local currency                          |
-| `sensor.hsem_pv_curtailment_sensor`              | PV Curtailment                  | PV curtailment detection                        | `curtailed` / `normal`                  |
+| Entity                                           | Display Name                     | Purpose                                         | State / Value                           |
+| ------------------------------------------------ | -------------------------------- | ----------------------------------------------- | --------------------------------------- |
+| `sensor.hsem_applier_status_sensor`              | Inverter Apply Status            | Hardware write success/failure                  | `ok`, `unverified`, `failed`, `skipped` |
+| `sensor.hsem_battery_soc_sensor`                 | Battery State of Charge          | Battery SoC snapshot                            | Percentage (0–100)                      |
+| `sensor.daily_plan_vs_actual`                    | Daily Plan vs Actual             | Daily energy plan-vs-actual tracking            | Dict with cumulative metrics            |
+| `sensor.hsem_degraded_mode_sensor`               | System Health                    | Overall system health                           | `ok`, `degraded`, `error`               |
+| `sensor.hsem_ev_charger_calculated_power`        | EV Charger Calculated Power      | Planner target power for primary EV charger     | Watts (W)                               |
+| `sensor.hsem_ev_second_charger_calculated_power` | EV 2 Charger Calculated Power    | Planner target power for second EV charger      | Watts (W)                               |
+| `sensor.hsem_ev_charger_current_limit`           | EV Charger Current Limit         | Planner charging ceiling for primary EV charger | Amps (A)                                |
+| `sensor.hsem_ev_second_charger_current_limit`    | EV 2 Charger Current Limit       | Planner charging ceiling for second EV charger  | Amps (A)                                |
+| `sensor.hsem_ev_charging_sensor`                 | EV Charging Active               | Any EV actively charging                        | `on`, `off`                             |
+| `sensor.hsem_ev_optimal_charging_plan`           | EV Optimal Charging Plan         | Primary EV plan state                           | `charging`, `waiting`, etc.             |
+| `sensor.hsem_ev_second_optimal_charging_plan`    | EV Second Optimal Charging Plan  | Second EV plan state                            | `charging`, `waiting`, etc.             |
+| `sensor.hsem_force_mode_sensor`                  | Force Working Mode               | Override active indicator                       | `auto` or override mode name            |
+| `sensor.hsem_solar_confidence_sensor`            | Solar Forecast Confidence        | Per-hour PV forecast accuracy factors           | Mean factor (ratio)                     |
+| `sensor.hsem_hardware_writes_sensor`             | Hardware Writes                  | Writes allowed/blocked by safety gate           | `allowed`, `blocked`                    |
+| `sensor.hsem_read_only_sensor`                   | Read-Only Mode                   | Read-only mode indicator                        | `on`, `off`                             |
+| `sensor.hsem_net_consumption_sensor`             | Net Consumption                  | Net load (house minus solar)                    | Watts (W)                               |
+| `sensor.hsem_last_updated_sensor`                | Last Updated                     | Last coordinator cycle timestamp                | ISO-8601 timestamp                      |
+| `sensor.hsem_next_update_sensor`                 | Next Update                      | Next scheduled coordinator cycle                | ISO-8601 timestamp                      |
+| `sensor.hsem_missing_entities_sensor`            | Missing Input Entities           | Count of missing input entities                 | Integer                                 |
+| `sensor.hsem_plan_explanation_sensor`            | Plan Explanation                 | Planner strategy and cost breakdown             | Winning candidate name                  |
+| `sensor.hsem_prediction_accuracy_sensor`         | Prediction Accuracy              | Multi-horizon forecast accuracy                 | `soc_mae_7d`                            |
+| `sensor.hsem_forecast_accuracy_sensor`           | Forecast Accuracy                | PV and load forecast MAE                        | kWh                                     |
+| `sensor.hsem_recommendation_interval_sensor`     | Recommendation Interval          | Slot width and horizon info                     | Minutes                                 |
+| `sensor.hsem_update_interval_sensor`             | Update Interval                  | Current polling interval                        | Minutes                                 |
+| `sensor.hsem_workingmode_sensor`                 | Working Mode                     | Active battery recommendation                   | Working mode state                      |
+| `sensor.hsem_export_income`                      | Export Income                    | Cumulative export revenue                       | Monetary (total)                        |
+| `sensor.hsem_import_cost`                        | Import Cost                      | Cumulative import cost                          | Monetary (total)                        |
+| `sensor.hsem_net_grid_balance`                   | Net Grid Balance                 | Export income minus import cost                 | Monetary (total)                        |
+| `sensor.hsem_effective_discharge_floor_sensor`   | Effective Discharge Floor        | Current effective floor SoC                     | Percentage                              |
+| `sensor.hsem_ocpp_charger_status_sensor`         | OCPP Charger Status              | Charger connection/charging state               | String                                  |
+| `sensor.hsem_ocpp_charger_power_sensor`          | OCPP Charger Power               | Live charging power                             | kW                                      |
+| `sensor.hsem_ocpp_charger_info_sensor`           | OCPP Charger Info                | Vendor, model, firmware, serial                 | String                                  |
+| `sensor.hsem_ocpp_charger_sessions_sensor`       | OCPP Charger Sessions            | Completed session log                           | Integer                                 |
+| `sensor.hsem_savings_tracker_sensor`             | Savings Tracker                  | Actual vs missed savings (90-day)               | Monetary                                |
+| `sensor.hsem_performance_savings_capture`        | Performance: Savings Capture     | Share of the achievable savings achieved (24 h) | Percentage                              |
+| `sensor.hsem_performance_actual_benefit`         | Performance: Actual Benefit      | Benefit over plain self-consumption (24 h)      | Local currency                          |
+| `sensor.hsem_performance_missed_opportunity`     | Performance: Missed Opportunity  | What perfect hindsight would have added (24 h)  | Local currency                          |
+| `sensor.hsem_performance_battery_utilisation`    | Performance: Battery Utilisation | Potential not lost through battery dispatch     | Percentage                              |
+| `sensor.hsem_performance_solar_utilisation`      | Performance: Solar Utilisation   | Potential not lost through PV surplus handling  | Percentage                              |
+| `sensor.hsem_pv_curtailment_sensor`              | PV Curtailment                   | PV curtailment detection                        | `curtailed` / `normal`                  |
 
 ---
 

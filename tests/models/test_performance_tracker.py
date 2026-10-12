@@ -20,6 +20,7 @@ import pytest
 import homeassistant.util.dt as dt_util
 
 from custom_components.hsem.models.performance_record import (
+    REASON_BREAKDOWN_UNSOLVED,
     REASON_INSUFFICIENT_COVERAGE,
     REASON_NO_SITE_LIMITS,
     REASON_ORACLE_UNSOLVED,
@@ -97,7 +98,13 @@ def _slot(tracker: PerformanceTracker, at: datetime) -> PerformanceSlot:
 
 
 def _scored(
-    day: str, *, realized: float, oracle: float, baseline: float, potential: float
+    day: str,
+    *,
+    realized: float,
+    oracle: float,
+    baseline: float,
+    potential: float,
+    pv_as_realized: float | None = None,
 ) -> PerformanceScore:
     start = datetime.fromisoformat(day).replace(tzinfo=UTC)
     return PerformanceScore(
@@ -110,6 +117,7 @@ def _scored(
         oracle_cost=oracle,
         baseline_cost=baseline,
         potential=potential,
+        pv_as_realized_cost=pv_as_realized,
         start_kwh=4.0,
         realized_end_kwh=4.0,
         baseline_end_kwh=4.0,
@@ -680,6 +688,136 @@ class TestPeriods:
         scores = list(self._tracker().days.values())
 
         assert sum_scores(scores, ("baseline_cost",)) == {"baseline_cost": 26.0}
+
+
+class TestBatteryAndSolarPeriods:
+    """The split's period figures are ratios of sums too (issue #1270)."""
+
+    def _tracker(self) -> PerformanceTracker:
+        tracker = PerformanceTracker()
+        # 1.0 missed of 10: 0.8 on the battery, 0.2 on solar.
+        tracker.days["2026-06-08"] = _scored(
+            "2026-06-08",
+            realized=11.0,
+            oracle=10.0,
+            baseline=20.0,
+            potential=10.0,
+            pv_as_realized=10.2,
+        )
+        # 1.0 missed of 1: all of it on solar.
+        tracker.days["2026-06-09"] = _scored(
+            "2026-06-09",
+            realized=6.0,
+            oracle=5.0,
+            baseline=6.0,
+            potential=1.0,
+            pv_as_realized=6.0,
+        )
+        return tracker
+
+    def test_losses_and_shares_over_the_period(self) -> None:
+        period = self._tracker().period(date(2026, 6, 10), 7)
+
+        assert period["battery_loss"] == pytest.approx(0.8)
+        assert period["solar_loss"] == pytest.approx(1.2)
+        assert period["battery_loss"] + period["solar_loss"] == pytest.approx(
+            period["missed_opportunity"]
+        )
+        # 1 − 0.8 ÷ 11 and 1 − 1.2 ÷ 11, not the mean of the daily shares.
+        assert period["battery_utilisation"] == pytest.approx(92.7)
+        assert period["solar_utilisation"] == pytest.approx(89.1)
+        assert period["breakdown_days"] == 2
+
+    def test_days_scored_before_the_split_are_left_out_of_it(self) -> None:
+        """Their potential must not dilute the shares of the days that have it."""
+        tracker = self._tracker()
+        tracker.days["2026-06-07"] = _scored(
+            "2026-06-07", realized=30.0, oracle=20.0, baseline=60.0, potential=40.0
+        )
+
+        period = tracker.period(date(2026, 6, 10), 7)
+
+        assert period["scored_days"] == 3
+        assert period["breakdown_days"] == 2
+        assert period["missed_opportunity"] == pytest.approx(12.0)
+        assert period["battery_loss"] == pytest.approx(0.8)
+        assert period["battery_utilisation"] == pytest.approx(92.7)
+
+    def test_a_period_without_a_split_day_has_no_split(self) -> None:
+        tracker = PerformanceTracker()
+        tracker.days["2026-06-09"] = _scored(
+            "2026-06-09", realized=6.0, oracle=5.0, baseline=6.0, potential=1.0
+        )
+
+        period = tracker.period(date(2026, 6, 10), 7)
+
+        assert period["battery_loss"] is None and period["solar_loss"] is None
+        assert period["battery_utilisation"] is None
+        assert period["solar_utilisation"] is None
+        assert period["breakdown_days"] == 0
+        assert period["scored_days"] == 1
+
+    def test_the_window_attributes_carry_the_split(self) -> None:
+        tracker = PerformanceTracker()
+        tracker.window = _scored(
+            "2026-06-09",
+            realized=3.4,
+            oracle=3.0,
+            baseline=5.0,
+            potential=2.0,
+            pv_as_realized=3.1,
+        )
+
+        attributes = tracker.as_sensor_attributes(_T0)
+
+        assert attributes["battery_loss"] == pytest.approx(0.3)
+        assert attributes["solar_loss"] == pytest.approx(0.1)
+        assert attributes["battery_utilisation"] == pytest.approx(85.0)
+        assert attributes["solar_utilisation"] == pytest.approx(95.0)
+        assert attributes["breakdown_reason"] is None
+        # 20 points short of 100 %: 15 on the battery, 5 on solar.
+        assert attributes["savings_capture"] == pytest.approx(80.0)
+
+    def test_a_window_without_the_split_says_why(self) -> None:
+        tracker = PerformanceTracker()
+        tracker.window = _scored(
+            "2026-06-09", realized=3.4, oracle=3.0, baseline=5.0, potential=2.0
+        )
+
+        attributes = tracker.as_sensor_attributes(_T0)
+
+        assert attributes["savings_capture"] == pytest.approx(80.0)
+        assert attributes["reason"] is None
+        assert attributes["battery_utilisation"] is None
+        assert attributes["breakdown_reason"] == REASON_BREAKDOWN_UNSOLVED
+
+    def test_before_the_first_evaluation_the_split_is_unknown_too(self) -> None:
+        attributes = PerformanceTracker().as_sensor_attributes(_T0)
+
+        assert attributes["breakdown_reason"] == REASON_NOT_EVALUATED
+
+    def test_the_split_survives_a_round_trip(self) -> None:
+        tracker = self._tracker()
+
+        restored = PerformanceTracker.from_dict(
+            json.loads(json.dumps(tracker.as_dict()))
+        )
+
+        assert restored.days == tracker.days
+        assert restored.days["2026-06-08"].battery_loss == pytest.approx(0.8)
+
+    def test_a_history_file_from_before_the_split_is_still_read(self) -> None:
+        data = self._tracker().as_dict()
+        for day in data["days"]:
+            del day["pv_as_realized_cost"]
+
+        restored = PerformanceTracker.from_dict(data)
+
+        assert len(restored.days) == 2
+        day = restored.days["2026-06-08"]
+        assert day.regret == pytest.approx(1.0)
+        assert day.pv_as_realized_cost is None
+        assert day.battery_loss is None
 
 
 class TestSensorAttributes:

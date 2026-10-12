@@ -35,7 +35,11 @@ from custom_components.hsem.models.performance_record import (
     PerformanceScore,
     PerformanceSlot,
 )
-from custom_components.hsem.planner.hindsight_scoring import SiteLimits, capture_share
+from custom_components.hsem.planner.hindsight_scoring import (
+    SiteLimits,
+    capture_share,
+    utilisation_share,
+)
 from custom_components.hsem.utils.datetime_utils import (
     physical_slot_grid,
     slot_key,
@@ -67,8 +71,9 @@ PERIODS: dict[str, int] = {"last_7_days": 7, "last_30_days": 30}
 #: Why the sensors have no value before the first evaluation.
 REASON_NOT_EVALUATED = "not_evaluated"
 
-#: The additive quantities of a score.  Every period figure is derived from
-#: their sums, so a later KPI only has to add the quantities it needs here.
+#: The additive quantities every scored run carries.  Every period figure is
+#: derived from sums of such quantities; a KPI whose quantity older scores
+#: lack sums it over the scores that have it (see :meth:`PerformanceTracker.period`).
 SUMMED_FIELDS: tuple[str, ...] = (
     "realized_cost",
     "oracle_cost",
@@ -438,7 +443,10 @@ class PerformanceTracker:
         Returns:
             Actual benefit, missed opportunity, potential, savings capture in
             percent (``None`` when the potential is too small) and how many of
-            the period's days are scored.
+            the period's days are scored.  The battery and solar figures are
+            taken over the days that carry the split (``breakdown_days``),
+            with those days' own potential, so they stay ratios of sums when
+            older days were scored without it.
         """
         scores = [
             score
@@ -450,6 +458,10 @@ class PerformanceTracker:
         sums = sum_scores(scores)
         regret = sums["realized_cost"] - sums["oracle_cost"]
         savings = sums["potential"] - regret
+        split = [score for score in scores if score.pv_as_realized_cost is not None]
+        parts = sum_scores(split, (*SUMMED_FIELDS, "pv_as_realized_cost"))
+        battery_loss = parts["realized_cost"] - parts["pv_as_realized_cost"]
+        solar_loss = parts["pv_as_realized_cost"] - parts["oracle_cost"]
         return {
             "actual_benefit": round(savings, 3),
             "missed_opportunity": round(regret, 3),
@@ -457,7 +469,20 @@ class PerformanceTracker:
             "savings_capture": (
                 _percent(capture_share(savings, sums["potential"])) if scores else None
             ),
+            "battery_loss": round(battery_loss, 3) if split else None,
+            "solar_loss": round(solar_loss, 3) if split else None,
+            "battery_utilisation": (
+                _percent(utilisation_share(battery_loss, parts["potential"]))
+                if split
+                else None
+            ),
+            "solar_utilisation": (
+                _percent(utilisation_share(solar_loss, parts["potential"]))
+                if split
+                else None
+            ),
             "scored_days": len(scores),
+            "breakdown_days": len(split),
             "days": days,
         }
 
@@ -469,6 +494,11 @@ class PerformanceTracker:
             "actual_benefit": _rounded(score.savings),
             "missed_opportunity": _rounded(score.regret),
             "savings_capture": _percent(score.capture),
+            "battery_loss": _rounded(score.battery_loss),
+            "solar_loss": _rounded(score.solar_loss),
+            "battery_utilisation": _percent(score.battery_utilisation),
+            "solar_utilisation": _percent(score.solar_utilisation),
+            "breakdown_reason": score.breakdown_reason,
             "potential": _rounded(score.potential),
             "realized_cost": _rounded(score.realized_cost),
             "baseline_cost": _rounded(score.baseline_cost),
@@ -489,6 +519,7 @@ class PerformanceTracker:
         yesterday = self.days.get((today - timedelta(days=1)).isoformat())
         attributes: dict[str, Any] = {
             "reason": REASON_NOT_EVALUATED,
+            "breakdown_reason": REASON_NOT_EVALUATED,
             "solver_status": "not_run",
         }
         if window is not None:

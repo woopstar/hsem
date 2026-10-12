@@ -64,6 +64,10 @@ from custom_components.hsem.utils.units import fuse_max_energy_per_slot_kwh
 #: by.  Below it the share is noise and is reported as unknown.
 MIN_POTENTIAL = 0.05
 
+#: Energy below which a slot has no PV surplus, and a surplus counts as stored
+#: in full.
+_ENERGY_EPS = 1e-9
+
 #: Share of a configured limit the realized window may exceed before the score
 #: says so.  Measured battery flows run through the *configured* efficiency
 #: drift by a few percent of the capacity on an ordinary day; limits that
@@ -276,7 +280,11 @@ class RealizedWindow:
         return grid_cost(self.slots, self.grid_import_kwh, self.grid_export_kwh)
 
     def oracle(
-        self, min_end_stored_kwh: float, *, time_limit_s: float | None = None
+        self,
+        min_end_stored_kwh: float,
+        *,
+        time_limit_s: float | None = None,
+        pv_as_realized: bool = False,
     ) -> HindsightRun | None:
         """Return the oracle that ends the window with at least the given energy.
 
@@ -288,18 +296,65 @@ class RealizedWindow:
             min_end_stored_kwh: Least stored energy after the last slot.
             time_limit_s: Wall-clock limit for the solve; the oracle's own
                 default when ``None``.
+            pv_as_realized: Hold the handling of PV surplus as it happened and
+                optimise only the rest: see :meth:`pv_charge_bounds`.  The
+                result lies between the unrestricted oracle and the realized
+                cost.
         """
+        slots: Sequence[HindsightSlot] = self.slots
+        max_charge = self.caps["max_charge_kwh"]
+        min_charge: list[float] | None = None
+        if pv_as_realized:
+            # What was produced was not curtailed further, either.
+            slots = [replace(slot, curtailable_kwh=0.0) for slot in self.slots]
+            min_charge, max_charge = self.pv_charge_bounds()
         return solve_hindsight_oracle(
-            self.slots,
+            slots,
             self.widened,
             self.start_kwh,
             min_end_stored_kwh,
-            max_charge_kwh=self.caps["max_charge_kwh"],
+            max_charge_kwh=max_charge,
+            min_charge_kwh=min_charge,
             max_discharge_kwh=self.caps["max_discharge_kwh"],
             max_grid_import_kwh=self.caps["max_grid_import_kwh"],
             max_grid_export_kwh=self.caps["max_grid_export_kwh"],
             time_limit_s=ORACLE_TIME_LIMIT_S if time_limit_s is None else time_limit_s,
         )
+
+    def pv_charge_bounds(self) -> tuple[list[float], list[float]]:
+        """Return per-slot charge bounds that hold the PV handling as realized.
+
+        A slot's PV surplus is what its PV left over after the load.  The
+        realized run stored some of it and exported the rest, and that split
+        is what is held:
+
+        - no surplus: the slot is left free (any charge there is grid charge);
+        - surplus partly or not stored: the charge is exactly what was stored
+          from PV, so the rest of the surplus is exported as it was;
+        - surplus stored in full: the charge is at least the surplus, and
+          anything above it is grid charge, which stays free.
+
+        Returns:
+            ``(min_charge_kwh, max_charge_kwh)`` per slot.  The realized run
+            satisfies them.
+        """
+        caps = self.caps["max_charge_kwh"] or [
+            self.widened.max_charge_kw * slot.hours for slot in self.slots
+        ]
+        minimum: list[float] = []
+        maximum: list[float] = []
+        for slot, charged, cap in zip(self.slots, self.charged_kwh, caps, strict=True):
+            surplus = max(-slot.net_load_kwh, 0.0)
+            if surplus <= _ENERGY_EPS:
+                minimum.append(0.0)
+                maximum.append(cap)
+            elif charged >= surplus - _ENERGY_EPS:
+                minimum.append(surplus)
+                maximum.append(cap)
+            else:
+                minimum.append(charged)
+                maximum.append(charged)
+        return minimum, maximum
 
 
 def _widened(
@@ -452,6 +507,23 @@ def capture_share(savings: float, potential: float) -> float | None:
     return savings / potential
 
 
+def utilisation_share(loss: float | None, potential: float) -> float | None:
+    """Return the share of a potential that one source of loss left intact.
+
+    ``1 − loss ÷ potential``.  The losses of all sources add up to the regret,
+    so their shortfalls from 100 % add up to the shortfall of the capture.
+    ``None`` without a loss figure and when the potential is below
+    :data:`MIN_POTENTIAL`; never clamped.
+
+    Args:
+        loss: Regret attributed to one source, or ``None`` if unknown.
+        potential: What the best control could have saved over none.
+    """
+    if loss is None or potential < MIN_POTENTIAL:
+        return None
+    return 1.0 - loss / potential
+
+
 @dataclass(frozen=True)
 class WindowScore:
     """The score of one realized window.
@@ -468,6 +540,10 @@ class WindowScore:
         realized_end_kwh: Stored energy the realized window ends with, from
             the measured battery flows.
         baseline_end_kwh: Stored energy ``baseline_cost``'s run ends with.
+        pv_as_realized_cost: Grid cost of the oracle that keeps the realized
+            handling of PV surplus and optimises the rest, ending like
+            ``oracle_cost``'s run.  It splits the regret in two (issue #1270);
+            ``None`` when the split was not asked for or could not be solved.
     """
 
     realized_cost: float
@@ -476,6 +552,7 @@ class WindowScore:
     potential: float
     realized_end_kwh: float
     baseline_end_kwh: float
+    pv_as_realized_cost: float | None = None
 
     @property
     def regret(self) -> float:
@@ -496,12 +573,47 @@ class WindowScore:
         """Return the share of the potential that was realized, if it has one."""
         return capture_share(self.savings, self.potential)
 
+    @property
+    def battery_loss(self) -> float | None:
+        """Return the regret that better battery dispatch would have removed.
+
+        ``realized − pv_as_realized``: what charging from the grid and
+        discharging at better times would have saved, with the PV surplus
+        stored and exported exactly as it was.
+        """
+        if self.pv_as_realized_cost is None:
+            return None
+        return self.realized_cost - self.pv_as_realized_cost
+
+    @property
+    def solar_loss(self) -> float | None:
+        """Return the regret that better use of the PV surplus would have removed.
+
+        ``pv_as_realized − oracle``: what storing or exporting the surplus at
+        better times would have saved on top.  Together with
+        :attr:`battery_loss` it is the whole regret.
+        """
+        if self.pv_as_realized_cost is None:
+            return None
+        return self.pv_as_realized_cost - self.oracle_cost
+
+    @property
+    def battery_utilisation(self) -> float | None:
+        """Return the share of the potential not lost through battery dispatch."""
+        return utilisation_share(self.battery_loss, self.potential)
+
+    @property
+    def solar_utilisation(self) -> float | None:
+        """Return the share of the potential not lost through PV surplus handling."""
+        return utilisation_share(self.solar_loss, self.potential)
+
 
 def score_window(
     window: RealizedWindow,
     *,
     baseline: HindsightRun | None = None,
     time_limit_s: float | None = None,
+    breakdown: bool = False,
 ) -> WindowScore | None:
     """Score a prepared window.
 
@@ -511,6 +623,9 @@ def score_window(
             simulated it; simulated here otherwise.
         time_limit_s: Wall-clock limit for each oracle solve; the oracle's
             own default when ``None``.
+        breakdown: Also split the regret into a battery and a solar part,
+            which takes a third solve.  If that solve fails the score is
+            still returned, without the split.
 
     Returns:
         The score, or ``None`` when an oracle could not be solved to proven
@@ -528,6 +643,11 @@ def score_window(
     matched = window.oracle(baseline_end, time_limit_s=time_limit_s)
     if oracle is None or matched is None:
         return None
+    pv_as_realized = (
+        window.oracle(realized_end, time_limit_s=time_limit_s, pv_as_realized=True)
+        if breakdown
+        else None
+    )
     return WindowScore(
         realized_cost=window.realized_cost,
         oracle_cost=oracle.cost,
@@ -535,4 +655,5 @@ def score_window(
         potential=baseline.cost - matched.cost,
         realized_end_kwh=realized_end,
         baseline_end_kwh=baseline_end,
+        pv_as_realized_cost=None if pv_as_realized is None else pv_as_realized.cost,
     )

@@ -236,7 +236,7 @@ def score_slots(
     if residual is not None and residual > _residual_limit_kwh(window, realized):
         return replace(measured, reason=REASON_ENERGY_BALANCE_RESIDUAL)
 
-    score = score_window(window, time_limit_s=time_limit_s)
+    score = score_window(window, time_limit_s=time_limit_s, breakdown=True)
     if score is None:
         return replace(measured, reason=REASON_ORACLE_UNSOLVED)
     return replace(
@@ -245,6 +245,7 @@ def score_slots(
         oracle_cost=score.oracle_cost,
         baseline_cost=score.baseline_cost,
         potential=score.potential,
+        pv_as_realized_cost=score.pv_as_realized_cost,
         realized_end_kwh=score.realized_end_kwh,
         baseline_end_kwh=score.baseline_end_kwh,
     )
@@ -253,8 +254,8 @@ def score_slots(
 def evaluate_performance(request: PerformanceRequest) -> PerformanceEvaluation:
     """Score the trailing window and any local days that are due.
 
-    Blocking: each scored run solves two mixed-integer programs.  Call it from
-    the executor.
+    Blocking: each scored run solves three mixed-integer programs (two for
+    the score, one for its battery / solar split).  Call it from the executor.
 
     Args:
         request: The slots, the runs to score and the site's limits.
