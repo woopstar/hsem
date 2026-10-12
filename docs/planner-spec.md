@@ -2404,6 +2404,15 @@ applier (`applier._planned_ev_discharge_cap_w()` +
   opted-in EV's configured ceiling — never more than what the plan and the
   user's configuration both allow.
 
+**Hardware maximum (issue #1291)**: the value every cap starts from and the
+planner's `battery_max_discharge_power_w` are the same number: the
+rated-capacity table value (`get_max_discharge_power()`), bounded by the `max`
+attribute of the `maximum_discharging_power` number entity when that is lower
+(`utils.misc.resolve_max_discharge_power()`). Home Assistant rejects a write
+above the entity's `max`, so a higher value could not be commanded and a plan
+built on it could not be executed. Only the attribute bounds the value. The
+entity's state is a commanded cap and never becomes the limit (issue #592).
+
 **Standby threshold (issue #1251)**: a live EV power reading counts as a
 session only above `applier_caps.EV_STANDBY_POWER_W` (50 W). An idle
 charger's electronics draw a few watts; read as a session, that draw kept

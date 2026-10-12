@@ -30,6 +30,9 @@ from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401 
     build_battery_schedules,
     build_sensor_config,
 )
+from custom_components.hsem.custom_sensors.discharge_power_inputs import (
+    read_max_discharge_power,
+)
 from custom_components.hsem.custom_sensors.phase_inputs import read_grid_phase_power_w
 from custom_components.hsem.custom_sensors.state_collector_compute import (  # noqa: F401 — re-exported for callers
     _compute_battery_capacities,
@@ -316,18 +319,7 @@ async def async_collect_live_state(
         )
     state.huawei_batteries_max_charge_power_w = max_charge_w
 
-    max_discharge_w = convert_to_float(
-        _read(
-            cfg.huawei_solar_batteries_maximum_discharging_power,
-            "float",
-            label="max_discharging_power",
-        )
-    )
-    if max_discharge_w is None:
-        state.add_missing_entity(
-            "Critical: battery max discharge power returned None (unavailable/invalid)"
-        )
-    state.huawei_batteries_max_discharge_power_w = max_discharge_w
+    read_max_discharge_power(sensor, cfg, state, _read)
 
     # Live phase-aware charging limiter inputs (issue #831). Non-critical:
     # the feature is opt-in and the limiter itself fails closed when any of

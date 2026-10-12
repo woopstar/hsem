@@ -18,6 +18,7 @@ import pytest
 from homeassistant.const import UnitOfEnergy, UnitOfPower
 
 from custom_components.hsem.utils.ha_helpers import (
+    entity_attribute_float,
     normalize_entity_float,
     read_normalized_float,
 )
@@ -198,3 +199,51 @@ class TestReadNormalizedFloat:
         assert calls == [
             (("sensor.house", "float"), {"label": "house_consumption_power"})
         ]
+
+
+class TestEntityAttributeFloat:
+    """A numeric state attribute, such as a number entity's ``max``."""
+
+    @staticmethod
+    def _sensor(attributes: dict[str, object]) -> MagicMock:
+        hass = MagicMock()
+        state = MagicMock()
+        state.attributes = attributes
+        hass.states.get.return_value = state
+        return MagicMock(hass=hass)
+
+    @pytest.mark.parametrize("raw", [4400, 4400.0, "4400", " 4400.0 "])
+    def test_numeric_attribute_is_returned(self, raw: object) -> None:
+        sensor = self._sensor({"max": raw})
+        assert entity_attribute_float(sensor, "number.maxdis", "max") == pytest.approx(
+            4400.0
+        )
+
+    @pytest.mark.parametrize("raw", [None, "", "unknown", "n/a", True, [4400], {}])
+    def test_non_numeric_attribute_is_none(self, raw: object) -> None:
+        sensor = self._sensor({"max": raw})
+        assert entity_attribute_float(sensor, "number.maxdis", "max") is None
+
+    def test_absent_attribute_is_none(self) -> None:
+        sensor = self._sensor({"min": 0})
+        assert entity_attribute_float(sensor, "number.maxdis", "max") is None
+
+    def test_a_mock_attribute_is_not_read_as_a_number(self) -> None:
+        """``float(MagicMock())`` is 1.0, which would read as a 1 W limit."""
+        sensor = self._sensor({"max": MagicMock()})
+        assert entity_attribute_float(sensor, "number.maxdis", "max") is None
+
+    def test_missing_entity_is_none(self) -> None:
+        hass = MagicMock()
+        hass.states.get.return_value = None
+        sensor = MagicMock(hass=hass)
+        assert entity_attribute_float(sensor, "number.maxdis", "max") is None
+
+    @pytest.mark.parametrize("entity_id", [None, ""])
+    def test_unconfigured_entity_is_none(self, entity_id: str | None) -> None:
+        sensor = self._sensor({"max": 4400})
+        assert entity_attribute_float(sensor, entity_id, "max") is None
+        sensor.hass.states.get.assert_not_called()
+
+    def test_missing_hass_is_none(self) -> None:
+        assert entity_attribute_float(object(), "number.maxdis", "max") is None

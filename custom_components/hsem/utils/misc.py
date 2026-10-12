@@ -5,6 +5,7 @@ clamping, battery power calculations, and cycle-cost thresholds.
 """
 
 import hashlib
+import math
 from typing import Any
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
@@ -142,6 +143,33 @@ def get_max_discharge_power(usable_capacity: int) -> int:
             2500,
         )
     return mapping.get(usable_capacity, 2500)
+
+
+def resolve_max_discharge_power(
+    rated_capacity_wh: int, entity_max_w: float | None
+) -> int:
+    """Return the battery's max discharge power, bounded by the number entity.
+
+    :func:`get_max_discharge_power` only knows the battery. The Huawei
+    ``maximum_discharging_power`` number entity takes its ``max`` from what
+    the hardware reports, which can be lower (issue #1291: a 10 kWh battery
+    limited to 4400 W). A write above that ``max`` is rejected by Home
+    Assistant, so the applier and the planner input both use this value.
+
+    Args:
+        rated_capacity_wh: Rated battery capacity in watt-hours.
+        entity_max_w: The number entity's ``max`` attribute in watts, or
+            ``None`` when it is unavailable.
+
+    Returns:
+        The lower of the capacity-table value and ``entity_max_w``, in watts.
+        The table value alone when ``entity_max_w`` is ``None``, not finite
+        or not positive.
+    """
+    table_w = get_max_discharge_power(rated_capacity_wh)
+    if entity_max_w is None or not math.isfinite(entity_max_w) or entity_max_w <= 0:
+        return table_w
+    return min(table_w, int(entity_max_w))
 
 
 def resolve_cycle_cost(
