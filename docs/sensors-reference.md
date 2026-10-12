@@ -735,17 +735,44 @@ planner prices are excluded from that daily mean.
 
 **Entity:** `sensor.hsem_savings_tracker_sensor`
 
-| Property       | Value                                                                            |
-| -------------- | -------------------------------------------------------------------------------- |
-| **Type**       | `sensor`                                                                         |
-| **State**      | Current day savings (local currency)                                             |
-| **Attributes** | `actual_savings`, `missed_savings`, `total_savings`, `log` (90-day rolling list) |
+| Property         | Value                                                   |
+| ---------------- | ------------------------------------------------------- |
+| **Type**         | `sensor` (diagnostic)                                   |
+| **State**        | Today's actual savings (local currency): `today_actual` |
+| **Device class** | `monetary`                                              |
+| **State class**  | `total`                                                 |
+
+Three figures are tracked, each for today, the last 7 and 30 days, and in
+total since the integration was installed:
+
+- **actual** — savings that accrued while HSEM was in control (force mode
+  `auto`);
+- **missed** — savings that accrued while a working mode was forced;
+- **baseline** — what a passive installation without a battery would have
+  paid for the same house load and PV.
+
+| Attribute                                        | Description                                                                           |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| `today_actual`, `today_missed`, `today_baseline` | Today's figures                                                                       |
+| `last_7_days_actual`, `last_7_days_missed`       | Sums over the last 7 days, today included                                             |
+| `last_30_days_actual`, `last_30_days_missed`     | Sums over the last 30 days, today included                                            |
+| `total_actual`, `total_missed`, `total_baseline` | Cumulative since the integration was installed                                        |
+| `daily`                                          | Daily records, newest 90: `date`, `actual_savings`, `missed_savings`, `baseline_cost` |
+| `max_history_days`, `history_total_days`         | Days kept, and days currently held                                                    |
+
+`daily` is not written to the recorder (see
+[Recorder footprint](#recorder-footprint)); the history is kept in
+`.storage/hsem_savings_history.json`.
+
+These are per-cycle estimates. For how the day compares with the best it
+could have been, see the [Performance sensors](#performance-sensors).
 
 **Template example:**
 
 ```jinja2
-Actual: {{ state_attr('sensor.hsem_savings_tracker_sensor', 'actual_savings') }}
-Missed: {{ state_attr('sensor.hsem_savings_tracker_sensor', 'missed_savings') }}
+{% set s = 'sensor.hsem_savings_tracker_sensor' %}
+Today: {{ state_attr(s, 'today_actual') }} (missed {{ state_attr(s, 'today_missed') }})
+Last 30 days: {{ state_attr(s, 'last_30_days_actual') }}
 ```
 
 ---
