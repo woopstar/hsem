@@ -64,6 +64,7 @@ cycle are durable; stale generations must not publish.
 | `ev_load_accounting.py`        | Canonical pure-house/EV split for normalized planner slot loads                                                                                                         |
 | `hindsight_oracle.py`          | Hindsight scoring of a past window (issues #1208, #1182): grid cost, self-consumption baseline, perfect-foresight oracle with hard limits only; not used by the planner |
 | `hindsight_scoring.py`         | `SiteLimits`, `realized_window`, `score_window`, `capture_share`: the regret/potential/savings/capture definitions shared by the backtest and the performance sensors   |
+| `hindsight_ev.py`              | EV charging sessions and the EV timing score: joint oracle and plug-and-charge baseline (issue #1271)                                                                   |
 
 ### ML layer (`custom_components/hsem/ml/`)
 
@@ -2783,6 +2784,7 @@ Tests: `tests/planner/test_battery_target_milp.py::TestPreferenceCost` (hand-com
 
 - `planner/hindsight_scoring.py` holds the definitions and is the only copy: `tests/backtest/scoring.py` imports it. Never re-define regret, potential, savings or capture anywhere else.
 - `models/performance_record.py` (`PerformanceSample`, `PerformanceSlot`, `PerformanceScore`) and `models/performance_tracker.py` (accumulation, retention, period rollups, persistence).
+- `models/performance_charger.py` (`ChargerSample`, `ChargerRecord`, `ChargerPiece`): one EV charger per cycle and per slot, split out of the record module for the file-size limit.
 - `utils/performance_scoring.py` turns slots into a `RealizedWindow` and applies the guards. `coordinator_performance.py` feeds the tracker and runs `evaluate_performance` in the executor.
 
 **Rules:**
@@ -2800,6 +2802,16 @@ Tests: `tests/planner/test_battery_target_milp.py::TestPreferenceCost` (hand-com
 - A further attribution must keep that shape: a restricted oracle between two existing ones, never a free-standing counterfactual, or the parts stop adding up.
 - `pv_as_realized_cost` is `None` on scores from before the split and when only its solve failed (`breakdown_reason: breakdown_unsolved`); the stage-1 figures are published regardless. Period figures for the split are summed over the days that carry it (`breakdown_days`), with those days' own potential.
 - `solve_hindsight_oracle(min_charge_kwh=...)` exists for this: a lower bound on the per-slot charge, which also forbids discharging in that slot.
+
+**Stage 3, EV charging timing (issue #1271):** `planner/hindsight_ev.py`. Per charger, a session is a run of consecutive slots that are plugged in, managed (EV planning on, smart charging on, "force charge now" off) and have observed energy, cut at charge deadlines; `ev_sessions()` builds them from the per-charger `ChargerRecord`s (`models/performance_charger.py`). `score_ev()` solves two more oracles with the battery optimal and the same end energy: the **joint oracle** (session energy as `ShiftableLoad`s, which `solve_hindsight_oracle(shiftable=...)` places itself) and **plug-and-charge** (every session at full power from its first slot). `ev_missed = oracle − joint ≥ 0`, `ev_potential = plug − joint`, `ev_efficiency = 1 − missed ÷ potential`.
+
+- The EV figure is on top of the stage-1 missed opportunity, which keeps the EV as fixed load: `realized − joint = battery_loss + solar_loss + ev_missed`. Do not fold it into `missed_opportunity`.
+- The EV is scored against an optimal battery, not the realized one. That is what keeps the parts additive.
+- The window's net load already contains the EV energy; the joint solve subtracts the session energy and hands it to the oracle as loads. Never add a shiftable load without removing it from the net load.
+- Sessions need `live.ev.is_connected` (the raw connected sensor), not `live.ev_planned_load_connected`, which is `True` when no connected sensor is configured and would make the whole day one session.
+- The plug-and-charge run widens the import cap by what it adds per slot, so a fuse limit cannot make the baseline infeasible.
+- `sensor.hsem_performance_ev_charging_efficiency` is only created when `hsem_ev_planned_load_enabled` or `hsem_ev_second_planned_load_enabled` is set; both are entity-gating keys (#1139), so toggling them reloads the entry.
+- Not validated on a real installation: the committed days have no EV series.
 
 **Test harness:** `tests/conftest.py` replaces the cycle's `async_track_performance` with an `AsyncMock` for every test. Cycle tests run on a `MagicMock` Home Assistant, where the real function wrote `MagicMock/mock.config.config_dir/.../hsem_performance_history.json` into the working tree. Test the real function through `tests/test_coordinator_performance.py`.
 

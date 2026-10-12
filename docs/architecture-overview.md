@@ -123,6 +123,7 @@ HA-dependent sensor entities that consume coordinator data.
 | `planner/engine_explanation.py`    | Human-readable plan explanations                               |
 | `planner/hindsight_oracle.py`      | Hindsight baseline and perfect-foresight oracle for scoring    |
 | `planner/hindsight_scoring.py`     | Site limits and regret/potential/savings/capture definitions   |
+| `planner/hindsight_ev.py`          | EV charging sessions and the hindsight score of their timing   |
 
 ### Utils layer (shared, minimal HA imports)
 

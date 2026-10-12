@@ -402,6 +402,16 @@ data_quality: {}
 
 ---
 
+### How well was the charging timed?
+
+With EV planning enabled, `sensor.hsem_performance_ev_charging_efficiency`
+(on the HSEM Financial device) scores the last 24 hours of charging against
+perfect hindsight: 100 % means the energy was delivered at the cheapest times
+the plug-in window and the deadline allowed, 0 % means no better than plugging
+in and charging at full power. It needs the charger's power sensor and its
+connected sensor. See
+[EV charging efficiency](sensors-reference.md#ev-charging-efficiency).
+
 ## Troubleshooting
 
 ### Sensor shows `unavailable`

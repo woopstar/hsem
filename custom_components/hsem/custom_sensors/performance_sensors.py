@@ -20,9 +20,15 @@ Stage 2 (issue #1270), where the missed opportunity was lost:
 - ``sensor.hsem_performance_solar_utilisation`` — the share of the potential
   not lost through the handling of PV surplus (%).
 
+Stage 3 (issue #1271), the timing of EV charging, only when EV planning is
+enabled for a charger:
+
+- ``sensor.hsem_performance_ev_charging_efficiency`` — the share of what the
+  best timing saves over plugging in and charging that was realized (%).
+
 All of them publish the same attributes: the cost breakdown, the window, how
 much of it was observed and how much of that HSEM was in control, why a value
-is unknown (``reason``, ``breakdown_reason``), and the same figures for
+is unknown (``reason``, ``breakdown_reason``, ``ev_reason``), and the same figures for
 yesterday and for the last 7 and 30 completed days.
 
 They are rolling 24-hour values, not totals, so they use the ``measurement``
@@ -47,11 +53,14 @@ from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.performance_record import PerformanceScore
 from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
+from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.sensornames.financial import (
     get_performance_actual_benefit_entity_id,
     get_performance_actual_benefit_unique_id,
     get_performance_battery_utilisation_entity_id,
     get_performance_battery_utilisation_unique_id,
+    get_performance_ev_charging_efficiency_entity_id,
+    get_performance_ev_charging_efficiency_unique_id,
     get_performance_missed_opportunity_entity_id,
     get_performance_missed_opportunity_unique_id,
     get_performance_savings_capture_entity_id,
@@ -73,6 +82,11 @@ def _battery_utilisation_percent(score: PerformanceScore) -> float | None:
 
 def _solar_utilisation_percent(score: PerformanceScore) -> float | None:
     share = score.solar_utilisation
+    return None if share is None else round(share * 100.0, 1)
+
+
+def _ev_efficiency_percent(score: PerformanceScore) -> float | None:
+    share = score.ev_efficiency
     return None if share is None else round(share * 100.0, 1)
 
 
@@ -148,6 +162,25 @@ PERFORMANCE_SENSORS: tuple[PerformanceSensorDescription, ...] = (
         unique_id=get_performance_solar_utilisation_unique_id,
         is_share=True,
     ),
+)
+
+
+#: Stage 3 (issue #1271).  Only created when EV planning is enabled for a
+#: charger: without one there is no session to score.
+EV_PERFORMANCE_SENSOR = PerformanceSensorDescription(
+    key="ev_charging_efficiency",
+    icon="mdi:ev-station",
+    value=_ev_efficiency_percent,
+    entity_id=get_performance_ev_charging_efficiency_entity_id,
+    unique_id=get_performance_ev_charging_efficiency_unique_id,
+    is_share=True,
+)
+
+#: Config keys that switch EV planning on for a charger.  Both are entity
+#: gating keys, so the entry is reloaded when one of them changes.
+_EV_PLANNING_KEYS = (
+    "hsem_ev_planned_load_enabled",
+    "hsem_ev_second_planned_load_enabled",
 )
 
 
@@ -227,11 +260,17 @@ def build_performance_sensors(
 ) -> list[HSEMPerformanceSensor]:
     """Return one sensor per performance KPI.
 
+    The EV charging efficiency sensor is included only when EV planning is
+    enabled for at least one charger.
+
     Args:
         config_entry: The HSEM config entry.
         coordinator: The shared HSEM coordinator.
     """
+    descriptions = list(PERFORMANCE_SENSORS)
+    if any(bool(get_config_value(config_entry, key)) for key in _EV_PLANNING_KEYS):
+        descriptions.append(EV_PERFORMANCE_SENSOR)
     return [
         HSEMPerformanceSensor(config_entry, coordinator, description)
-        for description in PERFORMANCE_SENSORS
+        for description in descriptions
     ]

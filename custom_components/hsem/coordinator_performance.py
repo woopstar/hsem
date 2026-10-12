@@ -16,11 +16,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.performance_charger import ChargerSample
 from custom_components.hsem.models.performance_record import (
     PerformanceSample,
     PerformanceScore,
@@ -30,6 +32,7 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.planner.hindsight_scoring import SiteLimits
 from custom_components.hsem.utils.degraded_mode import DegradedMode
 from custom_components.hsem.utils.logger import async_log
+from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.performance_scoring import (
     PerformanceRequest,
     evaluate_performance,
@@ -56,8 +59,61 @@ MAX_GAP_S = 600.0
 REASON_EVALUATION_FAILED = "evaluation_failed"
 
 
+def _charger_samples(
+    live: LiveState, cfg: SensorConfig, config_entry: ConfigEntry | None
+) -> tuple[ChargerSample, ...]:
+    """Return each charger that has a power sensor, primary first.
+
+    A charger is *managed* when HSEM decides when it charges: EV planning is
+    enabled for it, smart charging is on and "force charge now" is off.
+    """
+
+    def forced(key: str) -> bool:
+        return config_entry is not None and bool(get_config_value(config_entry, key))
+
+    def aware(deadline: object) -> datetime | None:
+        """Return a deadline the session logic can compare, or ``None``."""
+        if isinstance(deadline, datetime) and deadline.tzinfo is not None:
+            return deadline
+        return None
+
+    chargers: list[ChargerSample] = []
+    if cfg.ev.power_entity:
+        chargers.append(
+            ChargerSample(
+                power_w=live.ev.power_w,
+                connected=live.ev.is_connected,
+                managed=(
+                    cfg.ev_planned_load_enabled
+                    and live.ev_planned_load_smart_charging_enabled
+                    and not forced("hsem_ev_force_charge_now")
+                ),
+                deadline=aware(live.ev_planned_load_deadline),
+                max_kw=cfg.ev_planned_load_charger_power_kw or None,
+            )
+        )
+    if cfg.ev_second_enabled and cfg.ev_second.power_entity:
+        chargers.append(
+            ChargerSample(
+                power_w=live.ev_second.power_w,
+                connected=live.ev_second.is_connected,
+                managed=(
+                    cfg.ev_second_planned_load_enabled
+                    and live.ev_second_planned_load_smart_charging_enabled
+                    and not forced("hsem_ev_second_force_charge_now")
+                ),
+                deadline=aware(live.ev_second_planned_load_deadline),
+                max_kw=cfg.ev_second_planned_load_charger_power_kw or None,
+            )
+        )
+    return tuple(chargers)
+
+
 def build_performance_sample(
-    now: datetime, live: LiveState, cfg: SensorConfig
+    now: datetime,
+    live: LiveState,
+    cfg: SensorConfig,
+    config_entry: ConfigEntry | None = None,
 ) -> PerformanceSample:
     """Return this cycle's readings as a performance sample.
 
@@ -65,6 +121,7 @@ def build_performance_sample(
         now: Current time (timezone-aware).
         live: The live HA entity state snapshot.
         cfg: The sensor configuration.
+        config_entry: The config entry, for the "force charge now" switches.
 
     Returns:
         The sample.  A price that is not authoritative and an EV power that
@@ -105,6 +162,7 @@ def build_performance_sample(
             else None
         ),
         ev_connected=any(connected) if connected else None,
+        chargers=_charger_samples(live, cfg, config_entry),
     )
 
 
@@ -147,7 +205,9 @@ async def async_track_performance(
         await init_performance_tracker(tracker, coordinator.hass)
         slot_minutes = cfg.recommendation_interval_minutes
         tracker.accumulate(
-            build_performance_sample(now, live, cfg),
+            build_performance_sample(
+                now, live, cfg, getattr(coordinator, "_config_entry", None)
+            ),
             slot_minutes=slot_minutes,
             max_gap_seconds=max(MAX_GAP_S, 2.0 * cfg.update_interval * 60.0),
         )

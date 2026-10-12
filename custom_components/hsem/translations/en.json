@@ -1163,6 +1163,9 @@
       "performance_battery_utilisation": {
         "name": "Performance: Battery Utilisation (24 h)"
       },
+      "performance_ev_charging_efficiency": {
+        "name": "Performance: EV Charging Efficiency (24 h)"
+      },
       "performance_missed_opportunity": {
         "name": "Performance: Missed Opportunity (24 h)"
       },

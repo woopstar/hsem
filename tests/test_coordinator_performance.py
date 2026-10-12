@@ -18,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -224,6 +224,160 @@ class TestSample:
         live.ev.power_w = None
 
         assert build_performance_sample(_T0, live, cfg).ev_power_w is None
+
+
+class TestChargerSamples:
+    """Each charger on its own, for the EV timing score (issue #1271)."""
+
+    def _cfg(self) -> SensorConfig:
+        cfg = SensorConfig(ev_planned_load_enabled=True)
+        cfg.ev.power_entity = "sensor.charger_power"
+        cfg.ev_planned_load_charger_power_kw = 11.0
+        return cfg
+
+    def _plugged_in(self) -> LiveState:
+        live = _live()
+        live.ev.power_w = 7000.0
+        live.ev.is_connected = True
+        live.ev_planned_load_smart_charging_enabled = True
+        live.ev_planned_load_deadline = _T0 + timedelta(hours=19)
+        return live
+
+    def _entry(self, **options: object) -> MagicMock:
+        entry = MagicMock()
+        entry.options = dict(options)
+        entry.data = {}
+        return entry
+
+    def test_a_managed_charger(self) -> None:
+        sample = build_performance_sample(
+            _T0, self._plugged_in(), self._cfg(), self._entry()
+        )
+
+        (charger,) = sample.chargers
+        assert charger.power_w == pytest.approx(7000.0)
+        assert charger.connected is True
+        assert charger.managed is True
+        assert charger.deadline == _T0 + timedelta(hours=19)
+        assert charger.max_kw == pytest.approx(11.0)
+
+    def test_no_power_sensor_means_no_charger(self) -> None:
+        cfg = self._cfg()
+        cfg.ev.power_entity = None
+
+        assert build_performance_sample(_T0, self._plugged_in(), cfg).chargers == ()
+
+    def test_smart_charging_off_is_not_managed(self) -> None:
+        live = self._plugged_in()
+        live.ev_planned_load_smart_charging_enabled = False
+
+        (charger,) = build_performance_sample(
+            _T0, live, self._cfg(), self._entry()
+        ).chargers
+
+        assert charger.managed is False
+
+    def test_ev_planning_off_is_not_managed(self) -> None:
+        cfg = self._cfg()
+        cfg.ev_planned_load_enabled = False
+
+        (charger,) = build_performance_sample(
+            _T0, self._plugged_in(), cfg, self._entry()
+        ).chargers
+
+        assert charger.managed is False
+
+    def test_force_charge_now_is_not_managed(self) -> None:
+        """The user decided when to charge; that is not HSEM's timing."""
+        (charger,) = build_performance_sample(
+            _T0,
+            self._plugged_in(),
+            self._cfg(),
+            self._entry(hsem_ev_force_charge_now=True),
+        ).chargers
+
+        assert charger.managed is False
+
+    def test_without_a_connected_sensor_the_connection_is_unknown(self) -> None:
+        """``ev_planned_load_connected`` defaults to plugged in; it is not used."""
+        live = self._plugged_in()
+        live.ev.is_connected = None
+        live.ev_planned_load_connected = True
+
+        (charger,) = build_performance_sample(
+            _T0, live, self._cfg(), self._entry()
+        ).chargers
+
+        assert charger.connected is None
+
+    def test_an_unconfigured_charger_power_is_unknown(self) -> None:
+        cfg = self._cfg()
+        cfg.ev_planned_load_charger_power_kw = 0.0
+
+        (charger,) = build_performance_sample(
+            _T0, self._plugged_in(), cfg, self._entry()
+        ).chargers
+
+        assert charger.max_kw is None
+
+    def test_the_second_charger_has_its_own_settings(self) -> None:
+        cfg = self._cfg()
+        cfg.ev_second_enabled = True
+        cfg.ev_second.power_entity = "sensor.second_charger_power"
+        cfg.ev_second_planned_load_enabled = True
+        cfg.ev_second_planned_load_charger_power_kw = 3.7
+        live = self._plugged_in()
+        live.ev_second.power_w = 3600.0
+        live.ev_second.is_connected = False
+        live.ev_second_planned_load_smart_charging_enabled = True
+        live.ev_second_planned_load_deadline = _T0 + timedelta(hours=20)
+
+        primary, second = build_performance_sample(
+            _T0, live, cfg, self._entry(hsem_ev_second_force_charge_now=True)
+        ).chargers
+
+        assert primary.managed is True
+        assert second.power_w == pytest.approx(3600.0)
+        assert second.connected is False
+        assert second.managed is False
+        assert second.deadline == _T0 + timedelta(hours=20)
+        assert second.max_kw == pytest.approx(3.7)
+
+    def test_a_deadline_without_a_time_zone_is_not_used(self) -> None:
+        """It could not be compared with the slots, which are in UTC."""
+        live = self._plugged_in()
+        live.ev_planned_load_deadline = datetime(2026, 6, 11, 7, 0)
+
+        (charger,) = build_performance_sample(
+            _T0, live, self._cfg(), self._entry()
+        ).chargers
+
+        assert charger.deadline is None
+
+    def test_without_a_config_entry_nothing_is_forced(self) -> None:
+        (charger,) = build_performance_sample(
+            _T0, self._plugged_in(), self._cfg()
+        ).chargers
+
+        assert charger.managed is True
+
+    @pytest.mark.asyncio
+    async def test_the_cycle_records_the_chargers(self, tmp_path: Path) -> None:
+        coordinator = _coordinator_state(tmp_path)
+        coordinator._config_entry = self._entry()  # type: ignore[misc]
+        cfg = self._cfg()
+
+        await async_track_performance(coordinator, _T0, self._plugged_in(), cfg)
+        await async_track_performance(
+            coordinator, _T0 + timedelta(minutes=5), self._plugged_in(), cfg
+        )
+        await _finish(coordinator)
+
+        (charger,) = coordinator._performance_tracker.slots[
+            _T0.astimezone(UTC)
+        ].chargers
+        assert charger.kwh == pytest.approx(7.0 * 5 / 60)
+        assert charger.managed is True
 
 
 async def _finish(coordinator: CoordinatorSharedState) -> None:

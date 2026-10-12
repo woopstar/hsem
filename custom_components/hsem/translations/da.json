@@ -1238,6 +1238,9 @@
       "performance_battery_utilisation": {
         "name": "Ydeevne: batteriudnyttelse (24 t)"
       },
+      "performance_ev_charging_efficiency": {
+        "name": "Ydeevne: elbilopladningens effektivitet (24 t)"
+      },
       "performance_missed_opportunity": {
         "name": "Ydeevne: mistet besparelse (24 t)"
       },

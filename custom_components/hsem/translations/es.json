@@ -1163,6 +1163,9 @@
       "performance_battery_utilisation": {
         "name": "Rendimiento: aprovechamiento de la batería (24 h)"
       },
+      "performance_ev_charging_efficiency": {
+        "name": "Rendimiento: eficiencia de carga del VE (24 h)"
+      },
       "performance_missed_opportunity": {
         "name": "Rendimiento: ahorro perdido (24 h)"
       },

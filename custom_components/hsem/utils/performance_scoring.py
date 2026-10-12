@@ -27,6 +27,7 @@ from custom_components.hsem.models.performance_record import (
     PerformanceSlot,
 )
 from custom_components.hsem.planner._scipy_probe import is_scipy_available
+from custom_components.hsem.planner.hindsight_ev import EvScore, ev_sessions, score_ev
 from custom_components.hsem.planner.hindsight_scoring import (
     LIMIT_NOTE_SHARE,
     RealizedSlot,
@@ -158,6 +159,36 @@ def _residual_limit_kwh(window: RealizedWindow, slots: Sequence[RealizedSlot]) -
     )
 
 
+def _score_ev(
+    slots: Sequence[PerformanceSlot],
+    window: RealizedWindow,
+    time_limit_s: float | None,
+) -> EvScore | None:
+    """Return the EV timing costs of a run, or ``None`` without a charger record.
+
+    Sessions are found per charger and scored together: the chargers share
+    the grid and the battery.
+    """
+    chargers = max((len(slot.chargers) for slot in slots), default=0)
+    if chargers == 0:
+        return None
+    starts = [slot.start for slot in slots]
+    hours = [slot.minutes / 60.0 for slot in slots]
+    sessions = [
+        session
+        for index in range(chargers)
+        for session in ev_sessions(
+            [
+                slot.chargers[index].as_slot() if index < len(slot.chargers) else None
+                for slot in slots
+            ],
+            starts,
+            hours,
+        )
+    ]
+    return score_ev(window, sessions, time_limit_s=time_limit_s)
+
+
 def score_slots(
     keys: Sequence[datetime],
     slots: Mapping[datetime, PerformanceSlot],
@@ -239,8 +270,12 @@ def score_slots(
     score = score_window(window, time_limit_s=time_limit_s, breakdown=True)
     if score is None:
         return replace(measured, reason=REASON_ORACLE_UNSOLVED)
+    ev = _score_ev(usable, window, time_limit_s)
     return replace(
         measured,
+        ev_shiftable_kwh=None if ev is None else ev.shiftable_kwh,
+        ev_joint_oracle_cost=None if ev is None else ev.joint_oracle_cost,
+        ev_plug_and_charge_cost=None if ev is None else ev.plug_and_charge_cost,
         realized_cost=score.realized_cost,
         oracle_cost=score.oracle_cost,
         baseline_cost=score.baseline_cost,
@@ -255,7 +290,8 @@ def evaluate_performance(request: PerformanceRequest) -> PerformanceEvaluation:
     """Score the trailing window and any local days that are due.
 
     Blocking: each scored run solves three mixed-integer programs (two for
-    the score, one for its battery / solar split).  Call it from the executor.
+    the score, one for its battery / solar split), and two more when an EV
+    session could have been timed differently.  Call it from the executor.
 
     Args:
         request: The slots, the runs to score and the site's limits.

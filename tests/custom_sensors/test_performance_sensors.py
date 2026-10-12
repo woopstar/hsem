@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
@@ -20,6 +21,7 @@ from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.models.performance_record import (
     REASON_BREAKDOWN_UNSOLVED,
     REASON_INSUFFICIENT_COVERAGE,
+    REASON_NO_EV_SESSION,
     REASON_POTENTIAL_BELOW_THRESHOLD,
     PerformanceScore,
 )
@@ -61,7 +63,7 @@ def _score(
 
 
 def _sensors(
-    window: PerformanceScore | None, *, tracker: bool = True
+    window: PerformanceScore | None, *, tracker: bool = True, **options: object
 ) -> dict[str, HSEMPerformanceSensor]:
     coordinator = MagicMock()
     coordinator._performance_tracker = (
@@ -70,6 +72,8 @@ def _sensors(
     coordinator.hass.config.currency = "DKK"
     entry = MagicMock()
     entry.entry_id = "test_entry_id"
+    entry.options = dict(options)
+    entry.data = {}
     return {
         sensor._description.key: sensor
         for sensor in build_performance_sensors(entry, coordinator)
@@ -155,6 +159,71 @@ class TestStates:
         for sensor in sensors.values():
             assert sensor.native_value is None
             assert sensor.extra_state_attributes is None
+
+
+class TestEvChargingEfficiency:
+    """Stage 3 (issue #1271): only with EV planning enabled."""
+
+    @staticmethod
+    def _with_ev(score: PerformanceScore) -> PerformanceScore:
+        """Return *score* with 20 kWh of sessions: best 1, plug-and-charge 7."""
+        return replace(
+            score,
+            ev_shiftable_kwh=20.0,
+            ev_joint_oracle_cost=1.0,
+            ev_plug_and_charge_cost=7.0,
+        )
+
+    def test_no_sensor_without_ev_planning(self) -> None:
+        assert "ev_charging_efficiency" not in _sensors(_score())
+
+    @pytest.mark.parametrize(
+        "key", ["hsem_ev_planned_load_enabled", "hsem_ev_second_planned_load_enabled"]
+    )
+    def test_a_sensor_when_either_charger_is_planned(self, key: str) -> None:
+        sensors = _sensors(_score(), **{key: True})
+
+        sensor = sensors["ev_charging_efficiency"]
+        assert sensor.entity_id == "sensor.hsem_performance_ev_charging_efficiency"
+        assert sensor.unique_id == (
+            "hsem_test_entry_id_performance_ev_charging_efficiency_sensor"
+        )
+        assert sensor._attr_translation_key == "performance_ev_charging_efficiency"
+        assert sensor.native_unit_of_measurement == PERCENTAGE
+        assert sensor._hsem_device is HSEMDevice.FINANCIAL
+        assert list(sensors)[-1] == "ev_charging_efficiency"
+
+    def test_the_share_of_the_ev_potential_that_was_realized(self) -> None:
+        """Plug-and-charge 7, as charged 3 (the oracle), best 1: 4 of 6 realized."""
+        window = self._with_ev(_score())
+
+        sensors = _sensors(window, hsem_ev_planned_load_enabled=True)
+
+        assert sensors["ev_charging_efficiency"].native_value == pytest.approx(66.7)
+        attributes = sensors["ev_charging_efficiency"].extra_state_attributes
+        assert attributes is not None
+        assert attributes["ev_missed_opportunity"] == pytest.approx(2.0)
+        assert attributes["ev_potential"] == pytest.approx(6.0)
+        assert attributes["ev_reason"] is None
+        # The other sensors are untouched by the EV figure.
+        assert sensors["missed_opportunity"].native_value == pytest.approx(0.4)
+
+    def test_unknown_without_a_session_and_it_says_so(self) -> None:
+        sensors = _sensors(_score(), hsem_ev_planned_load_enabled=True)
+
+        assert sensors["ev_charging_efficiency"].native_value is None
+        attributes = sensors["ev_charging_efficiency"].extra_state_attributes
+        assert attributes is not None
+        assert attributes["ev_reason"] == REASON_NO_EV_SESSION
+        assert attributes["reason"] is None
+
+    def test_a_negative_efficiency_is_not_clamped(self) -> None:
+        """Charged at a cost of 9 (the oracle) where plugging in costs 7."""
+        window = self._with_ev(_score(oracle=9.0, realized=9.4, pv_as_realized=9.1))
+
+        sensors = _sensors(window, hsem_ev_planned_load_enabled=True)
+
+        assert sensors["ev_charging_efficiency"].native_value == pytest.approx(-33.3)
 
 
 class TestAttributes:

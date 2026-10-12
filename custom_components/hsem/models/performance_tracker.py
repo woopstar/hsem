@@ -27,6 +27,10 @@ from datetime import date, datetime, time, timedelta, tzinfo
 from pathlib import Path
 from typing import Any
 
+from custom_components.hsem.models.performance_charger import (
+    ChargerPiece,
+    charger_pieces,
+)
 from custom_components.hsem.models.performance_record import (
     REASON_NO_SITE_LIMITS,
     REASON_ORACLE_UNSOLVED,
@@ -107,6 +111,7 @@ class _Interval:
     pv_kwh: float | None
     ev_kwh: float | None
     ev_connected: bool | None
+    chargers: tuple[ChargerPiece, ...]
 
 
 def _meter_delta(
@@ -188,6 +193,7 @@ def _interval(
         pv_kwh=pv,
         ev_kwh=_mean_power_kwh(previous.ev_power_w, sample.ev_power_w, hours),
         ev_connected=any(connected) if connected else None,
+        chargers=charger_pieces(previous.chargers, sample.chargers, hours),
     )
 
 
@@ -333,6 +339,7 @@ class PerformanceTracker:
                 pv_kwh=None if interval.pv_kwh is None else interval.pv_kwh * share,
                 ev_kwh=None if interval.ev_kwh is None else interval.ev_kwh * share,
                 ev_connected=interval.ev_connected,
+                chargers=[piece.share(share) for piece in interval.chargers],
             )
             cursor = piece_end
             start += step
@@ -396,7 +403,10 @@ class PerformanceTracker:
             if keys and keys[-1] + step <= window_end:
                 days.append((day.isoformat(), keys))
         return PerformanceRequest(
-            slots={start: replace(slot) for start, slot in self.slots.items()},
+            slots={
+                start: replace(slot, chargers=[replace(c) for c in slot.chargers])
+                for start, slot in self.slots.items()
+            },
             slot_minutes=slot_minutes,
             window=tuple(window_end - (count - index) * step for index in range(count)),
             days=tuple(days),
@@ -481,9 +491,35 @@ class PerformanceTracker:
                 if split
                 else None
             ),
+            **self._ev_period(scores),
             "scored_days": len(scores),
             "breakdown_days": len(split),
             "days": days,
+        }
+
+    @staticmethod
+    def _ev_period(scores: Sequence[PerformanceScore]) -> dict[str, Any]:
+        """Return the EV timing figures over the days that carry an EV score."""
+        scored = [score for score in scores if score.has_ev_score]
+        sums = sum_scores(
+            scored,
+            (
+                "oracle_cost",
+                "ev_joint_oracle_cost",
+                "ev_plug_and_charge_cost",
+                "ev_shiftable_kwh",
+            ),
+        )
+        missed = sums["oracle_cost"] - sums["ev_joint_oracle_cost"]
+        potential = sums["ev_plug_and_charge_cost"] - sums["ev_joint_oracle_cost"]
+        return {
+            "ev_missed_opportunity": round(missed, 3) if scored else None,
+            "ev_potential": round(potential, 3) if scored else None,
+            "ev_charging_efficiency": (
+                _percent(utilisation_share(missed, potential)) if scored else None
+            ),
+            "ev_shiftable_kwh": round(sums["ev_shiftable_kwh"], 3) if scored else None,
+            "ev_days": len(scored),
         }
 
     @staticmethod
@@ -499,6 +535,11 @@ class PerformanceTracker:
             "battery_utilisation": _percent(score.battery_utilisation),
             "solar_utilisation": _percent(score.solar_utilisation),
             "breakdown_reason": score.breakdown_reason,
+            "ev_missed_opportunity": _rounded(score.ev_missed),
+            "ev_potential": _rounded(score.ev_potential),
+            "ev_charging_efficiency": _percent(score.ev_efficiency),
+            "ev_shiftable_kwh": _rounded(score.ev_shiftable_kwh),
+            "ev_reason": score.ev_reason,
             "potential": _rounded(score.potential),
             "realized_cost": _rounded(score.realized_cost),
             "baseline_cost": _rounded(score.baseline_cost),
@@ -520,6 +561,7 @@ class PerformanceTracker:
         attributes: dict[str, Any] = {
             "reason": REASON_NOT_EVALUATED,
             "breakdown_reason": REASON_NOT_EVALUATED,
+            "ev_reason": REASON_NOT_EVALUATED,
             "solver_status": "not_run",
         }
         if window is not None:
