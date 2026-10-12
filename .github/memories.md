@@ -2795,6 +2795,12 @@ Tests: `tests/planner/test_battery_target_milp.py::TestPreferenceCost` (hand-com
 - **Missing is not zero.** An interval lacking a grid meter, the SoC or the left-endpoint prices adds no coverage; a slot needs 90 % coverage and a window every slot. A day unscored only for `no_site_limits` is not stored, so it is retried.
 - **Persistence.** Saved at most every 120 s plus after each evaluation; the last sample is part of the file, so a restart shorter than the 10-minute gap tolerance minus that loses nothing.
 
+**Stage 2, the battery / solar split (issue #1270):** one more solve, `RealizedWindow.oracle(end, pv_as_realized=True)`, holds the PV surplus handling of every slot as it happened (`pv_charge_bounds()`: surplus partly stored → charge fixed to what was stored; stored in full → charge at least the surplus; no curtailment) and optimises grid charging and discharging. Its feasible set contains the realized run and is contained in the oracle's, so `oracle ≤ pv_as_realized ≤ realized` and `battery_loss = realized − pv_as_realized`, `solar_loss = pv_as_realized − oracle` are both ≥ 0 and sum to the regret exactly. Both utilisations are `1 − loss ÷ potential` with the stage-1 potential, so their shortfalls add up to the capture's.
+
+- A further attribution must keep that shape: a restricted oracle between two existing ones, never a free-standing counterfactual, or the parts stop adding up.
+- `pv_as_realized_cost` is `None` on scores from before the split and when only its solve failed (`breakdown_reason: breakdown_unsolved`); the stage-1 figures are published regardless. Period figures for the split are summed over the days that carry it (`breakdown_days`), with those days' own potential.
+- `solve_hindsight_oracle(min_charge_kwh=...)` exists for this: a lower bound on the per-slot charge, which also forbids discharging in that slot.
+
 **Test harness:** `tests/conftest.py` replaces the cycle's `async_track_performance` with an `AsyncMock` for every test. Cycle tests run on a `MagicMock` Home Assistant, where the real function wrote `MagicMock/mock.config.config_dir/.../hsem_performance_history.json` into the working tree. Test the real function through `tests/test_coordinator_performance.py`.
 
 Tests: `tests/planner/test_hindsight_scoring.py`, `tests/models/test_performance_tracker.py`, `tests/utils/test_performance_scoring.py`, `tests/test_coordinator_performance.py`, `tests/custom_sensors/test_performance_sensors.py`.

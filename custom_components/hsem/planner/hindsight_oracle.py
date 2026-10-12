@@ -234,6 +234,7 @@ def solve_hindsight_oracle(
     min_end_stored_kwh: float,
     *,
     max_charge_kwh: Sequence[float] | None = None,
+    min_charge_kwh: Sequence[float] | None = None,
     max_discharge_kwh: Sequence[float] | None = None,
     max_grid_import_kwh: Sequence[float] | None = None,
     max_grid_export_kwh: Sequence[float] | None = None,
@@ -261,6 +262,10 @@ def solve_hindsight_oracle(
         min_end_stored_kwh: Least stored energy after the last slot.
         max_charge_kwh: Per-slot AC charge limit, replacing
             ``max_charge_kw × hours``.
+        min_charge_kwh: Per-slot AC charge the run must at least make; none
+            when ``None``.  A slot with a positive minimum cannot discharge.
+            Used to hold part of a realized run fixed while the rest is
+            optimised.
         max_discharge_kwh: Per-slot AC discharge limit, replacing
             ``max_discharge_kw × hours``.
         max_grid_import_kwh: Per-slot grid import limit; unlimited when
@@ -358,6 +363,9 @@ def solve_hindsight_oracle(
     objective[grid_in] = [slot.import_price for slot in slots]
     objective[grid_out] = [-slot.export_price for slot in slots]
 
+    lower = np.zeros(width)
+    if min_charge_kwh is not None:
+        lower[charge] = np.minimum(np.array(min_charge_kwh, dtype=float), charge_cap)
     upper = np.ones(width)
     upper[charge] = charge_cap
     upper[discharge] = discharge_cap
@@ -393,7 +401,7 @@ def solve_hindsight_oracle(
             ),
         ],
         integrality=integrality,
-        bounds=bounds(np.zeros(width), upper),
+        bounds=bounds(lower, upper),
         options={"mip_rel_gap": _ORACLE_MIP_GAP, "time_limit": time_limit_s},
     )
     if not result.success or result.x is None:

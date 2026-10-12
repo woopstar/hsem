@@ -1160,11 +1160,17 @@
       "performance_actual_benefit": {
         "name": "Performance: Actual Benefit (24 h)"
       },
+      "performance_battery_utilisation": {
+        "name": "Performance: Battery Utilisation (24 h)"
+      },
       "performance_missed_opportunity": {
         "name": "Performance: Missed Opportunity (24 h)"
       },
       "performance_savings_capture": {
         "name": "Performance: Savings Capture (24 h)"
+      },
+      "performance_solar_utilisation": {
+        "name": "Performance: Solar Utilisation (24 h)"
       },
       "prediction_accuracy": {
         "name": "Prediction Accuracy"

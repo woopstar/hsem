@@ -212,6 +212,20 @@ views:
             color: state
             grid_options:
               columns: 2
+          - type: tile
+            entity: sensor.hsem_performance_battery_utilisation
+            name: Battery Utilisation (24 h)
+            icon: mdi:battery-charging-high
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_performance_solar_utilisation
+            name: Solar Utilisation (24 h)
+            icon: mdi:solar-power-variant
+            color: state
+            grid_options:
+              columns: 2
       - type: grid
         cards:
           - type: heading
@@ -1325,7 +1339,7 @@ The dashboard uses an eight-section layout within one view:
 | ------------------------------- | ----------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | **Status & Control**            | 1 column    | 10    | Working mode, system health, read-only toggle, plan strategy, force mode, next update, inverter apply, hardware writes, PV curtailment |
 | **Financial Insights**          | 1 column    | 5     | Export income, import cost, net grid balance, savings tracker                                                                          |
-| **Performance**                 | 1 column    | 4     | Savings capture, actual benefit and missed opportunity of the last 24 hours, scored against perfect hindsight                          |
+| **Performance**                 | 1 column    | 6     | Savings capture, actual benefit, missed opportunity and where it was lost (battery, solar) over the last 24 hours, against hindsight   |
 | **Forecast Quality**            | 1 column    | 4     | Forecast accuracy, prediction accuracy, solar confidence                                                                               |
 | **EV Charging**                 | 1 column    | 14    | EV plan, active status, smart charging, force charge, target SoC, deadline, SoC economics table (primary + secondary, conditional)     |
 | **Working Mode Recommendation** | 2 columns   | 7     | Recommendation timeline, battery status, charged kWh, consumption breakdown                                                            |
@@ -1370,15 +1384,17 @@ How good the last 24 hours of control turned out to be, scored against perfect
 hindsight (see
 [Performance sensors](sensors-reference.md#performance-sensors)):
 
-| Card                      | Entity                                       | Purpose                                                      |
-| ------------------------- | -------------------------------------------- | ------------------------------------------------------------ |
-| Savings Capture (24 h)    | `sensor.hsem_performance_savings_capture`    | Share of the achievable savings that HSEM actually achieved  |
-| Actual Benefit (24 h)     | `sensor.hsem_performance_actual_benefit`     | What HSEM's control was worth against plain self-consumption |
-| Missed Opportunity (24 h) | `sensor.hsem_performance_missed_opportunity` | What perfect hindsight would have saved on top of that       |
+| Card                       | Entity                                        | Purpose                                                      |
+| -------------------------- | --------------------------------------------- | ------------------------------------------------------------ |
+| Savings Capture (24 h)     | `sensor.hsem_performance_savings_capture`     | Share of the achievable savings that HSEM actually achieved  |
+| Actual Benefit (24 h)      | `sensor.hsem_performance_actual_benefit`      | What HSEM's control was worth against plain self-consumption |
+| Missed Opportunity (24 h)  | `sensor.hsem_performance_missed_opportunity`  | What perfect hindsight would have saved on top of that       |
+| Battery Utilisation (24 h) | `sensor.hsem_performance_battery_utilisation` | Share of the potential not lost through battery dispatch     |
+| Solar Utilisation (24 h)   | `sensor.hsem_performance_solar_utilisation`   | Share of the potential not lost through PV surplus handling  |
 
 The 7- and 30-day figures and yesterday's are attributes of each sensor
-(`last_7_days`, `last_30_days`, `yesterday`). This section is where the
-battery, solar and EV efficiency KPIs of the later stages will be added.
+(`last_7_days`, `last_30_days`, `yesterday`). This section is where the EV
+charging efficiency KPI of the next stage will be added.
 
 ### Forecast Quality tiles
 

@@ -18,6 +18,7 @@ from custom_components.hsem.custom_sensors.performance_sensors import (
 )
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.models.performance_record import (
+    REASON_BREAKDOWN_UNSOLVED,
     REASON_INSUFFICIENT_COVERAGE,
     REASON_POTENTIAL_BELOW_THRESHOLD,
     PerformanceScore,
@@ -39,6 +40,7 @@ def _score(
     baseline: float = 5.0,
     potential: float = 2.0,
     reason: str | None = None,
+    pv_as_realized: float | None = 3.1,
 ) -> PerformanceScore:
     return PerformanceScore(
         start=_START,
@@ -51,6 +53,7 @@ def _score(
         oracle_cost=oracle,
         baseline_cost=baseline,
         potential=potential,
+        pv_as_realized_cost=pv_as_realized,
         start_kwh=4.0,
         realized_end_kwh=4.0,
         baseline_end_kwh=4.0,
@@ -81,6 +84,32 @@ class TestStates:
         assert sensors["savings_capture"].native_value == pytest.approx(80.0)
         assert sensors["actual_benefit"].native_value == pytest.approx(1.6)
         assert sensors["missed_opportunity"].native_value == pytest.approx(0.4)
+
+    def test_the_split_of_the_worked_example(self) -> None:
+        """0.40 missed: 0.30 on the battery, 0.10 on solar, of a potential of 2."""
+        sensors = _sensors(_score())
+
+        assert sensors["battery_utilisation"].native_value == pytest.approx(85.0)
+        assert sensors["solar_utilisation"].native_value == pytest.approx(95.0)
+
+    def test_a_share_below_zero_is_not_clamped(self) -> None:
+        """More was lost on dispatch than there was to gain."""
+        sensors = _sensors(_score(realized=6.0, pv_as_realized=3.1))
+
+        assert sensors["battery_utilisation"].native_value == pytest.approx(-45.0)
+        assert sensors["solar_utilisation"].native_value == pytest.approx(95.0)
+
+    def test_without_the_split_only_its_two_sensors_are_unknown(self) -> None:
+        sensors = _sensors(_score(pv_as_realized=None))
+
+        assert sensors["savings_capture"].native_value == pytest.approx(80.0)
+        assert sensors["missed_opportunity"].native_value == pytest.approx(0.4)
+        assert sensors["battery_utilisation"].native_value is None
+        assert sensors["solar_utilisation"].native_value is None
+        attributes = sensors["battery_utilisation"].extra_state_attributes
+        assert attributes is not None
+        assert attributes["reason"] is None
+        assert attributes["breakdown_reason"] == REASON_BREAKDOWN_UNSOLVED
 
     def test_a_negative_capture_is_not_clamped(self) -> None:
         sensors = _sensors(_score(realized=6.0))
@@ -167,6 +196,8 @@ class TestEntityDescription:
             "savings_capture",
             "actual_benefit",
             "missed_opportunity",
+            "battery_utilisation",
+            "solar_utilisation",
         ]
 
     def test_all_share_the_performance_prefix_on_the_financial_device(self) -> None:
@@ -189,5 +220,7 @@ class TestEntityDescription:
         sensors = _sensors(_score())
 
         assert sensors["savings_capture"].native_unit_of_measurement == PERCENTAGE
+        assert sensors["battery_utilisation"].native_unit_of_measurement == PERCENTAGE
+        assert sensors["solar_utilisation"].native_unit_of_measurement == PERCENTAGE
         assert sensors["actual_benefit"].native_unit_of_measurement == "DKK"
         assert sensors["missed_opportunity"].native_unit_of_measurement == "DKK"
