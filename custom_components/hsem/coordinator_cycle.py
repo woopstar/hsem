@@ -25,6 +25,7 @@ from custom_components.hsem.coordinator_helpers import (
     ocpp_charge_target,
     ocpp_management_flags,
 )
+from custom_components.hsem.coordinator_performance import async_track_performance
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import (
     CoordinatorSharedState,
@@ -662,5 +663,9 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 **ocpp_management_flags(self._cfg, live, is_second=True),
                 number_phases=second_number_phases,
             )
+
+        # Performance record (issue #1182): last, so its hindsight solve never
+        # competes with this cycle's planner run or delays a hardware command.
+        await async_track_performance(self, now, live, cfg)
 
         async_log("debug", "------ HSEM Coordinator: update cycle complete")

@@ -98,5 +98,6 @@ def test_known_persistable_trackers_are_registered() -> None:
     assert _fields_exposing_save_history() == {
         "_savings_tracker",
         "_financial_tracker",
+        "_performance_tracker",
         "_prediction_tracker",
     }

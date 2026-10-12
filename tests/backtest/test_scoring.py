@@ -22,6 +22,7 @@ from custom_components.hsem.planner.hindsight_oracle import (
     simulate_self_consumption,
     solve_hindsight_oracle,
 )
+from custom_components.hsem.planner.hindsight_scoring import MIN_POTENTIAL, SiteLimits
 from custom_components.hsem.planner.milp_optimizer import is_scipy_available
 from custom_components.hsem.utils.datetime_utils import slot_key
 from tests.backtest.actuals import Actuals, load_actuals
@@ -29,9 +30,7 @@ from tests.backtest.conftest import CORPUS_DIR
 from tests.backtest.harvest import committed_actuals, newest_cycle_of_site
 from tests.backtest.replay import load_planner_input
 from tests.backtest.scoring import (
-    MIN_POTENTIAL,
     DayScore,
-    SiteLimits,
     day_slot_keys,
     describe,
     merge_actuals,

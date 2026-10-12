@@ -119,6 +119,35 @@ views:
       - type: grid
         cards:
           - type: heading
+            heading: Performance
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 2
+          - type: tile
+            entity: sensor.hsem_performance_savings_capture
+            name: Savings Capture (24 h)
+            icon: mdi:bullseye-arrow
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_performance_actual_benefit
+            name: Actual Benefit (24 h)
+            icon: mdi:cash-check
+            color: state
+            grid_options:
+              columns: 2
+          - type: tile
+            entity: sensor.hsem_performance_missed_opportunity
+            name: Missed Opportunity (24 h)
+            icon: mdi:cash-remove
+            color: state
+            grid_options:
+              columns: 2
+      - type: grid
+        cards:
+          - type: heading
             heading: Forecast Quality
             heading_style: title
             grid_options:

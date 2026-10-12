@@ -88,6 +88,7 @@ from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.forecast_coverage import ForecastCoverage
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
@@ -334,6 +335,10 @@ class HSEMDataUpdateCoordinator(
         # Financial tracker — cumulative import cost and export income (never reset).
         # The history file path is set in async_setup() once hass.config is available.
         self._financial_tracker: FinancialTracker = FinancialTracker()
+        # Performance tracker — per-slot actuals scored against hindsight
+        # (issue #1182). Its evaluation runs as a background executor task.
+        self._performance_tracker: PerformanceTracker = PerformanceTracker()
+        self._performance_task: asyncio.Task | None = None
         # Last slot end time accumulated from planner output (prevents double-counting).
         self._daily_plan_last_accumulated: datetime | None = None
         # Timestamp of the last actual-energy accumulation cycle.

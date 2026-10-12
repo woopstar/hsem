@@ -82,6 +82,9 @@ from custom_components.hsem.custom_sensors.ocpp_sensors import (
     HSEMOCPPChargerSessionsSensor,
     HSEMOCPPChargerStatusSensor,
 )
+from custom_components.hsem.custom_sensors.performance_sensors import (
+    build_performance_sensors,
+)
 from custom_components.hsem.custom_sensors.plan_explanation_sensor import (
     HSEMPlanExplanationSensor,
 )
@@ -196,6 +199,9 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
     # Savings tracker sensor — exposes actual vs missed savings metrics.
     savings_sensor = HSEMSavingsSensor(config_entry, coordinator)
 
+    # Performance (KPI) sensors — the last 24 h scored against hindsight.
+    performance_sensors = build_performance_sensors(config_entry, coordinator)
+
     # OCPP charger sensors — expose charger state when OCPP server is enabled.
     # One set per EV: each set only when that EV's OCPP server is configured
     # (issue #859 — previously the primary set was always created).
@@ -243,6 +249,7 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             daily_plan_vs_actual_sensor,
             effective_discharge_floor_sensor,
             savings_sensor,
+            *performance_sensors,
             export_income_sensor,
             import_cost_sensor,
             net_grid_balance_sensor,

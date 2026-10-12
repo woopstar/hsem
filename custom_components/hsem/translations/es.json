@@ -1157,6 +1157,15 @@
       "net_grid_balance": {
         "name": "Balance neto de red"
       },
+      "performance_actual_benefit": {
+        "name": "Rendimiento: beneficio real (24 h)"
+      },
+      "performance_missed_opportunity": {
+        "name": "Rendimiento: ahorro perdido (24 h)"
+      },
+      "performance_savings_capture": {
+        "name": "Rendimiento: ahorro capturado (24 h)"
+      },
       "prediction_accuracy": {
         "name": "Precisión de la predicción"
       },

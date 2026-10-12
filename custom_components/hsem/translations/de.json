@@ -1157,6 +1157,15 @@
       "net_grid_balance": {
         "name": "Netto-Netzbilanz"
       },
+      "performance_actual_benefit": {
+        "name": "Leistung: tatsächlicher Nutzen (24 h)"
+      },
+      "performance_missed_opportunity": {
+        "name": "Leistung: entgangene Einsparung (24 h)"
+      },
+      "performance_savings_capture": {
+        "name": "Leistung: Einsparquote (24 h)"
+      },
       "prediction_accuracy": {
         "name": "Vorhersagegenauigkeit"
       },

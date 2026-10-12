@@ -6,6 +6,8 @@ import json
 import math
 import os
 import stat
+import tempfile
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -86,3 +88,36 @@ def read_json_history_file(path: Path) -> dict[str, Any] | None:
     except OSError, json.JSONDecodeError:
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def write_json_history_file(path: Path, data: dict[str, Any]) -> bool:
+    """Write a JSON history file to disk atomically.
+
+    The data goes to a temporary file in the same directory, which then
+    replaces the target in one step, so a crash or power loss mid-write
+    leaves the previous file intact. Blocking: call it from a thread.
+
+    Args:
+        path: Path of the JSON history file. Its directory is created when
+            missing.
+        data: The JSON-serialisable state to persist.
+
+    Returns:
+        ``True`` if the file was written, ``False`` on an I/O error.
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(
+            suffix=".json", prefix=f".{path.stem}_", dir=str(path.parent), text=True
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(data, handle, ensure_ascii=False, separators=(",", ":"))
+            os.replace(tmp_path, path)
+        except Exception:
+            with suppress(OSError):
+                os.unlink(tmp_path)
+            raise
+    except OSError:
+        return False
+    return True
