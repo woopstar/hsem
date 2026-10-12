@@ -7,6 +7,7 @@ import math
 import os
 import stat
 import tempfile
+from collections.abc import Mapping
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -90,7 +91,9 @@ def read_json_history_file(path: Path) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
-def write_json_history_file(path: Path, data: dict[str, Any]) -> bool:
+def write_json_history_file(
+    path: Path, data: Mapping[str, Any], *, indent: int | None = None
+) -> bool:
     """Write a JSON history file to disk atomically.
 
     The data goes to a temporary file in the same directory, which then
@@ -101,6 +104,7 @@ def write_json_history_file(path: Path, data: dict[str, Any]) -> bool:
         path: Path of the JSON history file. Its directory is created when
             missing.
         data: The JSON-serialisable state to persist.
+        indent: Indentation of the written JSON; compact when ``None``.
 
     Returns:
         ``True`` if the file was written, ``False`` on an I/O error.
@@ -112,7 +116,13 @@ def write_json_history_file(path: Path, data: dict[str, Any]) -> bool:
         )
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(data, handle, ensure_ascii=False, separators=(",", ":"))
+                json.dump(
+                    data,
+                    handle,
+                    ensure_ascii=False,
+                    indent=indent,
+                    separators=None if indent is not None else (",", ":"),
+                )
             os.replace(tmp_path, path)
         except Exception:
             with suppress(OSError):

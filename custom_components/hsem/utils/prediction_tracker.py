@@ -8,20 +8,19 @@ pure Python, testable with plain ``pytest``.
 from __future__ import annotations
 
 import asyncio
-import json
-import os
 import statistics
-import tempfile
 from collections import defaultdict
 from collections.abc import Mapping
-from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from custom_components.hsem.models.prediction_record import PredictionRecord
-from custom_components.hsem.utils.persistence import read_json_history_file
+from custom_components.hsem.utils.persistence import (
+    read_json_history_file,
+    write_json_history_file,
+)
 from custom_components.hsem.utils.recommendations import (
     BATTERY_CHARGE_ACTION_RECS,
     BATTERY_DISCHARGE_ACTION_RECS,
@@ -258,32 +257,11 @@ class PredictionTracker:
         """Persist prediction history atomically."""
         if not self.history_file:
             return False
-        path = Path(self.history_file)
-        path.parent.mkdir(parents=True, exist_ok=True)
         return await asyncio.to_thread(
-            self._write_history_file, path, self.to_persistence_dict()
+            write_json_history_file,
+            Path(self.history_file),
+            self.to_persistence_dict(),
         )
-
-    @staticmethod
-    def _write_history_file(path: Path, data: Mapping[str, Any]) -> bool:
-        try:
-            fd, temporary_path = tempfile.mkstemp(
-                suffix=".json",
-                prefix=".hsem_prediction_history_",
-                dir=str(path.parent),
-                text=True,
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                    json.dump(data, handle, separators=(",", ":"), ensure_ascii=False)
-                os.replace(temporary_path, path)
-            except Exception:
-                with suppress(OSError):
-                    os.unlink(temporary_path)
-                raise
-            return True
-        except OSError:
-            return False
 
     # ------------------------------------------------------------------
     # Internal helpers

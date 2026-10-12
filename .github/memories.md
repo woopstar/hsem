@@ -2806,3 +2806,16 @@ Tests: `tests/planner/test_hindsight_scoring.py`, `tests/models/test_performance
 **Test harness:** `tests/coordinator_fixtures.py::use_temp_config_dir` points a mock `hass.config.config_dir` at a throwaway directory; `make_real_coordinator` applies it. Without it every full-cycle test now writes `MagicMock/mock.config.config_dir/<id>/.storage/hsem_financial_history.json` into the working tree.
 
 Tests: `tests/test_coordinator_meter_tracking.py` (forced periods, missed savings, regression against the old call sequence, failure isolation, and two tests through the real `_async_run_update_cycle`).
+
+## One Atomic JSON Writer for Every History File (issue #1269)
+
+`FinancialTracker`, `SavingsTracker`, `DailyPlanVsActualTracker` and `PredictionTracker` each carried a private copy of the same write (temp file in the target directory, `os.replace`, unlink on failure). They now all call `utils/persistence.py::write_json_history_file(path, data, indent=...)` through `asyncio.to_thread`, as `PerformanceTracker` does.
+
+**Rules:**
+
+- A new history file is written with `write_json_history_file` and read with `read_json_history_file`. Do not add another `mkstemp` to the code base: `grep -rn mkstemp custom_components` must only find `utils/persistence.py`.
+- The on-disk format did not change: financial, savings and daily history pass `indent=2`, the prediction and performance history are compact.
+- The directory is created inside the writer, in the thread. A directory that cannot be created is now a `False` from `save_history()` (logged by `persist_all_trackers`), where it used to raise out of the tracker.
+- Tests patch `tempfile.mkstemp` / `json.dump` / `os.replace` globally, so they keep working whichever module does the write.
+
+Tests: `tests/test_tracker_history_writers.py::TestOneSharedWriter`, `tests/utils/test_persistence.py::TestWriteJsonHistoryFile`.

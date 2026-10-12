@@ -13,6 +13,8 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from custom_components.hsem.utils.persistence import write_json_history_file
+
 #: Days of daily snapshots kept in memory and in the history file. One full
 #: year (plus a leap day) is enough for every rollup, including ``this_year``.
 MAX_DAILY_LOG_DAYS = 366
@@ -537,36 +539,9 @@ class FinancialTracker:
         """
         if not self.history_file:
             return False
-        data = self.as_dict()
-        path = Path(self.history_file)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return await asyncio.to_thread(self._write_history_file, data, path)
-
-    @staticmethod
-    def _write_history_file(data: dict[str, Any], path: Any) -> bool:
-        """Write the history data to disk atomically (sync, offloaded to thread)."""
-        import json
-        import os
-        import tempfile
-        from contextlib import suppress
-        from pathlib import Path as _Path
-
-        path_obj = _Path(str(path))
-        try:
-            fd, tmp_path = tempfile.mkstemp(
-                suffix=".json",
-                prefix=".hsem_financial_history_",
-                dir=str(path_obj.parent),
-                text=True,
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
-                os.replace(tmp_path, str(path_obj))
-            except Exception:
-                with suppress(OSError):
-                    os.unlink(tmp_path)
-                raise
-            return True
-        except OSError:
-            return False
+        return await asyncio.to_thread(
+            write_json_history_file,
+            Path(self.history_file),
+            self.as_dict(),
+            indent=2,
+        )
