@@ -733,6 +733,11 @@ difference when battery energy is charged below the mean positive import price
 for the current cycle's calendar day. Missing, non-finite, and non-positive
 planner prices are excluded from that daily mean.
 
+The discharge part needs the battery's **Charge/discharge power** sensor
+(Huawei Solar step of the configuration). It is optional: without it, or
+while it is unavailable, savings from battery discharge are not counted and
+the figure covers export revenue and cheap charging only.
+
 **Entity:** `sensor.hsem_savings_tracker_sensor`
 
 | Property         | Value                                                   |
