@@ -50,27 +50,19 @@ class Offender:
     scope: Scope
 
 
-# Dev-only scripts and tests get twice the room of the integration: a test
-# module mirrors one source module, and its fixtures and cases outgrow it.
+# Dev-only scripts get twice the room of the integration. ``tests/`` is not a
+# scope (issue #1278): a test module is a list of independent cases that grows
+# with every regression test, and a limit there would make a fix carry an
+# unrelated split of its test file.
 SCOPES: tuple[Scope, ...] = (
     Scope("custom_components/hsem", MAX_FILE_BYTES, MAX_FILE_LINES),
     Scope("scripts", 2 * MAX_FILE_BYTES, 2 * MAX_FILE_LINES),
-    Scope("tests", 2 * MAX_FILE_BYTES, 2 * MAX_FILE_LINES),
 )
-
-_SPLIT_TESTS = "split in #1278"
 
 # Files exempt from their scope's limits: repo-relative path -> reason.
 # An entry is a debt, not a permission: name the issue that will split the
 # file, and remove the entry once it is back within the limits.
-ALLOWLIST: dict[str, str] = {
-    "tests/custom_sensors/test_ocpp_server.py": _SPLIT_TESTS,
-    "tests/planner/test_ev_planned_load.py": _SPLIT_TESTS,
-    "tests/planner/test_invariants.py": _SPLIT_TESTS,
-    "tests/planner/test_milp_optimizer.py": _SPLIT_TESTS,
-    "tests/test_ha_mock_integration.py": _SPLIT_TESTS,
-    "tests/test_safety_gates.py": _SPLIT_TESTS,
-}
+ALLOWLIST: dict[str, str] = {}
 
 
 def _measure(path: Path) -> tuple[int, int]:

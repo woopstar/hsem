@@ -150,7 +150,8 @@ These helpers exist — never re-implement them inline:
 ## File Size Rule (Mandatory)
 
 - **Hard limit: 30 KiB (30,720 bytes) AND 1000 lines per Python file** of the
-  integration; `scripts/` and `tests/` get twice that. Both limits must be satisfied.
+  integration; `scripts/` gets twice that and `tests/` is out of scope. Both limits must
+  be satisfied.
   `CODE_QUALITY_STANDARDS.md` → File Size Limits is the single statement of the rule.
 - If a file exceeds either limit, split it before adding more features.
 - Check before every PR (also part of `./scripts/quality.sh all` and of CI):

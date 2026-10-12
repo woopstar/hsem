@@ -115,5 +115,5 @@ Always uses the mandatory **2x denominator**. Never change this without updating
 
 ### File Size Limit
 
-Hard limit: **30 KiB AND 1000 lines** per integration file, twice that in `scripts/` and
-`tests/` (`CODE_QUALITY_STANDARDS.md` → File Size Limits). Check: `./scripts/quality.sh file-size`.
+Hard limit: **30 KiB AND 1000 lines** per integration file, twice that in `scripts/`;
+`tests/` is out of scope (`CODE_QUALITY_STANDARDS.md` → File Size Limits). Check: `./scripts/quality.sh file-size`.

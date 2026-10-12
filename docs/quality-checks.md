@@ -175,15 +175,15 @@ just rewritten is reported in the same run.
 ```
 
 Runs `scripts/check_file_size.py` over every `*.py` file of
-`custom_components/hsem` (30 KiB / 1000 lines) and of `scripts/` and `tests/`
+`custom_components/hsem` (30 KiB / 1000 lines) and of `scripts/`
 (60 KiB / 2000 lines), and prints one line per file over a limit with its
-size, its line count and both limits. The rule and its reasons are in
-`CODE_QUALITY_STANDARDS.md` → File Size Limits.
+size, its line count and both limits. `tests/` is not measured. The rule and
+its reasons are in `CODE_QUALITY_STANDARDS.md` → File Size Limits.
 
-The script's `ALLOWLIST` names the files that were over a limit when the check
-was added, each with the issue that will split it. The check also fails on an
-entry whose file is back within the limits, so the list cannot go stale, and on
-a missing scope directory, so a wrong working directory cannot pass.
+The script's `ALLOWLIST` can exempt a file that is over a limit, with the issue
+that will split it; it is empty. The check also fails on an entry whose file is
+back within the limits, so the list cannot go stale, and on a missing scope
+directory, so a wrong working directory cannot pass.
 `format-check` and `all` run it.
 
 ## CI Integration
