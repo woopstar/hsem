@@ -9,10 +9,32 @@ default rather than a hand-picked subset.
 
 from __future__ import annotations
 
+import shutil
+import tempfile
+import weakref
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
+
+
+def use_temp_config_dir(hass: Any) -> None:
+    """Point a mock ``hass.config.config_dir`` at a throwaway directory.
+
+    The trackers persist under ``config_dir/.storage`` on every cycle.  On a
+    bare ``MagicMock`` that path is the mock's ``repr``, so a full cycle wrote
+    ``MagicMock/mock.config.config_dir/<id>/.storage/*.json`` into the working
+    tree (issues #1182, #1267).  A ``config_dir`` that is already a real path
+    is left alone.  The directory is removed with the mock.
+
+    Args:
+        hass: The mock Home Assistant instance.
+    """
+    if not isinstance(hass.config.config_dir, Mock):
+        return
+    path = tempfile.mkdtemp(prefix="hsem-test-config-")
+    hass.config.config_dir = path
+    weakref.finalize(hass, shutil.rmtree, path, True)
 
 
 def make_real_coordinator(
@@ -38,7 +60,7 @@ def make_real_coordinator(
         entry.entry_id = "test_entry"
         entry.options = dict(options or {})
         entry.data = {}
+    hass = hass if hass is not None else MagicMock()
+    use_temp_config_dir(hass)
     with patch("homeassistant.helpers.frame.report_usage"):
-        return HSEMDataUpdateCoordinator(
-            hass if hass is not None else MagicMock(), entry
-        )
+        return HSEMDataUpdateCoordinator(hass, entry)

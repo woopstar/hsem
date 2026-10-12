@@ -25,9 +25,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.hsem.coordinator_tracking import (
-    _accumulate_plan_for_slots,
-    _last_completed_slot_end,
+from custom_components.hsem.coordinator_daily_plan import (
+    accumulate_plan_for_slots,
+    last_completed_slot_end,
 )
 from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
     DailyPlanVsActualTracker,
@@ -204,15 +204,15 @@ class TestLiveSlotDetection:
         slots = _grid_slots()
         tracker = DailyPlanVsActualTracker()
 
-        marker = _accumulate_plan_for_slots(tracker, slots, _now(fold), None)
+        marker = accumulate_plan_for_slots(tracker, slots, _now(fold), None)
 
         assert marker is not None
         assert marker.astimezone(UTC) == now_utc
 
     @pytest.mark.parametrize(("fold", "now_utc"), _FOLDS)
-    def test_last_completed_slot_end(self, fold: int, now_utc: datetime) -> None:
+    def testlast_completed_slot_end(self, fold: int, now_utc: datetime) -> None:
         """The latest completed slot ends at *now* (now is on a boundary)."""
-        end = _last_completed_slot_end(_grid_slots(), _now(fold))
+        end = last_completed_slot_end(_grid_slots(), _now(fold))
 
         assert end is not None
         assert end.astimezone(UTC) == now_utc

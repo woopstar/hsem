@@ -26,6 +26,8 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | `coordinator_load_forecast.py`        | ML/avg consumption population, load readiness, missing/estimated-hour diagnostics (issue #1110)                      |
 | `coordinator_load_hold.py`            | Non-planner load-forecast safety hold, grid-only EV-only fallback (issue #1106), force-charge re-apply (issue #1103) |
 | `coordinator_tracking.py`             | Forecast, daily, financial, and savings accumulation                                                                 |
+| `coordinator_meter_tracking.py`       | Feeds the daily, financial and savings trackers once per cycle, with or without a plan (issue #1267)                 |
+| `coordinator_daily_plan.py`           | Plan side of the daily plan-vs-actual tracker: each slot's planned energy, once                                      |
 | `coordinator_performance.py`          | Performance record: per-cycle sample, hindsight evaluation as a background executor task (issue #1182)               |
 | `entity_availability.py`              | Per-input unavailable/recovery transition tracking and logging                                                       |
 | `custom_sensors/block_observation.py` | Avg-sensor downtime tracking: heartbeat, unobserved intervals, `block_observed()` (issues #1101/#1110)               |
@@ -463,11 +465,13 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
   needs splitting. These limits keep files small enough for efficient AI
   development (context window, diff size, review latency).
 - If a file exceeds either limit, split it before adding more features.
-- Current oversized files (as of 2026-09-18):
+- Current oversized files (as of 2026-10-12):
 
-  - `coordinator_tracking.py` — 31,036 bytes (over 30 KB)
+  - `utils/dynamic_floor.py` — 35,002 bytes (over 30 KB, issue #1274)
 
-  - `planner/candidate_selector.py` — 31,401 bytes (over 30 KB)
+- Resolved in issue #1267: the plan-side slot helpers moved from
+  `coordinator_tracking.py` (30.6 KB) to `coordinator_daily_plan.py`; the
+  tracking module is now ~26.5 KB.
 
 - Resolved in issue #1186: the dynamic-floor steps of the planner phase
   (enable/clear, reference solve, margin learning) moved from
@@ -2785,3 +2789,20 @@ Tests: `tests/planner/test_hindsight_scoring.py`, `tests/models/test_performance
 - A reading that is required by one opt-in feature and merely useful to another is read with `_read` or `_read_optional` depending on the feature flag. Do not gate the read itself on the flag.
 - The other consumers (`phase_charge_limiter.py`, `phase_charge_transition.py`, the applier's debug line) check `cfg.phase_aware_charging_enabled` themselves; a non-`None` reading with the limiter off changes nothing for them.
 - A test that sets a `LiveState` field by hand does not prove production fills it. `tests/test_coordinator_tracking_savings_discharge.py` now goes through `async_collect_live_state`.
+
+## Meter-Based Trackers Are Fed Every Cycle, Not Only When Planning (issue #1267)
+
+`accumulate_daily_plan_actuals`, `accumulate_financials` and `accumulate_savings` used to be called from inside `_run_planner_phase`, which the cycle only enters when the force mode is `auto`, no entity is missing and the load forecast is ready. In any other cycle the trackers were not fed: `FinancialTracker` then dropped the whole period as a stale gap (grid cost of a forced afternoon missing from `sensor.hsem_import_cost`), and `SavingsTracker`'s `missed` side (`switch_on=False`) was unreachable, so `today_missed` was always 0.
+
+**Fix:** `coordinator_meter_tracking.py::async_accumulate_meter_trackers` is called from `_async_run_update_cycle` right after the planner-phase branch, with `planner_output_to_commit` (which is `None` when the phase did not run). `accumulate_daily_plan_actuals` and `accumulate_savings` take `output: PlannerOutput | None`: without a plan the daily tracker's plan side and the charge savings are skipped, everything else accumulates.
+
+**Rules:**
+
+- Anything that only needs the meters, the prices or the battery belongs in the cycle, not in the planner phase. Before adding an accumulator to `_run_planner_phase`, ask whether it should stop when a mode is forced.
+- Each tracker keeps its own `try/except`; one failing must not starve the others or fail the cycle.
+- The call is inside the cycle's `try`, before publication, so the published `CoordinatorData` carries this cycle's totals. A stale or failed cycle feeds nothing, as before.
+- "Missed" savings are export revenue and discharge savings booked while the force mode is not `auto`. That is the definition in `SavingsTracker.accumulate`; whether it is the most useful one is a separate question.
+
+**Test harness:** `tests/coordinator_fixtures.py::use_temp_config_dir` points a mock `hass.config.config_dir` at a throwaway directory; `make_real_coordinator` applies it. Without it every full-cycle test now writes `MagicMock/mock.config.config_dir/<id>/.storage/hsem_financial_history.json` into the working tree.
+
+Tests: `tests/test_coordinator_meter_tracking.py` (forced periods, missed savings, regression against the old call sequence, failure isolation, and two tests through the real `_async_run_update_cycle`).
