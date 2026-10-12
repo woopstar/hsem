@@ -188,23 +188,26 @@ If any step fails, fix the issues before committing.
 
 This section is the single statement of the rule; every other document points here.
 
-| Scope                              | Max size              | Max lines |
-| ---------------------------------- | --------------------- | --------- |
-| `custom_components/hsem/**/*.py`   | 30 KiB (30,720 bytes) | 1000      |
-| `scripts/**/*.py`, `tests/**/*.py` | 60 KiB (61,440 bytes) | 2000      |
+| Scope                            | Max size              | Max lines |
+| -------------------------------- | --------------------- | --------- |
+| `custom_components/hsem/**/*.py` | 30 KiB (30,720 bytes) | 1000      |
+| `scripts/**/*.py`                | 60 KiB (61,440 bytes) | 2000      |
 
 - Both limits apply. A file exactly at a limit passes; one byte or one line more fails.
 - "KB" in older notes means KiB: 1 KiB = 1024 bytes.
-- Dev-only scripts and tests get twice the room of the shipped integration. Documentation,
-  JSON and YAML are out of scope.
+- Dev-only scripts get twice the room of the shipped integration. Documentation, JSON and
+  YAML are out of scope.
+- `tests/` is out of scope (issue #1278). A test module is a list of independent cases
+  that grows with every regression test; a limit there would make a fix carry an unrelated
+  split of its test file. Split a test module by responsibility when it is being reworked
+  anyway.
 - A file over a limit is split by responsibility **before** anything is added to it. Never
   raise a limit to make a change fit.
 - `scripts/check_file_size.py` enforces the rule: `./scripts/quality.sh file-size`. It runs
   in `./scripts/quality.sh all`, in `./scripts/quality.sh format-check` (CI) and as a
   pre-commit hook.
 - Its `ALLOWLIST` exempts a file only with a reason that names the issue that will split
-  it; an entry that is no longer needed fails the check. It holds the files that were over
-  a limit when the check was added: six test modules (issue #1278). Do not add to it to
+  it; an entry that is no longer needed fails the check. It is empty. Do not add to it to
   make a change fit.
 
 ## CI/CD Enforcement

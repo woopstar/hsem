@@ -462,8 +462,9 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
 ## File Size Rules
 
 - **Hard limit for the integration: 30 KiB (30,720 bytes) AND 1000 lines per
-  Python file**; `scripts/` and `tests/` get twice that. Both limits must be
-  satisfied — a file under 30 KiB but over 1000 lines still needs splitting.
+  Python file**; `scripts/` gets twice that and `tests/` is out of scope
+  (issue #1278). Both limits must be satisfied — a file under 30 KiB but over
+  1000 lines still needs splitting.
   These limits keep files small enough for efficient AI development (context
   window, diff size, review latency). `CODE_QUALITY_STANDARDS.md` → File Size
   Limits is the single statement of the rule.
@@ -478,11 +479,10 @@ The `m[t]` constraints are: `m[t] >= ec[t]` and `m[t] >= ed[t]`.
     to them: `planner/discharge_scheduler.py`,
     `custom_sensors/state_collector.py`, `planner/milp_optimizer.py`,
     `coordinator_helpers.py`, `utils/forecast_tracker.py`.
-  - Six test modules over 60 KiB or 2000 lines (issue #1278):
-    `tests/planner/test_ev_planned_load.py`, `tests/test_ha_mock_integration.py`,
-    `tests/custom_sensors/test_ocpp_server.py`,
-    `tests/planner/test_milp_optimizer.py`, `tests/planner/test_invariants.py`,
-    `tests/test_safety_gates.py`
+  - No script, and the `ALLOWLIST` is empty. Test modules are not measured
+    (issue #1278): six are over 60 KiB, the largest
+    `tests/planner/test_ev_planned_load.py` at 132,939 bytes. Split one by
+    responsibility when it is being reworked anyway, not as a gate.
 
 - Resolved in issue #1274: the stateless bridge arithmetic moved from
   `utils/dynamic_floor.py` (35.0 KB) to `utils/dynamic_floor_bridge.py`; the

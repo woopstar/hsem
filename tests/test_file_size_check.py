@@ -1,10 +1,10 @@
-"""Tests for the file-size gate (issue #1277).
+"""Tests for the file-size gate (issues #1277, #1278).
 
 The 30 KiB / 1000-line rule was only a paragraph and two ``find`` one-liners,
 so ``utils/dynamic_floor.py`` grew to 35 KB without anything failing (issue
 #1274). ``scripts/check_file_size.py`` is the gate now, so its limits, its
 allowlist and its failure paths are pinned here, and so is the state of the
-real tree.
+real tree. ``tests/`` is deliberately not a scope (issue #1278).
 
 See ``CODE_QUALITY_STANDARDS.md`` → File Size Limits.
 """
@@ -42,14 +42,20 @@ class TestLimits:
     """The limits are the documented ones, and they are inclusive."""
 
     def test_the_integration_limit_is_30_kib_and_1000_lines(self) -> None:
-        """The shipped integration gets 30 KiB / 1000 lines, dev code twice that."""
+        """The shipped integration gets 30 KiB / 1000 lines, scripts twice that."""
         assert _CHECKER.MAX_FILE_BYTES == 30720
         assert _CHECKER.MAX_FILE_LINES == 1000
         assert (
             _CHECKER.Scope("custom_components/hsem", 30720, 1000),
             _CHECKER.Scope("scripts", 61440, 2000),
-            _CHECKER.Scope("tests", 61440, 2000),
         ) == _CHECKER.SCOPES
+
+    def test_test_modules_are_not_in_scope(self) -> None:
+        """No scope covers ``tests/``, and no leftover entry exempts a file there."""
+        covered = {scope.directory for scope in _CHECKER.SCOPES}
+
+        assert not any(d == "tests" or d.startswith("tests/") for d in covered)
+        assert not any(path.startswith("tests/") for path in _CHECKER.ALLOWLIST)
 
     def test_a_file_over_the_size_limit_is_reported(self, tmp_path: Path) -> None:
         """One byte too many fails even when the line count is fine."""
@@ -155,7 +161,8 @@ class TestMain:
         monkeypatch.setattr(_CHECKER, "ALLOWLIST", {})
         _write(root, "custom_components/hsem/big.py", size=30721, lines=3)
         _write(root, "custom_components/hsem/long.py", size=2000, lines=1001)
-        _write(root, "tests/test_big.py", size=30721, lines=1001)
+        _write(root, "scripts/medium.py", size=30721, lines=1001)
+        _write(root, "tests/test_big.py", size=61441, lines=2001)
 
         assert _CHECKER.main(["--root", str(root)]) == 1
 
@@ -169,7 +176,9 @@ class TestMain:
             "custom_components/hsem/long.py: 2000 bytes (limit 30720), "
             "1001 lines (limit 1000)"
         ) in err
-        # A test module of that size is within the doubled limit.
+        # A script of that size is within the doubled limit.
+        assert "scripts/medium.py" not in err
+        # A test module is not measured at all.
         assert "tests/test_big.py" not in err
 
     def test_it_passes_at_the_limit(

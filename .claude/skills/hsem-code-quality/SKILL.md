@@ -63,8 +63,8 @@ For faster iteration during development:
 
 ## File Size Check
 
-Hard limit: **30 KiB AND 1000 lines** per integration file, twice that in `scripts/` and
-`tests/` (`CODE_QUALITY_STANDARDS.md` → File Size Limits). It is part of
+Hard limit: **30 KiB AND 1000 lines** per integration file, twice that in `scripts/`;
+`tests/` is out of scope (`CODE_QUALITY_STANDARDS.md` → File Size Limits). It is part of
 `./scripts/quality.sh all`; to run it alone:
 
 ```bash
