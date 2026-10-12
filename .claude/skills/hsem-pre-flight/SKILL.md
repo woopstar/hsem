@@ -47,7 +47,7 @@ Read `.github/memories.md`. Pay special attention to:
 - Module responsibility map (planner, ML, utils layers)
 - Canonical patterns (clamp_efficiency, DISCHARGE_RECS, calculate_recommended_threshold, HSEM_LOGGER)
 - MILP variable vector layout (8\*n base, growing with EV co-optimisation)
-- File size limits (30 KB hard limit in planner/ and utils/)
+- File size limits (30 KiB AND 1000 lines per integration file)
 - Cycle cost formula with mandatory 2x denominator
 - File organization patterns (by responsibility, not by theme)
 - Huawei entity wiring protocol

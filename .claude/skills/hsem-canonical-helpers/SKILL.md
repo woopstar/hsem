@@ -115,4 +115,5 @@ Always uses the mandatory **2x denominator**. Never change this without updating
 
 ### File Size Limit
 
-Hard limit: **30 KB** per file in `planner/` and `utils/`. Check: `wc -c custom_components/hsem/planner/*.py`
+Hard limit: **30 KiB AND 1000 lines** per integration file, twice that in `scripts/` and
+`tests/` (`CODE_QUALITY_STANDARDS.md` → File Size Limits). Check: `./scripts/quality.sh file-size`.

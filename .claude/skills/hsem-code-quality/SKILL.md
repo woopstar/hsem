@@ -63,14 +63,15 @@ For faster iteration during development:
 
 ## File Size Check
 
-Hard limit: **30 KB per file** in `planner/` and `utils/`. Check before PR:
+Hard limit: **30 KiB AND 1000 lines** per integration file, twice that in `scripts/` and
+`tests/` (`CODE_QUALITY_STANDARDS.md` → File Size Limits). It is part of
+`./scripts/quality.sh all`; to run it alone:
 
 ```bash
-wc -c custom_components/hsem/planner/*.py
-wc -c custom_components/hsem/utils/*.py
+./scripts/quality.sh file-size
 ```
 
-If a file exceeds 30 KB, split it before adding more features.
+If a file exceeds either limit, split it before adding more features.
 
 ## Pre-Commit Hook (Optional but Recommended)
 

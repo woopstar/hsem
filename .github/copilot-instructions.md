@@ -149,16 +149,13 @@ These helpers exist — never re-implement them inline:
 
 ## File Size Rule (Mandatory)
 
-- **Hard limit: 30 KB AND 1000 lines per file** across the entire codebase.
-  Both limits must be satisfied. A file under 30 KB but over 1000 lines still
-  needs splitting.
+- **Hard limit: 30 KiB (30,720 bytes) AND 1000 lines per Python file** of the
+  integration; `scripts/` and `tests/` get twice that. Both limits must be satisfied.
+  `CODE_QUALITY_STANDARDS.md` → File Size Limits is the single statement of the rule.
 - If a file exceeds either limit, split it before adding more features.
-- Check before every PR:
+- Check before every PR (also part of `./scripts/quality.sh all` and of CI):
   ```bash
-  # Lines
-  find custom_components/hsem -name '*.py' -exec sh -c 'l=$(wc -l < "$1"); [ "$l" -gt 1000 ] && echo "$l $1"' _ {} \;
-  # Size
-  find custom_components/hsem -name '*.py' -exec sh -c 's=$(wc -c < "$1"); [ "$s" -gt 30720 ] && echo "$s $1"' _ {} \;
+  ./scripts/quality.sh file-size
   ```
 
 ## Issue-Solving Rules

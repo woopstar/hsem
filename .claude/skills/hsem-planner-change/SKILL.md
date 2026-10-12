@@ -57,10 +57,11 @@ When creating log statements, never use runtime string formatting — use `%` pl
 
 ## Step 7: Check File Size
 
-Hard limit: 30 KB per file in `planner/` and `utils/`. Check before PR:
+Hard limit: 30 KiB AND 1000 lines per integration file (`CODE_QUALITY_STANDARDS.md` → File
+Size Limits). Check before PR:
 
 ```bash
-wc -c custom_components/hsem/planner/*.py
+./scripts/quality.sh file-size
 ```
 
 ## Definition of Done for Planner Work

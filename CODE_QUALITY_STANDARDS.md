@@ -158,7 +158,7 @@ for sensor in sensors:
 
 - One class per file (or closely related classes)
 - Modules should have a single, clear responsibility
-- Maximum 500 lines per file (consider refactoring if larger)
+- Aim for 500 lines per file; the hard limit is in [File Size Limits](#file-size-limits)
 - Related functionality grouped in the same directory
 
 ## Pre-commit Quality Checklist
@@ -184,6 +184,29 @@ pytest tests/ --cov=custom_components --cov-report=term-missing
 
 If any step fails, fix the issues before committing.
 
+## File Size Limits
+
+This section is the single statement of the rule; every other document points here.
+
+| Scope                              | Max size              | Max lines |
+| ---------------------------------- | --------------------- | --------- |
+| `custom_components/hsem/**/*.py`   | 30 KiB (30,720 bytes) | 1000      |
+| `scripts/**/*.py`, `tests/**/*.py` | 60 KiB (61,440 bytes) | 2000      |
+
+- Both limits apply. A file exactly at a limit passes; one byte or one line more fails.
+- "KB" in older notes means KiB: 1 KiB = 1024 bytes.
+- Dev-only scripts and tests get twice the room of the shipped integration. Documentation,
+  JSON and YAML are out of scope.
+- A file over a limit is split by responsibility **before** anything is added to it. Never
+  raise a limit to make a change fit.
+- `scripts/check_file_size.py` enforces the rule: `./scripts/quality.sh file-size`. It runs
+  in `./scripts/quality.sh all`, in `./scripts/quality.sh format-check` (CI) and as a
+  pre-commit hook.
+- Its `ALLOWLIST` exempts a file only with a reason that names the issue that will split
+  it; an entry that is no longer needed fails the check. It holds the files that were over
+  a limit when the check was added: six test modules (issue #1278). Do not add to it to
+  make a change fit.
+
 ## CI/CD Enforcement
 
 The following checks run on every PR:
@@ -193,6 +216,7 @@ The following checks run on every PR:
 | Formatting    | `ruff format`              | `./scripts/quality.sh lint`         | Consistent Python code style   |
 | Doc format    | `prettier`                 | `./scripts/quality.sh lint`         | Markdown / YAML / JSON style   |
 | Linting       | `ruff check`               | `./scripts/quality.sh lint`         | Bugs, style issues, complexity |
+| File size     | `check_file_size.py`       | `./scripts/quality.sh file-size`    | 30 KiB / 1000-line file limit  |
 | Type Checking | `mypy`                     | `./scripts/quality.sh typing`       | Type errors and unsafe code    |
 | Translations  | `validate_translations.py` | `./scripts/quality.sh translations` | en/da/de/es keys stay in sync  |
 | Tests         | `pytest`                   | `./scripts/quality.sh test`         | Verifies functionality         |

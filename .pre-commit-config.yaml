@@ -21,6 +21,14 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: file-size
+        name: File-size limits (30 KiB / 1000 lines)
+        language: system
+        entry: ./scripts/quality.sh
+        args: [file-size]
+        pass_filenames: false
+        always_run: true
+
       - id: typing
         name: Type check (mypy)
         language: system
