@@ -1163,6 +1163,9 @@
       "performance_battery_utilisation": {
         "name": "Leistung: Batterienutzung (24 h)"
       },
+      "performance_ev_charging_efficiency": {
+        "name": "Leistung: Effizienz des E-Auto-Ladens (24 h)"
+      },
       "performance_missed_opportunity": {
         "name": "Leistung: entgangene Einsparung (24 h)"
       },

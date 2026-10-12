@@ -14,11 +14,24 @@ the seconds in which every input it needs was observed.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from collections.abc import Sequence
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
-from custom_components.hsem.planner.hindsight_scoring import WindowScore
+from custom_components.hsem.models.performance_charger import (
+    ChargerPiece,
+    ChargerRecord,
+    ChargerSample,
+    add_optional,
+    as_list,
+    merge_charger_pieces,
+    optional_bool,
+)
+from custom_components.hsem.planner.hindsight_scoring import (
+    WindowScore,
+    utilisation_share,
+)
 from custom_components.hsem.utils.persistence import (
     aware_datetime_from_iso,
     finite_float,
@@ -36,6 +49,10 @@ REASON_ORACLE_UNSOLVED = "oracle_unsolved"
 REASON_POTENTIAL_BELOW_THRESHOLD = "potential_below_threshold"
 #: Why a scored run has no battery / solar split: the extra solve failed.
 REASON_BREAKDOWN_UNSOLVED = "breakdown_unsolved"
+#: Why a scored run has no EV figures: no managed session delivered energy
+#: that could have been moved, or the EV solves failed.
+REASON_NO_EV_SESSION = "no_ev_session"
+REASON_EV_UNSOLVED = "ev_unsolved"
 
 
 @dataclass(frozen=True)
@@ -56,6 +73,8 @@ class PerformanceSample:
         ev_power_w: Charging power of the configured EV chargers together, or
             ``None`` when no EV is configured.
         ev_connected: Whether a configured EV was plugged in.
+        chargers: Each configured charger on its own, for the EV timing
+            score (issue #1271): primary first.
     """
 
     at: datetime
@@ -69,6 +88,7 @@ class PerformanceSample:
     pv_power_w: float | None = None
     ev_power_w: float | None = None
     ev_connected: bool | None = None
+    chargers: tuple[ChargerSample, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         """Return the sample as a plain dict for JSON serialisation."""
@@ -84,6 +104,7 @@ class PerformanceSample:
             "pv_power_w": self.pv_power_w,
             "ev_power_w": self.ev_power_w,
             "ev_connected": self.ev_connected,
+            "chargers": [charger.as_dict() for charger in self.chargers],
         }
 
     @classmethod
@@ -105,7 +126,10 @@ class PerformanceSample:
             pv_energy_kwh=finite_float(data.get("pv_energy_kwh")),
             pv_power_w=finite_float(data.get("pv_power_w")),
             ev_power_w=finite_float(data.get("ev_power_w")),
-            ev_connected=_optional_bool(data.get("ev_connected")),
+            ev_connected=optional_bool(data.get("ev_connected")),
+            chargers=tuple(
+                ChargerSample.from_dict(raw) for raw in as_list(data.get("chargers"))
+            ),
         )
 
 
@@ -134,6 +158,8 @@ class PerformanceSlot:
         ev_kwh: Energy delivered to the configured EVs, or ``None`` likewise
             (and whenever no EV is configured).
         ev_connected: Whether a configured EV was plugged in at any time.
+        chargers: Each configured charger on its own, primary first
+            (issue #1271).  Empty in slots recorded before that existed.
     """
 
     start: datetime
@@ -149,6 +175,7 @@ class PerformanceSlot:
     pv_kwh: float | None = 0.0
     ev_kwh: float | None = 0.0
     ev_connected: bool | None = None
+    chargers: list[ChargerRecord] = field(default_factory=list)
 
     @property
     def coverage(self) -> float:
@@ -169,6 +196,7 @@ class PerformanceSlot:
         pv_kwh: float | None,
         ev_kwh: float | None,
         ev_connected: bool | None,
+        chargers: Sequence[ChargerPiece] = (),
     ) -> None:
         """Add one observed stretch of the slot.
 
@@ -184,7 +212,11 @@ class PerformanceSlot:
             pv_kwh: PV production during it, or ``None`` if unobserved.
             ev_kwh: EV energy delivered during it, or ``None`` if unobserved.
             ev_connected: Whether an EV was plugged in, or ``None`` if unknown.
+            chargers: What each configured charger did during it.
         """
+        merge_charger_pieces(
+            self.chargers, chargers, first=self.coverage_seconds <= 0.0
+        )
         covered = self.coverage_seconds + seconds
         if covered > 0.0:
             self.import_price = (
@@ -201,8 +233,8 @@ class PerformanceSlot:
         if self.soc_start_pct is None:
             self.soc_start_pct = soc_start_pct
         self.soc_end_pct = soc_end_pct
-        self.pv_kwh = _add_optional(self.pv_kwh, pv_kwh)
-        self.ev_kwh = _add_optional(self.ev_kwh, ev_kwh)
+        self.pv_kwh = add_optional(self.pv_kwh, pv_kwh)
+        self.ev_kwh = add_optional(self.ev_kwh, ev_kwh)
         if ev_connected is not None:
             self.ev_connected = bool(self.ev_connected) or ev_connected
 
@@ -222,6 +254,7 @@ class PerformanceSlot:
             "pv_kwh": self.pv_kwh,
             "ev_kwh": self.ev_kwh,
             "ev_connected": self.ev_connected,
+            "chargers": [charger.as_dict() for charger in self.chargers],
         }
 
     @classmethod
@@ -251,7 +284,10 @@ class PerformanceSlot:
         slot.soc_end_pct = finite_float(data.get("soc_end_pct"))
         slot.pv_kwh = finite_float(data.get("pv_kwh"))
         slot.ev_kwh = finite_float(data.get("ev_kwh"))
-        slot.ev_connected = _optional_bool(data.get("ev_connected"))
+        slot.ev_connected = optional_bool(data.get("ev_connected"))
+        slot.chargers = [
+            ChargerRecord.from_dict(raw) for raw in as_list(data.get("chargers"))
+        ]
         return slot
 
 
@@ -280,6 +316,13 @@ class PerformanceScore:
             handling of PV surplus; splits the regret into a battery and a
             solar part (issue #1270).  ``None`` on scores from before that
             split existed and when its solve failed.
+        ev_shiftable_kwh: EV energy delivered in managed sessions, which
+            could have been delivered at other times (issue #1271).  ``None``
+            on scores from before the EV score existed.
+        ev_joint_oracle_cost: Grid cost with the battery and the EV timing
+            both chosen by hindsight, ending like ``oracle_cost``'s run.
+        ev_plug_and_charge_cost: Grid cost with the battery chosen by
+            hindsight and every session charged at full power from its start.
         start_kwh: Stored energy the run started with.
         realized_end_kwh: Stored energy the run really ended with.
         baseline_end_kwh: Stored energy self-consumption would have ended with.
@@ -300,6 +343,9 @@ class PerformanceScore:
     baseline_cost: float | None = None
     potential: float | None = None
     pv_as_realized_cost: float | None = None
+    ev_shiftable_kwh: float | None = None
+    ev_joint_oracle_cost: float | None = None
+    ev_plug_and_charge_cost: float | None = None
     start_kwh: float | None = None
     realized_end_kwh: float | None = None
     baseline_end_kwh: float | None = None
@@ -397,6 +443,52 @@ class PerformanceScore:
             return REASON_POTENTIAL_BELOW_THRESHOLD
         return None
 
+    @property
+    def has_ev_score(self) -> bool:
+        """Return whether both EV hindsight runs were solved for this run."""
+        return (
+            self.is_scored
+            and self.ev_joint_oracle_cost is not None
+            and self.ev_plug_and_charge_cost is not None
+        )
+
+    @property
+    def ev_missed(self) -> float | None:
+        """Return what better EV timing would have saved: ``oracle − joint``."""
+        if not self.has_ev_score or self.oracle_cost is None:
+            return None
+        return self.oracle_cost - (self.ev_joint_oracle_cost or 0.0)
+
+    @property
+    def ev_potential(self) -> float | None:
+        """Return what the best EV timing saves over plugging in and charging."""
+        if not self.has_ev_score:
+            return None
+        return (self.ev_plug_and_charge_cost or 0.0) - (
+            self.ev_joint_oracle_cost or 0.0
+        )
+
+    @property
+    def ev_efficiency(self) -> float | None:
+        """Return the share of the EV potential that was realized, if any."""
+        potential = self.ev_potential
+        if potential is None:
+            return None
+        return utilisation_share(self.ev_missed, potential)
+
+    @property
+    def ev_reason(self) -> str | None:
+        """Return why the run has no EV charging efficiency, or ``None``."""
+        if self.reason is not None:
+            return self.reason
+        if not self.ev_shiftable_kwh:
+            return REASON_NO_EV_SESSION
+        if not self.has_ev_score:
+            return REASON_EV_UNSOLVED
+        if self.ev_efficiency is None:
+            return REASON_POTENTIAL_BELOW_THRESHOLD
+        return None
+
     def for_day(self, day: str) -> PerformanceScore:
         """Return this score labelled as the local calendar day *day*."""
         return replace(self, day=day)
@@ -415,6 +507,9 @@ class PerformanceScore:
             "baseline_cost": self.baseline_cost,
             "potential": self.potential,
             "pv_as_realized_cost": self.pv_as_realized_cost,
+            "ev_shiftable_kwh": self.ev_shiftable_kwh,
+            "ev_joint_oracle_cost": self.ev_joint_oracle_cost,
+            "ev_plug_and_charge_cost": self.ev_plug_and_charge_cost,
             "start_kwh": self.start_kwh,
             "realized_end_kwh": self.realized_end_kwh,
             "baseline_end_kwh": self.baseline_end_kwh,
@@ -451,6 +546,9 @@ class PerformanceScore:
             baseline_cost=finite_float(data.get("baseline_cost")),
             potential=finite_float(data.get("potential")),
             pv_as_realized_cost=finite_float(data.get("pv_as_realized_cost")),
+            ev_shiftable_kwh=finite_float(data.get("ev_shiftable_kwh"), minimum=0.0),
+            ev_joint_oracle_cost=finite_float(data.get("ev_joint_oracle_cost")),
+            ev_plug_and_charge_cost=finite_float(data.get("ev_plug_and_charge_cost")),
             start_kwh=finite_float(data.get("start_kwh")),
             realized_end_kwh=finite_float(data.get("realized_end_kwh")),
             baseline_end_kwh=finite_float(data.get("baseline_end_kwh")),
@@ -458,15 +556,3 @@ class PerformanceScore:
             notes=tuple(str(note) for note in notes) if isinstance(notes, list) else (),
             day=day if isinstance(day, str) else None,
         )
-
-
-def _add_optional(total: float | None, part: float | None) -> float | None:
-    """Add *part* to *total*; once either is unobserved the sum stays unknown."""
-    if total is None or part is None:
-        return None
-    return total + part
-
-
-def _optional_bool(value: Any) -> bool | None:
-    """Return a JSON boolean, or ``None`` for anything else."""
-    return value if isinstance(value, bool) else None

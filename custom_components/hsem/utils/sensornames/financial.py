@@ -197,3 +197,26 @@ def get_performance_solar_utilisation_entity_id() -> str:
 
     """
     return f"sensor.{s(f'{DOMAIN}_performance_solar_utilisation')}"
+
+
+def get_performance_ev_charging_efficiency_unique_id(entry_id: str) -> str:
+    """Generate a unique ID for the performance EV-charging-efficiency sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+
+    Returns:
+        str: Unique ID of the EV-charging-efficiency sensor.
+
+    """
+    return f"{DOMAIN}_{entry_id}_performance_ev_charging_efficiency_sensor"
+
+
+def get_performance_ev_charging_efficiency_entity_id() -> str:
+    """Generate an Entity ID for the performance EV-charging-efficiency sensor.
+
+    Returns:
+        str: Entity ID of the EV-charging-efficiency sensor.
+
+    """
+    return f"sensor.{s(f'{DOMAIN}_performance_ev_charging_efficiency')}"

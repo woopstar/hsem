@@ -159,6 +159,18 @@ views:
             color: state
             grid_options:
               columns: 2
+          - type: conditional
+            conditions:
+              - entity: sensor.hsem_performance_ev_charging_efficiency
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: sensor.hsem_performance_ev_charging_efficiency
+              name: EV Charging Efficiency (24 h)
+              icon: mdi:ev-station
+              color: state
       - type: grid
         cards:
           - type: heading

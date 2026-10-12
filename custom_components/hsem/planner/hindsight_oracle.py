@@ -87,6 +87,23 @@ class HindsightBattery:
 
 
 @dataclass(frozen=True)
+class ShiftableLoad:
+    """Energy a load must draw within given slots, at times the oracle picks.
+
+    An EV charging session, for example: the energy that was delivered may be
+    delivered in any of the slots the car was plugged in.  The window's net
+    load must not contain the load's energy a second time.
+
+    Attributes:
+        energy_kwh: Energy the load must draw in total.
+        max_kwh: Most it may draw per slot; 0 where it cannot draw at all.
+    """
+
+    energy_kwh: float
+    max_kwh: tuple[float, ...]
+
+
+@dataclass(frozen=True)
 class HindsightRun:
     """Grid and battery flows of one way to run the window.
 
@@ -97,6 +114,7 @@ class HindsightRun:
         charged_kwh: AC energy charged per slot.
         discharged_kwh: AC energy discharged per slot.
         stored_kwh: Stored energy at the end of each slot.
+        shifted_kwh: Per shiftable load, the energy it drew in each slot.
     """
 
     cost: float
@@ -105,6 +123,7 @@ class HindsightRun:
     charged_kwh: tuple[float, ...]
     discharged_kwh: tuple[float, ...]
     stored_kwh: tuple[float, ...]
+    shifted_kwh: tuple[tuple[float, ...], ...] = ()
 
     @property
     def end_stored_kwh(self) -> float | None:
@@ -238,6 +257,7 @@ def solve_hindsight_oracle(
     max_discharge_kwh: Sequence[float] | None = None,
     max_grid_import_kwh: Sequence[float] | None = None,
     max_grid_export_kwh: Sequence[float] | None = None,
+    shiftable: Sequence[ShiftableLoad] = (),
     time_limit_s: float = ORACLE_TIME_LIMIT_S,
 ) -> HindsightRun | None:
     """Return the cheapest way the battery could have been run, in hindsight.
@@ -272,6 +292,8 @@ def solve_hindsight_oracle(
             ``None``.
         max_grid_export_kwh: Per-slot grid export limit; unlimited when
             ``None``.
+        shiftable: Loads whose energy the oracle places itself, on top of
+            the slots' net load (issue #1271).
         time_limit_s: Wall-clock limit for the solve.
 
     Returns:
@@ -308,7 +330,8 @@ def solve_hindsight_oracle(
     # The most a slot can import or export, whatever the battery does.  Used
     # as the bound when no grid limit is given, and as the big-M that ties the
     # grid flows to their direction switch.
-    import_cap = np.maximum(net, 0.0) + charge_cap + curtail_cap
+    load_caps = [np.array(load.max_kwh, dtype=float) for load in shiftable]
+    import_cap = np.maximum(net, 0.0) + charge_cap + curtail_cap + sum(load_caps)
     export_cap = np.maximum(-net, 0.0) + discharge_cap
     if max_grid_import_kwh is not None:
         import_cap = np.minimum(import_cap, np.array(max_grid_import_kwh, dtype=float))
@@ -316,7 +339,8 @@ def solve_hindsight_oracle(
         export_cap = np.minimum(export_cap, np.array(max_grid_export_kwh, dtype=float))
 
     # Variable blocks, each ``count`` long: charge, discharge, import, export,
-    # curtailment, then the battery and grid direction switches.
+    # curtailment, the battery and grid direction switches, then one block per
+    # shiftable load.
     (
         charge,
         discharge,
@@ -325,8 +349,9 @@ def solve_hindsight_oracle(
         curtail,
         charging,
         importing,
-    ) = (slice(i * count, (i + 1) * count) for i in range(7))
-    width = 7 * count
+        *loads,
+    ) = (slice(i * count, (i + 1) * count) for i in range(7 + len(shiftable)))
+    width = (7 + len(shiftable)) * count
     eye = np.eye(count)
 
     def block(**parts: np.ndarray) -> np.ndarray:
@@ -345,10 +370,16 @@ def solve_hindsight_oracle(
             matrix[:, columns[name]] = values
         return matrix
 
-    # Energy balance: import − export = net load + charge − discharge + curtailed.
+    # Energy balance: import − export = net load + charge − discharge + curtailed
+    # + what the shiftable loads draw.
     balance = block(
         grid_in=eye, grid_out=-eye, charge=-eye, discharge=eye, curtail=-eye
     )
+    placed = np.zeros((len(shiftable), width))
+    for index, block_slice in enumerate(loads):
+        balance[:, block_slice] = -eye
+        placed[index, block_slice] = 1.0
+    energies = np.array([load.energy_kwh for load in shiftable], dtype=float)
     # Stored energy after each slot, as a running sum of the battery flows.
     running = np.tril(np.ones((count, count)))
     stored = block(
@@ -372,6 +403,8 @@ def solve_hindsight_oracle(
     upper[grid_in] = import_cap
     upper[grid_out] = export_cap
     upper[curtail] = curtail_cap
+    for block_slice, cap in zip(loads, load_caps, strict=True):
+        upper[block_slice] = cap
     integrality = np.zeros(width)
     integrality[charging] = 1
     integrality[importing] = 1
@@ -399,6 +432,8 @@ def solve_hindsight_oracle(
                 -np.inf,
                 export_cap,
             ),
+            # each shiftable load draws exactly its energy
+            *([linear_constraint(placed, energies, energies)] if shiftable else []),
         ],
         integrality=integrality,
         bounds=bounds(lower, upper),
@@ -419,5 +454,9 @@ def solve_hindsight_oracle(
         discharged_kwh=tuple(discharged),
         stored_kwh=tuple(
             stored_trajectory(battery, start_stored_kwh, charged, discharged)
+        ),
+        shifted_kwh=tuple(
+            tuple(max(float(v), 0.0) for v in result.x[block_slice])
+            for block_slice in loads
         ),
     )
