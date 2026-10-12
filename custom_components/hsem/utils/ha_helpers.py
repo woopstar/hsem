@@ -236,6 +236,31 @@ def ha_get_entity_state_and_convert(
         )
 
 
+def entity_attribute_float(
+    self: Any, entity_id: str | None, attribute: str
+) -> float | None:
+    """Return one numeric attribute of *entity_id*, or ``None``.
+
+    Args:
+        self: The calling coordinator or component instance (must expose
+            ``.hass``).
+        entity_id: The entity to look up; ``None`` or empty returns ``None``.
+        attribute: Name of the state attribute, e.g. ``"max"``.
+
+    Returns:
+        The attribute as a float, or ``None`` when the entity or the
+        attribute is absent or the value is not a number.
+    """
+    hass = getattr(self, "hass", None)
+    state_obj = hass.states.get(entity_id) if hass is not None and entity_id else None
+    if state_obj is None:
+        return None
+    value = state_obj.attributes.get(attribute)
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        return None
+    return convert_to_float(value)
+
+
 def normalize_entity_float(
     self: Any,
     entity_id: str | None,

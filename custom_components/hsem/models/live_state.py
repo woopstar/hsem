@@ -102,7 +102,10 @@ class LiveState:
         huawei_batteries_charging_cutoff_capacity_pct: Max SoC during charging (general cutoff).
         huawei_batteries_grid_charge_cutoff_soc_pct: Grid charge cutoff SoC.
         huawei_batteries_max_charge_power_w: Maximum charging power in Watts.
-        huawei_batteries_max_discharge_power_w: Maximum discharging power in Watts.
+        huawei_batteries_max_discharge_power_w: Commanded maximum discharging
+            power in Watts (the number entity's state).
+        huawei_batteries_max_discharge_power_limit_w: Highest discharging power
+            the number entity accepts, in Watts (its ``max`` attribute).
         huawei_batteries_grid_charge_max_power_w: Live grid-charge maximum-power
             ceiling in Watts (issue #831), or ``None`` if unconfigured.
         huawei_batteries_charge_discharge_power_w: Live signed battery
@@ -166,6 +169,10 @@ class LiveState:
     huawei_batteries_grid_charge_cutoff_soc_pct: float | None = None
     huawei_batteries_max_charge_power_w: float | None = None
     huawei_batteries_max_discharge_power_w: float | None = None
+    #: ``max`` attribute of the discharging-power number entity in Watts
+    #: (issue #1291), or ``None`` when unavailable.  A capability, unlike the
+    #: state above, which is the value HSEM last commanded.
+    huawei_batteries_max_discharge_power_limit_w: float | None = None
     #: Live Huawei grid-charge maximum-power ceiling in Watts (issue #831),
     #: or ``None`` when unconfigured/unavailable.
     huawei_batteries_grid_charge_max_power_w: float | None = None
