@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from custom_components.hsem.coordinator_helpers import _StaleUpdateCycle
+from custom_components.hsem.coordinator_staleness import cycle_is_stale
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner.ev_soc_economics import (
@@ -110,7 +111,7 @@ class CoordinatorEvSoCEconomicsMixin(CoordinatorSharedState):
             async_log("debug", "[ev_soc_economics] Skipped this cycle (%s).", err)
             return
 
-        if getattr(self, "_update_generation", 0) != captured_generation:
+        if cycle_is_stale(self, captured_generation):
             raise _StaleUpdateCycle
 
         self._ev_soc_economics = primary

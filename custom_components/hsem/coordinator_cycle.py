@@ -30,6 +30,11 @@ from custom_components.hsem.coordinator_meter_tracking import (
 )
 from custom_components.hsem.coordinator_performance import async_track_performance
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
+from custom_components.hsem.coordinator_staleness import (
+    cycle_is_stale,
+    record_publication,
+    record_stale_discard,
+)
 from custom_components.hsem.coordinator_state import (
     CoordinatorSharedState,
 )
@@ -447,6 +452,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             )
 
         except _StaleUpdateCycle:
+            record_stale_discard(self, captured_generation)
             self._restore_accepted_plan_state(accepted_plan_state)
             return
         except asyncio.CancelledError:
@@ -551,19 +557,15 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             savings_tracker=getattr(self, "_savings_tracker", SavingsTracker()),
         )
 
-        if getattr(self, "_update_generation", 0) != captured_generation:
-            async_log(
-                "debug",
-                "[coordinator] Discarding stale cycle: update generation advanced "
-                "%d→%d.",
-                captured_generation,
-                getattr(self, "_update_generation", 0),
-            )
+        # After a run of stale discards this publishes anyway (#1303).
+        if cycle_is_stale(self, captured_generation):
+            record_stale_discard(self, captured_generation)
             self._restore_accepted_plan_state(accepted_plan_state)
             return
 
         # Notify all subscriber entities atomically. No await occurs between the
         # generation check and publication, so a newer event cannot interleave.
+        record_publication(self, captured_generation)
         self.async_set_updated_data(data)
         if fresh_plan:
             assert planner_output_to_commit is not None

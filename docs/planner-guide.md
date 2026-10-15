@@ -1331,7 +1331,10 @@ baseline advances only after successful publication.
 
 Registered state events received during a solve advance a coordinator generation.
 The stale cycle is discarded before publication and one durable follow-up cycle
-runs from a fresh snapshot.
+runs from a fresh snapshot, 2 s later so that further events coalesce into it.
+After two discards in a row, the next cycle publishes even if it is overtaken,
+then reruns against the newer state. Events that arrive faster than a cycle runs
+can therefore delay publication but never stop it (issue #1303).
 
 ### Safety gate behaviour
 
