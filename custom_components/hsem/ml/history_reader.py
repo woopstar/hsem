@@ -41,6 +41,11 @@ DEFAULT_MIN_HISTORY_DAYS = 14
 # with very long recorder retention.
 DEFAULT_MAX_HISTORY_DAYS = 90
 
+# How long a read that found too little history is remembered before the
+# recorder is queried again.  History grows by days, so re-checking more often
+# only repeats a large query with the same answer (#1302, #1306).
+INSUFFICIENT_HISTORY_RETRY = timedelta(minutes=15)
+
 # Default slot resolution in minutes (15-minute slots = 96 per day).
 DEFAULT_SLOT_MINUTES = 15
 

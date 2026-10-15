@@ -21,6 +21,7 @@ from homeassistant.core import HomeAssistant
 from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
 from custom_components.hsem.ml.history_reader import (
     DEFAULT_MAX_HISTORY_DAYS,
+    INSUFFICIENT_HISTORY_RETRY,
     HistoryReader,
 )
 from custom_components.hsem.ml.weather_features import (
@@ -63,7 +64,6 @@ _MIN_HISTORY_REFRESH = timedelta(minutes=60)
 # shorter than the success cache so a fixed recorder or meter alignment is
 # picked up promptly.
 _insufficient_history_cache: dict[_HistoryCacheKey, datetime] = {}
-_INSUFFICIENT_HISTORY_RETRY = timedelta(minutes=15)
 
 
 async def populate_ml_house_consumption(
@@ -132,7 +132,7 @@ async def populate_ml_house_consumption(
     if (
         not cache_valid
         and insufficient_at is not None
-        and cache_is_fresh(insufficient_at, now_ts, _INSUFFICIENT_HISTORY_RETRY)
+        and cache_is_fresh(insufficient_at, now_ts, INSUFFICIENT_HISTORY_RETRY)
     ):
         HSEM_LOGGER.debug(
             "ML populator: history for %s was insufficient %.0f min ago; "
