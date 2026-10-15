@@ -46,6 +46,10 @@ from custom_components.hsem.utils.datetime_utils import utc_key
 from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
 from custom_components.hsem.utils.logger import async_log
 from custom_components.hsem.utils.misc import get_config_value, resolve_cycle_cost
+from custom_components.hsem.utils.pool_jobs import (
+    JOB_DYNAMIC_FLOOR,
+    PLANNER_JOB_BUDGET_S,
+)
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import (
     slot_duration_hours,
@@ -343,9 +347,15 @@ class CoordinatorDynamicFloorMixin(CoordinatorSharedState):
 
         Raises:
             _StaleUpdateCycle: A newer update cycle started during the solve.
+            PoolJobUnavailable: The reference solve is still running from an
+                earlier cycle or exceeded its budget.
         """
-        reference_output = await self.hass.async_add_executor_job(
-            run_planner, reference_solve_input(planner_input)
+        reference_output = await self._pool_job_guard().run(
+            self.hass,
+            JOB_DYNAMIC_FLOOR,
+            PLANNER_JOB_BUDGET_S,
+            run_planner,
+            reference_solve_input(planner_input),
         )
         if getattr(self, "_update_generation", 0) != captured_generation:
             raise _StaleUpdateCycle

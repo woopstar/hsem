@@ -19,6 +19,12 @@ from custom_components.hsem.planner.ev_soc_economics import (
     EVSoCEconomicsResult,
     compute_ev_soc_economics,
 )
+from custom_components.hsem.utils.logger import async_log
+from custom_components.hsem.utils.pool_jobs import (
+    EV_SOC_ECONOMICS_JOB_BUDGET_S,
+    JOB_EV_SOC_ECONOMICS,
+    PoolJobUnavailable,
+)
 
 #: Minimum seconds between EV SoC economics recomputes when no fresh plan
 #: ran. On a fresh replan (the same events that update
@@ -89,9 +95,20 @@ class CoordinatorEvSoCEconomicsMixin(CoordinatorSharedState):
         ):
             return
 
-        primary, second = await self.hass.async_add_executor_job(
-            _compute_both_ev_soc_economics, planner_input, now
-        )
+        try:
+            primary, second = await self._pool_job_guard().run(
+                self.hass,
+                JOB_EV_SOC_ECONOMICS,
+                EV_SOC_ECONOMICS_JOB_BUDGET_S,
+                _compute_both_ev_soc_economics,
+                planner_input,
+                now,
+            )
+        except PoolJobUnavailable as err:
+            # The table is advisory: keep the previous one rather than queue
+            # another sweep behind one the pool has not returned.
+            async_log("debug", "[ev_soc_economics] Skipped this cycle (%s).", err)
+            return
 
         if getattr(self, "_update_generation", 0) != captured_generation:
             raise _StaleUpdateCycle

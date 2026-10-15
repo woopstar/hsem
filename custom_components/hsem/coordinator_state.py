@@ -57,6 +57,7 @@ from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
 from custom_components.hsem.utils.ev_delivered_energy import EVDeliveredEnergyTracker
 from custom_components.hsem.utils.forecast_tracker import ForecastTracker
 from custom_components.hsem.utils.live_power import LivePowerEstimate, LivePowerWindow
+from custom_components.hsem.utils.pool_jobs import PoolJobGuard
 from custom_components.hsem.utils.prediction_tracker import PredictionTracker
 from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
 
@@ -172,8 +173,17 @@ class CoordinatorSharedState(_Base):
     _tracked_entities: set[str]
     _update_generation: int
     _update_lock: asyncio.Lock
+    _pool_jobs: PoolJobGuard
     _window_hys_previous_rec: str | None
     _window_hys_previous_slot_start: datetime | None
+
+    def _pool_job_guard(self) -> PoolJobGuard:
+        """Return the guard that keeps one executor job per kind in flight."""
+        guard = getattr(self, "_pool_jobs", None)
+        if guard is None:
+            guard = PoolJobGuard()
+            self._pool_jobs = guard
+        return guard
 
     # Methods provided by sibling mixins or the concrete coordinator.
     async def _async_handle_update(self, event: Any = None) -> None: ...
