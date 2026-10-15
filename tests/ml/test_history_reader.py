@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
@@ -45,6 +47,26 @@ def _state(
 
 def _attr_state(timestamp: datetime, attributes: dict[str, object]) -> SimpleNamespace:
     return SimpleNamespace(last_updated=timestamp, state="windy", attributes=attributes)
+
+
+def _recorder_executor(
+    states_by_entity: dict[str, list[SimpleNamespace]],
+) -> tuple[AsyncMock, MagicMock]:
+    """Return a recorder executor that runs its job inline, and the query mock.
+
+    The job runs with ``get_significant_states`` patched to return
+    *states_by_entity*, so the conversion code under test still executes.
+    """
+    query = MagicMock(return_value=states_by_entity)
+
+    async def run(target: Callable[..., Any], *args: Any) -> Any:
+        with patch(
+            "custom_components.hsem.ml.history_reader.get_significant_states",
+            query,
+        ):
+            return target(*args)
+
+    return AsyncMock(side_effect=run), query
 
 
 def _deltas(
@@ -140,8 +162,8 @@ async def _read_actuals(
     *,
     now: datetime,
     states: list[SimpleNamespace],
-) -> tuple[dict[datetime, float], AsyncMock]:
-    executor = AsyncMock(return_value={ENTITY_ID: states})
+) -> tuple[dict[datetime, float], MagicMock]:
+    executor, query = _recorder_executor({ENTITY_ID: states})
     recorder = SimpleNamespace(async_add_executor_job=executor)
     with (
         patch(
@@ -154,7 +176,7 @@ async def _read_actuals(
         ),
     ):
         actuals = await HistoryReader(MagicMock()).read_today_actuals(ENTITY_ID)
-    return actuals, executor
+    return actuals, query
 
 
 @pytest.mark.asyncio
@@ -171,16 +193,16 @@ async def test_today_actuals_use_local_midnight_and_exclude_current_or_prior_day
         _state(datetime(2026, 8, 19, 22, 34, 50, tzinfo=UTC), 100.6),
     ]
 
-    actuals, executor = await _read_actuals(now=now, states=states)
+    actuals, query = await _read_actuals(now=now, states=states)
 
     assert actuals == {
         datetime(2026, 8, 19, 22, 0, tzinfo=UTC): pytest.approx(0.2),
         datetime(2026, 8, 19, 22, 15, tzinfo=UTC): pytest.approx(0.3),
     }
-    assert executor.await_args is not None
-    call_args = executor.await_args.args
-    assert call_args[2] == datetime(2026, 8, 19, 21, 45, tzinfo=UTC)
-    assert call_args[3] == datetime(2026, 8, 19, 22, 40, tzinfo=UTC)
+    assert query.call_args is not None
+    call_args = query.call_args.args
+    assert call_args[1] == datetime(2026, 8, 19, 21, 45, tzinfo=UTC)
+    assert call_args[2] == datetime(2026, 8, 19, 22, 40, tzinfo=UTC)
 
 
 @pytest.mark.asyncio
@@ -193,7 +215,7 @@ async def test_today_actuals_keep_repeated_hour_folds_as_distinct_keys() -> None
         _state(datetime(2026, 10, 25, 1, 29, 50, tzinfo=UTC), 100.3),
     ]
 
-    actuals, _executor = await _read_actuals(now=now, states=states)
+    actuals, _query = await _read_actuals(now=now, states=states)
 
     assert datetime(2026, 10, 25, 0, 45, tzinfo=UTC) in actuals
     assert datetime(2026, 10, 25, 1, 0, tzinfo=UTC) in actuals
@@ -209,7 +231,7 @@ async def test_instantaneous_history_orders_repeated_hour_by_physical_time() -> 
         _state(datetime(2026, 10, 25, 1, 0, tzinfo=UTC), 20.0),
         _state(datetime(2026, 10, 25, 0, 0, tzinfo=UTC), 10.0),
     ]
-    executor = AsyncMock(return_value={ENTITY_ID: states})
+    executor, _query = _recorder_executor({ENTITY_ID: states})
     recorder = SimpleNamespace(async_add_executor_job=executor)
 
     with (
@@ -257,7 +279,7 @@ async def test_energy_history_with_nonfinite_states_falls_back() -> None:
         _state(datetime(2026, 8, 20, 7, 44, 50, tzinfo=UTC), float("nan")),
         _state(datetime(2026, 8, 20, 7, 59, 50, tzinfo=UTC), float("inf")),
     ]
-    executor = AsyncMock(return_value={ENTITY_ID: states})
+    executor, _query = _recorder_executor({ENTITY_ID: states})
     recorder = SimpleNamespace(async_add_executor_job=executor)
 
     with (
@@ -286,7 +308,7 @@ async def test_energy_history_normalizes_wh_to_kwh() -> None:
         _state(datetime(2026, 8, 20, 7, 44, 50, tzinfo=UTC), 100_000.0, unit="Wh"),
         _state(datetime(2026, 8, 20, 7, 59, 50, tzinfo=UTC), 101_000.0, unit="Wh"),
     ]
-    executor = AsyncMock(return_value={ENTITY_ID: states})
+    executor, _query = _recorder_executor({ENTITY_ID: states})
     recorder = SimpleNamespace(async_add_executor_job=executor)
 
     with (
@@ -323,7 +345,7 @@ async def test_energy_history_without_expected_unit_skips_normalization() -> Non
         _state(datetime(2026, 8, 20, 7, 44, 50, tzinfo=UTC), 100.0, unit="Wh"),
         _state(datetime(2026, 8, 20, 7, 59, 50, tzinfo=UTC), 101.0, unit="Wh"),
     ]
-    executor = AsyncMock(return_value={ENTITY_ID: states})
+    executor, _query = _recorder_executor({ENTITY_ID: states})
     recorder = SimpleNamespace(async_add_executor_job=executor)
 
     with (
@@ -355,7 +377,7 @@ async def test_today_actuals_do_not_publish_nonfinite_boundary() -> None:
         _state(datetime(2026, 8, 20, 7, 59, 50, tzinfo=UTC), 100.5),
     ]
 
-    actuals, _executor = await _read_actuals(now=now, states=states)
+    actuals, _query = await _read_actuals(now=now, states=states)
 
     assert actuals == {}
 
@@ -369,7 +391,7 @@ async def test_instantaneous_history_filters_nonfinite_temperature() -> None:
         _state(finite_timestamp, 18.5),
         _state(datetime(2026, 8, 20, 8, 0, tzinfo=UTC), float("-inf")),
     ]
-    executor = AsyncMock(return_value={ENTITY_ID: states})
+    executor, _query = _recorder_executor({ENTITY_ID: states})
     recorder = SimpleNamespace(async_add_executor_job=executor)
 
     with (
@@ -397,7 +419,7 @@ async def test_instantaneous_history_normalizes_fahrenheit_to_celsius() -> None:
     timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
     # 98.6°F == 37.0°C.
     states = [_state(timestamp, 98.6, unit=UnitOfTemperature.FAHRENHEIT)]
-    executor = AsyncMock(return_value={ENTITY_ID: states})
+    executor, _query = _recorder_executor({ENTITY_ID: states})
     recorder = SimpleNamespace(async_add_executor_job=executor)
 
     with (
@@ -429,7 +451,7 @@ async def test_instantaneous_history_without_expected_unit_skips_normalization()
     now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
     timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
     states = [_state(timestamp, 98.6, unit=UnitOfTemperature.FAHRENHEIT)]
-    executor = AsyncMock(return_value={ENTITY_ID: states})
+    executor, _query = _recorder_executor({ENTITY_ID: states})
     recorder = SimpleNamespace(async_add_executor_job=executor)
 
     with (
@@ -456,7 +478,7 @@ async def test_instantaneous_history_missing_unit_assumes_expected_unit() -> Non
     now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
     timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
     states = [_state(timestamp, 21.5)]
-    executor = AsyncMock(return_value={ENTITY_ID: states})
+    executor, _query = _recorder_executor({ENTITY_ID: states})
     recorder = SimpleNamespace(async_add_executor_job=executor)
 
     with (
@@ -484,7 +506,7 @@ async def test_instantaneous_history_already_canonical_unit_is_unchanged() -> No
     now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
     timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
     states = [_state(timestamp, 21.5, unit=UnitOfTemperature.CELSIUS)]
-    executor = AsyncMock(return_value={ENTITY_ID: states})
+    executor, _query = _recorder_executor({ENTITY_ID: states})
     recorder = SimpleNamespace(async_add_executor_job=executor)
 
     with (
@@ -516,7 +538,7 @@ async def test_attribute_history_reads_named_attribute_not_state() -> None:
     now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
     finite_timestamp = datetime(2026, 8, 20, 7, 45, tzinfo=UTC)
     states = [_attr_state(finite_timestamp, {"wind_speed": 22.5})]
-    executor = AsyncMock(return_value={ENTITY_ID: states})
+    executor, _query = _recorder_executor({ENTITY_ID: states})
     recorder = SimpleNamespace(async_add_executor_job=executor)
 
     with (
@@ -548,7 +570,7 @@ async def test_attribute_history_skips_missing_attribute() -> None:
         _attr_state(datetime(2026, 8, 20, 7, 30, tzinfo=UTC), {}),
         _attr_state(finite_timestamp, {"wind_speed": 10.0}),
     ]
-    executor = AsyncMock(return_value={ENTITY_ID: states})
+    executor, _query = _recorder_executor({ENTITY_ID: states})
     recorder = SimpleNamespace(async_add_executor_job=executor)
 
     with (
@@ -582,7 +604,7 @@ async def test_attribute_history_skips_nonfinite_attribute_value() -> None:
         ),
         _attr_state(finite_timestamp, {"wind_speed": 12.0}),
     ]
-    executor = AsyncMock(return_value={ENTITY_ID: states})
+    executor, _query = _recorder_executor({ENTITY_ID: states})
     recorder = SimpleNamespace(async_add_executor_job=executor)
 
     with (
@@ -620,7 +642,7 @@ async def test_today_actuals_normalizes_wh_to_kwh() -> None:
         _state(datetime(2026, 8, 19, 21, 59, 50, tzinfo=UTC), 100_000.0, unit="Wh"),
         _state(datetime(2026, 8, 19, 22, 14, 50, tzinfo=UTC), 100_200.0, unit="Wh"),
     ]
-    executor = AsyncMock(return_value={ENTITY_ID: states})
+    executor, _query = _recorder_executor({ENTITY_ID: states})
     recorder = SimpleNamespace(async_add_executor_job=executor)
 
     with (
@@ -656,7 +678,7 @@ async def test_today_actuals_without_expected_unit_skips_normalization() -> None
         _state(datetime(2026, 8, 19, 21, 59, 50, tzinfo=UTC), 100.0, unit="Wh"),
         _state(datetime(2026, 8, 19, 22, 14, 50, tzinfo=UTC), 100.2, unit="Wh"),
     ]
-    executor = AsyncMock(return_value={ENTITY_ID: states})
+    executor, _query = _recorder_executor({ENTITY_ID: states})
     recorder = SimpleNamespace(async_add_executor_job=executor)
 
     with (
@@ -673,4 +695,71 @@ async def test_today_actuals_without_expected_unit_skips_normalization() -> None
 
     assert actuals == {
         datetime(2026, 8, 19, 22, 0, tzinfo=UTC): pytest.approx(0.2),
+    }
+
+
+@pytest.mark.asyncio
+async def test_energy_history_query_and_conversion_run_in_one_executor_job() -> None:
+    """No per-state loop may run on the event loop (#1302).
+
+    The recorder query, state conversion and delta pass are a single
+    executor job; the coroutine only returns what that job produced.
+    """
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    produced = [(now, 39, 0.25)]
+    executor = AsyncMock(return_value=produced)
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+    query = MagicMock()
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.get_significant_states",
+            query,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        history = await HistoryReader(MagicMock()).read_energy_history(
+            ENTITY_ID, days=0
+        )
+
+    assert history is produced
+    executor.assert_awaited_once()
+    query.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_recorder_query_passes_flags_by_keyword() -> None:
+    """Keep attributes (unit normalization) and every accumulator change."""
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    states = [
+        _state(datetime(2026, 8, 20, 7, 29, 50, tzinfo=UTC), 100.0),
+        _state(datetime(2026, 8, 20, 7, 44, 50, tzinfo=UTC), 100.25),
+    ]
+    executor, query = _recorder_executor({ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        await HistoryReader(MagicMock()).read_energy_history(ENTITY_ID, days=0)
+
+    query.assert_called_once()
+    assert query.call_args.args[3] == [ENTITY_ID]
+    assert query.call_args.kwargs == {
+        "include_start_time_state": True,
+        "significant_changes_only": False,
     }

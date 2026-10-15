@@ -456,7 +456,10 @@ Weights are normalised after scaling so they still sum to the original total.
    curve vs temperature) are approximated but not fully captured.
 
 2. **Minimum history**: Requires at least 14 days of recorder history for the
-   energy sensor. Falls back to legacy mode below this threshold.
+   energy sensor. Falls back to legacy mode below this threshold. While
+   history is insufficient, the recorder is re-checked at most every 15
+   minutes, so ML mode takes over up to 15 minutes after enough history has
+   accumulated. Sufficient history is cached for 60 minutes.
 
 3. **Single energy source**: The model predicts from one energy accumulator.
    It cannot combine signals from multiple meters (e.g. import + solar).

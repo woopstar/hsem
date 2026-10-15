@@ -44,11 +44,13 @@ WEATHER_ENTITY = "weather.home"
 @pytest.fixture(autouse=True)
 def _clear_ml_caches():
     populator._processed_history_cache.clear()
+    populator._insufficient_history_cache.clear()
     weather_features._temperature_history_cache.clear()
     weather_features._wind_history_cache.clear()
     weather_features._forecast_cache.clear()
     yield
     populator._processed_history_cache.clear()
+    populator._insufficient_history_cache.clear()
     weather_features._temperature_history_cache.clear()
     weather_features._wind_history_cache.clear()
     weather_features._forecast_cache.clear()
