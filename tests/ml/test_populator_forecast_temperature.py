@@ -37,11 +37,13 @@ __all__ = ["_ha_local_timezone"]
 @pytest.fixture(autouse=True)
 def _clear_forecast_cache():
     populator._processed_history_cache.clear()
+    populator._insufficient_history_cache.clear()
     weather_features._temperature_history_cache.clear()
     weather_features._wind_history_cache.clear()
     weather_features._forecast_cache.clear()
     yield
     populator._processed_history_cache.clear()
+    populator._insufficient_history_cache.clear()
     weather_features._temperature_history_cache.clear()
     weather_features._wind_history_cache.clear()
     weather_features._forecast_cache.clear()

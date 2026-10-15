@@ -120,22 +120,38 @@ class HistoryReader:
             now.isoformat(),
         )
 
-        # Offload the blocking recorder call to the executor.
-        states: dict[str, list[Any]] = await get_instance(
-            self._hass
-        ).async_add_executor_job(
-            get_significant_states,
-            self._hass,
+        # The recorder query, the per-state conversion and the delta pass all
+        # run in the recorder executor: a 90-day window holds hundreds of
+        # thousands of states, too many to iterate on the event loop (#1302).
+        return await get_instance(self._hass).async_add_executor_job(
+            self._energy_history_blocking,
+            entity_id,
             start_time,
-            end_time,
-            [entity_id],
-            None,  # no significant_changes_only filter
-            True,  # minimal_response
-            False,  # no_attributes
+            now,
+            days,
+            slot_minutes,
+            expected_unit,
         )
 
-        entity_states = states.get(entity_id, [])
-        if not entity_states:
+    def _energy_history_blocking(
+        self,
+        entity_id: str,
+        start_time: datetime,
+        now: datetime,
+        days: int,
+        slot_minutes: int,
+        expected_unit: str | None,
+    ) -> list[tuple[datetime, int, float]]:
+        """Run :meth:`read_energy_history`'s blocking part in the executor."""
+        readings = self._query_readings(
+            entity_id,
+            start_time,
+            utc_key(now),
+            lambda state_obj: state_obj.state,
+            expected_unit,
+            "energy history",
+        )
+        if readings is None:
             _LOGGER.warning(
                 "ML history: no recorder states found for %s. "
                 "Is the recorder storing this entity? "
@@ -143,36 +159,6 @@ class HistoryReader:
                 entity_id,
             )
             return []
-
-        _LOGGER.debug(
-            "ML history: got %d raw states for %s",
-            len(entity_states),
-            entity_id,
-        )
-
-        # Convert state objects to (datetime, float_value) pairs.
-        readings: list[tuple[datetime, float]] = []
-        for state_obj in entity_states:
-            try:
-                ts = normalize_datetime(state_obj.last_updated)
-                value = float(state_obj.state)
-                if not math.isfinite(value):
-                    continue
-                if expected_unit is not None:
-                    source_unit = state_obj.attributes.get("unit_of_measurement")
-                    normalized = normalize_to_unit(
-                        value,
-                        source_unit,
-                        expected_unit,
-                        entity_id=entity_id,
-                        label="energy history",
-                    )
-                    if normalized is None or not math.isfinite(normalized):
-                        continue
-                    value = normalized
-                readings.append((ts, value))
-            except ValueError, TypeError, AttributeError:
-                continue
 
         if len(readings) < 2:
             _LOGGER.warning(
@@ -182,9 +168,6 @@ class HistoryReader:
                 entity_id,
             )
             return []
-
-        # Sort by timestamp ascending.
-        readings.sort(key=lambda item: utc_key(item[0]))
 
         # Compute per-slot consumption deltas from the accumulator.
         history = self._compute_slot_deltas(readings, now, slot_minutes)
@@ -303,50 +286,39 @@ class HistoryReader:
         end_time = utc_key(now)
         start_time = end_time - timedelta(days=max_days)
 
-        states: dict[str, list[Any]] = await get_instance(
-            self._hass
-        ).async_add_executor_job(
-            get_significant_states,
-            self._hass,
+        return await get_instance(self._hass).async_add_executor_job(
+            self._instantaneous_blocking,
+            entity_id,
             start_time,
-            end_time,
-            [entity_id],
-            None,
-            True,
-            False,
+            now,
+            days,
+            value_getter,
+            expected_unit,
         )
 
-        entity_states = states.get(entity_id, [])
-        if not entity_states:
+    def _instantaneous_blocking(
+        self,
+        entity_id: str,
+        start_time: datetime,
+        now: datetime,
+        days: int,
+        value_getter: Callable[[Any], Any],
+        expected_unit: str | None,
+    ) -> list[tuple[datetime, float]]:
+        """Run :meth:`_read_instantaneous`'s blocking part in the executor."""
+        readings = self._query_readings(
+            entity_id,
+            start_time,
+            utc_key(now),
+            value_getter,
+            expected_unit,
+            "instantaneous history",
+        )
+        if readings is None:
             _LOGGER.warning(
                 "ML history: no instantaneous states found for %s.", entity_id
             )
             return []
-
-        readings: list[tuple[datetime, float]] = []
-        for state_obj in entity_states:
-            try:
-                ts = normalize_datetime(state_obj.last_updated)
-                value = float(value_getter(state_obj))
-                if not math.isfinite(value):
-                    continue
-                if expected_unit is not None:
-                    source_unit = state_obj.attributes.get("unit_of_measurement")
-                    normalized = normalize_to_unit(
-                        value,
-                        source_unit,
-                        expected_unit,
-                        entity_id=entity_id,
-                        label="instantaneous history",
-                    )
-                    if normalized is None or not math.isfinite(normalized):
-                        continue
-                    value = normalized
-                readings.append((ts, value))
-            except ValueError, TypeError, AttributeError:
-                continue
-
-        readings.sort(key=lambda item: utc_key(item[0]))
 
         if readings:
             earliest = readings[0][0]
@@ -401,54 +373,36 @@ class HistoryReader:
         # Include one physical slot before local midnight.  Its final reading
         # is the left boundary needed to calculate the first slot of today.
         start_time = utc_key(midnight) - timedelta(minutes=slot_minutes)
-        end_time = utc_key(now)
 
-        # Fetch the DST-safe local-day boundary range.
-        states: dict[str, list[Any]] = await get_instance(
-            self._hass
-        ).async_add_executor_job(
-            get_significant_states,
-            self._hass,
+        return await get_instance(self._hass).async_add_executor_job(
+            self._today_actuals_blocking,
+            entity_id,
             start_time,
-            end_time,
-            [entity_id],
-            None,
-            True,
-            False,
+            now,
+            slot_minutes,
+            expected_unit,
         )
 
-        entity_states = states.get(entity_id, [])
-        if not entity_states:
+    def _today_actuals_blocking(
+        self,
+        entity_id: str,
+        start_time: datetime,
+        now: datetime,
+        slot_minutes: int,
+        expected_unit: str | None,
+    ) -> dict[datetime, float]:
+        """Run :meth:`read_today_actuals`'s blocking part in the executor."""
+        # Fetch the DST-safe local-day boundary range.
+        readings = self._query_readings(
+            entity_id,
+            start_time,
+            utc_key(now),
+            lambda state_obj: state_obj.state,
+            expected_unit,
+            "today actuals",
+        )
+        if readings is None or len(readings) < 2:
             return {}
-
-        # Convert to (timestamp, value) pairs.
-        readings: list[tuple[datetime, float]] = []
-        for state_obj in entity_states:
-            try:
-                ts = normalize_datetime(state_obj.last_updated)
-                value = float(state_obj.state)
-                if not math.isfinite(value):
-                    continue
-                if expected_unit is not None:
-                    source_unit = state_obj.attributes.get("unit_of_measurement")
-                    normalized = normalize_to_unit(
-                        value,
-                        source_unit,
-                        expected_unit,
-                        entity_id=entity_id,
-                        label="today actuals",
-                    )
-                    if normalized is None or not math.isfinite(normalized):
-                        continue
-                    value = normalized
-                readings.append((ts, value))
-            except ValueError, TypeError, AttributeError:
-                continue
-
-        if len(readings) < 2:
-            return {}
-
-        readings.sort(key=lambda item: utc_key(item[0]))
 
         # Compute per-slot deltas for today only.
         history = self._compute_slot_deltas(readings, now, slot_minutes)
@@ -462,6 +416,83 @@ class HistoryReader:
             actuals[slot_key(slot_start, slot_minutes)] = energy
 
         return actuals
+
+    def _query_readings(
+        self,
+        entity_id: str,
+        start_time: datetime,
+        end_time: datetime,
+        value_getter: Callable[[Any], Any],
+        expected_unit: str | None,
+        label: str,
+    ) -> list[tuple[datetime, float]] | None:
+        """Query the recorder and convert states to sorted readings.
+
+        Blocking: call from the recorder executor only.
+
+        Args:
+            entity_id: The HA entity ID to query.
+            start_time: Start of the query window (UTC).
+            end_time: End of the query window (UTC).
+            value_getter: Extracts the raw value from each recorder ``State``.
+            expected_unit: HSEM's canonical unit for this field, or ``None``
+                to skip unit normalization (issues #945, #946).
+            label: Short description of the read, used in unit warnings.
+
+        Returns:
+            ``(timestamp, value)`` pairs sorted oldest-first, skipping states
+            that are non-numeric, non-finite or in an unconvertible unit.
+            ``None`` when the recorder holds no states for the entity.
+        """
+        # Attributes stay on (``no_attributes`` defaults to False) because
+        # unit normalization reads ``unit_of_measurement``.  Every state
+        # change of an accumulator counts, so significant_changes_only is off.
+        states = get_significant_states(
+            self._hass,
+            start_time,
+            end_time,
+            [entity_id],
+            include_start_time_state=True,
+            significant_changes_only=False,
+        )
+
+        # Default arguments yield full ``State`` objects, never the
+        # compressed dict form, so attribute access below is safe.
+        entity_states: list[Any] = states.get(entity_id, [])
+        if not entity_states:
+            return None
+
+        _LOGGER.debug(
+            "ML history: got %d raw states for %s",
+            len(entity_states),
+            entity_id,
+        )
+
+        readings: list[tuple[datetime, float]] = []
+        for state_obj in entity_states:
+            try:
+                ts = normalize_datetime(state_obj.last_updated)
+                value = float(value_getter(state_obj))
+                if not math.isfinite(value):
+                    continue
+                if expected_unit is not None:
+                    source_unit = state_obj.attributes.get("unit_of_measurement")
+                    normalized = normalize_to_unit(
+                        value,
+                        source_unit,
+                        expected_unit,
+                        entity_id=entity_id,
+                        label=label,
+                    )
+                    if normalized is None or not math.isfinite(normalized):
+                        continue
+                    value = normalized
+                readings.append((ts, value))
+            except ValueError, TypeError, AttributeError:
+                continue
+
+        readings.sort(key=lambda item: utc_key(item[0]))
+        return readings
 
     @staticmethod
     def _compute_slot_deltas(

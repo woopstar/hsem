@@ -56,6 +56,15 @@ _processed_history_cache: dict[
 ] = {}
 _MIN_HISTORY_REFRESH = timedelta(minutes=60)
 
+# An insufficient-history outcome is remembered too, under the same key, so a
+# site still accumulating ``ml_consumption_history_days`` does not refetch 90
+# days of recorder states on every coordinator cycle (#1302).  It never stands
+# in for a usable history; it only delays the next fetch.  The window is
+# shorter than the success cache so a fixed recorder or meter alignment is
+# picked up promptly.
+_insufficient_history_cache: dict[_HistoryCacheKey, datetime] = {}
+_INSUFFICIENT_HISTORY_RETRY = timedelta(minutes=15)
+
 
 async def populate_ml_house_consumption(
     hass: HomeAssistant,
@@ -119,6 +128,20 @@ async def populate_ml_house_consumption(
         cached[0], now_ts, _MIN_HISTORY_REFRESH
     )
 
+    insufficient_at = _insufficient_history_cache.get(cache_key)
+    if (
+        not cache_valid
+        and insufficient_at is not None
+        and cache_is_fresh(insufficient_at, now_ts, _INSUFFICIENT_HISTORY_RETRY)
+    ):
+        HSEM_LOGGER.debug(
+            "ML populator: history for %s was insufficient %.0f min ago; "
+            "using legacy avg sensors until the next check.",
+            energy_entity,
+            physical_elapsed(now_ts, insufficient_at).total_seconds() / 60,
+        )
+        return False, None
+
     history: list[_HistorySample]
     if cache_valid and cached is not None:
         history = cached[1]
@@ -142,6 +165,7 @@ async def populate_ml_house_consumption(
                 energy_entity,
                 min_days,
             )
+            _insufficient_history_cache[cache_key] = now_ts
             return False, None
 
         history = import_history
@@ -162,16 +186,19 @@ async def populate_ml_house_consumption(
                         "avg sensors.",
                         min_days,
                     )
+                    _insufficient_history_cache[cache_key] = now_ts
                     return False, None
             else:
                 HSEM_LOGGER.info(
                     "ML populator: export history unavailable while net "
                     "consumption is enabled. Falling back to legacy avg sensors."
                 )
+                _insufficient_history_cache[cache_key] = now_ts
                 return False, None
 
         if history:
             _processed_history_cache[cache_key] = (now_ts, history)
+            _insufficient_history_cache.pop(cache_key, None)
         HSEM_LOGGER.debug(
             "ML populator: fetched fresh processed history (%d samples).",
             len(history),

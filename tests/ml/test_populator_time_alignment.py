@@ -242,11 +242,13 @@ def _ha_local_timezone():
 @pytest.fixture(autouse=True)
 def _clear_ml_caches():
     populator._processed_history_cache.clear()
+    populator._insufficient_history_cache.clear()
     weather_features._temperature_history_cache.clear()
     weather_features._wind_history_cache.clear()
     weather_features._forecast_cache.clear()
     yield
     populator._processed_history_cache.clear()
+    populator._insufficient_history_cache.clear()
     weather_features._temperature_history_cache.clear()
     weather_features._wind_history_cache.clear()
     weather_features._forecast_cache.clear()
@@ -627,6 +629,11 @@ def test_predictor_uses_physical_age_and_temperature_identity_across_fold() -> N
 
 @pytest.mark.asyncio
 async def test_partially_misaligned_net_history_falls_back_and_is_not_cached() -> None:
+    """Misaligned history never becomes a usable cached history (#780).
+
+    The insufficient outcome is remembered for the retry window only, so
+    the recorder is not queried again on every cycle (#1302).
+    """
     import_history = _history(NOW)
     export_history = [
         (import_history[0][0], import_history[0][1], 0.2),
@@ -642,12 +649,26 @@ async def test_partially_misaligned_net_history_falls_back_and_is_not_cached() -
     hass = _FakeHass()
 
     first_success, first_predictor = await _populate(hass, reader, cfg, [])
-    second_success, second_predictor = await _populate(hass, reader, cfg, [])
+    second_success, second_predictor = await _populate(
+        hass, reader, cfg, [], now=NOW + timedelta(minutes=1)
+    )
 
     assert first_success is False
     assert first_predictor is None
     assert second_success is False
     assert second_predictor is None
+    assert reader.energy_calls == ["sensor.import", "sensor.export"]
+    assert populator._processed_history_cache == {}
+
+    retry_success, _retry_predictor = await _populate(
+        hass,
+        reader,
+        cfg,
+        [],
+        now=NOW + populator._INSUFFICIENT_HISTORY_RETRY,
+    )
+
+    assert retry_success is False
     assert reader.energy_calls == [
         "sensor.import",
         "sensor.export",
@@ -655,6 +676,59 @@ async def test_partially_misaligned_net_history_falls_back_and_is_not_cached() -
         "sensor.export",
     ]
     assert populator._processed_history_cache == {}
+
+
+@pytest.mark.asyncio
+async def test_insufficient_history_is_fetched_once_per_retry_window() -> None:
+    """A site still accumulating history pays one recorder fetch per window."""
+    cfg = _cfg(history_days=40)
+    reader = _FakeReader({"sensor.import": []})
+    hass = _FakeHass()
+
+    for minute in range(15):
+        success, predictor = await _populate(
+            hass, reader, cfg, [], now=NOW + timedelta(minutes=minute)
+        )
+        assert success is False
+        assert predictor is None
+
+    assert reader.energy_calls == ["sensor.import"]
+    assert reader.actual_calls == []
+
+    await _populate(hass, reader, cfg, [], now=NOW + timedelta(minutes=15))
+
+    assert reader.energy_calls == ["sensor.import", "sensor.import"]
+
+
+@pytest.mark.asyncio
+async def test_insufficient_history_is_keyed_by_effective_configuration() -> None:
+    """Lowering the required history days must re-check immediately."""
+    reader = _FakeReader({"sensor.import": []})
+    hass = _FakeHass()
+
+    await _populate(hass, reader, _cfg(history_days=40), [])
+    await _populate(hass, reader, _cfg(history_days=14), [])
+
+    assert reader.energy_calls == ["sensor.import", "sensor.import"]
+
+
+@pytest.mark.asyncio
+async def test_history_that_becomes_sufficient_is_used_after_the_retry_window() -> None:
+    """Recovery waits at most one retry window and clears the marker."""
+    cfg = _cfg()
+    reader = _FakeReader({"sensor.import": []})
+    hass = _FakeHass()
+
+    first_success, _first_predictor = await _populate(hass, reader, cfg, [])
+    reader.histories["sensor.import"] = _history(NOW)
+    later = NOW + populator._INSUFFICIENT_HISTORY_RETRY
+    later_success, later_predictor = await _populate(hass, reader, cfg, [], now=later)
+
+    assert first_success is False
+    assert later_success is True
+    assert later_predictor is not None
+    assert populator._insufficient_history_cache == {}
+    assert len(populator._processed_history_cache) == 1
 
 
 @pytest.mark.asyncio
