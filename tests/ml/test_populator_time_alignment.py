@@ -15,7 +15,10 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.ml import populator, weather_features
 from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
-from custom_components.hsem.ml.history_reader import HistoryReader
+from custom_components.hsem.ml.history_reader import (
+    INSUFFICIENT_HISTORY_RETRY,
+    HistoryReader,
+)
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.datetime_utils import slot_key, utc_key
@@ -665,7 +668,7 @@ async def test_partially_misaligned_net_history_falls_back_and_is_not_cached() -
         reader,
         cfg,
         [],
-        now=NOW + populator._INSUFFICIENT_HISTORY_RETRY,
+        now=NOW + INSUFFICIENT_HISTORY_RETRY,
     )
 
     assert retry_success is False
@@ -721,7 +724,7 @@ async def test_history_that_becomes_sufficient_is_used_after_the_retry_window() 
 
     first_success, _first_predictor = await _populate(hass, reader, cfg, [])
     reader.histories["sensor.import"] = _history(NOW)
-    later = NOW + populator._INSUFFICIENT_HISTORY_RETRY
+    later = NOW + INSUFFICIENT_HISTORY_RETRY
     later_success, later_predictor = await _populate(hass, reader, cfg, [], now=later)
 
     assert first_success is False
@@ -1073,3 +1076,88 @@ async def test_reused_predictor_refreshes_decay_as_history_grows() -> None:
     assert reused_predictor.decay_days == pytest.approx(15.0)
     assert reused_predictor.actual_history_days == pytest.approx(30.0)
     assert reader.energy_calls == ["sensor.import", "sensor.import"]
+
+
+@pytest.mark.asyncio
+async def test_insufficient_temperature_history_is_read_once_per_retry_window() -> None:
+    """An empty temperature read is not repeated on every cycle (#1306)."""
+    reader = _FakeReader({}, temperatures={})
+    hass = cast(HomeAssistant, _FakeHass())
+
+    async def read(now: datetime) -> dict[datetime, float]:
+        return await weather_features.get_temperature_history(
+            hass, cast(HistoryReader, reader), "sensor.temperature", 14, now
+        )
+
+    assert await read(NOW) == {}
+    assert await read(NOW + timedelta(minutes=14)) == {}
+    assert reader.temperature_calls == ["sensor.temperature"]
+
+    reader.temperatures["sensor.temperature"] = [(NOW, 21.0)]
+    recovered = await read(NOW + INSUFFICIENT_HISTORY_RETRY)
+
+    assert recovered == {utc_key(NOW): 21.0}
+    assert reader.temperature_calls == ["sensor.temperature"] * 2
+    # Usable history keeps the longer refresh window.
+    await read(NOW + INSUFFICIENT_HISTORY_RETRY + timedelta(minutes=30))
+    assert len(reader.temperature_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_insufficient_wind_history_is_read_once_per_retry_window() -> None:
+    """The wind-speed history shares the same retry window (#1306)."""
+    reader = _FakeReader({}, wind_speeds={})
+    hass = cast(HomeAssistant, _FakeHass())
+
+    for minute in (0, 5, 14):
+        assert (
+            await weather_features.get_wind_history(
+                hass,
+                cast(HistoryReader, reader),
+                "weather.home",
+                14,
+                NOW + timedelta(minutes=minute),
+            )
+            == {}
+        )
+
+    assert len(reader.wind_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_temperature_read_is_retried_after_the_window() -> None:
+    """A read that raises is remembered like an empty one, not cached forever."""
+    reader = _FakeReader({})
+    hass = cast(HomeAssistant, _FakeHass())
+    calls = 0
+
+    async def failing_read(*_args: object, **_kwargs: object) -> list[object]:
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("recorder not ready")
+
+    reader.read_instantaneous_history = failing_read  # type: ignore[method-assign]
+
+    for now in (NOW, NOW + timedelta(minutes=1), NOW + INSUFFICIENT_HISTORY_RETRY):
+        assert (
+            await weather_features.get_temperature_history(
+                hass, cast(HistoryReader, reader), "sensor.temperature", 14, now
+            )
+            == {}
+        )
+
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_insufficient_temperature_history_is_keyed_by_required_days() -> None:
+    """Lowering the required history days re-checks immediately."""
+    reader = _FakeReader({}, temperatures={})
+    hass = cast(HomeAssistant, _FakeHass())
+
+    for min_days in (40, 14):
+        await weather_features.get_temperature_history(
+            hass, cast(HistoryReader, reader), "sensor.temperature", min_days, NOW
+        )
+
+    assert len(reader.temperature_calls) == 2

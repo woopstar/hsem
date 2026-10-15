@@ -459,7 +459,10 @@ Weights are normalised after scaling so they still sum to the original total.
    energy sensor. Falls back to legacy mode below this threshold. While
    history is insufficient, the recorder is re-checked at most every 15
    minutes, so ML mode takes over up to 15 minutes after enough history has
-   accumulated. Sufficient history is cached for 60 minutes.
+   accumulated. Sufficient history is cached for 60 minutes. The temperature
+   and wind-speed histories follow the same cadence: without enough history
+   the model fits without that feature, and the recorder is re-checked at
+   most every 15 minutes.
 
 3. **Single energy source**: The model predicts from one energy accumulator.
    It cannot combine signals from multiple meters (e.g. import + solar).

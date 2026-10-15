@@ -20,7 +20,10 @@ from homeassistant.const import UnitOfSpeed, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.util.unit_conversion import SpeedConverter
 
-from custom_components.hsem.ml.history_reader import HistoryReader
+from custom_components.hsem.ml.history_reader import (
+    INSUFFICIENT_HISTORY_RETRY,
+    HistoryReader,
+)
 from custom_components.hsem.ml.weather_forecast_reader import (
     WeatherForecastPoints,
     read_weather_forecast,
@@ -125,8 +128,13 @@ async def _get_cached_instantaneous_history(
 ) -> dict[datetime, float]:
     cache_key: _HistoryCacheKey = (id(hass), entity_id, min_days)
     cached = cache.get(cache_key)
-    if cached is not None and cache_is_fresh(cached[0], now_ts, _MIN_HISTORY_REFRESH):
-        return cached[1]
+    if cached is not None:
+        # An empty entry records a read that found too little history (or
+        # failed); it is re-checked sooner than usable history is refreshed,
+        # but not on every cycle (#1306).
+        window = _MIN_HISTORY_REFRESH if cached[1] else INSUFFICIENT_HISTORY_RETRY
+        if cache_is_fresh(cached[0], now_ts, window):
+            return cached[1]
 
     try:
         raw_states = await reader_call()
@@ -134,6 +142,7 @@ async def _get_cached_instantaneous_history(
         HSEM_LOGGER.warning(
             "ML populator: failed to read instantaneous history for %s", entity_id
         )
+        cache[cache_key] = (now_ts, {})
         return {}
 
     # Canonical UTC keys preserve both folds of an autumn repeated hour;
@@ -143,8 +152,7 @@ async def _get_cached_instantaneous_history(
         for timestamp, value in raw_states
         if math.isfinite(value)
     }
-    if values:
-        cache[cache_key] = (now_ts, values)
+    cache[cache_key] = (now_ts, values)
     return values
 
 
