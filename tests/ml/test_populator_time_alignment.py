@@ -1124,19 +1124,23 @@ async def test_insufficient_wind_history_is_read_once_per_retry_window() -> None
     assert len(reader.wind_calls) == 1
 
 
+class _FailingTemperatureReader(_FakeReader):
+    """A reader whose temperature query always raises."""
+
+    async def read_instantaneous_history(
+        self,
+        entity_id: str,
+        **kwargs: object,
+    ) -> list[tuple[datetime, float]]:
+        self.temperature_calls.append(entity_id)
+        raise RuntimeError("recorder not ready")
+
+
 @pytest.mark.asyncio
 async def test_failed_temperature_read_is_retried_after_the_window() -> None:
     """A read that raises is remembered like an empty one, not cached forever."""
-    reader = _FakeReader({})
+    reader = _FailingTemperatureReader({})
     hass = cast(HomeAssistant, _FakeHass())
-    calls = 0
-
-    async def failing_read(*_args: object, **_kwargs: object) -> list[object]:
-        nonlocal calls
-        calls += 1
-        raise RuntimeError("recorder not ready")
-
-    reader.read_instantaneous_history = failing_read  # type: ignore[method-assign]
 
     for now in (NOW, NOW + timedelta(minutes=1), NOW + INSUFFICIENT_HISTORY_RETRY):
         assert (
@@ -1146,7 +1150,7 @@ async def test_failed_temperature_read_is_retried_after_the_window() -> None:
             == {}
         )
 
-    assert calls == 2
+    assert reader.temperature_calls == ["sensor.temperature"] * 2
 
 
 @pytest.mark.asyncio
