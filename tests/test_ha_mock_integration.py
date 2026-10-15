@@ -731,6 +731,45 @@ class TestMockServiceCalls:
 # ---------------------------------------------------------------------------
 
 
+def _prepare_auto_replan_cycle(coord: Any) -> None:
+    """Make every cycle collect ready inputs and run a fresh planner solve."""
+    from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
+
+    async def collect_ready_inputs(_now: Any) -> tuple[bool, str | None]:
+        coord._hourly_recommendation = None
+        coord._hourly_recommendations = generate_recommendation_intervals(
+            coord._cfg.recommendation_interval_minutes,
+            coord._cfg.recommendation_interval_length,
+        )
+        for recommendation in coord._hourly_recommendations:
+            recommendation.avg_house_consumption_kwh = 0.25
+            recommendation.avg_house_consumption_1d_kwh = 0.25
+            recommendation.avg_house_consumption_3d_kwh = 0.25
+            recommendation.avg_house_consumption_7d_kwh = 0.25
+            recommendation.avg_house_consumption_14d_kwh = 0.25
+        coord._live = LiveState(
+            force_working_mode_state="auto",
+            huawei_batteries_soc_pct=65.0,
+            huawei_batteries_rated_capacity_wh=10000.0,
+            huawei_batteries_max_charge_power_w=5000.0,
+            huawei_batteries_max_discharge_power_w=5000.0,
+            house_consumption_power_w=1000.0,
+        )
+        return True, None
+
+    coord._async_collect_and_populate = collect_ready_inputs
+    coord._should_replan = MagicMock(return_value=True)
+    coord._last_planner_input = None
+    coord._last_planner_output = None
+    coord._current_load_forecast_signature = None
+    coord._last_plan_slot_start = None
+    coord._previous_planner_winner_name = None
+    coord._previous_planner_winner_score = 0.0
+    coord._window_hys_previous_rec = None
+    coord._window_hys_previous_slot_start = None
+    coord._solar_corrector = SolarForecastCorrector()
+
+
 class TestDryRunCycle:
     """Test the full coordinator pipeline in dry-run (read_only=True) mode.
 
@@ -807,12 +846,15 @@ class TestDryRunCycle:
         assert coord._ml_predictor is sentinel_predictor
 
     @pytest.mark.asyncio
+    @patch(
+        "custom_components.hsem.coordinator.STALE_RETRY_BACKOFF_SECONDS",
+        0.0,
+    )
     async def test_state_event_during_solve_discards_stale_cycle(self) -> None:
         """Only the fresh rerun may publish after a state event arrives in flight."""
         from custom_components.hsem.models.planned_slot import PlannedSlot
         from custom_components.hsem.models.planner_output import PlannerOutput
         from custom_components.hsem.utils.recommendations import Recommendations
-        from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
 
         config_entry = make_fake_config_entry({"hsem_read_only": True})
         hass = make_fake_hass(_BASE_ENTITY_STATES)
@@ -863,39 +905,7 @@ class TestDryRunCycle:
 
         hass.async_add_executor_job = staged_executor
 
-        async def collect_ready_inputs(_now: Any) -> tuple[bool, str | None]:
-            coord._hourly_recommendation = None
-            coord._hourly_recommendations = generate_recommendation_intervals(
-                coord._cfg.recommendation_interval_minutes,
-                coord._cfg.recommendation_interval_length,
-            )
-            for recommendation in coord._hourly_recommendations:
-                recommendation.avg_house_consumption_kwh = 0.25
-                recommendation.avg_house_consumption_1d_kwh = 0.25
-                recommendation.avg_house_consumption_3d_kwh = 0.25
-                recommendation.avg_house_consumption_7d_kwh = 0.25
-                recommendation.avg_house_consumption_14d_kwh = 0.25
-            coord._live = LiveState(
-                force_working_mode_state="auto",
-                huawei_batteries_soc_pct=65.0,
-                huawei_batteries_rated_capacity_wh=10000.0,
-                huawei_batteries_max_charge_power_w=5000.0,
-                huawei_batteries_max_discharge_power_w=5000.0,
-                house_consumption_power_w=1000.0,
-            )
-            return True, None
-
-        coord._async_collect_and_populate = collect_ready_inputs  # type: ignore[assignment]
-        coord._should_replan = MagicMock(return_value=True)  # type: ignore[method-assign]
-        coord._last_planner_input = None
-        coord._last_planner_output = None
-        coord._current_load_forecast_signature = None
-        coord._last_plan_slot_start = None
-        coord._previous_planner_winner_name = None
-        coord._previous_planner_winner_score = 0.0
-        coord._window_hys_previous_rec = None
-        coord._window_hys_previous_slot_start = None
-        coord._solar_corrector = SolarForecastCorrector()
+        _prepare_auto_replan_cycle(coord)
 
         cycle = asyncio.create_task(coord._async_handle_update())
         try:
@@ -930,6 +940,89 @@ class TestDryRunCycle:
             Recommendations.BatteriesWaitMode.value
         )
         assert coord._last_planner_output is outputs[1]
+        assert coord._event_update_pending is False
+
+    @pytest.mark.asyncio
+    async def test_events_faster_than_the_cycle_still_publish(self) -> None:
+        """A state event during every solve must not starve publication (#1303).
+
+        Before the fix every overtaken cycle was discarded and rerun at once,
+        so nothing was published while the replans kept coming.  Now the
+        cycle after a run of discards publishes, and each rerun after a
+        discard waits for the backoff first.
+        """
+        from custom_components.hsem.coordinator_staleness import (
+            MAX_CONSECUTIVE_STALE_DISCARDS,
+            STALE_RETRY_BACKOFF_SECONDS,
+        )
+        from custom_components.hsem.models.planned_slot import PlannedSlot
+        from custom_components.hsem.models.planner_output import PlannerOutput
+        from custom_components.hsem.utils.recommendations import Recommendations
+
+        config_entry = make_fake_config_entry({"hsem_read_only": True})
+        hass = make_fake_hass(_BASE_ENTITY_STATES)
+        coord = make_bare_coordinator(hass=hass, config_entry=config_entry)
+        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]
+
+        outputs: list[PlannerOutput] = []
+        executor_jobs: list[str] = []
+        published_after_solve: list[int] = []
+        coord.async_set_updated_data = MagicMock(  # type: ignore[method-assign]
+            side_effect=lambda _data: published_after_solve.append(len(outputs))
+        )
+        backoffs: list[float] = []
+
+        async def record_backoff(delay: float) -> None:
+            backoffs.append(delay)
+
+        # Each of the first six solves is overtaken by a state event.
+        overtaken_solves = 6
+
+        async def overtaken_executor(func: Any, *args: Any) -> Any:
+            executor_jobs.append(getattr(func, "__name__", repr(func)))
+            if getattr(func, "__name__", None) != "run_planner":
+                return func(*args)
+            output = PlannerOutput(
+                slots=[
+                    PlannedSlot(
+                        start=rec.start,
+                        end=rec.end,
+                        recommendation=Recommendations.BatteriesWaitMode.value,
+                    )
+                    for rec in coord._hourly_recommendations
+                ],
+                winner_name=f"solve_{len(outputs) + 1}",
+            )
+            outputs.append(output)
+            if len(outputs) <= overtaken_solves:
+                await coord._async_handle_update(MagicMock())
+            return output
+
+        hass.async_add_executor_job = overtaken_executor
+        _prepare_auto_replan_cycle(coord)
+
+        with patch(
+            "custom_components.hsem.coordinator.asyncio.sleep",
+            side_effect=record_backoff,
+        ):
+            await asyncio.wait_for(coord._async_handle_update(), timeout=10.0)
+
+        cycle_length = MAX_CONSECUTIVE_STALE_DISCARDS + 1
+        assert len(outputs) == overtaken_solves + 1
+        # Every third overtaken cycle publishes, then the quiet final one.
+        assert published_after_solve == [cycle_length, 2 * cycle_length, 7]
+        assert all(
+            later - earlier <= cycle_length
+            for earlier, later in zip(
+                [0, *published_after_solve], published_after_solve, strict=False
+            )
+        )
+        # Each discarded cycle is followed by one backoff before its rerun.
+        discards = overtaken_solves - overtaken_solves // cycle_length
+        assert backoffs == [STALE_RETRY_BACKOFF_SECONDS] * discards
+        assert executor_jobs.count("run_planner") == len(outputs)
+        assert coord._last_planner_output is outputs[-1]
+        assert coord._consecutive_stale_discards == 0
         assert coord._event_update_pending is False
 
     @pytest.mark.asyncio

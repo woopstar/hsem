@@ -35,6 +35,7 @@ from custom_components.hsem.coordinator_helpers import (
     _SimpleSlot,
     _StaleUpdateCycle,
 )
+from custom_components.hsem.coordinator_staleness import cycle_is_stale
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
@@ -357,7 +358,7 @@ class CoordinatorDynamicFloorMixin(CoordinatorSharedState):
             run_planner,
             reference_solve_input(planner_input),
         )
-        if getattr(self, "_update_generation", 0) != captured_generation:
+        if cycle_is_stale(self, captured_generation):
             raise _StaleUpdateCycle
         floor_pct, floor_diag, floor_profile = compute_dynamic_floor_from_plan(
             self._dynamic_floor,

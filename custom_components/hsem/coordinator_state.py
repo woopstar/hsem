@@ -78,6 +78,7 @@ class CoordinatorSharedState(_Base):
     _capacity_learner: CapacityLearner
     _cfg: SensorConfig
     _config_entry: ConfigEntry
+    _consecutive_stale_discards: int
     _current_load_forecast_signature: LoadForecastSignature | None
     _current_required_battery: float
     _current_wait_mode_reserve: float | None

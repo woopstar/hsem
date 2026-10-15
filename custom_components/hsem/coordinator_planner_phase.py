@@ -31,6 +31,7 @@ from custom_components.hsem.coordinator_helpers import (
     live_demand_contradicts_zero_profile,
     load_forecast_signatures_match,
 )
+from custom_components.hsem.coordinator_staleness import cycle_is_stale
 from custom_components.hsem.coordinator_tracking import (
     register_forecasts_from_planner,
 )
@@ -175,7 +176,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorDynamicFloorMixin):
                 )
                 self._last_planner_input = accepted_planner_input
                 should_replan = False
-            if getattr(self, "_update_generation", 0) != captured_generation:
+            if cycle_is_stale(self, captured_generation):
                 raise _StaleUpdateCycle
 
         if planner_output is not None:

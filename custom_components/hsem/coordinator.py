@@ -71,6 +71,7 @@ from custom_components.hsem.coordinator_load_hold import CoordinatorLoadHoldMixi
 from custom_components.hsem.coordinator_planner_phase import (
     CoordinatorPlannerPhaseMixin,
 )
+from custom_components.hsem.coordinator_staleness import STALE_RETRY_BACKOFF_SECONDS
 from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
     ConsumptionPopulation,
 )
@@ -184,9 +185,11 @@ class HSEMDataUpdateCoordinator(
         self._update_lock = asyncio.Lock()
         # Registered state changes advance this generation before a cycle runs.
         # If it changes in flight, the stale cycle is discarded and one durable
-        # follow-up cycle runs from a fresh snapshot.
+        # follow-up cycle runs from a fresh snapshot. A run of discards ends
+        # with a publication (coordinator_staleness.py, #1303).
         self._update_generation: int = 0
         self._event_update_pending: bool = False
+        self._consecutive_stale_discards: int = 0
         # One planner / reference / EV-economics job on the executor at a
         # time, each with a wall-clock budget (utils/pool_jobs.py).
         self._pool_jobs = PoolJobGuard()
@@ -413,6 +416,7 @@ class HSEMDataUpdateCoordinator(
             failed_retries = 0
             while True:
                 self._event_update_pending = False
+                discards_before = getattr(self, "_consecutive_stale_discards", 0)
                 try:
                     await self._async_run_update_cycle()
                     hass = getattr(self, "hass", None)
@@ -450,6 +454,11 @@ class HSEMDataUpdateCoordinator(
                 failed_retries = 0
                 if not self._event_update_pending:
                     break
+                if getattr(self, "_consecutive_stale_discards", 0) > discards_before:
+                    # The cycle was discarded as stale. Let further events
+                    # coalesce before rerunning, so a stream of state changes
+                    # cannot keep the executor busy back to back (#1303).
+                    await asyncio.sleep(STALE_RETRY_BACKOFF_SECONDS)
 
     @override
     async def _async_update_data(self) -> CoordinatorData:
