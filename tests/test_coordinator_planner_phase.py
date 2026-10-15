@@ -23,6 +23,11 @@ from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.utils.pool_jobs import (
+    JOB_PLANNER,
+    PoolJobGuard,
+    PoolJobUnavailable,
+)
 from custom_components.hsem.utils.recommendations import Recommendations
 from tests.coordinator_fixtures import make_real_coordinator
 from tests.test_coordinator_tracking_forecast import _rec
@@ -402,6 +407,53 @@ class TestPlanReuse:
         assert coordinator._ev_held_power_w == pytest.approx(4_000.0)
         assert coordinator._ev_held_slot_start == _SLOT_START
         assert coordinator._data_quality.load_forecast_ready is True
+
+
+class TestPlannerJobUnavailable:
+    """A solve the pool does not return in time degrades to the accepted plan."""
+
+    @pytest.mark.asyncio
+    async def test_reuses_the_accepted_plan_and_its_input(self, tmp_path: Path) -> None:
+        """A busy or timed-out solve publishes the accepted plan, not fresh."""
+        accepted = _planner_output(required_capacity_kwh=2.0)
+        accepted_input = PlannerInput()
+        coordinator, executor = _coordinator(tmp_path, PlannerOutput())
+        coordinator._last_planner_output = accepted
+        coordinator._last_plan_slot_start = _SLOT_START
+        coordinator._last_planner_input = accepted_input
+        refusal = PoolJobUnavailable(JOB_PLANNER, "timeout")
+        log = MagicMock()
+
+        with (
+            patch.object(PoolJobGuard, "run", AsyncMock(side_effect=refusal)),
+            patch(f"{_MODULE}.async_log", log),
+        ):
+            (state, fresh, planner_output), build = await _run_phase(
+                coordinator, LiveState()
+            )
+
+        build.assert_called_once()
+        executor.assert_not_awaited()
+        assert fresh is False
+        assert planner_output is not accepted
+        assert state == _CHARGE
+        assert coordinator._current_required_battery == pytest.approx(2.0)
+        assert coordinator._last_planner_input is accepted_input
+        assert any(call.args[0] == "warning" for call in log.call_args_list)
+
+    @pytest.mark.asyncio
+    async def test_without_an_accepted_plan_the_cycle_fails(
+        self, tmp_path: Path
+    ) -> None:
+        """With nothing safe to publish, the refusal propagates."""
+        coordinator, _ = _coordinator(tmp_path, PlannerOutput())
+        refusal = PoolJobUnavailable(JOB_PLANNER, "busy")
+
+        with (
+            patch.object(PoolJobGuard, "run", AsyncMock(side_effect=refusal)),
+            pytest.raises(PoolJobUnavailable),
+        ):
+            await _run_phase(coordinator, LiveState())
 
 
 class TestWindowHysteresisDisabled:

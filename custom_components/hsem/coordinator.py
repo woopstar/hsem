@@ -106,6 +106,7 @@ from custom_components.hsem.utils.logger import (
     HSEM_LOGGER as _LOGGER,
     async_log,
 )
+from custom_components.hsem.utils.pool_jobs import PoolJobGuard
 from custom_components.hsem.utils.prediction_tracker import PredictionTracker
 from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
 
@@ -186,6 +187,9 @@ class HSEMDataUpdateCoordinator(
         # follow-up cycle runs from a fresh snapshot.
         self._update_generation: int = 0
         self._event_update_pending: bool = False
+        # One planner / reference / EV-economics job on the executor at a
+        # time, each with a wall-clock budget (utils/pool_jobs.py).
+        self._pool_jobs = PoolJobGuard()
 
         # Timer handles — cancelled/re-registered when the interval changes.
         self._interval_timer_unsub: Callable[[], None] | None = None

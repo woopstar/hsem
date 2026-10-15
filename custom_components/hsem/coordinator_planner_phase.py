@@ -50,6 +50,11 @@ from custom_components.hsem.utils.logger import (
     set_hsem_verbose,
 )
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.pool_jobs import (
+    JOB_PLANNER,
+    PLANNER_JOB_BUDGET_S,
+    PoolJobUnavailable,
+)
 
 
 class CoordinatorPlannerPhaseMixin(CoordinatorDynamicFloorMixin):
@@ -110,6 +115,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorDynamicFloorMixin):
         if dynamic_floor_enabled and self._effective_discharge_floor_pct is None:
             should_replan = True  # a floor only exists after a reference solve
 
+        planner_output: PlannerOutput | None = None
         if should_replan:
             planner_input = build_planner_input(
                 cfg=cfg,
@@ -128,30 +134,51 @@ class CoordinatorPlannerPhaseMixin(CoordinatorDynamicFloorMixin):
                 forecast_coverage=getattr(self, "_forecast_coverage", None),
             )
             planner_input.solar_corrector = self._solar_corrector
-            if dynamic_floor_enabled:
-                planner_input = await self._async_apply_dynamic_floor(
-                    planner_input, live, now, captured_generation
+            accepted_planner_input = self._last_planner_input
+            try:
+                if dynamic_floor_enabled:
+                    planner_input = await self._async_apply_dynamic_floor(
+                        planner_input, live, now, captured_generation
+                    )
+                self._last_planner_input = planner_input
+
+                total_1d = sum(
+                    c.avg_1d for c in planner_input.consumption_averages if c.avg_1d > 0
                 )
-            self._last_planner_input = planner_input
+                async_log(
+                    "debug",
+                    "[builder] consumption per-hour total reaching planner:"
+                    " avg_1d=%.2f kWh over %d hours",
+                    total_1d,
+                    len(planner_input.consumption_averages),
+                )
 
-            total_1d = sum(
-                c.avg_1d for c in planner_input.consumption_averages if c.avg_1d > 0
-            )
-            async_log(
-                "debug",
-                "[builder] consumption per-hour total reaching planner:"
-                " avg_1d=%.2f kWh over %d hours",
-                total_1d,
-                len(planner_input.consumption_averages),
-            )
-
-            set_hsem_verbose(cfg.verbose_logging)
-            planner_output = await self.hass.async_add_executor_job(
-                run_planner, planner_input
-            )
+                set_hsem_verbose(cfg.verbose_logging)
+                planner_output = await self._pool_job_guard().run(
+                    self.hass,
+                    JOB_PLANNER,
+                    PLANNER_JOB_BUDGET_S,
+                    run_planner,
+                    planner_input,
+                )
+            except PoolJobUnavailable as err:
+                # Degrade to the accepted plan rather than wait on (or stack)
+                # a solve the pool has not returned.  Without one there is
+                # nothing safe to publish, so the cycle fails.
+                if self._last_planner_output is None:
+                    raise
+                async_log(
+                    "warning",
+                    "[planner] No fresh plan this cycle (%s); reusing the "
+                    "accepted plan.",
+                    err,
+                )
+                self._last_planner_input = accepted_planner_input
+                should_replan = False
             if getattr(self, "_update_generation", 0) != captured_generation:
                 raise _StaleUpdateCycle
 
+        if planner_output is not None:
             for warning in planner_output.warnings:
                 async_log("debug", "[planner] %s", warning)
 
