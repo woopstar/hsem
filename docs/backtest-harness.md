@@ -193,12 +193,14 @@ not raised, so one replay reports all of its problems at once.
 | `terminal_soc_reported`           | `battery_soc_at_end` matches the simulated trajectory               |
 | `missing_price_reported`          | A zero-price day is reported by `DataQuality`, not planned as free  |
 
-**Replays lift the solver time limit.** Production caps HiGHS at 2 s and
-accepts the best feasible solution found by then. A real cycle can take 1.5 s on
+**Replays lift the solver time limit.** Production caps HiGHS at 2 s by
+default (`hsem_planner_solver_time_limit_s`, issue #1309) and accepts the best feasible solution found by then. A real cycle can take 1.5 s on
 an idle machine, so on a busy one the same input returns a worse plan: one live
 cycle scored 143.61 under a 0.6 s cap against 110.12 solved properly, and failed
-`winner_not_worse_than_no_action`. `generous_solver_limit()` raises the cap for
-every backtest replay, so results depend on the planner's logic, not on machine
+`winner_not_worse_than_no_action`. `planner_input_from_dict()` sets
+`PlannerInput.planner_solver_time_limit_s` to `BACKTEST_SOLVER_TIME_LIMIT_S`
+(60 s) for every backtest replay (pass `solver_time_limit_s=None` to keep the
+recorded value), so results depend on the planner's logic, not on machine
 load. (The underlying policy — a time-limited MILP incumbent is executed even
 when it scores worse than `passive`, because the selector treats a valid MILP as
 the sole authority — is a real gap on slow hosts, but a separate issue.)

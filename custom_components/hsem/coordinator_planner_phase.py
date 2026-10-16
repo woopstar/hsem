@@ -56,6 +56,7 @@ from custom_components.hsem.utils.pool_jobs import (
     PLANNER_JOB_BUDGET_S,
     PoolJobUnavailable,
 )
+from custom_components.hsem.utils.solver_watch import note_solver_outcome
 
 
 class CoordinatorPlannerPhaseMixin(CoordinatorDynamicFloorMixin):
@@ -182,6 +183,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorDynamicFloorMixin):
         if planner_output is not None:
             for warning in planner_output.warnings:
                 async_log("debug", "[planner] %s", warning)
+            note_solver_outcome(self, planner_output.explanation)
 
             self._current_required_battery = planner_output.required_capacity_kwh
             self._current_wait_mode_reserve = planner_output.wait_mode_reserve_kwh

@@ -36,7 +36,7 @@ from tests.backtest.recorded_day import (
     refresh_recorded_days,
     write_recorded_day,
 )
-from tests.backtest.replay import generous_solver_limit, planner_input_from_dict
+from tests.backtest.replay import planner_input_from_dict
 from tests.backtest.scoring import day_slot_keys
 from tests.backtest.site import site_of
 from tests.backtest.test_attribution import (
@@ -150,8 +150,7 @@ class TestWriteRecordedDay:
 
         payloads, actuals = load_recorded_day(tmp_path / "days" / _DAY.isoformat())
         assert actuals.site_tag == _SITE
-        with generous_solver_limit():
-            recorded = attribute_day(actuals, payloads, _DAY, _ZONE, _site())
+        recorded = attribute_day(actuals, payloads, _DAY, _ZONE, _site())
 
         assert recorded.is_attributed
         assert _error_sum(recorded) == pytest.approx(recorded.regret)
@@ -428,14 +427,13 @@ def committed_attribution() -> DayAttribution:
     """Attribute the committed day once: every slot is planned twice."""
     payloads, actuals = load_recorded_day(recorded_days()[_COMMITTED_DAY])
     planner_input, _report = planner_input_from_dict(payloads[0])
-    with generous_solver_limit():
-        return attribute_day(
-            actuals,
-            payloads,
-            _COMMITTED_DAY,
-            _committed_zone(payloads),
-            SiteLimits.from_planner_input(planner_input),
-        )
+    return attribute_day(
+        actuals,
+        payloads,
+        _COMMITTED_DAY,
+        _committed_zone(payloads),
+        SiteLimits.from_planner_input(planner_input),
+    )
 
 
 @pytest.mark.slow

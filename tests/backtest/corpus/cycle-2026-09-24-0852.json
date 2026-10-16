@@ -479,6 +479,7 @@
     "planner_hysteresis_absolute": 0.0,
     "planner_hysteresis_enabled": true,
     "planner_hysteresis_percentage": 5.0,
+    "planner_solver_time_limit_s": 2.0,
     "planner_window_hysteresis_minutes": 10,
     "previous_winner_name": "milp",
     "previous_winner_score": 80.92443,

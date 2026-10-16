@@ -193,7 +193,8 @@ non-zero. It is **not** committed — that would turn CI red before the bug is
 fixed. Replay it with `scripts/replay_planner_input.py`, and attach it to an
 issue.
 
-Replays lift production's 2-second solver time limit. A real cycle can take
+Replays lift production's solver time limit (2 s by default):
+`planner_input_from_dict()` sets `planner_solver_time_limit_s` to 60 s. A real cycle can take
 1.5 s to solve on an idle machine; on a busy one the same input returns a worse,
 time-limited plan and fails an invariant for no reason in the planner's logic.
 The backtest checks what the planner decides, not how fast the solver is.

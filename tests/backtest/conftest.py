@@ -11,7 +11,6 @@ import pytest
 from custom_components.hsem.models.planner_input import PlannerInput
 from tests.backtest.replay import (
     ReplayReport,
-    generous_solver_limit,
     iter_dumps,
     planner_input_from_dict,
 )
@@ -88,15 +87,3 @@ def corpus_dump(request: pytest.FixtureRequest) -> Path:
     """Yield each corpus file in turn."""
     path: Path = request.param
     return path
-
-
-@pytest.fixture(autouse=True)
-def _deterministic_solver() -> Iterator[None]:
-    """Lift the production solver time limit for every backtest test.
-
-    Corpus cycles take up to ~1.5 s to solve on an idle machine; on a slower CI
-    runner production's 2 s cap would return time-limited plans and make these
-    tests flaky.  They test the planner's decisions, not solver speed.
-    """
-    with generous_solver_limit():
-        yield

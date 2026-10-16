@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from datetime import datetime
 from pathlib import Path
@@ -41,7 +40,6 @@ __all__ = [
     "BACKTEST_SOLVER_TIME_LIMIT_S",
     "DATETIME_FIELDS",
     "ReplayReport",
-    "generous_solver_limit",
     "iter_dumps",
     "load_dump",
     "load_planner_input",
@@ -174,14 +172,31 @@ def _parse_datetime(value: Any) -> tuple[datetime | None, str | None]:
     return None, repr(value)
 
 
+#: Solver time limit for replays.  Production caps HiGHS at 2 s by default and
+#: accepts the best feasible solution found by then; a real cycle can take 1.5 s
+#: on an idle machine, so on a busy one the same input yields a worse,
+#: time-limited plan.  One real cycle scored 143.61 under a 0.6 s limit against
+#: 110.12 solved properly, and failed an invariant for no reason in the
+#: planner's logic.  A backtest asks what the planner *decides*, not how fast
+#: the solver is (the MILP perf test covers speed), so replays set
+#: ``PlannerInput.planner_solver_time_limit_s`` to this (issue #1309).
+BACKTEST_SOLVER_TIME_LIMIT_S = 60.0
+
+
 def planner_input_from_dict(
     dump: dict[str, Any],
+    *,
+    solver_time_limit_s: float | None = BACKTEST_SOLVER_TIME_LIMIT_S,
 ) -> tuple[PlannerInput, ReplayReport]:
     """Rebuild the planner input recorded in one diagnostics payload.
 
     Args:
         dump: A diagnostics payload — the ``hsem.export_diagnostics`` service
             response, or the ``data`` section of an HA diagnostics download.
+        solver_time_limit_s: MILP solver time limit for the replay; ``None``
+            keeps the recorded value.  Defaults to the generous
+            :data:`BACKTEST_SOLVER_TIME_LIMIT_S`, so a replay is not cut
+            short by a busy machine.
 
     Returns:
         The rebuilt :class:`PlannerInput` and a :class:`ReplayReport`
@@ -215,6 +230,8 @@ def planner_input_from_dict(
 
     # The solar corrector is a runtime object the dump deliberately nulls out.
     kwargs["solar_corrector"] = None
+    if solver_time_limit_s is not None:
+        kwargs["planner_solver_time_limit_s"] = solver_time_limit_s
 
     report = ReplayReport(
         dropped=sorted(k for k in raw if k not in known),
@@ -346,38 +363,3 @@ def load_planner_input(path: str | Path) -> tuple[PlannerInput, ReplayReport]:
         KeyError: If the file carries no ``planner_input`` section.
     """
     return planner_input_from_dict(next(iter_dumps(path)))
-
-
-#: Solver time limit for replays.  Production caps HiGHS at 2 s and accepts the
-#: best feasible solution found by then; a real cycle can take 1.5 s on an idle
-#: machine, so on a busy one the same input yields a worse, time-limited plan.
-#: A backtest asks what the planner *decides*, not how fast the solver is (the
-#: MILP perf test covers speed), so replays lift the cap and stay deterministic.
-BACKTEST_SOLVER_TIME_LIMIT_S = 60.0
-
-
-@contextmanager
-def generous_solver_limit(
-    seconds: float = BACKTEST_SOLVER_TIME_LIMIT_S,
-) -> Iterator[None]:
-    """Replay with the MILP solver's time limit raised, restoring it after.
-
-    Without this, a cycle replayed on a loaded machine can hit production's
-    2 s limit and return a worse incumbent: one real cycle scored 143.61 under
-    a 0.6 s limit against 110.12 solved properly, and failed an invariant for
-    no reason in the planner's logic.
-
-    Args:
-        seconds: The limit to apply while the context is active.
-
-    Yields:
-        Nothing; the limit applies for the duration of the ``with`` block.
-    """
-    from custom_components.hsem.planner import milp_optimizer
-
-    original = milp_optimizer._SOLVER_TIME_LIMIT_S
-    milp_optimizer._SOLVER_TIME_LIMIT_S = seconds
-    try:
-        yield
-    finally:
-        milp_optimizer._SOLVER_TIME_LIMIT_S = original

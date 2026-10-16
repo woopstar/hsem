@@ -33,9 +33,7 @@ if TYPE_CHECKING:
 # Name exported so the engine and tests can reference it without re-defining
 CANDIDATE_MILP = "milp"
 
-# Solver timeout in seconds — HiGHS respects this via ``options``.
-# Increased from 0.5 to 2.0 to handle 192-slot (768 variable) problems
-# where preprocessing overhead alone can reach 200-400ms.
+# Default HiGHS time limit (s); the planner passes the user's setting (#1309).
 _SOLVER_TIME_LIMIT_S = 2.0
 
 
@@ -63,6 +61,7 @@ def solve_milp(
     excess_export_discharge_buffer_pct: float = 0.0,
     export_fee_per_kwh: float = 0.0,
     battery_target: BatteryTargetRows | None = None,
+    solver_time_limit_s: float = _SOLVER_TIME_LIMIT_S,
 ) -> tuple[list[PlannedSlot], dict] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
 
@@ -168,6 +167,8 @@ def solve_milp(
         battery_export_min_price:
             Per-slot hard floor below which intentional battery-to-grid
             discharge is forbidden (issue #752).  ``0.0`` disables it.
+        solver_time_limit_s:
+            HiGHS time limit in seconds (issue #1309).
         export_fee_per_kwh:
             Retailer margin/balancing fee per kWh exported (issue #925).
             Netted out of the export price for the objective's own economic
@@ -626,7 +627,7 @@ def solve_milp(
         b_eq=b_eq,
         bounds=bounds,
         integrality=integrality,
-        solver_time_limit_s=_SOLVER_TIME_LIMIT_S,
+        solver_time_limit_s=solver_time_limit_s,
         n_vars=n_vars,
         slot_count=n,
         future_idx=future_idx,

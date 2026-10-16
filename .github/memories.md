@@ -1338,8 +1338,9 @@ against `docs/planner-spec.md`.
     it. Tests build a synthetic hourly day instead.
 - `hsem.log` is not a corpus — derived `[soc_sim]`/`[avg]`/`[pop]` traces, no
   `planner_input`.
-- **Replays lift the MILP's 2 s solver time limit** (`generous_solver_limit()`,
-  autouse in `tests/backtest/conftest.py`). Real cycles take ~1.5 s idle; under
+- **Replays lift the MILP's 2 s solver time limit**: `planner_input_from_dict()`
+  sets `PlannerInput.planner_solver_time_limit_s` to 60 s (issue #1309 replaced
+  the `generous_solver_limit()` patch of `_SOLVER_TIME_LIMIT_S`). Real cycles take ~1.5 s idle; under
   load the same input returned a time-limited incumbent (143.61 vs 110.12) and
   failed `winner_not_worse_than_no_action` — a machine-load artefact. Never
   replay corpus cycles under the production limit, or CI turns flaky.

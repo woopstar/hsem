@@ -53,6 +53,7 @@ from custom_components.hsem.planner.engine_ev_milp import (
 from custom_components.hsem.planner.engine_explanation import (
     _build_explanation,
     _derive_windows,
+    apply_solver_outcome,
 )
 from custom_components.hsem.planner.engine_population import (
     _inject_live_data_into_current_slot,
@@ -700,6 +701,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     expl.hysteresis_active = hysteresis_result.applied
     expl.hysteresis_reason = hysteresis_result.reason
     expl.previous_plan_name = hysteresis_result.previous_plan_name
+    apply_solver_outcome(expl, candidates, winner.name, inp.planner_solver_time_limit_s)
     pc = score_plan(
         slots,
         cw,

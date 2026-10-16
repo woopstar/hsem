@@ -18,6 +18,7 @@ from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.utils.diagnostics import _planner_input_to_dict
 from tests.backtest.replay import (
+    BACKTEST_SOLVER_TIME_LIMIT_S,
     DATETIME_FIELDS,
     load_dump,
     load_planner_input,
@@ -67,9 +68,21 @@ class TestFieldRoundTrip:
 
     def test_every_field_round_trips(self) -> None:
         original = _rich_input()
-        rebuilt, report = planner_input_from_dict(_payload(original))
+        rebuilt, report = planner_input_from_dict(
+            _payload(original), solver_time_limit_s=None
+        )
         assert report.is_faithful, report.describe()
         assert rebuilt == original
+
+    def test_replays_get_the_generous_solver_limit_by_default(self) -> None:
+        """Replays lift the solver time limit unless told to keep it (#1309)."""
+        payload = _payload(PlannerInput(planner_solver_time_limit_s=2.0))
+        rebuilt, _ = planner_input_from_dict(payload)
+        assert rebuilt.planner_solver_time_limit_s == pytest.approx(
+            BACKTEST_SOLVER_TIME_LIMIT_S
+        )
+        kept, _ = planner_input_from_dict(payload, solver_time_limit_s=None)
+        assert kept.planner_solver_time_limit_s == pytest.approx(2.0)
 
     def test_report_records_source_metadata(self) -> None:
         _, report = planner_input_from_dict(_payload(PlannerInput()))

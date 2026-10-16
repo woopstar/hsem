@@ -49,6 +49,7 @@ from custom_components.hsem.utils.datetime_utils import (
     slot_key,
     utc_key,
 )
+from custom_components.hsem.utils.misc import round_or_none
 from custom_components.hsem.utils.performance_scoring import PerformanceRequest
 from custom_components.hsem.utils.persistence import (
     finite_float,
@@ -233,10 +234,6 @@ def sum_scores(
     return {
         name: sum(getattr(score, name) or 0.0 for score in scored) for name in names
     }
-
-
-def _rounded(value: float | None, digits: int = 3) -> float | None:
-    return None if value is None else round(value, digits)
 
 
 def _percent(share: float | None) -> float | None:
@@ -547,25 +544,25 @@ class PerformanceTracker:
         """Return a score's headline figures and cost breakdown."""
         return {
             "reason": score.capture_reason,
-            "actual_benefit": _rounded(score.savings),
-            "missed_opportunity": _rounded(score.regret),
+            "actual_benefit": round_or_none(score.savings),
+            "missed_opportunity": round_or_none(score.regret),
             "savings_capture": _percent(score.capture),
-            "battery_loss": _rounded(score.battery_loss),
-            "solar_loss": _rounded(score.solar_loss),
+            "battery_loss": round_or_none(score.battery_loss),
+            "solar_loss": round_or_none(score.solar_loss),
             "battery_utilisation": _percent(score.battery_utilisation),
             "solar_utilisation": _percent(score.solar_utilisation),
             "breakdown_reason": score.breakdown_reason,
-            "ev_missed_opportunity": _rounded(score.ev_missed),
-            "ev_potential": _rounded(score.ev_potential),
+            "ev_missed_opportunity": round_or_none(score.ev_missed),
+            "ev_potential": round_or_none(score.ev_potential),
             "ev_charging_efficiency": _percent(score.ev_efficiency),
-            "ev_shiftable_kwh": _rounded(score.ev_shiftable_kwh),
+            "ev_shiftable_kwh": round_or_none(score.ev_shiftable_kwh),
             "ev_reason": score.ev_reason,
-            "potential": _rounded(score.potential),
-            "realized_cost": _rounded(score.realized_cost),
-            "baseline_cost": _rounded(score.baseline_cost),
-            "oracle_cost": _rounded(score.oracle_cost),
-            "coverage": _rounded(score.coverage),
-            "control_coverage": _rounded(score.control_coverage),
+            "potential": round_or_none(score.potential),
+            "realized_cost": round_or_none(score.realized_cost),
+            "baseline_cost": round_or_none(score.baseline_cost),
+            "oracle_cost": round_or_none(score.oracle_cost),
+            "coverage": round_or_none(score.coverage),
+            "control_coverage": round_or_none(score.control_coverage),
         }
 
     def as_sensor_attributes(self, now: datetime) -> dict[str, Any]:
@@ -591,10 +588,10 @@ class PerformanceTracker:
                 "window_start": window.start.astimezone(now.tzinfo).isoformat(),
                 "window_end": window.end.astimezone(now.tzinfo).isoformat(),
                 "slot_count": window.slot_count,
-                "start_stored_kwh": _rounded(window.start_kwh),
-                "realized_end_stored_kwh": _rounded(window.realized_end_kwh),
-                "baseline_end_stored_kwh": _rounded(window.baseline_end_kwh),
-                "residual_kwh": _rounded(window.residual_kwh),
+                "start_stored_kwh": round_or_none(window.start_kwh),
+                "realized_end_stored_kwh": round_or_none(window.realized_end_kwh),
+                "baseline_end_stored_kwh": round_or_none(window.baseline_end_kwh),
+                "residual_kwh": round_or_none(window.residual_kwh),
                 "notes": list(window.notes),
             }
         attributes["yesterday"] = (
