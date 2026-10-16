@@ -49,7 +49,6 @@ from tests.backtest.recorded_day import (  # noqa: E402
     recorded_days,
 )
 from tests.backtest.replay import (  # noqa: E402
-    generous_solver_limit,
     iter_dumps,
     planner_input_from_dict,
 )
@@ -95,23 +94,22 @@ def _attribute(
 ) -> list[DayAttribution]:
     """Attribute *days*, taking the limits from a cycle of each day."""
     results: list[DayAttribution] = []
-    with generous_solver_limit():
-        for day in days:
-            on_day = site_cycles_by_slot(
-                payloads, day, zone, actuals.slot_minutes, actuals.site_tag
+    for day in days:
+        on_day = site_cycles_by_slot(
+            payloads, day, zone, actuals.slot_minutes, actuals.site_tag
+        )
+        if isinstance(on_day, str):
+            result = DayAttribution(day=day, unscorable=on_day)
+        else:
+            # The limits come from a cycle of the day itself, so they
+            # describe the installation that recorded it.
+            planner_input, _report = planner_input_from_dict(
+                next(iter(on_day.values()))
             )
-            if isinstance(on_day, str):
-                result = DayAttribution(day=day, unscorable=on_day)
-            else:
-                # The limits come from a cycle of the day itself, so they
-                # describe the installation that recorded it.
-                planner_input, _report = planner_input_from_dict(
-                    next(iter(on_day.values()))
-                )
-                site = SiteLimits.from_planner_input(planner_input)
-                result = attribute_day(actuals, payloads, day, zone, site)
-            results.append(result)
-            print(f"[info] {day}: done", file=sys.stderr, flush=True)
+            site = SiteLimits.from_planner_input(planner_input)
+            result = attribute_day(actuals, payloads, day, zone, site)
+        results.append(result)
+        print(f"[info] {day}: done", file=sys.stderr, flush=True)
     return results
 
 

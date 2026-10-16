@@ -8,13 +8,55 @@ the complete model that was passed to the solver.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+import time
+from dataclasses import dataclass, field
 from typing import Any
 
 from custom_components.hsem.utils.logger import log_planner
 
 _FEASIBILITY_TOLERANCE = 1e-5
 _INTEGRALITY_TOLERANCE = 1e-5
+
+#: Solve outcomes published on the Plan Strategy sensor (issue #1309).
+SOLVER_STATUS_OPTIMAL = "optimal"
+SOLVER_STATUS_TIME_LIMIT = "time_limit"
+SOLVER_STATUS_FAILED = "failed"
+
+#: Attribute under which :func:`solve_and_validate` attaches the
+#: :class:`SolveOutcome` to the accepted solver result.
+SOLVE_OUTCOME_ATTR = "hsem_solve_outcome"
+
+
+@dataclass(frozen=True)
+class SolveOutcome:
+    """How one HiGHS solve ended (issue #1309).
+
+    Attributes:
+        status: ``optimal`` when HiGHS proved optimality, ``time_limit`` when
+            it stopped at its time limit and the incumbent was accepted, or
+            ``failed``.
+        time_s: Wall time of the solver call, in seconds.  Left out of
+            equality, so two solves of the same model compare equal.
+        time_limit_s: The time limit the solve ran under, in seconds.
+        gap_pct: Relative MIP gap in percent as HiGHS reported it, or
+            ``None`` when the solver did not report one.
+    """
+
+    status: str
+    time_s: float = field(compare=False)
+    time_limit_s: float
+    gap_pct: float | None = None
+
+
+def _gap_pct(result: Any) -> float | None:
+    """Return the solver's relative MIP gap in percent, or ``None``."""
+    gap = getattr(result, "mip_gap", None)
+    if isinstance(gap, bool) or not isinstance(gap, int | float):
+        return None
+    if not math.isfinite(gap):
+        return None
+    return float(gap) * 100.0
 
 
 @dataclass(frozen=True)
@@ -214,7 +256,12 @@ def solve_and_validate(
     #797: semi-integer EV amp variables make the model materially harder
     for HiGHS to solve to proven optimality within the time budget) only
     after validating it against the complete model.
+
+    An accepted result carries a :class:`SolveOutcome` as the
+    ``hsem_solve_outcome`` attribute (issue #1309), so the planner can say
+    when its plan came from a solve cut short by the time limit.
     """
+    started = time.perf_counter()
     try:
         result = linprog(
             c_obj,
@@ -230,6 +277,7 @@ def solve_and_validate(
     except Exception as exc:
         log_planner("warning", "[milp] Solver raised an exception: %s", exc)
         return None
+    elapsed_s = time.perf_counter() - started
 
     status_code = int(getattr(result, "status", -1))
     solver_message = str(getattr(result, "message", ""))
@@ -266,4 +314,21 @@ def solve_and_validate(
             validation.reason,
         )
         return None
+    outcome = SolveOutcome(
+        status=SOLVER_STATUS_TIME_LIMIT if is_time_limit else SOLVER_STATUS_OPTIMAL,
+        time_s=elapsed_s,
+        time_limit_s=solver_time_limit_s,
+        gap_pct=_gap_pct(result),
+    )
+    if is_time_limit:
+        log_planner(
+            "debug",
+            "[milp] Accepted time-limited solution status=%s time=%.2fs "
+            "limit=%.2fs gap=%s",
+            status_code,
+            outcome.time_s,
+            outcome.time_limit_s,
+            "n/a" if outcome.gap_pct is None else f"{outcome.gap_pct:.2f}%",
+        )
+    setattr(result, SOLVE_OUTCOME_ATTR, outcome)
     return result

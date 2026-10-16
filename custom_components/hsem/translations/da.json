@@ -247,7 +247,8 @@
           "hsem_planner_hysteresis_absolute": "Hysterese absolut tærskel",
           "hsem_planner_hysteresis_enabled": "Hysterese på plan-niveau",
           "hsem_planner_hysteresis_percentage": "Hysterese procenttærskel (%)",
-          "hsem_planner_window_hysteresis_minutes": "Hysterese-holdetid for vindue (minutter)"
+          "hsem_planner_window_hysteresis_minutes": "Hysterese-holdetid for vindue (minutter)",
+          "hsem_planner_solver_time_limit_s": "Tidsgrænse for planlæggerens solver (sekunder)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Indtast den samlede købspris for dit batterisystem. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
@@ -259,7 +260,8 @@
           "hsem_planner_hysteresis_absolute": "Minimum absolut score-forbedring, der kræves for at skifte til en ny plan. 0,00 deaktiverer den absolutte tærskel. Scoren bruger samme valuta som dine elpriser, så en værdi på 0,01 kræver mindst 1 øre/kWh-ækvivalent forbedring, før der skiftes.",
           "hsem_planner_hysteresis_enabled": "Når dette er aktiveret, beholder planlæggeren den aktive kandidatplan, medmindre en ny plan forbedrer scoren med mere end de konfigurerede tærskler. Forhindrer svingninger mellem ligestillede strategier.",
           "hsem_planner_hysteresis_percentage": "Minimum procentvis score-forbedring, der kræves for at skifte til en ny plan. 0 % deaktiverer procenttærsklen. Standard 5 % forhindrer flapning mellem næsten identiske planer.",
-          "hsem_planner_window_hysteresis_minutes": "Minimumstid (minutter), en anbefaling skal fastholdes, før den kan ændres. Forhindrer hurtig veksling som f.eks. ev_smart_charging ↔ batteries_charge_solar. 0 deaktiverer funktionen. Standard 10."
+          "hsem_planner_window_hysteresis_minutes": "Minimumstid (minutter), en anbefaling skal fastholdes, før den kan ændres. Forhindrer hurtig veksling som f.eks. ev_smart_charging ↔ batteries_charge_solar. 0 deaktiverer funktionen. Standard 10.",
+          "hsem_planner_solver_time_limit_s": "Maksimal tid (sekunder) optimeringen må bruge på én beregning. Når grænsen nås, bruges den bedste plan, der er fundet indtil da, og den kan være langt fra optimal (f.eks. Vent i alle tidsrum). Hæv den kun, når Plan Strategy-sensoren viser solver_status time_limit: en højere grænse gør hver opdateringscyklus længere, og en cyklus kan køre op til tre beregninger. Interval 1–10. Standard 2."
         },
         "description": "Konfigurer batteriøkonomiske parametre, der påvirker afskrivningsberegninger og rundturseffektivitet.",
         "title": "Batteriøkonomi"
@@ -828,7 +830,8 @@
           "hsem_planner_hysteresis_absolute": "Hysterese absolut tærskel",
           "hsem_planner_hysteresis_enabled": "Hysterese på plan-niveau",
           "hsem_planner_hysteresis_percentage": "Hysterese procenttærskel (%)",
-          "hsem_planner_window_hysteresis_minutes": "Hysterese-holdetid for vindue (minutter)"
+          "hsem_planner_window_hysteresis_minutes": "Hysterese-holdetid for vindue (minutter)",
+          "hsem_planner_solver_time_limit_s": "Tidsgrænse for planlæggerens solver (sekunder)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Samlet købspris for batterisystemet (inkl. installation).",
@@ -840,7 +843,8 @@
           "hsem_planner_hysteresis_absolute": "Minimum absolut score-forbedring, der kræves for at skifte til en ny plan. 0,00 deaktiverer den absolutte tærskel. Scoren bruger samme valuta som dine elpriser, så en værdi på 0,01 kræver mindst 1 øre/kWh-ækvivalent forbedring, før der skiftes.",
           "hsem_planner_hysteresis_enabled": "Når dette er aktiveret, beholder planlæggeren den aktive kandidatplan, medmindre en ny plan forbedrer scoren med mere end de konfigurerede tærskler. Forhindrer svingninger mellem ligestillede strategier.",
           "hsem_planner_hysteresis_percentage": "Minimum procentvis score-forbedring, der kræves for at skifte til en ny plan. 0 % deaktiverer procenttærsklen. Standard 5 % forhindrer flapning mellem næsten identiske planer.",
-          "hsem_planner_window_hysteresis_minutes": "Minimumstid (minutter), en anbefaling skal fastholdes, før den kan ændres. Forhindrer hurtig veksling som f.eks. ev_smart_charging ↔ batteries_charge_solar. 0 deaktiverer funktionen. Standard 10."
+          "hsem_planner_window_hysteresis_minutes": "Minimumstid (minutter), en anbefaling skal fastholdes, før den kan ændres. Forhindrer hurtig veksling som f.eks. ev_smart_charging ↔ batteries_charge_solar. 0 deaktiverer funktionen. Standard 10.",
+          "hsem_planner_solver_time_limit_s": "Maksimal tid (sekunder) optimeringen må bruge på én beregning. Når grænsen nås, bruges den bedste plan, der er fundet indtil da, og den kan være langt fra optimal (f.eks. Vent i alle tidsrum). Hæv den kun, når Plan Strategy-sensoren viser solver_status time_limit: en højere grænse gør hver opdateringscyklus længere, og en cyklus kan køre op til tre beregninger. Interval 1–10. Standard 2."
         },
         "description": "Konfigurer batteriøkonomi-parametre til cyklusomkostningsberegning.",
         "title": "Batteriøkonomi"

@@ -52,6 +52,7 @@ _VALID_BATTERY_ECONOMICS_INPUT: dict[str, Any] = {
     "hsem_planner_hysteresis_absolute": 0.1,
     "hsem_planner_hysteresis_percentage": 5,
     "hsem_planner_window_hysteresis_minutes": 15,
+    "hsem_planner_solver_time_limit_s": 2.0,
 }
 
 _VALID_OCPP_INPUT: dict[str, Any] = {

@@ -8,8 +8,16 @@ import hashlib
 import math
 from typing import Any
 
-from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
-from custom_components.hsem.utils.conversion import convert_months_to_int  # noqa: F401
+from custom_components.hsem.const import (
+    DEFAULT_CONFIG_VALUES,
+    PLANNER_SOLVER_TIME_LIMIT_DEFAULT_S,
+    PLANNER_SOLVER_TIME_LIMIT_MAX_S,
+    PLANNER_SOLVER_TIME_LIMIT_MIN_S,
+)
+from custom_components.hsem.utils.conversion import (
+    convert_months_to_int,  # noqa: F401
+    convert_to_float,
+)
 from custom_components.hsem.utils.logger import log_planner
 
 
@@ -98,6 +106,40 @@ def clamp_efficiency(pct: float) -> float:
         Efficiency as a fraction in [0.01, 1.0].
     """
     return max(min(pct, 100.0), 1.0) / 100.0
+
+
+def round_or_none(value: float | None, digits: int = 3) -> float | None:
+    """Round *value* to *digits* decimals, passing ``None`` through.
+
+    Args:
+        value: The number to round, or ``None``.
+        digits: Decimal places to keep.
+
+    Returns:
+        The rounded value, or ``None`` when *value* is ``None``.
+    """
+    return None if value is None else round(value, digits)
+
+
+def solver_time_limit_s(value: Any) -> float:
+    """Return the MILP solver time limit in seconds from a configured value.
+
+    Missing or non-numeric values give the default; numeric values are
+    clamped to the option's range (issue #1309).
+
+    Args:
+        value: The configured value, as stored in the config entry.
+
+    Returns:
+        The time limit in seconds, within
+        [``PLANNER_SOLVER_TIME_LIMIT_MIN_S``, ``PLANNER_SOLVER_TIME_LIMIT_MAX_S``].
+    """
+    seconds = convert_to_float(value)
+    if seconds is None or not math.isfinite(seconds):
+        return PLANNER_SOLVER_TIME_LIMIT_DEFAULT_S
+    return max(
+        PLANNER_SOLVER_TIME_LIMIT_MIN_S, min(seconds, PLANNER_SOLVER_TIME_LIMIT_MAX_S)
+    )
 
 
 def get_max_discharge_power(usable_capacity: int) -> int:

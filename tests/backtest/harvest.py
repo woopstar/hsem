@@ -48,7 +48,6 @@ from custom_components.hsem.utils.recommendations import SENTINEL_RECS
 from tests.backtest.actuals import ACTUALS_SCHEMA, ENERGY_SERIES
 from tests.backtest.invariants import check_invariants, format_violations
 from tests.backtest.replay import (
-    generous_solver_limit,
     iter_dumps,
     load_dump,
     load_planner_input,
@@ -324,18 +323,17 @@ def harvest(
     Returns:
         A :class:`HarvestResult`.
     """
-    with generous_solver_limit():
-        return _harvest(
-            live_files,
-            corpus_dir,
-            time_zone=time_zone,
-            site=validate_site(site),
-            since=since,
-            max_new=max_new,
-            max_corpus=max_corpus,
-            quarantine_dir=quarantine_dir,
-            dry_run=dry_run,
-        )
+    return _harvest(
+        live_files,
+        corpus_dir,
+        time_zone=time_zone,
+        site=validate_site(site),
+        since=since,
+        max_new=max_new,
+        max_corpus=max_corpus,
+        quarantine_dir=quarantine_dir,
+        dry_run=dry_run,
+    )
 
 
 def _harvest(
@@ -640,26 +638,25 @@ def refresh_corpus(corpus_dir: Path, *, dry_run: bool = False) -> RefreshResult:
         A :class:`RefreshResult`.
     """
     result = RefreshResult()
-    with generous_solver_limit():
-        for path in sorted(corpus_dir.glob("*.json")):
-            document = json.loads(path.read_text(encoding="utf-8"))
-            payload = document.get("data", document)
-            outcome = refresh_payload(payload)
-            if outcome is None:
-                result.unchanged += 1
-                continue
-            if isinstance(outcome, str):
-                result.unfixable.append((path.name, outcome))
-                continue
-            filled, removed = outcome
-            result.updated.append((path.name, filled, removed))
-            if not dry_run:
-                path.write_text(
-                    json.dumps(document, indent=2, sort_keys=True) + "\n",
-                    encoding="utf-8",
-                )
-            inp, _report = planner_input_from_dict(payload)
-            violations = check_invariants(inp, run_planner(inp))
-            if violations:
-                result.violations.append((path.name, format_violations(violations)))
+    for path in sorted(corpus_dir.glob("*.json")):
+        document = json.loads(path.read_text(encoding="utf-8"))
+        payload = document.get("data", document)
+        outcome = refresh_payload(payload)
+        if outcome is None:
+            result.unchanged += 1
+            continue
+        if isinstance(outcome, str):
+            result.unfixable.append((path.name, outcome))
+            continue
+        filled, removed = outcome
+        result.updated.append((path.name, filled, removed))
+        if not dry_run:
+            path.write_text(
+                json.dumps(document, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        inp, _report = planner_input_from_dict(payload)
+        violations = check_invariants(inp, run_planner(inp))
+        if violations:
+            result.violations.append((path.name, format_violations(violations)))
     return result

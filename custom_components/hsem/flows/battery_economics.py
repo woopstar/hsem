@@ -6,9 +6,13 @@ and window-level (issue #315).
 """
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE
+from homeassistant.const import PERCENTAGE, UnitOfTime
 from homeassistant.helpers.selector import selector
 
+from custom_components.hsem.const import (
+    PLANNER_SOLVER_TIME_LIMIT_MAX_S,
+    PLANNER_SOLVER_TIME_LIMIT_MIN_S,
+)
 from custom_components.hsem.utils.config_validator import merge_errors, validate_price
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.schema import vol
@@ -171,6 +175,23 @@ async def get_battery_economics_step_schema(  # NOSONAR
                     }
                 }
             ),
+            # --- MILP solver time limit (issue #1309) ---
+            vol.Required(
+                "hsem_planner_solver_time_limit_s",
+                default=get_config_value(
+                    config_entry, "hsem_planner_solver_time_limit_s"
+                ),
+            ): selector(
+                {
+                    "number": {
+                        "min": PLANNER_SOLVER_TIME_LIMIT_MIN_S,
+                        "max": PLANNER_SOLVER_TIME_LIMIT_MAX_S,
+                        "step": 0.5,
+                        "unit_of_measurement": UnitOfTime.SECONDS,
+                        "mode": "box",
+                    }
+                }
+            ),
         }
     )
 
@@ -197,6 +218,7 @@ async def validate_battery_economics_input(
         "hsem_planner_hysteresis_absolute",
         "hsem_planner_hysteresis_percentage",
         "hsem_planner_window_hysteresis_minutes",
+        "hsem_planner_solver_time_limit_s",
     ]
     required_errors: dict[str, str] = {
         f: "required" for f in scalar_required if f not in user_input

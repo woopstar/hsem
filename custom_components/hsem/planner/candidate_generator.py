@@ -303,6 +303,7 @@ def generate_candidates(
             battery_export_forecast_reserve_kwh=forecast_export_reserve_kwh,
             excess_export_discharge_buffer_pct=(inp.excess_export_discharge_buffer_pct),
             export_fee_per_kwh=inp.export_fee_per_kwh,
+            solver_time_limit_s=inp.planner_solver_time_limit_s,
         )
         log_planner(
             "debug",
