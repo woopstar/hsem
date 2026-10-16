@@ -307,7 +307,8 @@
           "hsem_planner_hysteresis_enabled": "Histéresis a nivel de plan",
           "hsem_planner_hysteresis_absolute": "Umbral absoluto de histéresis",
           "hsem_planner_hysteresis_percentage": "Umbral porcentual de histéresis (%)",
-          "hsem_planner_window_hysteresis_minutes": "Tiempo de retención de histéresis de ventana (minutos)"
+          "hsem_planner_window_hysteresis_minutes": "Tiempo de retención de histéresis de ventana (minutos)",
+          "hsem_planner_solver_time_limit_s": "Límite de tiempo del solver del planificador (segundos)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Introduce el precio de compra total de tu sistema de baterías en tu moneda local. Se usa junto con los ciclos esperados y la capacidad utilizable para calcular el coste de depreciación por kWh y el umbral de precio mínimo de exportación recomendado.",
@@ -319,7 +320,8 @@
           "hsem_planner_hysteresis_enabled": "Cuando está activada, el planificador mantiene el plan candidato activo a menos que un nuevo plan mejore la puntuación por encima de los umbrales configurados. Evita la oscilación entre estrategias con puntuaciones equivalentes.",
           "hsem_planner_hysteresis_absolute": "Mejora mínima absoluta de la puntuación necesaria para cambiar a un nuevo plan. 0.00 desactiva el umbral absoluto. La puntuación usa la misma moneda que tus precios de electricidad, por lo que un valor de 0.01 requiere una mejora de al menos 1 céntimo/kWh equivalente antes de cambiar.",
           "hsem_planner_hysteresis_percentage": "Mejora mínima porcentual de la puntuación necesaria para cambiar a un nuevo plan. 0 % desactiva el umbral porcentual. El valor predeterminado del 5 % evita las oscilaciones entre planes casi idénticos.",
-          "hsem_planner_window_hysteresis_minutes": "Tiempo mínimo (minutos) que debe mantenerse una recomendación antes de poder cambiar. Evita alternancias rápidas como ev_smart_charging ↔ batteries_charge_solar. 0 desactiva la función. Predeterminado: 10."
+          "hsem_planner_window_hysteresis_minutes": "Tiempo mínimo (minutos) que debe mantenerse una recomendación antes de poder cambiar. Evita alternancias rápidas como ev_smart_charging ↔ batteries_charge_solar. 0 desactiva la función. Predeterminado: 10.",
+          "hsem_planner_solver_time_limit_s": "Tiempo máximo (segundos) que el optimizador puede dedicar a un cálculo. Al alcanzar el límite usa el mejor plan encontrado hasta ese momento, que puede estar lejos del óptimo (por ejemplo, Esperar en todas las franjas). Auméntalo solo cuando el sensor Plan Strategy muestre solver_status time_limit: un límite mayor alarga cada ciclo de actualización, y un ciclo puede ejecutar hasta tres cálculos. Rango 1–10. Predeterminado: 2."
         },
         "description": "Configura los parámetros económicos de la batería y la histéresis del planificador (anti-oscilación).",
         "title": "Economía de la batería e histéresis"
@@ -846,7 +848,8 @@
           "hsem_planner_hysteresis_enabled": "Histéresis a nivel de plan",
           "hsem_planner_hysteresis_absolute": "Umbral absoluto de histéresis",
           "hsem_planner_hysteresis_percentage": "Umbral porcentual de histéresis (%)",
-          "hsem_planner_window_hysteresis_minutes": "Tiempo de retención de histéresis de ventana (minutos)"
+          "hsem_planner_window_hysteresis_minutes": "Tiempo de retención de histéresis de ventana (minutos)",
+          "hsem_planner_solver_time_limit_s": "Límite de tiempo del solver del planificador (segundos)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Introduce el precio de compra total de tu sistema de baterías en tu moneda local. Se usa junto con los ciclos esperados y la capacidad utilizable para calcular el coste de depreciación por kWh y el umbral de precio mínimo de exportación recomendado.",
@@ -858,7 +861,8 @@
           "hsem_planner_hysteresis_enabled": "Cuando está activada, el planificador mantiene el plan candidato activo a menos que un nuevo plan mejore la puntuación por encima de los umbrales configurados. Evita la oscilación entre estrategias con puntuaciones equivalentes.",
           "hsem_planner_hysteresis_absolute": "Mejora mínima absoluta de la puntuación necesaria para cambiar a un nuevo plan. 0.00 desactiva el umbral absoluto. La puntuación usa la misma moneda que tus precios de electricidad, por lo que un valor de 0.01 requiere una mejora de al menos 1 céntimo/kWh equivalente antes de cambiar.",
           "hsem_planner_hysteresis_percentage": "Mejora mínima porcentual de la puntuación necesaria para cambiar a un nuevo plan. 0 % desactiva el umbral porcentual. El valor predeterminado del 5 % evita las oscilaciones entre planes casi idénticos.",
-          "hsem_planner_window_hysteresis_minutes": "Tiempo mínimo (minutos) que debe mantenerse una recomendación antes de poder cambiar. Evita alternancias rápidas como ev_smart_charging ↔ batteries_charge_solar. 0 desactiva la función. Predeterminado: 10."
+          "hsem_planner_window_hysteresis_minutes": "Tiempo mínimo (minutos) que debe mantenerse una recomendación antes de poder cambiar. Evita alternancias rápidas como ev_smart_charging ↔ batteries_charge_solar. 0 desactiva la función. Predeterminado: 10.",
+          "hsem_planner_solver_time_limit_s": "Tiempo máximo (segundos) que el optimizador puede dedicar a un cálculo. Al alcanzar el límite usa el mejor plan encontrado hasta ese momento, que puede estar lejos del óptimo (por ejemplo, Esperar en todas las franjas). Auméntalo solo cuando el sensor Plan Strategy muestre solver_status time_limit: un límite mayor alarga cada ciclo de actualización, y un ciclo puede ejecutar hasta tres cálculos. Rango 1–10. Predeterminado: 2."
         },
         "description": "Configura los parámetros económicos de la batería y la histéresis del planificador (anti-oscilación).",
         "title": "Economía de la batería e histéresis"

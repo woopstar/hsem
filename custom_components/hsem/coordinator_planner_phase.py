@@ -58,6 +58,7 @@ from custom_components.hsem.utils.logger import (
     set_hsem_verbose,
 )
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.solver_watch import note_solver_outcome
 
 
 class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
@@ -185,6 +186,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
 
             for warning in planner_output.warnings:
                 async_log("debug", "[planner] %s", warning)
+            note_solver_outcome(self, planner_output.explanation)
 
             self._current_required_battery = planner_output.required_capacity_kwh
             self._current_wait_mode_reserve = planner_output.wait_mode_reserve_kwh

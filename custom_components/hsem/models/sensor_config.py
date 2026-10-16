@@ -377,6 +377,8 @@ class SensorConfig:
     # Window-level hysteresis — minimum hold time (minutes) before allowing
     # any recommendation change.  0 disables the feature.
     planner_window_hysteresis_minutes: int = 10
+    # MILP solver time limit per solve, in seconds (issue #1309).
+    planner_solver_time_limit_s: float = 2.0
 
     # Embedded OCPP 1.6 server for EV charger control (issue #603).
     ocpp_enabled: bool = False

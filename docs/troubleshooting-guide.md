@@ -411,6 +411,24 @@ planner reserve.
 - **Fix:** If this is unexpected, check the _Winter Months_ setting in the
   Months config step. Adjust if your climate has different seasonal patterns.
 
+**5d-1. Plan is Wait everywhere, or flips between Wait and a normal plan**
+
+On slow hardware (for example a Raspberry Pi) the optimiser can reach its time
+limit before it finds a good plan. It then publishes the best plan found so
+far, which can be Wait in every slot (issue #1309, reported in #978).
+
+- **Check:** `sensor.hsem_plan_explanation_sensor` → `solver_status`.
+  `time_limit` means the solve was cut short (`selected_strategy` is then
+  `solver_time_limit`, and `solver_time_s` / `solver_gap_pct` show how long it
+  ran and how far from proven optimal it was). `failed` means no plan was found
+  and a fallback plan is used. After three time-limited cycles in a row
+  `hsem.log` has one WARNING naming the setting.
+- **Fix:** HSEM → **Configure** → **Battery Economics & Hysteresis** → raise
+  _Planner Solver Time Limit_ (`hsem_planner_solver_time_limit_s`, default 2 s,
+  up to 10 s) step by step until `solver_status` shows `optimal`. Every update
+  cycle gets longer by up to that much per solve, so do not raise it when the
+  status is already `optimal`.
+
 **5e. Consumption weights prevent plan selection**
 
 If the consumption prediction weights don't sum to 100 %, the planner logs a

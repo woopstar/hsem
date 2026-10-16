@@ -307,7 +307,8 @@
           "hsem_planner_hysteresis_enabled": "Plan-level Hysteresis",
           "hsem_planner_hysteresis_absolute": "Hysteresis Absolute Threshold",
           "hsem_planner_hysteresis_percentage": "Hysteresis Percentage Threshold (%)",
-          "hsem_planner_window_hysteresis_minutes": "Window Hysteresis Hold Time (minutes)"
+          "hsem_planner_window_hysteresis_minutes": "Window Hysteresis Hold Time (minutes)",
+          "hsem_planner_solver_time_limit_s": "Planner Solver Time Limit (seconds)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in your local currency. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
@@ -319,7 +320,8 @@
           "hsem_planner_hysteresis_enabled": "When enabled, the planner keeps the active candidate plan unless a new plan improves the score by more than the configured thresholds. Prevents oscillation between equally-scored strategies.",
           "hsem_planner_hysteresis_absolute": "Minimum absolute score improvement required to switch to a new plan. 0.00 disables the absolute threshold. The score uses the same currency as your electricity prices, so a value of 0.01 requires at least 1 cent/kWh-equivalent improvement before switching.",
           "hsem_planner_hysteresis_percentage": "Minimum percentage score improvement required to switch to a new plan. 0% disables the percentage threshold. Default 5% prevents flapping between nearly-identical plans.",
-          "hsem_planner_window_hysteresis_minutes": "Minimum time (minutes) a recommendation must be held before it can change. Prevents rapid toggling such as ev_smart_charging ↔ batteries_charge_solar. 0 disables the feature. Default 10."
+          "hsem_planner_window_hysteresis_minutes": "Minimum time (minutes) a recommendation must be held before it can change. Prevents rapid toggling such as ev_smart_charging ↔ batteries_charge_solar. 0 disables the feature. Default 10.",
+          "hsem_planner_solver_time_limit_s": "Maximum time (seconds) the optimiser may spend on one solve. When it reaches the limit it uses the best plan found so far, which can be far from optimal (for example Wait in every slot). Only raise it when the Plan Strategy sensor shows solver_status time_limit: a higher limit makes each update cycle longer, and a cycle can run up to three solves. Range 1–10. Default 2."
         },
         "description": "Configure battery economics parameters and planner hysteresis (anti-flapping).",
         "title": "Battery Economics & Hysteresis"
@@ -846,7 +848,8 @@
           "hsem_planner_hysteresis_enabled": "Plan-level Hysteresis",
           "hsem_planner_hysteresis_absolute": "Hysteresis Absolute Threshold",
           "hsem_planner_hysteresis_percentage": "Hysteresis Percentage Threshold (%)",
-          "hsem_planner_window_hysteresis_minutes": "Window Hysteresis Hold Time (minutes)"
+          "hsem_planner_window_hysteresis_minutes": "Window Hysteresis Hold Time (minutes)",
+          "hsem_planner_solver_time_limit_s": "Planner Solver Time Limit (seconds)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in your local currency. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
@@ -858,7 +861,8 @@
           "hsem_planner_hysteresis_enabled": "When enabled, the planner keeps the active candidate plan unless a new plan improves the score by more than the configured thresholds. Prevents oscillation between equally-scored strategies.",
           "hsem_planner_hysteresis_absolute": "Minimum absolute score improvement required to switch to a new plan. 0.00 disables the absolute threshold. The score uses the same currency as your electricity prices, so a value of 0.01 requires at least 1 cent/kWh-equivalent improvement before switching.",
           "hsem_planner_hysteresis_percentage": "Minimum percentage score improvement required to switch to a new plan. 0% disables the percentage threshold. Default 5% prevents flapping between nearly-identical plans.",
-          "hsem_planner_window_hysteresis_minutes": "Minimum time (minutes) a recommendation must be held before it can change. Prevents rapid toggling such as ev_smart_charging ↔ batteries_charge_solar. 0 disables the feature. Default 10."
+          "hsem_planner_window_hysteresis_minutes": "Minimum time (minutes) a recommendation must be held before it can change. Prevents rapid toggling such as ev_smart_charging ↔ batteries_charge_solar. 0 disables the feature. Default 10.",
+          "hsem_planner_solver_time_limit_s": "Maximum time (seconds) the optimiser may spend on one solve. When it reaches the limit it uses the best plan found so far, which can be far from optimal (for example Wait in every slot). Only raise it when the Plan Strategy sensor shows solver_status time_limit: a higher limit makes each update cycle longer, and a cycle can run up to three solves. Range 1–10. Default 2."
         },
         "description": "Configure battery economics parameters and planner hysteresis (anti-flapping).",
         "title": "Battery Economics & Hysteresis"

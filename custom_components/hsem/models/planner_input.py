@@ -352,6 +352,9 @@ class PlannerInput:
     #: Window-level hysteresis — minimum hold time (minutes) before
     #: allowing any recommendation change.  0 disables the feature.
     planner_window_hysteresis_minutes: int = 10
+    #: HiGHS time limit for each MILP solve, in seconds (issue #1309).  A
+    #: solve that reaches it returns the best plan found so far.
+    planner_solver_time_limit_s: float = 2.0
     #: Name of the winning candidate from the previous planner run.
     #: ``None`` on the first run (no active plan to preserve).
     previous_winner_name: str | None = None

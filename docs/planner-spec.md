@@ -1059,7 +1059,14 @@ budget. `planner/milp/_incumbent.py::validate_incumbent` checks a
 HiGHS `status=1` ("time limit") result's decision vector against the
 complete model (bounds, equality/inequality residuals, integrality) before
 `solve_milp()` accepts it as a feasible — if unproven-optimal — plan,
-instead of discarding a good solution outright.
+instead of discarding a good solution outright. The time limit is
+`PlannerInput.planner_solver_time_limit_s` (option
+`hsem_planner_solver_time_limit_s`, default 2 s, 1–10 s), applied to every
+solve of the cycle. Each accepted solve carries a `SolveOutcome` (`optimal` /
+`time_limit`, wall time, MIP gap) in `diagnostics["solver"]`; the explanation
+publishes the MILP candidate's outcome, and a published plan from a
+time-limited solve is labelled `solver_time_limit` rather than by its shape
+(issue #1309). Reporting only — the plan, its cost and selection are unchanged.
 
 **Post-deadline slots** (`t > D`):
 

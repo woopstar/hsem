@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.const import STATE_UNKNOWN
 
 from custom_components.hsem.models.rejected_plan import RejectedPlan
+from custom_components.hsem.utils.misc import round_or_none
 
 
 @dataclass
@@ -67,6 +68,17 @@ class PlanExplanation:
         previous_plan_name:
             Name of the winning plan from the previous planner run, or
             ``""`` on first run.
+        solver_status:
+            How the MILP solve behind the plan ended (issue #1309):
+            ``"optimal"``, ``"time_limit"`` (the solver stopped at its time
+            limit and its best plan so far was used) or ``"failed"`` (no MILP
+            plan; a fallback plan was used).  ``None`` when no MILP ran.
+        solver_time_s:
+            Wall time of that solve in seconds, or ``None``.
+        solver_gap_pct:
+            Relative MIP gap the solver reported, in percent, or ``None``.
+        solver_time_limit_s:
+            The solver time limit in seconds, or ``None`` when no MILP ran.
     """
 
     selected_strategy: str = STATE_UNKNOWN
@@ -87,6 +99,11 @@ class PlanExplanation:
     hysteresis_active: bool = False
     hysteresis_reason: str = ""
     previous_plan_name: str = ""
+    # MILP solve outcome (issue #1309)
+    solver_status: str | None = None
+    solver_time_s: float | None = None
+    solver_gap_pct: float | None = None
+    solver_time_limit_s: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Serialise the explanation to a plain dict for HA attributes.
@@ -110,6 +127,10 @@ class PlanExplanation:
             "hysteresis_active": self.hysteresis_active,
             "hysteresis_reason": self.hysteresis_reason,
             "previous_plan_name": self.previous_plan_name,
+            "solver_status": self.solver_status,
+            "solver_time_s": round_or_none(self.solver_time_s, 2),
+            "solver_gap_pct": round_or_none(self.solver_gap_pct, 2),
+            "solver_time_limit_s": round_or_none(self.solver_time_limit_s, 2),
             "constraints": list(self.constraints),
             "rejected_plans": [
                 {

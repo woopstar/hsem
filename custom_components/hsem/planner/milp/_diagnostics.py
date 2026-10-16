@@ -11,6 +11,7 @@ import numpy as np
 
 from custom_components.hsem.models.ev_config import EVConfig
 from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.planner.milp._incumbent import SOLVE_OUTCOME_ATTR
 from custom_components.hsem.utils.logger import log_planner
 
 
@@ -229,6 +230,8 @@ def _compute_milp_diagnostics(
         "total_curtailment_kwh": round(total_curtailment_kwh, 4),
         # Compatibility field: physical gi/ge flows already price efficiency.
         "discharge_loss_cost_destination_aware": 0.0,
+        # How the solve ended — a SolveOutcome, or None (issue #1309).
+        "solver": getattr(result, SOLVE_OUTCOME_ATTR, None),
     }
 
     # --- EV diagnostics ---

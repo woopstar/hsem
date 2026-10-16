@@ -29,7 +29,7 @@ from custom_components.hsem.utils.conversion import (
     convert_to_int,
     convert_to_time,
 )
-from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.misc import get_config_value, solver_time_limit_s
 from custom_components.hsem.utils.phase_power import (
     normalize_ev_phase_topology,
 )
@@ -95,6 +95,9 @@ def build_sensor_config(
             get_config_value(config_entry, "hsem_planner_window_hysteresis_minutes")
         )
         or 0
+    )
+    cfg.planner_solver_time_limit_s = solver_time_limit_s(
+        get_config_value(config_entry, "hsem_planner_solver_time_limit_s")
     )
     _update_interval = convert_to_int(
         get_config_value(config_entry, "hsem_update_interval")

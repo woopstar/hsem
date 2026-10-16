@@ -13,6 +13,11 @@ The sensor state is the winning candidate name from the planner
 The ``selected_strategy`` attribute gives a human-readable description
 (e.g. ``"charge_grid_discharge_peak"``, ``"winter_wait"``).
 
+The ``solver_status``, ``solver_time_s``, ``solver_gap_pct`` and
+``solver_time_limit_s`` attributes say how the MILP solve ended; a plan from a
+solve cut short by the time limit has ``selected_strategy``
+``"solver_time_limit"`` (issue #1309).
+
 Attributes
 ----------
 All fields from :class:`~custom_components.hsem.models.planner_outputs.PlanExplanation`

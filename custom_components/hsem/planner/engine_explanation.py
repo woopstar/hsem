@@ -9,7 +9,9 @@ directly testable with plain ``pytest`` without a running HA instance.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
+from typing import Any
 
 from custom_components.hsem.models.charge_window import ChargeWindow
 from custom_components.hsem.models.discharge_window import DischargeWindow
@@ -17,6 +19,13 @@ from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.rejected_plan import RejectedPlan
+from custom_components.hsem.planner._scipy_probe import is_scipy_available
+from custom_components.hsem.planner.milp._incumbent import (
+    SOLVER_STATUS_FAILED,
+    SOLVER_STATUS_TIME_LIMIT,
+    SolveOutcome,
+)
+from custom_components.hsem.planner.milp_optimizer import CANDIDATE_MILP
 from custom_components.hsem.utils.datetime_utils import slot_is_future
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import calculate_recommended_threshold
@@ -382,3 +391,56 @@ def _build_explanation(
         constraints=constraints,
         rejected_plans=rejected,
     )
+
+
+def apply_solver_outcome(
+    expl: PlanExplanation,
+    candidates: Sequence[Any],
+    winner_name: str,
+    time_limit_s: float,
+) -> None:
+    """Publish how the MILP solve ended and name a cut-short plan (issue #1309).
+
+    Sets the ``solver_*`` fields from the MILP candidate's solve.  When the
+    published plan comes from a solve that stopped at its time limit, or the
+    MILP produced no plan at all, the strategy and summary say so instead of
+    describing the plan's shape: a plan cut short can be all Wait, which
+    otherwise reads as a deliberate ``winter_wait`` strategy.
+
+    Args:
+        expl: The explanation to update in place.
+        candidates: Every candidate plan of this run.
+        winner_name: Name of the published candidate.
+        time_limit_s: The solver time limit this run used, in seconds.
+    """
+    milp = next((c for c in candidates if c.name == CANDIDATE_MILP), None)
+    if milp is None:
+        if not is_scipy_available():
+            return
+        expl.solver_status = SOLVER_STATUS_FAILED
+        expl.solver_time_limit_s = time_limit_s
+        expl.selected_strategy = "solver_failed"
+        expl.summary = (
+            f"The optimiser found no plan this cycle (time limit "
+            f"{time_limit_s:.1f} s); the fallback plan '{winner_name}' is used."
+        )
+        expl.constraints.append("solver_failed")
+        return
+
+    outcome = (milp.diagnostics or {}).get("solver")
+    if not isinstance(outcome, SolveOutcome):
+        return
+    expl.solver_status = outcome.status
+    expl.solver_time_s = outcome.time_s
+    expl.solver_gap_pct = outcome.gap_pct
+    expl.solver_time_limit_s = outcome.time_limit_s
+    if outcome.status != SOLVER_STATUS_TIME_LIMIT or winner_name != CANDIDATE_MILP:
+        return
+    gap = "" if outcome.gap_pct is None else f", gap {outcome.gap_pct:.1f} %"
+    expl.selected_strategy = "solver_time_limit"
+    expl.summary = (
+        f"The optimiser stopped at its time limit after {outcome.time_s:.1f} s"
+        f"{gap}; the plan may be far from optimal. Raise the planner solver "
+        f"time limit if this repeats."
+    )
+    expl.constraints.append("solver_time_limit")
