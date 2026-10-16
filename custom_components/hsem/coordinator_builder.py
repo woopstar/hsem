@@ -42,6 +42,7 @@ from custom_components.hsem.utils.live_power import LivePowerEstimate
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
     resolve_max_discharge_power,
+    solver_time_limit_s,
 )
 
 
@@ -498,6 +499,9 @@ def build_planner_input(
         ),
         planner_hysteresis_percentage=(
             convert_to_float(cfg.planner_hysteresis_percentage) or 0.0
+        ),
+        planner_solver_time_limit_s=solver_time_limit_s(
+            cfg.planner_solver_time_limit_s
         ),
         previous_winner_name=previous_winner_name,
         previous_winner_score=previous_winner_score,

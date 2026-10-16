@@ -127,14 +127,15 @@ Huawei Solar inverter and battery entity configuration (device selectors and ent
 
 Battery depreciation and efficiency parameters.
 
-| Field                | Key                                   | Default | Description                               |
-| -------------------- | ------------------------------------- | ------- | ----------------------------------------- |
-| Purchase price       | `hsem_batteries_purchase_price`       | 0       | Battery system cost                       |
-| Expected cycles      | `hsem_batteries_expected_cycles`      | 6000    | Total expected lifetime cycles            |
-| Cycle cost           | `hsem_batteries_cycle_cost`           | 0       | Extra per-kWh wear margin                 |
-| Capacity loss at EOL | `hsem_batteries_capacity_loss_pct`    | 30 %    | Expected capacity loss at end-of-life (%) |
-| Charge efficiency    | `hsem_batteries_charge_efficiency`    | 98 %    | Charge-side efficiency                    |
-| Discharge efficiency | `hsem_batteries_discharge_efficiency` | 98 %    | Discharge-side efficiency                 |
+| Field                     | Key                                   | Default | Description                                                                                                                                                                                                                                                                                                          |
+| ------------------------- | ------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Purchase price            | `hsem_batteries_purchase_price`       | 0       | Battery system cost                                                                                                                                                                                                                                                                                                  |
+| Expected cycles           | `hsem_batteries_expected_cycles`      | 6000    | Total expected lifetime cycles                                                                                                                                                                                                                                                                                       |
+| Cycle cost                | `hsem_batteries_cycle_cost`           | 0       | Extra per-kWh wear margin                                                                                                                                                                                                                                                                                            |
+| Capacity loss at EOL      | `hsem_batteries_capacity_loss_pct`    | 30 %    | Expected capacity loss at end-of-life (%)                                                                                                                                                                                                                                                                            |
+| Charge efficiency         | `hsem_batteries_charge_efficiency`    | 98 %    | Charge-side efficiency                                                                                                                                                                                                                                                                                               |
+| Discharge efficiency      | `hsem_batteries_discharge_efficiency` | 98 %    | Discharge-side efficiency                                                                                                                                                                                                                                                                                            |
+| Planner solver time limit | `hsem_planner_solver_time_limit_s`    | 2 s     | Maximum time for one MILP solve, 1–10 s (issue #1309). A solve that reaches it uses the best plan found so far, which can be far from optimal. Raise it only when the Plan Strategy sensor shows `solver_status: time_limit`; a higher limit makes every update cycle longer, and a cycle can run up to three solves |
 
 ### Step: `power`
 

@@ -108,6 +108,8 @@ DEFAULT_CONFIG_VALUES = {
     # (e.g. ev_smart_charging ↔ batteries_charge_solar) by enforcing a
     # minimum hold time (minutes).  0 disables the feature.
     "hsem_planner_window_hysteresis_minutes": 10,
+    # MILP solver time limit per solve, in seconds (issue #1309).
+    "hsem_planner_solver_time_limit_s": 2.0,
     "hsem_house_consumption_energy_weight_14d": 15,
     "hsem_house_consumption_energy_weight_1d": 25,
     "hsem_house_consumption_energy_weight_3d": 30,
@@ -273,3 +275,10 @@ EMA_ALPHA_NET_CONSUMPTION = 0.3
 # trap the charger in a materially worse command.  5 % mirrors the default
 # ``hsem_planner_hysteresis_percentage`` used for plan-level hysteresis.
 EV_COMMAND_DEADBAND_COST_BYPASS_FRACTION = 0.05
+
+# MILP solver time limit per solve (issue #1309).  A planner job can run up to
+# three solves (the plan and the two battery-target stage-2 solves) within
+# ``PLANNER_JOB_BUDGET_S`` (30 s), which bounds the maximum at 10 s.
+PLANNER_SOLVER_TIME_LIMIT_DEFAULT_S = 2.0
+PLANNER_SOLVER_TIME_LIMIT_MIN_S = 1.0
+PLANNER_SOLVER_TIME_LIMIT_MAX_S = 10.0

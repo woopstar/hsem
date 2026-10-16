@@ -58,6 +58,10 @@ _EXPECTED_ATTR_KEYS = {
     "hysteresis_active",
     "hysteresis_reason",
     "previous_plan_name",
+    "solver_status",
+    "solver_time_s",
+    "solver_gap_pct",
+    "solver_time_limit_s",
     "constraints",
     "rejected_plans",
 }
