@@ -24,6 +24,8 @@ _DETECTION_TO_CONFIG: dict[str, str] = {
     "import_price": "hsem_import_electricity_price_sensor",
     "export_price": "hsem_export_electricity_price_sensor",
     "house_power": "hsem_house_consumption_power",
+    "inverter_active_power": "hsem_huawei_solar_inverter_active_power",
+    "power_meter_active_power": "hsem_huawei_solar_power_meter_active_power",
     "solar_power": "hsem_solar_production_power",
 }
 
@@ -90,9 +92,24 @@ async def auto_detect_entities(hass: HomeAssistant) -> dict[str, str | None]:
     )
     detected["export_price"] = detected.get("import_price")
 
-    # Power meters
-    detected["house_power"] = _find_first(
-        entity_ids, ["house_consumption", "load_power", "forbrug"]
+    # Power meters.  House power (issue #1310): an EMMA or SDongle load power
+    # sensor first; then, with the inverter and power meter found, nothing —
+    # HSEM derives the house load from them; only then a user-made sensor.
+    detected["inverter_active_power"] = _find_exact_or_first(
+        entity_ids, "sensor.inverter_active_power", []
+    )
+    detected["power_meter_active_power"] = _find_exact_or_first(
+        entity_ids, "sensor.power_meter_active_power", []
+    )
+    load_power = _find_first(
+        [eid for eid in entity_ids if not eid.startswith("sensor.hsem_")],
+        ["load_power"],
+    )
+    derived = bool(
+        detected["inverter_active_power"] and detected["power_meter_active_power"]
+    )
+    detected["house_power"] = load_power or (
+        None if derived else _find_first(entity_ids, ["house_consumption", "forbrug"])
     )
     detected["solar_power"] = _find_first(
         entity_ids,
@@ -100,6 +117,24 @@ async def auto_detect_entities(hass: HomeAssistant) -> dict[str, str | None]:
     )
 
     return detected
+
+
+def _find_exact_or_first(
+    entity_ids: list[str], exact: str, keywords: list[str]
+) -> str | None:
+    """Return *exact* when it exists, else the first keyword match.
+
+    Args:
+        entity_ids: List of HA entity IDs to search.
+        exact: The entity ID to prefer.
+        keywords: Keywords to fall back to; empty for an exact match only.
+
+    Returns:
+        The matching entity ID, or None if no match is found.
+    """
+    if exact in entity_ids:
+        return exact
+    return _find_first(entity_ids, keywords)
 
 
 def _find_first(entity_ids: list[str], keywords: list[str]) -> str | None:

@@ -18,7 +18,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import async_validate_entity_ids
-from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.house_load import (
+    HOUSE_LOAD_INVERTER_KEYS,
+    HOUSE_LOAD_METER_KEY,
+    house_load_inputs,
+)
+from custom_components.hsem.utils.misc import get_config_value, optional_entity_id
 from custom_components.hsem.utils.schema import vol
 
 # A main fuse trips on current, so each live phase field accepts a power or a
@@ -39,6 +44,11 @@ _PHASE_READING_FIELDS = tuple(
 _PHASE_VOLTAGE_FIELDS = tuple(
     f"hsem_huawei_solar_power_meter_phase_{phase}_voltage" for phase in "abc"
 )
+_POWER_SELECTOR: dict[str, Any] = {
+    "entity": {"domain": "sensor", "device_class": SensorDeviceClass.POWER}
+}
+# Inputs of the derived House Load Power sensor (issue #1310).
+_HOUSE_LOAD_FIELDS = (*HOUSE_LOAD_INVERTER_KEYS, HOUSE_LOAD_METER_KEY)
 
 
 def _optional_entity_fields(
@@ -61,7 +71,9 @@ async def get_power_step_schema(
     """Return the data schema for the 'power' step."""
     return vol.Schema(
         {
-            vol.Required(
+            # Optional since issue #1310: without it, HSEM derives the house
+            # load from the inverter and power meter inputs below.
+            vol.Optional(
                 "hsem_house_consumption_power",
                 default=get_config_value(config_entry, "hsem_house_consumption_power"),
             ): selector({"entity": {"domain": "sensor"}}),
@@ -69,6 +81,9 @@ async def get_power_step_schema(
                 "hsem_solar_production_power",
                 default=get_config_value(config_entry, "hsem_solar_production_power"),
             ): selector({"entity": {"domain": "sensor"}}),
+            **_optional_entity_fields(
+                config_entry, _HOUSE_LOAD_FIELDS, _POWER_SELECTOR
+            ),
             vol.Optional(
                 "hsem_main_fuse_amps",
                 default=get_config_value(config_entry, "hsem_main_fuse_amps"),
@@ -129,13 +144,35 @@ async def get_power_step_schema(
 async def validate_power_step_input(
     hass: HomeAssistant, user_input: dict
 ) -> dict[str, str]:
-    """Validate user input for the 'power' step."""
-    return await async_validate_entity_ids(
+    """Validate user input for the 'power' step.
+
+    The house consumption sensor may be left empty when an inverter and the
+    power meter are given, from which HSEM derives the house load (issue
+    #1310).  The second inverter needs the first.
+    """
+    errors = await async_validate_entity_ids(
         hass,
         user_input,
-        required_fields=[
+        required_fields=["hsem_solar_production_power"],
+        optional_fields=[
             "hsem_house_consumption_power",
-            "hsem_solar_production_power",
+            *_HOUSE_LOAD_FIELDS,
+            *_PHASE_READING_FIELDS,
+            *_PHASE_VOLTAGE_FIELDS,
         ],
-        optional_fields=[*_PHASE_READING_FIELDS, *_PHASE_VOLTAGE_FIELDS],
     )
+    inverter, inverter_2 = (
+        optional_entity_id(user_input.get(key)) for key in HOUSE_LOAD_INVERTER_KEYS
+    )
+    derived = house_load_inputs(
+        inverter,
+        inverter_2,
+        optional_entity_id(user_input.get(HOUSE_LOAD_METER_KEY)),
+    )
+    if inverter_2 and not inverter:
+        errors.setdefault(HOUSE_LOAD_INVERTER_KEYS[1], "house_load_needs_inverter_1")
+    if not optional_entity_id(user_input.get("hsem_house_consumption_power")) and (
+        derived is None
+    ):
+        errors.setdefault("hsem_house_consumption_power", "house_power_required")
+    return errors

@@ -108,6 +108,61 @@ Allow **at least 14 days** for HSEM to collect enough historical data for accura
 
 **Yes.** Enable Read-Only mode via the switch entity. HSEM will show proposed actions without sending commands.
 
+### Where does the house consumption power come from?
+
+HSEM needs the house's own power draw (`hsem_house_consumption_power`, in the
+**Power** step). It feeds the per-hour consumption profile behind the
+planner's load forecast and the live house power, so a wrong sensor skews
+every plan (issue #1310). There are three cases:
+
+1. **EMMA** — select the EMMA's _Load power_ sensor (W). Quick setup picks it.
+2. **SDongle** — select the SDongle's _Load power_ sensor. It reports kW;
+   HSEM converts it to W.
+3. **Inverter + power meter only** (for example a SUN2000 with a DTSU666
+   meter) — there is no house load sensor. Leave _House consumption power_
+   empty and set _Inverter Active Power_ (`sensor.inverter_active_power`),
+   _Power Meter Active Power_ (`sensor.power_meter_active_power`) and, with a
+   second inverter, _Inverter 2 Active Power_. HSEM then creates
+   `sensor.hsem_house_load_power` and uses it as the house consumption power:
+
+   > house load = Σ inverter active power − power meter active power
+
+   The Huawei meter is **positive when exporting**. Exporting with the
+   inverter at 3000 W and the meter at 2000 W gives 1000 W; charging the
+   battery from the grid with the inverter at −4500 W and the meter at
+   −4600 W gives 100 W. The sensor is unavailable, never 0, while any input
+   is unavailable.
+
+A configured house sensor that exists always wins; the derived sensor is used
+only when the field is empty or points to an entity that does not exist.
+
+**Limits:** generation that does not pass through a Huawei inverter (for
+example AC-coupled micro-inverters behind the meter) is missing from the
+derived value — such installations need their own sensor. An EV charger behind
+the meter is included; set `hsem_house_power_includes_ev_charger_power`
+accordingly.
+
+To build your own sensor instead, the same formula as a template sensor (a
+single inverter):
+
+```yaml
+template:
+  - sensor:
+      - name: House load power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        availability: >-
+          {{ has_value('sensor.inverter_active_power')
+             and has_value('sensor.power_meter_active_power') }}
+        state: >-
+          {{ states('sensor.inverter_active_power') | float
+             - states('sensor.power_meter_active_power') | float }}
+```
+
+Do not add the meter's value to the inverter's: that counts export as
+consumption.
+
 ### What if my house consumption sensor includes or excludes EV charger power?
 
 Configure `hsem_house_power_includes_ev_charger_power` to match your setup. HSEM adjusts net consumption accordingly.

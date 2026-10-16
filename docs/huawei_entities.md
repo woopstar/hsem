@@ -57,6 +57,12 @@ in the config flow rather than typing them).
 | `emma_tou_periods` (sensor)                  | TOU periods                 | `Period N` attributes, same format as the LUNA2000 TOU sensor (disabled default) | ✅ `hsem_huawei_solar_batteries_tou_charging_and_discharging_periods`         |
 | EMMA device                                  | —                           | —                                                                                | ✅ `hsem_huawei_solar_device_id_tou_controller` (TOU and export-limit writes) |
 
+An EMMA also has a `load_power` sensor (_Load power_, W), and an SDongle has
+one in kW (`sdongle_load_power`). Either is the best choice for
+`hsem_house_consumption_power`. Without one, HSEM derives the house load from
+the inverters' and power meter's active power (`sensor.hsem_house_load_power`,
+issue #1310; see [home.md](home.md#where-does-the-house-consumption-power-come-from)).
+
 With an EMMA, `huawei_solar` also registers `set_maximum_feed_grid_power` /
 `set_maximum_feed_grid_power_percent` against the EMMA only, so HSEM writes the
 grid export limit to the EMMA controller instead of the inverters. It does
@@ -86,34 +92,35 @@ treated as `WorkingModes.TimeOfUse`.
 
 ### sensor entities
 
-| Friendly name         | Entity ID                               | Unit | Used by HSEM                                         |
-| --------------------- | --------------------------------------- | ---- | ---------------------------------------------------- |
-| Active power control  | `sensor.inverter_active_power_control`  | —    | ✅ `hsem_huawei_solar_inverter_active_power_control` |
-| Locking status        | `sensor.inverter_locking_status`        | —    | —                                                    |
-| Max active power      | `sensor.inverter_max_active_power`      | W    | —                                                    |
-| Monthly yield         | `sensor.inverter_monthly_yield`         | kWh  | —                                                    |
-| Off-grid status       | `sensor.inverter_off_grid_status`       | —    | —                                                    |
-| Off-grid switch       | `sensor.inverter_off_grid_switch`       | —    | —                                                    |
-| Phase A current       | `sensor.inverter_phase_a_current`       | A    | —                                                    |
-| Phase A voltage       | `sensor.inverter_phase_a_voltage`       | V    | —                                                    |
-| Phase B current       | `sensor.inverter_phase_b_current`       | A    | —                                                    |
-| Phase B voltage       | `sensor.inverter_phase_b_voltage`       | V    | —                                                    |
-| Phase C current       | `sensor.inverter_phase_c_current`       | A    | —                                                    |
-| Phase C voltage       | `sensor.inverter_phase_c_voltage`       | V    | —                                                    |
-| Power factor          | `sensor.inverter_power_factor`          | —    | —                                                    |
-| PV 1 current          | `sensor.inverter_pv_1_current`          | A    | —                                                    |
-| PV 1 voltage          | `sensor.inverter_pv_1_voltage`          | V    | —                                                    |
-| PV 2 current          | `sensor.inverter_pv_2_current`          | A    | —                                                    |
-| PV 2 voltage          | `sensor.inverter_pv_2_voltage`          | V    | —                                                    |
-| PV connection status  | `sensor.inverter_pv_connection_status`  | —    | —                                                    |
-| Rated power           | `sensor.inverter_rated_power`           | W    | —                                                    |
-| Reactive power        | `sensor.inverter_reactive_power`        | var  | —                                                    |
-| Shutdown time         | `sensor.inverter_shutdown_time`         | —    | —                                                    |
-| Startup time          | `sensor.inverter_startup_time`          | —    | —                                                    |
-| State                 | `sensor.inverter_inverter_state`        | —    | —                                                    |
-| Total DC input energy | `sensor.inverter_total_dc_input_energy` | kWh  | —                                                    |
-| Total yield           | `sensor.inverter_total_yield`           | kWh  | —                                                    |
-| Yearly yield          | `sensor.inverter_yearly_yield`          | kWh  | —                                                    |
+| Friendly name         | Entity ID                               | Unit | Used by HSEM                                                                   |
+| --------------------- | --------------------------------------- | ---- | ------------------------------------------------------------------------------ |
+| Active power          | `sensor.inverter_active_power`          | W    | ✅ `hsem_huawei_solar_inverter_active_power` (derived house load, issue #1310) |
+| Active power control  | `sensor.inverter_active_power_control`  | —    | ✅ `hsem_huawei_solar_inverter_active_power_control`                           |
+| Locking status        | `sensor.inverter_locking_status`        | —    | —                                                                              |
+| Max active power      | `sensor.inverter_max_active_power`      | W    | —                                                                              |
+| Monthly yield         | `sensor.inverter_monthly_yield`         | kWh  | —                                                                              |
+| Off-grid status       | `sensor.inverter_off_grid_status`       | —    | —                                                                              |
+| Off-grid switch       | `sensor.inverter_off_grid_switch`       | —    | —                                                                              |
+| Phase A current       | `sensor.inverter_phase_a_current`       | A    | —                                                                              |
+| Phase A voltage       | `sensor.inverter_phase_a_voltage`       | V    | —                                                                              |
+| Phase B current       | `sensor.inverter_phase_b_current`       | A    | —                                                                              |
+| Phase B voltage       | `sensor.inverter_phase_b_voltage`       | V    | —                                                                              |
+| Phase C current       | `sensor.inverter_phase_c_current`       | A    | —                                                                              |
+| Phase C voltage       | `sensor.inverter_phase_c_voltage`       | V    | —                                                                              |
+| Power factor          | `sensor.inverter_power_factor`          | —    | —                                                                              |
+| PV 1 current          | `sensor.inverter_pv_1_current`          | A    | —                                                                              |
+| PV 1 voltage          | `sensor.inverter_pv_1_voltage`          | V    | —                                                                              |
+| PV 2 current          | `sensor.inverter_pv_2_current`          | A    | —                                                                              |
+| PV 2 voltage          | `sensor.inverter_pv_2_voltage`          | V    | —                                                                              |
+| PV connection status  | `sensor.inverter_pv_connection_status`  | —    | —                                                                              |
+| Rated power           | `sensor.inverter_rated_power`           | W    | —                                                                              |
+| Reactive power        | `sensor.inverter_reactive_power`        | var  | —                                                                              |
+| Shutdown time         | `sensor.inverter_shutdown_time`         | —    | —                                                                              |
+| Startup time          | `sensor.inverter_startup_time`          | —    | —                                                                              |
+| State                 | `sensor.inverter_inverter_state`        | —    | —                                                                              |
+| Total DC input energy | `sensor.inverter_total_dc_input_energy` | kWh  | —                                                                              |
+| Total yield           | `sensor.inverter_total_yield`           | kWh  | —                                                                              |
+| Yearly yield          | `sensor.inverter_yearly_yield`          | kWh  | —                                                                              |
 
 ### number entities
 
@@ -135,25 +142,25 @@ treated as `WorkingModes.TimeOfUse`.
 
 ### sensor entities
 
-| Friendly name        | Entity ID                                 | Unit  | Used by HSEM                                                                           |
-| -------------------- | ----------------------------------------- | ----- | -------------------------------------------------------------------------------------- |
-| A-B line voltage     | `sensor.power_meter_a_b_line_voltage`     | V     | —                                                                                      |
-| Active power         | `sensor.power_meter_active_power`         | W     | —                                                                                      |
-| B-C line voltage     | `sensor.power_meter_b_c_line_voltage`     | V     | —                                                                                      |
-| C-A line voltage     | `sensor.power_meter_c_a_line_voltage`     | V     | —                                                                                      |
-| Consumption          | `sensor.power_meter_consumption`          | kWh   | —                                                                                      |
-| Exported             | `sensor.power_meter_exported`             | kWh   | —                                                                                      |
-| Frequency            | `sensor.power_meter_frequency`            | Hz    | —                                                                                      |
-| Meter status         | `sensor.power_meter_meter_status`         | —     | —                                                                                      |
-| Phase A active power | `sensor.power_meter_phase_a_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_a_active_power` (issues #831, #1083)           |
-| Phase A current      | `sensor.power_meter_current`              | A     | ✅ may be mapped to `hsem_huawei_solar_power_meter_phase_a_active_power` (issue #1119) |
-| Phase A voltage      | `sensor.power_meter_phase_a_voltage`      | V     | ✅ `hsem_huawei_solar_power_meter_phase_a_voltage` (issue #1119)                       |
-| Phase B active power | `sensor.power_meter_phase_b_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_b_active_power` (issues #831, #1083)           |
-| Phase B current      | `sensor.power_meter_current_2`            | A     | ✅ may be mapped to `hsem_huawei_solar_power_meter_phase_b_active_power` (issue #1119) |
-| Phase B voltage      | `sensor.power_meter_phase_b_voltage`      | V     | ✅ `hsem_huawei_solar_power_meter_phase_b_voltage` (issue #1119)                       |
-| Phase C active power | `sensor.power_meter_phase_c_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_c_active_power` (issues #831, #1083)           |
-| Phase C current      | `sensor.power_meter_current_3`            | A     | ✅ may be mapped to `hsem_huawei_solar_power_meter_phase_c_active_power` (issue #1119) |
-| Phase C voltage      | `sensor.power_meter_phase_c_voltage`      | V     | ✅ `hsem_huawei_solar_power_meter_phase_c_voltage` (issue #1119)                       |
-| Power factor         | `sensor.power_meter_power_factor`         | —     | —                                                                                      |
-| Reactive energy      | `sensor.power_meter_reactive_energy`      | kvarh | —                                                                                      |
-| Reactive power       | `sensor.power_meter_reactive_power`       | var   | —                                                                                      |
+| Friendly name        | Entity ID                                 | Unit  | Used by HSEM                                                                                               |
+| -------------------- | ----------------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------- |
+| A-B line voltage     | `sensor.power_meter_a_b_line_voltage`     | V     | —                                                                                                          |
+| Active power         | `sensor.power_meter_active_power`         | W     | ✅ `hsem_huawei_solar_power_meter_active_power` (derived house load, positive when exporting, issue #1310) |
+| B-C line voltage     | `sensor.power_meter_b_c_line_voltage`     | V     | —                                                                                                          |
+| C-A line voltage     | `sensor.power_meter_c_a_line_voltage`     | V     | —                                                                                                          |
+| Consumption          | `sensor.power_meter_consumption`          | kWh   | —                                                                                                          |
+| Exported             | `sensor.power_meter_exported`             | kWh   | —                                                                                                          |
+| Frequency            | `sensor.power_meter_frequency`            | Hz    | —                                                                                                          |
+| Meter status         | `sensor.power_meter_meter_status`         | —     | —                                                                                                          |
+| Phase A active power | `sensor.power_meter_phase_a_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_a_active_power` (issues #831, #1083)                               |
+| Phase A current      | `sensor.power_meter_current`              | A     | ✅ may be mapped to `hsem_huawei_solar_power_meter_phase_a_active_power` (issue #1119)                     |
+| Phase A voltage      | `sensor.power_meter_phase_a_voltage`      | V     | ✅ `hsem_huawei_solar_power_meter_phase_a_voltage` (issue #1119)                                           |
+| Phase B active power | `sensor.power_meter_phase_b_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_b_active_power` (issues #831, #1083)                               |
+| Phase B current      | `sensor.power_meter_current_2`            | A     | ✅ may be mapped to `hsem_huawei_solar_power_meter_phase_b_active_power` (issue #1119)                     |
+| Phase B voltage      | `sensor.power_meter_phase_b_voltage`      | V     | ✅ `hsem_huawei_solar_power_meter_phase_b_voltage` (issue #1119)                                           |
+| Phase C active power | `sensor.power_meter_phase_c_active_power` | W     | ✅ `hsem_huawei_solar_power_meter_phase_c_active_power` (issues #831, #1083)                               |
+| Phase C current      | `sensor.power_meter_current_3`            | A     | ✅ may be mapped to `hsem_huawei_solar_power_meter_phase_c_active_power` (issue #1119)                     |
+| Phase C voltage      | `sensor.power_meter_phase_c_voltage`      | V     | ✅ `hsem_huawei_solar_power_meter_phase_c_voltage` (issue #1119)                                           |
+| Power factor         | `sensor.power_meter_power_factor`         | —     | —                                                                                                          |
+| Reactive energy      | `sensor.power_meter_reactive_energy`      | kvarh | —                                                                                                          |
+| Reactive power       | `sensor.power_meter_reactive_power`       | var   | —                                                                                                          |

@@ -25,7 +25,9 @@
       "invalid_wait_mode_behavior": "Ungültiges Wartemodus-Verhalten. Wähle Strenges Warten oder Eigenverbrauch mit Reserve.",
       "port_conflict": "Der zweite OCPP-Port muss sich vom ersten OCPP-Port unterscheiden.",
       "ev_min_power_below_start_current": "Die konfigurierte Mindestleistung ist für die gewählte Phasentopologie zu niedrig — ein echtes Ladegerät kann nicht unter 6 A starten. Erhöhe die Mindestleistung oder ändere die Phasentopologie.",
-      "invalid_time_value": "Gib eine gültige Uhrzeit ein (HH:MM)."
+      "invalid_time_value": "Gib eine gültige Uhrzeit ein (HH:MM).",
+      "house_power_required": "Wählen Sie einen Hausverbrauchssensor oder setzen Sie die Wirkleistung von Wechselrichter und Stromzähler, damit HSEM die Hauslast ableiten kann.",
+      "house_load_needs_inverter_1": "Setzen Sie die Wirkleistung des ersten Wechselrichters vor der des zweiten."
     },
     "step": {
       "batteries_excess_export": {
@@ -329,6 +331,9 @@
       "power": {
         "data": {
           "hsem_house_consumption_power": "Hausverbrauchsleistungssensor",
+          "hsem_huawei_solar_inverter_active_power": "Wirkleistung des Wechselrichters",
+          "hsem_huawei_solar_inverter_2_active_power": "Wirkleistung von Wechselrichter 2",
+          "hsem_huawei_solar_power_meter_active_power": "Wirkleistung des Stromzählers",
           "hsem_main_fuse_amps": "Hauptsicherung Nennwert (Ampere)",
           "hsem_main_fuse_phases": "Hauptsicherung Phasenanzahl",
           "hsem_max_grid_export_power_kw": "Maximale Netzeinspeiseleistung (kW)",
@@ -342,7 +347,10 @@
           "hsem_phase_aware_charging_enabled": "Live-Sicherheitsbegrenzer für phasenbewusstes Laden aktivieren"
         },
         "data_description": {
-          "hsem_house_consumption_power": "Wähle den Sensor, der den Gesamtstromverbrauch deines Hauses misst.",
+          "hsem_house_consumption_power": "Wählen Sie den Sensor, der den gesamten Stromverbrauch Ihres Hauses misst (W oder kW). Leer lassen, wenn Ihre Anlage keinen solchen Sensor hat und Wechselrichter und Stromzähler unten gesetzt sind: HSEM verwendet dann seinen eigenen Sensor House Load Power (Wirkleistung des Wechselrichters minus Wirkleistung des Stromzählers). Ein EMMA- oder SDongle-Lastleistungssensor ist eine gute Wahl, wenn vorhanden.",
+          "hsem_huawei_solar_inverter_active_power": "Optional. Der Wirkleistungssensor des Wechselrichters (Huawei Solar: sensor.inverter_active_power). Zusammen mit dem Stromzähler kann HSEM daraus die Hauslast ableiten, wenn Sie keinen Hausverbrauchssensor haben.",
+          "hsem_huawei_solar_inverter_2_active_power": "Optional. Der Wirkleistungssensor eines zweiten Wechselrichters. Er wird zum ersten Wechselrichter addiert, bevor der Stromzähler abgezogen wird.",
+          "hsem_huawei_solar_power_meter_active_power": "Optional. Der Wirkleistungssensor des Stromzählers (Huawei Solar: sensor.power_meter_active_power, positiv bei Einspeisung). Hauslast = Wirkleistung des Wechselrichters − Wirkleistung des Stromzählers. Erzeugung, die nicht über einen Huawei-Wechselrichter läuft, ist nicht enthalten.",
           "hsem_main_fuse_amps": "Der Nennwert der Hauptsicherung/des Hauptschalters deines Hauses in Ampere (25, 35 usw.). Der MILP-Optimierer berücksichtigt diese Grenze bei der Planung von Batterie- und EV-Ladung. Auf 0 setzen, um zu deaktivieren.",
           "hsem_main_fuse_phases": "Die Phasenanzahl deiner elektrischen Installation. Einphasige Installationen MÜSSEN auf 1 gesetzt werden — die Einstellung 3 bei einer einphasigen Installation macht den Sicherungsschutz 3-mal zu großzügig und bietet keine echte Sicherheitsgrenze. Standard ist 3 (dreiphasig).",
           "hsem_max_grid_export_power_kw": "Maximale Netzeinspeiseleistung in kW — die Exportobergrenze des Netzbetreibers/Wechselrichters für exportbeschränkte Anschlüsse (z. B. 5 kW). Der MILP-Planer plant nie einen Export über diese Grenze hinaus, sodass Batterieexport und PV-Export korrekt um dieselbe Obergrenze konkurrieren. Auf 0 setzen, um zu deaktivieren.",
@@ -373,6 +381,8 @@
           "import_price": "Stromimportpreis-Sensor",
           "export_price": "Stromexportpreis-Sensor",
           "house_power": "Hausverbrauchsleistung",
+          "inverter_active_power": "Wirkleistung des Wechselrichters",
+          "power_meter_active_power": "Wirkleistung des Stromzählers",
           "solar_power": "Solarproduktionsleistung",
           "use_quick_setup": "Schnelleinrichtung verwenden"
         },
@@ -514,7 +524,9 @@
       "invalid_wait_mode_behavior": "Ungültiges Wartemodus-Verhalten. Wähle Strenges Warten oder Eigenverbrauch mit Reserve.",
       "port_conflict": "Der zweite OCPP-Port muss sich vom ersten OCPP-Port unterscheiden.",
       "ev_min_power_below_start_current": "Die konfigurierte Mindestleistung ist für die gewählte Phasentopologie zu niedrig — ein echtes Ladegerät kann nicht unter 6 A starten. Erhöhe die Mindestleistung oder ändere die Phasentopologie.",
-      "invalid_time_value": "Gib eine gültige Uhrzeit ein (HH:MM)."
+      "invalid_time_value": "Gib eine gültige Uhrzeit ein (HH:MM).",
+      "house_power_required": "Wählen Sie einen Hausverbrauchssensor oder setzen Sie die Wirkleistung von Wechselrichter und Stromzähler, damit HSEM die Hauslast ableiten kann.",
+      "house_load_needs_inverter_1": "Setzen Sie die Wirkleistung des ersten Wechselrichters vor der des zweiten."
     },
     "step": {
       "batteries_excess_export": {
@@ -818,6 +830,9 @@
       "power": {
         "data": {
           "hsem_house_consumption_power": "Hausverbrauchsleistungssensor",
+          "hsem_huawei_solar_inverter_active_power": "Wirkleistung des Wechselrichters",
+          "hsem_huawei_solar_inverter_2_active_power": "Wirkleistung von Wechselrichter 2",
+          "hsem_huawei_solar_power_meter_active_power": "Wirkleistung des Stromzählers",
           "hsem_main_fuse_amps": "Hauptsicherung Nennwert (Ampere)",
           "hsem_main_fuse_phases": "Hauptsicherung Phasenanzahl",
           "hsem_max_grid_export_power_kw": "Maximale Netzeinspeiseleistung (kW)",
@@ -831,7 +846,10 @@
           "hsem_phase_aware_charging_enabled": "Live-Sicherheitsbegrenzer für phasenbewusstes Laden aktivieren"
         },
         "data_description": {
-          "hsem_house_consumption_power": "Wähle den Sensor, der den Gesamtstromverbrauch deines Hauses misst.",
+          "hsem_house_consumption_power": "Wählen Sie den Sensor, der den gesamten Stromverbrauch Ihres Hauses misst (W oder kW). Leer lassen, wenn Ihre Anlage keinen solchen Sensor hat und Wechselrichter und Stromzähler unten gesetzt sind: HSEM verwendet dann seinen eigenen Sensor House Load Power (Wirkleistung des Wechselrichters minus Wirkleistung des Stromzählers). Ein EMMA- oder SDongle-Lastleistungssensor ist eine gute Wahl, wenn vorhanden.",
+          "hsem_huawei_solar_inverter_active_power": "Optional. Der Wirkleistungssensor des Wechselrichters (Huawei Solar: sensor.inverter_active_power). Zusammen mit dem Stromzähler kann HSEM daraus die Hauslast ableiten, wenn Sie keinen Hausverbrauchssensor haben.",
+          "hsem_huawei_solar_inverter_2_active_power": "Optional. Der Wirkleistungssensor eines zweiten Wechselrichters. Er wird zum ersten Wechselrichter addiert, bevor der Stromzähler abgezogen wird.",
+          "hsem_huawei_solar_power_meter_active_power": "Optional. Der Wirkleistungssensor des Stromzählers (Huawei Solar: sensor.power_meter_active_power, positiv bei Einspeisung). Hauslast = Wirkleistung des Wechselrichters − Wirkleistung des Stromzählers. Erzeugung, die nicht über einen Huawei-Wechselrichter läuft, ist nicht enthalten.",
           "hsem_main_fuse_amps": "Der Nennwert der Hauptsicherung/des Hauptschalters deines Hauses in Ampere (25, 35 usw.). Der MILP-Optimierer berücksichtigt diese Grenze bei der Planung von Batterie- und EV-Ladung. Auf 0 setzen, um zu deaktivieren.",
           "hsem_main_fuse_phases": "Die Phasenanzahl deiner elektrischen Installation. Einphasige Installationen MÜSSEN auf 1 gesetzt werden — die Einstellung 3 bei einer einphasigen Installation macht den Sicherungsschutz 3-mal zu großzügig und bietet keine echte Sicherheitsgrenze. Standard ist 3 (dreiphasig).",
           "hsem_max_grid_export_power_kw": "Maximale Netzeinspeiseleistung in kW — die Exportobergrenze des Netzbetreibers/Wechselrichters für exportbeschränkte Anschlüsse (z. B. 5 kW). Der MILP-Planer plant nie einen Export über diese Grenze hinaus, sodass Batterieexport und PV-Export korrekt um dieselbe Obergrenze konkurrieren. Auf 0 setzen, um zu deaktivieren.",
@@ -1202,6 +1220,9 @@
       },
       "ocpp_second_charger_sessions": {
         "name": "Ladegerät Sitzungen"
+      },
+      "house_load_power": {
+        "name": "Hauslastleistung"
       }
     },
     "switch": {

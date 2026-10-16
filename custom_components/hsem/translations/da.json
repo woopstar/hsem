@@ -25,7 +25,9 @@
       "invalid_wait_mode_behavior": "Ugyldig ventetilstand. Vælg Streng ventetilstand eller Selvforbrug med reserve.",
       "port_conflict": "Den anden OCPP-port skal være forskellig fra den første OCPP-port.",
       "ev_min_power_below_start_current": "Den konfigurerede minimumseffekt er for lav til den valgte fasetopologi — en rigtig lader kan ikke starte under 6 A. Øg minimumseffekten, eller skift fasetopologi.",
-      "invalid_time_value": "Angiv et gyldigt klokkeslæt (TT:MM)."
+      "invalid_time_value": "Angiv et gyldigt klokkeslæt (TT:MM).",
+      "house_power_required": "Vælg en sensor for husets forbrug, eller angiv inverterens og elmålerens aktive effekt, så HSEM kan udlede husets forbrug.",
+      "house_load_needs_inverter_1": "Angiv den første inverters aktive effekt før den anden inverters."
     },
     "step": {
       "batteries_excess_export": {
@@ -301,6 +303,9 @@
       "power": {
         "data": {
           "hsem_house_consumption_power": "Husets forbrugseffektsensor",
+          "hsem_huawei_solar_inverter_active_power": "Inverterens aktive effekt",
+          "hsem_huawei_solar_inverter_2_active_power": "Inverter 2 aktiv effekt",
+          "hsem_huawei_solar_power_meter_active_power": "Elmålerens aktive effekt",
           "hsem_main_fuse_amps": "Hovedsikring (Ampere)",
           "hsem_main_fuse_phases": "Hovedsikringens faseantal",
           "hsem_max_grid_export_power_kw": "Maks. neteksporteffekt (kW)",
@@ -314,7 +319,10 @@
           "hsem_phase_aware_charging_enabled": "Aktiver live fasebevidst opladningssikkerhedsbegrænser"
         },
         "data_description": {
-          "hsem_house_consumption_power": "Vælg den sensor, der måler husets samlede strømforbrug.",
+          "hsem_house_consumption_power": "Vælg sensoren, der måler husets samlede strømforbrug (W eller kW). Lad den være tom, hvis installationen ikke har en sådan sensor, og inverteren og elmåleren nedenfor er sat: HSEM bruger så sin egen sensor House Load Power (inverterens aktive effekt minus elmålerens aktive effekt). En EMMA- eller SDongle-sensor for belastningseffekt er et godt valg, hvis du har en.",
+          "hsem_huawei_solar_inverter_active_power": "Valgfri. Inverterens sensor for aktiv effekt (Huawei Solar: sensor.inverter_active_power). Sammen med elmåleren lader den HSEM udlede husets forbrug, når du ikke har en sensor for husets forbrug.",
+          "hsem_huawei_solar_inverter_2_active_power": "Valgfri. En anden inverters sensor for aktiv effekt. Den lægges til den første inverter, før elmåleren trækkes fra.",
+          "hsem_huawei_solar_power_meter_active_power": "Valgfri. Elmålerens sensor for aktiv effekt (Huawei Solar: sensor.power_meter_active_power, positiv ved eksport). Husets forbrug = inverterens aktive effekt − elmålerens aktive effekt. Produktion, der ikke går gennem en Huawei-inverter, er ikke med.",
           "hsem_main_fuse_amps": "Husets hovedsikringsstørrelse i ampere (25, 35, osv.).  MILP-optimeringsværktøjet respekterer denne grænse ved planlægning af batteri- og elbilopladning.  Sæt til 0 for at deaktivere.",
           "hsem_main_fuse_phases": "Din elinstallations faseantal.  Enfasede installationer SKAL sættes til 1 — at indstille 3 på en enfaset installation gør sikringsbeskyttelsen 3 gange for slap og giver ingen reel sikkerhedsgrænse.  Standard er 3 (trefaset).",
           "hsem_max_grid_export_power_kw": "Maksimal neteksporteffekt i kW — netoperatørens/inverterens eksportloft for eksportbegrænsede tilslutninger (f.eks. 5 kW).  MILP-planlæggeren planlægger aldrig eksport over denne grænse, så batterieksport og soleksport konkurrerer korrekt om det samme loft.  Sæt til 0 for at deaktivere.",
@@ -467,6 +475,8 @@
           "import_price": "Import Elpris Sensor",
           "export_price": "Eksport Elpris Sensor",
           "house_power": "Husforbrug Effekt",
+          "inverter_active_power": "Inverterens aktive effekt",
+          "power_meter_active_power": "Elmålerens aktive effekt",
           "solar_power": "Solcelleproduktion Effekt",
           "use_quick_setup": "Brug Hurtig Opsætning"
         },
@@ -514,7 +524,9 @@
       "invalid_wait_mode_behavior": "Ugyldig ventetilstand. Vælg Streng ventetilstand eller Selvforbrug med reserve.",
       "port_conflict": "Den anden OCPP-port skal være forskellig fra den første OCPP-port.",
       "ev_min_power_below_start_current": "Den konfigurerede minimumseffekt er for lav til den valgte fasetopologi — en rigtig lader kan ikke starte under 6 A. Øg minimumseffekten, eller skift fasetopologi.",
-      "invalid_time_value": "Angiv et gyldigt klokkeslæt (TT:MM)."
+      "invalid_time_value": "Angiv et gyldigt klokkeslæt (TT:MM).",
+      "house_power_required": "Vælg en sensor for husets forbrug, eller angiv inverterens og elmålerens aktive effekt, så HSEM kan udlede husets forbrug.",
+      "house_load_needs_inverter_1": "Angiv den første inverters aktive effekt før den anden inverters."
     },
     "step": {
       "batteries_excess_export": {
@@ -760,6 +772,9 @@
       "power": {
         "data": {
           "hsem_house_consumption_power": "Husets forbrugseffektsensor",
+          "hsem_huawei_solar_inverter_active_power": "Inverterens aktive effekt",
+          "hsem_huawei_solar_inverter_2_active_power": "Inverter 2 aktiv effekt",
+          "hsem_huawei_solar_power_meter_active_power": "Elmålerens aktive effekt",
           "hsem_main_fuse_amps": "Hovedsikring (Ampere)",
           "hsem_main_fuse_phases": "Hovedsikringens faseantal",
           "hsem_max_grid_export_power_kw": "Maks. neteksporteffekt (kW)",
@@ -773,7 +788,10 @@
           "hsem_phase_aware_charging_enabled": "Aktiver live fasebevidst opladningssikkerhedsbegrænser"
         },
         "data_description": {
-          "hsem_house_consumption_power": "Vælg den sensor, der måler husets samlede strømforbrug.",
+          "hsem_house_consumption_power": "Vælg sensoren, der måler husets samlede strømforbrug (W eller kW). Lad den være tom, hvis installationen ikke har en sådan sensor, og inverteren og elmåleren nedenfor er sat: HSEM bruger så sin egen sensor House Load Power (inverterens aktive effekt minus elmålerens aktive effekt). En EMMA- eller SDongle-sensor for belastningseffekt er et godt valg, hvis du har en.",
+          "hsem_huawei_solar_inverter_active_power": "Valgfri. Inverterens sensor for aktiv effekt (Huawei Solar: sensor.inverter_active_power). Sammen med elmåleren lader den HSEM udlede husets forbrug, når du ikke har en sensor for husets forbrug.",
+          "hsem_huawei_solar_inverter_2_active_power": "Valgfri. En anden inverters sensor for aktiv effekt. Den lægges til den første inverter, før elmåleren trækkes fra.",
+          "hsem_huawei_solar_power_meter_active_power": "Valgfri. Elmålerens sensor for aktiv effekt (Huawei Solar: sensor.power_meter_active_power, positiv ved eksport). Husets forbrug = inverterens aktive effekt − elmålerens aktive effekt. Produktion, der ikke går gennem en Huawei-inverter, er ikke med.",
           "hsem_main_fuse_amps": "Husets hovedsikringsstørrelse i ampere (25, 35, osv.).  MILP-optimeringsværktøjet respekterer denne grænse ved planlægning af batteri- og elbilopladning.  Sæt til 0 for at deaktivere.",
           "hsem_main_fuse_phases": "Din elinstallations faseantal.  Enfasede installationer SKAL sættes til 1 — at indstille 3 på en enfaset installation gør sikringsbeskyttelsen 3 gange for slap og giver ingen reel sikkerhedsgrænse.  Standard er 3 (trefaset).",
           "hsem_max_grid_export_power_kw": "Maksimal neteksporteffekt i kW — netoperatørens/inverterens eksportloft for eksportbegrænsede tilslutninger (f.eks. 5 kW).  MILP-planlæggeren planlægger aldrig eksport over denne grænse, så batterieksport og soleksport konkurrerer korrekt om det samme loft.  Sæt til 0 for at deaktivere.",
@@ -1277,6 +1295,9 @@
       },
       "ocpp_second_charger_sessions": {
         "name": "Lader-sessioner"
+      },
+      "house_load_power": {
+        "name": "Husets belastningseffekt"
       }
     }
   },

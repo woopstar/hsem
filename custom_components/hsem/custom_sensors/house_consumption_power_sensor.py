@@ -41,6 +41,7 @@ from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMEntity
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.ha_helpers import ha_get_entity_state_and_convert
+from custom_components.hsem.utils.house_load import entry_house_power_entity
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.schema import vol
@@ -112,7 +113,7 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
         self._hsem_device = HSEMDevice.HOURLY_CONSUMPTION
         self._available = False
         self._missing_input_entities = True
-        self._hsem_house_consumption_power = None
+        self._hsem_house_consumption_power: str | None = None
         self._hsem_house_consumption_power_state = 0.0
         self._hsem_ev_charger_power = None
         self._hsem_ev_charger_power_state = 0.0
@@ -256,8 +257,14 @@ class HSEMHouseConsumptionPowerSensor(RestoreEntity, SensorEntity, HSEMEntity):
 
     def _update_settings(self) -> None:
         """Fetch updated settings from config_entry options."""
-        self._hsem_house_consumption_power = get_config_value(
-            self._config_entry, "hsem_house_consumption_power"
+        # The configured sensor, or the derived house load when no working
+        # house sensor is configured (issue #1310).  Before the entity is
+        # added there is no hass to look the sensor up in.
+        hass = getattr(self, "hass", None)
+        self._hsem_house_consumption_power = (
+            entry_house_power_entity(hass, self._config_entry)
+            if hass is not None
+            else get_config_value(self._config_entry, "hsem_house_consumption_power")
         )
 
         self._hsem_ev_charger_power = get_config_value(

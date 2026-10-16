@@ -6,7 +6,7 @@ clamping, battery power calculations, and cycle-cost thresholds.
 
 import hashlib
 import math
-from typing import Any
+from typing import Any, cast
 
 from custom_components.hsem.const import (
     DEFAULT_CONFIG_VALUES,
@@ -19,6 +19,7 @@ from custom_components.hsem.utils.conversion import (
     convert_to_float,
 )
 from custom_components.hsem.utils.logger import log_planner
+from custom_components.hsem.utils.schema import vol
 
 
 def generate_hash(input_sensor: str) -> str:
@@ -91,6 +92,23 @@ def ema_filter(
     if previous is None:
         return current
     return alpha * current + (1.0 - alpha) * previous
+
+
+def optional_entity_id(value: Any) -> str | None:
+    """Return a configured entity ID, or ``None`` when it is unset.
+
+    Config entries store an unset optional entity as ``vol.UNDEFINED`` or an
+    empty value.
+
+    Args:
+        value: The configured value.
+
+    Returns:
+        The entity ID string, or ``None``.
+    """
+    if value is vol.UNDEFINED or not value:
+        return None
+    return cast(str, value)
 
 
 def clamp_efficiency(pct: float) -> float:

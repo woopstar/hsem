@@ -17,6 +17,7 @@ from custom_components.hsem.custom_sensors.applier_status_sensor import (
 from custom_components.hsem.custom_sensors.battery_soc_sensor import (
     HSEMBatterySoCSensor,
 )
+from custom_components.hsem.custom_sensors.config_reader import build_sensor_config
 from custom_components.hsem.custom_sensors.daily_plan_vs_actual_sensor import (
     HSEMDailyPlanVsActualSensor,
 )
@@ -64,6 +65,9 @@ from custom_components.hsem.custom_sensors.hardware_writes_sensor import (
 from custom_components.hsem.custom_sensors.house_consumption_power_sensor import (
     HSEMHouseConsumptionPowerSensor,
 )
+from custom_components.hsem.custom_sensors.house_load_power_sensor import (
+    HSEMHouseLoadPowerSensor,
+)
 from custom_components.hsem.custom_sensors.last_updated_sensor import (
     HSEMLastUpdatedSensor,
 )
@@ -110,6 +114,7 @@ from custom_components.hsem.custom_sensors.update_interval_sensor import (
 from custom_components.hsem.custom_sensors.working_mode_sensor import (
     HSEMWorkingModeSensor,
 )
+from custom_components.hsem.utils.house_load import cfg_house_load_inputs
 from custom_components.hsem.utils.misc import get_config_value
 
 PARALLEL_UPDATES = 0
@@ -258,6 +263,15 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             *ocpp_second_entities,
         ]
     )
+
+    # Derived house load (issue #1310) — only when an inverter and the power
+    # meter are configured as its inputs.
+    house_load = cfg_house_load_inputs(build_sensor_config(config_entry))
+    if house_load is not None:
+        inverters, power_meter = house_load
+        async_add_entities(
+            [HSEMHouseLoadPowerSensor(config_entry, inverters, power_meter)]
+        )
 
     # Add power, energy and energy average sensors (these remain self-polling).
     power_sensors = []

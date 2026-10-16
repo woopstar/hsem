@@ -79,6 +79,12 @@ class SensorConfig:
             maximum-power number, written by the live phase-aware charging limiter.
         huawei_solar_batteries_charge_discharge_power: Entity ID for the signed
             instantaneous battery charge/discharge power sensor.
+        huawei_solar_inverter_active_power: Entity ID for inverter 1's active
+            power, an input of the derived house load (issue #1310).
+        huawei_solar_inverter_2_active_power: Entity ID for inverter 2's active
+            power, added to inverter 1's when set.
+        huawei_solar_power_meter_active_power: Entity ID for the power meter's
+            active power (positive when exporting).
         huawei_solar_power_meter_phase_a_active_power: Entity ID for phase A live
             power or current.
         huawei_solar_power_meter_phase_b_active_power: Entity ID for phase B live
@@ -200,6 +206,10 @@ class SensorConfig:
     huawei_solar_batteries_forcible_charge: str | None = None
     huawei_solar_inverter_active_power_control: str | None = None
     huawei_solar_batteries_rated_capacity: str | None = None
+    #: Inputs of the derived House Load Power sensor (issue #1310).
+    huawei_solar_inverter_active_power: str | None = None
+    huawei_solar_inverter_2_active_power: str | None = None
+    huawei_solar_power_meter_active_power: str | None = None
     #: Entity IDs for the three live per-phase grid sensors (issue #831).
     #: Each may report power (W/kW) or current (A) (issue #1119).  All three
     #: must be configured for the live per-phase fuse checks to pass.

@@ -196,3 +196,27 @@ def get_house_consumption_power_sensor_entity_id(hour_start: int, hour_end: int)
 
     """
     return f"sensor.{s(f'{DOMAIN}_house_consumption_power_{hour_start:02d}_{hour_end:02d}')}"
+
+
+# Derived house load power sensor (issue #1310)
+def get_house_load_power_sensor_unique_id(entry_id: str) -> str:
+    """Generate a unique ID for the derived house load power sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+
+    Returns:
+        str: Unique ID of the house load power sensor.
+
+    """
+    return f"{DOMAIN}_{entry_id}_house_load_power"
+
+
+def get_house_load_power_sensor_entity_id() -> str:
+    """Generate the Entity ID for the derived house load power sensor.
+
+    Returns:
+        str: Entity ID of the house load power sensor.
+
+    """
+    return f"sensor.{s(f'{DOMAIN}_house_load_power')}"

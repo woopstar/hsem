@@ -61,6 +61,7 @@ from custom_components.hsem.utils.datetime_utils import (
 )
 from custom_components.hsem.utils.ev_delivered_energy import EVDeliveredEnergyTracker
 from custom_components.hsem.utils.forecast_tracker import ForecastTracker
+from custom_components.hsem.utils.house_load import resolve_house_power
 from custom_components.hsem.utils.logger import (
     async_log,
     set_hsem_verbose,
@@ -103,6 +104,9 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         # 1. Reload config from the config entry.
         self._cfg = build_sensor_config(self._config_entry)
         cfg = self._cfg
+        # Fall back to the derived house load when no working house sensor is
+        # configured (issue #1310).
+        resolve_house_power(self.hass, cfg)
 
         # 2. Collect ALL HA entity states once into an immutable snapshot.
         (

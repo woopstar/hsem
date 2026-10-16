@@ -24,7 +24,11 @@ from custom_components.hsem.utils.conversion import (
     convert_to_int,
 )
 from custom_components.hsem.utils.logger import HSEM_LOGGER
-from custom_components.hsem.utils.misc import get_config_value, solver_time_limit_s
+from custom_components.hsem.utils.misc import (
+    get_config_value,
+    optional_entity_id,
+    solver_time_limit_s,
+)
 from custom_components.hsem.utils.phase_power import (
     normalize_ev_phase_topology,
 )
@@ -177,12 +181,12 @@ def build_sensor_config(
     cfg.huawei_solar_batteries_maximum_discharging_power = get_config_value(
         config_entry, "hsem_huawei_solar_batteries_maximum_discharging_power"
     )
-    cfg.huawei_solar_batteries_grid_charge_maximum_power = _optional_entity(
+    cfg.huawei_solar_batteries_grid_charge_maximum_power = optional_entity_id(
         get_config_value(
             config_entry, "hsem_huawei_solar_batteries_grid_charge_maximum_power"
         )
     )
-    cfg.huawei_solar_batteries_charge_discharge_power = _optional_entity(
+    cfg.huawei_solar_batteries_charge_discharge_power = optional_entity_id(
         get_config_value(
             config_entry, "hsem_huawei_solar_batteries_charge_discharge_power"
         )
@@ -200,7 +204,7 @@ def build_sensor_config(
     cfg.huawei_solar_batteries_forcible_charge = get_config_value(
         config_entry, "hsem_huawei_solar_batteries_forcible_charge"
     )
-    cfg.huawei_solar_inverter_active_power_control = _optional_entity(
+    cfg.huawei_solar_inverter_active_power_control = optional_entity_id(
         get_config_value(
             config_entry, "hsem_huawei_solar_inverter_active_power_control"
         )
@@ -208,34 +212,45 @@ def build_sensor_config(
     cfg.huawei_solar_batteries_rated_capacity = get_config_value(
         config_entry, "hsem_huawei_solar_batteries_rated_capacity"
     )
-    cfg.huawei_solar_power_meter_phase_a_active_power = _optional_entity(
+    cfg.huawei_solar_power_meter_phase_a_active_power = optional_entity_id(
         get_config_value(
             config_entry, "hsem_huawei_solar_power_meter_phase_a_active_power"
         )
     )
-    cfg.huawei_solar_power_meter_phase_b_active_power = _optional_entity(
+    cfg.huawei_solar_power_meter_phase_b_active_power = optional_entity_id(
         get_config_value(
             config_entry, "hsem_huawei_solar_power_meter_phase_b_active_power"
         )
     )
-    cfg.huawei_solar_power_meter_phase_c_active_power = _optional_entity(
+    cfg.huawei_solar_power_meter_phase_c_active_power = optional_entity_id(
         get_config_value(
             config_entry, "hsem_huawei_solar_power_meter_phase_c_active_power"
         )
     )
-    cfg.huawei_solar_power_meter_phase_a_voltage = _optional_entity(
+    cfg.huawei_solar_power_meter_phase_a_voltage = optional_entity_id(
         get_config_value(config_entry, "hsem_huawei_solar_power_meter_phase_a_voltage")
     )
-    cfg.huawei_solar_power_meter_phase_b_voltage = _optional_entity(
+    cfg.huawei_solar_power_meter_phase_b_voltage = optional_entity_id(
         get_config_value(config_entry, "hsem_huawei_solar_power_meter_phase_b_voltage")
     )
-    cfg.huawei_solar_power_meter_phase_c_voltage = _optional_entity(
+    cfg.huawei_solar_power_meter_phase_c_voltage = optional_entity_id(
         get_config_value(config_entry, "hsem_huawei_solar_power_meter_phase_c_voltage")
     )
 
+    # Inputs of the derived house load (issue #1310)
+    cfg.huawei_solar_inverter_active_power = optional_entity_id(
+        get_config_value(config_entry, "hsem_huawei_solar_inverter_active_power")
+    )
+    cfg.huawei_solar_inverter_2_active_power = optional_entity_id(
+        get_config_value(config_entry, "hsem_huawei_solar_inverter_2_active_power")
+    )
+    cfg.huawei_solar_power_meter_active_power = optional_entity_id(
+        get_config_value(config_entry, "hsem_huawei_solar_power_meter_active_power")
+    )
+
     # Power meters
-    cfg.house_consumption_power = get_config_value(
-        config_entry, "hsem_house_consumption_power"
+    cfg.house_consumption_power = optional_entity_id(
+        get_config_value(config_entry, "hsem_house_consumption_power")
     )
     cfg.solar_production_power = get_config_value(
         config_entry, "hsem_solar_production_power"
@@ -276,10 +291,10 @@ def build_sensor_config(
     cfg.export_electricity_price_sensor = get_config_value(
         config_entry, "hsem_export_electricity_price_sensor"
     )
-    cfg.import_electricity_price_forecast_sensor = _optional_entity(
+    cfg.import_electricity_price_forecast_sensor = optional_entity_id(
         get_config_value(config_entry, "hsem_import_electricity_price_forecast_sensor")
     )
-    cfg.export_electricity_price_forecast_sensor = _optional_entity(
+    cfg.export_electricity_price_forecast_sensor = optional_entity_id(
         get_config_value(config_entry, "hsem_export_electricity_price_forecast_sensor")
     )
     cfg.export_electricity_min_price = (
@@ -298,14 +313,14 @@ def build_sensor_config(
 
     # First EV charger
     ev = EVChargerConfig()
-    ev.status_entity = _optional_entity(
+    ev.status_entity = optional_entity_id(
         get_config_value(config_entry, "hsem_ev_charger_status")
     )
-    ev.power_entity = _optional_entity(
+    ev.power_entity = optional_entity_id(
         get_config_value(config_entry, "hsem_ev_charger_power")
     )
-    ev.soc_entity = _optional_entity(get_config_value(config_entry, "hsem_ev_soc"))
-    ev.connected_entity = _optional_entity(
+    ev.soc_entity = optional_entity_id(get_config_value(config_entry, "hsem_ev_soc"))
+    ev.connected_entity = optional_entity_id(
         get_config_value(config_entry, "hsem_ev_connected")
     )
     ev.allow_charge_past_target_soc = convert_to_boolean(
@@ -328,16 +343,16 @@ def build_sensor_config(
 
     # Second EV charger
     ev2 = EVChargerConfig()
-    ev2.status_entity = _optional_entity(
+    ev2.status_entity = optional_entity_id(
         get_config_value(config_entry, "hsem_ev_second_charger_status")
     )
-    ev2.power_entity = _optional_entity(
+    ev2.power_entity = optional_entity_id(
         get_config_value(config_entry, "hsem_ev_second_charger_power")
     )
-    ev2.soc_entity = _optional_entity(
+    ev2.soc_entity = optional_entity_id(
         get_config_value(config_entry, "hsem_ev_second_soc")
     )
-    ev2.connected_entity = _optional_entity(
+    ev2.connected_entity = optional_entity_id(
         get_config_value(config_entry, "hsem_ev_second_connected")
     )
     ev2.allow_charge_past_target_soc = convert_to_boolean(
@@ -555,13 +570,13 @@ def build_sensor_config(
     )
 
     # Daily plan-vs-actual tracking — optional cumulative energy meter entities.
-    cfg.grid_import_energy_entity = _optional_entity(
+    cfg.grid_import_energy_entity = optional_entity_id(
         get_config_value(config_entry, "hsem_grid_import_energy_entity")
     )
-    cfg.grid_export_energy_entity = _optional_entity(
+    cfg.grid_export_energy_entity = optional_entity_id(
         get_config_value(config_entry, "hsem_grid_export_energy_entity")
     )
-    cfg.pv_energy_entity = _optional_entity(
+    cfg.pv_energy_entity = optional_entity_id(
         get_config_value(config_entry, "hsem_pv_energy_entity")
     )
 
@@ -569,7 +584,7 @@ def build_sensor_config(
     cfg.ml_consumption_enabled = bool(
         get_config_value(config_entry, "hsem_ml_consumption_enabled")
     )
-    cfg.ml_consumption_energy_entity = _optional_entity(
+    cfg.ml_consumption_energy_entity = optional_entity_id(
         get_config_value(config_entry, "hsem_ml_consumption_energy_entity")
     )
     _ml_hist_days = convert_to_int(
@@ -582,10 +597,10 @@ def build_sensor_config(
     cfg.ml_consumption_sequential = bool(
         get_config_value(config_entry, "hsem_ml_consumption_sequential")
     )
-    cfg.ml_consumption_temperature_entity = _optional_entity(
+    cfg.ml_consumption_temperature_entity = optional_entity_id(
         get_config_value(config_entry, "hsem_ml_consumption_temperature_entity")
     )
-    cfg.ml_consumption_weather_forecast_entity = _optional_entity(
+    cfg.ml_consumption_weather_forecast_entity = optional_entity_id(
         get_config_value(config_entry, "hsem_ml_consumption_weather_forecast_entity")
     )
     cfg.ml_consumption_wind_chill_enabled = bool(
@@ -647,17 +662,3 @@ def build_sensor_config(
     )
 
     return cfg
-
-
-# ---------------------------------------------------------------------------
-# Private helpers
-# ---------------------------------------------------------------------------
-
-
-def _optional_entity(
-    value: Any,
-) -> str | None:  # NOSONAR -- generic helper; type depends on caller
-    """Return None if value is vol.UNDEFINED or falsy, else the string."""
-    if value is vol.UNDEFINED or not value:
-        return None
-    return cast(str, value)
