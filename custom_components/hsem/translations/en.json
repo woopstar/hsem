@@ -25,7 +25,9 @@
       "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve.",
       "port_conflict": "The second OCPP port must differ from the first OCPP port.",
       "ev_min_power_below_start_current": "The configured minimum power is too low for the selected phase topology — a real charger cannot start below 6 A. Increase the minimum power or switch phase topology.",
-      "invalid_time_value": "Enter a valid time of day (HH:MM)."
+      "invalid_time_value": "Enter a valid time of day (HH:MM).",
+      "house_power_required": "Select a house consumption sensor, or set the inverter and power meter active power so HSEM can derive the house load.",
+      "house_load_needs_inverter_1": "Set the first inverter's active power before the second inverter's."
     },
     "step": {
       "batteries_excess_export": {
@@ -329,6 +331,9 @@
       "power": {
         "data": {
           "hsem_house_consumption_power": "House Consumption Power Sensor",
+          "hsem_huawei_solar_inverter_active_power": "Inverter Active Power",
+          "hsem_huawei_solar_inverter_2_active_power": "Inverter 2 Active Power",
+          "hsem_huawei_solar_power_meter_active_power": "Power Meter Active Power",
           "hsem_main_fuse_amps": "Main Fuse Rating (Amps)",
           "hsem_main_fuse_phases": "Main Fuse Phase Count",
           "hsem_max_grid_export_power_kw": "Max Grid Export Power (kW)",
@@ -342,7 +347,10 @@
           "hsem_phase_aware_charging_enabled": "Enable Live Phase-Aware Charging Safety Limiter"
         },
         "data_description": {
-          "hsem_house_consumption_power": "Select the sensor that measures your house's total power consumption.",
+          "hsem_house_consumption_power": "Select the sensor that measures your house's total power consumption (W or kW). Leave empty when your installation has no such sensor and the inverter and power meter below are set: HSEM then uses its own House Load Power sensor (inverter active power minus power meter active power). An EMMA or SDongle load power sensor is a good choice when you have one.",
+          "hsem_huawei_solar_inverter_active_power": "Optional. The inverter's active power sensor (Huawei Solar: sensor.inverter_active_power). Together with the power meter it lets HSEM derive the house load when you have no house consumption sensor.",
+          "hsem_huawei_solar_inverter_2_active_power": "Optional. A second inverter's active power sensor. It is added to the first inverter before the power meter is subtracted.",
+          "hsem_huawei_solar_power_meter_active_power": "Optional. The power meter's active power sensor (Huawei Solar: sensor.power_meter_active_power, positive when exporting). House load = inverter active power − power meter active power. Generation that does not pass through a Huawei inverter is not included.",
           "hsem_main_fuse_amps": "Your house's main fuse/breaker rating in amps (25, 35, etc.).  The MILP optimizer will respect this limit when scheduling battery and EV charging.  Set to 0 to disable.",
           "hsem_main_fuse_phases": "Your electrical installation's phase count.  Single-phase installations MUST set this to 1 — setting 3 on a single-phase install makes the fuse protection 3x too permissive and provides no real safety limit.  Defaults to 3 (three-phase).",
           "hsem_max_grid_export_power_kw": "Maximum grid export power in kW — the DNO/inverter export cap for export-limited connections (e.g. 5 kW).  The MILP planner will never schedule export above this limit, so battery export and PV export correctly compete for the same cap.  Set to 0 to disable.",
@@ -373,6 +381,8 @@
           "import_price": "Import Electricity Price Sensor",
           "export_price": "Export Electricity Price Sensor",
           "house_power": "House Consumption Power",
+          "inverter_active_power": "Inverter Active Power",
+          "power_meter_active_power": "Power Meter Active Power",
           "solar_power": "Solar Production Power",
           "use_quick_setup": "Use Quick Setup"
         },
@@ -514,7 +524,9 @@
       "invalid_wait_mode_behavior": "Invalid wait mode behaviour. Choose Strict wait or Self-consumption with reserve.",
       "port_conflict": "The second OCPP port must differ from the first OCPP port.",
       "ev_min_power_below_start_current": "The configured minimum power is too low for the selected phase topology — a real charger cannot start below 6 A. Increase the minimum power or switch phase topology.",
-      "invalid_time_value": "Enter a valid time of day (HH:MM)."
+      "invalid_time_value": "Enter a valid time of day (HH:MM).",
+      "house_power_required": "Select a house consumption sensor, or set the inverter and power meter active power so HSEM can derive the house load.",
+      "house_load_needs_inverter_1": "Set the first inverter's active power before the second inverter's."
     },
     "step": {
       "batteries_excess_export": {
@@ -818,6 +830,9 @@
       "power": {
         "data": {
           "hsem_house_consumption_power": "House Consumption Power Sensor",
+          "hsem_huawei_solar_inverter_active_power": "Inverter Active Power",
+          "hsem_huawei_solar_inverter_2_active_power": "Inverter 2 Active Power",
+          "hsem_huawei_solar_power_meter_active_power": "Power Meter Active Power",
           "hsem_main_fuse_amps": "Main Fuse Rating (Amps)",
           "hsem_main_fuse_phases": "Main Fuse Phase Count",
           "hsem_max_grid_export_power_kw": "Max Grid Export Power (kW)",
@@ -831,7 +846,10 @@
           "hsem_phase_aware_charging_enabled": "Enable Live Phase-Aware Charging Safety Limiter"
         },
         "data_description": {
-          "hsem_house_consumption_power": "Select the sensor that measures your house's total power consumption.",
+          "hsem_house_consumption_power": "Select the sensor that measures your house's total power consumption (W or kW). Leave empty when your installation has no such sensor and the inverter and power meter below are set: HSEM then uses its own House Load Power sensor (inverter active power minus power meter active power). An EMMA or SDongle load power sensor is a good choice when you have one.",
+          "hsem_huawei_solar_inverter_active_power": "Optional. The inverter's active power sensor (Huawei Solar: sensor.inverter_active_power). Together with the power meter it lets HSEM derive the house load when you have no house consumption sensor.",
+          "hsem_huawei_solar_inverter_2_active_power": "Optional. A second inverter's active power sensor. It is added to the first inverter before the power meter is subtracted.",
+          "hsem_huawei_solar_power_meter_active_power": "Optional. The power meter's active power sensor (Huawei Solar: sensor.power_meter_active_power, positive when exporting). House load = inverter active power − power meter active power. Generation that does not pass through a Huawei inverter is not included.",
           "hsem_main_fuse_amps": "Your house's main fuse/breaker rating in amps (25, 35, etc.).  The MILP optimizer will respect this limit when scheduling battery and EV charging.  Set to 0 to disable.",
           "hsem_main_fuse_phases": "Your electrical installation's phase count.  Single-phase installations MUST set this to 1 — setting 3 on a single-phase install makes the fuse protection 3x too permissive and provides no real safety limit.  Defaults to 3 (three-phase).",
           "hsem_max_grid_export_power_kw": "Maximum grid export power in kW — the DNO/inverter export cap for export-limited connections (e.g. 5 kW).  The MILP planner will never schedule export above this limit, so battery export and PV export correctly compete for the same cap.  Set to 0 to disable.",
@@ -1202,6 +1220,9 @@
       },
       "ocpp_second_charger_sessions": {
         "name": "Charger Sessions"
+      },
+      "house_load_power": {
+        "name": "House Load Power"
       }
     },
     "switch": {

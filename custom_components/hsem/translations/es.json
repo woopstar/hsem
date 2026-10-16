@@ -25,7 +25,9 @@
       "invalid_wait_mode_behavior": "Comportamiento de modo de espera no válido. Elige Espera estricta o Autoconsumo con reserva.",
       "port_conflict": "El segundo puerto OCPP debe ser diferente del primer puerto OCPP.",
       "ev_min_power_below_start_current": "La potencia mínima configurada es demasiado baja para la topología de fases seleccionada — un cargador real no puede arrancar por debajo de 6 A. Aumenta la potencia mínima o cambia la topología de fases.",
-      "invalid_time_value": "Introduce una hora del día válida (HH:MM)."
+      "invalid_time_value": "Introduce una hora del día válida (HH:MM).",
+      "house_power_required": "Selecciona un sensor de consumo de la casa, o configura la potencia activa del inversor y del medidor para que HSEM calcule la carga de la casa.",
+      "house_load_needs_inverter_1": "Configura la potencia activa del primer inversor antes que la del segundo."
     },
     "step": {
       "batteries_excess_export": {
@@ -329,6 +331,9 @@
       "power": {
         "data": {
           "hsem_house_consumption_power": "Sensor de potencia de consumo de la vivienda",
+          "hsem_huawei_solar_inverter_active_power": "Potencia activa del inversor",
+          "hsem_huawei_solar_inverter_2_active_power": "Potencia activa del inversor 2",
+          "hsem_huawei_solar_power_meter_active_power": "Potencia activa del medidor",
           "hsem_main_fuse_amps": "Valor nominal del fusible principal (amperios)",
           "hsem_main_fuse_phases": "Número de fases del fusible principal",
           "hsem_max_grid_export_power_kw": "Potencia máxima de exportación a la red (kW)",
@@ -342,7 +347,10 @@
           "hsem_phase_aware_charging_enabled": "Activar limitador de seguridad de carga con reconocimiento de fase en tiempo real"
         },
         "data_description": {
-          "hsem_house_consumption_power": "Selecciona el sensor que mide el consumo total de potencia de tu vivienda.",
+          "hsem_house_consumption_power": "Selecciona el sensor que mide el consumo eléctrico total de tu casa (W o kW). Déjalo vacío si tu instalación no tiene ese sensor y el inversor y el medidor de abajo están configurados: HSEM usa entonces su propio sensor House Load Power (potencia activa del inversor menos potencia activa del medidor). Un sensor de potencia de carga de EMMA o SDongle es una buena opción si lo tienes.",
+          "hsem_huawei_solar_inverter_active_power": "Opcional. El sensor de potencia activa del inversor (Huawei Solar: sensor.inverter_active_power). Junto con el medidor permite a HSEM calcular la carga de la casa cuando no tienes un sensor de consumo de la casa.",
+          "hsem_huawei_solar_inverter_2_active_power": "Opcional. El sensor de potencia activa de un segundo inversor. Se suma al primer inversor antes de restar el medidor.",
+          "hsem_huawei_solar_power_meter_active_power": "Opcional. El sensor de potencia activa del medidor (Huawei Solar: sensor.power_meter_active_power, positivo al exportar). Carga de la casa = potencia activa del inversor − potencia activa del medidor. La generación que no pasa por un inversor Huawei no se incluye.",
           "hsem_main_fuse_amps": "El valor nominal del fusible/interruptor principal de tu vivienda en amperios (25, 35, etc.). El optimizador MILP respetará este límite al programar la carga de la batería y del VE. Ajusta a 0 para desactivar.",
           "hsem_main_fuse_phases": "El número de fases de tu instalación eléctrica. Las instalaciones monofásicas DEBEN configurar este valor en 1; establecer 3 en una instalación monofásica hace que la protección del fusible sea 3 veces demasiado permisiva y no proporciona un límite de seguridad real. Predeterminado: 3 (trifásico).",
           "hsem_max_grid_export_power_kw": "Potencia máxima de exportación a la red en kW: el límite de exportación del operador de red/inversor para conexiones con exportación limitada (p. ej., 5 kW). El planificador MILP nunca programará una exportación por encima de este límite, de modo que la exportación de batería y la exportación de PV compiten correctamente por el mismo límite. Ajusta a 0 para desactivar.",
@@ -373,6 +381,8 @@
           "import_price": "Sensor de precio de electricidad de importación",
           "export_price": "Sensor de precio de electricidad de exportación",
           "house_power": "Potencia de consumo de la vivienda",
+          "inverter_active_power": "Potencia activa del inversor",
+          "power_meter_active_power": "Potencia activa del medidor",
           "solar_power": "Potencia de producción solar",
           "use_quick_setup": "Usar configuración rápida"
         },
@@ -514,7 +524,9 @@
       "invalid_wait_mode_behavior": "Comportamiento de modo de espera no válido. Elige Espera estricta o Autoconsumo con reserva.",
       "port_conflict": "El segundo puerto OCPP debe ser diferente del primer puerto OCPP.",
       "ev_min_power_below_start_current": "La potencia mínima configurada es demasiado baja para la topología de fases seleccionada — un cargador real no puede arrancar por debajo de 6 A. Aumenta la potencia mínima o cambia la topología de fases.",
-      "invalid_time_value": "Introduce una hora del día válida (HH:MM)."
+      "invalid_time_value": "Introduce una hora del día válida (HH:MM).",
+      "house_power_required": "Selecciona un sensor de consumo de la casa, o configura la potencia activa del inversor y del medidor para que HSEM calcule la carga de la casa.",
+      "house_load_needs_inverter_1": "Configura la potencia activa del primer inversor antes que la del segundo."
     },
     "step": {
       "batteries_excess_export": {
@@ -818,6 +830,9 @@
       "power": {
         "data": {
           "hsem_house_consumption_power": "Sensor de potencia de consumo de la vivienda",
+          "hsem_huawei_solar_inverter_active_power": "Potencia activa del inversor",
+          "hsem_huawei_solar_inverter_2_active_power": "Potencia activa del inversor 2",
+          "hsem_huawei_solar_power_meter_active_power": "Potencia activa del medidor",
           "hsem_main_fuse_amps": "Valor nominal del fusible principal (amperios)",
           "hsem_main_fuse_phases": "Número de fases del fusible principal",
           "hsem_max_grid_export_power_kw": "Potencia máxima de exportación a la red (kW)",
@@ -831,7 +846,10 @@
           "hsem_phase_aware_charging_enabled": "Activar limitador de seguridad de carga con reconocimiento de fase en tiempo real"
         },
         "data_description": {
-          "hsem_house_consumption_power": "Selecciona el sensor que mide el consumo total de potencia de tu vivienda.",
+          "hsem_house_consumption_power": "Selecciona el sensor que mide el consumo eléctrico total de tu casa (W o kW). Déjalo vacío si tu instalación no tiene ese sensor y el inversor y el medidor de abajo están configurados: HSEM usa entonces su propio sensor House Load Power (potencia activa del inversor menos potencia activa del medidor). Un sensor de potencia de carga de EMMA o SDongle es una buena opción si lo tienes.",
+          "hsem_huawei_solar_inverter_active_power": "Opcional. El sensor de potencia activa del inversor (Huawei Solar: sensor.inverter_active_power). Junto con el medidor permite a HSEM calcular la carga de la casa cuando no tienes un sensor de consumo de la casa.",
+          "hsem_huawei_solar_inverter_2_active_power": "Opcional. El sensor de potencia activa de un segundo inversor. Se suma al primer inversor antes de restar el medidor.",
+          "hsem_huawei_solar_power_meter_active_power": "Opcional. El sensor de potencia activa del medidor (Huawei Solar: sensor.power_meter_active_power, positivo al exportar). Carga de la casa = potencia activa del inversor − potencia activa del medidor. La generación que no pasa por un inversor Huawei no se incluye.",
           "hsem_main_fuse_amps": "El valor nominal del fusible/interruptor principal de tu vivienda en amperios (25, 35, etc.). El optimizador MILP respetará este límite al programar la carga de la batería y del VE. Ajusta a 0 para desactivar.",
           "hsem_main_fuse_phases": "El número de fases de tu instalación eléctrica. Las instalaciones monofásicas DEBEN configurar este valor en 1; establecer 3 en una instalación monofásica hace que la protección del fusible sea 3 veces demasiado permisiva y no proporciona un límite de seguridad real. Predeterminado: 3 (trifásico).",
           "hsem_max_grid_export_power_kw": "Potencia máxima de exportación a la red en kW: el límite de exportación del operador de red/inversor para conexiones con exportación limitada (p. ej., 5 kW). El planificador MILP nunca programará una exportación por encima de este límite, de modo que la exportación de batería y la exportación de PV compiten correctamente por el mismo límite. Ajusta a 0 para desactivar.",
@@ -1202,6 +1220,9 @@
       },
       "ocpp_second_charger_sessions": {
         "name": "Sesiones del cargador"
+      },
+      "house_load_power": {
+        "name": "Potencia de carga de la casa"
       }
     },
     "switch": {

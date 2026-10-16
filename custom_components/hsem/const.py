@@ -136,6 +136,11 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_huawei_solar_batteries_grid_charge_maximum_power": vol.UNDEFINED,
     "hsem_huawei_solar_batteries_maximum_charging_power": "number.batteries_maximum_charging_power",
     "hsem_huawei_solar_batteries_maximum_discharging_power": "number.batteries_maximum_discharging_power",
+    # Inputs of the derived House Load Power sensor (issue #1310): the sum of
+    # the inverters' active power minus the power meter's active power.
+    "hsem_huawei_solar_inverter_active_power": vol.UNDEFINED,
+    "hsem_huawei_solar_inverter_2_active_power": vol.UNDEFINED,
+    "hsem_huawei_solar_power_meter_active_power": vol.UNDEFINED,
     "hsem_huawei_solar_power_meter_phase_a_active_power": vol.UNDEFINED,
     "hsem_huawei_solar_power_meter_phase_b_active_power": vol.UNDEFINED,
     "hsem_huawei_solar_power_meter_phase_c_active_power": vol.UNDEFINED,

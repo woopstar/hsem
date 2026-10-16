@@ -81,6 +81,7 @@ def test_snapshot_reads_options_over_data_with_defaults() -> None:
         "hsem_ev_second_planned_load_enabled": False,
         "hsem_ocpp_enabled": True,
         "hsem_ocpp_second_enabled": False,
+        "house_load_inputs": None,
     }
 
 
@@ -225,4 +226,5 @@ async def test_setup_entry_snapshots_gating_flags() -> None:
         "hsem_ev_second_planned_load_enabled": True,
         "hsem_ocpp_enabled": True,
         "hsem_ocpp_second_enabled": False,
+        "house_load_inputs": None,
     }

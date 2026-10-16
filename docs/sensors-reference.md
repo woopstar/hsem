@@ -615,6 +615,32 @@ Snapshot of the battery state of charge with optional learned capacity tracking.
 
 ---
 
+## House load power sensor
+
+The house's own power draw derived from the Huawei inverters and power meter
+(issue #1310), for installations without an EMMA or SDongle load sensor.
+Created only when _Inverter Active Power_ and _Power Meter Active Power_ are
+set in the **Power** step.
+
+**Entity:** `sensor.hsem_house_load_power`
+
+| State   | Unit | Description                                                          |
+| ------- | ---- | -------------------------------------------------------------------- |
+| a float | W    | Σ inverter active power − power meter active power (export positive) |
+
+It is **unavailable**, never 0, while any input is unavailable or
+non-numeric. Inputs in kW are converted to W. HSEM reads it as the house
+consumption power when `hsem_house_consumption_power` is empty or points to an
+entity that does not exist. See
+[home.md](home.md#where-does-the-house-consumption-power-come-from).
+
+| Attribute                         | Description                           |
+| --------------------------------- | ------------------------------------- |
+| `inverter_active_power_entities`  | The inverters' active power entities  |
+| `power_meter_active_power_entity` | The power meter's active power entity |
+
+---
+
 ## Dynamic discharge floor
 
 Controls and reports the effective discharge floor SoC: the reserve the battery needs now to carry the house to the next refill, when the dynamic floor feature is enabled.

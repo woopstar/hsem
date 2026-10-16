@@ -101,5 +101,8 @@ async def test_first_refresh_runs_after_platforms_are_forwarded(
     ]
     assert entry.runtime_data == HSEMRuntimeData(
         coordinator=mock_coordinator,
-        entity_gating=dict.fromkeys(ENTITY_GATING_CONFIG_KEYS, False),
+        entity_gating={
+            **dict.fromkeys(ENTITY_GATING_CONFIG_KEYS, False),
+            "house_load_inputs": None,
+        },
     )

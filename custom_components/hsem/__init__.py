@@ -22,11 +22,13 @@ from homeassistant.exceptions import (
 
 from custom_components.hsem.const import DOMAIN, MIN_HUAWEI_SOLAR_VERSION
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
+from custom_components.hsem.custom_sensors.config_reader import build_sensor_config
 from custom_components.hsem.device_migration import async_migrate_devices
 from custom_components.hsem.services import (
     async_register_services,
     async_unregister_services,
 )
+from custom_components.hsem.utils.house_load import cfg_house_load_inputs
 from custom_components.hsem.utils.logger import (
     async_close_hsem_logger,
     async_init_hsem_logger,
@@ -47,6 +49,11 @@ ENTITY_GATING_CONFIG_KEYS: tuple[str, ...] = (
     "hsem_ocpp_second_enabled",
 )
 
+#: Snapshot key for the derived House Load Power sensor's inputs (issue
+#: #1310): the sensor is created only when they are set, and it tracks the
+#: configured entities, so any change to them needs a reload too.
+_HOUSE_LOAD_GATING_KEY = "house_load_inputs"
+
 
 @dataclass
 class HSEMRuntimeData:
@@ -54,7 +61,7 @@ class HSEMRuntimeData:
 
     coordinator: HSEMDataUpdateCoordinator
     # Values of ENTITY_GATING_CONFIG_KEYS the platforms were set up with.
-    entity_gating: dict[str, bool] = field(default_factory=dict)
+    entity_gating: dict[str, object] = field(default_factory=dict)
 
 
 type HSEMConfigEntry = ConfigEntry[HSEMRuntimeData]
@@ -70,11 +77,13 @@ PLATFORMS = [
 ]
 
 
-def _entity_gating_snapshot(entry: ConfigEntry) -> dict[str, bool]:
+def _entity_gating_snapshot(entry: ConfigEntry) -> dict[str, object]:
     """Return the current value of every entity-gating config key."""
-    return {
+    snapshot: dict[str, object] = {
         key: bool(get_config_value(entry, key)) for key in ENTITY_GATING_CONFIG_KEYS
     }
+    snapshot[_HOUSE_LOAD_GATING_KEY] = cfg_house_load_inputs(build_sensor_config(entry))
+    return snapshot
 
 
 def _parse_version(version_str: str) -> Version | None:
@@ -301,7 +310,7 @@ async def async_update_options(hass: HomeAssistant, entry: HSEMConfigEntry) -> N
     if current_gating != runtime_data.entity_gating:
         changed = sorted(
             key
-            for key in ENTITY_GATING_CONFIG_KEYS
+            for key in current_gating
             if current_gating.get(key) != runtime_data.entity_gating.get(key)
         )
         _LOGGER.info(
