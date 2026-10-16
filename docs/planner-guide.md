@@ -1712,20 +1712,20 @@ they list them. Exactly one of `winter_month` and `summer_month` is always
 present; `tests/test_planner_guide_explanation_values.py` checks that this
 guide shows no other tag or strategy:
 
-| Tag                           | Meaning                                                                                                                        |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `winter_month`                | Current month is in `months_winter`; winter scheduling strategy active                                                         |
-| `summer_month`                | Not in winter months; summer scheduling strategy active                                                                        |
-| `no_price_spread`             | Max − min import price is near zero; no grid-charge arbitrage                                                                  |
-| `excess_export_enabled`       | Excess export feature is active in config                                                                                      |
-| `battery_disabled`            | Rated battery capacity is zero or unavailable                                                                                  |
-| `battery_full`                | Initial SoC is at or above the configured maximum                                                                              |
-| `battery_empty`               | Initial SoC is at or below the configured discharge floor                                                                      |
-| `battery_low_at_end`          | Simulated terminal SoC reaches the configured discharge floor                                                                  |
-| `dynamic_discharge_floor`     | The dynamic discharge floor is above the configured minimum SoC and reserves energy                                            |
-| `battery_below_dynamic_floor` | Initial SoC is at or below the dynamic discharge floor; the battery is held                                                    |
-| `solver_failed`               | The optimiser found no plan this cycle; a fallback plan is published (`selected_strategy` is `solver_failed`, issue #1309)     |
-| `solver_time_limit`           | The published plan comes from a solve that stopped at its time limit (`selected_strategy` is `solver_time_limit`, issue #1309) |
+| Tag                           | Meaning                                                                                                                                                                                                                 |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `winter_month`                | Current month is in `months_winter`; winter scheduling strategy active                                                                                                                                                  |
+| `summer_month`                | Not in winter months; summer scheduling strategy active                                                                                                                                                                 |
+| `no_price_spread`             | Max − min import price is near zero; no grid-charge arbitrage                                                                                                                                                           |
+| `excess_export_enabled`       | Excess export feature is active in config                                                                                                                                                                               |
+| `battery_disabled`            | Rated battery capacity is zero or unavailable                                                                                                                                                                           |
+| `battery_full`                | Initial SoC is at or above the configured maximum                                                                                                                                                                       |
+| `battery_empty`               | Initial SoC is at or below the configured discharge floor                                                                                                                                                               |
+| `battery_low_at_end`          | Simulated terminal SoC reaches the configured discharge floor                                                                                                                                                           |
+| `dynamic_discharge_floor`     | The dynamic discharge floor is above the configured minimum SoC and reserves energy                                                                                                                                     |
+| `battery_below_dynamic_floor` | Initial SoC is at or below the dynamic discharge floor; the battery is held                                                                                                                                             |
+| `solver_failed`               | The optimiser found no plan this cycle; a fallback plan is published (`selected_strategy` is `solver_failed`, issue #1309)                                                                                              |
+| `solver_time_limit`           | The MILP solve stopped at its time limit; its plan is published (`selected_strategy` is `solver_time_limit`, issue #1309) or, when it scores worse than passive, passive is (`solver_time_limit_fallback`, issue #1312) |
 
 When `battery_below_dynamic_floor` is listed, the plan keeps the battery at its
 current SoC and only energy charged on top of it is discharged, so the
