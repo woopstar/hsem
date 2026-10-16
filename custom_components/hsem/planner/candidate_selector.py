@@ -48,6 +48,7 @@ from custom_components.hsem.planner.discharge_scheduler import (
     apply_optimization_strategy,
     concentrate_discharge_on_expensive_slots,
 )
+from custom_components.hsem.planner.milp._incumbent import SOLVER_STATUS_TIME_LIMIT
 from custom_components.hsem.planner.soc_simulation import simulate_soc
 from custom_components.hsem.utils.datetime_utils import physical_elapsed, utc_key
 from custom_components.hsem.utils.logger import log_planner
@@ -59,6 +60,9 @@ from custom_components.hsem.utils.recommendations import (
 # percentage points below end_of_discharge_soc_pct (rounding / simulation
 # artefact allowance).
 _SOC_TOLERANCE_PCT = 0.5
+#: Score margin by which passive must beat a time-limited MILP plan to replace
+#: it (issue #1312); keeps a tie with the MILP plan.
+_TIME_LIMITED_FALLBACK_EPS = 1e-6
 
 
 # ---------------------------------------------------------------------------
@@ -376,6 +380,7 @@ def select_best_candidate(  # NOSONAR
             assert c._cost is not None
             return (c._cost.score, c._cost.total_cost, c.name)
 
+        eligible = _passive_over_time_limited_milp(eligible, valid)
         eligible_sorted = sorted(eligible, key=_sort_key)
         winner = eligible_sorted[0]
         assert winner._cost is not None
@@ -491,7 +496,7 @@ def select_best_candidate(  # NOSONAR
         if candidate.name == CANDIDATE_NO_ACTION:
             continue  # diagnostic floor — never shown in rejected plans
 
-        if not candidate.is_valid:
+        if not candidate.is_valid or candidate.rejection_reason:
             reason = candidate.rejection_reason
         else:
             winner_score = getattr(
@@ -540,6 +545,52 @@ def select_best_candidate(  # NOSONAR
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
+
+def _passive_over_time_limited_milp(
+    eligible: list[CandidatePlan], valid: list[CandidatePlan]
+) -> list[CandidatePlan]:
+    """Return ``[passive]`` when a time-limited MILP plan scores worse (#1312).
+
+    A proven-optimal MILP stays the sole authority: its model is richer than
+    ``score_plan``, so a lower passive score is no evidence of a better plan.
+    An incumbent the solver returned at its time limit can be arbitrarily far
+    from optimal (an all-Wait horizon in #978), so when the passive plan this
+    run already built scores lower, passive is published instead.  A
+    time-limited plan that scores better is kept.
+
+    Args:
+        eligible: The eligible candidates, already scored.
+        valid: Every valid candidate, already scored.
+
+    Returns:
+        *eligible*, or ``[passive]`` with the MILP candidate's
+        ``rejection_reason`` set.
+    """
+    if len(eligible) != 1 or eligible[0].name != CANDIDATE_MILP:
+        return eligible
+    milp = eligible[0]
+    outcome = (milp.diagnostics or {}).get("solver")
+    if getattr(outcome, "status", None) != SOLVER_STATUS_TIME_LIMIT:
+        return eligible
+    passive = _find_by_name(valid, CANDIDATE_PASSIVE)
+    if passive is None or passive._cost is None or milp._cost is None:
+        return eligible
+    milp_score, passive_score = milp._cost.score, passive._cost.score
+    if milp_score - passive_score <= _TIME_LIMITED_FALLBACK_EPS:
+        return eligible
+    milp.rejection_reason = (
+        f"Stopped at the solver time limit with a higher selector score than "
+        f"passive ({milp_score:.4f} vs {passive_score:.4f}); passive is used."
+    )
+    log_planner(
+        "debug",
+        "[selector] time-limited MILP score=%.4f worse than passive=%.4f — "
+        "publishing passive",
+        milp_score,
+        passive_score,
+    )
+    return [passive]
 
 
 def _validate_candidate(
