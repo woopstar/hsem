@@ -1344,10 +1344,11 @@ against `docs/planner-spec.md`.
   load the same input returned a time-limited incumbent (143.61 vs 110.12) and
   failed `winner_not_worse_than_no_action` — a machine-load artefact. Never
   replay corpus cycles under the production limit, or CI turns flaky.
-- **Real policy gap, not yet an issue:** `candidate_selector.py` makes a valid
-  MILP the sole executable candidate, so a time-limited incumbent worse than
-  `passive` is still published. Harmless while solves finish in time (no
-  time-limit hits in production logs 08-31→09-27); a slow host would hit it.
+- **Time-limited incumbents vs passive (#1312):** `candidate_selector.py` makes
+  a valid MILP the sole executable candidate, except when its solve stopped at
+  the time limit and `passive` scores lower — then passive is published. Do not
+  extend that comparison to optimal solves: the MILP's model is richer than
+  `score_plan`, so a lower passive score is no evidence of a better plan.
 - **The committed corpus grows by harvest**, not by hand:
   `scripts/backtest_update.sh` → `tests/backtest/harvest.py` commits a cycle only
   for a new `Situation` (winner, modes, SoC quartile, EV/negative-price/DST

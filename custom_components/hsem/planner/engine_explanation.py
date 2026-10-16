@@ -436,13 +436,24 @@ def apply_solver_outcome(
     expl.solver_time_s = outcome.time_s
     expl.solver_gap_pct = outcome.gap_pct
     expl.solver_time_limit_s = outcome.time_limit_s
-    if outcome.status != SOLVER_STATUS_TIME_LIMIT or winner_name != CANDIDATE_MILP:
+    if outcome.status != SOLVER_STATUS_TIME_LIMIT:
         return
     gap = "" if outcome.gap_pct is None else f", gap {outcome.gap_pct:.1f} %"
-    expl.selected_strategy = "solver_time_limit"
-    expl.summary = (
-        f"The optimiser stopped at its time limit after {outcome.time_s:.1f} s"
-        f"{gap}; the plan may be far from optimal. Raise the planner solver "
-        f"time limit if this repeats."
-    )
+    stopped = f"The optimiser stopped at its time limit after {outcome.time_s:.1f} s"
+    if winner_name == CANDIDATE_MILP:
+        expl.selected_strategy = "solver_time_limit"
+        expl.summary = (
+            f"{stopped}{gap}; the plan may be far from optimal. Raise the "
+            f"planner solver time limit if this repeats."
+        )
+    elif milp.rejection_reason:
+        # The selector published passive instead (issue #1312).
+        expl.selected_strategy = "solver_time_limit_fallback"
+        expl.summary = (
+            f"{stopped}{gap} with a plan worse than the '{winner_name}' plan, "
+            f"so the '{winner_name}' plan is used. Raise the planner solver "
+            f"time limit if this repeats."
+        )
+    else:
+        return
     expl.constraints.append("solver_time_limit")

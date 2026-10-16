@@ -2862,6 +2862,17 @@ Required production candidates:
 A validated MILP is the sole active optimisation authority. Passive is eligible
 only when no valid MILP exists; `no_action` never becomes executable.
 
+One exception (issue #1312): when the MILP solve stopped at its time limit
+(`diagnostics["solver"].status == "time_limit"`, issue #1309) and the valid
+`passive` candidate's selector score is lower by more than `1e-6`, `passive`
+is published and the MILP candidate carries a rejection reason. A time-limited
+incumbent can be arbitrarily far from optimal, and the passive plan is already
+built and validated. A time-limited plan that scores better than passive, and
+every proven-optimal plan, keeps the rule above. Both plans are scored by the
+selector before the choice, so `winner.cost == final_output.cost` still holds,
+and hysteresis cannot keep the rejected MILP plan because it is no longer
+eligible.
+
 If SoC validation rejects every candidate (a degenerate edge case — expected
 to be rare), the selector falls back to `passive` regardless of its own
 validation result, since it is the designated fail-closed fallback. This
