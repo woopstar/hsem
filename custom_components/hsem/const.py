@@ -202,6 +202,11 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ml_consumption_wind_chill_reference_temperature": 18.0,
     # EV charging — auto-Full on negative price (issue #609)
     "hsem_ev_auto_full_negative_price": False,
+    # EV charging — charge immediately below a minimum SoC (issue #1323)
+    "hsem_ev_min_soc_charge_enabled": False,
+    "hsem_ev_min_soc_charge_soc": 20,
+    "hsem_ev_second_min_soc_charge_enabled": False,
+    "hsem_ev_second_min_soc_charge_soc": 20,
 }
 
 # ---------------------------------------------------------------------------

@@ -168,7 +168,9 @@
           "hsem_ev_soc": "Sensor de estado de carga (SoC) del VE",
           "hsem_house_power_includes_ev_charger_power": "La potencia de la vivienda incluye la potencia del cargador de VE",
           "hsem_ev_auto_full_negative_price": "Carga completa automática del VE con precio negativo",
-          "hsem_ev_past_target_confidence_factor": "Factor de confianza de carga del VE más allá del objetivo (avanzado)"
+          "hsem_ev_past_target_confidence_factor": "Factor de confianza de carga del VE más allá del objetivo (avanzado)",
+          "hsem_ev_min_soc_charge_enabled": "Cargar de inmediato por debajo del SoC mínimo",
+          "hsem_ev_min_soc_charge_soc": "SoC mínimo (%)"
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Activa esta opción si quieres permitir que el sistema siga cargando la batería del VE incluso después de haber alcanzado el estado de carga (SoC) objetivo. Esto puede resultar útil en situaciones en las que quieras asegurarte de que el VE quede completamente cargado, independientemente del ajuste del objetivo.",
@@ -181,7 +183,9 @@
           "hsem_ev_soc": "Selecciona el sensor que proporciona el estado de carga (SoC) actual de la batería de tu VE.",
           "hsem_house_power_includes_ev_charger_power": "Activa esto si el sensor de potencia de consumo de la vivienda ya incluye el consumo de potencia del cargador de VE.",
           "hsem_ev_auto_full_negative_price": "Cuando está activado, el VE se ajusta automáticamente a la potencia de carga máxima cuando el precio de la electricidad es cero o negativo. Solo anula el intervalo actual, también durante una retención por la previsión de carga. La carga inteligente normal se reanuda en el primer ciclo después de que el precio suba por encima de cero. Un precio no disponible nunca lo activa.",
-          "hsem_ev_past_target_confidence_factor": "Multiplicador de confianza (0.0-1.0) aplicado a la valoración de importación futura evitada que se usa al cargar el VE más allá de su SoC objetivo. Valores más bajos hacen que el VE compita peor frente a la exportación del excedente de PV, para tener en cuenta la incertidumbre sobre si el VE realmente necesitará la energía adicional antes de su próxima carga. Predeterminado 0.9."
+          "hsem_ev_past_target_confidence_factor": "Multiplicador de confianza (0.0-1.0) aplicado a la valoración de importación futura evitada que se usa al cargar el VE más allá de su SoC objetivo. Valores más bajos hacen que el VE compita peor frente a la exportación del excedente de PV, para tener en cuenta la incertidumbre sobre si el VE realmente necesitará la energía adicional antes de su próxima carga. Predeterminado 0.9.",
+          "hsem_ev_min_soc_charge_enabled": "Cuando está activado, HSEM carga el VE a la potencia máxima del cargador en cuanto su SoC está por debajo del SoC mínimo, sin importar el precio, la hora límite ni el interruptor de carga inteligente. La carga inteligente normal se reanuda cuando el SoC alcanza el mínimo. Un SoC desconocido o un VE desconectado nunca lo activan. Requiere la carga planificada del VE.",
+          "hsem_ev_min_soc_charge_soc": "SoC por debajo del cual el VE se carga de inmediato a máxima potencia, cuando la carga por debajo del SoC mínimo está activada."
         },
         "description": "Configura los ajustes del cargador de VE para HSEM.",
         "title": "Ajustes del cargador de VE (opcional)"
@@ -195,7 +199,9 @@
           "hsem_ev_second_charger_status": "Sensor de estado del segundo cargador de VE",
           "hsem_ev_second_connected": "Sensor de conexión del segundo VE",
           "hsem_ev_second_soc": "Sensor de estado de carga (SoC) del segundo VE",
-          "hsem_ev_second_past_target_confidence_factor": "Factor de confianza de carga del segundo VE más allá del objetivo (avanzado)"
+          "hsem_ev_second_past_target_confidence_factor": "Factor de confianza de carga del segundo VE más allá del objetivo (avanzado)",
+          "hsem_ev_second_min_soc_charge_enabled": "Cargar de inmediato por debajo del SoC mínimo para el segundo VE",
+          "hsem_ev_second_min_soc_charge_soc": "SoC mínimo para el segundo VE (%)"
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Activa esta opción si quieres permitir que el sistema siga cargando la batería del VE incluso después de haber alcanzado el estado de carga (SoC) objetivo. Esto puede resultar útil en situaciones en las que quieras asegurarte de que el VE quede completamente cargado, independientemente del ajuste del objetivo.",
@@ -205,7 +211,9 @@
           "hsem_ev_second_charger_status": "Selecciona el sensor o la entidad que indica si el cargador de VE está activo (p. ej., un interruptor o un sensor).",
           "hsem_ev_second_connected": "Selecciona el sensor o la entidad que indica si el VE está conectado al cargador.",
           "hsem_ev_second_soc": "Selecciona el sensor que proporciona el estado de carga (SoC) actual de la batería de tu VE.",
-          "hsem_ev_second_past_target_confidence_factor": "Multiplicador de confianza (0.0-1.0) aplicado a la valoración de importación futura evitada que se usa al cargar el segundo VE más allá de su SoC objetivo. Valores más bajos hacen que el VE compita peor frente a la exportación del excedente de PV, para tener en cuenta la incertidumbre sobre si el VE realmente necesitará la energía adicional antes de su próxima carga. Predeterminado 0.9."
+          "hsem_ev_second_past_target_confidence_factor": "Multiplicador de confianza (0.0-1.0) aplicado a la valoración de importación futura evitada que se usa al cargar el segundo VE más allá de su SoC objetivo. Valores más bajos hacen que el VE compita peor frente a la exportación del excedente de PV, para tener en cuenta la incertidumbre sobre si el VE realmente necesitará la energía adicional antes de su próxima carga. Predeterminado 0.9.",
+          "hsem_ev_second_min_soc_charge_enabled": "Cuando está activado, HSEM carga el VE a la potencia máxima del cargador en cuanto su SoC está por debajo del SoC mínimo, sin importar el precio, la hora límite ni el interruptor de carga inteligente. La carga inteligente normal se reanuda cuando el SoC alcanza el mínimo. Un SoC desconocido o un VE desconectado nunca lo activan. Requiere la carga planificada del VE.",
+          "hsem_ev_second_min_soc_charge_soc": "SoC por debajo del cual el VE se carga de inmediato a máxima potencia, cuando la carga por debajo del SoC mínimo está activada."
         },
         "description": "Configura los ajustes del segundo cargador de VE para HSEM.",
         "title": "Ajustes del segundo cargador de VE (opcional)"
@@ -667,7 +675,9 @@
           "hsem_ev_soc": "Sensor de estado de carga (SoC) del VE",
           "hsem_house_power_includes_ev_charger_power": "La potencia de la vivienda incluye la potencia del cargador de VE",
           "hsem_ev_auto_full_negative_price": "Carga completa automática del VE con precio negativo",
-          "hsem_ev_past_target_confidence_factor": "Factor de confianza de carga del VE más allá del objetivo (avanzado)"
+          "hsem_ev_past_target_confidence_factor": "Factor de confianza de carga del VE más allá del objetivo (avanzado)",
+          "hsem_ev_min_soc_charge_enabled": "Cargar de inmediato por debajo del SoC mínimo",
+          "hsem_ev_min_soc_charge_soc": "SoC mínimo (%)"
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Activa esta opción si quieres permitir que el sistema siga cargando la batería del VE incluso después de haber alcanzado el estado de carga (SoC) objetivo. Esto puede resultar útil en situaciones en las que quieras asegurarte de que el VE quede completamente cargado, independientemente del ajuste del objetivo.",
@@ -680,7 +690,9 @@
           "hsem_ev_soc": "Selecciona el sensor que proporciona el estado de carga (SoC) actual de la batería de tu VE.",
           "hsem_house_power_includes_ev_charger_power": "Activa esto si el sensor de potencia de consumo de la vivienda ya incluye el consumo de potencia del cargador de VE.",
           "hsem_ev_auto_full_negative_price": "Cuando está activado, el VE se ajusta automáticamente a la potencia de carga máxima cuando el precio de la electricidad es cero o negativo. Solo anula el intervalo actual, también durante una retención por la previsión de carga. La carga inteligente normal se reanuda en el primer ciclo después de que el precio suba por encima de cero. Un precio no disponible nunca lo activa.",
-          "hsem_ev_past_target_confidence_factor": "Multiplicador de confianza (0.0-1.0) aplicado a la valoración de importación futura evitada que se usa al cargar el VE más allá de su SoC objetivo. Valores más bajos hacen que el VE compita peor frente a la exportación del excedente de PV, para tener en cuenta la incertidumbre sobre si el VE realmente necesitará la energía adicional antes de su próxima carga. Predeterminado 0.9."
+          "hsem_ev_past_target_confidence_factor": "Multiplicador de confianza (0.0-1.0) aplicado a la valoración de importación futura evitada que se usa al cargar el VE más allá de su SoC objetivo. Valores más bajos hacen que el VE compita peor frente a la exportación del excedente de PV, para tener en cuenta la incertidumbre sobre si el VE realmente necesitará la energía adicional antes de su próxima carga. Predeterminado 0.9.",
+          "hsem_ev_min_soc_charge_enabled": "Cuando está activado, HSEM carga el VE a la potencia máxima del cargador en cuanto su SoC está por debajo del SoC mínimo, sin importar el precio, la hora límite ni el interruptor de carga inteligente. La carga inteligente normal se reanuda cuando el SoC alcanza el mínimo. Un SoC desconocido o un VE desconectado nunca lo activan. Requiere la carga planificada del VE.",
+          "hsem_ev_min_soc_charge_soc": "SoC por debajo del cual el VE se carga de inmediato a máxima potencia, cuando la carga por debajo del SoC mínimo está activada."
         },
         "description": "Configura los ajustes del cargador de VE para HSEM.",
         "title": "Ajustes del cargador de VE (opcional)"
@@ -694,7 +706,9 @@
           "hsem_ev_second_charger_status": "Sensor de estado del segundo cargador de VE",
           "hsem_ev_second_connected": "Sensor de conexión del segundo VE",
           "hsem_ev_second_soc": "Sensor de estado de carga (SoC) del segundo VE",
-          "hsem_ev_second_past_target_confidence_factor": "Factor de confianza de carga del segundo VE más allá del objetivo (avanzado)"
+          "hsem_ev_second_past_target_confidence_factor": "Factor de confianza de carga del segundo VE más allá del objetivo (avanzado)",
+          "hsem_ev_second_min_soc_charge_enabled": "Cargar de inmediato por debajo del SoC mínimo para el segundo VE",
+          "hsem_ev_second_min_soc_charge_soc": "SoC mínimo para el segundo VE (%)"
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Activa esta opción si quieres permitir que el sistema siga cargando la batería del VE incluso después de haber alcanzado el estado de carga (SoC) objetivo. Esto puede resultar útil en situaciones en las que quieras asegurarte de que el VE quede completamente cargado, independientemente del ajuste del objetivo.",
@@ -704,7 +718,9 @@
           "hsem_ev_second_charger_status": "Selecciona el sensor o la entidad que indica si el cargador de VE está activo (p. ej., un interruptor o un sensor).",
           "hsem_ev_second_connected": "Selecciona el sensor o la entidad que indica si el VE está conectado al cargador.",
           "hsem_ev_second_soc": "Selecciona el sensor que proporciona el estado de carga (SoC) actual de la batería de tu VE.",
-          "hsem_ev_second_past_target_confidence_factor": "Multiplicador de confianza (0.0-1.0) aplicado a la valoración de importación futura evitada que se usa al cargar el segundo VE más allá de su SoC objetivo. Valores más bajos hacen que el VE compita peor frente a la exportación del excedente de PV, para tener en cuenta la incertidumbre sobre si el VE realmente necesitará la energía adicional antes de su próxima carga. Predeterminado 0.9."
+          "hsem_ev_second_past_target_confidence_factor": "Multiplicador de confianza (0.0-1.0) aplicado a la valoración de importación futura evitada que se usa al cargar el segundo VE más allá de su SoC objetivo. Valores más bajos hacen que el VE compita peor frente a la exportación del excedente de PV, para tener en cuenta la incertidumbre sobre si el VE realmente necesitará la energía adicional antes de su próxima carga. Predeterminado 0.9.",
+          "hsem_ev_second_min_soc_charge_enabled": "Cuando está activado, HSEM carga el VE a la potencia máxima del cargador en cuanto su SoC está por debajo del SoC mínimo, sin importar el precio, la hora límite ni el interruptor de carga inteligente. La carga inteligente normal se reanuda cuando el SoC alcanza el mínimo. Un SoC desconocido o un VE desconectado nunca lo activan. Requiere la carga planificada del VE.",
+          "hsem_ev_second_min_soc_charge_soc": "SoC por debajo del cual el VE se carga de inmediato a máxima potencia, cuando la carga por debajo del SoC mínimo está activada."
         },
         "description": "Configura los ajustes del segundo cargador de VE para HSEM.",
         "title": "Ajustes del segundo cargador de VE (opcional)"
@@ -1250,6 +1266,9 @@
       "ev_second_force_charge_now": {
         "name": "Forzar carga del VE ahora"
       },
+      "ev_second_min_soc_charge": {
+        "name": "Cargar el VE por debajo del SoC mínimo"
+      },
       "ml_consumption": {
         "name": "Predicción de consumo mediante ML"
       },
@@ -1261,6 +1280,9 @@
       },
       "ev_auto_full_negative_price": {
         "name": "Carga completa automática del VE con precio negativo"
+      },
+      "ev_min_soc_charge": {
+        "name": "Cargar el VE por debajo del SoC mínimo"
       }
     },
     "select": {
@@ -1283,6 +1305,12 @@
       },
       "ev_second_target_soc": {
         "name": "SoC objetivo del VE"
+      },
+      "ev_min_soc_charge_soc": {
+        "name": "SoC mínimo del VE"
+      },
+      "ev_second_min_soc_charge_soc": {
+        "name": "SoC mínimo del VE"
       }
     },
     "time": {

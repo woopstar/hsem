@@ -1,9 +1,10 @@
-"""Number entity for HSEM EV target state-of-charge.
+"""Number entity for a per-EV state-of-charge percentage option.
 
 Defines :class:`HSEMEVTargetSocNumber`, a standard
 :class:`homeassistant.components.number.NumberEntity` that lets users
-adjust the EV target SoC (1-100 %) from the UI without re-running the
-config/options flow.
+adjust an EV SoC option (1-100 %) from the UI without re-running the
+config/options flow: the target SoC, and the minimum-SoC charge threshold
+(issue #1323).
 
 The value is persisted to the config entry options so it survives
 HA restarts.

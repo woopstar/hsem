@@ -34,7 +34,9 @@ from custom_components.hsem.switch import async_setup_entry as switch_setup_entr
 from custom_components.hsem.time import async_setup_entry as time_setup_entry
 from custom_components.hsem.utils.sensornames.ev import (
     get_ev_deadline_time_key,
+    get_ev_min_soc_charge_number_key,
     get_ev_second_deadline_time_key,
+    get_ev_second_min_soc_charge_number_key,
     get_ev_second_target_soc_number_key,
     get_ev_target_soc_number_key,
 )
@@ -76,7 +78,9 @@ async def test_switch_setup_excludes_ev_switches_when_disabled() -> None:
         get_ev_auto_full_negative_price_switch_key,
         get_ev_force_charge_now_switch_key,
         get_ev_force_discharge_switch_key,
+        get_ev_min_soc_charge_switch_key,
         get_ev_second_force_charge_now_switch_key,
+        get_ev_second_min_soc_charge_switch_key,
         get_ev_second_smart_charging_switch_key,
         get_ev_smart_charging_switch_key,
     )
@@ -95,6 +99,8 @@ async def test_switch_setup_excludes_ev_switches_when_disabled() -> None:
         get_ev_auto_full_negative_price_switch_key(),
         get_ev_second_smart_charging_switch_key(),
         get_ev_second_force_charge_now_switch_key(),
+        get_ev_min_soc_charge_switch_key(),
+        get_ev_second_min_soc_charge_switch_key(),
     ):
         assert ev_key not in keys
     # Non-EV switches (e.g. read-only) are still present.
@@ -105,6 +111,8 @@ async def test_switch_setup_excludes_ev_switches_when_disabled() -> None:
 async def test_switch_setup_includes_ev1_switches_when_enabled() -> None:
     """EV1 switches appear when only the primary EV's planned load is enabled."""
     from custom_components.hsem.utils.sensornames.ev import (
+        get_ev_min_soc_charge_switch_key,
+        get_ev_second_min_soc_charge_switch_key,
         get_ev_second_smart_charging_switch_key,
         get_ev_smart_charging_switch_key,
     )
@@ -117,7 +125,9 @@ async def test_switch_setup_includes_ev1_switches_when_enabled() -> None:
     await switch_setup_entry(MagicMock(), config_entry, add_entities)
     keys = {e.entity_description.key for e in added}
     assert get_ev_smart_charging_switch_key() in keys
+    assert get_ev_min_soc_charge_switch_key() in keys
     assert get_ev_second_smart_charging_switch_key() not in keys
+    assert get_ev_second_min_soc_charge_switch_key() not in keys
 
 
 @pytest.mark.asyncio
@@ -151,6 +161,8 @@ async def test_number_setup_excludes_ev_target_soc_when_disabled() -> None:
     keys = {e.entity_description.key for e in added}
     assert get_ev_target_soc_number_key() not in keys
     assert get_ev_second_target_soc_number_key() not in keys
+    assert get_ev_min_soc_charge_number_key() not in keys
+    assert get_ev_second_min_soc_charge_number_key() not in keys
     # Battery efficiency numbers are never gated.
     from custom_components.hsem.utils.sensornames.controls import (
         get_charge_efficiency_number_key,
@@ -171,6 +183,27 @@ async def test_number_setup_includes_ev_target_soc_when_enabled() -> None:
     keys = {e.entity_description.key for e in added}
     assert get_ev_target_soc_number_key() in keys
     assert get_ev_second_target_soc_number_key() in keys
+    assert get_ev_min_soc_charge_number_key() in keys
+    assert get_ev_second_min_soc_charge_number_key() in keys
+
+
+@pytest.mark.asyncio
+async def test_number_setup_min_soc_charge_threshold_defaults_to_20() -> None:
+    """Without a stored option the minimum-SoC numbers show 20 % (#1323)."""
+    config_entry = _make_config_entry(
+        hsem_ev_planned_load_enabled=True,
+        hsem_ev_second_planned_load_enabled=True,
+    )
+    config_entry.options.pop("hsem_ev_min_soc_charge_soc", None)
+    config_entry.options.pop("hsem_ev_second_min_soc_charge_soc", None)
+    added, add_entities = _collector()
+    await number_setup_entry(MagicMock(), config_entry, add_entities)
+    by_key = {e.entity_description.key: e for e in added}
+    primary = by_key[get_ev_min_soc_charge_number_key()]
+    second = by_key[get_ev_second_min_soc_charge_number_key()]
+    assert primary.native_value == pytest.approx(20.0)
+    assert second.native_value == pytest.approx(20.0)
+    assert primary.device_info != second.device_info
 
 
 # ---------------------------------------------------------------------------

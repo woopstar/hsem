@@ -279,5 +279,12 @@ def test_number_platform_exposes_only_functional_controls() -> None:
     from custom_components.hsem.number import NUMBER_DESCRIPTIONS
 
     keys = {description.key for description in NUMBER_DESCRIPTIONS}
-    assert len(keys) == 4
+    assert keys == {
+        "hsem_charge_efficiency",
+        "hsem_discharge_efficiency",
+        "hsem_ev_target_soc",
+        "hsem_ev_second_target_soc",
+        "hsem_ev_min_soc_charge_soc",
+        "hsem_ev_second_min_soc_charge_soc",
+    }
     assert all("charge_rate" not in key for key in keys)

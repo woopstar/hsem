@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.degraded_mode import (
     DegradedMode,
     classify_degraded_mode,
@@ -251,6 +252,30 @@ class LiveState:
     def any_ev_charging(self) -> bool:
         """Return True if at least one EV charger reports an active session."""
         return self.ev.is_charging or self.ev_second.is_charging
+
+    def ev_planning_soc_pct(self, *, is_second: bool) -> float | None:
+        """Return the EV SoC that planning and EV overrides act on.
+
+        The bounded delivered-energy-credited SoC wins over the raw reported
+        value, so a vehicle API that updates SoC far less often than charger
+        power does not stall HSEM's view of progress (issue #789). An unknown
+        SoC stays ``None`` — never a fabricated 0 % (issue #988).
+
+        Args:
+            is_second: ``True`` for the second EV, ``False`` for the primary.
+
+        Returns:
+            The SoC in percent, or ``None`` when neither value is known.
+        """
+        ev = self.ev_second if is_second else self.ev
+        soc = convert_to_float(ev.effective_soc_pct)
+        if soc is not None:
+            return soc
+        return convert_to_float(
+            self.ev_second_planned_load_current_soc_pct
+            if is_second
+            else self.ev_planned_load_current_soc_pct
+        )
 
     @property
     def degraded_mode(self) -> DegradedMode:

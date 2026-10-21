@@ -320,17 +320,9 @@ def build_planner_input(
     _w7d = convert_to_int(cfg.house_consumption_energy_weight_7d)
     _w14d = convert_to_int(cfg.house_consumption_energy_weight_14d)
 
-    # Prefer the bounded delivered-energy-credited SoC over the raw reported
-    # value so a vehicle API that updates SoC far less often than charger
-    # power does not stall the planner's view of progress (issue #789).
-    ev_soc_pct = convert_to_float(live.ev.effective_soc_pct)
-    if ev_soc_pct is None:
-        ev_soc_pct = convert_to_float(live.ev_planned_load_current_soc_pct)
-    ev_second_soc_pct = convert_to_float(live.ev_second.effective_soc_pct)
-    if ev_second_soc_pct is None:
-        ev_second_soc_pct = convert_to_float(
-            live.ev_second_planned_load_current_soc_pct
-        )
+    # Delivered-energy-credited SoC, else the raw reported value (issue #789).
+    ev_soc_pct = live.ev_planning_soc_pct(is_second=False)
+    ev_second_soc_pct = live.ev_planning_soc_pct(is_second=True)
 
     live_solar_w, live_solar_available = _resolve_live_solar_measurement(cfg, live)
     live_house_w, live_house_available = _resolve_live_house_measurement(cfg, live)

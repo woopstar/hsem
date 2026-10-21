@@ -336,3 +336,64 @@ def get_ev_auto_full_negative_price_switch_unique_id(entry_id: str) -> str:
 def get_ev_auto_full_negative_price_switch_entity_id() -> str:
     """Return the entity_id for the EV auto-full negative price switch."""
     return f"switch.{s(get_ev_auto_full_negative_price_switch_key())}"
+
+
+# EV Minimum-SoC Charge Switches and Numbers (issue #1323)
+def get_ev_min_soc_charge_switch_key() -> str:
+    """Return the config-entry key for the EV minimum-SoC charge switch."""
+    return f"{DOMAIN}_ev_min_soc_charge_enabled"
+
+
+def get_ev_min_soc_charge_switch_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the EV minimum-SoC charge switch."""
+    return f"{DOMAIN}_{entry_id}_{get_ev_min_soc_charge_switch_key()}_switch"
+
+
+def get_ev_min_soc_charge_switch_entity_id() -> str:
+    """Return the entity_id for the EV minimum-SoC charge switch."""
+    return f"switch.{s(get_ev_min_soc_charge_switch_key())}"
+
+
+def get_ev_second_min_soc_charge_switch_key() -> str:
+    """Return the config-entry key for the second EV minimum-SoC charge switch."""
+    return f"{DOMAIN}_ev_second_min_soc_charge_enabled"
+
+
+def get_ev_second_min_soc_charge_switch_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the second EV minimum-SoC charge switch."""
+    return f"{DOMAIN}_{entry_id}_{get_ev_second_min_soc_charge_switch_key()}_switch"
+
+
+def get_ev_second_min_soc_charge_switch_entity_id() -> str:
+    """Return the entity_id for the second EV minimum-SoC charge switch."""
+    return f"switch.{s(get_ev_second_min_soc_charge_switch_key())}"
+
+
+def get_ev_min_soc_charge_number_key() -> str:
+    """Return the config-entry key for the EV minimum-SoC threshold number."""
+    return f"{DOMAIN}_ev_min_soc_charge_soc"
+
+
+def get_ev_min_soc_charge_number_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the EV minimum-SoC threshold number."""
+    return f"{DOMAIN}_{entry_id}_{get_ev_min_soc_charge_number_key()}_number"
+
+
+def get_ev_min_soc_charge_number_entity_id() -> str:
+    """Return the entity_id for the EV minimum-SoC threshold number."""
+    return f"number.{s(get_ev_min_soc_charge_number_key())}"
+
+
+def get_ev_second_min_soc_charge_number_key() -> str:
+    """Return the config-entry key for the second EV minimum-SoC threshold number."""
+    return f"{DOMAIN}_ev_second_min_soc_charge_soc"
+
+
+def get_ev_second_min_soc_charge_number_unique_id(entry_id: str) -> str:
+    """Return the unique_id for the second EV minimum-SoC threshold number."""
+    return f"{DOMAIN}_{entry_id}_{get_ev_second_min_soc_charge_number_key()}_number"
+
+
+def get_ev_second_min_soc_charge_number_entity_id() -> str:
+    """Return the entity_id for the second EV minimum-SoC threshold number."""
+    return f"number.{s(get_ev_second_min_soc_charge_number_key())}"

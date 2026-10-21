@@ -17,21 +17,21 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 
 ### Coordinator layer (`custom_components/hsem/`)
 
-| File                                  | Responsibility                                                                                                       |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `coordinator.py`                      | HA lifecycle and collect/populate/plan/publication orchestration                                                     |
-| `coordinator_data.py`                 | Atomic `CoordinatorData` snapshot exposed to entities                                                                |
-| `coordinator_dynamic_floor.py`        | Dynamic floor from a floor-free reference solve: its per-slot net load, charge decisions and prices (#1140, #1187)   |
-| `coordinator_helpers.py`              | Pure strict-hold, load-readiness/signature, fuse-budget and coherent EV-write helpers                                |
-| `coordinator_ev_overrides.py`         | Current-slot EV overrides after the hold: force charge (#1103), auto-full on price ≤ 0 (#1325)                       |
-| `coordinator_load_forecast.py`        | ML/avg consumption population, load readiness, missing/estimated-hour diagnostics (issue #1110)                      |
-| `coordinator_load_hold.py`            | Non-planner load-forecast safety hold, grid-only EV-only fallback (issue #1106), force-charge re-apply (issue #1103) |
-| `coordinator_tracking.py`             | Forecast, daily, financial, and savings accumulation                                                                 |
-| `coordinator_meter_tracking.py`       | Feeds the daily, financial and savings trackers once per cycle, with or without a plan (issue #1267)                 |
-| `coordinator_daily_plan.py`           | Plan side of the daily plan-vs-actual tracker: each slot's planned energy, once                                      |
-| `coordinator_performance.py`          | Performance record: per-cycle sample, hindsight evaluation as a background executor task (issue #1182)               |
-| `entity_availability.py`              | Per-input unavailable/recovery transition tracking and logging                                                       |
-| `custom_sensors/block_observation.py` | Avg-sensor downtime tracking: heartbeat, unobserved intervals, `block_observed()` (issues #1101/#1110)               |
+| File                                  | Responsibility                                                                                                             |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `coordinator.py`                      | HA lifecycle and collect/populate/plan/publication orchestration                                                           |
+| `coordinator_data.py`                 | Atomic `CoordinatorData` snapshot exposed to entities                                                                      |
+| `coordinator_dynamic_floor.py`        | Dynamic floor from a floor-free reference solve: its per-slot net load, charge decisions and prices (#1140, #1187)         |
+| `coordinator_helpers.py`              | Pure strict-hold, load-readiness/signature, fuse-budget and coherent EV-write helpers                                      |
+| `coordinator_ev_overrides.py`         | Current-slot EV overrides after the hold: force charge (#1103), auto-full on price ≤ 0 (#1325), minimum-SoC charge (#1323) |
+| `coordinator_load_forecast.py`        | ML/avg consumption population, load readiness, missing/estimated-hour diagnostics (issue #1110)                            |
+| `coordinator_load_hold.py`            | Non-planner load-forecast safety hold, grid-only EV-only fallback (issue #1106), force-charge re-apply (issue #1103)       |
+| `coordinator_tracking.py`             | Forecast, daily, financial, and savings accumulation                                                                       |
+| `coordinator_meter_tracking.py`       | Feeds the daily, financial and savings trackers once per cycle, with or without a plan (issue #1267)                       |
+| `coordinator_daily_plan.py`           | Plan side of the daily plan-vs-actual tracker: each slot's planned energy, once                                            |
+| `coordinator_performance.py`          | Performance record: per-cycle sample, hindsight evaluation as a background executor task (issue #1182)                     |
+| `entity_availability.py`              | Per-input unavailable/recovery transition tracking and logging                                                             |
+| `custom_sensors/block_observation.py` | Avg-sensor downtime tracking: heartbeat, unobserved intervals, `block_observed()` (issues #1101/#1110)                     |
 
 Load-average availability must remain explicit: unknown/non-finite values are
 missing, genuine finite zero is valid, and contradictory zero load above 50 W
@@ -1040,12 +1040,14 @@ EV that becomes an enforced 0 A OCPP profile. Force-charge-now is a user
 override, so it must always be applied **after** `apply_load_forecast_hold()`.
 Use `coordinator_ev_overrides.apply_force_charge_overrides(...)`: it runs the
 issue #900 disconnect auto-reset, then auto-full on a negative price
-(`apply_negative_price_auto_full`, issue #1325), then `apply_force_charge_now()`.
+(`apply_negative_price_auto_full`, issue #1325), then the minimum-SoC charge
+(`apply_min_soc_charge`, issue #1323), then `apply_force_charge_now()`.
 Any new current-slot EV override belongs in this entry point too, never before
 the hold. A price-driven override must also check
 `live.import_electricity_price_available`: the state collector stores `0.0`
 for an unavailable price, so `live.import_electricity_price <= x` alone fires
-on a missing sensor (issue #1325). The entry point is called from both hold
+on a missing sensor (issue #1325). An SoC-driven override reads
+`live.ev_planning_soc_pct(is_second=...)`, the same SoC the planner uses. The entry point is called from both hold
 sites:
 
 - `coordinator_planner_phase.py` step 8d, after the 8c load-forecast hold and
