@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -88,8 +89,10 @@ from custom_components.hsem.custom_sensors.working_mode_sensor import (
 )
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
-from custom_components.hsem.utils.datetime_utils import utc_key
+from custom_components.hsem.utils.datetime_utils import now as hsem_now, utc_key
 from custom_components.hsem.utils.degraded_mode import DegradedMode
+
+_CYCLE_MODULE = "custom_components.hsem.coordinator_cycle"
 
 # ---------------------------------------------------------------------------
 # Fake HA infrastructure helpers
@@ -255,6 +258,15 @@ def make_bare_coordinator(
 
     coord._forecast_tracker = ForecastTracker(max_slots=192)
     coord._last_accumulation_ts = None
+
+    # The cycle reads the savings, financial and performance trackers through
+    # ``getattr(..., None)`` and skips them when absent, which keeps this mock
+    # hass from writing history files. A cycle that finalises a slot persists
+    # the prediction tracker by attribute, so it must exist; without a history
+    # file its persistence is skipped, as before setup (issue #1328).
+    from custom_components.hsem.utils.prediction_tracker import PredictionTracker
+
+    coord._prediction_tracker = PredictionTracker(max_records=2880)
     coord._override_expiry = None
 
     # CoordinatorEntity support — some entity methods call this
@@ -1001,9 +1013,16 @@ class TestDryRunCycle:
         hass.async_add_executor_job = overtaken_executor
         _prepare_auto_replan_cycle(coord)
 
-        with patch(
-            "custom_components.hsem.coordinator.asyncio.sleep",
-            side_effect=record_backoff,
+        # A frozen clock keeps every cycle in one second, so forecast
+        # accumulation never runs and the outcome cannot depend on whether
+        # the test straddles a wall-clock second (issue #1328).
+        frozen_now = hsem_now()
+        with (
+            patch(
+                "custom_components.hsem.coordinator.asyncio.sleep",
+                side_effect=record_backoff,
+            ),
+            patch(f"{_CYCLE_MODULE}.hsem_now", return_value=frozen_now),
         ):
             await asyncio.wait_for(coord._async_handle_update(), timeout=10.0)
 
@@ -1024,6 +1043,39 @@ class TestDryRunCycle:
         assert coord._last_planner_output is outputs[-1]
         assert coord._consecutive_stale_discards == 0
         assert coord._event_update_pending is False
+
+    @pytest.mark.asyncio
+    async def test_a_finalised_slot_on_a_bare_coordinator_still_publishes(
+        self,
+    ) -> None:
+        """A cycle that adds a prediction record persists it and publishes.
+
+        The slot layout starts at local midnight, so once a plan exists the
+        first cycle in a later second finalises every past slot and adds a
+        prediction record. That cycle used to fail on a bare coordinator
+        whenever the test straddled a wall-clock second (issue #1328).
+        """
+        config_entry = make_fake_config_entry({"hsem_read_only": True})
+        hass = make_fake_hass(_BASE_ENTITY_STATES)
+        coord = make_bare_coordinator(hass=hass, config_entry=config_entry)
+        coord._set_update_interval = AsyncMock()  # type: ignore[method-assign]  # test monkey-patch
+        published: list[CoordinatorData] = []
+        coord.async_set_updated_data = published.append  # type: ignore[method-assign, assignment]  # test monkey-patch
+
+        async def inline_executor(func: Any, *args: Any) -> Any:
+            return func(*args)
+
+        hass.async_add_executor_job = inline_executor
+        _prepare_auto_replan_cycle(coord)
+        clock = [hsem_now().replace(hour=12, minute=0, second=0)]
+
+        with patch(f"{_CYCLE_MODULE}.hsem_now", side_effect=lambda: clock[0]):
+            await coord._async_run_update_cycle()
+            clock[0] += timedelta(seconds=1)
+            await coord._async_run_update_cycle()
+
+        assert len(published) == 2
+        assert coord._prediction_tracker.records
 
     @pytest.mark.asyncio
     async def test_live_state_populated_from_mock_states(self) -> None:
