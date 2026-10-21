@@ -14,6 +14,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from custom_components.hsem.utils.schema import vol
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -75,6 +77,8 @@ class TestBuildEvChargerSchema:
         assert "hsem_ev_connected" in keys
         assert "hsem_ev_allow_charge_past_target_soc" in keys
         assert "hsem_ev_past_target_confidence_factor" in keys
+        assert "hsem_ev_min_soc_charge_enabled" in keys
+        assert "hsem_ev_min_soc_charge_soc" in keys
 
     @pytest.mark.asyncio
     async def test_secondary_ev_schema_omits_primary_only_fields(self):
@@ -96,6 +100,8 @@ class TestBuildEvChargerSchema:
         assert "hsem_ev_second_connected" in keys
         assert "hsem_ev_second_allow_charge_past_target_soc" in keys
         assert "hsem_ev_second_past_target_confidence_factor" in keys
+        assert "hsem_ev_second_min_soc_charge_enabled" in keys
+        assert "hsem_ev_second_min_soc_charge_soc" in keys
 
     @pytest.mark.asyncio
     async def test_primary_schema_keys_match_original_ev_step(self):
@@ -152,6 +158,8 @@ class TestValidateEvChargerInput:
         assert errors.get("hsem_ev_charger_force_max_discharge_power") == "required"
         assert errors.get("hsem_ev_allow_charge_past_target_soc") == "required"
         assert errors.get("hsem_ev_past_target_confidence_factor") == "required"
+        assert errors.get("hsem_ev_min_soc_charge_enabled") == "required"
+        assert errors.get("hsem_ev_min_soc_charge_soc") == "required"
         assert errors.get("hsem_house_power_includes_ev_charger_power") == "required"
 
     @pytest.mark.asyncio
@@ -171,6 +179,8 @@ class TestValidateEvChargerInput:
         )
         assert errors.get("hsem_ev_second_allow_charge_past_target_soc") == "required"
         assert errors.get("hsem_ev_second_past_target_confidence_factor") == "required"
+        assert errors.get("hsem_ev_second_min_soc_charge_enabled") == "required"
+        assert errors.get("hsem_ev_second_min_soc_charge_soc") == "required"
 
     @pytest.mark.asyncio
     async def test_valid_primary_ev_input_passes(self):
@@ -186,6 +196,8 @@ class TestValidateEvChargerInput:
                 "hsem_ev_allow_charge_past_target_soc": False,
                 "hsem_ev_past_target_confidence_factor": 0.9,
                 "hsem_ev_auto_full_negative_price": False,
+                "hsem_ev_min_soc_charge_enabled": False,
+                "hsem_ev_min_soc_charge_soc": 20,
                 "hsem_house_power_includes_ev_charger_power": True,
             },
             prefix="hsem_ev",
@@ -277,6 +289,8 @@ class TestEvDischargePowerCoherence:
             "hsem_ev_allow_charge_past_target_soc": False,
             "hsem_ev_past_target_confidence_factor": 0.9,
             "hsem_ev_auto_full_negative_price": False,
+            "hsem_ev_min_soc_charge_enabled": False,
+            "hsem_ev_min_soc_charge_soc": 20,
             "hsem_house_power_includes_ev_charger_power": True,
         }
         user_input.update(overrides)
@@ -289,6 +303,8 @@ class TestEvDischargePowerCoherence:
             "hsem_ev_second_charger_force_max_discharge_power": True,
             "hsem_ev_second_allow_charge_past_target_soc": False,
             "hsem_ev_second_past_target_confidence_factor": 0.9,
+            "hsem_ev_second_min_soc_charge_enabled": False,
+            "hsem_ev_second_min_soc_charge_soc": 20,
         }
         user_input.update(overrides)
         return user_input
@@ -443,3 +459,45 @@ class TestSchemaRoundTrip:
         }
         result = schema(valid_input)
         assert result["hsem_ev_second_charger_max_discharge_power"] == 1500  # pyright: ignore[reportIndexIssue]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("prefix", ["hsem_ev", "hsem_ev_second"])
+    async def test_min_soc_charge_defaults_off_at_20_pct(self, prefix: str) -> None:
+        """The minimum-SoC charge is off by default with a 20 % threshold (#1323)."""
+        from custom_components.hsem.flows.ev_helpers import build_ev_charger_schema
+
+        schema = await build_ev_charger_schema(
+            None, prefix=prefix, include_primary_fields=prefix == "hsem_ev"
+        )
+        result = schema(
+            {
+                f"{prefix}_charger_force_max_discharge_power": False,
+                f"{prefix}_charger_max_discharge_power": 0,
+                f"{prefix}_allow_charge_past_target_soc": False,
+                f"{prefix}_past_target_confidence_factor": 0.9,
+            }
+        )
+        assert result[f"{prefix}_min_soc_charge_enabled"] is False  # pyright: ignore[reportIndexIssue]
+        assert result[f"{prefix}_min_soc_charge_soc"] == 20  # pyright: ignore[reportIndexIssue]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("threshold", [0, 101])
+    async def test_min_soc_charge_threshold_outside_1_to_100_is_rejected(
+        self, threshold: int
+    ) -> None:
+        """The threshold selector only accepts 1-100 % (#1323)."""
+        from custom_components.hsem.flows.ev_helpers import build_ev_charger_schema
+
+        schema = await build_ev_charger_schema(
+            None, prefix="hsem_ev_second", include_primary_fields=False
+        )
+        with pytest.raises(vol.Invalid):
+            schema(
+                {
+                    "hsem_ev_second_charger_force_max_discharge_power": False,
+                    "hsem_ev_second_charger_max_discharge_power": 0,
+                    "hsem_ev_second_allow_charge_past_target_soc": False,
+                    "hsem_ev_second_past_target_confidence_factor": 0.9,
+                    "hsem_ev_second_min_soc_charge_soc": threshold,
+                }
+            )

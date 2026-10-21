@@ -158,10 +158,9 @@ class CoordinatorLoadHoldMixin(CoordinatorSharedState):
         cfg = self._cfg
         if is_second:
             enabled = cfg.ev_second_planned_load_enabled
-            ev_live, ev_cfg = live.ev_second, cfg.ev_second
+            ev_cfg = cfg.ev_second
             connected = live.ev_second_planned_load_connected
             smart = live.ev_second_planned_load_smart_charging_enabled
-            raw_soc = live.ev_second_planned_load_current_soc_pct
             target = live.ev_second_planned_load_target_soc_pct
             deadline = live.ev_second_planned_load_deadline
             capacity = cfg.ev_second_planned_load_battery_capacity_kwh
@@ -171,10 +170,9 @@ class CoordinatorLoadHoldMixin(CoordinatorSharedState):
             min_power = cfg.ev_second_planned_load_charger_min_power_w
         else:
             enabled = cfg.ev_planned_load_enabled
-            ev_live, ev_cfg = live.ev, cfg.ev
+            ev_cfg = cfg.ev
             connected = live.ev_planned_load_connected
             smart = live.ev_planned_load_smart_charging_enabled
-            raw_soc = live.ev_planned_load_current_soc_pct
             target = live.ev_planned_load_target_soc_pct
             deadline = live.ev_planned_load_deadline
             capacity = cfg.ev_planned_load_battery_capacity_kwh
@@ -184,9 +182,7 @@ class CoordinatorLoadHoldMixin(CoordinatorSharedState):
             min_power = cfg.ev_planned_load_charger_min_power_w
         if not enabled:
             return None
-        soc = convert_to_float(ev_live.effective_soc_pct)
-        if soc is None:
-            soc = convert_to_float(raw_soc)
+        soc = live.ev_planning_soc_pct(is_second=is_second)
         return EVPlannerInput(
             enabled=True,
             ev_connected=bool(connected),

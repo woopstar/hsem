@@ -3804,8 +3804,9 @@ interval.
 
 The hold also clears the planned EV command, but the runtime EV overrides are
 applied _after_ it, both inside the planner phase and on the non-planner hold
-path: force-charge-now (issue #1103) and auto-full on a negative price
-(issue #1325). Both go through `coordinator_ev_overrides.apply_force_charge_overrides`.
+path: force-charge-now (issue #1103), auto-full on a negative price
+(issue #1325) and the minimum-SoC charge (issue #1323). All go through
+`coordinator_ev_overrides.apply_force_charge_overrides`.
 The overridden slot then carries the charger's fuse-limited whole-amp nameplate
 (issue #1112) with coherent EV load, grid-import, and cost accounting, and is
 labelled `ev_smart_charging`. Primary-battery charge and discharge stay zero.
@@ -3814,6 +3815,14 @@ The issue #900 disconnect auto-reset runs first on both paths.
 Auto-full fires for the primary EV only, and only while
 `import_electricity_price_available` is true and the live import price is
 ≤ 0. An unavailable price is stored as `0.0` and must never trigger it.
+
+The minimum-SoC charge fires per EV while its feature and planned load are
+enabled, the EV is not explicitly disconnected, and its planning SoC
+(`LiveState.ev_planning_soc_pct`: delivered-energy-credited, else reported) is
+known and strictly below `hsem_ev[_second]_min_soc_charge_soc`. It ignores price,
+deadline, target and the smart-charging switch, and it is not a planner input:
+the MILP still plans the EV from the same SoC, and the override replaces only
+the current slot's command.
 
 #### EV-only smart-charging fallback (issue #1106)
 
@@ -3838,8 +3847,8 @@ Order on the hold path:
 2. Fallback commands written through `write_ev_slot_commands()` for every
    commanded slot. The current slot is clamped to `ev_site_power_budget_w()`,
    which both EVs share.
-3. Disconnect auto-reset, auto-full on a negative price, then force-charge-now
-   (both overrides win over the fallback).
+3. Disconnect auto-reset, auto-full on a negative price, the minimum-SoC
+   charge, then force-charge-now (every override wins over the fallback).
 4. `_apply_ev_command_stability()` (whole-amp quantisation, deadband, fuse clamp).
 5. The current slot is labelled `ev_smart_charging` only while the final command
    is non-zero, otherwise `batteries_wait_mode`.
@@ -5623,7 +5632,7 @@ The EV planner (`planner/ev_planner.py`) MUST satisfy these invariants:
     same accepted snapshot. The coordinator must not restore a watt command
     left over from a _different_ accepted plan after replanning (e.g. a value
     computed for a slot the current plan no longer selects). Runtime
-    force-charge and negative-price overrides must update all related
+    force-charge, negative-price and minimum-SoC overrides must update all related
     current-slot fields together, respect aggregate fuse headroom, and never
     energize an explicitly disconnected EV. This does not conflict with
     invariant 14's slot-entry hold: the hold only ever republishes a rate

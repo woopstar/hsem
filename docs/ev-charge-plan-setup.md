@@ -240,6 +240,7 @@ flowchart TD
 | Allow past target             | `hsem_ev_allow_charge_past_target_soc`           | Surplus charging past target, valued against export by avoided future import cost. The EV only absorbs PV the plan without it would not have stored in the house battery, and never stops the battery grid-charging (issues #775, #1015). Its charger ceiling follows the surplus down immediately — it is exempt from the ceiling deadband and from the slot-entry power hold. Governs **only** the at-or-above-target regime — below target, charging stays deadline-driven and may import from grid (issue #988) |
 | Past-target confidence factor | `hsem_ev_past_target_confidence_factor`          | Discount (0.0–1.0, default 0.9) applied to the avoided-future-import valuation                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Base load includes EV         | `hsem_house_power_includes_ev_charger_power`     | CT clamp position                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Charge below minimum SoC      | `switch.hsem_ev_min_soc_charge_enabled`          | Charge at full power while SoC < `number.hsem_ev_min_soc_charge_soc`                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Auto-Full on negative price   | `hsem_ev_auto_full_negative_price`               | Max-charge EV when price ≤ 0                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ### Auto-Full EV on negative electricity prices
@@ -323,6 +324,42 @@ as soon as the disconnect is detected, instead of leaving it armed. This
 prevents forced full-power charging from silently resuming the next time
 the EV is plugged in — you must re-enable the switch explicitly for another
 forced session.
+
+### Charge immediately below a minimum SoC
+
+Smart charging is deadline-driven: an EV at 5 % with a 07:00 deadline normally
+waits for the cheap night slots. To keep a minimum range available at all
+times, enable `switch.hsem_ev_min_soc_charge_enabled` (or
+`switch.hsem_ev_second_min_soc_charge_enabled`) and set the threshold with
+`number.hsem_ev_min_soc_charge_soc` (or
+`number.hsem_ev_second_min_soc_charge_soc`, 1–100 %, default 20 %). Both are
+also in the EV charger step of the config/options flow, and are off by default
+(issue #1323).
+
+While the EV's SoC is **below** the threshold, HSEM overrides the current slot
+to the charger's fuse-limited whole-amp nameplate, like Force Charge Now:
+
+- **Whatever the price, deadline, target SoC or smart-charging switch.**
+- **Stops at the threshold.** The override is re-evaluated every cycle. Once
+  the SoC is at or above the threshold, the normal plan takes over again on
+  that cycle. The SoC is the one the planner uses: the delivered-energy-credited
+  estimate when it is available, so a slow car API does not keep it charging
+  past the threshold, otherwise the reported SoC.
+- **Never on an unknown SoC** (unavailable sensor) and **never on an explicitly
+  disconnected EV.** Debug logging says why it did not fire.
+- **Needs the EV's planned load enabled.** The switch and number only exist
+  then, because the override commands the planned-load charger nameplate.
+- **Survives the load-forecast hold** on both the planner and the non-planner
+  hold path. The home battery stays held.
+- **Both EVs share the main-fuse headroom.** When both are below their minimum,
+  the primary EV gets its nameplate first and the second EV gets what is left.
+- **Battery protection is unchanged.** While the EV charges, the house battery
+  discharge cap is 0 W unless `hsem_ev_charger_force_max_discharge_power`
+  (or the second-EV equivalent) is enabled, as for any other EV session, so
+  the charge comes from PV and the grid.
+
+The current slot's EV energy, grid import and cost are rewritten together
+(planner-spec invariant 13), and the EV plan sensor shows the slot as charging.
 
 ### Session-aware EV demand
 

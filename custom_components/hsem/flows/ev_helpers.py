@@ -20,7 +20,7 @@ Public API
 """
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfPower
+from homeassistant.const import PERCENTAGE, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
@@ -163,6 +163,31 @@ async def build_ev_charger_schema(  # NOSONAR
         }
     )
 
+    # Charge immediately below a minimum SoC (issue #1323).
+    fields[
+        vol.Required(
+            f"{prefix}_min_soc_charge_enabled",
+            default=get_config_value(config_entry, f"{prefix}_min_soc_charge_enabled"),
+        )
+    ] = selector({"boolean": {}})
+
+    fields[
+        vol.Required(
+            f"{prefix}_min_soc_charge_soc",
+            default=get_config_value(config_entry, f"{prefix}_min_soc_charge_soc"),
+        )
+    ] = selector(
+        {
+            "number": {
+                "min": 1,
+                "max": 100,
+                "step": 1,
+                "unit_of_measurement": PERCENTAGE,
+                "mode": "slider",
+            }
+        }
+    )
+
     if include_primary_fields:
         fields[
             vol.Required(
@@ -204,6 +229,8 @@ async def validate_ev_charger_input(
         f"{prefix}_charger_force_max_discharge_power",
         f"{prefix}_allow_charge_past_target_soc",
         f"{prefix}_past_target_confidence_factor",
+        f"{prefix}_min_soc_charge_enabled",
+        f"{prefix}_min_soc_charge_soc",
     ]
     # Auto-full on negative price is primary-EV only.
     if prefix == "hsem_ev":

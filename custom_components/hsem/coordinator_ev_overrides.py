@@ -1,16 +1,18 @@
 """Current-slot EV overrides applied after the planner and the load hold.
 
-Force charge now and auto-full on a negative price both rewrite the current
-slot's EV command through :func:`apply_current_ev_power_override`.
-:func:`apply_force_charge_overrides` is the single entry point both the
-planner phase and the non-planner load-forecast hold call, *after* the hold,
-so no user override is wiped by it (issues #1103, #1325).
+Force charge now, auto-full on a negative price and the minimum-SoC charge
+all rewrite the current slot's EV command through
+:func:`apply_current_ev_power_override`. :func:`apply_force_charge_overrides`
+is the single entry point both the planner phase and the non-planner
+load-forecast hold call, *after* the hold, so no user override is wiped by it
+(issues #1103, #1323, #1325).
 
 Split out of :mod:`coordinator_helpers` to keep it under the 30 KiB limit.
 """
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 
 from homeassistant.config_entries import ConfigEntry
@@ -26,6 +28,7 @@ from custom_components.hsem.planner.ev_planner import (
     EVChargingPlan,
     rebuild_ev_plan_from_slots,
 )
+from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.datetime_utils import slot_contains
 from custom_components.hsem.utils.ev_accounting import normalized_baseline_includes_ev
 from custom_components.hsem.utils.logger import async_log
@@ -292,6 +295,84 @@ def apply_negative_price_auto_full(
     )
 
 
+def _min_soc_charge_due(
+    config_entry: ConfigEntry, live: LiveState, *, is_second: bool
+) -> bool:
+    """Return whether one EV is below its enabled minimum-SoC threshold.
+
+    Never fires on an unknown SoC (issue #988), on an explicitly disconnected
+    EV, or without the planned-load feature that supplies the charger
+    nameplate the override commands.
+    """
+    prefix = "hsem_ev_second" if is_second else "hsem_ev"
+    if not bool(get_config_value(config_entry, f"{prefix}_min_soc_charge_enabled")):
+        return False
+    label = "EV2" if is_second else "EV1"
+    reason: str | None = None
+    soc = live.ev_planning_soc_pct(is_second=is_second)
+    threshold = convert_to_float(
+        get_config_value(config_entry, f"{prefix}_min_soc_charge_soc")
+    )
+    if not bool(get_config_value(config_entry, f"{prefix}_planned_load_enabled")):
+        reason = "planned load is disabled"
+    elif (live.ev_second if is_second else live.ev).is_connected is False:
+        reason = "the EV is disconnected"
+    elif soc is None or not math.isfinite(soc):
+        reason = "the SoC is unknown"
+    elif threshold is None:
+        reason = "no threshold is set"
+    elif soc >= threshold:
+        reason = f"SoC {soc:.1f} % is at or above {threshold:.0f} %"
+    if reason is not None:
+        async_log("debug", "[ev] %s minimum-SoC charge idle: %s.", label, reason)
+        return False
+    async_log(
+        "debug",
+        "[ev] %s minimum-SoC charge: SoC %.1f %% is below %.0f %%.",
+        label,
+        soc,
+        threshold,
+    )
+    return True
+
+
+def apply_min_soc_charge(
+    *,
+    config_entry: ConfigEntry,
+    hourly_recommendations: list[HourlyRecommendation],
+    ev_plan: EVChargingPlan | None,
+    ev_second_plan: EVChargingPlan | None,
+    now: datetime,
+    live: LiveState,
+) -> None:
+    """Charge each EV at full power while it is below its minimum SoC.
+
+    Applies ``hsem_ev_min_soc_charge_enabled`` / ``hsem_ev_min_soc_charge_soc``
+    and the second-EV equivalents (issue #1323), whatever the price, deadline,
+    target SoC or smart-charging switch. The override stops on the first
+    cycle the SoC (delivered-energy credited, issue #789) reaches the
+    threshold, and the normal plan takes over again.
+
+    Args:
+        config_entry: The HSEM config entry (to read the options).
+        hourly_recommendations: The list of hourly recommendations to modify.
+        ev_plan: The primary EV charging plan (may be ``None``).
+        ev_second_plan: The second EV charging plan (may be ``None``).
+        now: Current time (timezone-aware), used to locate the current slot.
+        live: Live state supplying each EV's SoC and connection.
+    """
+    apply_current_ev_power_override(
+        config_entry=config_entry,
+        hourly_recommendations=hourly_recommendations,
+        ev_plan=ev_plan,
+        ev_second_plan=ev_second_plan,
+        now=now,
+        override_primary=_min_soc_charge_due(config_entry, live, is_second=False),
+        override_second=_min_soc_charge_due(config_entry, live, is_second=True),
+        live=live,
+    )
+
+
 def apply_force_charge_overrides(
     *,
     hass: HomeAssistant,
@@ -307,16 +388,17 @@ def apply_force_charge_overrides(
     """Auto-reset force-charge-now on disconnect, then apply the overrides.
 
     Canonical entry point for both the planner phase and the load-forecast
-    hold path. Force charge and auto-full are explicit user overrides, so
-    they must run *after* :func:`apply_load_forecast_hold` (issues #1103,
-    #1325): the strict hold clears primary-storage motion and the planned EV
-    command, and this then re-publishes only the overridden EV commands. The
-    home battery stays held — its charge/discharge energy remains zero.
+    hold path. Force charge, auto-full and the minimum-SoC charge are
+    explicit user overrides, so they must run *after*
+    :func:`apply_load_forecast_hold` (issues #1103, #1323, #1325): the strict
+    hold clears primary-storage motion and the planned EV command, and this
+    then re-publishes only the overridden EV commands. The home battery stays
+    held — its charge/discharge energy remains zero.
 
     The disconnect reset runs first (issue #900) so a disconnect and reset in
-    the same cycle never leaves a stale forced-charge slot. Auto-full and
-    force charge both set the same fuse-limited nameplate, so enabling both
-    gives the same command as either alone.
+    the same cycle never leaves a stale forced-charge slot. Every override
+    sets the same fuse-limited nameplate, so enabling several gives the same
+    command as any one of them alone.
     """
     for previous, current, option_key, ev_label in (
         (was_connected, live.ev.is_connected, "hsem_ev_force_charge_now", "EV1"),
@@ -336,6 +418,14 @@ def apply_force_charge_overrides(
             ev_label=ev_label,
         )
     apply_negative_price_auto_full(
+        config_entry=config_entry,
+        hourly_recommendations=hourly_recommendations,
+        ev_plan=ev_plan,
+        ev_second_plan=ev_second_plan,
+        now=now,
+        live=live,
+    )
+    apply_min_soc_charge(
         config_entry=config_entry,
         hourly_recommendations=hourly_recommendations,
         ev_plan=ev_plan,

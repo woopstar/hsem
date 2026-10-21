@@ -1,8 +1,8 @@
 """Number platform for the HSEM integration.
 
 Exposes ``NumberEntity`` instances that let users adjust integration
-settings (battery charge/discharge efficiency and EV target SoC) from
-the entity page, without re-running the config/options flow.
+settings (battery charge/discharge efficiency, EV target SoC and the EV
+minimum-SoC charge threshold) from the entity page, without re-running the config/options flow.
 """
 
 from homeassistant.components.number import NumberEntity, NumberEntityDescription
@@ -25,6 +25,12 @@ from custom_components.hsem.utils.sensornames.controls import (
     get_discharge_efficiency_number_unique_id,
 )
 from custom_components.hsem.utils.sensornames.ev import (
+    get_ev_min_soc_charge_number_entity_id,
+    get_ev_min_soc_charge_number_key,
+    get_ev_min_soc_charge_number_unique_id,
+    get_ev_second_min_soc_charge_number_entity_id,
+    get_ev_second_min_soc_charge_number_key,
+    get_ev_second_min_soc_charge_number_unique_id,
     get_ev_second_target_soc_number_entity_id,
     get_ev_second_target_soc_number_key,
     get_ev_second_target_soc_number_unique_id,
@@ -60,6 +66,16 @@ NUMBER_DESCRIPTIONS: tuple[NumberEntityDescription, ...] = (
         icon="mdi:ev-station",
         translation_key="ev_second_target_soc",
     ),
+    NumberEntityDescription(
+        key=get_ev_min_soc_charge_number_key(),
+        icon="mdi:battery-alert-variant-outline",
+        translation_key="ev_min_soc_charge_soc",
+    ),
+    NumberEntityDescription(
+        key=get_ev_second_min_soc_charge_number_key(),
+        icon="mdi:battery-alert-variant-outline",
+        translation_key="ev_second_min_soc_charge_soc",
+    ),
 )
 
 
@@ -74,6 +90,10 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
         get_discharge_efficiency_number_key(): "hsem_batteries_discharge_efficiency",
         get_ev_target_soc_number_key(): "hsem_ev_target_soc",
         get_ev_second_target_soc_number_key(): "hsem_ev_second_target_soc",
+        get_ev_min_soc_charge_number_key(): "hsem_ev_min_soc_charge_soc",
+        get_ev_second_min_soc_charge_number_key(): (
+            "hsem_ev_second_min_soc_charge_soc"
+        ),
     }
 
     _id_map = {
@@ -93,18 +113,37 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             get_ev_second_target_soc_number_unique_id(config_entry.entry_id),
             get_ev_second_target_soc_number_entity_id(),
         ),
+        get_ev_min_soc_charge_number_key(): (
+            get_ev_min_soc_charge_number_unique_id(config_entry.entry_id),
+            get_ev_min_soc_charge_number_entity_id(),
+        ),
+        get_ev_second_min_soc_charge_number_key(): (
+            get_ev_second_min_soc_charge_number_unique_id(config_entry.entry_id),
+            get_ev_second_min_soc_charge_number_entity_id(),
+        ),
     }
 
-    _ev_target_soc_keys = {
-        get_ev_target_soc_number_key(),
+    # Per-EV SoC percentage numbers -> their default when no option is stored.
+    _ev_soc_defaults = {
+        get_ev_target_soc_number_key(): 80.0,
+        get_ev_second_target_soc_number_key(): 80.0,
+        get_ev_min_soc_charge_number_key(): 20.0,
+        get_ev_second_min_soc_charge_number_key(): 20.0,
+    }
+    _ev_second_keys = {
         get_ev_second_target_soc_number_key(),
+        get_ev_second_min_soc_charge_number_key(),
     }
 
-    # EV target-SoC numbers only apply when that EV's planned load (managed
+    # EV SoC numbers only apply when that EV's planned load (managed
     # charging) is enabled (issue #859).
     _gated_keys = {
         get_ev_target_soc_number_key(): "hsem_ev_planned_load_enabled",
         get_ev_second_target_soc_number_key(): "hsem_ev_second_planned_load_enabled",
+        get_ev_min_soc_charge_number_key(): "hsem_ev_planned_load_enabled",
+        get_ev_second_min_soc_charge_number_key(): (
+            "hsem_ev_second_planned_load_enabled"
+        ),
     }
 
     entities: list[NumberEntity] = []
@@ -114,16 +153,17 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             get_config_value(config_entry, config_flag)
         ):
             continue
-        if description.key in _ev_target_soc_keys:
+        if description.key in _ev_soc_defaults:
             entities.append(
                 HSEMEVTargetSocNumber(
                     hass,
                     config_entry,
                     description,
                     config_key=config_keys[description.key],
+                    default=_ev_soc_defaults[description.key],
                     unique_id=_id_map[description.key][0],
                     entity_id=_id_map[description.key][1],
-                    is_second=description.key == get_ev_second_target_soc_number_key(),
+                    is_second=description.key in _ev_second_keys,
                 )
             )
         else:

@@ -1259,36 +1259,40 @@ EV switches are only created when the corresponding EV's planned load
 primary EV, `hsem_ev_second_planned_load_enabled` for the second EV
 (issue #859). All other switches are always created.
 
-| Entity                                             | Purpose                                        |
-| -------------------------------------------------- | ---------------------------------------------- |
-| `switch.hsem_read_only`                            | Block all hardware writes                      |
-| `switch.hsem_extended_attributes`                  | Enable extended diagnostic attributes          |
-| `switch.hsem_verbose_logging`                      | Enable verbose logging                         |
-| `switch.hsem_ev_charger_force_max_discharge_power` | Force EV maximum discharge power               |
-| `switch.hsem_ev_smart_charging`                    | Enable smart EV charging scheduling            |
-| `switch.hsem_ev_force_charge_now`                  | Force immediate EV charging                    |
-| `switch.hsem_ev_second_smart_charging`             | Enable smart charging for second EV            |
-| `switch.hsem_ev_second_force_charge_now`           | Force immediate second EV charging             |
-| `switch.hsem_ml_consumption_enabled`               | Enable ML-based consumption prediction         |
-| `switch.hsem_ml_consumption_sequential`            | Enable sequential (intra-day momentum) ML mode |
-| `switch.hsem_dynamic_discharge_floor`              | Enable dynamic discharge floor                 |
-| `switch.hsem_ev_auto_full_negative_price`          | Auto-Full EV on negative price                 |
+| Entity                                             | Purpose                                            |
+| -------------------------------------------------- | -------------------------------------------------- |
+| `switch.hsem_read_only`                            | Block all hardware writes                          |
+| `switch.hsem_extended_attributes`                  | Enable extended diagnostic attributes              |
+| `switch.hsem_verbose_logging`                      | Enable verbose logging                             |
+| `switch.hsem_ev_charger_force_max_discharge_power` | Force EV maximum discharge power                   |
+| `switch.hsem_ev_smart_charging`                    | Enable smart EV charging scheduling                |
+| `switch.hsem_ev_force_charge_now`                  | Force immediate EV charging                        |
+| `switch.hsem_ev_second_smart_charging`             | Enable smart charging for second EV                |
+| `switch.hsem_ev_second_force_charge_now`           | Force immediate second EV charging                 |
+| `switch.hsem_ml_consumption_enabled`               | Enable ML-based consumption prediction             |
+| `switch.hsem_ml_consumption_sequential`            | Enable sequential (intra-day momentum) ML mode     |
+| `switch.hsem_dynamic_discharge_floor`              | Enable dynamic discharge floor                     |
+| `switch.hsem_ev_auto_full_negative_price`          | Auto-Full EV on negative price                     |
+| `switch.hsem_ev_min_soc_charge_enabled`            | Charge EV immediately below its minimum SoC        |
+| `switch.hsem_ev_second_min_soc_charge_enabled`     | Charge second EV immediately below its minimum SoC |
 
 ---
 
 ## Number entities
 
-`number.hsem_ev_target_soc` is only created when `hsem_ev_planned_load_enabled`
-is set; `number.hsem_ev_second_target_soc` only when
-`hsem_ev_second_planned_load_enabled` is set (issue #859). The battery
+`number.hsem_ev_target_soc` and `number.hsem_ev_min_soc_charge_soc` are only
+created when `hsem_ev_planned_load_enabled` is set; the `number.hsem_ev_second_*`
+versions only when `hsem_ev_second_planned_load_enabled` is set (issue #859). The battery
 efficiency numbers are always created.
 
-| Entity                                     | Purpose                      | Range   |
-| ------------------------------------------ | ---------------------------- | ------- |
-| `number.hsem_battery_charge_efficiency`    | Battery charge efficiency    | 1–100 % |
-| `number.hsem_battery_discharge_efficiency` | Battery discharge efficiency | 1–100 % |
-| `number.hsem_ev_target_soc`                | Primary EV target SoC        | 0–100 % |
-| `number.hsem_ev_second_target_soc`         | Second EV target SoC         | 0–100 % |
+| Entity                                     | Purpose                                              | Range   |
+| ------------------------------------------ | ---------------------------------------------------- | ------- |
+| `number.hsem_battery_charge_efficiency`    | Battery charge efficiency                            | 1–100 % |
+| `number.hsem_battery_discharge_efficiency` | Battery discharge efficiency                         | 1–100 % |
+| `number.hsem_ev_target_soc`                | Primary EV target SoC                                | 0–100 % |
+| `number.hsem_ev_second_target_soc`         | Second EV target SoC                                 | 0–100 % |
+| `number.hsem_ev_min_soc_charge_soc`        | Primary EV minimum SoC (charge immediately below it) | 1–100 % |
+| `number.hsem_ev_second_min_soc_charge_soc` | Second EV minimum SoC (charge immediately below it)  | 1–100 % |
 
 ---
 
