@@ -245,9 +245,24 @@ flowchart TD
 ### Auto-Full EV on negative electricity prices
 
 When `hsem_ev_auto_full_negative_price` is enabled (off by default), HSEM
-automatically promotes the EV to **Full** charging mode whenever the import
-electricity price drops to ≤ 0 (including negative prices). The previous
-charging mode is restored automatically when the price rises above 0.
+overrides the **current slot** of the primary EV to its full fuse-limited
+whole-amp nameplate whenever the import electricity price is ≤ 0 (including
+negative prices). It is the same override Force Charge Now uses
+(`apply_current_ev_power_override`), so the slot's EV energy, grid import and
+cost are rewritten together, both EVs share the main-fuse headroom, and an
+explicitly disconnected EV is never energised. No charging mode is switched:
+the override is re-evaluated every cycle, and the normal smart-charging plan
+applies again on the first cycle after the price rises above 0.
+
+- **Unavailable price:** HSEM stores `0.0` for an unavailable or non-numeric
+  import price. That reading never triggers auto-full; only a price the sensor
+  actually reports does (issue #1325).
+- **Load-forecast hold:** auto-full is applied after the hold, on both the
+  planner path and the non-planner hold path, exactly like Force Charge Now.
+  The house battery stays held; only the EV charges (issue #1325).
+- **Primary EV only.** The second EV is not affected.
+- Enabling auto-full and Force Charge Now together gives the same full-power
+  command as either alone.
 
 This feature is especially useful in markets with frequent negative-price
 periods (e.g. Nordpool, Amber Electric) where charging the EV at full power

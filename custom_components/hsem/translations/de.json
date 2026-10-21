@@ -212,7 +212,7 @@
           "hsem_ev_second_enabled": "Aktiviere oder deaktiviere die Konfiguration für ein zweites EV-Ladegerät.",
           "hsem_ev_soc": "Wähle den Sensor, der den aktuellen Ladezustand (SoC) deiner EV-Batterie liefert.",
           "hsem_house_power_includes_ev_charger_power": "Aktiviere dies, wenn der Hausverbrauchsleistungssensor die Leistung des EV-Ladegeräts bereits enthält.",
-          "hsem_ev_auto_full_negative_price": "Wenn aktiviert, wird das EV automatisch auf volle Ladeleistung gesetzt, sobald der Strompreis null oder negativ ist. Der vorherige Lademodus wird wiederhergestellt, sobald der Preis über null steigt.",
+          "hsem_ev_auto_full_negative_price": "Wenn aktiviert, wird das EV automatisch auf volle Ladeleistung gesetzt, sobald der Strompreis null oder negativ ist. Es überschreibt nur den aktuellen Zeitabschnitt, auch während eines Halts wegen der Lastprognose. Das normale intelligente Laden wird im ersten Zyklus fortgesetzt, nachdem der Preis über null gestiegen ist. Ein nicht verfügbarer Preis löst es nie aus.",
           "hsem_ev_past_target_confidence_factor": "Konfidenzmultiplikator (0,0-1,0), der auf die Bewertung des vermiedenen zukünftigen Imports angewendet wird, wenn das EV über seinen Ziel-SoC hinaus geladen wird. Niedrigere Werte machen das EV im Vergleich zum Export von überschüssigem PV-Strom weniger konkurrenzfähig, um der Unsicherheit Rechnung zu tragen, ob das EV die zusätzliche Energie vor dem nächsten Ladevorgang tatsächlich benötigt. Standard 0,9."
         },
         "description": "Konfiguriere die EV-Ladegerät-Einstellungen für HSEM.",
@@ -753,7 +753,7 @@
           "hsem_ev_second_enabled": "Aktiviere oder deaktiviere die Konfiguration für ein zweites EV-Ladegerät.",
           "hsem_ev_soc": "Wähle den Sensor, der den aktuellen Ladezustand (SoC) deiner EV-Batterie liefert.",
           "hsem_house_power_includes_ev_charger_power": "Aktiviere dies, wenn der Hausverbrauchsleistungssensor die Leistung des EV-Ladegeräts bereits enthält.",
-          "hsem_ev_auto_full_negative_price": "Wenn aktiviert, wird das EV automatisch auf volle Ladeleistung gesetzt, sobald der Strompreis null oder negativ ist. Der vorherige Lademodus wird wiederhergestellt, sobald der Preis über null steigt.",
+          "hsem_ev_auto_full_negative_price": "Wenn aktiviert, wird das EV automatisch auf volle Ladeleistung gesetzt, sobald der Strompreis null oder negativ ist. Es überschreibt nur den aktuellen Zeitabschnitt, auch während eines Halts wegen der Lastprognose. Das normale intelligente Laden wird im ersten Zyklus fortgesetzt, nachdem der Preis über null gestiegen ist. Ein nicht verfügbarer Preis löst es nie aus.",
           "hsem_ev_past_target_confidence_factor": "Konfidenzmultiplikator (0,0-1,0), der auf die Bewertung des vermiedenen zukünftigen Imports angewendet wird, wenn das EV über seinen Ziel-SoC hinaus geladen wird. Niedrigere Werte machen das EV im Vergleich zum Export von überschüssigem PV-Strom weniger konkurrenzfähig, um der Unsicherheit Rechnung zu tragen, ob das EV die zusätzliche Energie vor dem nächsten Ladevorgang tatsächlich benötigt. Standard 0,9."
         },
         "description": "Konfiguriere die EV-Ladegerät-Einstellungen für HSEM.",

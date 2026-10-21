@@ -212,7 +212,7 @@
           "hsem_ev_second_enabled": "Activa o desactiva la configuración de un segundo cargador de VE.",
           "hsem_ev_soc": "Selecciona el sensor que proporciona el estado de carga (SoC) actual de la batería de tu VE.",
           "hsem_house_power_includes_ev_charger_power": "Activa esto si el sensor de potencia de consumo de la vivienda ya incluye el consumo de potencia del cargador de VE.",
-          "hsem_ev_auto_full_negative_price": "Cuando está activado, el VE se ajusta automáticamente a la potencia de carga máxima cuando el precio de la electricidad es cero o negativo. El modo de carga anterior se restaura cuando el precio sube por encima de cero.",
+          "hsem_ev_auto_full_negative_price": "Cuando está activado, el VE se ajusta automáticamente a la potencia de carga máxima cuando el precio de la electricidad es cero o negativo. Solo anula el intervalo actual, también durante una retención por la previsión de carga. La carga inteligente normal se reanuda en el primer ciclo después de que el precio suba por encima de cero. Un precio no disponible nunca lo activa.",
           "hsem_ev_past_target_confidence_factor": "Multiplicador de confianza (0.0-1.0) aplicado a la valoración de importación futura evitada que se usa al cargar el VE más allá de su SoC objetivo. Valores más bajos hacen que el VE compita peor frente a la exportación del excedente de PV, para tener en cuenta la incertidumbre sobre si el VE realmente necesitará la energía adicional antes de su próxima carga. Predeterminado 0.9."
         },
         "description": "Configura los ajustes del cargador de VE para HSEM.",
@@ -753,7 +753,7 @@
           "hsem_ev_second_enabled": "Activa o desactiva la configuración de un segundo cargador de VE.",
           "hsem_ev_soc": "Selecciona el sensor que proporciona el estado de carga (SoC) actual de la batería de tu VE.",
           "hsem_house_power_includes_ev_charger_power": "Activa esto si el sensor de potencia de consumo de la vivienda ya incluye el consumo de potencia del cargador de VE.",
-          "hsem_ev_auto_full_negative_price": "Cuando está activado, el VE se ajusta automáticamente a la potencia de carga máxima cuando el precio de la electricidad es cero o negativo. El modo de carga anterior se restaura cuando el precio sube por encima de cero.",
+          "hsem_ev_auto_full_negative_price": "Cuando está activado, el VE se ajusta automáticamente a la potencia de carga máxima cuando el precio de la electricidad es cero o negativo. Solo anula el intervalo actual, también durante una retención por la previsión de carga. La carga inteligente normal se reanuda en el primer ciclo después de que el precio suba por encima de cero. Un precio no disponible nunca lo activa.",
           "hsem_ev_past_target_confidence_factor": "Multiplicador de confianza (0.0-1.0) aplicado a la valoración de importación futura evitada que se usa al cargar el VE más allá de su SoC objetivo. Valores más bajos hacen que el VE compita peor frente a la exportación del excedente de PV, para tener en cuenta la incertidumbre sobre si el VE realmente necesitará la energía adicional antes de su próxima carga. Predeterminado 0.9."
         },
         "description": "Configura los ajustes del cargador de VE para HSEM.",

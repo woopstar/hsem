@@ -476,6 +476,40 @@ def reset_force_charge_on_disconnect(
     return True
 
 
+def apply_negative_price_auto_full(
+    *,
+    config_entry: ConfigEntry,
+    hourly_recommendations: list[HourlyRecommendation],
+    ev_plan: EVChargingPlan | None,
+    ev_second_plan: EVChargingPlan | None,
+    now: datetime,
+    live: LiveState,
+) -> None:
+    """Charge the primary EV at full power while the import price is <= 0.
+
+    Applies ``hsem_ev_auto_full_negative_price`` (issue #609). An unavailable
+    price is stored as ``0.0``, so this fires only on a price the sensor
+    actually reported (issue #1325).
+    """
+    if not bool(get_config_value(config_entry, "hsem_ev_auto_full_negative_price")):
+        return
+    if not live.import_electricity_price_available:
+        async_log("debug", "[ev] Auto-full skipped: the import price is unavailable.")
+        return
+    if live.import_electricity_price > 0.0:
+        return
+    apply_current_ev_power_override(
+        config_entry=config_entry,
+        hourly_recommendations=hourly_recommendations,
+        ev_plan=ev_plan,
+        ev_second_plan=ev_second_plan,
+        now=now,
+        override_primary=True,
+        override_second=False,
+        live=live,
+    )
+
+
 def apply_force_charge_overrides(
     *,
     hass: HomeAssistant,
@@ -488,14 +522,14 @@ def apply_force_charge_overrides(
     was_connected: bool | None,
     was_second_connected: bool | None,
 ) -> None:
-    """Auto-reset force-charge-now on disconnect, then apply the override.
+    """Auto-reset force-charge-now on disconnect, then apply the overrides.
 
     Canonical entry point for both the planner phase and the load-forecast
-    hold path. Force charge is an explicit user override, so it must run
-    *after* :func:`apply_load_forecast_hold` (issue #1103): the strict hold
-    clears primary-storage motion and the planned EV command, and this then
-    re-publishes only the forced EV command. The home battery stays held —
-    its charge/discharge energy remains zero.
+    hold path. Force charge and auto-full are explicit user overrides, so
+    they must run *after* :func:`apply_load_forecast_hold` (issues #1103,
+    #1325): the strict hold clears primary-storage motion and the planned EV
+    command, and this then re-publishes only the overridden EV commands. The
+    home battery stays held — its charge/discharge energy remains zero.
 
     The disconnect reset runs first (issue #900) so a disconnect and reset in
     the same cycle never leaves a stale forced-charge slot.
@@ -517,6 +551,14 @@ def apply_force_charge_overrides(
             option_key=option_key,
             ev_label=ev_label,
         )
+    apply_negative_price_auto_full(
+        config_entry=config_entry,
+        hourly_recommendations=hourly_recommendations,
+        ev_plan=ev_plan,
+        ev_second_plan=ev_second_plan,
+        now=now,
+        live=live,
+    )
     apply_force_charge_now(
         config_entry=config_entry,
         hourly_recommendations=hourly_recommendations,

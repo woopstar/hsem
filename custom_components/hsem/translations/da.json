@@ -172,7 +172,7 @@
           "hsem_ev_second_enabled": "Aktiver eller deaktiver konfigurationen for en anden EV-lader.",
           "hsem_ev_soc": "Vælg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri.",
           "hsem_house_power_includes_ev_charger_power": "Aktiver dette, hvis husets forbrugseffektsensor allerede inkluderer EV-laderens strømforbrug.",
-          "hsem_ev_auto_full_negative_price": "Når aktiveret, sættes elbilen automatisk til fuld opladningseffekt, når elprisen er nul eller negativ. Den tidligere opladningstilstand gendannes, når prisen stiger over nul.",
+          "hsem_ev_auto_full_negative_price": "Når aktiveret, sættes elbilen automatisk til fuld opladningseffekt, når elprisen er nul eller negativ. Det tilsidesætter kun den aktuelle periode, også under et hold på grund af belastningsprognosen. Normal smart opladning genoptages i første cyklus, efter at prisen er steget over nul. En utilgængelig pris udløser det aldrig.",
           "hsem_ev_past_target_confidence_factor": "Konfidensmultiplikator (0.0-1.0) der anvendes på værdien af undgået fremtidig import når EV'en oplades ud over sin mål-SoC. Lavere værdier gør EV'en mindre konkurrencedygtig mod eksport af overskuds-PV, for at tage højde for usikkerhed om, om EV'en faktisk vil have brug for den ekstra energi før næste opladning. Standard 0.9."
         },
         "description": "Konfigurer EV-laderindstillinger for HSEM.",
@@ -713,7 +713,7 @@
           "hsem_ev_second_enabled": "Aktiver eller deaktiver konfigurationen for en anden EV-lader.",
           "hsem_ev_soc": "Vælg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri.",
           "hsem_house_power_includes_ev_charger_power": "Aktiver dette, hvis husets forbrugseffektsensor allerede inkluderer EV-laderens strømforbrug.",
-          "hsem_ev_auto_full_negative_price": "Når aktiveret, sættes elbilen automatisk til fuld opladningseffekt, når elprisen er nul eller negativ. Den tidligere opladningstilstand gendannes, når prisen stiger over nul.",
+          "hsem_ev_auto_full_negative_price": "Når aktiveret, sættes elbilen automatisk til fuld opladningseffekt, når elprisen er nul eller negativ. Det tilsidesætter kun den aktuelle periode, også under et hold på grund af belastningsprognosen. Normal smart opladning genoptages i første cyklus, efter at prisen er steget over nul. En utilgængelig pris udløser det aldrig.",
           "hsem_ev_past_target_confidence_factor": "Konfidensmultiplikator (0.0-1.0) der anvendes på værdien af undgået fremtidig import når EV'en oplades ud over sin mål-SoC. Lavere værdier gør EV'en mindre konkurrencedygtig mod eksport af overskuds-PV, for at tage højde for usikkerhed om, om EV'en faktisk vil have brug for den ekstra energi før næste opladning. Standard 0.9."
         },
         "description": "Konfigurer EV-laderindstillinger for HSEM.",
