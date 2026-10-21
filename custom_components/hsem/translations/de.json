@@ -170,7 +170,9 @@
           "hsem_ev_auto_full_negative_price": "EV bei negativem Preis automatisch vollladen",
           "hsem_ev_past_target_confidence_factor": "EV-Konfidenzfaktor für Laden über Ziel-SoC hinaus (Erweitert)",
           "hsem_ev_min_soc_charge_enabled": "Unter Mindest-SoC sofort laden",
-          "hsem_ev_min_soc_charge_soc": "Mindest-SoC (%)"
+          "hsem_ev_min_soc_charge_soc": "Mindest-SoC (%)",
+          "hsem_ev_cheap_price_charge_enabled": "Bei oder unter einem Preis sofort laden",
+          "hsem_ev_cheap_price_charge_max_price": "Maximaler Importpreis für sofortiges Laden"
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Aktiviere diese Option, wenn du zulassen möchtest, dass das System die EV-Batterie auch nach Erreichen des Ziel-Ladezustands (SoC) weiter lädt. Dies kann in Szenarien nützlich sein, in denen du sicherstellen möchtest, dass das EV unabhängig von der Zieleinstellung vollständig geladen wird.",
@@ -185,7 +187,9 @@
           "hsem_ev_auto_full_negative_price": "Wenn aktiviert, wird das EV automatisch auf volle Ladeleistung gesetzt, sobald der Strompreis null oder negativ ist. Es überschreibt nur den aktuellen Zeitabschnitt, auch während eines Halts wegen der Lastprognose. Das normale intelligente Laden wird im ersten Zyklus fortgesetzt, nachdem der Preis über null gestiegen ist. Ein nicht verfügbarer Preis löst es nie aus.",
           "hsem_ev_past_target_confidence_factor": "Konfidenzmultiplikator (0,0-1,0), der auf die Bewertung des vermiedenen zukünftigen Imports angewendet wird, wenn das EV über seinen Ziel-SoC hinaus geladen wird. Niedrigere Werte machen das EV im Vergleich zum Export von überschüssigem PV-Strom weniger konkurrenzfähig, um der Unsicherheit Rechnung zu tragen, ob das EV die zusätzliche Energie vor dem nächsten Ladevorgang tatsächlich benötigt. Standard 0,9.",
           "hsem_ev_min_soc_charge_enabled": "Wenn aktiviert, lädt HSEM das EV mit voller Ladeleistung, sobald sein SoC unter dem Mindest-SoC liegt, unabhängig von Preis, Deadline oder dem Schalter für intelligentes Laden. Das normale intelligente Laden wird fortgesetzt, sobald der SoC das Minimum erreicht. Ein unbekannter SoC oder ein getrenntes EV löst es nie aus. Erfordert die geplante EV-Last.",
-          "hsem_ev_min_soc_charge_soc": "SoC, unter dem das EV sofort mit voller Leistung lädt, wenn das Laden unter dem Mindest-SoC aktiviert ist."
+          "hsem_ev_min_soc_charge_soc": "SoC, unter dem das EV sofort mit voller Leistung lädt, wenn das Laden unter dem Mindest-SoC aktiviert ist.",
+          "hsem_ev_cheap_price_charge_enabled": "Wenn aktiviert, lädt HSEM das EV in jedem Zeitabschnitt mit voller Ladeleistung, in dem der aktuelle Importpreis höchstens dem maximalen Preis entspricht, unabhängig von Deadline, Ziel-SoC oder dem Schalter für intelligentes Laden. HSEM setzt keine SoC-Grenze, daher gilt das Ladelimit des Autos. Es endet im ersten Zyklus, nachdem der Preis über das Maximum gestiegen ist. Ein nicht verfügbarer Preis oder ein getrenntes EV löst es nie aus. Unabhängig von „EV bei negativem Preis automatisch vollladen“. Erfordert die geplante EV-Last.",
+          "hsem_ev_cheap_price_charge_max_price": "Importpreis, bei oder unter dem das EV sofort mit voller Leistung lädt. Er wird mit dem Wert des konfigurierten Importpreis-Sensors in derselben Einheit verglichen (zum Beispiel 0,50 für 0,50 DKK/kWh). Kann negativ sein."
         },
         "description": "Konfiguriere die EV-Ladegerät-Einstellungen für HSEM.",
         "title": "EV-Ladegerät-Einstellungen (Optional)"
@@ -201,7 +205,9 @@
           "hsem_ev_second_soc": "Zweites EV-Ladezustand (SoC) Sensor",
           "hsem_ev_second_past_target_confidence_factor": "Konfidenzfaktor für zweites EV Laden über Ziel-SoC hinaus (Erweitert)",
           "hsem_ev_second_min_soc_charge_enabled": "Unter Mindest-SoC sofort laden für zweites EV",
-          "hsem_ev_second_min_soc_charge_soc": "Mindest-SoC für zweites EV (%)"
+          "hsem_ev_second_min_soc_charge_soc": "Mindest-SoC für zweites EV (%)",
+          "hsem_ev_second_cheap_price_charge_enabled": "Bei oder unter einem Preis sofort laden für zweites EV",
+          "hsem_ev_second_cheap_price_charge_max_price": "Maximaler Importpreis für sofortiges Laden für zweites EV"
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Aktiviere diese Option, wenn du zulassen möchtest, dass das System die EV-Batterie auch nach Erreichen des Ziel-Ladezustands (SoC) weiter lädt. Dies kann in Szenarien nützlich sein, in denen du sicherstellen möchtest, dass das EV unabhängig von der Zieleinstellung vollständig geladen wird.",
@@ -213,7 +219,9 @@
           "hsem_ev_second_soc": "Wähle den Sensor, der den aktuellen Ladezustand (SoC) deiner EV-Batterie liefert.",
           "hsem_ev_second_past_target_confidence_factor": "Konfidenzmultiplikator (0,0-1,0), der auf die Bewertung des vermiedenen zukünftigen Imports angewendet wird, wenn das zweite EV über seinen Ziel-SoC hinaus geladen wird. Niedrigere Werte machen das EV im Vergleich zum Export von überschüssigem PV-Strom weniger konkurrenzfähig, um der Unsicherheit Rechnung zu tragen, ob das EV die zusätzliche Energie vor dem nächsten Ladevorgang tatsächlich benötigt. Standard 0,9.",
           "hsem_ev_second_min_soc_charge_enabled": "Wenn aktiviert, lädt HSEM das EV mit voller Ladeleistung, sobald sein SoC unter dem Mindest-SoC liegt, unabhängig von Preis, Deadline oder dem Schalter für intelligentes Laden. Das normale intelligente Laden wird fortgesetzt, sobald der SoC das Minimum erreicht. Ein unbekannter SoC oder ein getrenntes EV löst es nie aus. Erfordert die geplante EV-Last.",
-          "hsem_ev_second_min_soc_charge_soc": "SoC, unter dem das EV sofort mit voller Leistung lädt, wenn das Laden unter dem Mindest-SoC aktiviert ist."
+          "hsem_ev_second_min_soc_charge_soc": "SoC, unter dem das EV sofort mit voller Leistung lädt, wenn das Laden unter dem Mindest-SoC aktiviert ist.",
+          "hsem_ev_second_cheap_price_charge_enabled": "Wenn aktiviert, lädt HSEM das EV in jedem Zeitabschnitt mit voller Ladeleistung, in dem der aktuelle Importpreis höchstens dem maximalen Preis entspricht, unabhängig von Deadline, Ziel-SoC oder dem Schalter für intelligentes Laden. HSEM setzt keine SoC-Grenze, daher gilt das Ladelimit des Autos. Es endet im ersten Zyklus, nachdem der Preis über das Maximum gestiegen ist. Ein nicht verfügbarer Preis oder ein getrenntes EV löst es nie aus. Unabhängig von „EV bei negativem Preis automatisch vollladen“. Erfordert die geplante EV-Last.",
+          "hsem_ev_second_cheap_price_charge_max_price": "Importpreis, bei oder unter dem das EV sofort mit voller Leistung lädt. Er wird mit dem Wert des konfigurierten Importpreis-Sensors in derselben Einheit verglichen (zum Beispiel 0,50 für 0,50 DKK/kWh). Kann negativ sein."
         },
         "description": "Konfiguriere die Einstellungen für das zweite EV-Ladegerät für HSEM.",
         "title": "Einstellungen für zweites EV-Ladegerät (Optional)"
@@ -677,7 +685,9 @@
           "hsem_ev_auto_full_negative_price": "EV bei negativem Preis automatisch vollladen",
           "hsem_ev_past_target_confidence_factor": "EV-Konfidenzfaktor für Laden über Ziel-SoC hinaus (Erweitert)",
           "hsem_ev_min_soc_charge_enabled": "Unter Mindest-SoC sofort laden",
-          "hsem_ev_min_soc_charge_soc": "Mindest-SoC (%)"
+          "hsem_ev_min_soc_charge_soc": "Mindest-SoC (%)",
+          "hsem_ev_cheap_price_charge_enabled": "Bei oder unter einem Preis sofort laden",
+          "hsem_ev_cheap_price_charge_max_price": "Maximaler Importpreis für sofortiges Laden"
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Aktiviere diese Option, wenn du zulassen möchtest, dass das System die EV-Batterie auch nach Erreichen des Ziel-Ladezustands (SoC) weiter lädt. Dies kann in Szenarien nützlich sein, in denen du sicherstellen möchtest, dass das EV unabhängig von der Zieleinstellung vollständig geladen wird.",
@@ -692,7 +702,9 @@
           "hsem_ev_auto_full_negative_price": "Wenn aktiviert, wird das EV automatisch auf volle Ladeleistung gesetzt, sobald der Strompreis null oder negativ ist. Es überschreibt nur den aktuellen Zeitabschnitt, auch während eines Halts wegen der Lastprognose. Das normale intelligente Laden wird im ersten Zyklus fortgesetzt, nachdem der Preis über null gestiegen ist. Ein nicht verfügbarer Preis löst es nie aus.",
           "hsem_ev_past_target_confidence_factor": "Konfidenzmultiplikator (0,0-1,0), der auf die Bewertung des vermiedenen zukünftigen Imports angewendet wird, wenn das EV über seinen Ziel-SoC hinaus geladen wird. Niedrigere Werte machen das EV im Vergleich zum Export von überschüssigem PV-Strom weniger konkurrenzfähig, um der Unsicherheit Rechnung zu tragen, ob das EV die zusätzliche Energie vor dem nächsten Ladevorgang tatsächlich benötigt. Standard 0,9.",
           "hsem_ev_min_soc_charge_enabled": "Wenn aktiviert, lädt HSEM das EV mit voller Ladeleistung, sobald sein SoC unter dem Mindest-SoC liegt, unabhängig von Preis, Deadline oder dem Schalter für intelligentes Laden. Das normale intelligente Laden wird fortgesetzt, sobald der SoC das Minimum erreicht. Ein unbekannter SoC oder ein getrenntes EV löst es nie aus. Erfordert die geplante EV-Last.",
-          "hsem_ev_min_soc_charge_soc": "SoC, unter dem das EV sofort mit voller Leistung lädt, wenn das Laden unter dem Mindest-SoC aktiviert ist."
+          "hsem_ev_min_soc_charge_soc": "SoC, unter dem das EV sofort mit voller Leistung lädt, wenn das Laden unter dem Mindest-SoC aktiviert ist.",
+          "hsem_ev_cheap_price_charge_enabled": "Wenn aktiviert, lädt HSEM das EV in jedem Zeitabschnitt mit voller Ladeleistung, in dem der aktuelle Importpreis höchstens dem maximalen Preis entspricht, unabhängig von Deadline, Ziel-SoC oder dem Schalter für intelligentes Laden. HSEM setzt keine SoC-Grenze, daher gilt das Ladelimit des Autos. Es endet im ersten Zyklus, nachdem der Preis über das Maximum gestiegen ist. Ein nicht verfügbarer Preis oder ein getrenntes EV löst es nie aus. Unabhängig von „EV bei negativem Preis automatisch vollladen“. Erfordert die geplante EV-Last.",
+          "hsem_ev_cheap_price_charge_max_price": "Importpreis, bei oder unter dem das EV sofort mit voller Leistung lädt. Er wird mit dem Wert des konfigurierten Importpreis-Sensors in derselben Einheit verglichen (zum Beispiel 0,50 für 0,50 DKK/kWh). Kann negativ sein."
         },
         "description": "Konfiguriere die EV-Ladegerät-Einstellungen für HSEM.",
         "title": "EV-Ladegerät-Einstellungen (Optional)"
@@ -708,7 +720,9 @@
           "hsem_ev_second_soc": "Zweites EV-Ladezustand (SoC) Sensor",
           "hsem_ev_second_past_target_confidence_factor": "Konfidenzfaktor für zweites EV Laden über Ziel-SoC hinaus (Erweitert)",
           "hsem_ev_second_min_soc_charge_enabled": "Unter Mindest-SoC sofort laden für zweites EV",
-          "hsem_ev_second_min_soc_charge_soc": "Mindest-SoC für zweites EV (%)"
+          "hsem_ev_second_min_soc_charge_soc": "Mindest-SoC für zweites EV (%)",
+          "hsem_ev_second_cheap_price_charge_enabled": "Bei oder unter einem Preis sofort laden für zweites EV",
+          "hsem_ev_second_cheap_price_charge_max_price": "Maximaler Importpreis für sofortiges Laden für zweites EV"
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Aktiviere diese Option, wenn du zulassen möchtest, dass das System die EV-Batterie auch nach Erreichen des Ziel-Ladezustands (SoC) weiter lädt. Dies kann in Szenarien nützlich sein, in denen du sicherstellen möchtest, dass das EV unabhängig von der Zieleinstellung vollständig geladen wird.",
@@ -720,7 +734,9 @@
           "hsem_ev_second_soc": "Wähle den Sensor, der den aktuellen Ladezustand (SoC) deiner EV-Batterie liefert.",
           "hsem_ev_second_past_target_confidence_factor": "Konfidenzmultiplikator (0,0-1,0), der auf die Bewertung des vermiedenen zukünftigen Imports angewendet wird, wenn das zweite EV über seinen Ziel-SoC hinaus geladen wird. Niedrigere Werte machen das EV im Vergleich zum Export von überschüssigem PV-Strom weniger konkurrenzfähig, um der Unsicherheit Rechnung zu tragen, ob das EV die zusätzliche Energie vor dem nächsten Ladevorgang tatsächlich benötigt. Standard 0,9.",
           "hsem_ev_second_min_soc_charge_enabled": "Wenn aktiviert, lädt HSEM das EV mit voller Ladeleistung, sobald sein SoC unter dem Mindest-SoC liegt, unabhängig von Preis, Deadline oder dem Schalter für intelligentes Laden. Das normale intelligente Laden wird fortgesetzt, sobald der SoC das Minimum erreicht. Ein unbekannter SoC oder ein getrenntes EV löst es nie aus. Erfordert die geplante EV-Last.",
-          "hsem_ev_second_min_soc_charge_soc": "SoC, unter dem das EV sofort mit voller Leistung lädt, wenn das Laden unter dem Mindest-SoC aktiviert ist."
+          "hsem_ev_second_min_soc_charge_soc": "SoC, unter dem das EV sofort mit voller Leistung lädt, wenn das Laden unter dem Mindest-SoC aktiviert ist.",
+          "hsem_ev_second_cheap_price_charge_enabled": "Wenn aktiviert, lädt HSEM das EV in jedem Zeitabschnitt mit voller Ladeleistung, in dem der aktuelle Importpreis höchstens dem maximalen Preis entspricht, unabhängig von Deadline, Ziel-SoC oder dem Schalter für intelligentes Laden. HSEM setzt keine SoC-Grenze, daher gilt das Ladelimit des Autos. Es endet im ersten Zyklus, nachdem der Preis über das Maximum gestiegen ist. Ein nicht verfügbarer Preis oder ein getrenntes EV löst es nie aus. Unabhängig von „EV bei negativem Preis automatisch vollladen“. Erfordert die geplante EV-Last.",
+          "hsem_ev_second_cheap_price_charge_max_price": "Importpreis, bei oder unter dem das EV sofort mit voller Leistung lädt. Er wird mit dem Wert des konfigurierten Importpreis-Sensors in derselben Einheit verglichen (zum Beispiel 0,50 für 0,50 DKK/kWh). Kann negativ sein."
         },
         "description": "Konfiguriere die Einstellungen für das zweite EV-Ladegerät für HSEM.",
         "title": "Einstellungen für zweites EV-Ladegerät (Optional)"
@@ -1269,6 +1285,9 @@
       "ev_second_min_soc_charge": {
         "name": "EV Unter Mindest-SoC laden"
       },
+      "ev_second_cheap_price_charge": {
+        "name": "EV Bei günstigem Preis laden"
+      },
       "ml_consumption": {
         "name": "ML-Verbrauchsprognose"
       },
@@ -1283,6 +1302,9 @@
       },
       "ev_min_soc_charge": {
         "name": "EV Unter Mindest-SoC laden"
+      },
+      "ev_cheap_price_charge": {
+        "name": "EV Bei günstigem Preis laden"
       }
     },
     "select": {
@@ -1311,6 +1333,12 @@
       },
       "ev_second_min_soc_charge_soc": {
         "name": "EV Mindest-SoC"
+      },
+      "ev_cheap_price_charge_max_price": {
+        "name": "EV Grenze für günstigen Preis"
+      },
+      "ev_second_cheap_price_charge_max_price": {
+        "name": "EV Grenze für günstigen Preis"
       }
     },
     "time": {

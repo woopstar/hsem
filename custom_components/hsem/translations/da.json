@@ -142,7 +142,9 @@
           "hsem_ev_auto_full_negative_price": "Auto-Fuld EV ved negativ pris",
           "hsem_ev_past_target_confidence_factor": "EV opladning ud over mål-SoC - Konfidensfaktor (Avanceret)",
           "hsem_ev_min_soc_charge_enabled": "Oplad straks under minimum-SoC",
-          "hsem_ev_min_soc_charge_soc": "Minimum-SoC (%)"
+          "hsem_ev_min_soc_charge_soc": "Minimum-SoC (%)",
+          "hsem_ev_cheap_price_charge_enabled": "Oplad straks ved eller under en pris",
+          "hsem_ev_cheap_price_charge_max_price": "Maksimal importpris for straksopladning"
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Aktiver denne mulighed, hvis du vil tillade systemet at fortsætte opladningen af EV-batteriet, selv efter det har nået mål-ladetilstanden (SoC).",
@@ -157,7 +159,9 @@
           "hsem_ev_auto_full_negative_price": "Når aktiveret, sættes elbilen automatisk til fuld opladningseffekt, når elprisen er nul eller negativ. Det tilsidesætter kun den aktuelle periode, også under et hold på grund af belastningsprognosen. Normal smart opladning genoptages i første cyklus, efter at prisen er steget over nul. En utilgængelig pris udløser det aldrig.",
           "hsem_ev_past_target_confidence_factor": "Konfidensmultiplikator (0.0-1.0) der anvendes på værdien af undgået fremtidig import når EV'en oplades ud over sin mål-SoC. Lavere værdier gør EV'en mindre konkurrencedygtig mod eksport af overskuds-PV, for at tage højde for usikkerhed om, om EV'en faktisk vil have brug for den ekstra energi før næste opladning. Standard 0.9.",
           "hsem_ev_min_soc_charge_enabled": "Når aktiveret, oplader HSEM elbilen med fuld ladeeffekt, så snart dens SoC er under minimum-SoC, uanset pris, deadline eller kontakten for smart opladning. Normal smart opladning genoptages, når SoC når minimum. En ukendt SoC eller en frakoblet elbil udløser det aldrig. Kræver planlagt EV-belastning.",
-          "hsem_ev_min_soc_charge_soc": "SoC, under hvilken elbilen straks oplades med fuld effekt, når opladning under minimum-SoC er aktiveret."
+          "hsem_ev_min_soc_charge_soc": "SoC, under hvilken elbilen straks oplades med fuld effekt, når opladning under minimum-SoC er aktiveret.",
+          "hsem_ev_cheap_price_charge_enabled": "Når aktiveret, oplader HSEM elbilen med fuld ladeeffekt i hver periode, hvor den aktuelle importpris er lig med eller under den maksimale pris, uanset deadline, mål-SoC eller kontakten for smart opladning. HSEM har ingen SoC-grænse, så bilens egen ladegrænse gælder. Det stopper i første cyklus, efter at prisen er steget over maksimum. En utilgængelig pris eller en frakoblet elbil udløser det aldrig. Adskilt fra Auto-Fuld ved negativ pris. Kræver planlagt EV-belastning.",
+          "hsem_ev_cheap_price_charge_max_price": "Importpris, ved eller under hvilken elbilen straks oplades med fuld effekt. Den sammenlignes med værdien fra den konfigurerede importprissensor i samme enhed (f.eks. 0,50 for 0,50 DKK/kWh). Kan være negativ."
         },
         "description": "Konfigurer EV-laderindstillinger for HSEM.",
         "title": "EV-laderindstillinger (Valgfri)"
@@ -173,7 +177,9 @@
           "hsem_ev_second_soc": "Anden EV ladetilstand (SoC) sensor",
           "hsem_ev_second_past_target_confidence_factor": "Anden EV opladning ud over mål-SoC - Konfidensfaktor (Avanceret)",
           "hsem_ev_second_min_soc_charge_enabled": "Oplad straks under minimum-SoC for anden EV",
-          "hsem_ev_second_min_soc_charge_soc": "Minimum-SoC for anden EV (%)"
+          "hsem_ev_second_min_soc_charge_soc": "Minimum-SoC for anden EV (%)",
+          "hsem_ev_second_cheap_price_charge_enabled": "Oplad straks ved eller under en pris for anden EV",
+          "hsem_ev_second_cheap_price_charge_max_price": "Maksimal importpris for straksopladning for anden EV"
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Aktiver denne mulighed, hvis du vil tillade systemet at fortsætte opladningen af EV-batteriet, selv efter det har nået mål-ladetilstanden (SoC).",
@@ -185,7 +191,9 @@
           "hsem_ev_second_soc": "Vælg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri.",
           "hsem_ev_second_past_target_confidence_factor": "Konfidensmultiplikator (0.0-1.0) der anvendes på værdien af undgået fremtidig import når den anden EV oplades ud over sin mål-SoC. Lavere værdier gør EV'en mindre konkurrencedygtig mod eksport af overskuds-PV, for at tage højde for usikkerhed om, om EV'en faktisk vil have brug for den ekstra energi før næste opladning. Standard 0.9.",
           "hsem_ev_second_min_soc_charge_enabled": "Når aktiveret, oplader HSEM elbilen med fuld ladeeffekt, så snart dens SoC er under minimum-SoC, uanset pris, deadline eller kontakten for smart opladning. Normal smart opladning genoptages, når SoC når minimum. En ukendt SoC eller en frakoblet elbil udløser det aldrig. Kræver planlagt EV-belastning.",
-          "hsem_ev_second_min_soc_charge_soc": "SoC, under hvilken elbilen straks oplades med fuld effekt, når opladning under minimum-SoC er aktiveret."
+          "hsem_ev_second_min_soc_charge_soc": "SoC, under hvilken elbilen straks oplades med fuld effekt, når opladning under minimum-SoC er aktiveret.",
+          "hsem_ev_second_cheap_price_charge_enabled": "Når aktiveret, oplader HSEM elbilen med fuld ladeeffekt i hver periode, hvor den aktuelle importpris er lig med eller under den maksimale pris, uanset deadline, mål-SoC eller kontakten for smart opladning. HSEM har ingen SoC-grænse, så bilens egen ladegrænse gælder. Det stopper i første cyklus, efter at prisen er steget over maksimum. En utilgængelig pris eller en frakoblet elbil udløser det aldrig. Adskilt fra Auto-Fuld ved negativ pris. Kræver planlagt EV-belastning.",
+          "hsem_ev_second_cheap_price_charge_max_price": "Importpris, ved eller under hvilken elbilen straks oplades med fuld effekt. Den sammenlignes med værdien fra den konfigurerede importprissensor i samme enhed (f.eks. 0,50 for 0,50 DKK/kWh). Kan være negativ."
         },
         "description": "Konfigurer anden EV-laderindstillinger for HSEM.",
         "title": "Anden EV-laderindstillinger (Valgfri)"
@@ -649,7 +657,9 @@
           "hsem_ev_auto_full_negative_price": "Auto-Fuld EV ved negativ pris",
           "hsem_ev_past_target_confidence_factor": "EV opladning ud over mål-SoC - Konfidensfaktor (Avanceret)",
           "hsem_ev_min_soc_charge_enabled": "Oplad straks under minimum-SoC",
-          "hsem_ev_min_soc_charge_soc": "Minimum-SoC (%)"
+          "hsem_ev_min_soc_charge_soc": "Minimum-SoC (%)",
+          "hsem_ev_cheap_price_charge_enabled": "Oplad straks ved eller under en pris",
+          "hsem_ev_cheap_price_charge_max_price": "Maksimal importpris for straksopladning"
         },
         "data_description": {
           "hsem_ev_allow_charge_past_target_soc": "Aktiver denne mulighed, hvis du vil tillade systemet at fortsætte opladningen af EV-batteriet, selv efter det har nået mål-ladetilstanden (SoC).",
@@ -664,7 +674,9 @@
           "hsem_ev_auto_full_negative_price": "Når aktiveret, sættes elbilen automatisk til fuld opladningseffekt, når elprisen er nul eller negativ. Det tilsidesætter kun den aktuelle periode, også under et hold på grund af belastningsprognosen. Normal smart opladning genoptages i første cyklus, efter at prisen er steget over nul. En utilgængelig pris udløser det aldrig.",
           "hsem_ev_past_target_confidence_factor": "Konfidensmultiplikator (0.0-1.0) der anvendes på værdien af undgået fremtidig import når EV'en oplades ud over sin mål-SoC. Lavere værdier gør EV'en mindre konkurrencedygtig mod eksport af overskuds-PV, for at tage højde for usikkerhed om, om EV'en faktisk vil have brug for den ekstra energi før næste opladning. Standard 0.9.",
           "hsem_ev_min_soc_charge_enabled": "Når aktiveret, oplader HSEM elbilen med fuld ladeeffekt, så snart dens SoC er under minimum-SoC, uanset pris, deadline eller kontakten for smart opladning. Normal smart opladning genoptages, når SoC når minimum. En ukendt SoC eller en frakoblet elbil udløser det aldrig. Kræver planlagt EV-belastning.",
-          "hsem_ev_min_soc_charge_soc": "SoC, under hvilken elbilen straks oplades med fuld effekt, når opladning under minimum-SoC er aktiveret."
+          "hsem_ev_min_soc_charge_soc": "SoC, under hvilken elbilen straks oplades med fuld effekt, når opladning under minimum-SoC er aktiveret.",
+          "hsem_ev_cheap_price_charge_enabled": "Når aktiveret, oplader HSEM elbilen med fuld ladeeffekt i hver periode, hvor den aktuelle importpris er lig med eller under den maksimale pris, uanset deadline, mål-SoC eller kontakten for smart opladning. HSEM har ingen SoC-grænse, så bilens egen ladegrænse gælder. Det stopper i første cyklus, efter at prisen er steget over maksimum. En utilgængelig pris eller en frakoblet elbil udløser det aldrig. Adskilt fra Auto-Fuld ved negativ pris. Kræver planlagt EV-belastning.",
+          "hsem_ev_cheap_price_charge_max_price": "Importpris, ved eller under hvilken elbilen straks oplades med fuld effekt. Den sammenlignes med værdien fra den konfigurerede importprissensor i samme enhed (f.eks. 0,50 for 0,50 DKK/kWh). Kan være negativ."
         },
         "description": "Konfigurer EV-laderindstillinger for HSEM.",
         "title": "EV-laderindstillinger (Valgfri)"
@@ -680,7 +692,9 @@
           "hsem_ev_second_soc": "Anden EV ladetilstand (SoC) sensor",
           "hsem_ev_second_past_target_confidence_factor": "Anden EV opladning ud over mål-SoC - Konfidensfaktor (Avanceret)",
           "hsem_ev_second_min_soc_charge_enabled": "Oplad straks under minimum-SoC for anden EV",
-          "hsem_ev_second_min_soc_charge_soc": "Minimum-SoC for anden EV (%)"
+          "hsem_ev_second_min_soc_charge_soc": "Minimum-SoC for anden EV (%)",
+          "hsem_ev_second_cheap_price_charge_enabled": "Oplad straks ved eller under en pris for anden EV",
+          "hsem_ev_second_cheap_price_charge_max_price": "Maksimal importpris for straksopladning for anden EV"
         },
         "data_description": {
           "hsem_ev_second_allow_charge_past_target_soc": "Aktiver denne mulighed, hvis du vil tillade systemet at fortsætte opladningen af EV-batteriet, selv efter det har nået mål-ladetilstanden (SoC).",
@@ -692,7 +706,9 @@
           "hsem_ev_second_soc": "Vælg den sensor, der leverer den aktuelle ladetilstand (SoC) for dit EV-batteri.",
           "hsem_ev_second_past_target_confidence_factor": "Konfidensmultiplikator (0.0-1.0) der anvendes på værdien af undgået fremtidig import når den anden EV oplades ud over sin mål-SoC. Lavere værdier gør EV'en mindre konkurrencedygtig mod eksport af overskuds-PV, for at tage højde for usikkerhed om, om EV'en faktisk vil have brug for den ekstra energi før næste opladning. Standard 0.9.",
           "hsem_ev_second_min_soc_charge_enabled": "Når aktiveret, oplader HSEM elbilen med fuld ladeeffekt, så snart dens SoC er under minimum-SoC, uanset pris, deadline eller kontakten for smart opladning. Normal smart opladning genoptages, når SoC når minimum. En ukendt SoC eller en frakoblet elbil udløser det aldrig. Kræver planlagt EV-belastning.",
-          "hsem_ev_second_min_soc_charge_soc": "SoC, under hvilken elbilen straks oplades med fuld effekt, når opladning under minimum-SoC er aktiveret."
+          "hsem_ev_second_min_soc_charge_soc": "SoC, under hvilken elbilen straks oplades med fuld effekt, når opladning under minimum-SoC er aktiveret.",
+          "hsem_ev_second_cheap_price_charge_enabled": "Når aktiveret, oplader HSEM elbilen med fuld ladeeffekt i hver periode, hvor den aktuelle importpris er lig med eller under den maksimale pris, uanset deadline, mål-SoC eller kontakten for smart opladning. HSEM har ingen SoC-grænse, så bilens egen ladegrænse gælder. Det stopper i første cyklus, efter at prisen er steget over maksimum. En utilgængelig pris eller en frakoblet elbil udløser det aldrig. Adskilt fra Auto-Fuld ved negativ pris. Kræver planlagt EV-belastning.",
+          "hsem_ev_second_cheap_price_charge_max_price": "Importpris, ved eller under hvilken elbilen straks oplades med fuld effekt. Den sammenlignes med værdien fra den konfigurerede importprissensor i samme enhed (f.eks. 0,50 for 0,50 DKK/kWh). Kan være negativ."
         },
         "description": "Konfigurer anden EV-laderindstillinger for HSEM.",
         "title": "Anden EV-laderindstillinger (Valgfri)"
@@ -1048,6 +1064,9 @@
       "ev_second_min_soc_charge": {
         "name": "EV Oplad under minimum-SoC"
       },
+      "ev_second_cheap_price_charge": {
+        "name": "EV Oplad ved billig pris"
+      },
       "ml_consumption": {
         "name": "ML-forbrugsforudsigelse"
       },
@@ -1062,6 +1081,9 @@
       },
       "ev_min_soc_charge": {
         "name": "EV Oplad under minimum-SoC"
+      },
+      "ev_cheap_price_charge": {
+        "name": "EV Oplad ved billig pris"
       }
     },
     "select": {
@@ -1090,6 +1112,12 @@
       },
       "ev_second_min_soc_charge_soc": {
         "name": "EV Minimum-SoC"
+      },
+      "ev_cheap_price_charge_max_price": {
+        "name": "EV Grænse for billig pris"
+      },
+      "ev_second_cheap_price_charge_max_price": {
+        "name": "EV Grænse for billig pris"
       },
       "charge_rate_below_0": {},
       "charge_rate_0_to_5": {},

@@ -28,6 +28,9 @@ from custom_components.hsem.utils.sensornames.ev import (
     get_ev_auto_full_negative_price_switch_entity_id,
     get_ev_auto_full_negative_price_switch_key,
     get_ev_auto_full_negative_price_switch_unique_id,
+    get_ev_cheap_price_charge_switch_entity_id,
+    get_ev_cheap_price_charge_switch_key,
+    get_ev_cheap_price_charge_switch_unique_id,
     get_ev_force_charge_now_switch_entity_id,
     get_ev_force_charge_now_switch_key,
     get_ev_force_charge_now_switch_unique_id,
@@ -37,6 +40,9 @@ from custom_components.hsem.utils.sensornames.ev import (
     get_ev_min_soc_charge_switch_entity_id,
     get_ev_min_soc_charge_switch_key,
     get_ev_min_soc_charge_switch_unique_id,
+    get_ev_second_cheap_price_charge_switch_entity_id,
+    get_ev_second_cheap_price_charge_switch_key,
+    get_ev_second_cheap_price_charge_switch_unique_id,
     get_ev_second_force_charge_now_switch_entity_id,
     get_ev_second_force_charge_now_switch_key,
     get_ev_second_force_charge_now_switch_unique_id,
@@ -105,6 +111,14 @@ def build_switch_id_map(entry_id: str) -> dict[str, tuple[str, str]]:
         get_ev_second_min_soc_charge_switch_key(): (
             get_ev_second_min_soc_charge_switch_unique_id(entry_id),
             get_ev_second_min_soc_charge_switch_entity_id(),
+        ),
+        get_ev_cheap_price_charge_switch_key(): (
+            get_ev_cheap_price_charge_switch_unique_id(entry_id),
+            get_ev_cheap_price_charge_switch_entity_id(),
+        ),
+        get_ev_second_cheap_price_charge_switch_key(): (
+            get_ev_second_cheap_price_charge_switch_unique_id(entry_id),
+            get_ev_second_cheap_price_charge_switch_entity_id(),
         ),
         get_ev_second_smart_charging_switch_key(): (
             get_ev_second_smart_charging_switch_unique_id(entry_id),

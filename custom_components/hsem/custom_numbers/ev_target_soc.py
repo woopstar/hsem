@@ -38,7 +38,7 @@ class HSEMEVTargetSocNumber(HSEMEntity, NumberEntity):
     _attr_native_min_value = 1.0
     _attr_native_max_value = 100.0
     _attr_native_step = 1.0
-    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_native_unit_of_measurement: str | None = PERCENTAGE
     _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:ev-station"
 

@@ -2,7 +2,7 @@
 
 Exposes ``NumberEntity`` instances that let users adjust integration
 settings (battery charge/discharge efficiency, EV target SoC and the EV
-minimum-SoC charge threshold) from the entity page, without re-running the config/options flow.
+minimum-SoC and cheap-price charge thresholds) from the entity page, without re-running the config/options flow.
 """
 
 from homeassistant.components.number import NumberEntity, NumberEntityDescription
@@ -13,6 +13,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.hsem.custom_numbers.battery_efficiency import (
     HSEMBatteryEfficiencyNumber,
+)
+from custom_components.hsem.custom_numbers.ev_cheap_price import (
+    HSEMEVCheapPriceNumber,
 )
 from custom_components.hsem.custom_numbers.ev_target_soc import HSEMEVTargetSocNumber
 from custom_components.hsem.utils.misc import get_config_value
@@ -25,9 +28,15 @@ from custom_components.hsem.utils.sensornames.controls import (
     get_discharge_efficiency_number_unique_id,
 )
 from custom_components.hsem.utils.sensornames.ev import (
+    get_ev_cheap_price_charge_number_entity_id,
+    get_ev_cheap_price_charge_number_key,
+    get_ev_cheap_price_charge_number_unique_id,
     get_ev_min_soc_charge_number_entity_id,
     get_ev_min_soc_charge_number_key,
     get_ev_min_soc_charge_number_unique_id,
+    get_ev_second_cheap_price_charge_number_entity_id,
+    get_ev_second_cheap_price_charge_number_key,
+    get_ev_second_cheap_price_charge_number_unique_id,
     get_ev_second_min_soc_charge_number_entity_id,
     get_ev_second_min_soc_charge_number_key,
     get_ev_second_min_soc_charge_number_unique_id,
@@ -76,6 +85,16 @@ NUMBER_DESCRIPTIONS: tuple[NumberEntityDescription, ...] = (
         icon="mdi:battery-alert-variant-outline",
         translation_key="ev_second_min_soc_charge_soc",
     ),
+    NumberEntityDescription(
+        key=get_ev_cheap_price_charge_number_key(),
+        icon="mdi:cash-clock",
+        translation_key="ev_cheap_price_charge_max_price",
+    ),
+    NumberEntityDescription(
+        key=get_ev_second_cheap_price_charge_number_key(),
+        icon="mdi:cash-clock",
+        translation_key="ev_second_cheap_price_charge_max_price",
+    ),
 )
 
 
@@ -93,6 +112,12 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
         get_ev_min_soc_charge_number_key(): "hsem_ev_min_soc_charge_soc",
         get_ev_second_min_soc_charge_number_key(): (
             "hsem_ev_second_min_soc_charge_soc"
+        ),
+        get_ev_cheap_price_charge_number_key(): (
+            "hsem_ev_cheap_price_charge_max_price"
+        ),
+        get_ev_second_cheap_price_charge_number_key(): (
+            "hsem_ev_second_cheap_price_charge_max_price"
         ),
     }
 
@@ -121,27 +146,47 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             get_ev_second_min_soc_charge_number_unique_id(config_entry.entry_id),
             get_ev_second_min_soc_charge_number_entity_id(),
         ),
+        get_ev_cheap_price_charge_number_key(): (
+            get_ev_cheap_price_charge_number_unique_id(config_entry.entry_id),
+            get_ev_cheap_price_charge_number_entity_id(),
+        ),
+        get_ev_second_cheap_price_charge_number_key(): (
+            get_ev_second_cheap_price_charge_number_unique_id(config_entry.entry_id),
+            get_ev_second_cheap_price_charge_number_entity_id(),
+        ),
     }
 
-    # Per-EV SoC percentage numbers -> their default when no option is stored.
-    _ev_soc_defaults = {
+    # Per-EV option numbers -> their default when no option is stored.
+    _ev_option_defaults = {
         get_ev_target_soc_number_key(): 80.0,
         get_ev_second_target_soc_number_key(): 80.0,
         get_ev_min_soc_charge_number_key(): 20.0,
         get_ev_second_min_soc_charge_number_key(): 20.0,
+        get_ev_cheap_price_charge_number_key(): 0.0,
+        get_ev_second_cheap_price_charge_number_key(): 0.0,
     }
     _ev_second_keys = {
         get_ev_second_target_soc_number_key(),
         get_ev_second_min_soc_charge_number_key(),
+        get_ev_second_cheap_price_charge_number_key(),
+    }
+    # Price thresholds (issue #1324); every other EV option number is a SoC %.
+    _ev_price_keys = {
+        get_ev_cheap_price_charge_number_key(),
+        get_ev_second_cheap_price_charge_number_key(),
     }
 
-    # EV SoC numbers only apply when that EV's planned load (managed
+    # EV option numbers only apply when that EV's planned load (managed
     # charging) is enabled (issue #859).
     _gated_keys = {
         get_ev_target_soc_number_key(): "hsem_ev_planned_load_enabled",
         get_ev_second_target_soc_number_key(): "hsem_ev_second_planned_load_enabled",
         get_ev_min_soc_charge_number_key(): "hsem_ev_planned_load_enabled",
         get_ev_second_min_soc_charge_number_key(): (
+            "hsem_ev_second_planned_load_enabled"
+        ),
+        get_ev_cheap_price_charge_number_key(): "hsem_ev_planned_load_enabled",
+        get_ev_second_cheap_price_charge_number_key(): (
             "hsem_ev_second_planned_load_enabled"
         ),
     }
@@ -153,14 +198,19 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             get_config_value(config_entry, config_flag)
         ):
             continue
-        if description.key in _ev_soc_defaults:
+        if description.key in _ev_option_defaults:
+            number_class = (
+                HSEMEVCheapPriceNumber
+                if description.key in _ev_price_keys
+                else HSEMEVTargetSocNumber
+            )
             entities.append(
-                HSEMEVTargetSocNumber(
+                number_class(
                     hass,
                     config_entry,
                     description,
                     config_key=config_keys[description.key],
-                    default=_ev_soc_defaults[description.key],
+                    default=_ev_option_defaults[description.key],
                     unique_id=_id_map[description.key][0],
                     entity_id=_id_map[description.key][1],
                     is_second=description.key in _ev_second_keys,
