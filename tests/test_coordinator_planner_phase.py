@@ -33,6 +33,7 @@ from tests.coordinator_fixtures import make_real_coordinator
 from tests.test_coordinator_tracking_forecast import _rec
 
 _MODULE = "custom_components.hsem.coordinator_planner_phase"
+_OVERRIDES_MODULE = "custom_components.hsem.coordinator_ev_overrides"
 _SLOT = timedelta(minutes=15)
 _SLOT_START = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 _NOW = _SLOT_START + timedelta(minutes=5)
@@ -474,6 +475,19 @@ class TestWindowHysteresisDisabled:
 class TestPostPlanOverrides:
     """Overrides applied to the published plan after the planner runs."""
 
+    @staticmethod
+    def _auto_full_calls(override: MagicMock) -> list[Any]:
+        """Return the override calls that force the primary EV.
+
+        Force charge now always calls the shared override too, with both
+        ``override_*`` flags off, so only primary-forcing calls are auto-full.
+        """
+        return [
+            call
+            for call in override.call_args_list
+            if call.kwargs["override_primary"] is True
+        ]
+
     @pytest.mark.asyncio
     async def test_auto_full_ev_applies_on_non_positive_price(
         self, tmp_path: Path
@@ -482,36 +496,34 @@ class TestPostPlanOverrides:
         coordinator, _ = _coordinator(
             tmp_path, _planner_output(), {"hsem_ev_auto_full_negative_price": True}
         )
-        live = LiveState()
+        live = LiveState(import_electricity_price_available=True)
         live.import_electricity_price = -0.05
         override = MagicMock()
 
-        with patch(f"{_MODULE}.apply_current_ev_power_override", override):
+        with patch(f"{_OVERRIDES_MODULE}.apply_current_ev_power_override", override):
             await _run_phase(coordinator, live)
 
-        override.assert_called_once()
-        kwargs = override.call_args.kwargs
-        assert kwargs["override_primary"] is True
-        assert kwargs["override_second"] is False
-        assert kwargs["now"] == _NOW
+        calls = self._auto_full_calls(override)
+        assert len(calls) == 1
+        assert calls[0].kwargs["override_second"] is False
+        assert calls[0].kwargs["now"] == _NOW
 
     @pytest.mark.asyncio
-    async def test_auto_full_ev_needs_a_current_slot(self, tmp_path: Path) -> None:
-        """Without a slot containing ``now`` there is nothing to override."""
+    async def test_auto_full_ev_ignores_an_unavailable_price(
+        self, tmp_path: Path
+    ) -> None:
+        """An unavailable price reads 0.0 but never triggers auto-full (#1325)."""
         coordinator, _ = _coordinator(
             tmp_path, _planner_output(), {"hsem_ev_auto_full_negative_price": True}
         )
-        coordinator._hourly_recommendations = [
-            _rec(_SLOT_START + _SLOT, _SLOT_START + 2 * _SLOT)
-        ]
-        live = LiveState()
+        live = LiveState(import_electricity_price_available=False)
         live.import_electricity_price = 0.0
         override = MagicMock()
 
-        with patch(f"{_MODULE}.apply_current_ev_power_override", override):
+        with patch(f"{_OVERRIDES_MODULE}.apply_current_ev_power_override", override):
             await _run_phase(coordinator, live)
 
-        override.assert_not_called()
+        assert self._auto_full_calls(override) == []
 
     @pytest.mark.asyncio
     async def test_auto_full_ev_ignores_positive_prices(self, tmp_path: Path) -> None:
@@ -519,14 +531,14 @@ class TestPostPlanOverrides:
         coordinator, _ = _coordinator(
             tmp_path, _planner_output(), {"hsem_ev_auto_full_negative_price": True}
         )
-        live = LiveState()
+        live = LiveState(import_electricity_price_available=True)
         live.import_electricity_price = 0.5
         override = MagicMock()
 
-        with patch(f"{_MODULE}.apply_current_ev_power_override", override):
+        with patch(f"{_OVERRIDES_MODULE}.apply_current_ev_power_override", override):
             await _run_phase(coordinator, live)
 
-        override.assert_not_called()
+        assert self._auto_full_calls(override) == []
 
     @pytest.mark.asyncio
     async def test_unsafe_load_forecast_holds_the_current_slot(

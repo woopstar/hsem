@@ -3802,12 +3802,18 @@ charge/discharge and grid import/export motion cleared. Manual force mode remain
 higher authority, and the coordinator retries at the one-minute pending-data
 interval.
 
-The hold also clears the planned EV command, but an active EV force-charge-now
-override is applied _after_ it, both inside the planner phase and on the
-non-planner hold path (issue #1103). The forced slot then carries the charger's
-fuse-limited whole-amp nameplate (issue #1112) with coherent EV load, grid-import, and cost accounting,
-and is labelled `ev_smart_charging`. Primary-battery charge and discharge stay
-zero. The issue #900 disconnect auto-reset runs first on both paths.
+The hold also clears the planned EV command, but the runtime EV overrides are
+applied _after_ it, both inside the planner phase and on the non-planner hold
+path: force-charge-now (issue #1103) and auto-full on a negative price
+(issue #1325). Both go through `coordinator_ev_overrides.apply_force_charge_overrides`.
+The overridden slot then carries the charger's fuse-limited whole-amp nameplate
+(issue #1112) with coherent EV load, grid-import, and cost accounting, and is
+labelled `ev_smart_charging`. Primary-battery charge and discharge stay zero.
+The issue #900 disconnect auto-reset runs first on both paths.
+
+Auto-full fires for the primary EV only, and only while
+`import_electricity_price_available` is true and the live import price is
+≤ 0. An unavailable price is stored as `0.0` and must never trigger it.
 
 #### EV-only smart-charging fallback (issue #1106)
 
@@ -3832,7 +3838,8 @@ Order on the hold path:
 2. Fallback commands written through `write_ev_slot_commands()` for every
    commanded slot. The current slot is clamped to `ev_site_power_budget_w()`,
    which both EVs share.
-3. Disconnect auto-reset + force-charge-now (force wins over the fallback).
+3. Disconnect auto-reset, auto-full on a negative price, then force-charge-now
+   (both overrides win over the fallback).
 4. `_apply_ev_command_stability()` (whole-amp quantisation, deadband, fuse clamp).
 5. The current slot is labelled `ev_smart_charging` only while the final command
    is non-zero, otherwise `batteries_wait_mode`.

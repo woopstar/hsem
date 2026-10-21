@@ -16,9 +16,11 @@ import pytest
 
 from homeassistant.config_entries import ConfigEntry
 
+from custom_components.hsem.coordinator_ev_overrides import (
+    apply_current_ev_power_override,
+)
 from custom_components.hsem.coordinator_helpers import (
     LoadForecastSignature,
-    apply_current_ev_power_override,
     apply_load_forecast_hold,
     ev_site_power_budget_w,
     load_forecast_signatures_match,

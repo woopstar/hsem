@@ -12,7 +12,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
-from custom_components.hsem.coordinator_helpers import (
+from custom_components.hsem.coordinator_ev_overrides import (
     apply_force_charge_now,
     reset_force_charge_on_disconnect,
 )
