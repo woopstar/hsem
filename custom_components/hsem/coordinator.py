@@ -47,12 +47,12 @@ from custom_components.hsem.coordinator_ev_command_stability import (
 from custom_components.hsem.coordinator_ev_deadline_pacing import (
     CoordinatorEvDeadlinePacingMixin,
 )
+from custom_components.hsem.coordinator_ev_overrides import apply_force_charge_now
 from custom_components.hsem.coordinator_ev_soc_economics import (
     CoordinatorEvSoCEconomicsMixin,
 )
 from custom_components.hsem.coordinator_helpers import (
     LoadForecastSignature,
-    apply_force_charge_now,
     apply_load_forecast_hold,
     future_consumption_profile_is_nonzero,
     live_demand_contradicts_zero_profile,

@@ -180,7 +180,7 @@
           "hsem_ev_second_enabled": "Enable or disable the configuration for a second EV charger.",
           "hsem_ev_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
           "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption.",
-          "hsem_ev_auto_full_negative_price": "When enabled, the EV is automatically set to full charging power when the electricity price is zero or negative. The previous charging mode is restored when the price rises above zero.",
+          "hsem_ev_auto_full_negative_price": "When enabled, the EV is automatically set to full charging power when the electricity price is zero or negative. It overrides the current slot only, also during a load-forecast hold. Normal smart charging resumes on the first cycle after the price rises above zero. An unavailable price never triggers it.",
           "hsem_ev_past_target_confidence_factor": "Confidence multiplier (0.0-1.0) applied to the avoided-future-import valuation used when charging the EV past its target SoC. Lower values make the EV less competitive against exporting surplus PV, to account for uncertainty in whether the EV will actually need the extra energy before its next charge. Default 0.9."
         },
         "description": "Configure EV Charger settings for HSEM.",
@@ -679,7 +679,7 @@
           "hsem_ev_second_enabled": "Enable or disable the configuration for a second EV charger.",
           "hsem_ev_soc": "Select the sensor that provides the current state of charge (SoC) of your EV battery.",
           "hsem_house_power_includes_ev_charger_power": "Enable this if the house consumption power sensor already includes the EV charger power consumption.",
-          "hsem_ev_auto_full_negative_price": "When enabled, the EV is automatically set to full charging power when the electricity price is zero or negative. The previous charging mode is restored when the price rises above zero.",
+          "hsem_ev_auto_full_negative_price": "When enabled, the EV is automatically set to full charging power when the electricity price is zero or negative. It overrides the current slot only, also during a load-forecast hold. Normal smart charging resumes on the first cycle after the price rises above zero. An unavailable price never triggers it.",
           "hsem_ev_past_target_confidence_factor": "Confidence multiplier (0.0-1.0) applied to the avoided-future-import valuation used when charging the EV past its target SoC. Lower values make the EV less competitive against exporting surplus PV, to account for uncertainty in whether the EV will actually need the extra energy before its next charge. Default 0.9."
         },
         "description": "Configure EV Charger settings for HSEM.",

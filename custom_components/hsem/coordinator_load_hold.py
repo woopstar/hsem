@@ -7,16 +7,19 @@ reference are unchanged.
 
 While the hold is active the home battery stays strictly idle, but each
 managed EV on smart charging follows a grid-only EV-only fallback plan
-(issue #1106, see :mod:`~planner.ev_fallback`). Force-charge-now is applied
-on top of that (issue #1103), and command stability runs last.
+(issue #1106, see :mod:`~planner.ev_fallback`). Force-charge-now and
+auto-full on a negative price are applied on top of that (issues #1103,
+#1325), and command stability runs last.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from custom_components.hsem.coordinator_helpers import (
+from custom_components.hsem.coordinator_ev_overrides import (
     apply_force_charge_overrides,
+)
+from custom_components.hsem.coordinator_helpers import (
     apply_load_forecast_hold,
     ev_site_power_budget_w,
     write_ev_slot_commands,

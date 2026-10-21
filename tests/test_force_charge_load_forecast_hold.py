@@ -26,8 +26,10 @@ import pytest
 
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.coordinator_data import CoordinatorData
-from custom_components.hsem.coordinator_helpers import (
+from custom_components.hsem.coordinator_ev_overrides import (
     apply_force_charge_overrides,
+)
+from custom_components.hsem.coordinator_helpers import (
     apply_load_forecast_hold,
     live_demand_contradicts_zero_profile,
 )
