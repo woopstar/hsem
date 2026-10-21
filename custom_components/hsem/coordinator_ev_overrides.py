@@ -1,11 +1,11 @@
 """Current-slot EV overrides applied after the planner and the load hold.
 
-Force charge now, auto-full on a negative price and the minimum-SoC charge
-all rewrite the current slot's EV command through
+Force charge now, auto-full on a negative price, the cheap-price charge and
+the minimum-SoC charge all rewrite the current slot's EV command through
 :func:`apply_current_ev_power_override`. :func:`apply_force_charge_overrides`
 is the single entry point both the planner phase and the non-planner
 load-forecast hold call, *after* the hold, so no user override is wiped by it
-(issues #1103, #1323, #1325).
+(issues #1103, #1323, #1324, #1325).
 
 Split out of :mod:`coordinator_helpers` to keep it under the 30 KiB limit.
 """
@@ -295,6 +295,105 @@ def apply_negative_price_auto_full(
     )
 
 
+def _ev_override_blocked(
+    config_entry: ConfigEntry, live: LiveState, *, is_second: bool
+) -> str | None:
+    """Return why an automatic per-EV override may not fire, or ``None``.
+
+    The minimum-SoC and cheap-price overrides need the planned-load feature,
+    which supplies the charger nameplate they command, and never energise an
+    explicitly disconnected EV.
+    """
+    prefix = "hsem_ev_second" if is_second else "hsem_ev"
+    if not bool(get_config_value(config_entry, f"{prefix}_planned_load_enabled")):
+        return "planned load is disabled"
+    if (live.ev_second if is_second else live.ev).is_connected is False:
+        return "the EV is disconnected"
+    return None
+
+
+def _override_idle(label: str, override: str, reason: str) -> bool:
+    """Log at debug level why an automatic override did not fire; return False."""
+    async_log("debug", "[ev] %s %s idle: %s.", label, override, reason)
+    return False
+
+
+def _cheap_price_charge_due(
+    config_entry: ConfigEntry, live: LiveState, *, is_second: bool
+) -> bool:
+    """Return whether the import price is at or below one EV's enabled threshold.
+
+    Never fires on an unavailable price, which the state collector stores as
+    ``0.0`` (issue #1325).
+    """
+    prefix = "hsem_ev_second" if is_second else "hsem_ev"
+    if not bool(get_config_value(config_entry, f"{prefix}_cheap_price_charge_enabled")):
+        return False
+    label = "EV2" if is_second else "EV1"
+    override = "cheap-price charge"
+    blocked = _ev_override_blocked(config_entry, live, is_second=is_second)
+    if blocked is not None:
+        return _override_idle(label, override, blocked)
+    price = live.import_electricity_price
+    if not live.import_electricity_price_available or not math.isfinite(price):
+        return _override_idle(label, override, "the import price is unavailable")
+    threshold = convert_to_float(
+        get_config_value(config_entry, f"{prefix}_cheap_price_charge_max_price")
+    )
+    if threshold is None or not math.isfinite(threshold):
+        return _override_idle(label, override, "no threshold is set")
+    if price > threshold:
+        return _override_idle(
+            label, override, f"price {price:.4f} is above {threshold:.4f}"
+        )
+    async_log(
+        "debug",
+        "[ev] %s cheap-price charge: price %.4f is at or below %.4f.",
+        label,
+        price,
+        threshold,
+    )
+    return True
+
+
+def apply_cheap_price_charge(
+    *,
+    config_entry: ConfigEntry,
+    hourly_recommendations: list[HourlyRecommendation],
+    ev_plan: EVChargingPlan | None,
+    ev_second_plan: EVChargingPlan | None,
+    now: datetime,
+    live: LiveState,
+) -> None:
+    """Charge each EV at full power while the import price is cheap enough.
+
+    Applies ``hsem_ev_cheap_price_charge_enabled`` /
+    ``hsem_ev_cheap_price_charge_max_price`` and the second-EV equivalents
+    (issue #1324). Separate from auto-full: the threshold is the user's own,
+    normally positive, and it applies to either EV. There is no SoC cap, so
+    the car's own charge limit ends the session; the override stops on the
+    first cycle the price rises above the threshold.
+
+    Args:
+        config_entry: The HSEM config entry (to read the options).
+        hourly_recommendations: The list of hourly recommendations to modify.
+        ev_plan: The primary EV charging plan (may be ``None``).
+        ev_second_plan: The second EV charging plan (may be ``None``).
+        now: Current time (timezone-aware), used to locate the current slot.
+        live: Live state supplying the import price and each EV's connection.
+    """
+    apply_current_ev_power_override(
+        config_entry=config_entry,
+        hourly_recommendations=hourly_recommendations,
+        ev_plan=ev_plan,
+        ev_second_plan=ev_second_plan,
+        now=now,
+        override_primary=_cheap_price_charge_due(config_entry, live, is_second=False),
+        override_second=_cheap_price_charge_due(config_entry, live, is_second=True),
+        live=live,
+    )
+
+
 def _min_soc_charge_due(
     config_entry: ConfigEntry, live: LiveState, *, is_second: bool
 ) -> bool:
@@ -308,24 +407,22 @@ def _min_soc_charge_due(
     if not bool(get_config_value(config_entry, f"{prefix}_min_soc_charge_enabled")):
         return False
     label = "EV2" if is_second else "EV1"
-    reason: str | None = None
+    override = "minimum-SoC charge"
+    blocked = _ev_override_blocked(config_entry, live, is_second=is_second)
+    if blocked is not None:
+        return _override_idle(label, override, blocked)
     soc = live.ev_planning_soc_pct(is_second=is_second)
+    if soc is None or not math.isfinite(soc):
+        return _override_idle(label, override, "the SoC is unknown")
     threshold = convert_to_float(
         get_config_value(config_entry, f"{prefix}_min_soc_charge_soc")
     )
-    if not bool(get_config_value(config_entry, f"{prefix}_planned_load_enabled")):
-        reason = "planned load is disabled"
-    elif (live.ev_second if is_second else live.ev).is_connected is False:
-        reason = "the EV is disconnected"
-    elif soc is None or not math.isfinite(soc):
-        reason = "the SoC is unknown"
-    elif threshold is None:
-        reason = "no threshold is set"
-    elif soc >= threshold:
-        reason = f"SoC {soc:.1f} % is at or above {threshold:.0f} %"
-    if reason is not None:
-        async_log("debug", "[ev] %s minimum-SoC charge idle: %s.", label, reason)
-        return False
+    if threshold is None:
+        return _override_idle(label, override, "no threshold is set")
+    if soc >= threshold:
+        return _override_idle(
+            label, override, f"SoC {soc:.1f} % is at or above {threshold:.0f} %"
+        )
     async_log(
         "debug",
         "[ev] %s minimum-SoC charge: SoC %.1f %% is below %.0f %%.",
@@ -388,9 +485,9 @@ def apply_force_charge_overrides(
     """Auto-reset force-charge-now on disconnect, then apply the overrides.
 
     Canonical entry point for both the planner phase and the load-forecast
-    hold path. Force charge, auto-full and the minimum-SoC charge are
-    explicit user overrides, so they must run *after*
-    :func:`apply_load_forecast_hold` (issues #1103, #1323, #1325): the strict
+    hold path. Force charge, auto-full, the cheap-price charge and the
+    minimum-SoC charge are explicit user overrides, so they must run *after*
+    :func:`apply_load_forecast_hold` (issues #1103, #1323, #1324, #1325): the strict
     hold clears primary-storage motion and the planned EV command, and this
     then re-publishes only the overridden EV commands. The home battery stays
     held — its charge/discharge energy remains zero.
@@ -418,6 +515,14 @@ def apply_force_charge_overrides(
             ev_label=ev_label,
         )
     apply_negative_price_auto_full(
+        config_entry=config_entry,
+        hourly_recommendations=hourly_recommendations,
+        ev_plan=ev_plan,
+        ev_second_plan=ev_second_plan,
+        now=now,
+        live=live,
+    )
+    apply_cheap_price_charge(
         config_entry=config_entry,
         hourly_recommendations=hourly_recommendations,
         ev_plan=ev_plan,

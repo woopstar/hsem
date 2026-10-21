@@ -1275,24 +1275,29 @@ primary EV, `hsem_ev_second_planned_load_enabled` for the second EV
 | `switch.hsem_ev_auto_full_negative_price`          | Auto-Full EV on negative price                     |
 | `switch.hsem_ev_min_soc_charge_enabled`            | Charge EV immediately below its minimum SoC        |
 | `switch.hsem_ev_second_min_soc_charge_enabled`     | Charge second EV immediately below its minimum SoC |
+| `switch.hsem_ev_cheap_price_charge_enabled`        | Charge EV immediately at or below a price          |
+| `switch.hsem_ev_second_cheap_price_charge_enabled` | Charge second EV immediately at or below a price   |
 
 ---
 
 ## Number entities
 
-`number.hsem_ev_target_soc` and `number.hsem_ev_min_soc_charge_soc` are only
-created when `hsem_ev_planned_load_enabled` is set; the `number.hsem_ev_second_*`
+`number.hsem_ev_target_soc`, `number.hsem_ev_min_soc_charge_soc` and
+`number.hsem_ev_cheap_price_charge_max_price` are only created when
+`hsem_ev_planned_load_enabled` is set; the `number.hsem_ev_second_*`
 versions only when `hsem_ev_second_planned_load_enabled` is set (issue #859). The battery
 efficiency numbers are always created.
 
-| Entity                                     | Purpose                                              | Range   |
-| ------------------------------------------ | ---------------------------------------------------- | ------- |
-| `number.hsem_battery_charge_efficiency`    | Battery charge efficiency                            | 1–100 % |
-| `number.hsem_battery_discharge_efficiency` | Battery discharge efficiency                         | 1–100 % |
-| `number.hsem_ev_target_soc`                | Primary EV target SoC                                | 0–100 % |
-| `number.hsem_ev_second_target_soc`         | Second EV target SoC                                 | 0–100 % |
-| `number.hsem_ev_min_soc_charge_soc`        | Primary EV minimum SoC (charge immediately below it) | 1–100 % |
-| `number.hsem_ev_second_min_soc_charge_soc` | Second EV minimum SoC (charge immediately below it)  | 1–100 % |
+| Entity                                               | Purpose                                                 | Range     |
+| ---------------------------------------------------- | ------------------------------------------------------- | --------- |
+| `number.hsem_battery_charge_efficiency`              | Battery charge efficiency                               | 1–100 %   |
+| `number.hsem_battery_discharge_efficiency`           | Battery discharge efficiency                            | 1–100 %   |
+| `number.hsem_ev_target_soc`                          | Primary EV target SoC                                   | 0–100 %   |
+| `number.hsem_ev_second_target_soc`                   | Second EV target SoC                                    | 0–100 %   |
+| `number.hsem_ev_min_soc_charge_soc`                  | Primary EV minimum SoC (charge immediately below it)    | 1–100 %   |
+| `number.hsem_ev_second_min_soc_charge_soc`           | Second EV minimum SoC (charge immediately below it)     | 1–100 %   |
+| `number.hsem_ev_cheap_price_charge_max_price`        | Primary EV cheap-price threshold (import sensor's unit) | −10 to 10 |
+| `number.hsem_ev_second_cheap_price_charge_max_price` | Second EV cheap-price threshold (import sensor's unit)  | −10 to 10 |
 
 ---
 

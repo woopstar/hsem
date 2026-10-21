@@ -241,6 +241,7 @@ flowchart TD
 | Past-target confidence factor | `hsem_ev_past_target_confidence_factor`          | Discount (0.0–1.0, default 0.9) applied to the avoided-future-import valuation                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Base load includes EV         | `hsem_house_power_includes_ev_charger_power`     | CT clamp position                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Charge below minimum SoC      | `switch.hsem_ev_min_soc_charge_enabled`          | Charge at full power while SoC < `number.hsem_ev_min_soc_charge_soc`                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Charge at a cheap price       | `switch.hsem_ev_cheap_price_charge_enabled`      | Charge at full power while import price ≤ `number.hsem_ev_cheap_price_charge_max_price`                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | Auto-Full on negative price   | `hsem_ev_auto_full_negative_price`               | Max-charge EV when price ≤ 0                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ### Auto-Full EV on negative electricity prices
@@ -276,6 +277,50 @@ can be profitable or free.
   `switch.hsem_ev_auto_full_negative_price`.
 - No additional entities are required — it uses the import price sensor
   already configured for the planner.
+
+### Charge immediately at or below a price
+
+Smart charging charges only what the target SoC needs, in the slots the
+planner picks. To charge whenever power is cheap enough for you, enable
+`switch.hsem_ev_cheap_price_charge_enabled` (or
+`switch.hsem_ev_second_cheap_price_charge_enabled`) and set the price with
+`number.hsem_ev_cheap_price_charge_max_price` (or
+`number.hsem_ev_second_cheap_price_charge_max_price`). Both are also in the EV
+charger step of the config/options flow, and are off by default with a 0.00
+threshold (issue #1324).
+
+**The threshold is in your import price sensor's unit.** HSEM compares it with
+the current value of `hsem_import_electricity_price_sensor`, the same price the
+planner uses, so for a sensor in DKK/kWh enter `0.50` to charge at or below
+0.50 DKK/kWh. It can be negative (range −10 to 10).
+
+While the import price is **at or below** the threshold, HSEM overrides the
+current slot to the charger's fuse-limited whole-amp nameplate, like Force
+Charge Now:
+
+- **Whatever the deadline, target SoC or smart-charging switch.** There is no
+  HSEM SoC limit; the car's own charge limit ends the session.
+- **Stops when the price rises.** The override is re-evaluated every cycle, and
+  the normal plan takes over on the first cycle with a price above the
+  threshold.
+- **Never on an unavailable price** (HSEM reads an unavailable price as `0.0`,
+  which would otherwise always look cheap) and **never on an explicitly
+  disconnected EV.** Debug logging says why it did not fire.
+- **Needs the EV's planned load enabled.** The switch and number only exist
+  then, because the override commands the planned-load charger nameplate.
+- **Survives the load-forecast hold** on both the planner and the non-planner
+  hold path. The home battery stays held.
+- **Both EVs share the main-fuse headroom**, each with its own threshold.
+- **Battery protection is unchanged.** While the EV charges, the house battery
+  discharge cap is 0 W unless `hsem_ev_charger_force_max_discharge_power` (or
+  the second-EV equivalent) is enabled, so the charge comes from PV and the
+  grid, not the house battery.
+
+**How it differs from Auto-Full on a negative price.** Auto-full answers "the
+grid pays me to consume": it is fixed at a price ≤ 0 and only drives the
+primary EV. The cheap-price charge answers "power is cheap enough for me": the
+threshold is yours, normally positive, and works for either EV. Both can be on
+together; when both conditions hold the result is the same full-power command.
 
 ### Force Charge Now
 

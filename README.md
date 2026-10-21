@@ -47,6 +47,7 @@
 - **Session-aware EV demand** — treats actively-charging EV as certain demand for the next 2 hours
 - **Embedded OCPP 1.6 server** — direct EV charger control via WebSocket (Easee, Zaptec, Wallbox, etc.), one server per EV (second EV optional, separate port)
 - **Auto-Full on negative prices** — automatically charges EV at full power when electricity is free
+- **Cheap-price charge** — charges an EV immediately at full power whenever the import price is at or below a threshold you choose
 - **Minimum SoC charge** — charges an EV immediately at full power while it is below a minimum SoC you set, whatever the price
 - **Dual EV support** — independent configuration and planning for two EVs
 

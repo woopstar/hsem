@@ -286,5 +286,7 @@ def test_number_platform_exposes_only_functional_controls() -> None:
         "hsem_ev_second_target_soc",
         "hsem_ev_min_soc_charge_soc",
         "hsem_ev_second_min_soc_charge_soc",
+        "hsem_ev_cheap_price_charge_max_price",
+        "hsem_ev_second_cheap_price_charge_max_price",
     }
     assert all("charge_rate" not in key for key in keys)

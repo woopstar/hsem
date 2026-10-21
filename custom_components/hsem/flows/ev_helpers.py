@@ -24,9 +24,11 @@ from homeassistant.const import PERCENTAGE, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
+from custom_components.hsem.const import EV_CHEAP_PRICE_MAX, EV_CHEAP_PRICE_MIN
 from custom_components.hsem.utils.config_validator import (
     async_validate_entity_ids,
     merge_errors,
+    validate_price,
 )
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.misc import get_config_value
@@ -188,6 +190,34 @@ async def build_ev_charger_schema(  # NOSONAR
         }
     )
 
+    # Charge immediately at or below a price (issue #1324).
+    fields[
+        vol.Required(
+            f"{prefix}_cheap_price_charge_enabled",
+            default=get_config_value(
+                config_entry, f"{prefix}_cheap_price_charge_enabled"
+            ),
+        )
+    ] = selector({"boolean": {}})
+
+    fields[
+        vol.Required(
+            f"{prefix}_cheap_price_charge_max_price",
+            default=get_config_value(
+                config_entry, f"{prefix}_cheap_price_charge_max_price"
+            ),
+        )
+    ] = selector(
+        {
+            "number": {
+                "min": EV_CHEAP_PRICE_MIN,
+                "max": EV_CHEAP_PRICE_MAX,
+                "step": 0.01,
+                "mode": "box",
+            }
+        }
+    )
+
     if include_primary_fields:
         fields[
             vol.Required(
@@ -231,6 +261,8 @@ async def validate_ev_charger_input(
         f"{prefix}_past_target_confidence_factor",
         f"{prefix}_min_soc_charge_enabled",
         f"{prefix}_min_soc_charge_soc",
+        f"{prefix}_cheap_price_charge_enabled",
+        f"{prefix}_cheap_price_charge_max_price",
     ]
     # Auto-full on negative price is primary-EV only.
     if prefix == "hsem_ev":
@@ -268,4 +300,14 @@ async def validate_ev_charger_input(
         if ceiling is None or ceiling <= 0.0:
             coherence_errors[ceiling_key] = "discharge_power_required_when_forced"
 
-    return merge_errors(merge_errors(required_errors, entity_errors), coherence_errors)
+    price_errors = validate_price(
+        user_input,
+        f"{prefix}_cheap_price_charge_max_price",
+        min_price=EV_CHEAP_PRICE_MIN,
+        max_price=EV_CHEAP_PRICE_MAX,
+    )
+
+    return merge_errors(
+        merge_errors(required_errors, entity_errors),
+        merge_errors(coherence_errors, price_errors),
+    )

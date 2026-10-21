@@ -79,6 +79,8 @@ class TestBuildEvChargerSchema:
         assert "hsem_ev_past_target_confidence_factor" in keys
         assert "hsem_ev_min_soc_charge_enabled" in keys
         assert "hsem_ev_min_soc_charge_soc" in keys
+        assert "hsem_ev_cheap_price_charge_enabled" in keys
+        assert "hsem_ev_cheap_price_charge_max_price" in keys
 
     @pytest.mark.asyncio
     async def test_secondary_ev_schema_omits_primary_only_fields(self):
@@ -102,6 +104,8 @@ class TestBuildEvChargerSchema:
         assert "hsem_ev_second_past_target_confidence_factor" in keys
         assert "hsem_ev_second_min_soc_charge_enabled" in keys
         assert "hsem_ev_second_min_soc_charge_soc" in keys
+        assert "hsem_ev_second_cheap_price_charge_enabled" in keys
+        assert "hsem_ev_second_cheap_price_charge_max_price" in keys
 
     @pytest.mark.asyncio
     async def test_primary_schema_keys_match_original_ev_step(self):
@@ -160,6 +164,8 @@ class TestValidateEvChargerInput:
         assert errors.get("hsem_ev_past_target_confidence_factor") == "required"
         assert errors.get("hsem_ev_min_soc_charge_enabled") == "required"
         assert errors.get("hsem_ev_min_soc_charge_soc") == "required"
+        assert errors.get("hsem_ev_cheap_price_charge_enabled") == "required"
+        assert errors.get("hsem_ev_cheap_price_charge_max_price") == "required"
         assert errors.get("hsem_house_power_includes_ev_charger_power") == "required"
 
     @pytest.mark.asyncio
@@ -181,6 +187,8 @@ class TestValidateEvChargerInput:
         assert errors.get("hsem_ev_second_past_target_confidence_factor") == "required"
         assert errors.get("hsem_ev_second_min_soc_charge_enabled") == "required"
         assert errors.get("hsem_ev_second_min_soc_charge_soc") == "required"
+        assert errors.get("hsem_ev_second_cheap_price_charge_enabled") == "required"
+        assert errors.get("hsem_ev_second_cheap_price_charge_max_price") == "required"
 
     @pytest.mark.asyncio
     async def test_valid_primary_ev_input_passes(self):
@@ -198,6 +206,8 @@ class TestValidateEvChargerInput:
                 "hsem_ev_auto_full_negative_price": False,
                 "hsem_ev_min_soc_charge_enabled": False,
                 "hsem_ev_min_soc_charge_soc": 20,
+                "hsem_ev_cheap_price_charge_enabled": False,
+                "hsem_ev_cheap_price_charge_max_price": 0.5,
                 "hsem_house_power_includes_ev_charger_power": True,
             },
             prefix="hsem_ev",
@@ -291,6 +301,8 @@ class TestEvDischargePowerCoherence:
             "hsem_ev_auto_full_negative_price": False,
             "hsem_ev_min_soc_charge_enabled": False,
             "hsem_ev_min_soc_charge_soc": 20,
+            "hsem_ev_cheap_price_charge_enabled": False,
+            "hsem_ev_cheap_price_charge_max_price": 0.5,
             "hsem_house_power_includes_ev_charger_power": True,
         }
         user_input.update(overrides)
@@ -305,6 +317,8 @@ class TestEvDischargePowerCoherence:
             "hsem_ev_second_past_target_confidence_factor": 0.9,
             "hsem_ev_second_min_soc_charge_enabled": False,
             "hsem_ev_second_min_soc_charge_soc": 20,
+            "hsem_ev_second_cheap_price_charge_enabled": False,
+            "hsem_ev_second_cheap_price_charge_max_price": 0.5,
         }
         user_input.update(overrides)
         return user_input
@@ -501,3 +515,71 @@ class TestSchemaRoundTrip:
                     "hsem_ev_second_min_soc_charge_soc": threshold,
                 }
             )
+
+
+# ===========================================================================
+# ev_helpers — cheap-price charge threshold (issue #1324)
+# ===========================================================================
+
+
+class TestEvCheapPriceThreshold:
+    """The threshold is a price: -10 to 10 in the import sensor's unit."""
+
+    @staticmethod
+    def _second_input(price: object) -> dict:
+        return {
+            "hsem_ev_second_charger_max_discharge_power": 0,
+            "hsem_ev_second_charger_force_max_discharge_power": False,
+            "hsem_ev_second_allow_charge_past_target_soc": False,
+            "hsem_ev_second_past_target_confidence_factor": 0.9,
+            "hsem_ev_second_min_soc_charge_enabled": False,
+            "hsem_ev_second_min_soc_charge_soc": 20,
+            "hsem_ev_second_cheap_price_charge_enabled": True,
+            "hsem_ev_second_cheap_price_charge_max_price": price,
+        }
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("price", [-10.0, -0.05, 0.0, 0.5, 10.0])
+    async def test_prices_in_range_pass(self, price: float) -> None:
+        from custom_components.hsem.flows.ev_helpers import validate_ev_charger_input
+
+        errors = await validate_ev_charger_input(
+            _make_hass(), self._second_input(price), prefix="hsem_ev_second"
+        )
+        assert errors == {}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("price", "error"),
+        [
+            (-10.01, "price_out_of_range"),
+            (10.5, "price_out_of_range"),
+            ("cheap", "invalid_price_value"),
+        ],
+    )
+    async def test_bad_prices_are_rejected(self, price: object, error: str) -> None:
+        from custom_components.hsem.flows.ev_helpers import validate_ev_charger_input
+
+        errors = await validate_ev_charger_input(
+            _make_hass(), self._second_input(price), prefix="hsem_ev_second"
+        )
+        assert errors == {"hsem_ev_second_cheap_price_charge_max_price": error}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("prefix", ["hsem_ev", "hsem_ev_second"])
+    async def test_defaults_off_at_zero(self, prefix: str) -> None:
+        from custom_components.hsem.flows.ev_helpers import build_ev_charger_schema
+
+        schema = await build_ev_charger_schema(
+            None, prefix=prefix, include_primary_fields=prefix == "hsem_ev"
+        )
+        result = schema(
+            {
+                f"{prefix}_charger_force_max_discharge_power": False,
+                f"{prefix}_charger_max_discharge_power": 0,
+                f"{prefix}_allow_charge_past_target_soc": False,
+                f"{prefix}_past_target_confidence_factor": 0.9,
+            }
+        )
+        assert result[f"{prefix}_cheap_price_charge_enabled"] is False  # pyright: ignore[reportIndexIssue]
+        assert result[f"{prefix}_cheap_price_charge_max_price"] == pytest.approx(0.0)  # pyright: ignore[reportIndexIssue]

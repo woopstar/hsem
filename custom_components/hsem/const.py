@@ -207,7 +207,17 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_min_soc_charge_soc": 20,
     "hsem_ev_second_min_soc_charge_enabled": False,
     "hsem_ev_second_min_soc_charge_soc": 20,
+    # EV charging — charge immediately at or below a price (issue #1324)
+    "hsem_ev_cheap_price_charge_enabled": False,
+    "hsem_ev_cheap_price_charge_max_price": 0.0,
+    "hsem_ev_second_cheap_price_charge_enabled": False,
+    "hsem_ev_second_cheap_price_charge_max_price": 0.0,
 }
+
+# Inclusive bounds of the EV cheap-price charge threshold (issue #1324), in the
+# import price sensor's own unit. Shared by the config flow and number entity.
+EV_CHEAP_PRICE_MIN = -10.0
+EV_CHEAP_PRICE_MAX = 10.0
 
 # ---------------------------------------------------------------------------
 # IQR outlier detection (replaces ratio-based spike detection, issue #301)

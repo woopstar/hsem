@@ -23,9 +23,11 @@ from custom_components.hsem.utils.sensornames.controls import (
 )
 from custom_components.hsem.utils.sensornames.ev import (
     get_ev_auto_full_negative_price_switch_key,
+    get_ev_cheap_price_charge_switch_key,
     get_ev_force_charge_now_switch_key,
     get_ev_force_discharge_switch_key,
     get_ev_min_soc_charge_switch_key,
+    get_ev_second_cheap_price_charge_switch_key,
     get_ev_second_force_charge_now_switch_key,
     get_ev_second_min_soc_charge_switch_key,
     get_ev_second_smart_charging_switch_key,
@@ -91,6 +93,12 @@ SWITCH_DESCRIPTIONS: tuple[HSEMSwitchEntityDescription, ...] = (
         hsem_device=HSEMDevice.EV_PRIMARY,
     ),
     HSEMSwitchEntityDescription(
+        key=get_ev_cheap_price_charge_switch_key(),
+        icon=_ICON_EV,
+        translation_key="ev_cheap_price_charge",
+        hsem_device=HSEMDevice.EV_PRIMARY,
+    ),
+    HSEMSwitchEntityDescription(
         key=get_ev_second_smart_charging_switch_key(),
         icon=_ICON_EV,
         translation_key="ev_second_smart_charging",
@@ -106,6 +114,12 @@ SWITCH_DESCRIPTIONS: tuple[HSEMSwitchEntityDescription, ...] = (
         key=get_ev_second_min_soc_charge_switch_key(),
         icon=_ICON_EV,
         translation_key="ev_second_min_soc_charge",
+        hsem_device=HSEMDevice.EV_SECONDARY,
+    ),
+    HSEMSwitchEntityDescription(
+        key=get_ev_second_cheap_price_charge_switch_key(),
+        icon=_ICON_EV,
+        translation_key="ev_second_cheap_price_charge",
         hsem_device=HSEMDevice.EV_SECONDARY,
     ),
     HSEMSwitchEntityDescription(
@@ -135,11 +149,13 @@ _EV_SWITCH_KEYS = {
     get_ev_force_charge_now_switch_key(),
     get_ev_auto_full_negative_price_switch_key(),
     get_ev_min_soc_charge_switch_key(),
+    get_ev_cheap_price_charge_switch_key(),
 }
 _EV_SECOND_SWITCH_KEYS = {
     get_ev_second_smart_charging_switch_key(),
     get_ev_second_force_charge_now_switch_key(),
     get_ev_second_min_soc_charge_switch_key(),
+    get_ev_second_cheap_price_charge_switch_key(),
 }
 
 
