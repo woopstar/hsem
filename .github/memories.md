@@ -78,7 +78,6 @@ cycle are durable; stale generations must not publish.
 | `capacity_learner.py`   | Battery usable capacity auto-detection from BMS readings                                                             |
 | `prediction_tracker.py` | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                                      |
 | `weekday_profile.py`    | Weekday/weekend split house load EWMA profiles                                                                       |
-| `ev_mode_resolver.py`   | Auto-Full EV charging on negative electricity prices                                                                 |
 | `ev_accounting.py`      | Raw CT versus per-EV normalized-baseline accounting helper                                                           |
 | `unit_normalize.py`     | Generic sensor unit normalization via HA's `unit_conversion` converters (issue #945)                                 |
 
@@ -931,8 +930,14 @@ same-cycle large drop.
 EV that becomes an enforced 0 A OCPP profile. Force-charge-now is a user
 override, so it must always be applied **after** `apply_load_forecast_hold()`.
 Use `coordinator_helpers.apply_force_charge_overrides(...)`: it runs the
-issue #900 disconnect auto-reset and then `apply_force_charge_now()`. It is
-called from both hold sites:
+issue #900 disconnect auto-reset, then auto-full on a negative price
+(`apply_negative_price_auto_full`, issue #1325), then `apply_force_charge_now()`.
+Any new current-slot EV override belongs in this entry point too, never before
+the hold. A price-driven override must also check
+`live.import_electricity_price_available`: the state collector stores `0.0`
+for an unavailable price, so `live.import_electricity_price <= x` alone fires
+on a missing sensor (issue #1325). The entry point is called from both hold
+sites:
 
 - `coordinator_planner_phase.py` step 8d, after the 8c load-forecast hold and
   before 8e command stability.

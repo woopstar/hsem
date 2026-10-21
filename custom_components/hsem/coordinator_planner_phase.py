@@ -25,7 +25,6 @@ from custom_components.hsem.coordinator_dynamic_floor import (
 from custom_components.hsem.coordinator_helpers import (
     LoadForecastSignature,
     _StaleUpdateCycle,
-    apply_current_ev_power_override,
     apply_force_charge_overrides,
     apply_load_forecast_hold,
     live_demand_contradicts_zero_profile,
@@ -272,31 +271,6 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
         # Apply planner output to hourly recommendations.
         self._apply_planner_output(planner_output)
 
-        # 8b. Auto-Full EV on negative price override (issue #609).
-        auto_full_enabled = bool(
-            get_config_value(self._config_entry, "hsem_ev_auto_full_negative_price")
-        )
-        if auto_full_enabled and live.import_electricity_price <= 0.0:
-            now_slot = next(
-                (
-                    r
-                    for r in self._hourly_recommendations
-                    if slot_contains(r.start, r.end, now)
-                ),
-                None,
-            )
-            if now_slot is not None:
-                apply_current_ev_power_override(
-                    config_entry=self._config_entry,
-                    hourly_recommendations=self._hourly_recommendations,
-                    ev_plan=self._ev_charging_plan,
-                    ev_second_plan=self._ev_second_charging_plan,
-                    now=now,
-                    override_primary=True,
-                    override_second=False,
-                    live=live,
-                )
-
         # 8c. Load-forecast fail-closed hold.
         if not consumption_ok or live_demand_contradicts_zero_profile(
             self._hourly_recommendations, live, now
@@ -315,8 +289,9 @@ class CoordinatorPlannerPhaseMixin(CoordinatorSharedState):
                     consumption_ok,
                 )
 
-        # 8d. Disconnect auto-reset (issue #900) + force-charge-now. Runs after
-        # the hold so the user override survives it (issue #1103).
+        # 8d. Disconnect auto-reset (issue #900), auto-full on a negative price
+        # and force-charge-now. Runs after the hold so the user overrides
+        # survive it (issues #1103, #1325).
         apply_force_charge_overrides(
             hass=self.hass,
             config_entry=self._config_entry,

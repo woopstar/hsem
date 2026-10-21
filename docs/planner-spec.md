@@ -3077,12 +3077,18 @@ charge/discharge and grid import/export motion cleared. Manual force mode remain
 higher authority, and the coordinator retries at the one-minute pending-data
 interval.
 
-The hold also clears the planned EV command, but an active EV force-charge-now
-override is applied _after_ it, both inside the planner phase and on the
-non-planner hold path (issue #1103). The forced slot then carries the charger's
-fuse-limited maximum with coherent EV load, grid-import, and cost accounting,
-and is labelled `ev_smart_charging`. Primary-battery charge and discharge stay
-zero. The issue #900 disconnect auto-reset runs first on both paths.
+The hold also clears the planned EV command, but the runtime EV overrides are
+applied _after_ it, both inside the planner phase and on the non-planner hold
+path: force-charge-now (issue #1103) and auto-full on a negative price
+(issue #1325). Both go through `coordinator_helpers.apply_force_charge_overrides`.
+The overridden slot then carries the charger's fuse-limited maximum with coherent
+EV load, grid-import, and cost accounting, and is labelled `ev_smart_charging`.
+Primary-battery charge and discharge stay zero. The issue #900 disconnect
+auto-reset runs first on both paths.
+
+Auto-full fires for the primary EV only, and only while
+`import_electricity_price_available` is true and the live import price is
+≤ 0. An unavailable price is stored as `0.0` and must never trigger it.
 
 The accepted-plan load signature contains each future slot's start and all five
 finite load values. Recovery or a material correction forces a fresh same-slot
