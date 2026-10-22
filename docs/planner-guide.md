@@ -309,17 +309,24 @@ cycle — today's live values are still the latest single reading per cycle.
 
 ### Schedule windows
 
-| Field               | Type                         | Description                          |
-| ------------------- | ---------------------------- | ------------------------------------ |
-| `battery_schedules` | `list[BatteryScheduleInput]` | Up to three charge/discharge windows |
+| Field               | Type                         | Description                   |
+| ------------------- | ---------------------------- | ----------------------------- |
+| `battery_schedules` | `list[BatteryScheduleInput]` | Up to three discharge windows |
 
 Each `BatteryScheduleInput` defines:
 
 - `enabled` — whether this window is active
 - `start` / `end` — wall-clock time range (`datetime.time`)
-- `min_price_difference` — minimum import/export spread required to activate (local currency/kWh)
 
-HSEM charges the battery **before** a discharge window so it is full when high prices arrive.
+The windows label slots in the planner's pre-planning (layer 1 below): discharge inside each
+window, and charging before it. Since MILP-only mode (#483) those labels never become a plan
+that can win: the `passive` candidate clears them and the MILP ignores them. They still set
+the MILP's terminal-SoC replacement price (`replacement_price_from_next_discharge()`, the
+most expensive prices in the first upcoming discharge window) and the remaining schedule
+need that the runtime resolver compares with the battery (priority 4 below). The windows
+are removed in 7.0 (#860).
+
+The pre-charge pass charges before a discharge window so the battery is full when high prices arrive.
 The pre-charge window ends at `schedule.start` and is sized to fill the battery from current SoC.
 A planning run inside `[schedule.start, schedule.end)` retains that active occurrence,
 including cross-midnight windows after midnight. Only its remaining slots contribute
@@ -480,20 +487,20 @@ recommendation it is not changed by later rules in the same layer.
 
 **Discharge schedule windows** (`apply_discharge_schedules`)
 
-| Priority | Condition                                                               | Recommendation             |
-| -------- | ----------------------------------------------------------------------- | -------------------------- |
-| 1        | Slot falls inside a configured discharge window and price spread is met | `batteries_discharge_mode` |
+| Priority | Condition                                       | Recommendation             |
+| -------- | ----------------------------------------------- | -------------------------- |
+| 1        | Slot falls inside a configured discharge window | `batteries_discharge_mode` |
 
 An in-progress occurrence remains active until its end boundary; elapsed slots
 are omitted from its capacity need while remaining slots keep the discharge label.
 
 **Charge schedule windows** (`apply_charge_schedules`) — for each discharge window, eligible pre-charge slots are filled in order:
 
-| Priority | Condition                                                             | Recommendation           |
-| -------- | --------------------------------------------------------------------- | ------------------------ |
-| 1        | Import price < 0 (paid to import)                                     | `batteries_charge_grid`  |
-| 2        | Solar surplus (`estimated_net_consumption < threshold`)               | `batteries_charge_solar` |
-| 3        | Cheapest grid hour where spread ≥ `min_price_difference + cycle_cost` | `batteries_charge_grid`  |
+| Priority | Condition                                                                                                  | Recommendation           |
+| -------- | ---------------------------------------------------------------------------------------------------------- | ------------------------ |
+| 1        | Import price < 0 (paid to import)                                                                          | `batteries_charge_grid`  |
+| 2        | Solar surplus (`estimated_net_consumption < threshold`)                                                    | `batteries_charge_solar` |
+| 3        | Cheapest grid hour where the window's average price − charge price ≥ depreciation threshold + `cycle_cost` | `batteries_charge_grid`  |
 
 **Opportunistic grid charge** (`apply_opportunistic_charge`) — outside any schedule:
 

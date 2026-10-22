@@ -19,7 +19,7 @@ HSEM is a modular, secure, and highly configurable Home Assistant integration th
 1. **Remove any previous Huawei Solar Battery Optimization Project integrations.**
 2. **Install HSEM** via HACS or manually.
 3. **Configure your sensors** for solar battery, inverter, grid, and EV charger (if present).
-4. **Set up battery schedules** in HSEM (do not use Fusion Solar app for scheduling).
+4. **Leave scheduling to HSEM**, not the Fusion Solar app. HSEM's own battery discharge schedules need no tuning; see [Battery Schedules](#battery-schedules).
 5. **Let HSEM run for at least 14 days** to collect historical data for optimal performance.
 6. **Monitor the Working Mode Sensor** for system status and recommendations.
 
@@ -31,7 +31,7 @@ HSEM is a modular, secure, and highly configurable Home Assistant integration th
 
 - **Dynamic Grid Export/Import Management** — avoids export at negative prices, forces charging at negative import prices.
 - **EV Charging Optimization** — smart TOU mode during EV charging, prevents battery drain into EV unless configured.
-- **Battery Scheduling** — up to three configurable discharge schedules with price-difference thresholds and depreciation-aware economics.
+- **Battery Discharge Schedules** — up to three windows for your usual expensive hours. The optimiser plans charging and discharging itself; see [Battery Schedules](#battery-schedules) for what the windows still do.
 - **Excess Battery Export** — automatically exports excess battery capacity when profitable, differentiating solar-charged vs grid-charged energy.
 - **Consumption Forecasting** — legacy weighted-average (1d/3d/7d/14d with IQR outlier detection) or ML ridge regression.
 - **Solar Forecast Integration** — Solcast PV forecasts for today and tomorrow.
@@ -146,11 +146,18 @@ Every update cycle, the sensor:
 
 ## Battery Schedules
 
-Define up to three discharge schedules with time windows and minimum price differences. HSEM automatically calculates required battery capacity and finds optimal charging times before each discharge.
+HSEM 6.3.x has up to three battery discharge schedules (**Configure → Battery Discharge Schedules**). They come from HSEM's original rule-based planner. HSEM 7.0 removes them.
 
-**Example:** Discharge 17:00–21:00 if the price difference exceeds your configured threshold.
+The optimiser picks the plan in almost every cycle. It decides when to charge and discharge from prices, the consumption forecast and solar, and it does not follow these windows. HSEM chooses between the optimiser's plan and a simple `passive` plan that only charges from solar surplus, and the `passive` plan ignores the windows too.
 
-> See [How to Calculate the Minimum Charging Price](https://github.com/woopstar/hsem/wiki/How-to-Calculate-the-Minimum-Charging-Price-for-a-Battery-Schedule) for battery depreciation economics.
+The windows still matter in two ways:
+
+- **The value of energy left at the end of the plan.** The optimiser values the energy still in the battery at the end of the planning horizon at the most expensive import prices in the next discharge window.
+- **A live rule.** When the battery holds more energy than the enabled windows still need, HSEM switches the current slot to `batteries_discharge_mode`, unless that slot is a planned grid charge, a planned EV charge that is running, or a profitable export at a negative import price.
+
+A schedule is a discharge window. There is no charge schedule to set: the optimiser decides when to charge.
+
+**Which windows to use:** the defaults (07:00–09:00 and 17:00–21:00) cover typical morning and evening price peaks. One window over the whole day also works: it usually needs more energy than the battery holds, so the live rule rarely fires and the optimiser stays in charge.
 
 ---
 
