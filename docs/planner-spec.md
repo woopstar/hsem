@@ -109,7 +109,7 @@ in the same layer must not change it.
 
 **Discharge schedule windows** (highest priority in layer 1):
 
-1. Slot falls inside a configured discharge window and price spread is met → `batteries_discharge_mode`
+1. Slot falls inside a configured discharge window → `batteries_discharge_mode`
 
 If the planning run occurs inside a configured window's half-open interval
 `[start, end)`, the active occurrence remains in the plan. Elapsed slots are
@@ -121,7 +121,7 @@ occurrence started on the previous calendar day.
 
 1. Import price < 0 → `batteries_charge_grid`
 2. Solar surplus (`estimated_net_consumption < threshold`) → `batteries_charge_solar`
-3. Cheapest grid hour where spread ≥ `min_price_difference + cycle_cost` → `batteries_charge_grid`
+3. Cheapest grid hour where the window's average price − charge price ≥ depreciation threshold + `cycle_cost` → `batteries_charge_grid`
 
 **Opportunistic grid charge** (outside any schedule):
 

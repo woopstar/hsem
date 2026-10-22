@@ -233,7 +233,7 @@ fields are only shown when the second EV is configured.
 
 ### Step: `batteries_schedule_1/2/3`
 
-Battery charge/discharge schedule windows (up to three).
+Battery discharge schedule windows (up to three). The optimiser does not follow them; see [Battery Schedules](home.md#battery-schedules) for what they still affect.
 
 | Field      | Key                                                | Default | Description                 |
 | ---------- | -------------------------------------------------- | ------- | --------------------------- |
