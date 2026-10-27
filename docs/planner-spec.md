@@ -2743,6 +2743,20 @@ available), HSEM falls back to the configured interval for prices and to
    list is published as a sensor attribute (issue #1099); an uncovered slot
    still reads `0.0` there.
 
+   **Flat-tariff price sensors (issue #978).** A configured import or export
+   price sensor with none of the recognised forecast attributes, not even an
+   empty one, and a finite numeric state is a flat price: its state is
+   written to every slot and every slot counts as covered. It is applied
+   before the price forecast sensors, so a forecast sensor still overrides it
+   on the slots it covers. A sensor with a forecast attribute is never read
+   as flat, even though its state is usually the current price: a gap in its
+   forecast, or a day not published yet, stays uncovered. An unavailable,
+   unknown or non-numeric flat sensor covers nothing, so the slots are
+   estimated. The state is read raw from `StateSnapshot.sensor_states`;
+   `LiveState` rounds it to three decimals. Before this, a fixed feed-in
+   tariff sensor covered no slot and, since a slot needs both prices, left
+   the planner input with no price point at all.
+
 2. **Planner input** (`coordinator_builder.build_planner_input`):
    Recommendation slots are deduplicated on `(day_offset, hour)` for
    consumption averages (genuinely hour-granular). **Only covered slots are
@@ -4069,7 +4083,8 @@ input. PV gaps are reported only when a PV forecast sensor is configured; a
 setup without one plans zero PV and reports nothing. A forecast of `0.0 kW`
 (night) is data. With a 36 or 48 h horizon `is_complete` is therefore
 `false` on most mornings until tomorrow's prices are published, which is the
-true state of the data.
+true state of the data. A flat-tariff price sensor (a numeric state and no
+forecast attribute) covers every slot (issue #978).
 
 ### DataQuality fields for multi-day horizons
 
@@ -4260,6 +4275,9 @@ the fill's original rationale genuinely applies.
   with zero PV and reported, for hourly and sub-hourly sources; today's
   forecast is never planned again for tomorrow. Without a PV sensor nothing
   is reported (issue #1196).
+- A price sensor with a finite numeric state and no recognised forecast
+  attribute prices every slot at that state; an unavailable one covers no
+  slot, and a sensor with a forecast attribute keeps its gaps (issue #978).
 - Missing day+2 price data surfaces in `day2_price_missing_hours`.
 - Missing day+2 PV data surfaces in `day2_pv_missing_hours`.
 - `DataQuality.is_complete` is `False` when any future-day data is missing.

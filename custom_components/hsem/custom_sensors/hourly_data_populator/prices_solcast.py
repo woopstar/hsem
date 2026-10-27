@@ -97,6 +97,106 @@ def _overlap_weighted_mean(covering: list[tuple[float, float]]) -> float:
     return math.fsum(value * seconds for value, seconds in covering) / covered_seconds
 
 
+def _attribute_formats(solcast_likelihood_key: str) -> dict[str, list[dict[str, str]]]:
+    """Return the recognised forecast attributes and their entry formats.
+
+    Args:
+        solcast_likelihood_key: Attribute key for Solcast PV estimate field.
+
+    Returns:
+        Each recognised attribute key mapped to the ``(time_key, value_key)``
+        pairs, as ``{"k": ..., "v": ...}``, its entries may use.
+    """
+    # Map each recognised sensor attribute key to the list of (time_key, value_key)
+    # pairs that may appear in that attribute's entries.  Multiple pairs allow
+    # one attribute to be matched regardless of which sensor integration
+    # published it (e.g. EDS ``hour``/``price`` vs nordpool ``start``/``value``).
+    return {
+        "forecast": [{"k": "hour", "v": "price"}],
+        "raw_tomorrow": [
+            {"k": "hour", "v": "price"},
+            {"k": "start", "v": "value"},  # custom-components/nordpool
+        ],
+        "raw_today": [
+            {"k": "hour", "v": "price"},
+            {"k": "start", "v": "value"},  # custom-components/nordpool
+        ],
+        "prices": [
+            {"k": "start", "v": "price"},
+            {"k": "start_time", "v": "price"},  # Tibber Prices
+        ],
+        "prices_today": [
+            {"k": "start", "v": "price"},
+            {"k": "time", "v": "price"},
+        ],
+        "prices_tomorrow": [
+            {"k": "start", "v": "price"},
+            {"k": "time", "v": "price"},
+        ],
+        "detailedHourly": [{"k": "period_start", "v": solcast_likelihood_key}],
+        "detailedForecast": [{"k": "period_start", "v": solcast_likelihood_key}],
+        "data": [{"k": "start_time", "v": "price_per_kwh"}],
+        # Amber Electric forecast sensor format
+        "forecasts": [{"k": "start_time", "v": "per_kwh"}],
+    }
+
+
+def _flat_price(snapshot: StateSnapshot, entity_id: str | None) -> float | None:
+    """Return a price sensor's state when it is a flat price (issue #978).
+
+    A flat-tariff sensor publishes its price as the state and no forecast
+    attribute.  A sensor with any recognised forecast attribute is a forecast
+    source even when that attribute is empty or stale, so its gaps stay gaps.
+
+    Args:
+        snapshot: Pre-collected state snapshot.
+        entity_id: The configured price sensor, or ``None``.
+
+    Returns:
+        The state as a finite float, or ``None`` when the sensor is not
+        configured, has a forecast attribute, or its state is not a number
+        (unavailable, unknown, NaN or infinite).
+    """
+    if not entity_id:
+        return None
+    attributes = snapshot.sensor_attributes.get(entity_id) or {}
+    if any(key in attributes for key in _attribute_formats("")):
+        return None
+    value = convert_to_float(snapshot.sensor_states.get(entity_id))
+    if value is None or not math.isfinite(value):
+        return None
+    return value
+
+
+def _populate_flat_price(
+    snapshot: StateSnapshot,
+    entity_id: str | None,
+    recommendations: list[HourlyRecommendation],
+    field_name: str,
+    covered: set[datetime],
+) -> float | None:
+    """Write a flat-tariff sensor's state to every slot and count it as covered.
+
+    Args:
+        snapshot: Pre-collected state snapshot.
+        entity_id: The configured price sensor, or ``None``.
+        recommendations: Mutable recommendation list.
+        field_name: Price field on :class:`HourlyRecommendation` to set.
+        covered: Receives the UTC start of every slot written.
+
+    Returns:
+        The flat price written, or ``None`` when the sensor is not a flat
+        price (see :func:`_flat_price`) and nothing was written.
+    """
+    value = _flat_price(snapshot, entity_id)
+    if value is None:
+        return None
+    for obj in recommendations:
+        setattr(obj, field_name, round(value, 5))
+        covered.add(utc_key(obj.start))
+    return value
+
+
 # ---------------------------------------------------------------------------
 # Snapshot-based population (no HA state lookups)
 # ---------------------------------------------------------------------------
@@ -121,6 +221,8 @@ def populate_price_and_solcast_from_snapshot(
         Which slots each source wrote to (issue #1196).  A slot a source did
         not cover keeps its ``0.0`` default on the recommendation; the
         coverage is what tells that default from a published ``0.0``.
+        A price sensor without a forecast attribute and with a numeric
+        state is a flat price and covers every slot (issue #978).
     """
     price_fallback = cfg.electricity_price_update_interval
     solcast_fallback = 60
@@ -128,6 +230,15 @@ def populate_price_and_solcast_from_snapshot(
     export_covered: set[datetime] = set()
     pv_covered: set[datetime] = set()
 
+    # A flat-tariff sensor goes first so a forecast sensor's points still
+    # take precedence on the slots they cover (issue #978).
+    import_flat = _populate_flat_price(
+        snapshot,
+        cfg.import_electricity_price_sensor,
+        recommendations,
+        "import_price",
+        import_covered,
+    )
     import_matched = _populate_from_attributes(
         snapshot.sensor_attributes.get(cfg.import_electricity_price_sensor or ""),
         recommendations,
@@ -147,13 +258,29 @@ def populate_price_and_solcast_from_snapshot(
             price_fallback,
             covered=import_covered,
         )
-    if import_matched == 0:
+    if import_flat is not None:
+        _LOGGER.debug(
+            "Import price sensor %s publishes no forecast attribute — "
+            "using its state %s as a flat price for every slot.",
+            cfg.import_electricity_price_sensor,
+            import_flat,
+        )
+    elif import_matched == 0:
         _LOGGER.warning(
-            "No import price data matched from sensor(s) %s — "
-            "the planner has no price for any slot and plans with 0.0. "
-            "Check that the sensor is available and its attribute format is supported.",
+            "No import price data matched from sensor(s) %s — no slot has a "
+            "price pair, so the planner reports every hour as missing and "
+            "plans import and export at 0.0. Check that the sensor is "
+            "available and publishes either a supported forecast attribute "
+            "or, for a flat price, a numeric state and no forecast attribute.",
             cfg.import_electricity_price_sensor,
         )
+    export_flat = _populate_flat_price(
+        snapshot,
+        cfg.export_electricity_price_sensor,
+        recommendations,
+        "export_price",
+        export_covered,
+    )
     export_matched = _populate_from_attributes(
         snapshot.sensor_attributes.get(cfg.export_electricity_price_sensor or ""),
         recommendations,
@@ -173,11 +300,20 @@ def populate_price_and_solcast_from_snapshot(
             price_fallback,
             covered=export_covered,
         )
-    if export_matched == 0:
+    if export_flat is not None:
+        _LOGGER.debug(
+            "Export price sensor %s publishes no forecast attribute — "
+            "using its state %s as a flat price for every slot.",
+            cfg.export_electricity_price_sensor,
+            export_flat,
+        )
+    elif export_matched == 0:
         _LOGGER.warning(
-            "No export price data matched from sensor(s) %s — "
-            "the planner has no price for any slot and plans with 0.0. "
-            "Check that the sensor is available and its attribute format is supported.",
+            "No export price data matched from sensor(s) %s — no slot has a "
+            "price pair, so the planner reports every hour as missing and "
+            "plans import and export at 0.0. Check that the sensor is "
+            "available and publishes either a supported forecast attribute "
+            "or, for a flat price, a numeric state and no forecast attribute.",
             cfg.export_electricity_price_sensor,
         )
     solcast_today_matched = _populate_from_attributes(
@@ -271,38 +407,7 @@ def _populate_from_attributes(
     if not attributes:
         return 0
 
-    # Map each recognised sensor attribute key to the list of (time_key, value_key)
-    # pairs that may appear in that attribute's entries.  Multiple pairs allow
-    # one attribute to be matched regardless of which sensor integration
-    # published it (e.g. EDS ``hour``/``price`` vs nordpool ``start``/``value``).
-    data_sources: dict[str, list[dict[str, str]]] = {
-        "forecast": [{"k": "hour", "v": "price"}],
-        "raw_tomorrow": [
-            {"k": "hour", "v": "price"},
-            {"k": "start", "v": "value"},  # custom-components/nordpool
-        ],
-        "raw_today": [
-            {"k": "hour", "v": "price"},
-            {"k": "start", "v": "value"},  # custom-components/nordpool
-        ],
-        "prices": [
-            {"k": "start", "v": "price"},
-            {"k": "start_time", "v": "price"},  # Tibber Prices
-        ],
-        "prices_today": [
-            {"k": "start", "v": "price"},
-            {"k": "time", "v": "price"},
-        ],
-        "prices_tomorrow": [
-            {"k": "start", "v": "price"},
-            {"k": "time", "v": "price"},
-        ],
-        "detailedHourly": [{"k": "period_start", "v": solcast_likelihood_key}],
-        "detailedForecast": [{"k": "period_start", "v": solcast_likelihood_key}],
-        "data": [{"k": "start_time", "v": "price_per_kwh"}],
-        # Amber Electric forecast sensor format
-        "forecasts": [{"k": "start_time", "v": "per_kwh"}],
-    }
+    data_sources = _attribute_formats(solcast_likelihood_key)
 
     matched = 0
     for attr, kv_list in data_sources.items():

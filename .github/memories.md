@@ -2688,6 +2688,7 @@ Tests: `tests/test_dynamic_floor_reference_plan.py::TestBuildBridgeSlots::test_u
 
 - A published `0.0` or negative price and a `0.0 kW` forecast are data. Test with them.
 - PV: no sensor configured means "covered", or every hour is reported on every cycle.
+- A price sensor with a numeric state and no recognised forecast attribute (a flat tariff) covers every slot; one with a forecast attribute, even an empty one, keeps its gaps. Read the raw state from `StateSnapshot.sensor_states`, not `LiveState` (3 decimals) (issue #978).
 - Hour-granular `SolcastSlot`s that all lie on day 0 make `populate_solcast` use hour-only keys, which reuse today's forecast for every day. With any PV gap the builder therefore emits per-slot entries (`slot_in_day`), which are day-specific. Prices do not have this problem: the builder always sets `slot_in_day`.
 - The planner's `missing_inputs` labels do **not** set the degraded mode; that comes from missing HA entities only. `is_complete` is false every morning on a 36/48 h horizon until tomorrow's prices arrive.
 - The recommendation's own `import_price` stays `0.0` on an uncovered slot; only the plan uses the estimate.

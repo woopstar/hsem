@@ -762,6 +762,7 @@ async def async_collect_all_states(
 
     # 3. Pre-read electricity price and Solcast sensor state objects for attribute access
     sensor_attributes: dict[str, dict] = {}
+    sensor_states: dict[str, Any] = {}
     for entity_id in (
         cfg.import_electricity_price_sensor,
         cfg.export_electricity_price_sensor,
@@ -774,14 +775,16 @@ async def async_collect_all_states(
             continue
         state_obj = sensor.hass.states.get(entity_id)
         if state_obj:
-            # Only store attributes — the raw state value is not needed here
-            # (the populator reads from attributes).
+            # The populator reads forecasts from the attributes; the raw state
+            # is the flat price of a sensor that publishes none (issue #978).
             sensor_attributes[entity_id] = dict(state_obj.attributes)
+            sensor_states[entity_id] = state_obj.state
 
     snapshot = StateSnapshot(
         live=live,
         energy_average_values=energy_average_values,
         sensor_attributes=sensor_attributes,
+        sensor_states=sensor_states,
     )
 
     return snapshot, fwm_entity, new_unsubs
