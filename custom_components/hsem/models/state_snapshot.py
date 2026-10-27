@@ -30,8 +30,12 @@ class StateSnapshot:
             EDS (import/export price) and Solcast PV forecast sensors.
             Pre-read so that :func:`~custom_sensors.hourly_data_populator.async_populate_price_and_solcast`
             can populate slots without additional HA state lookups.
+        sensor_states: Mapping of entity_id → raw state for the same
+            sensors, unconverted.  A price sensor without a forecast
+            attribute is read as a flat price from it (issue #978).
     """
 
     live: LiveState
     energy_average_values: dict[str, float] = field(default_factory=dict)
     sensor_attributes: dict[str, dict[str, Any]] = field(default_factory=dict)
+    sensor_states: dict[str, Any] = field(default_factory=dict)
