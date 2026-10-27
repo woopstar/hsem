@@ -64,6 +64,11 @@ every step in order so individual entities can be customised.
 Generic electricity price sensor configuration. Provider-agnostic — supports
 Energi Data Service, Nordpool, Amber Electric, and any other price source.
 
+A price sensor with no forecast attribute, such as a template sensor holding
+a fixed feed-in tariff, is read as a flat price: its numeric state applies
+to every slot of the horizon. While it is unavailable its slots count as
+missing and the planner estimates them (issue #978).
+
 | Field                             | Key                                             | Default                                 | Description                                                                                                                                                                                                                                                                                                                                                                                       |
 | --------------------------------- | ----------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Import price sensor               | `hsem_import_electricity_price_sensor`          | `sensor.energi_data_service`            | HA entity for import price                                                                                                                                                                                                                                                                                                                                                                        |

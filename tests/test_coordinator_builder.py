@@ -6,16 +6,29 @@ discharge-cap feedback loop (issue #592, beta7).
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
+from datetime import datetime, timedelta
+from typing import Any
+from unittest.mock import patch
+from zoneinfo import ZoneInfo
+
 import pytest
 import voluptuous as vol
+
+import homeassistant.util.dt as dt_util
 
 from custom_components.hsem.coordinator_builder import (
     _resolve_max_discharge_power_w,
     build_planner_input,
+    generate_recommendation_intervals,
+)
+from custom_components.hsem.custom_sensors.hourly_data_populator.prices_solcast import (
+    populate_price_and_solcast_from_snapshot,
 )
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.utils.ev_accounting import normalized_baseline_includes_ev
 from custom_components.hsem.utils.live_power import LivePowerEstimate
 
@@ -302,3 +315,130 @@ class TestLivePowerEstimateOverride:
         # unavailable rather than inheriting the PV channel's authority.
         assert inp.live_house_consumption_w == pytest.approx(0.0)
         assert inp.live_house_consumption_available is False
+
+
+_BERLIN = ZoneInfo("Europe/Berlin")
+_FLAT_NOW = datetime(2026, 10, 20, 9, 5, tzinfo=_BERLIN)
+_FLAT_MIDNIGHT = _FLAT_NOW.replace(hour=0, minute=0)
+_EPEX = "sensor.epex_spot_data_total_price"
+_FEED_IN = "sensor.feed_in_tariff"
+
+
+def _epex_data(day_start: datetime, quarters: Iterable[int]) -> dict[str, Any]:
+    """Return EPEX Spot ``data`` attributes, one 15-minute price per quarter."""
+    return {
+        "data": [
+            {
+                "start_time": (day_start + timedelta(minutes=15 * q)).isoformat(),
+                "end_time": (day_start + timedelta(minutes=15 * (q + 1))).isoformat(),
+                "price_per_kwh": round(0.3 + q / 1000.0, 5),
+            }
+            for q in quarters
+        ]
+    }
+
+
+class TestFlatTariffPriceSensor:
+    """Issue #978: a flat-tariff price sensor must not empty the planner input.
+
+    Reported on v6.3.13: EPEX Spot import prices in the ``data`` attribute and a
+    fixed feed-in sensor for export gave ``planner_input.price_points == []``.
+    The feed-in sensor has a numeric state and no forecast attribute, so it
+    covered no slot, and a slot needs both prices to reach the planner.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _berlin_ha_tz(self) -> Iterator[None]:
+        previous = dt_util.get_default_time_zone()
+        dt_util.set_default_time_zone(_BERLIN)
+        try:
+            yield
+        finally:
+            dt_util.set_default_time_zone(previous)
+
+    @staticmethod
+    def _planner_input(
+        sensor_states: dict[str, Any], sensor_attributes: dict[str, dict[str, Any]]
+    ) -> PlannerInput:
+        """Populate and build exactly as the coordinator does."""
+        cfg = SensorConfig()
+        cfg.recommendation_interval_minutes = 15
+        cfg.recommendation_interval_length = 48
+        cfg.electricity_price_update_interval = 15
+        cfg.import_electricity_price_sensor = _EPEX
+        cfg.export_electricity_price_sensor = _FEED_IN
+        with patch("homeassistant.util.dt.now", return_value=_FLAT_NOW):
+            recs = generate_recommendation_intervals(15, 48)
+            coverage = populate_price_and_solcast_from_snapshot(
+                recs,
+                StateSnapshot(
+                    live=LiveState(),
+                    sensor_attributes=sensor_attributes,
+                    sensor_states=sensor_states,
+                ),
+                cfg,
+            )
+            return build_planner_input(
+                cfg=cfg,
+                live=LiveState(),
+                hourly_recommendations=recs,
+                previous_winner_name=None,
+                previous_winner_score=0.0,
+                forecast_coverage=coverage,
+            )
+
+    def test_flat_export_with_forecast_import_reaches_the_planner(self) -> None:
+        """The reported setup: today's and tomorrow's quarter-hourly prices."""
+        planner_input = self._planner_input(
+            {_EPEX: "0.348741", _FEED_IN: "0.0778"},
+            {
+                _EPEX: {
+                    "data": _epex_data(_FLAT_MIDNIGHT, range(96))["data"]
+                    + _epex_data(_FLAT_MIDNIGHT + timedelta(days=1), range(96))["data"]
+                },
+                _FEED_IN: {"unit_of_measurement": "EUR/kWh"},
+            },
+        )
+
+        points = planner_input.price_points
+        assert len(points) == 192
+        assert [p.export_price for p in points] == pytest.approx([0.0778] * 192)
+        assert points[5].import_price == pytest.approx(0.305)
+        assert (points[100].day_offset, points[100].slot_in_day) == (1, 4)
+        assert points[100].import_price == pytest.approx(0.304)
+
+    def test_flat_import_and_export_price_every_slot(self) -> None:
+        planner_input = self._planner_input(
+            {_EPEX: "0.25", _FEED_IN: "0.08"}, {_EPEX: {}, _FEED_IN: {}}
+        )
+
+        points = planner_input.price_points
+        assert len(points) == 192
+        assert [p.import_price for p in points] == pytest.approx([0.25] * 192)
+        assert [p.export_price for p in points] == pytest.approx([0.08] * 192)
+
+    def test_unavailable_flat_sensor_leaves_the_slots_to_the_estimate(self) -> None:
+        """No price is invented: the planner's missing-price path still runs."""
+        planner_input = self._planner_input(
+            {_EPEX: "0.348741", _FEED_IN: "unavailable"},
+            {_EPEX: _epex_data(_FLAT_MIDNIGHT, range(96)), _FEED_IN: {}},
+        )
+
+        assert planner_input.price_points == []
+
+    def test_gaps_in_a_forecast_stay_gaps(self) -> None:
+        """Tomorrow is not published yet: the import sensor's state is not flat."""
+        planner_input = self._planner_input(
+            {_EPEX: "0.348741", _FEED_IN: "0.08"},
+            {
+                _EPEX: _epex_data(
+                    _FLAT_MIDNIGHT, (q for q in range(96) if not 40 <= q < 48)
+                ),
+                _FEED_IN: {},
+            },
+        )
+
+        points = planner_input.price_points
+        assert len(points) == 88
+        assert {p.day_offset for p in points} == {0}
+        assert {p.slot_in_day for p in points} == set(range(96)) - set(range(40, 48))
