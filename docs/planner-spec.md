@@ -2190,6 +2190,20 @@ available), HSEM falls back to the configured interval for prices and to
    uncovered slot still reads `0.0` there. PV coverage is not tracked on the
    6.3.x line.
 
+   **Flat-tariff price sensors (issue #978).** A configured import or export
+   price sensor with none of the recognised forecast attributes, not even an
+   empty one, and a finite numeric state is a flat price: its state is
+   written to every slot and every slot counts as covered. It is applied
+   before the price forecast sensors, so a forecast sensor still overrides it
+   on the slots it covers. A sensor with a forecast attribute is never read
+   as flat, even though its state is usually the current price: a gap in its
+   forecast, or a day not published yet, stays uncovered. An unavailable,
+   unknown or non-numeric flat sensor covers nothing, so the slots are
+   estimated. The state is read raw from `StateSnapshot.sensor_states`;
+   `LiveState` rounds it to three decimals. Before this, a fixed feed-in
+   tariff sensor covered no slot and, since a slot needs both prices, left
+   the planner input with no price point at all.
+
 2. **Planner input** (`coordinator_builder.build_planner_input`):
    Recommendation slots are deduplicated on `(day_offset, hour)` for
    consumption averages (genuinely hour-granular). Solcast PV is emitted per
@@ -3287,7 +3301,8 @@ A price is missing when no source covered the slot, not when its value is
 zero (issue #1217): the coordinator leaves uncovered slots out of the planner
 input. With a 36, 48 or 72 h horizon `is_complete` is therefore `false` on
 most mornings until tomorrow's prices are published, which is the true state
-of the data. PV has no such coverage on the 6.3.x line: a slot the PV
+of the data. A flat-tariff sensor (a numeric state and no forecast attribute)
+covers every slot (issue #978). PV has no such coverage on the 6.3.x line: a slot the PV
 forecast does not cover is planned with zero PV and is not reported.
 
 ### DataQuality fields for multi-day horizons
@@ -3409,6 +3424,9 @@ the fill's original rationale genuinely applies.
   false (issue #1217).
 - A published price of `0.0` or below is passed through unchanged and never
   reported as missing (issue #1217).
+- A price sensor with a finite numeric state and no recognised forecast
+  attribute prices every slot at that state; an unavailable one covers no
+  slot, and a sensor with a forecast attribute keeps its gaps (issue #978).
 - With a 72-hour horizon day+2 is estimated from tomorrow when tomorrow is
   published and from today otherwise (issue #1217).
 - Missing day+2 price data surfaces in `day2_price_missing_hours`.

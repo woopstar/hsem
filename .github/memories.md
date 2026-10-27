@@ -162,7 +162,10 @@ The planner only sees a gap because `build_planner_input` leaves uncovered
 slots out: `populate_price_and_solcast_from_snapshot` returns a
 `ForecastCoverage` (`models/forecast_coverage.py`, prices only on 6.3.x) and
 the coordinator passes it on as `forecast_coverage`. A published `0.0` or
-negative price is data. The 72 h horizon stays on 6.3.x; day+2 is always
+negative price is data. A price sensor with a numeric state and no recognised
+forecast attribute is a flat price and covers every slot; one with a forecast
+attribute keeps its gaps (issue #978, raw state in `StateSnapshot.sensor_states`).
+The 72 h horizon stays on 6.3.x; day+2 is always
 estimated. A test that claims production behaviour for missing prices must go
 through the populator and the builder (`tests/test_uncovered_forecast_slots.py`).
 
