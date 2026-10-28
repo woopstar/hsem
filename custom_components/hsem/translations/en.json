@@ -137,7 +137,7 @@
           "hsem_ocpp_charging_rate_unit": "Unit used in OCPP charging profiles. 'Auto' negotiates from the charger's reported capabilities and prefers watts — a watt ceiling is unambiguous for chargers with automatic 1/3-phase switching. 'Amps' or 'Watts' force a unit when a charger misreports its support. Default: Auto.",
           "hsem_ocpp_second_charging_rate_unit": "Same as the primary server's charging rate unit, for the second charger's OCPP server.",
           "hsem_ocpp_tls_mode": "Encryption for both OCPP servers. 'Off' serves plain ws://. 'TLS' serves wss:// with a server certificate. 'Mutual TLS' also requires each charger to present a client certificate whose common name (CN) matches its charge point ID. If TLS cannot be set up, the OCPP servers stay stopped. Default: Off.",
-          "hsem_ocpp_tls_server_cert_path": "Full path to your own server certificate (PEM). Leave empty to use the certificate HSEM generates in /ssl/hsem/ocpp/ (or <config>/ssl/hsem/ocpp/ when /ssl does not exist), signed by HSEM's own CA.",
+          "hsem_ocpp_tls_server_cert_path": "Full path to your own server certificate (PEM). Leave empty to use the certificate HSEM generates in /ssl/hsem/ocpp/ (or ssl/hsem/ocpp/ in the Home Assistant config folder when /ssl does not exist), signed by HSEM's own CA.",
           "hsem_ocpp_tls_server_key_path": "Full path to the private key (PEM) for your own server certificate. Required when a server certificate path is set.",
           "hsem_ocpp_tls_client_ca_path": "Mutual TLS only: full path to the CA certificate (PEM) that charger client certificates must be signed by. Leave empty to use HSEM's own CA."
         },
@@ -664,7 +664,7 @@
           "hsem_ocpp_charging_rate_unit": "Unit used in OCPP charging profiles. 'Auto' negotiates from the charger's reported capabilities and prefers watts — a watt ceiling is unambiguous for chargers with automatic 1/3-phase switching. 'Amps' or 'Watts' force a unit when a charger misreports its support. Default: Auto.",
           "hsem_ocpp_second_charging_rate_unit": "Same as the primary server's charging rate unit, for the second charger's OCPP server.",
           "hsem_ocpp_tls_mode": "Encryption for both OCPP servers. 'Off' serves plain ws://. 'TLS' serves wss:// with a server certificate. 'Mutual TLS' also requires each charger to present a client certificate whose common name (CN) matches its charge point ID. If TLS cannot be set up, the OCPP servers stay stopped. Default: Off.",
-          "hsem_ocpp_tls_server_cert_path": "Full path to your own server certificate (PEM). Leave empty to use the certificate HSEM generates in /ssl/hsem/ocpp/ (or <config>/ssl/hsem/ocpp/ when /ssl does not exist), signed by HSEM's own CA.",
+          "hsem_ocpp_tls_server_cert_path": "Full path to your own server certificate (PEM). Leave empty to use the certificate HSEM generates in /ssl/hsem/ocpp/ (or ssl/hsem/ocpp/ in the Home Assistant config folder when /ssl does not exist), signed by HSEM's own CA.",
           "hsem_ocpp_tls_server_key_path": "Full path to the private key (PEM) for your own server certificate. Required when a server certificate path is set.",
           "hsem_ocpp_tls_client_ca_path": "Mutual TLS only: full path to the CA certificate (PEM) that charger client certificates must be signed by. Leave empty to use HSEM's own CA."
         },
