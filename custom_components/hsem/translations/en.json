@@ -27,7 +27,11 @@
       "ev_min_power_below_start_current": "The configured minimum power is too low for the selected phase topology — a real charger cannot start below 6 A. Increase the minimum power or switch phase topology.",
       "invalid_time_value": "Enter a valid time of day (HH:MM).",
       "house_power_required": "Select a house consumption sensor, or set the inverter and power meter active power so HSEM can derive the house load.",
-      "house_load_needs_inverter_1": "Set the first inverter's active power before the second inverter's."
+      "house_load_needs_inverter_1": "Set the first inverter's active power before the second inverter's.",
+      "tls_cert_key_pair_required": "Set both the server certificate and the server key path, or leave both empty.",
+      "tls_file_not_found": "File not found or not readable.",
+      "tls_cert_key_mismatch": "The server certificate and key could not be loaded together. Check that both are PEM files and that the key belongs to the certificate.",
+      "tls_invalid_ca": "The client CA file is not a valid PEM certificate."
     },
     "step": {
       "batteries_excess_export": {
@@ -115,7 +119,11 @@
           "hsem_ocpp_second_port": "Second OCPP Port",
           "hsem_ocpp_second_cpid": "Second Charge Point ID",
           "hsem_ocpp_charging_rate_unit": "Charging Rate Unit",
-          "hsem_ocpp_second_charging_rate_unit": "Second Charging Rate Unit"
+          "hsem_ocpp_second_charging_rate_unit": "Second Charging Rate Unit",
+          "hsem_ocpp_tls_mode": "TLS Mode",
+          "hsem_ocpp_tls_server_cert_path": "Server Certificate Path",
+          "hsem_ocpp_tls_server_key_path": "Server Key Path",
+          "hsem_ocpp_tls_client_ca_path": "Client CA Path"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Enable the embedded OCPP 1.6 WebSocket server for direct EV charger control. LAN-only — do not expose the port to the internet.",
@@ -127,7 +135,11 @@
           "hsem_ocpp_second_port": "TCP port for the second OCPP WebSocket server. Default: 9001. Must differ from the first server's port.",
           "hsem_ocpp_second_cpid": "Expected charge-point identifier of the second EV charger. Leave empty to accept any charger.",
           "hsem_ocpp_charging_rate_unit": "Unit used in OCPP charging profiles. 'Auto' negotiates from the charger's reported capabilities and prefers watts — a watt ceiling is unambiguous for chargers with automatic 1/3-phase switching. 'Amps' or 'Watts' force a unit when a charger misreports its support. Default: Auto.",
-          "hsem_ocpp_second_charging_rate_unit": "Same as the primary server's charging rate unit, for the second charger's OCPP server."
+          "hsem_ocpp_second_charging_rate_unit": "Same as the primary server's charging rate unit, for the second charger's OCPP server.",
+          "hsem_ocpp_tls_mode": "Encryption for both OCPP servers. 'Off' serves plain ws://. 'TLS' serves wss:// with a server certificate. 'Mutual TLS' also requires each charger to present a client certificate whose common name (CN) matches its charge point ID. If TLS cannot be set up, the OCPP servers stay stopped. Default: Off.",
+          "hsem_ocpp_tls_server_cert_path": "Full path to your own server certificate (PEM). Leave empty to use the certificate HSEM generates in /ssl/hsem/ocpp/ (or <config>/ssl/hsem/ocpp/ when /ssl does not exist), signed by HSEM's own CA.",
+          "hsem_ocpp_tls_server_key_path": "Full path to the private key (PEM) for your own server certificate. Required when a server certificate path is set.",
+          "hsem_ocpp_tls_client_ca_path": "Mutual TLS only: full path to the CA certificate (PEM) that charger client certificates must be signed by. Leave empty to use HSEM's own CA."
         },
         "description": "Configure the embedded OCPP 1.6 server for LAN-only EV charger control. When enabled, HSEM sends SetChargingProfile commands directly to your EV charger based on the charging plan.",
         "title": "OCPP Server"
@@ -542,7 +554,11 @@
       "ev_min_power_below_start_current": "The configured minimum power is too low for the selected phase topology — a real charger cannot start below 6 A. Increase the minimum power or switch phase topology.",
       "invalid_time_value": "Enter a valid time of day (HH:MM).",
       "house_power_required": "Select a house consumption sensor, or set the inverter and power meter active power so HSEM can derive the house load.",
-      "house_load_needs_inverter_1": "Set the first inverter's active power before the second inverter's."
+      "house_load_needs_inverter_1": "Set the first inverter's active power before the second inverter's.",
+      "tls_cert_key_pair_required": "Set both the server certificate and the server key path, or leave both empty.",
+      "tls_file_not_found": "File not found or not readable.",
+      "tls_cert_key_mismatch": "The server certificate and key could not be loaded together. Check that both are PEM files and that the key belongs to the certificate.",
+      "tls_invalid_ca": "The client CA file is not a valid PEM certificate."
     },
     "step": {
       "batteries_excess_export": {
@@ -630,7 +646,11 @@
           "hsem_ocpp_second_port": "Second OCPP Port",
           "hsem_ocpp_second_cpid": "Second Charge Point ID",
           "hsem_ocpp_charging_rate_unit": "Charging Rate Unit",
-          "hsem_ocpp_second_charging_rate_unit": "Second Charging Rate Unit"
+          "hsem_ocpp_second_charging_rate_unit": "Second Charging Rate Unit",
+          "hsem_ocpp_tls_mode": "TLS Mode",
+          "hsem_ocpp_tls_server_cert_path": "Server Certificate Path",
+          "hsem_ocpp_tls_server_key_path": "Server Key Path",
+          "hsem_ocpp_tls_client_ca_path": "Client CA Path"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Enable the embedded OCPP 1.6 WebSocket server for direct EV charger control. LAN-only — do not expose the port to the internet.",
@@ -642,7 +662,11 @@
           "hsem_ocpp_second_port": "TCP port for the second OCPP WebSocket server. Default: 9001. Must differ from the first server's port.",
           "hsem_ocpp_second_cpid": "Expected charge-point identifier of the second EV charger. Leave empty to accept any charger.",
           "hsem_ocpp_charging_rate_unit": "Unit used in OCPP charging profiles. 'Auto' negotiates from the charger's reported capabilities and prefers watts — a watt ceiling is unambiguous for chargers with automatic 1/3-phase switching. 'Amps' or 'Watts' force a unit when a charger misreports its support. Default: Auto.",
-          "hsem_ocpp_second_charging_rate_unit": "Same as the primary server's charging rate unit, for the second charger's OCPP server."
+          "hsem_ocpp_second_charging_rate_unit": "Same as the primary server's charging rate unit, for the second charger's OCPP server.",
+          "hsem_ocpp_tls_mode": "Encryption for both OCPP servers. 'Off' serves plain ws://. 'TLS' serves wss:// with a server certificate. 'Mutual TLS' also requires each charger to present a client certificate whose common name (CN) matches its charge point ID. If TLS cannot be set up, the OCPP servers stay stopped. Default: Off.",
+          "hsem_ocpp_tls_server_cert_path": "Full path to your own server certificate (PEM). Leave empty to use the certificate HSEM generates in /ssl/hsem/ocpp/ (or <config>/ssl/hsem/ocpp/ when /ssl does not exist), signed by HSEM's own CA.",
+          "hsem_ocpp_tls_server_key_path": "Full path to the private key (PEM) for your own server certificate. Required when a server certificate path is set.",
+          "hsem_ocpp_tls_client_ca_path": "Mutual TLS only: full path to the CA certificate (PEM) that charger client certificates must be signed by. Leave empty to use HSEM's own CA."
         },
         "description": "Configure the embedded OCPP 1.6 server for LAN-only EV charger control. When enabled, HSEM sends SetChargingProfile commands directly to your EV charger based on the charging plan.",
         "title": "OCPP Server"
@@ -1032,6 +1056,13 @@
         "auto": "Auto (negotiate, prefer watts)",
         "amps": "Amps",
         "watts": "Watts"
+      }
+    },
+    "ocpp_tls_mode": {
+      "options": {
+        "off": "Off (ws://)",
+        "tls": "TLS (wss://, server certificate)",
+        "mtls": "Mutual TLS (wss://, client certificate required)"
       }
     }
   },
@@ -1458,6 +1489,20 @@
         "current_a": {
           "name": "Current",
           "description": "Current limit to request. 0 means draw nothing; otherwise 6-32 A."
+        }
+      }
+    },
+    "ocpp_generate_client_certificate": {
+      "name": "OCPP generate client certificate",
+      "description": "Sign a client key and certificate for one charge point with HSEM's OCPP CA, for chargers that need a certificate uploaded to use mutual TLS. Returns the file paths only.",
+      "fields": {
+        "cpid": {
+          "name": "Charge point ID",
+          "description": "Charge point identity the charger connects with. Becomes the certificate's common name (CN)."
+        },
+        "replace": {
+          "name": "Replace",
+          "description": "Overwrite an existing certificate and key for this charge point."
         }
       }
     }

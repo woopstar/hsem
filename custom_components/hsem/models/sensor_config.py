@@ -401,6 +401,11 @@ class SensorConfig:
     ocpp_second_port: int = 9001
     ocpp_second_cpid: str = ""
     ocpp_second_charging_rate_unit: str = "auto"
+    # TLS for both OCPP servers (issue #1341).
+    ocpp_tls_mode: str = "off"
+    ocpp_tls_server_cert_path: str = ""
+    ocpp_tls_server_key_path: str = ""
+    ocpp_tls_client_ca_path: str = ""
 
     # Consumption weights
     house_consumption_energy_weight_1d: int = 50

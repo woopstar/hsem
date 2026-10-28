@@ -30,6 +30,12 @@ or disappear right away (issue #1139). Entities of a flag that was turned off
 stay in the entity registry as unavailable, keeping any name or icon
 customisations if the flag is turned back on.
 
+Changing any OCPP TLS setting (`hsem_ocpp_tls_mode` or one of the
+`hsem_ocpp_tls_*_path` fields) also reloads the entry. The OCPP servers are
+only built at setup, so applying the change in place would leave them serving
+the old protocol: switching TLS on would keep plain `ws://` running (issue
+#1341).
+
 State writes by HSEM's own switches, numbers, times and selectors also land in
 the config entry options. They never cause a reload.
 
@@ -247,18 +253,27 @@ primary server, and — when the second EV is enabled — the second EV's charge
 can connect to a dedicated second server on its own port. The second-server
 fields are only shown when the second EV is configured.
 
-| Field                     | Key                                   | Default | Description                                                                                                                                                                                                            |
-| ------------------------- | ------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OCPP enabled              | `hsem_ocpp_enabled`                   | `False` | Master switch for OCPP integration                                                                                                                                                                                     |
-| OCPP port                 | `hsem_ocpp_port`                      | `9000`  | TCP port for the primary EV's OCPP WebSocket server                                                                                                                                                                    |
-| OCPP charge point ID      | `hsem_ocpp_cpid`                      | —       | Charge point identifier (as configured in the charger)                                                                                                                                                                 |
-| Start window              | `hsem_ocpp_start_window_s`            | `300`   | Seconds before a scheduled charge slot to send `RemoteStartTransaction`                                                                                                                                                |
-| Stop window               | `hsem_ocpp_stop_window_s`             | `300`   | Seconds before a non-charge slot to send `RemoteStopTransaction`                                                                                                                                                       |
-| Charging rate unit        | `hsem_ocpp_charging_rate_unit`        | `auto`  | Unit used in charging profiles. `auto` negotiates from the charger's reported `ChargingScheduleAllowedChargingRateUnit` and prefers watts (unambiguous for auto-phase-switching chargers); `amps`/`watts` force a unit |
-| Second OCPP enabled       | `hsem_ocpp_second_enabled`            | `False` | Enable the dedicated second-EV server (only shown with second EV)                                                                                                                                                      |
-| Second OCPP port          | `hsem_ocpp_second_port`               | `9001`  | TCP port for the second EV's OCPP WebSocket server (must differ from the primary port)                                                                                                                                 |
-| Second charge point ID    | `hsem_ocpp_second_cpid`               | —       | Charge point identifier of the second EV charger                                                                                                                                                                       |
-| Second charging rate unit | `hsem_ocpp_second_charging_rate_unit` | `auto`  | Same as the primary server's charging rate unit, for the second charger                                                                                                                                                |
+| Field                     | Key                                   | Default | Description                                                                                                                                                                                                             |
+| ------------------------- | ------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OCPP enabled              | `hsem_ocpp_enabled`                   | `False` | Master switch for OCPP integration                                                                                                                                                                                      |
+| OCPP port                 | `hsem_ocpp_port`                      | `9000`  | TCP port for the primary EV's OCPP WebSocket server                                                                                                                                                                     |
+| OCPP charge point ID      | `hsem_ocpp_cpid`                      | —       | Charge point identifier (as configured in the charger)                                                                                                                                                                  |
+| Start window              | `hsem_ocpp_start_window_s`            | `300`   | Seconds before a scheduled charge slot to send `RemoteStartTransaction`                                                                                                                                                 |
+| Stop window               | `hsem_ocpp_stop_window_s`             | `300`   | Seconds before a non-charge slot to send `RemoteStopTransaction`                                                                                                                                                        |
+| Charging rate unit        | `hsem_ocpp_charging_rate_unit`        | `auto`  | Unit used in charging profiles. `auto` negotiates from the charger's reported `ChargingScheduleAllowedChargingRateUnit` and prefers watts (unambiguous for auto-phase-switching chargers); `amps`/`watts` force a unit  |
+| Second OCPP enabled       | `hsem_ocpp_second_enabled`            | `False` | Enable the dedicated second-EV server (only shown with second EV)                                                                                                                                                       |
+| Second OCPP port          | `hsem_ocpp_second_port`               | `9001`  | TCP port for the second EV's OCPP WebSocket server (must differ from the primary port)                                                                                                                                  |
+| Second charge point ID    | `hsem_ocpp_second_cpid`               | —       | Charge point identifier of the second EV charger                                                                                                                                                                        |
+| Second charging rate unit | `hsem_ocpp_second_charging_rate_unit` | `auto`  | Same as the primary server's charging rate unit, for the second charger                                                                                                                                                 |
+| TLS mode                  | `hsem_ocpp_tls_mode`                  | `off`   | Encryption for both servers: `off` (plain `ws://`), `tls` (`wss://` with a server certificate), `mtls` (`wss://` and a client certificate whose CN matches the CPID). If TLS cannot be set up, the servers stay stopped |
+| Server certificate path   | `hsem_ocpp_tls_server_cert_path`      | —       | Your own server certificate (PEM). Empty: use the certificate HSEM generates in `/ssl/hsem/ocpp/` (or `<config>/ssl/hsem/ocpp/`)                                                                                        |
+| Server key path           | `hsem_ocpp_tls_server_key_path`       | —       | Private key (PEM) for your own server certificate. Set both paths or neither                                                                                                                                            |
+| Client CA path            | `hsem_ocpp_tls_client_ca_path`        | —       | `mtls` only: CA that charger client certificates must chain to. Empty: use HSEM's CA                                                                                                                                    |
+
+The TLS paths are only validated when TLS is on: each file must exist, the
+certificate and key must load together, and the client CA must be a valid PEM
+certificate. See
+[Securing the OCPP connection](ev-charge-plan-setup.md#securing-the-ocpp-connection-tls).
 
 ### Step: `batteries_wait_mode`
 

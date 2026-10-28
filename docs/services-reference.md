@@ -1,6 +1,6 @@
 # HSEM Services Reference
 
-HSEM exposes eleven Home Assistant services that allow automation, script, and
+HSEM exposes twelve Home Assistant services that allow automation, script, and
 manual control over the planner and hardware writes.
 
 These services are **integration-level actions**: they operate on the single
@@ -12,19 +12,20 @@ below.
 
 ## Service listing
 
-| Service                             | Description                                                        | Response |
-| ----------------------------------- | ------------------------------------------------------------------ | -------- |
-| `hsem.force_recalculation`          | Trigger an immediate full planner re-run                           | None     |
-| `hsem.set_temporary_override`       | Force a specific battery working mode                              | None     |
-| `hsem.clear_override`               | Return to automatic planner control                                | None     |
-| `hsem.create_dashboard`             | Create or update the bundled Lovelace dashboard                    | Dict     |
-| `hsem.export_diagnostics`           | Export structured diagnostic data                                  | Dict     |
-| `hsem.ocpp_debug_start_charging`    | Diagnostics-only: manually start an OCPP charger                   | None     |
-| `hsem.ocpp_debug_stop_charging`     | Diagnostics-only: manually stop an OCPP charger                    | None     |
-| `hsem.ocpp_debug_diagnostics`       | Diagnostics-only: query the charger's config and computed limit    | None     |
-| `hsem.ocpp_debug_set_current`       | Diagnostics-only: send only a charging profile, at a given current | None     |
-| `hsem.ocpp_debug_set_availability`  | Diagnostics-only: set a connector Operative/Inoperative            | None     |
-| `hsem.ocpp_debug_set_configuration` | Diagnostics-only: write one OCPP configuration key                 | None     |
+| Service                                 | Description                                                        | Response |
+| --------------------------------------- | ------------------------------------------------------------------ | -------- |
+| `hsem.force_recalculation`              | Trigger an immediate full planner re-run                           | None     |
+| `hsem.set_temporary_override`           | Force a specific battery working mode                              | None     |
+| `hsem.clear_override`                   | Return to automatic planner control                                | None     |
+| `hsem.create_dashboard`                 | Create or update the bundled Lovelace dashboard                    | Dict     |
+| `hsem.export_diagnostics`               | Export structured diagnostic data                                  | Dict     |
+| `hsem.ocpp_debug_start_charging`        | Diagnostics-only: manually start an OCPP charger                   | None     |
+| `hsem.ocpp_debug_stop_charging`         | Diagnostics-only: manually stop an OCPP charger                    | None     |
+| `hsem.ocpp_debug_diagnostics`           | Diagnostics-only: query the charger's config and computed limit    | None     |
+| `hsem.ocpp_debug_set_current`           | Diagnostics-only: send only a charging profile, at a given current | None     |
+| `hsem.ocpp_debug_set_availability`      | Diagnostics-only: set a connector Operative/Inoperative            | None     |
+| `hsem.ocpp_debug_set_configuration`     | Diagnostics-only: write one OCPP configuration key                 | None     |
+| `hsem.ocpp_generate_client_certificate` | Sign a client key and certificate for mutual TLS                   | Dict     |
 
 ---
 
@@ -188,13 +189,14 @@ are redacted for safe sharing in issue reports.
 
 **Response:** A dict with the following structure:
 
-| Key              | Type   | Description                               |
-| ---------------- | ------ | ----------------------------------------- |
-| `hsem_version`   | `str`  | HSEM version from `manifest.json`         |
-| `dump_timestamp` | `str`  | ISO-8601 timestamp of the dump            |
-| `planner_input`  | `dict` | Latest `PlannerInput` (redacted)          |
-| `planner_output` | `dict` | Latest `PlannerOutput` summary (redacted) |
-| `apply_result`   | `dict` | Latest hardware write status summary      |
+| Key              | Type   | Description                                                                                               |
+| ---------------- | ------ | --------------------------------------------------------------------------------------------------------- |
+| `hsem_version`   | `str`  | HSEM version from `manifest.json`                                                                         |
+| `dump_timestamp` | `str`  | ISO-8601 timestamp of the dump                                                                            |
+| `planner_input`  | `dict` | Latest `PlannerInput` (redacted)                                                                          |
+| `planner_output` | `dict` | Latest `PlannerOutput` summary (redacted)                                                                 |
+| `apply_result`   | `dict` | Latest hardware write status summary                                                                      |
+| `ocpp_tls`       | `dict` | OCPP TLS mode, server certificate expiry, SANs and CA fingerprint, or the setup error. Never key material |
 
 **Example:**
 
@@ -423,6 +425,48 @@ naming both numbers when that is why.
 service: hsem.ocpp_debug_set_current
 data:
   current_a: 8
+```
+
+---
+
+## 12. `hsem.ocpp_generate_client_certificate`
+
+Signs a client key and certificate for one charge point with the CA HSEM
+generates for its OCPP servers, for chargers that need a certificate uploaded
+before they can use mutual TLS (`hsem_ocpp_tls_mode: mtls`, issue #1341). The
+CA is created first if it does not exist yet, so this works before TLS is
+turned on and with no charger connected.
+
+The files are written to `clients/` next to the CA: `/ssl/hsem/ocpp/clients/`,
+or `<config>/ssl/hsem/ocpp/clients/` when `/ssl` does not exist. The key is
+readable by the owner only.
+
+**Schema:**
+
+| Field     | Required | Type    | Description                                                                                                                            |
+| --------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `cpid`    | Yes      | String  | Charge point ID the charger connects with (last segment of its URL path). Becomes the certificate's CN. Letters, digits, `.`, `_`, `-` |
+| `replace` | No       | Boolean | Overwrite an existing certificate and key for this charge point (default `false`)                                                      |
+
+**Response:**
+
+| Key                   | Type  | Description                                           |
+| --------------------- | ----- | ----------------------------------------------------- |
+| `certificate_path`    | `str` | Client certificate (PEM)                              |
+| `key_path`            | `str` | Client private key (PEM). Contents are never returned |
+| `ca_certificate_path` | `str` | HSEM's CA certificate, for the charger's trust store  |
+
+The call fails when a certificate for `cpid` already exists and `replace` is
+off, and when `hsem_ocpp_tls_client_ca_path` is set: chargers would then be
+checked against your own CA, which HSEM cannot sign with.
+
+**Example:**
+
+```yaml
+service: hsem.ocpp_generate_client_certificate
+data:
+  cpid: "222819"
+response_variable: client_cert
 ```
 
 ---

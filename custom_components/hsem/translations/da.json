@@ -27,7 +27,11 @@
       "ev_min_power_below_start_current": "Den konfigurerede minimumseffekt er for lav til den valgte fasetopologi — en rigtig lader kan ikke starte under 6 A. Øg minimumseffekten, eller skift fasetopologi.",
       "invalid_time_value": "Angiv et gyldigt klokkeslæt (TT:MM).",
       "house_power_required": "Vælg en sensor for husets forbrug, eller angiv inverterens og elmålerens aktive effekt, så HSEM kan udlede husets forbrug.",
-      "house_load_needs_inverter_1": "Angiv den første inverters aktive effekt før den anden inverters."
+      "house_load_needs_inverter_1": "Angiv den første inverters aktive effekt før den anden inverters.",
+      "tls_cert_key_pair_required": "Angiv både stien til servercertifikatet og servernøglen, eller lad begge være tomme.",
+      "tls_file_not_found": "Filen findes ikke eller kan ikke læses.",
+      "tls_cert_key_mismatch": "Servercertifikatet og nøglen kunne ikke indlæses sammen. Kontroller, at begge er PEM-filer, og at nøglen hører til certifikatet.",
+      "tls_invalid_ca": "Klient-CA-filen er ikke et gyldigt PEM-certifikat."
     },
     "step": {
       "batteries_excess_export": {
@@ -459,7 +463,11 @@
           "hsem_ocpp_second_enabled": "Aktiver anden OCPP-server",
           "hsem_ocpp_second_port": "Anden OCPP-port",
           "hsem_ocpp_charging_rate_unit": "Ladeenhed (effekt/strøm)",
-          "hsem_ocpp_second_charging_rate_unit": "Anden ladeenhed (effekt/strøm)"
+          "hsem_ocpp_second_charging_rate_unit": "Anden ladeenhed (effekt/strøm)",
+          "hsem_ocpp_tls_mode": "TLS-tilstand",
+          "hsem_ocpp_tls_server_cert_path": "Sti til servercertifikat",
+          "hsem_ocpp_tls_server_key_path": "Sti til servernøgle",
+          "hsem_ocpp_tls_client_ca_path": "Sti til klient-CA"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiver den indbyggede OCPP 1.6 WebSocket-server til direkte EV-laderstyring. Kun LAN - eksponer ikke porten til internettet.",
@@ -471,7 +479,11 @@
           "hsem_ocpp_second_enabled": "Aktiver en anden, dedikeret OCPP-server til den anden EV. Kun tilgængelig når planlagt belastning for EV 2 er aktiveret.",
           "hsem_ocpp_second_port": "TCP-port til den anden OCPP WebSocket-server. Standard: 9001. Skal være forskellig fra den første servers port.",
           "hsem_ocpp_charging_rate_unit": "Enheden i OCPP-ladeprofiler. 'Auto' forhandler ud fra laderens rapporterede egenskaber og foretrækker watt — en watt-grænse er utvetydig for ladere med automatisk 1/3-fase-omskiftning. 'Ampere' eller 'Watt' tvinger en enhed, hvis en lader rapporterer forkert. Standard: Auto.",
-          "hsem_ocpp_second_charging_rate_unit": "Samme som den primære servers ladeenhed, for den anden laders OCPP-server."
+          "hsem_ocpp_second_charging_rate_unit": "Samme som den primære servers ladeenhed, for den anden laders OCPP-server.",
+          "hsem_ocpp_tls_mode": "Kryptering for begge OCPP-servere. 'Fra' bruger almindelig ws://. 'TLS' bruger wss:// med et servercertifikat. 'Gensidig TLS' kræver desuden, at hver EV-lader præsenterer et klientcertifikat, hvis common name (CN) matcher ladepunktets ID. Kan TLS ikke sættes op, forbliver OCPP-serverne stoppet. Standard: Fra.",
+          "hsem_ocpp_tls_server_cert_path": "Fuld sti til dit eget servercertifikat (PEM). Lad feltet være tomt for at bruge det certifikat, HSEM genererer i /ssl/hsem/ocpp/ (eller <config>/ssl/hsem/ocpp/, når /ssl ikke findes), signeret af HSEM's egen CA.",
+          "hsem_ocpp_tls_server_key_path": "Fuld sti til den private nøgle (PEM) til dit eget servercertifikat. Påkrævet, når en sti til servercertifikatet er angivet.",
+          "hsem_ocpp_tls_client_ca_path": "Kun gensidig TLS: fuld sti til det CA-certifikat (PEM), som EV-laderens klientcertifikater skal være signeret af. Lad feltet være tomt for at bruge HSEM's egen CA."
         },
         "description": "Konfigurer den indbyggede OCPP 1.6 server til LAN-kun EV-laderstyring. Når aktiveret, sender HSEM SetChargingProfile-kommandoer direkte til din EV-lader baseret på opladeplanen.",
         "title": "OCPP Server"
@@ -542,7 +554,11 @@
       "ev_min_power_below_start_current": "Den konfigurerede minimumseffekt er for lav til den valgte fasetopologi — en rigtig lader kan ikke starte under 6 A. Øg minimumseffekten, eller skift fasetopologi.",
       "invalid_time_value": "Angiv et gyldigt klokkeslæt (TT:MM).",
       "house_power_required": "Vælg en sensor for husets forbrug, eller angiv inverterens og elmålerens aktive effekt, så HSEM kan udlede husets forbrug.",
-      "house_load_needs_inverter_1": "Angiv den første inverters aktive effekt før den anden inverters."
+      "house_load_needs_inverter_1": "Angiv den første inverters aktive effekt før den anden inverters.",
+      "tls_cert_key_pair_required": "Angiv både stien til servercertifikatet og servernøglen, eller lad begge være tomme.",
+      "tls_file_not_found": "Filen findes ikke eller kan ikke læses.",
+      "tls_cert_key_mismatch": "Servercertifikatet og nøglen kunne ikke indlæses sammen. Kontroller, at begge er PEM-filer, og at nøglen hører til certifikatet.",
+      "tls_invalid_ca": "Klient-CA-filen er ikke et gyldigt PEM-certifikat."
     },
     "step": {
       "batteries_excess_export": {
@@ -952,7 +968,11 @@
           "hsem_ocpp_second_enabled": "Aktiver anden OCPP-server",
           "hsem_ocpp_second_port": "Anden OCPP-port",
           "hsem_ocpp_charging_rate_unit": "Ladeenhed (effekt/strøm)",
-          "hsem_ocpp_second_charging_rate_unit": "Anden ladeenhed (effekt/strøm)"
+          "hsem_ocpp_second_charging_rate_unit": "Anden ladeenhed (effekt/strøm)",
+          "hsem_ocpp_tls_mode": "TLS-tilstand",
+          "hsem_ocpp_tls_server_cert_path": "Sti til servercertifikat",
+          "hsem_ocpp_tls_server_key_path": "Sti til servernøgle",
+          "hsem_ocpp_tls_client_ca_path": "Sti til klient-CA"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiver den indbyggede OCPP 1.6 WebSocket-server til direkte EV-laderstyring. Kun LAN - eksponer ikke porten til internettet.",
@@ -964,7 +984,11 @@
           "hsem_ocpp_second_enabled": "Aktiver en anden, dedikeret OCPP-server til den anden EV. Kun tilgængelig når planlagt belastning for EV 2 er aktiveret.",
           "hsem_ocpp_second_port": "TCP-port til den anden OCPP WebSocket-server. Standard: 9001. Skal være forskellig fra den første servers port.",
           "hsem_ocpp_charging_rate_unit": "Enheden i OCPP-ladeprofiler. 'Auto' forhandler ud fra laderens rapporterede egenskaber og foretrækker watt — en watt-grænse er utvetydig for ladere med automatisk 1/3-fase-omskiftning. 'Ampere' eller 'Watt' tvinger en enhed, hvis en lader rapporterer forkert. Standard: Auto.",
-          "hsem_ocpp_second_charging_rate_unit": "Samme som den primære servers ladeenhed, for den anden laders OCPP-server."
+          "hsem_ocpp_second_charging_rate_unit": "Samme som den primære servers ladeenhed, for den anden laders OCPP-server.",
+          "hsem_ocpp_tls_mode": "Kryptering for begge OCPP-servere. 'Fra' bruger almindelig ws://. 'TLS' bruger wss:// med et servercertifikat. 'Gensidig TLS' kræver desuden, at hver EV-lader præsenterer et klientcertifikat, hvis common name (CN) matcher ladepunktets ID. Kan TLS ikke sættes op, forbliver OCPP-serverne stoppet. Standard: Fra.",
+          "hsem_ocpp_tls_server_cert_path": "Fuld sti til dit eget servercertifikat (PEM). Lad feltet være tomt for at bruge det certifikat, HSEM genererer i /ssl/hsem/ocpp/ (eller <config>/ssl/hsem/ocpp/, når /ssl ikke findes), signeret af HSEM's egen CA.",
+          "hsem_ocpp_tls_server_key_path": "Fuld sti til den private nøgle (PEM) til dit eget servercertifikat. Påkrævet, når en sti til servercertifikatet er angivet.",
+          "hsem_ocpp_tls_client_ca_path": "Kun gensidig TLS: fuld sti til det CA-certifikat (PEM), som EV-laderens klientcertifikater skal være signeret af. Lad feltet være tomt for at bruge HSEM's egen CA."
         },
         "description": "Konfigurer den indbyggede OCPP 1.6 server til LAN-kun EV-laderstyring.",
         "title": "OCPP Server"
@@ -1032,6 +1056,13 @@
         "auto": "Auto (forhandl, foretræk watt)",
         "amps": "Ampere",
         "watts": "Watt"
+      }
+    },
+    "ocpp_tls_mode": {
+      "options": {
+        "off": "Fra (ws://)",
+        "tls": "TLS (wss://, servercertifikat)",
+        "mtls": "Gensidig TLS (wss://, klientcertifikat påkrævet)"
       }
     }
   },
@@ -1465,6 +1496,20 @@
         "current_a": {
           "name": "Strøm",
           "description": "Strømgrænse der skal anmodes om. 0 betyder træk intet; ellers 6-32 A."
+        }
+      }
+    },
+    "ocpp_generate_client_certificate": {
+      "name": "OCPP generér klientcertifikat",
+      "description": "Signér en klientnøgle og et klientcertifikat til ét ladepunkt med HSEM's OCPP-CA, til EV-ladere der skal have et certifikat uploadet for at bruge gensidig TLS. Returnerer kun filstierne.",
+      "fields": {
+        "cpid": {
+          "name": "Ladepunkt-ID",
+          "description": "Ladepunktets identitet, som EV-laderen forbinder med. Bliver certifikatets common name (CN)."
+        },
+        "replace": {
+          "name": "Erstat",
+          "description": "Overskriv et eksisterende certifikat og en eksisterende nøgle til dette ladepunkt."
         }
       }
     }

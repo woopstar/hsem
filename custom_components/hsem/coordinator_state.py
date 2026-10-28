@@ -157,6 +157,7 @@ class CoordinatorSharedState(_Base):
     _ocpp_event_task: asyncio.Task | None
     _ocpp_server: OCPPServer | None
     _ocpp_second_server: OCPPServer | None
+    _ocpp_tls_status: dict[str, Any] | None
     _ocpp_sessions: list
     _options_update_debounce_task: asyncio.Task | None
     _options_update_task: asyncio.Task | None

@@ -184,6 +184,12 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ocpp_second_port": 9001,
     "hsem_ocpp_second_cpid": "",
     "hsem_ocpp_second_charging_rate_unit": "auto",
+    # TLS for the OCPP server(s) (issue #1341): off/tls/mtls. Empty paths
+    # use the certificates HSEM generates in Home Assistant's SSL folder.
+    "hsem_ocpp_tls_mode": "off",
+    "hsem_ocpp_tls_server_cert_path": "",
+    "hsem_ocpp_tls_server_key_path": "",
+    "hsem_ocpp_tls_client_ca_path": "",
     # Daily plan-vs-actual tracking — optional energy meter entities.
     # When not configured, the sensor falls back to Riemann-sum estimates
     # from instantaneous power sensors.

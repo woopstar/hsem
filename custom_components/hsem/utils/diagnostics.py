@@ -361,6 +361,7 @@ def build_diagnostics_dump(
     apply_summary: Any | None = None,
     *,
     integration_version: str | None = None,
+    ocpp_tls: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a complete, safe diagnostics dump for one HSEM planning cycle.
 
@@ -379,6 +380,9 @@ def build_diagnostics_dump(
             Entity IDs inside the summary are always redacted.
         integration_version: Optional HSEM version string to embed in the dump
             for easier triage.
+        ocpp_tls: Optional OCPP TLS facts (mode, certificate expiry, SANs,
+            CA fingerprint, or the setup error) added as ``ocpp_tls``
+            (issue #1341). Never holds key material.
 
     Returns:
         A JSON-safe dictionary with keys ``hsem_version``, ``dump_timestamp``,
@@ -390,18 +394,20 @@ def build_diagnostics_dump(
     # Redact any entity-id strings that snuck into the extra dict.
     input_dict = redact_dict(input_dict)
 
+    dump: dict[str, Any] = {
+        "hsem_version": integration_version or STATE_UNKNOWN,
+        "dump_timestamp": dt_util.now().isoformat(),
+        "planner_input": input_dict,
+        "planner_output": _planner_output_summary(planner_output),
+        "apply_result": _apply_summary_to_dict(apply_summary),
+    }
+    # Callers read this off the coordinator with getattr(); only a real dict
+    # is trusted, since anything else would be serialised attribute by
+    # attribute.
+    if isinstance(ocpp_tls, dict):
+        dump["ocpp_tls"] = ocpp_tls
+
     # Serialise the whole dump, not just the input: the planner output and the
     # apply summary carry SciPy scalars too, and a caller that hits one gets a
     # failed service call rather than a partial dump.
-    return cast(
-        dict[str, Any],
-        _serialise_value(
-            {
-                "hsem_version": integration_version or STATE_UNKNOWN,
-                "dump_timestamp": dt_util.now().isoformat(),
-                "planner_input": input_dict,
-                "planner_output": _planner_output_summary(planner_output),
-                "apply_result": _apply_summary_to_dict(apply_summary),
-            }
-        ),
-    )
+    return cast(dict[str, Any], _serialise_value(dump))

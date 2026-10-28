@@ -17,6 +17,8 @@ This module implements the HSEM services:
 - ``ocpp_debug_set_configuration`` — Write one OCPP configuration key.
 - ``ocpp_debug_set_current`` — Send only a charging profile, at a given current
   (``0`` = draw nothing), to isolate whether profiles are honoured at all.
+- ``ocpp_generate_client_certificate`` — Sign a client key and certificate for
+  one charge point with HSEM's OCPP CA, for mutual TLS (issue #1341).
 
 All services are integration-level actions; the coordinator is looked up from
 the only configured HSEM entry.  Service schemas are defined in ``services.yaml``.
@@ -51,6 +53,11 @@ from custom_components.hsem.services_ocpp import (
     async_handle_ocpp_debug_set_current,
     async_handle_ocpp_debug_start_charging,
     async_handle_ocpp_debug_stop_charging,
+)
+from custom_components.hsem.services_ocpp_tls import (
+    SCHEMA_OCPP_GENERATE_CLIENT_CERTIFICATE,
+    SERVICE_OCPP_GENERATE_CLIENT_CERTIFICATE,
+    async_handle_ocpp_generate_client_certificate,
 )
 from custom_components.hsem.utils.dashboard import async_ensure_hsem_dashboard
 from custom_components.hsem.utils.diagnostics import build_diagnostics_dump
@@ -309,6 +316,7 @@ async def async_handle_export_diagnostics(
         planner_output,
         apply_summary,
         integration_version=str(integration_version),
+        ocpp_tls=getattr(coordinator, "_ocpp_tls_status", None),
     )
 
     _LOGGER.info("HSEM service: export_diagnostics completed")
@@ -381,6 +389,11 @@ SERVICE_HANDLER_MAP: dict[str, tuple[vol.Schema, Any, SupportsResponse]] = {
         SCHEMA_OCPP_DEBUG_DIAGNOSTICS,
         async_handle_ocpp_debug_diagnostics,
         SupportsResponse.NONE,
+    ),
+    SERVICE_OCPP_GENERATE_CLIENT_CERTIFICATE: (
+        SCHEMA_OCPP_GENERATE_CLIENT_CERTIFICATE,
+        async_handle_ocpp_generate_client_certificate,
+        SupportsResponse.ONLY,
     ),
     SERVICE_OCPP_DEBUG_SET_CURRENT: (
         SCHEMA_OCPP_DEBUG_SET_CURRENT,

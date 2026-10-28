@@ -82,6 +82,7 @@ def test_snapshot_reads_options_over_data_with_defaults() -> None:
         "hsem_ocpp_enabled": True,
         "hsem_ocpp_second_enabled": False,
         "house_load_inputs": None,
+        "ocpp_tls": ("off", "", "", ""),
     }
 
 
@@ -96,6 +97,33 @@ async def test_gating_flag_change_schedules_reload(
     coordinator = _attach_runtime(entry)
 
     entry.options[key] = not initial
+    await async_update_options(mock_hass, entry)
+
+    mock_hass.config_entries.async_schedule_reload.assert_called_once_with("test_entry")
+    coordinator.async_options_updated.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("hsem_ocpp_tls_mode", "mtls"),
+        ("hsem_ocpp_tls_server_cert_path", "/ssl/cert.pem"),
+        ("hsem_ocpp_tls_server_key_path", "/ssl/key.pem"),
+        ("hsem_ocpp_tls_client_ca_path", "/ssl/ca.pem"),
+    ],
+)
+async def test_ocpp_tls_change_schedules_reload(
+    mock_hass: MagicMock, key: str, value: str
+) -> None:
+    """The OCPP servers are rebuilt when their TLS settings change (#1341).
+
+    Applied in place, switching TLS on would leave plain ws:// running.
+    """
+    entry = _make_entry(options={"hsem_ocpp_enabled": True})
+    coordinator = _attach_runtime(entry)
+
+    entry.options[key] = value
     await async_update_options(mock_hass, entry)
 
     mock_hass.config_entries.async_schedule_reload.assert_called_once_with("test_entry")
@@ -227,4 +255,5 @@ async def test_setup_entry_snapshots_gating_flags() -> None:
         "hsem_ocpp_enabled": True,
         "hsem_ocpp_second_enabled": False,
         "house_load_inputs": None,
+        "ocpp_tls": ("off", "", "", ""),
     }

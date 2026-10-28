@@ -248,6 +248,33 @@ ocpp_debug_set_configuration:
         text:
       description: "New value. OCPP 1.6 carries all configuration values as strings."
 
+ocpp_generate_client_certificate:
+  name: OCPP generate client certificate
+  description: >-
+    Sign a client key and certificate for one charge point with the CA HSEM
+    generates for its OCPP server, for chargers that need a certificate
+    uploaded before they can use mutual TLS. The files are written to the
+    clients folder next to the CA (/ssl/hsem/ocpp/clients, or
+    <config>/ssl/hsem/ocpp/clients when /ssl does not exist). Response keys:
+    certificate_path, key_path, ca_certificate_path. Key contents are never
+    returned.
+  fields:
+    cpid:
+      required: true
+      selector:
+        text:
+      description: >-
+        Charge point identity the charger connects with (the last part of its
+        backend URL path). Becomes the certificate's common name (CN). Letters,
+        digits, ".", "_" and "-" only.
+    replace:
+      required: false
+      default: false
+      selector:
+        boolean:
+      description: >-
+        Overwrite an existing certificate and key for this charge point.
+
 create_dashboard:
   name: Create dashboard
   description: >-

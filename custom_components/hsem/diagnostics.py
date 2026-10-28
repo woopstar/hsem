@@ -88,4 +88,5 @@ async def async_get_config_entry_diagnostics(  # NOSONAR -- HA diagnostics hook,
         planner_output,
         apply_summary,
         integration_version=str(integration_version),
+        ocpp_tls=getattr(coordinator, "_ocpp_tls_status", None),
     )

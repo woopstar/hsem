@@ -27,7 +27,11 @@
       "ev_min_power_below_start_current": "La potencia mínima configurada es demasiado baja para la topología de fases seleccionada — un cargador real no puede arrancar por debajo de 6 A. Aumenta la potencia mínima o cambia la topología de fases.",
       "invalid_time_value": "Introduce una hora del día válida (HH:MM).",
       "house_power_required": "Selecciona un sensor de consumo de la casa, o configura la potencia activa del inversor y del medidor para que HSEM calcule la carga de la casa.",
-      "house_load_needs_inverter_1": "Configura la potencia activa del primer inversor antes que la del segundo."
+      "house_load_needs_inverter_1": "Configura la potencia activa del primer inversor antes que la del segundo.",
+      "tls_cert_key_pair_required": "Indica tanto la ruta del certificado del servidor como la de la clave, o deja ambas vacías.",
+      "tls_file_not_found": "Archivo no encontrado o no legible.",
+      "tls_cert_key_mismatch": "No se pudieron cargar juntos el certificado y la clave del servidor. Comprueba que ambos sean archivos PEM y que la clave corresponda al certificado.",
+      "tls_invalid_ca": "El archivo de la CA de clientes no es un certificado PEM válido."
     },
     "step": {
       "batteries_excess_export": {
@@ -115,7 +119,11 @@
           "hsem_ocpp_second_port": "Segundo puerto OCPP",
           "hsem_ocpp_second_cpid": "ID del segundo punto de carga",
           "hsem_ocpp_charging_rate_unit": "Unidad de carga (vatios/amperios)",
-          "hsem_ocpp_second_charging_rate_unit": "Segunda unidad de carga (vatios/amperios)"
+          "hsem_ocpp_second_charging_rate_unit": "Segunda unidad de carga (vatios/amperios)",
+          "hsem_ocpp_tls_mode": "Modo TLS",
+          "hsem_ocpp_tls_server_cert_path": "Ruta del certificado del servidor",
+          "hsem_ocpp_tls_server_key_path": "Ruta de la clave del servidor",
+          "hsem_ocpp_tls_client_ca_path": "Ruta de la CA de clientes"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Activa el servidor WebSocket OCPP 1.6 integrado para el control directo del cargador de VE. Solo para red local: no expongas el puerto a internet.",
@@ -127,7 +135,11 @@
           "hsem_ocpp_second_port": "Puerto TCP para el segundo servidor WebSocket OCPP. Predeterminado: 9001. Debe ser diferente del puerto del primer servidor.",
           "hsem_ocpp_second_cpid": "Identificador de punto de carga esperado del segundo cargador de VE. Déjalo vacío para aceptar cualquier cargador.",
           "hsem_ocpp_charging_rate_unit": "Unidad usada en los perfiles de carga OCPP. 'Auto' negocia según las capacidades reportadas por el cargador y prefiere vatios — un límite en vatios es inequívoco para cargadores con conmutación automática 1/3 fases. 'Amperios' o 'Vatios' fuerza una unidad cuando un cargador reporta mal su soporte. Predeterminado: Auto.",
-          "hsem_ocpp_second_charging_rate_unit": "Igual que la unidad de carga del servidor primario, para el servidor OCPP del segundo cargador."
+          "hsem_ocpp_second_charging_rate_unit": "Igual que la unidad de carga del servidor primario, para el servidor OCPP del segundo cargador.",
+          "hsem_ocpp_tls_mode": "Cifrado para ambos servidores OCPP. 'Desactivado' usa ws:// sin cifrar. 'TLS' usa wss:// con un certificado de servidor. 'TLS mutuo' además exige que cada cargador de VE presente un certificado de cliente cuyo nombre común (CN) coincida con el ID del punto de carga. Si TLS no se puede configurar, los servidores OCPP permanecen detenidos. Predeterminado: Desactivado.",
+          "hsem_ocpp_tls_server_cert_path": "Ruta completa a tu propio certificado de servidor (PEM). Déjalo vacío para usar el certificado que HSEM genera en /ssl/hsem/ocpp/ (o en <config>/ssl/hsem/ocpp/ cuando /ssl no existe), firmado por la CA propia de HSEM.",
+          "hsem_ocpp_tls_server_key_path": "Ruta completa a la clave privada (PEM) de tu propio certificado de servidor. Obligatoria cuando se indica una ruta de certificado de servidor.",
+          "hsem_ocpp_tls_client_ca_path": "Solo TLS mutuo: ruta completa al certificado de CA (PEM) que debe firmar los certificados de cliente de los cargadores. Déjalo vacío para usar la CA propia de HSEM."
         },
         "description": "Configura el servidor OCPP 1.6 integrado para el control del cargador de VE únicamente en red local. Cuando está activado, HSEM envía órdenes SetChargingProfile directamente a tu cargador de VE según el plan de carga.",
         "title": "Servidor OCPP"
@@ -542,7 +554,11 @@
       "ev_min_power_below_start_current": "La potencia mínima configurada es demasiado baja para la topología de fases seleccionada — un cargador real no puede arrancar por debajo de 6 A. Aumenta la potencia mínima o cambia la topología de fases.",
       "invalid_time_value": "Introduce una hora del día válida (HH:MM).",
       "house_power_required": "Selecciona un sensor de consumo de la casa, o configura la potencia activa del inversor y del medidor para que HSEM calcule la carga de la casa.",
-      "house_load_needs_inverter_1": "Configura la potencia activa del primer inversor antes que la del segundo."
+      "house_load_needs_inverter_1": "Configura la potencia activa del primer inversor antes que la del segundo.",
+      "tls_cert_key_pair_required": "Indica tanto la ruta del certificado del servidor como la de la clave, o deja ambas vacías.",
+      "tls_file_not_found": "Archivo no encontrado o no legible.",
+      "tls_cert_key_mismatch": "No se pudieron cargar juntos el certificado y la clave del servidor. Comprueba que ambos sean archivos PEM y que la clave corresponda al certificado.",
+      "tls_invalid_ca": "El archivo de la CA de clientes no es un certificado PEM válido."
     },
     "step": {
       "batteries_excess_export": {
@@ -630,7 +646,11 @@
           "hsem_ocpp_second_port": "Segundo puerto OCPP",
           "hsem_ocpp_second_cpid": "ID del segundo punto de carga",
           "hsem_ocpp_charging_rate_unit": "Unidad de carga (vatios/amperios)",
-          "hsem_ocpp_second_charging_rate_unit": "Segunda unidad de carga (vatios/amperios)"
+          "hsem_ocpp_second_charging_rate_unit": "Segunda unidad de carga (vatios/amperios)",
+          "hsem_ocpp_tls_mode": "Modo TLS",
+          "hsem_ocpp_tls_server_cert_path": "Ruta del certificado del servidor",
+          "hsem_ocpp_tls_server_key_path": "Ruta de la clave del servidor",
+          "hsem_ocpp_tls_client_ca_path": "Ruta de la CA de clientes"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Activa el servidor WebSocket OCPP 1.6 integrado para el control directo del cargador de VE. Solo para red local: no expongas el puerto a internet.",
@@ -642,7 +662,11 @@
           "hsem_ocpp_second_port": "Puerto TCP para el segundo servidor WebSocket OCPP. Predeterminado: 9001. Debe ser diferente del puerto del primer servidor.",
           "hsem_ocpp_second_cpid": "Identificador de punto de carga esperado del segundo cargador de VE. Déjalo vacío para aceptar cualquier cargador.",
           "hsem_ocpp_charging_rate_unit": "Unidad usada en los perfiles de carga OCPP. 'Auto' negocia según las capacidades reportadas por el cargador y prefiere vatios — un límite en vatios es inequívoco para cargadores con conmutación automática 1/3 fases. 'Amperios' o 'Vatios' fuerza una unidad cuando un cargador reporta mal su soporte. Predeterminado: Auto.",
-          "hsem_ocpp_second_charging_rate_unit": "Igual que la unidad de carga del servidor primario, para el servidor OCPP del segundo cargador."
+          "hsem_ocpp_second_charging_rate_unit": "Igual que la unidad de carga del servidor primario, para el servidor OCPP del segundo cargador.",
+          "hsem_ocpp_tls_mode": "Cifrado para ambos servidores OCPP. 'Desactivado' usa ws:// sin cifrar. 'TLS' usa wss:// con un certificado de servidor. 'TLS mutuo' además exige que cada cargador de VE presente un certificado de cliente cuyo nombre común (CN) coincida con el ID del punto de carga. Si TLS no se puede configurar, los servidores OCPP permanecen detenidos. Predeterminado: Desactivado.",
+          "hsem_ocpp_tls_server_cert_path": "Ruta completa a tu propio certificado de servidor (PEM). Déjalo vacío para usar el certificado que HSEM genera en /ssl/hsem/ocpp/ (o en <config>/ssl/hsem/ocpp/ cuando /ssl no existe), firmado por la CA propia de HSEM.",
+          "hsem_ocpp_tls_server_key_path": "Ruta completa a la clave privada (PEM) de tu propio certificado de servidor. Obligatoria cuando se indica una ruta de certificado de servidor.",
+          "hsem_ocpp_tls_client_ca_path": "Solo TLS mutuo: ruta completa al certificado de CA (PEM) que debe firmar los certificados de cliente de los cargadores. Déjalo vacío para usar la CA propia de HSEM."
         },
         "description": "Configura el servidor OCPP 1.6 integrado para el control del cargador de VE únicamente en red local. Cuando está activado, HSEM envía órdenes SetChargingProfile directamente a tu cargador de VE según el plan de carga.",
         "title": "Servidor OCPP"
@@ -1032,6 +1056,13 @@
         "auto": "Auto (negociar, preferir vatios)",
         "amps": "Amperios",
         "watts": "Vatios"
+      }
+    },
+    "ocpp_tls_mode": {
+      "options": {
+        "off": "Desactivado (ws://)",
+        "tls": "TLS (wss://, certificado de servidor)",
+        "mtls": "TLS mutuo (wss://, certificado de cliente obligatorio)"
       }
     }
   },
@@ -1458,6 +1489,20 @@
         "current_a": {
           "name": "Corriente",
           "description": "Límite de corriente solicitado. 0 significa no consumir nada; si no, 6-32 A."
+        }
+      }
+    },
+    "ocpp_generate_client_certificate": {
+      "name": "OCPP generar certificado de cliente",
+      "description": "Firma una clave y un certificado de cliente para un punto de carga con la CA OCPP de HSEM, para cargadores que necesitan un certificado cargado para usar TLS mutuo. Solo devuelve las rutas de los archivos.",
+      "fields": {
+        "cpid": {
+          "name": "ID del punto de carga",
+          "description": "Identidad con la que se conecta el cargador. Se convierte en el nombre común (CN) del certificado."
+        },
+        "replace": {
+          "name": "Reemplazar",
+          "description": "Sobrescribe un certificado y una clave existentes para este punto de carga."
         }
       }
     }

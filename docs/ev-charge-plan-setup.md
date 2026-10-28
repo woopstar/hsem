@@ -19,8 +19,9 @@ deciding how to use solar surplus and battery capacity.
 5. [Double-counting — when to enable base_load_includes_ev](#double-counting)
 6. [Second EV](#second-ev)
 7. [How the EV planner works](#how-the-ev-planner-works)
-8. [Sensor entities](#sensor-entities)
-9. [Troubleshooting](#troubleshooting)
+8. [Securing the OCPP connection (TLS)](#securing-the-ocpp-connection-tls)
+9. [Sensor entities](#sensor-entities)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -443,6 +444,85 @@ itself after Smart Charging has been turned off.
 
 See [planner-spec.md](planner-spec.md) _Session EV invariant_ for the exact
 per-slot energy bounds.
+
+---
+
+## Securing the OCPP connection (TLS)
+
+By default the built-in OCPP servers speak plain `ws://`: traffic is
+unencrypted and any device on the LAN can connect under any charge point ID.
+`hsem_ocpp_tls_mode` (OCPP step of the options flow) adds the certificate
+side of the OCPP 1.6 Security Whitepaper to **both** OCPP servers (issue
+#1341):
+
+| Mode   | Charger URL                     | What the charger must do                                                                                      |
+| ------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `off`  | `ws://<ha-host>:<port>/<cpid>`  | Nothing (default, unchanged behaviour)                                                                        |
+| `tls`  | `wss://<ha-host>:<port>/<cpid>` | Trust the CA that signed the server certificate (security profile 2, without HTTP Basic auth)                 |
+| `mtls` | `wss://<ha-host>:<port>/<cpid>` | Also present a client certificate signed by the client CA, with its CN equal to `<cpid>` (security profile 3) |
+
+If the certificates cannot be loaded or generated, **neither OCPP server
+starts** and HSEM logs `OCPP TLS setup failed, OCPP server(s) not started`.
+HSEM never falls back to plain `ws://`, because that would turn encryption off
+without telling you.
+
+### Certificates HSEM generates
+
+Leave the three path fields empty and HSEM creates what it needs on the next
+start, in Home Assistant's SSL folder:
+
+- `/ssl/hsem/ocpp/` on HA OS and Supervised installs, where `/ssl` is the
+  folder the `http:` integration and the Let's Encrypt add-on also use;
+- `<config>/ssl/hsem/ocpp/` on Container and Core installs, which usually have
+  no `/ssl`.
+
+HSEM only writes inside its own `hsem/ocpp/` subfolder, never directly into
+`/ssl`, so files such as `fullchain.pem` and `privkey.pem` are never touched.
+Private keys are written readable by the owner only (`0600`).
+
+| File                          | What it is                                                                                                                      |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `ca.crt` / `ca.key`           | HSEM's private CA (RSA 3072, 10 years). Install `ca.crt` in the charger's trust store. Never overwritten.                       |
+| `server.crt` / `server.key`   | Server certificate (RSA 2048, 1 year) signed by the CA. Its SANs are Home Assistant's LAN IPs, host name and internal URL host. |
+| `clients/<cpid>.crt` / `.key` | Client certificates issued by `hsem.ocpp_generate_client_certificate` (2 years).                                                |
+
+The server certificate is reissued automatically on start-up when it expires
+within 30 days, when Home Assistant's IPs or host name change, or when it was
+not signed by the current CA. The CA is kept, so chargers keep trusting the
+new certificate. To start over with a new CA, delete both `ca.crt` and
+`ca.key`: chargers then need the new `ca.crt`. A CA with only one of the two
+files left is reported as an error rather than replaced.
+
+### Using your own certificates
+
+Set `hsem_ocpp_tls_server_cert_path` and `hsem_ocpp_tls_server_key_path` to
+PEM files you manage (both or neither). For `mtls`, set
+`hsem_ocpp_tls_client_ca_path` to the CA that signs your chargers'
+certificates; leave it empty to use HSEM's CA. A certificate you supply is
+never rotated by HSEM, which logs a warning when it expires within 30 days.
+
+### Setting up mutual TLS
+
+1. Set `hsem_ocpp_tls_mode` to `mtls` and save. Any TLS setting change
+   reloads HSEM, which restarts the OCPP servers and creates the CA and server
+   certificate if needed.
+2. If the charger needs a certificate uploaded, call
+   `hsem.ocpp_generate_client_certificate` with `cpid` set to the charge point
+   ID the charger connects with. Upload the returned `certificate_path` and
+   `key_path` files to the charger, and `ca_certificate_path` as its trusted
+   CA. See [the services reference](services-reference.md).
+3. Set the charger's backend URL to `wss://<ha-host>:<port>/<cpid>`.
+
+The certificate's CN must equal the **last segment** of the URL path. A
+charger configured as `wss://<ha-host>:9000/ocpp/` that appends its own ID
+connects on `/ocpp/<id>`, so its CN must be `<id>`. A valid certificate with a
+different CN is refused with HTTP 403 before the connection is accepted, so a
+charger cannot take over another charger's session with its own certificate.
+
+Diagnostics (`hsem.export_diagnostics` and _Download diagnostics_) include an
+`ocpp_tls` block: mode, certificate source, server certificate expiry, SANs and
+the CA's SHA-256 fingerprint, or the setup error. Key material never appears
+in diagnostics, logs or service responses.
 
 ---
 

@@ -13,6 +13,11 @@ from custom_components.hsem.custom_sensors.ocpp_control import (
     RATE_UNIT_PREFERENCES,
 )
 from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.ocpp_tls import (
+    TLS_MODE_OFF,
+    TLS_MODES,
+    validate_tls_paths,
+)
 from custom_components.hsem.utils.schema import vol
 
 # Charging-profile rate unit preference (issue #1001). ``auto`` negotiates
@@ -28,6 +33,26 @@ _RATE_UNIT_SELECTOR = selector(
             "options": list(RATE_UNIT_PREFERENCES),
         }
     }
+)
+
+# TLS for both OCPP servers (issue #1341): plain ws://, wss:// with a server
+# certificate, or wss:// that also requires a client certificate.
+_TLS_MODE_SELECTOR = selector(
+    {
+        "select": {
+            "multiple": False,
+            "translation_key": "ocpp_tls_mode",
+            "mode": "list",
+            "options": list(TLS_MODES),
+        }
+    }
+)
+
+#: Optional TLS file paths; empty means "use the generated certificates".
+_TLS_PATH_FIELDS = (
+    "hsem_ocpp_tls_server_cert_path",
+    "hsem_ocpp_tls_server_key_path",
+    "hsem_ocpp_tls_client_ca_path",
 )
 
 
@@ -145,6 +170,18 @@ async def get_ocpp_step_schema(
             )
         ] = _RATE_UNIT_SELECTOR
 
+    # TLS settings come last: they apply to both servers (issue #1341).
+    fields[
+        vol.Required(
+            "hsem_ocpp_tls_mode",
+            default=get_config_value(config_entry, "hsem_ocpp_tls_mode"),
+        )
+    ] = _TLS_MODE_SELECTOR
+    for field in _TLS_PATH_FIELDS:
+        fields[
+            vol.Optional(field, default=get_config_value(config_entry, field) or "")
+        ] = str
+
     return vol.Schema(fields)
 
 
@@ -202,5 +239,15 @@ async def validate_ocpp_step_input(
                 errors["hsem_ocpp_second_port"] = "port_conflict"
         except ValueError, TypeError:
             errors["hsem_ocpp_second_port"] = "invalid_power_value"
+
+    # TLS files are only checked when TLS is on: with it off they are
+    # unused, and a stale path must not block saving the step.
+    if user_input.get("hsem_ocpp_tls_mode", TLS_MODE_OFF) != TLS_MODE_OFF:
+        cert, key, client_ca = (
+            str(user_input.get(field) or "").strip() for field in _TLS_PATH_FIELDS
+        )
+        errors.update(
+            await hass.async_add_executor_job(validate_tls_paths, cert, key, client_ca)
+        )
 
     return errors
