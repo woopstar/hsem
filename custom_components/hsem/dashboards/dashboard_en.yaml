@@ -305,12 +305,14 @@ views:
                   entities:
                     - name: Target · cost (Δ) · feasible
                       template: >-
-                        {% set groups = (state_attr(entity, 'points') or []) | groupby('deadline_label') -%}
-                        {% if groups | length == 0 -%}
+                        {% set points = state_attr(entity, 'points') or [] -%}
+                        {% if points | length == 0 -%}
                           No target above current SoC
                         {% else -%}
-                          {% for label, rows in groups -%}
-                            {{- ('  |  ' if not loop.first else '') ~ 'Next ' ~ label ~ ': ' -}}
+                          {% for deadline in points | map(attribute='deadline') | unique -%}
+                            {% set rows = points | selectattr('deadline', 'eq', deadline) | list -%}
+                            {% set label = ('★ Deadline ' if rows[0].is_target_deadline | default(false) else 'Next ') ~ rows[0].deadline_label -%}
+                            {{- ('  |  ' if not loop.first else '') ~ label ~ ': ' -}}
                             {% for p in rows -%}
                               {% set delta = ' (' ~ ('+' if p.delta_from_previous >= 0 else '') ~ (p.delta_from_previous | round(2)) ~ ')' if p.delta_from_previous is not none else '' -%}
                               {% set status = '✓' if p.feasible else '⚠' -%}
@@ -403,12 +405,14 @@ views:
                   entities:
                     - name: Target · cost (Δ) · feasible
                       template: >-
-                        {% set groups = (state_attr(entity, 'points') or []) | groupby('deadline_label') -%}
-                        {% if groups | length == 0 -%}
+                        {% set points = state_attr(entity, 'points') or [] -%}
+                        {% if points | length == 0 -%}
                           No target above current SoC
                         {% else -%}
-                          {% for label, rows in groups -%}
-                            {{- ('  |  ' if not loop.first else '') ~ 'Next ' ~ label ~ ': ' -}}
+                          {% for deadline in points | map(attribute='deadline') | unique -%}
+                            {% set rows = points | selectattr('deadline', 'eq', deadline) | list -%}
+                            {% set label = ('★ Deadline ' if rows[0].is_target_deadline | default(false) else 'Next ') ~ rows[0].deadline_label -%}
+                            {{- ('  |  ' if not loop.first else '') ~ label ~ ': ' -}}
                             {% for p in rows -%}
                               {% set delta = ' (' ~ ('+' if p.delta_from_previous >= 0 else '') ~ (p.delta_from_previous | round(2)) ~ ')' if p.delta_from_previous is not none else '' -%}
                               {% set status = '✓' if p.feasible else '⚠' -%}

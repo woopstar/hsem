@@ -1,7 +1,8 @@
 """EV SoC economics — real-money cost of charging to each target SoC.
 
 Single responsibility: for a given EV, answer "what would it cost to charge
-to X% by deadline Y" for a small grid of target SoC values and deadlines, by
+to X% by deadline Y" for a small grid of target SoC values and deadlines
+(the configured times of day plus the EV's own target deadline), by
 re-running the existing pure :func:`run_planner` on a cloned
 :class:`~custom_components.hsem.models.planner_input.PlannerInput` with only
 that EV's target-SoC/deadline fields overridden.
@@ -24,13 +25,15 @@ from homeassistant.const import STATE_UNAVAILABLE
 
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.planner.engine_core import run_planner
+from custom_components.hsem.utils.datetime_utils import as_tz, utc_key
+from custom_components.hsem.utils.ev_economics_deadlines import (
+    DEFAULT_ECONOMICS_DEADLINES,
+    format_economics_deadline,
+)
 from custom_components.hsem.utils.misc import clamp_efficiency
 
 #: Target SoC percentages evaluated by default, ascending.
 DEFAULT_SOC_TARGETS: tuple[float, ...] = (50.0, 60.0, 70.0, 80.0, 100.0)
-
-#: (label, hour) pairs for the deadlines evaluated by default.
-_DEADLINES: tuple[tuple[str, int], ...] = (("08:00", 8), ("17:00", 17))
 
 
 def next_time_of_day(now: datetime, hour: int, minute: int = 0) -> datetime:
@@ -56,6 +59,58 @@ def next_time_of_day(now: datetime, hour: int, minute: int = 0) -> datetime:
     return candidate
 
 
+def effective_target_deadline(
+    deadline: datetime | None, now: datetime
+) -> datetime | None:
+    """Return the EV's target deadline when it is still ahead of ``now``.
+
+    A deadline that has passed (or was never set) gets no column in the
+    table, so both the engine and the coordinator's refresh check read it
+    through this one rule.
+    """
+    if deadline is None or utc_key(deadline) <= utc_key(now):
+        return None
+    return deadline
+
+
+def deadline_columns(
+    now: datetime,
+    deadlines: Sequence[tuple[int, int]],
+    target_deadline: datetime | None,
+) -> list[tuple[str, datetime, bool]]:
+    """Return the table's ``(label, deadline, is_target_deadline)`` columns.
+
+    Each configured ``(hour, minute)`` resolves to its next occurrence via
+    :func:`next_time_of_day`.  The target deadline, when given, is added at
+    its exact datetime with its local ``HH:MM`` as the label; a configured
+    deadline with the same label is the same time of day, so the two merge
+    into one target column instead of appearing twice.  Columns are ordered
+    by deadline.
+
+    Args:
+        now: Timezone-aware current datetime.
+        deadlines: Configured ``(hour, minute)`` deadlines.
+        target_deadline: The EV's target deadline, already filtered by
+            :func:`effective_target_deadline`, or ``None``.
+
+    Returns:
+        One entry per column, earliest deadline first.
+    """
+    columns: dict[str, tuple[datetime, bool]] = {}
+    for deadline in deadlines:
+        columns.setdefault(
+            format_economics_deadline(deadline),
+            (next_time_of_day(now, *deadline), False),
+        )
+    if target_deadline is not None:
+        label = as_tz(target_deadline, now.tzinfo).strftime("%H:%M")
+        columns[label] = (target_deadline, True)
+    return sorted(
+        ((label, dl, is_target) for label, (dl, is_target) in columns.items()),
+        key=lambda column: utc_key(column[1]),
+    )
+
+
 @dataclass
 class EVSoCEconomicsPoint:
     """Cost of charging to one target SoC by one deadline.
@@ -75,6 +130,8 @@ class EVSoCEconomicsPoint:
         delta_per_10pct: ``delta_from_previous`` normalised to cost per
             10 percentage points of SoC, for comparing unevenly spaced
             targets. ``None`` when there is no previous target.
+        is_target_deadline: Whether this column is the EV's own target
+            deadline (issue #1344).
     """
 
     target_soc_pct: float
@@ -84,6 +141,7 @@ class EVSoCEconomicsPoint:
     feasible: bool = True
     delta_from_previous: float | None = None
     delta_per_10pct: float | None = None
+    is_target_deadline: bool = False
 
 
 @dataclass
@@ -101,11 +159,18 @@ class EVSoCEconomicsResult:
             current SoC are omitted. Deliberately flat (not pre-grouped by
             deadline) — Jinja's ``groupby`` filter and any future consumer
             can group it either way.
+        target_deadline: The EV's target deadline when it is ahead of the
+            computation time, else ``None``. Set in every state, so the
+            sensor always shows it (issue #1344).
+        configured_deadlines: The configured ``(hour, minute)`` deadlines
+            this table was computed for.
     """
 
     state: str = STATE_UNAVAILABLE
     current_soc_pct: float | None = None
     points: list[EVSoCEconomicsPoint] = field(default_factory=list)
+    target_deadline: datetime | None = None
+    configured_deadlines: tuple[tuple[int, int], ...] = ()
 
     def as_attributes(self) -> dict[str, Any]:
         """Serialise to a flat HA sensor attributes dict."""
@@ -116,6 +181,14 @@ class EVSoCEconomicsResult:
                 if self.current_soc_pct is not None
                 else None
             ),
+            "target_deadline": (
+                self.target_deadline.isoformat()
+                if self.target_deadline is not None
+                else None
+            ),
+            "configured_deadlines": [
+                format_economics_deadline(d) for d in self.configured_deadlines
+            ],
             "points": [
                 {
                     "target_soc_pct": p.target_soc_pct,
@@ -133,6 +206,7 @@ class EVSoCEconomicsResult:
                         if p.delta_per_10pct is not None
                         else None
                     ),
+                    "is_target_deadline": p.is_target_deadline,
                 }
                 for p in self.points
             ],
@@ -148,6 +222,7 @@ def compute_ev_soc_economics(
     max_charge_kw: float,
     now: datetime,
     soc_targets: Sequence[float] | None = None,
+    deadlines: Sequence[tuple[int, int]] | None = None,
 ) -> EVSoCEconomicsResult:
     """Compute the cost of charging an EV to each target SoC by each deadline.
 
@@ -159,6 +234,11 @@ def compute_ev_soc_economics(
     — the rest of ``base_input`` (prices, PV forecast, battery state, other
     EV, etc.) is reused verbatim, so the result reflects "what would it cost
     to change *only* this EV's target/deadline right now".
+
+    The deadline columns are the configured ``deadlines`` plus the EV's own
+    target deadline (``ev_planned_load_deadline`` /
+    ``ev_second_planned_load_deadline``) when it is still ahead of ``now``;
+    see :func:`deadline_columns`.
 
     Guard clauses mirror :func:`~custom_components.hsem.planner.ev_planner.build_ev_charging_plan`'s
     early-outs so a disconnected/disabled EV never triggers an extra solve:
@@ -187,6 +267,8 @@ def compute_ev_soc_economics(
             the time available to charge.
         soc_targets: Target SoC percentages to evaluate. Defaults to
             :data:`DEFAULT_SOC_TARGETS` (50/60/70/80/100 %).
+        deadlines: Configured ``(hour, minute)`` deadlines. Defaults to
+            :data:`DEFAULT_ECONOMICS_DEADLINES` (08:00 and 17:00).
 
     Returns:
         An :class:`EVSoCEconomicsResult` with one point per retained
@@ -194,6 +276,9 @@ def compute_ev_soc_economics(
         empty-``points`` result when a guard clause short-circuits.
     """
     targets = tuple(soc_targets) if soc_targets is not None else DEFAULT_SOC_TARGETS
+    configured = (
+        tuple(deadlines) if deadlines is not None else DEFAULT_ECONOMICS_DEADLINES
+    )
 
     enabled = (
         base_input.ev_second_planned_load_enabled
@@ -216,7 +301,20 @@ def compute_ev_soc_economics(
         else base_input.ev_planned_load_charger_efficiency_pct
     )
 
-    result = EVSoCEconomicsResult(current_soc_pct=current_soc_pct)
+    target_deadline = effective_target_deadline(
+        (
+            base_input.ev_second_planned_load_deadline
+            if is_second
+            else base_input.ev_planned_load_deadline
+        ),
+        now,
+    )
+
+    result = EVSoCEconomicsResult(
+        current_soc_pct=current_soc_pct,
+        target_deadline=target_deadline,
+        configured_deadlines=configured,
+    )
 
     if not enabled:
         result.state = "smart_charging_disabled"
@@ -237,8 +335,9 @@ def compute_ev_soc_economics(
     result.state = "ready"
     eff = clamp_efficiency(charger_efficiency_pct)
 
-    for deadline_label, hour in _DEADLINES:
-        deadline = next_time_of_day(now, hour)
+    for deadline_label, deadline, is_target_deadline in deadline_columns(
+        now, configured, target_deadline
+    ):
         time_available_hours = max((deadline - now).total_seconds() / 3600.0, 0.0)
         max_deliverable_kwh = max_charge_kw * time_available_hours * eff
 
@@ -286,6 +385,7 @@ def compute_ev_soc_economics(
                     feasible=feasible,
                     delta_from_previous=delta_from_previous,
                     delta_per_10pct=delta_per_10pct,
+                    is_target_deadline=is_target_deadline,
                 )
             )
             previous_cost = total_cost

@@ -9,12 +9,17 @@ Test classes
 TestNextTimeOfDay              — next_time_of_day() helper
 TestComputeEvSocEconomicsGuards — guard-clause short-circuits
 TestComputeEvSocEconomics       — end-to-end cost/feasibility computation
+TestDeadlineColumns             — configured deadlines and target deadline (#1344)
+TestDeadlineHelpers             — effective_target_deadline() / deadline_columns()
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
+from typing import Any
+from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -27,7 +32,10 @@ from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.planner.ev_soc_economics import (
+    EVSoCEconomicsResult,
     compute_ev_soc_economics,
+    deadline_columns,
+    effective_target_deadline,
     next_time_of_day,
 )
 
@@ -477,3 +485,284 @@ class TestComputeEvSocEconomics:
         assert base_input.ev_planned_load_target_soc_pct == original_primary_target
         assert base_input.ev_planned_load_deadline == original_primary_deadline
         assert base_input.ev_second_planned_load_target_soc_pct == 80.0
+
+
+# ---------------------------------------------------------------------------
+# TestDeadlineColumns — configured deadlines and the target deadline (#1344)
+# ---------------------------------------------------------------------------
+
+
+def _fake_run_planner(
+    cost_by_deadline: dict[datetime, float] | None = None,
+) -> tuple[Callable[[PlannerInput], MagicMock], list[PlannerInput]]:
+    """Return a run_planner stand-in that records each clone it is given.
+
+    The cost of a clone is its target SoC, plus an optional per-deadline
+    offset, so tests can tell columns apart without a real solve.
+    """
+    seen: list[PlannerInput] = []
+
+    def _run(clone: PlannerInput) -> MagicMock:
+        seen.append(clone)
+        deadline = (
+            clone.ev_planned_load_deadline or clone.ev_second_planned_load_deadline
+        )
+        offset = (cost_by_deadline or {}).get(deadline, 0.0) if deadline else 0.0
+        target = (
+            clone.ev_planned_load_target_soc_pct
+            or clone.ev_second_planned_load_target_soc_pct
+        )
+        output = MagicMock()
+        output.plan_cost.total_cost = float(target) / 10.0 + offset
+        return output
+
+    return _run, seen
+
+
+def _compute(
+    base_input: PlannerInput, now: datetime, **kwargs: Any
+) -> EVSoCEconomicsResult:
+    """Run compute_ev_soc_economics for the primary EV at 50 % SoC."""
+    return compute_ev_soc_economics(
+        base_input,
+        is_second=kwargs.pop("is_second", False),
+        current_soc_pct=50.0,
+        capacity_kwh=77.0,
+        max_charge_kw=11.0,
+        now=now,
+        **kwargs,
+    )
+
+
+class TestDeadlineColumns:
+    """Configured deadlines and the always-present target deadline (#1344)."""
+
+    _NOW = datetime(2024, 6, 15, 14, 0, tzinfo=UTC)
+
+    def test_default_deadlines_unchanged_without_target(self):
+        """No deadlines argument and no target deadline: the 08:00/17:00 table."""
+        base_input = _make_planner_input()
+        run, _ = _fake_run_planner()
+        with patch(
+            "custom_components.hsem.planner.ev_soc_economics.run_planner",
+            side_effect=run,
+        ):
+            result = _compute(base_input, self._NOW, soc_targets=(60.0,))
+
+        assert [(p.deadline_label, p.deadline) for p in result.points] == [
+            ("17:00", datetime(2024, 6, 15, 17, 0, tzinfo=UTC)),
+            ("08:00", datetime(2024, 6, 16, 8, 0, tzinfo=UTC)),
+        ]
+        assert not any(p.is_target_deadline for p in result.points)
+        assert result.target_deadline is None
+        assert result.configured_deadlines == ((8, 0), (17, 0))
+
+    def test_custom_minute_deadline(self):
+        """A configured 06:30 resolves to the next 06:30 and solves with it."""
+        base_input = _make_planner_input()
+        run, seen = _fake_run_planner()
+        with patch(
+            "custom_components.hsem.planner.ev_soc_economics.run_planner",
+            side_effect=run,
+        ):
+            result = _compute(
+                base_input, self._NOW, soc_targets=(60.0,), deadlines=((6, 30),)
+            )
+
+        expected = datetime(2024, 6, 16, 6, 30, tzinfo=UTC)
+        assert [(p.deadline_label, p.deadline) for p in result.points] == [
+            ("06:30", expected)
+        ]
+        assert [clone.ev_planned_load_deadline for clone in seen] == [expected]
+
+    def test_no_configured_deadlines_and_no_target_is_an_empty_table(self):
+        """An empty list with no target deadline yields no points and no solve."""
+        base_input = _make_planner_input()
+        with patch(
+            "custom_components.hsem.planner.ev_soc_economics.run_planner"
+        ) as mock_run:
+            result = _compute(base_input, self._NOW, deadlines=())
+
+        assert result.state == "ready"
+        assert result.points == []
+        mock_run.assert_not_called()
+
+    def test_target_deadline_added_as_its_own_column(self):
+        """The EV's deadline gets an exact-time column, flagged and ordered."""
+        base_input = _make_planner_input()
+        target = datetime(2024, 6, 16, 7, 15, tzinfo=UTC)
+        base_input.ev_planned_load_deadline = target
+        run, seen = _fake_run_planner({target: 1.0})
+        with patch(
+            "custom_components.hsem.planner.ev_soc_economics.run_planner",
+            side_effect=run,
+        ):
+            result = _compute(base_input, self._NOW, soc_targets=(60.0,))
+
+        assert [
+            (p.deadline_label, p.deadline, p.is_target_deadline) for p in result.points
+        ] == [
+            ("17:00", datetime(2024, 6, 15, 17, 0, tzinfo=UTC), False),
+            ("07:15", target, True),
+            ("08:00", datetime(2024, 6, 16, 8, 0, tzinfo=UTC), False),
+        ]
+        assert result.target_deadline == target
+        target_point = result.points[1]
+        assert target_point.total_cost == pytest.approx(7.0)
+        assert target in [clone.ev_planned_load_deadline for clone in seen]
+        # The base input keeps its own deadline: only clones are overridden.
+        assert base_input.ev_planned_load_deadline == target
+
+    def test_target_deadline_merges_with_equal_configured_deadline(self):
+        """A target at a configured time of day is one column, not two."""
+        base_input = _make_planner_input()
+        target = datetime(2024, 6, 16, 8, 0, tzinfo=UTC)
+        base_input.ev_planned_load_deadline = target
+        run, _ = _fake_run_planner()
+        with patch(
+            "custom_components.hsem.planner.ev_soc_economics.run_planner",
+            side_effect=run,
+        ):
+            result = _compute(base_input, self._NOW, soc_targets=(60.0,))
+
+        assert [
+            (p.deadline_label, p.deadline, p.is_target_deadline) for p in result.points
+        ] == [
+            ("17:00", datetime(2024, 6, 15, 17, 0, tzinfo=UTC), False),
+            ("08:00", target, True),
+        ]
+
+    def test_target_deadline_alone_when_nothing_configured(self):
+        """With no configured deadlines, the target deadline is the only column."""
+        base_input = _make_planner_input()
+        target = datetime(2024, 6, 16, 6, 45, tzinfo=UTC)
+        base_input.ev_planned_load_deadline = target
+        run, _ = _fake_run_planner()
+        with patch(
+            "custom_components.hsem.planner.ev_soc_economics.run_planner",
+            side_effect=run,
+        ):
+            result = _compute(
+                base_input, self._NOW, soc_targets=(60.0, 80.0), deadlines=()
+            )
+
+        assert {p.deadline_label for p in result.points} == {"06:45"}
+        assert all(p.is_target_deadline for p in result.points)
+        assert len(result.points) == 2
+
+    def test_passed_target_deadline_gets_no_column(self):
+        """A target deadline at or before now is left out entirely."""
+        base_input = _make_planner_input()
+        base_input.ev_planned_load_deadline = self._NOW
+        run, _ = _fake_run_planner()
+        with patch(
+            "custom_components.hsem.planner.ev_soc_economics.run_planner",
+            side_effect=run,
+        ):
+            result = _compute(base_input, self._NOW, soc_targets=(60.0,))
+
+        assert result.target_deadline is None
+        assert {p.deadline_label for p in result.points} == {"08:00", "17:00"}
+        assert not any(p.is_target_deadline for p in result.points)
+
+    def test_target_deadline_reported_when_not_connected(self):
+        """Guard states still carry the target deadline for the sensor."""
+        base_input = _make_planner_input(ev_connected=False)
+        target = datetime(2024, 6, 16, 7, 0, tzinfo=UTC)
+        base_input.ev_planned_load_deadline = target
+
+        result = _compute(base_input, self._NOW, deadlines=((9, 0),))
+
+        assert result.state == "not_connected"
+        assert result.points == []
+        assert result.target_deadline == target
+        assert result.configured_deadlines == ((9, 0),)
+
+    def test_second_ev_uses_its_own_target_deadline(self):
+        """is_second reads ev_second_planned_load_deadline, not the primary one."""
+        base_input = _make_planner_input(second_ev_enabled=True)
+        base_input.ev_planned_load_deadline = datetime(2024, 6, 16, 5, 0, tzinfo=UTC)
+        second_target = datetime(2024, 6, 16, 9, 30, tzinfo=UTC)
+        base_input.ev_second_planned_load_deadline = second_target
+        run, seen = _fake_run_planner()
+        with patch(
+            "custom_components.hsem.planner.ev_soc_economics.run_planner",
+            side_effect=run,
+        ):
+            result = _compute(
+                base_input,
+                self._NOW,
+                is_second=True,
+                soc_targets=(60.0,),
+                deadlines=((18, 0),),
+            )
+
+        assert result.target_deadline == second_target
+        assert [(p.deadline_label, p.is_target_deadline) for p in result.points] == [
+            ("18:00", False),
+            ("09:30", True),
+        ]
+        assert [c.ev_second_planned_load_deadline for c in seen] == [
+            datetime(2024, 6, 15, 18, 0, tzinfo=UTC),
+            second_target,
+        ]
+
+    def test_target_label_is_local_time(self):
+        """The target column's label is its wall-clock time in now's zone."""
+        zone = ZoneInfo("Europe/Copenhagen")
+        now = datetime(2024, 6, 15, 14, 0, tzinfo=zone)
+        base_input = _make_planner_input()
+        # 05:20 UTC is 07:20 in Copenhagen summer time.
+        base_input.ev_planned_load_deadline = datetime(2024, 6, 16, 5, 20, tzinfo=UTC)
+        run, _ = _fake_run_planner()
+        with patch(
+            "custom_components.hsem.planner.ev_soc_economics.run_planner",
+            side_effect=run,
+        ):
+            result = _compute(base_input, now, soc_targets=(60.0,), deadlines=())
+
+        assert [p.deadline_label for p in result.points] == ["07:20"]
+
+    def test_attributes_expose_target_deadline_fields(self):
+        """as_attributes carries target_deadline, configured_deadlines and flags."""
+        base_input = _make_planner_input()
+        target = datetime(2024, 6, 16, 7, 15, tzinfo=UTC)
+        base_input.ev_planned_load_deadline = target
+        run, _ = _fake_run_planner()
+        with patch(
+            "custom_components.hsem.planner.ev_soc_economics.run_planner",
+            side_effect=run,
+        ):
+            attrs = _compute(
+                base_input, self._NOW, soc_targets=(60.0,), deadlines=((17, 0),)
+            ).as_attributes()
+
+        assert attrs["target_deadline"] == target.isoformat()
+        assert attrs["configured_deadlines"] == ["17:00"]
+        assert [p["is_target_deadline"] for p in attrs["points"]] == [False, True]
+
+    def test_attributes_target_deadline_null_when_unset(self):
+        """No target deadline serialises as None."""
+        attrs = _compute(
+            _make_planner_input(ev_connected=False), self._NOW
+        ).as_attributes()
+        assert attrs["target_deadline"] is None
+        assert attrs["configured_deadlines"] == ["08:00", "17:00"]
+
+
+class TestDeadlineHelpers:
+    """effective_target_deadline() and deadline_columns() directly."""
+
+    _NOW = datetime(2024, 6, 15, 14, 0, tzinfo=UTC)
+
+    def test_effective_target_deadline(self):
+        """Only a deadline strictly after now is kept."""
+        later = self._NOW + timedelta(minutes=1)
+        assert effective_target_deadline(None, self._NOW) is None
+        assert effective_target_deadline(self._NOW, self._NOW) is None
+        assert effective_target_deadline(later, self._NOW) == later
+
+    def test_duplicate_configured_deadlines_collapse(self):
+        """The same configured time twice is one column."""
+        columns = deadline_columns(self._NOW, ((8, 0), (8, 0)), None)
+        assert [label for label, _, _ in columns] == ["08:00"]
