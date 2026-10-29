@@ -23,6 +23,9 @@ from custom_components.hsem.utils.conversion import (
     convert_to_float,
     convert_to_int,
 )
+from custom_components.hsem.utils.ev_economics_deadlines import (
+    parse_economics_deadlines,
+)
 from custom_components.hsem.utils.logger import HSEM_LOGGER
 from custom_components.hsem.utils.misc import (
     get_config_value,
@@ -510,6 +513,9 @@ def build_sensor_config(
         get_config_value(config_entry, "hsem_ev_planned_load_stub_floor_minutes")
     )
     cfg.ev_planned_load_stub_floor_minutes = _stub_min if _stub_min is not None else 2.0
+    cfg.ev_planned_load_economics_deadlines = parse_economics_deadlines(
+        get_config_value(config_entry, "hsem_ev_planned_load_economics_deadlines")
+    )
 
     # Second EV planned load integration
     cfg.ev_second_planned_load_enabled = convert_to_boolean(
@@ -567,6 +573,11 @@ def build_sensor_config(
     )
     cfg.ev_second_planned_load_stub_floor_minutes = (
         _s2_stub_min if _s2_stub_min is not None else 2.0
+    )
+    cfg.ev_second_planned_load_economics_deadlines = parse_economics_deadlines(
+        get_config_value(
+            config_entry, "hsem_ev_second_planned_load_economics_deadlines"
+        )
     )
 
     # Daily plan-vs-actual tracking — optional cumulative energy meter entities.

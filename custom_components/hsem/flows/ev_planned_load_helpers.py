@@ -32,9 +32,13 @@ from homeassistant.helpers.selector import selector
 
 from custom_components.hsem.utils.config_validator import (
     merge_errors,
+    validate_economics_deadlines,
     validate_energy_limits,
     validate_ev_min_power_topology,
     validate_power_limits,
+)
+from custom_components.hsem.utils.ev_economics_deadlines import (
+    economics_deadline_entries,
 )
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.phase_power import EV_PHASE_TOPOLOGIES
@@ -151,6 +155,10 @@ _PHASE_TOPOLOGY_SELECTOR = selector(
     }
 )
 
+# Times of day of the EV SoC economics table (issue #1344): one text field per
+# ``HH:MM``.  HA's time selector has no multiple mode.
+_ECONOMICS_DEADLINES_SELECTOR = selector({"text": {"multiple": True}})
+
 
 async def build_ev_planned_load_schema(  # NOSONAR
     config_entry: ConfigEntry | None, prefix: str
@@ -210,6 +218,10 @@ async def build_ev_planned_load_schema(  # NOSONAR
                 _k("stub_floor_minutes"),
                 default=_v("stub_floor_minutes"),
             ): _STUB_FLOOR_MINUTES_SELECTOR,
+            vol.Required(
+                _k("economics_deadlines"),
+                default=economics_deadline_entries(_v("economics_deadlines")),
+            ): _ECONOMICS_DEADLINES_SELECTOR,
         }
     )
 
@@ -250,5 +262,13 @@ async def validate_ev_planned_load_schema_input(
         f"{prefix}_charger_min_power_w",
         f"{prefix}_charger_phase_topology",
     )
+    economics_deadline_errors = validate_economics_deadlines(
+        user_input, f"{prefix}_economics_deadlines"
+    )
 
-    return merge_errors(capacity_errors, min_power_errors, min_power_topology_errors)
+    return merge_errors(
+        capacity_errors,
+        min_power_errors,
+        min_power_topology_errors,
+        economics_deadline_errors,
+    )

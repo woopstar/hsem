@@ -37,10 +37,14 @@ fall-back hour (issue #1167).  Use :func:`slot_contains`,
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from datetime import UTC, datetime, time, timedelta, timezone, tzinfo
 
 import homeassistant.util.dt as dt_util
+
+#: ``HH:MM`` with an optional ``:SS`` that is ignored; one-digit hours allowed.
+_TIME_OF_DAY_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$")
 
 
 def now() -> datetime:
@@ -55,6 +59,26 @@ def now() -> datetime:
         with ``microsecond=0``.
     """
     return dt_util.now().replace(microsecond=0)
+
+
+def parse_time_of_day(value: object) -> tuple[int, int] | None:
+    """Return ``(hour, minute)`` for an ``HH:MM[:SS]`` string, else ``None``.
+
+    Seconds are accepted (HA time entities report ``HH:MM:SS``) and dropped.
+    Surrounding whitespace is ignored.
+
+    Args:
+        value: The raw value, usually a string from config or an entity state.
+
+    Returns:
+        ``(hour, minute)`` or ``None`` when *value* is not a valid time of day.
+    """
+    if not isinstance(value, str):
+        return None
+    match = _TIME_OF_DAY_RE.match(value.strip())
+    if match is None:
+        return None
+    return int(match.group(1)), int(match.group(2))
 
 
 def normalize_datetime(value: datetime) -> datetime:

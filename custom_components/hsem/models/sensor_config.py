@@ -16,6 +16,9 @@ from dataclasses import dataclass, field
 from typing import cast
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
+from custom_components.hsem.utils.ev_economics_deadlines import (
+    DEFAULT_ECONOMICS_DEADLINES,
+)
 from custom_components.hsem.utils.solcast_likelihood import DEFAULT_SOLCAST_LIKELIHOOD
 from custom_components.hsem.utils.wait_mode_behavior import DEFAULT_WAIT_MODE_BEHAVIOR
 
@@ -329,6 +332,11 @@ class SensorConfig:
     #: while unmet EV need remains, so a few seconds of leftover slot
     #: cannot stop and restart the charging session.  0 disables it.
     ev_planned_load_stub_floor_minutes: float = 2.0
+    #: Configured ``(hour, minute)`` deadlines of the EV SoC economics table
+    #: (issue #1344). The EV's target deadline is always added on top.
+    ev_planned_load_economics_deadlines: tuple[tuple[int, int], ...] = (
+        DEFAULT_ECONOMICS_DEADLINES
+    )
     # EV planned load integration — second EV (optional, disabled by default)
     ev_second_planned_load_enabled: bool = False
     ev_second_planned_load_battery_capacity_kwh: float = 0.0
@@ -343,6 +351,10 @@ class SensorConfig:
     ev_second_planned_load_command_deadband_a: float = 3.0
     #: Same as ev_planned_load_stub_floor_minutes, for the second EV.
     ev_second_planned_load_stub_floor_minutes: float = 2.0
+    #: Same as ev_planned_load_economics_deadlines, for the second EV.
+    ev_second_planned_load_economics_deadlines: tuple[tuple[int, int], ...] = (
+        DEFAULT_ECONOMICS_DEADLINES
+    )
 
     # Seasonal configuration
     months_winter: list[int] = field(default_factory=list)

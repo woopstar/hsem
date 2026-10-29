@@ -22,6 +22,11 @@ from datetime import time
 from typing import Any
 
 from custom_components.hsem.utils.conversion import convert_months_to_int
+from custom_components.hsem.utils.datetime_utils import parse_time_of_day
+from custom_components.hsem.utils.ev_economics_deadlines import (
+    MAX_ECONOMICS_DEADLINES,
+    economics_deadline_entries,
+)
 from custom_components.hsem.utils.ha_helpers import (
     async_device_exists,
     async_entity_exists,
@@ -416,6 +421,31 @@ def validate_time_of_day(user_input: dict, field: str) -> dict[str, str]:
         time.fromisoformat(str(value).strip())
     except ValueError:
         return {field: "invalid_time_value"}
+    return {}
+
+
+def validate_economics_deadlines(user_input: dict, field: str) -> dict[str, str]:
+    """Validate the EV SoC economics deadline list (issue #1344).
+
+    Every non-blank entry must be an ``HH:MM`` time of day, and at most
+    :data:`~custom_components.hsem.utils.ev_economics_deadlines.MAX_ECONOMICS_DEADLINES`
+    distinct times may be given. Duplicates are allowed here and collapsed
+    when the option is read. An empty list is valid: the table then has only
+    the target-deadline column.
+
+    Args:
+        user_input: Dict from the config/options form.
+        field: The field name whose value is being validated.
+
+    Returns:
+        Dict mapping field names to translation error keys.
+    """
+    entries = economics_deadline_entries(user_input.get(field))
+    parsed = [parse_time_of_day(entry) for entry in entries]
+    if any(value is None for value in parsed):
+        return {field: "invalid_time_value"}
+    if len(set(parsed)) > MAX_ECONOMICS_DEADLINES:
+        return {field: "too_many_economics_deadlines"}
     return {}
 
 

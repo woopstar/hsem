@@ -16,6 +16,9 @@ All fields from
 are exposed as sensor attributes — including the flat ``points`` list with
 the real-money cost of charging to each target SoC by each deadline — so
 dashboards and automations can access them without parsing nested dicts.
+The deadlines are the configured times of day plus the EV's own target
+deadline, which is also shown on its own as ``target_deadline`` in every
+state (issue #1344).
 
 No auto-recommended target is exposed: the raw cost/delta numbers are
 surfaced and the user decides.
@@ -53,8 +56,9 @@ _VALID_STATES = {
 }
 
 #: The cost table is recomputed every cycle and only read from the live
-#: state (dashboard ``groupby``) — never recorded (issue #1099).
-EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES = frozenset({"points"})
+#: state (dashboard ``groupby``) — never recorded (issue #1099). The
+#: configured deadline list is a list too, and only changes with the options.
+EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES = frozenset({"points", "configured_deadlines"})
 
 
 class HSEMEVSoCEconomicsSensor(

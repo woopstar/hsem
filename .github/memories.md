@@ -77,26 +77,27 @@ cycle are durable; stale generations must not publish.
 
 ### Utils layer (`custom_components/hsem/utils/`)
 
-| File                      | Responsibility                                                                                                                                                   |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `recommendations.py`      | `Recommendations` enum + canonical `DISCHARGE_RECS`, `CHARGE_RECS`, and `SENTINEL_RECS` frozensets                                                               |
-| `misc.py`                 | Shared math helpers: `clamp_efficiency()`, `calculate_recommended_threshold()`, etc.                                                                             |
-| `sensornames.py`          | All HA entity name constants — never hardcode sensor names elsewhere                                                                                             |
-| `prices.py`               | Price lookup, grid fee calculation, spot price helpers                                                                                                           |
-| `huawei.py`               | Huawei Solar inverter API helpers                                                                                                                                |
-| `logger.py`               | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)                                                                  |
-| `solar_corrector.py`      | Per-hour PV forecast accuracy auto-correction (issue #602)                                                                                                       |
-| `dynamic_floor.py`        | Dynamic self-learning discharge floor (bridge-to-refill; an affordable refill → reserve 0, #1156; a planned charge ends the bridge at any size, #1214/#1220)     |
-| `dynamic_floor_bridge.py` | Stateless bridge arithmetic of the dynamic floor: refill detection, planned-charge credit, cheap window, per-slot reserve profile (split out in #1274)           |
-| `soc_bounds.py`           | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094); `reserve_floor_pct()` — reserve kWh to floor SoC (#1221)      |
-| `capacity_learner.py`     | Battery usable capacity auto-detection from BMS readings                                                                                                         |
-| `prediction_tracker.py`   | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                                                                                  |
-| `weekday_profile.py`      | Weekday/weekend split house load EWMA profiles                                                                                                                   |
-| `ev_accounting.py`        | Raw CT versus per-EV normalized-baseline accounting helper                                                                                                       |
-| `unit_normalize.py`       | Generic sensor unit normalization via HA's `unit_conversion` converters (issues #945, #1119)                                                                     |
-| `performance_scoring.py`  | Scores recorded performance slots: coverage/limit/residual guards, SoC-derived battery flows, `evaluate_performance` for the executor (issue #1182)              |
-| `persistence.py`          | Validation helpers for restored JSON, bounded `read_json_history_file`, atomic `write_json_history_file` — use these for any new history file                    |
-| `ocpp_tls.py`             | OCPP server TLS (#1341): generated CA/server/client certs in `/ssl/hsem/ocpp/` (or `<config>/ssl/hsem/ocpp/`), `SSLContext`, CN↔CPID check; no `ws://` fallback |
+| File                        | Responsibility                                                                                                                                                                                                |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `recommendations.py`        | `Recommendations` enum + canonical `DISCHARGE_RECS`, `CHARGE_RECS`, and `SENTINEL_RECS` frozensets                                                                                                            |
+| `misc.py`                   | Shared math helpers: `clamp_efficiency()`, `calculate_recommended_threshold()`, etc.                                                                                                                          |
+| `sensornames.py`            | All HA entity name constants — never hardcode sensor names elsewhere                                                                                                                                          |
+| `prices.py`                 | Price lookup, grid fee calculation, spot price helpers                                                                                                                                                        |
+| `huawei.py`                 | Huawei Solar inverter API helpers                                                                                                                                                                             |
+| `logger.py`                 | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)                                                                                                               |
+| `solar_corrector.py`        | Per-hour PV forecast accuracy auto-correction (issue #602)                                                                                                                                                    |
+| `dynamic_floor.py`          | Dynamic self-learning discharge floor (bridge-to-refill; an affordable refill → reserve 0, #1156; a planned charge ends the bridge at any size, #1214/#1220)                                                  |
+| `dynamic_floor_bridge.py`   | Stateless bridge arithmetic of the dynamic floor: refill detection, planned-charge credit, cheap window, per-slot reserve profile (split out in #1274)                                                        |
+| `soc_bounds.py`             | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094); `reserve_floor_pct()` — reserve kWh to floor SoC (#1221)                                                   |
+| `capacity_learner.py`       | Battery usable capacity auto-detection from BMS readings                                                                                                                                                      |
+| `prediction_tracker.py`     | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                                                                                                                               |
+| `weekday_profile.py`        | Weekday/weekend split house load EWMA profiles                                                                                                                                                                |
+| `ev_accounting.py`          | Raw CT versus per-EV normalized-baseline accounting helper                                                                                                                                                    |
+| `unit_normalize.py`         | Generic sensor unit normalization via HA's `unit_conversion` converters (issues #945, #1119)                                                                                                                  |
+| `performance_scoring.py`    | Scores recorded performance slots: coverage/limit/residual guards, SoC-derived battery flows, `evaluate_performance` for the executor (issue #1182)                                                           |
+| `persistence.py`            | Validation helpers for restored JSON, bounded `read_json_history_file`, atomic `write_json_history_file` — use these for any new history file                                                                 |
+| `ocpp_tls.py`               | OCPP server TLS (#1341): generated CA/server/client certs in `/ssl/hsem/ocpp/` (or `<config>/ssl/hsem/ocpp/`), `SSLContext`, CN↔CPID check; no `ws://` fallback                                              |
+| `ev_economics_deadlines.py` | Configured EV SoC economics deadlines (issue #1344): default 08:00/17:00, max 3, `parse_economics_deadlines()` shared by flow validator and config reader; the EV's target deadline is always an extra column |
 
 ---
 
@@ -191,6 +192,13 @@ Planning horizon selector offers **12/24/36/48 h only** — 72 h was removed
 (spot prices are never published that far ahead). Legacy stored values > 48
 are clamped to 48 in `custom_sensors/config_reader.py`. The engine itself
 stays horizon-agnostic.
+
+### Parsing a time of day (issue #1344)
+
+Use `utils/datetime_utils.py::parse_time_of_day()` for any `HH:MM[:SS]` string
+from config or a time entity: it returns `(hour, minute)` or `None`, and is what
+the EV deadline resolver and the economics deadline option use. Do not add
+another regex.
 
 ### Grid fuse limit
 

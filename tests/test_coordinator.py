@@ -1024,3 +1024,92 @@ class TestEvSoCEconomicsRecompute:
         assert coordinator._ev_soc_economics is None
         assert coordinator._ev_second_soc_economics is None
         assert coordinator._ev_soc_economics_last_computed is None
+
+    @pytest.mark.asyncio
+    async def test_configured_deadlines_reach_each_ev(self) -> None:
+        """Each EV's configured economics deadlines reach its own table (#1344)."""
+        now = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
+        coordinator, _ = _coordinator_with_executor(now)
+        coordinator._last_planner_input = PlannerInput(now_iso=now.isoformat())
+        coordinator._cfg.ev_planned_load_economics_deadlines = ((6, 30),)
+        coordinator._cfg.ev_second_planned_load_economics_deadlines = ()
+
+        await coordinator._maybe_compute_ev_soc_economics(now, 0)
+
+        assert coordinator._ev_soc_economics is not None
+        assert coordinator._ev_second_soc_economics is not None
+        assert coordinator._ev_soc_economics.configured_deadlines == ((6, 30),)
+        assert coordinator._ev_second_soc_economics.configured_deadlines == ()
+
+    @pytest.mark.asyncio
+    async def test_changed_configured_deadlines_bypass_throttle(self) -> None:
+        """A table built for other configured deadlines is refreshed at once."""
+        now = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
+        coordinator, executor_mock = _coordinator_with_executor(now)
+        coordinator._last_planner_input = PlannerInput(now_iso=now.isoformat())
+        await coordinator._maybe_compute_ev_soc_economics(now, 0)
+        executor_mock.reset_mock()
+
+        later = now + timedelta(minutes=5)
+        coordinator._cfg.ev_second_planned_load_economics_deadlines = ((7, 0),)
+        await coordinator._maybe_compute_ev_soc_economics(later, 0)
+
+        executor_mock.assert_called_once()
+        assert coordinator._ev_soc_economics_last_computed == later
+
+    @pytest.mark.asyncio
+    async def test_changed_target_deadline_bypasses_throttle(self) -> None:
+        """A new target deadline in the planner input refreshes the table."""
+        now = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
+        coordinator, executor_mock = _coordinator_with_executor(now)
+        planner_input = PlannerInput(now_iso=now.isoformat())
+        coordinator._last_planner_input = planner_input
+        await coordinator._maybe_compute_ev_soc_economics(now, 0)
+        executor_mock.reset_mock()
+
+        later = now + timedelta(minutes=5)
+        deadline = datetime(2026, 8, 31, 7, 0, tzinfo=UTC)
+        planner_input.ev_planned_load_deadline = deadline
+        await coordinator._maybe_compute_ev_soc_economics(later, 0)
+
+        executor_mock.assert_called_once()
+        assert coordinator._ev_soc_economics is not None
+        assert coordinator._ev_soc_economics.target_deadline == deadline
+
+    @pytest.mark.asyncio
+    async def test_passed_target_deadline_bypasses_throttle_once(self) -> None:
+        """A target deadline that passes drops its column, then throttles again."""
+        now = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
+        coordinator, executor_mock = _coordinator_with_executor(now)
+        planner_input = PlannerInput(now_iso=now.isoformat())
+        planner_input.ev_planned_load_deadline = now + timedelta(minutes=2)
+        coordinator._last_planner_input = planner_input
+        await coordinator._maybe_compute_ev_soc_economics(now, 0)
+        executor_mock.reset_mock()
+
+        later = now + timedelta(minutes=5)
+        await coordinator._maybe_compute_ev_soc_economics(later, 0)
+        executor_mock.assert_called_once()
+        assert coordinator._ev_soc_economics is not None
+        assert coordinator._ev_soc_economics.target_deadline is None
+
+        executor_mock.reset_mock()
+        await coordinator._maybe_compute_ev_soc_economics(
+            later + timedelta(minutes=5), 0
+        )
+        executor_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unchanged_deadlines_stay_throttled(self) -> None:
+        """Same configured and target deadlines inside the window: no recompute."""
+        now = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
+        coordinator, executor_mock = _coordinator_with_executor(now)
+        planner_input = PlannerInput(now_iso=now.isoformat())
+        planner_input.ev_planned_load_deadline = datetime(2026, 8, 31, 7, 0, tzinfo=UTC)
+        coordinator._last_planner_input = planner_input
+        await coordinator._maybe_compute_ev_soc_economics(now, 0)
+        executor_mock.reset_mock()
+
+        await coordinator._maybe_compute_ev_soc_economics(now + timedelta(minutes=5), 0)
+
+        executor_mock.assert_not_called()

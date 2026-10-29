@@ -32,7 +32,7 @@ sensor's `_unrecorded_attributes` and never reach the recorder:
 | `sensor.hsem_workingmode_sensor`               | all attributes                                                              |
 | `sensor.hsem_plan_explanation_sensor`          | `rejected_plans`, `constraints`, `current_slot_start`, `current_slot_end`   |
 | `sensor.hsem_ev_*optimal_charging_plan`        | `charging_slots`, `planned_load_by_slot`, `data_quality`                    |
-| `sensor.hsem_ev_*soc_economics`                | `points`                                                                    |
+| `sensor.hsem_ev_*soc_economics`                | `points`, `configured_deadlines`                                            |
 | `sensor.hsem_ev_*charger_current_limit`        | `schedule`                                                                  |
 | `sensor.hsem_solar_confidence_sensor`          | `hour_factors`, `processed_through`, `_solar_corrector_data`                |
 | `sensor.hsem_forecast_accuracy_sensor`         | `_forecast_tracker_data`                                                    |
@@ -439,58 +439,150 @@ Diagnostic sensors displaying the EV charging plan details.
 
 ## EV SoC economics sensors
 
-Diagnostic sensors exposing the real-money cost of charging each EV to the
-configured 50/60/70/80/100 % SoC targets that are at or above the car's
-actual SoC, by the next occurrence of 08:00 and by the next occurrence of
-17:00 (issue #903). Lower targets are omitted from the table. Each retained
-combination is computed by
-re-running the pure planner engine (`run_planner()`) on a clone of the
-coordinator's last-used planner input with only that EV's target-SoC and
-deadline overridden — no other input changes, so the cost reflects "what
-would it cost to change _only_ this choice right now". No auto-recommended
-target is exposed; the raw cost/delta numbers are surfaced and the user
-decides.
+Diagnostic sensors that answer one question for each EV: _what would it cost
+to charge to X % by time Y?_ They show a table of real-money costs for the
+target SoCs 50, 60, 70, 80 and 100 %, against a few deadlines:
 
-The table is recomputed on every fresh replan — the same events that update
-`sensor.hsem_ev_optimal_charging_plan` (EV plug/unplug, charging
-start/stop, target-SoC threshold crossings, slot boundaries, price
-changes). While the previous plan is being reused (no fresh replan),
-recomputation is throttled to at most every 30 minutes, since each
-recompute is up to ~8 extra `run_planner()` solves per EV.
+- the **configured times of day** (default 08:00 and 17:00, up to 3 per EV,
+  set in **Configure → EV planned load** as
+  `hsem_ev_planned_load_economics_deadlines` /
+  `hsem_ev_second_planned_load_economics_deadlines`), each at its next
+  occurrence; and
+- the EV's **own target deadline** (`time.hsem_ev_deadline_time` /
+  `time.hsem_ev_second_deadline_time`), which is always added as an extra
+  column while it is ahead of now (issue #1344). When it falls on a
+  configured time of day, the two share one column.
+
+No target is recommended: the sensor shows the numbers and you decide.
 
 **Entities:**
 
 - `sensor.hsem_ev_soc_economics` — Primary EV, created only when `hsem_ev_planned_load_enabled` is set
 - `sensor.hsem_ev_second_soc_economics` — Second EV, created only when `hsem_ev_second_planned_load_enabled` is set
 
-| State                     | Meaning                                           |
-| ------------------------- | ------------------------------------------------- |
-| `not_connected`           | EV is not plugged in                              |
-| `smart_charging_disabled` | Smart charging turned off                         |
-| `ready`                   | Cost table computed and available                 |
-| `unavailable`             | Not configured, or capacity/charger power is zero |
+### How each cost is computed
 
-**Key attributes:**
+Each row is one extra run of the planner (`run_planner()`) on a copy of the
+input of the last plan. Only that EV's target SoC and deadline are changed;
+prices, the PV forecast, the house battery, the other EV and every setting are
+reused unchanged. So each row is the cost of the whole plan if you changed
+_only this one choice_ right now.
 
-| Attribute         | Description                                                                                          |
-| ----------------- | ---------------------------------------------------------------------------------------------------- |
-| `current_soc_pct` | EV's current SoC at computation time                                                                 |
-| `points`          | Flat list of cost/feasibility entries for targets at or above actual SoC, one per (target, deadline) |
+`total_cost` is that plan's **total cost over the whole planning horizon**
+(`PlannerOutput.plan_cost.total_cost`). It is not the cost of the EV alone: it
+also contains the house load, the house battery and any export income. Only
+the **difference between two rows** can be put down to the EV, which is what
+`delta_from_previous` gives you.
+
+### States
+
+| State                     | Meaning                                                                                             |
+| ------------------------- | --------------------------------------------------------------------------------------------------- |
+| `ready`                   | Table computed. `points` may still be empty when no column or no target at or above the SoC remains |
+| `not_connected`           | EV is not plugged in. No table                                                                      |
+| `smart_charging_disabled` | Smart charging is off, or the EV planned load is disabled. No table                                 |
+| `unavailable`             | No plan has run yet, the EV's SoC is unavailable, or capacity or charger power is 0                 |
+
+### Attributes
+
+| Attribute              | Description                                                                                                                                                             |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `current_soc_pct`      | EV SoC when the table was computed (`null` when unavailable — the table is then empty, never computed from a made-up 0 %)                                               |
+| `target_deadline`      | The EV's target deadline (ISO 8601) when it is ahead of the computation time, else `null`. Shown in **every** state, also when the EV is not connected                  |
+| `configured_deadlines` | The configured times of day the table was computed for, e.g. `["08:00", "17:00"]`. Duplicates are removed and the list is sorted                                        |
+| `points`               | Flat list of rows, one per (target SoC, deadline column). Columns are in time order, earliest deadline first; within a column, targets ascend. Not recorded (see below) |
 
 Each entry in `points` has:
 
-| Field                 | Description                                                                                                            |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `target_soc_pct`      | Retained target SoC evaluated (50/60/70/80/100); targets below actual SoC are omitted                                  |
-| `deadline_label`      | `"08:00"` or `"17:00"`                                                                                                 |
-| `deadline`            | ISO-8601 deadline datetime actually used                                                                               |
-| `total_cost`          | Real-money cost of reaching this target by this deadline (`0.0` when target equals actual SoC — no solve is triggered) |
-| `feasible`            | Whether the charger's rated power can physically reach this target by this deadline, independent of price              |
-| `delta_from_previous` | Cost delta vs. the previous (lower) target in the same deadline column (`null` for the first target)                   |
-| `delta_per_10pct`     | `delta_from_previous` normalised to cost per 10 percentage points of SoC (`null` for the first target)                 |
+| Field                 | Description                                                                                                                                                                  |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `target_soc_pct`      | Target SoC of this row                                                                                                                                                       |
+| `deadline_label`      | Local `HH:MM` of the column, e.g. `"08:00"`. Unique per column                                                                                                               |
+| `deadline`            | ISO 8601 deadline actually used. A configured time resolves to its next occurrence (today if still ahead, else tomorrow); the target-deadline column uses the exact deadline |
+| `is_target_deadline`  | `true` in the column of the EV's own target deadline                                                                                                                         |
+| `total_cost`          | Whole-plan cost with this target and deadline (see above), in the price sensor's currency. `0.0` when the target equals the current SoC: no planner run happens for that row |
+| `feasible`            | Whether the charger can deliver the energy in time at its rated power: `capacity × (target − SoC) ≤ charger kW × hours left × charger efficiency`                            |
+| `delta_from_previous` | `total_cost` minus that of the previous (lower) row in the same column: what the extra SoC costs. `null` for the first row of a column                                       |
+| `delta_per_10pct`     | `delta_from_previous` scaled to 10 percentage points of SoC, to compare uneven steps (e.g. 80 → 100 % is a 20-point step). `null` for the first row                          |
 
-`points` is deliberately flat (not pre-grouped by deadline) — group it by
-`deadline_label` (e.g. via a Jinja `groupby` filter) for display.
+### Reading the table
+
+**Rows below the current SoC are left out.** At 63 % the 50 and 60 % rows are
+missing and every column starts at 70 %. A target exactly
+equal to the SoC stays in with `total_cost` `0.0` and no planner run. Because
+that `0.0` is not a whole-plan cost, the `delta_from_previous` of the row above
+it is the whole plan's cost, not the cost of the step.
+
+**`feasible` only checks power and time.** It ignores price, the grid and
+phase fuse limits, the charger's minimum power, the deadline safety margin and
+the other EV sharing the connection, so a `true` row can still fall short in
+the real plan. When a row is `false`, the planner charges as much as it can
+before the deadline and stops: its `total_cost` is the cost of that shortfall
+plan, not of reaching the target. That is why infeasible rows often show a
+delta of 0 — higher targets cannot be reached either, so they cost the same.
+
+**Worked example.** An EV with a 77 kWh battery and an 11 kW charger at 35 %
+SoC, computed at 14:00, target deadline 07:00, default configured deadlines,
+prices 0.05 at night, 0.10 by day and 0.30 from 16:00 to 21:00:
+
+| Column (`deadline_label`)            | Target | `total_cost` | `delta_from_previous` | `delta_per_10pct` | `feasible` |
+| ------------------------------------ | -----: | -----------: | --------------------: | ----------------: | ---------- |
+| `17:00` (today)                      |   50 % |         1.11 |                       |                   | ✓          |
+|                                      |   60 % |         1.87 |                 +0.76 |              0.76 | ✓          |
+|                                      |   70 % |         3.85 |                 +1.98 |              1.98 | ✓          |
+|                                      |   80 % |         5.64 |                 +1.79 |              1.79 | ⚠         |
+|                                      |  100 % |         5.64 |                 +0.00 |              0.00 | ⚠         |
+| `07:00` (`is_target_deadline`: true) |   50 % |         1.11 |                       |                   | ✓          |
+|                                      |   60 % |         1.87 |                 +0.76 |              0.76 | ✓          |
+|                                      |   70 % |         2.65 |                 +0.78 |              0.78 | ✓          |
+|                                      |   80 % |         3.41 |                 +0.76 |              0.76 | ✓          |
+|                                      |  100 % |         4.95 |                 +1.54 |              0.77 | ✓          |
+| `08:00` (tomorrow)                   |    ... |              |                       |                   |            |
+
+Read it like this:
+
+- 50 % costs the same, 1.11, in every column: that is mostly the house load,
+  not the car. Compare rows, not single costs.
+- By 07:00, each extra 10 % (7.7 kWh) costs between 0.76 and 0.78.
+- By 17:00, 70 % costs 1.98 more than 60 %: with only three hours left, the
+  charging reaches into the 0.30 peak that starts at 16:00. Reaching 70 % by
+  07:00 instead costs 1.20 less (3.85 against 2.65).
+- 80 % and 100 % cannot be reached by 17:00 (34.7 kWh in 3 hours at 11 kW):
+  both rows are `false` and show the same cost, the cost of charging flat out.
+- Here the 08:00 column repeats the 07:00 one, because the extra hour adds no
+  cheaper price. The `delta_per_10pct` of 100 % (0.77) is half its
+  `delta_from_previous` (1.54), because 80 → 100 % is a 20-point step.
+
+### When the table is recomputed
+
+Each row needs one planner run for every target at or above the current SoC
+in every column, so up to **targets × columns** runs per EV:
+
+- default (08:00, 17:00 and the target deadline): up to 5 × 3 = 15 per EV;
+- most (3 configured times plus the target deadline): up to 5 × 4 = 20 per EV.
+
+Both EVs are computed in one background job with a 60 s limit. If that job
+is still running, or runs out of time, the previous table stays.
+
+The table is recomputed on every fresh replan, the same events that update
+`sensor.hsem_ev_optimal_charging_plan` (EV plug/unplug, charging start/stop,
+target-SoC threshold crossings, slot boundaries, price changes). It is also
+recomputed at once when its columns no longer match: a changed list of
+configured times, or a target deadline that changed or just passed. Otherwise,
+while the previous plan is being reused, it is recomputed at most every
+30 minutes.
+
+### Recorder and dashboard
+
+`points` and `configured_deadlines` are lists, so they are never written to
+the recorder (issue #1099): read them from the live state.
+`target_deadline`, `current_soc_pct` and the state are recorded.
+
+`points` is flat and already in time order. To show one line per column, walk
+the distinct `deadline` values in order, as the bundled dashboard's _EV
+Charging Economics_ card does (see [dashboard-setup.md](dashboard-setup.md));
+it marks the target-deadline column with ★. Jinja's `groupby('deadline_label')`
+works too, but sorts the columns by label instead of by time.
 
 ---
 
