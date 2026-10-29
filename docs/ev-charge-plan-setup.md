@@ -529,8 +529,9 @@ charger's session. HSEM logs a warning on every such connection. Only turn it
 on when the client CA signs certificates for your own chargers alone.
 
 Diagnostics (`hsem.export_diagnostics` and _Download diagnostics_) include an
-`ocpp_tls` block: mode, certificate source, server certificate expiry, SANs and
-the CA's SHA-256 fingerprint, or the setup error. Key material never appears
+`ocpp_tls` block: mode, certificate source, server certificate expiry, SANs,
+the CA's SHA-256 fingerprint and whether CN mismatches are allowed, or the setup
+error. Key material never appears
 in diagnostics, logs or service responses.
 
 ---

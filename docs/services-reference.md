@@ -189,14 +189,14 @@ are redacted for safe sharing in issue reports.
 
 **Response:** A dict with the following structure:
 
-| Key              | Type   | Description                                                                                               |
-| ---------------- | ------ | --------------------------------------------------------------------------------------------------------- |
-| `hsem_version`   | `str`  | HSEM version from `manifest.json`                                                                         |
-| `dump_timestamp` | `str`  | ISO-8601 timestamp of the dump                                                                            |
-| `planner_input`  | `dict` | Latest `PlannerInput` (redacted)                                                                          |
-| `planner_output` | `dict` | Latest `PlannerOutput` summary (redacted)                                                                 |
-| `apply_result`   | `dict` | Latest hardware write status summary                                                                      |
-| `ocpp_tls`       | `dict` | OCPP TLS mode, server certificate expiry, SANs and CA fingerprint, or the setup error. Never key material |
+| Key              | Type   | Description                                                                                                                        |
+| ---------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `hsem_version`   | `str`  | HSEM version from `manifest.json`                                                                                                  |
+| `dump_timestamp` | `str`  | ISO-8601 timestamp of the dump                                                                                                     |
+| `planner_input`  | `dict` | Latest `PlannerInput` (redacted)                                                                                                   |
+| `planner_output` | `dict` | Latest `PlannerOutput` summary (redacted)                                                                                          |
+| `apply_result`   | `dict` | Latest hardware write status summary                                                                                               |
+| `ocpp_tls`       | `dict` | OCPP TLS mode, server certificate expiry, SANs, CA fingerprint and the CN-mismatch setting, or the setup error. Never key material |
 
 **Example:**
 
