@@ -81,6 +81,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_planned_load_deadline_safety_margin_pct": 0,
     "hsem_ev_planned_load_command_deadband_a": 3,
     "hsem_ev_planned_load_stub_floor_minutes": 2,
+    "hsem_ev_planned_load_economics_deadlines": ["08:00", "17:00"],
     # EV planned load integration — second EV (optional, disabled by default)
     "hsem_ev_second_planned_load_enabled": False,
     "hsem_ev_second_planned_load_battery_capacity_kwh": 0.0,
@@ -91,6 +92,7 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ev_second_planned_load_deadline_safety_margin_pct": 0,
     "hsem_ev_second_planned_load_command_deadband_a": 3,
     "hsem_ev_second_planned_load_stub_floor_minutes": 2,
+    "hsem_ev_second_planned_load_economics_deadlines": ["08:00", "17:00"],
     "hsem_ev_second_allow_charge_past_target_soc": False,
     "hsem_ev_second_past_target_confidence_factor": 0.9,
     "hsem_ev_second_charger_force_max_discharge_power": False,

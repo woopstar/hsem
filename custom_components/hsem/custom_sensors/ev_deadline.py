@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime, time, timedelta
 from typing import Any
 
 from homeassistant.exceptions import HomeAssistantError
 
+from custom_components.hsem.utils.datetime_utils import parse_time_of_day
 from custom_components.hsem.utils.ha_helpers import (
     EntityNotFoundError,
     ha_get_entity_state_and_convert,
@@ -51,15 +51,12 @@ def resolve_ev_deadline_from_params(
     if not time_str:
         time_str = deadline_fixed or "07:00"
 
-    match = re.match(
-        r"^([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$",
-        (time_str or "").strip(),
-    )
-    if not match:
+    parsed = parse_time_of_day(time_str)
+    if parsed is None:
         _LOGGER.debug("Ignoring invalid EV deadline time '%s'", time_str)
         return None
 
-    hour, minute = int(match.group(1)), int(match.group(2))
+    hour, minute = parsed
     from custom_components.hsem.utils.datetime_utils import now as hsem_now
 
     now_local = hsem_now()

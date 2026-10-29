@@ -27,6 +27,7 @@ from custom_components.hsem.custom_sensors.ev_second_soc_economics_sensor import
     HSEMEVSecondSoCEconomicsSensor,
 )
 from custom_components.hsem.custom_sensors.ev_soc_economics_sensor import (
+    EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES,
     HSEMEVSoCEconomicsSensor,
 )
 from custom_components.hsem.devices import HSEMDevice
@@ -273,6 +274,44 @@ class TestExtraStateAttributes:
         data = _make_coordinator_data(primary=primary, second=second)
         sensor = _make_second_sensor(data)
         assert sensor.extra_state_attributes["current_soc_pct"] == pytest.approx(90.0)
+
+    def test_target_deadline_attributes(self) -> None:
+        """The target deadline, configured list and per-point flag (#1344)."""
+        target = datetime(2026, 8, 31, 7, 15, tzinfo=UTC)
+        point = EVSoCEconomicsPoint(
+            target_soc_pct=80.0,
+            deadline_label="07:15",
+            deadline=target,
+            total_cost=2.0,
+            is_target_deadline=True,
+        )
+        result = _make_result(
+            points=[point],
+            target_deadline=target,
+            configured_deadlines=((8, 0), (17, 0)),
+        )
+        attrs = _make_second_sensor(
+            _make_coordinator_data(second=result)
+        ).extra_state_attributes
+        assert attrs["target_deadline"] == target.isoformat()
+        assert attrs["configured_deadlines"] == ["08:00", "17:00"]
+        assert attrs["points"][0]["is_target_deadline"] is True
+
+    def test_target_deadline_shown_when_not_ready(self) -> None:
+        """A not-connected EV still shows its target deadline."""
+        target = datetime(2026, 8, 31, 7, 0, tzinfo=UTC)
+        result = _make_result(state="not_connected", points=[], target_deadline=target)
+        attrs = _make_primary_sensor(
+            _make_coordinator_data(primary=result)
+        ).extra_state_attributes
+        assert attrs["target_deadline"] == target.isoformat()
+
+    def test_lists_are_not_recorded(self) -> None:
+        """The structured attributes stay out of the recorder (#1099)."""
+        assert {"points", "configured_deadlines"} <= (
+            EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES
+        )
+        assert "target_deadline" not in EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES
 
 
 # ===========================================================================

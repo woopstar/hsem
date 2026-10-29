@@ -372,12 +372,14 @@ views:
                   entities:
                     - name: Target · cost (Δ) · feasible
                       template: >-
-                        {% set groups = (state_attr(entity, 'points') or []) | groupby('deadline_label') -%}
-                        {% if groups | length == 0 -%}
+                        {% set points = state_attr(entity, 'points') or [] -%}
+                        {% if points | length == 0 -%}
                           No target above current SoC
                         {% else -%}
-                          {% for label, rows in groups -%}
-                            {{- ('  |  ' if not loop.first else '') ~ 'Next ' ~ label ~ ': ' -}}
+                          {% for deadline in points | map(attribute='deadline') | unique -%}
+                            {% set rows = points | selectattr('deadline', 'eq', deadline) | list -%}
+                            {% set label = ('★ Deadline ' if rows[0].is_target_deadline | default(false) else 'Next ') ~ rows[0].deadline_label -%}
+                            {{- ('  |  ' if not loop.first else '') ~ label ~ ': ' -}}
                             {% for p in rows -%}
                               {% set delta = ' (' ~ ('+' if p.delta_from_previous >= 0 else '') ~ (p.delta_from_previous | round(2)) ~ ')' if p.delta_from_previous is not none else '' -%}
                               {% set status = '✓' if p.feasible else '⚠' -%}
@@ -470,12 +472,14 @@ views:
                   entities:
                     - name: Target · cost (Δ) · feasible
                       template: >-
-                        {% set groups = (state_attr(entity, 'points') or []) | groupby('deadline_label') -%}
-                        {% if groups | length == 0 -%}
+                        {% set points = state_attr(entity, 'points') or [] -%}
+                        {% if points | length == 0 -%}
                           No target above current SoC
                         {% else -%}
-                          {% for label, rows in groups -%}
-                            {{- ('  |  ' if not loop.first else '') ~ 'Next ' ~ label ~ ': ' -}}
+                          {% for deadline in points | map(attribute='deadline') | unique -%}
+                            {% set rows = points | selectattr('deadline', 'eq', deadline) | list -%}
+                            {% set label = ('★ Deadline ' if rows[0].is_target_deadline | default(false) else 'Next ') ~ rows[0].deadline_label -%}
+                            {{- ('  |  ' if not loop.first else '') ~ label ~ ': ' -}}
                             {% for p in rows -%}
                               {% set delta = ' (' ~ ('+' if p.delta_from_previous >= 0 else '') ~ (p.delta_from_previous | round(2)) ~ ')' if p.delta_from_previous is not none else '' -%}
                               {% set status = '✓' if p.feasible else '⚠' -%}
@@ -1807,21 +1811,21 @@ All EV cards are wrapped in `conditional` cards so they only appear when the
 corresponding EV entity is available. The section covers the primary EV and a
 secondary EV when configured:
 
-| Card                    | Entity                                        | Purpose                                             |
-| ----------------------- | --------------------------------------------- | --------------------------------------------------- |
-| EV Plan                 | `sensor.hsem_ev_optimal_charging_plan`        | Current EV charging plan state                      |
-| EV Charging Active      | `sensor.hsem_ev_charging_sensor`              | Whether an EV is currently charging                 |
-| EV Smart Charging       | `switch.hsem_ev_smart_charging`               | Enable/disable smart EV charging                    |
-| EV Force Charge         | `switch.hsem_ev_force_charge_now`             | Override and start charging now                     |
-| EV Target SoC           | `number.hsem_ev_target_soc`                   | Target state of charge for smart charging           |
-| EV Deadline             | `time.hsem_ev_deadline_time`                  | Deadline by which the EV must reach target SoC      |
-| EV Charging Economics   | `sensor.hsem_ev_soc_economics`                | Multiple Entity Row: cost per target SoC × deadline |
-| EV 2 Plan               | `sensor.hsem_ev_second_optimal_charging_plan` | Second EV charging plan state                       |
-| EV 2 Smart Charging     | `switch.hsem_ev_second_smart_charging`        | Enable/disable smart charging for second EV         |
-| EV 2 Force Charge       | `switch.hsem_ev_second_force_charge_now`      | Override and start second EV charging now           |
-| EV 2 Target SoC         | `number.hsem_ev_second_target_soc`            | Target SoC for second EV                            |
-| EV 2 Deadline           | `time.hsem_ev_second_deadline_time`           | Deadline for second EV                              |
-| EV 2 Charging Economics | `sensor.hsem_ev_second_soc_economics`         | Multiple Entity Row: cost per target SoC × deadline |
+| Card                    | Entity                                        | Purpose                                                                                                   |
+| ----------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| EV Plan                 | `sensor.hsem_ev_optimal_charging_plan`        | Current EV charging plan state                                                                            |
+| EV Charging Active      | `sensor.hsem_ev_charging_sensor`              | Whether an EV is currently charging                                                                       |
+| EV Smart Charging       | `switch.hsem_ev_smart_charging`               | Enable/disable smart EV charging                                                                          |
+| EV Force Charge         | `switch.hsem_ev_force_charge_now`             | Override and start charging now                                                                           |
+| EV Target SoC           | `number.hsem_ev_target_soc`                   | Target state of charge for smart charging                                                                 |
+| EV Deadline             | `time.hsem_ev_deadline_time`                  | Deadline by which the EV must reach target SoC                                                            |
+| EV Charging Economics   | `sensor.hsem_ev_soc_economics`                | Multiple Entity Row: cost per target SoC × deadline, columns in time order, ★ marks the EV's own deadline |
+| EV 2 Plan               | `sensor.hsem_ev_second_optimal_charging_plan` | Second EV charging plan state                                                                             |
+| EV 2 Smart Charging     | `switch.hsem_ev_second_smart_charging`        | Enable/disable smart charging for second EV                                                               |
+| EV 2 Force Charge       | `switch.hsem_ev_second_force_charge_now`      | Override and start second EV charging now                                                                 |
+| EV 2 Target SoC         | `number.hsem_ev_second_target_soc`            | Target SoC for second EV                                                                                  |
+| EV 2 Deadline           | `time.hsem_ev_second_deadline_time`           | Deadline for second EV                                                                                    |
+| EV 2 Charging Economics | `sensor.hsem_ev_second_soc_economics`         | Multiple Entity Row: cost per target SoC × deadline, columns in time order, ★ marks the EV's own deadline |
 
 ### Recommendation timeline chart
 

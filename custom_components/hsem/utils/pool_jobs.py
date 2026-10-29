@@ -30,8 +30,10 @@ from homeassistant.core import HomeAssistant
 #: waiting and reuses the accepted plan.
 PLANNER_JOB_BUDGET_S = 30.0
 
-#: Wall-clock budget for the EV SoC economics sweep: up to ~8 planner solves
-#: per EV, about 7 s for one EV in production.
+#: Wall-clock budget for the EV SoC economics sweep: one planner solve per
+#: (target SoC, deadline column) pair, so up to 15 per EV with the default
+#: deadlines and 20 with the most (issue #1344).  The two-deadline table
+#: before #1344 took about 7 s for one EV in production.
 EV_SOC_ECONOMICS_JOB_BUDGET_S = 60.0
 
 #: Job kinds, one in flight each.

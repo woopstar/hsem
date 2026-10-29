@@ -86,7 +86,7 @@ class TestBundledDashboardPath:
         assert path.is_file()
 
     def test_ev_economics_uses_dynamic_multiple_entity_rows(self) -> None:
-        """Both EV cards group arbitrary deadline labels and round deltas."""
+        """Both EV cards group arbitrary deadlines in order and round deltas."""
         dashboard_text = _bundled_dashboard_path().read_text(encoding="utf-8")
 
         assert yaml.safe_load(dashboard_text) is not None
@@ -94,9 +94,12 @@ class TestBundledDashboardPath:
         assert "title: EV Charging Economics" in dashboard_text
         assert "title: EV 2 Charging Economics" in dashboard_text
         assert dashboard_text.count("state: ready") >= 2
-        assert dashboard_text.count("groupby('deadline_label')") == 2
+        # Columns follow the sensor's chronological point order (groupby would
+        # sort them by label), and the target deadline is marked (#1344).
+        assert "groupby('deadline_label')" not in dashboard_text
+        assert dashboard_text.count("map(attribute='deadline') | unique") == 2
         assert dashboard_text.count("p.delta_from_previous | round(2)") == 2
-        assert dashboard_text.count("~ 'Next ' ~ label ~ ': '") == 2
+        assert dashboard_text.count("'★ Deadline '") == 2
         assert "selectattr('deadline_label', 'eq'" not in dashboard_text
         assert "white-space: pre-line" not in dashboard_text
         assert "output.lines | join" not in dashboard_text
@@ -110,23 +113,38 @@ class TestBundledDashboardPath:
         template = rows[0]["entities"][0]["template"]
         points = [
             {
-                "deadline_label": "09:30",
+                "deadline_label": "22:15",
+                "deadline": "2026-08-30T22:15:00+02:00",
+                "target_soc_pct": 100.0,
+                "total_cost": 2.2222,
+                "delta_from_previous": None,
+                "feasible": True,
+                "is_target_deadline": False,
+            },
+            {
+                "deadline_label": "07:30",
+                "deadline": "2026-08-31T07:30:00+02:00",
                 "target_soc_pct": 80.0,
                 "total_cost": 1.2345,
                 "delta_from_previous": None,
                 "feasible": True,
+                "is_target_deadline": True,
             },
             {
-                "deadline_label": "09:30",
+                "deadline_label": "07:30",
+                "deadline": "2026-08-31T07:30:00+02:00",
                 "target_soc_pct": 100.0,
                 "total_cost": 4.5678,
                 "delta_from_previous": 3.3333,
                 "feasible": False,
+                "is_target_deadline": True,
             },
+            # A point restored from before #1344 has no is_target_deadline.
             {
-                "deadline_label": "22:15",
+                "deadline_label": "09:30",
+                "deadline": "2026-08-31T09:30:00+02:00",
                 "target_soc_pct": 100.0,
-                "total_cost": 2.2222,
+                "total_cost": 3.0,
                 "delta_from_previous": None,
                 "feasible": True,
             },
@@ -142,9 +160,10 @@ class TestBundledDashboardPath:
         )
 
         assert rendered == (
-            "Next 09:30: 80.0%: 1.2345 ✓  ·  "
+            "Next 22:15: 100.0%: 2.2222 ✓  |  "
+            "★ Deadline 07:30: 80.0%: 1.2345 ✓  ·  "
             "100.0%: 4.5678 (+3.33) ⚠  |  "
-            "Next 22:15: 100.0%: 2.2222 ✓"
+            "Next 09:30: 100.0%: 3.0 ✓"
         )
         assert "\n" not in rendered
 

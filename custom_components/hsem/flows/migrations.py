@@ -102,6 +102,7 @@ _V2_NEW_KEY_DEFAULTS: dict[str, Any] = {
     "hsem_ev_planned_load_deadline_safety_margin_pct": 0,
     "hsem_ev_planned_load_command_deadband_a": 3,
     "hsem_ev_planned_load_stub_floor_minutes": 2,
+    "hsem_ev_planned_load_economics_deadlines": ["08:00", "17:00"],
     "hsem_ev_second_planned_load_enabled": False,
     "hsem_ev_second_planned_load_battery_capacity_kwh": 0.0,
     "hsem_ev_second_planned_load_charger_power_kw": 0.0,
@@ -110,6 +111,7 @@ _V2_NEW_KEY_DEFAULTS: dict[str, Any] = {
     "hsem_ev_second_planned_load_deadline_safety_margin_pct": 0,
     "hsem_ev_second_planned_load_command_deadband_a": 3,
     "hsem_ev_second_planned_load_stub_floor_minutes": 2,
+    "hsem_ev_second_planned_load_economics_deadlines": ["08:00", "17:00"],
     # Planner hysteresis
     "hsem_planner_hysteresis_enabled": True,
     "hsem_planner_hysteresis_absolute": 0.0,
