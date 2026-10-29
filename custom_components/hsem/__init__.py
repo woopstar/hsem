@@ -54,6 +54,11 @@ ENTITY_GATING_CONFIG_KEYS: tuple[str, ...] = (
 #: configured entities, so any change to them needs a reload too.
 _HOUSE_LOAD_GATING_KEY = "house_load_inputs"
 
+#: Snapshot key for the OCPP servers' TLS settings (issue #1341). The servers
+#: are only built at setup, so without a reload a change would leave them
+#: serving the old protocol: switching TLS on would keep plain ws:// running.
+_OCPP_TLS_GATING_KEY = "ocpp_tls"
+
 
 @dataclass
 class HSEMRuntimeData:
@@ -82,7 +87,15 @@ def _entity_gating_snapshot(entry: ConfigEntry) -> dict[str, object]:
     snapshot: dict[str, object] = {
         key: bool(get_config_value(entry, key)) for key in ENTITY_GATING_CONFIG_KEYS
     }
-    snapshot[_HOUSE_LOAD_GATING_KEY] = cfg_house_load_inputs(build_sensor_config(entry))
+    cfg = build_sensor_config(entry)
+    snapshot[_HOUSE_LOAD_GATING_KEY] = cfg_house_load_inputs(cfg)
+    snapshot[_OCPP_TLS_GATING_KEY] = (
+        cfg.ocpp_tls_mode,
+        cfg.ocpp_tls_server_cert_path,
+        cfg.ocpp_tls_server_key_path,
+        cfg.ocpp_tls_client_ca_path,
+        cfg.ocpp_tls_allow_cn_mismatch,
+    )
     return snapshot
 
 

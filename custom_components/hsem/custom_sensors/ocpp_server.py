@@ -16,8 +16,10 @@ Architecture::
 
 .. important::
     This server binds to ``0.0.0.0`` by default.  The port MUST NOT be
-    exposed to the public internet — it is LAN-only by design and performs
-    no authentication on incoming connections.
+    exposed to the public internet — it is LAN-only by design. Without TLS
+    it performs no authentication on incoming connections; with mutual TLS
+    (issue #1341) a charger must present a client certificate whose CN
+    matches its charge point identity, unless ``allow_cn_mismatch`` is set.
 
 Usage
 -----
@@ -35,6 +37,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import ssl
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
@@ -63,6 +66,10 @@ from custom_components.hsem.custom_sensors.ocpp_profiles import (
     OCPPProfilesMixin,
 )
 from custom_components.hsem.models.ocpp_session import ChargerSession
+from custom_components.hsem.utils.ocpp_tls import (
+    cpid_matches_common_name,
+    peer_common_name,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -129,6 +136,8 @@ class OCPPServer(
         stop_window_s: int = _DEFAULT_STOP_WINDOW_S,
         on_significant_event: Callable[[], Coroutine[Any, Any, None]] | None = None,
         charging_rate_unit: str = RATE_UNIT_PREF_AUTO,
+        ssl_context: ssl.SSLContext | None = None,
+        allow_cn_mismatch: bool = False,
     ) -> None:
         """Initialise the OCPP server.
 
@@ -153,6 +162,14 @@ class OCPPServer(
                 reported capabilities, watts preferred), ``amps`` or
                 ``watts`` (issue #1001). Unrecognised values fall back to
                 ``auto``.
+            ssl_context: Serve ``wss://`` with this context instead of
+                plain ``ws://`` (issue #1341). When it requires client
+                certificates, a charger whose certificate CN does not match
+                its CPID is refused.
+            allow_cn_mismatch: Accept such a charger anyway, for chargers
+                whose certificate CN is their serial number rather than the
+                CPID they connect with. The certificate must still chain to
+                the client CA; only the identity binding is dropped.
         """
         self._hass = hass
         self._host = host
@@ -160,6 +177,8 @@ class OCPPServer(
         self._start_window_s = start_window_s
         self._stop_window_s = stop_window_s
         self._on_significant_event = on_significant_event
+        self._ssl_context = ssl_context
+        self._allow_cn_mismatch = allow_cn_mismatch
         self._charging_rate_unit: str = (
             charging_rate_unit
             if charging_rate_unit in RATE_UNIT_PREFERENCES
@@ -253,12 +272,17 @@ class OCPPServer(
 
         self._runner = web.AppRunner(app)
         await self._runner.setup()
-        self._site = web.TCPSite(self._runner, self._host, self._port)
+        self._site = web.TCPSite(
+            self._runner, self._host, self._port, ssl_context=self._ssl_context
+        )
         await self._site.start()
         _LOGGER.info(
-            "OCPP server started on %s:%d (LAN-only — do not expose to internet)",
+            "OCPP server started on %s://%s:%d%s (LAN-only — do not expose to "
+            "internet)",
+            "ws" if self._ssl_context is None else "wss",
             self._host,
             self._port,
+            ", client certificates required" if self._requires_client_cert else "",
         )
 
     async def stop(self) -> None:
@@ -299,6 +323,14 @@ class OCPPServer(
     def port(self) -> int:
         """Return the configured TCP port."""
         return self._port
+
+    @property
+    def _requires_client_cert(self) -> bool:
+        """Return whether chargers must present a client certificate."""
+        return (
+            self._ssl_context is not None
+            and self._ssl_context.verify_mode == ssl.CERT_REQUIRED
+        )
 
     @property
     def is_listening(self) -> bool:
@@ -377,6 +409,35 @@ class OCPPServer(
         # Extract CPID from path — strip leading/trailing slashes
         cpid = request.path.strip("/") or "default"
         _LOGGER.info("OCPP charger connected: CPID=%s from %s", cpid, request.remote)
+
+        # Mutual TLS (issue #1341): the CA vouches for the certificate, but
+        # only its CN ties it to a charge point. Checked before anything
+        # else so another charger's certificate cannot displace this one.
+        if self._requires_client_cert:
+            transport = request.transport
+            common_name = peer_common_name(
+                transport.get_extra_info("peercert") if transport else None
+            )
+            if not cpid_matches_common_name(cpid, common_name):
+                if not self._allow_cn_mismatch:
+                    _LOGGER.warning(
+                        "OCPP %s: refused — client certificate CN %r does not "
+                        "match the charge point identity",
+                        cpid,
+                        common_name,
+                    )
+                    raise web.HTTPForbidden(
+                        text="Client certificate does not match the charge point "
+                        "identity"
+                    )
+                # Allowed by the user, but it means any certificate from the
+                # client CA can connect under this CPID, so say so each time.
+                _LOGGER.warning(
+                    "OCPP %s: client certificate CN %r does not match the charge "
+                    "point identity; accepted because CN mismatches are allowed",
+                    cpid,
+                    common_name,
+                )
 
         # A reconnect under the same CPID must not silently orphan a still-
         # open previous WebSocket — close it before replacing (issue #892).

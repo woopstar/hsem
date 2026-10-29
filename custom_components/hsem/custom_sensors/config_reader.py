@@ -672,4 +672,22 @@ def build_sensor_config(
         get_config_value(config_entry, "hsem_ocpp_second_charging_rate_unit") or "auto"
     )
 
+    # TLS for both OCPP servers (issue #1341). An unknown mode is kept as-is
+    # so the server refuses to start instead of silently serving plain ws://.
+    cfg.ocpp_tls_mode = str(
+        get_config_value(config_entry, "hsem_ocpp_tls_mode") or "off"
+    )
+    cfg.ocpp_tls_server_cert_path = str(
+        get_config_value(config_entry, "hsem_ocpp_tls_server_cert_path") or ""
+    ).strip()
+    cfg.ocpp_tls_server_key_path = str(
+        get_config_value(config_entry, "hsem_ocpp_tls_server_key_path") or ""
+    ).strip()
+    cfg.ocpp_tls_client_ca_path = str(
+        get_config_value(config_entry, "hsem_ocpp_tls_client_ca_path") or ""
+    ).strip()
+    cfg.ocpp_tls_allow_cn_mismatch = convert_to_boolean(
+        get_config_value(config_entry, "hsem_ocpp_tls_allow_cn_mismatch")
+    )
+
     return cfg

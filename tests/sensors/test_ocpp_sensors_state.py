@@ -422,6 +422,14 @@ class TestConnectionUrl:
                 == "ws://192.168.1.10:9000/charger01"
             )
 
+    def test_tls_advertises_a_secure_websocket_url(self) -> None:
+        """With TLS on the charger must dial wss:// (issue #1341)."""
+        with patch(f"{_MODULE}.get_url", return_value="http://192.168.1.10:8123"):
+            assert (
+                _connection_url(MagicMock(), 9000, "charger01", tls=True)
+                == "wss://192.168.1.10:9000/charger01"
+            )
+
     def test_no_resolvable_url_returns_none(self) -> None:
         """Without a reachable HA URL there is nothing to advertise."""
         with patch(f"{_MODULE}.get_url", side_effect=NoURLAvailableError):

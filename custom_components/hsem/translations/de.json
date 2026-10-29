@@ -28,7 +28,11 @@
       "invalid_time_value": "Gib eine gültige Uhrzeit ein (HH:MM).",
       "too_many_economics_deadlines": "Gib höchstens 3 verschiedene Uhrzeiten ein.",
       "house_power_required": "Wählen Sie einen Hausverbrauchssensor oder setzen Sie die Wirkleistung von Wechselrichter und Stromzähler, damit HSEM die Hauslast ableiten kann.",
-      "house_load_needs_inverter_1": "Setzen Sie die Wirkleistung des ersten Wechselrichters vor der des zweiten."
+      "house_load_needs_inverter_1": "Setzen Sie die Wirkleistung des ersten Wechselrichters vor der des zweiten.",
+      "tls_cert_key_pair_required": "Setze sowohl den Pfad zum Serverzertifikat als auch zum Serverschlüssel, oder lass beide leer.",
+      "tls_file_not_found": "Datei nicht gefunden oder nicht lesbar.",
+      "tls_cert_key_mismatch": "Serverzertifikat und Schlüssel konnten nicht zusammen geladen werden. Prüfe, dass beide PEM-Dateien sind und der Schlüssel zum Zertifikat gehört.",
+      "tls_invalid_ca": "Die Client-CA-Datei ist kein gültiges PEM-Zertifikat."
     },
     "step": {
       "batteries_excess_export": {
@@ -120,7 +124,12 @@
           "hsem_ocpp_second_port": "Zweiter OCPP-Port",
           "hsem_ocpp_second_cpid": "Zweite Ladepunkt-ID",
           "hsem_ocpp_charging_rate_unit": "Ladeeinheit (Watt/Ampere)",
-          "hsem_ocpp_second_charging_rate_unit": "Zweite Ladeeinheit (Watt/Ampere)"
+          "hsem_ocpp_second_charging_rate_unit": "Zweite Ladeeinheit (Watt/Ampere)",
+          "hsem_ocpp_tls_mode": "TLS-Modus",
+          "hsem_ocpp_tls_server_cert_path": "Pfad zum Serverzertifikat",
+          "hsem_ocpp_tls_server_key_path": "Pfad zum Serverschlüssel",
+          "hsem_ocpp_tls_client_ca_path": "Pfad zur Client-CA",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Abweichenden Zertifikatsnamen erlauben"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiviere den eingebetteten OCPP-1.6-WebSocket-Server für die direkte Steuerung des EV-Ladegeräts. Nur LAN — setze den Port nicht dem Internet aus.",
@@ -132,7 +141,12 @@
           "hsem_ocpp_second_port": "TCP-Port für den zweiten OCPP-WebSocket-Server. Standard: 9001. Muss sich vom Port des ersten Servers unterscheiden.",
           "hsem_ocpp_second_cpid": "Erwartete Ladepunkt-Kennung des zweiten EV-Ladegeräts. Leer lassen, um jedes Ladegerät zu akzeptieren.",
           "hsem_ocpp_charging_rate_unit": "Einheit für OCPP-Ladeprofile. 'Auto' handelt anhand der vom Ladegerät gemeldeten Fähigkeiten aus und bevorzugt Watt — eine Watt-Obergrenze ist eindeutig für Ladegeräte mit automatischer 1-/3-Phasen-Umschaltung. 'Ampere' oder 'Watt' erzwingt eine Einheit, wenn ein Ladegerät seine Unterstützung falsch meldet. Standard: Auto.",
-          "hsem_ocpp_second_charging_rate_unit": "Wie die Ladeeinheit des primären Servers, für den OCPP-Server des zweiten Ladegeräts."
+          "hsem_ocpp_second_charging_rate_unit": "Wie die Ladeeinheit des primären Servers, für den OCPP-Server des zweiten Ladegeräts.",
+          "hsem_ocpp_tls_mode": "Verschlüsselung für beide OCPP-Server. 'Aus' nutzt einfaches ws://. 'TLS' nutzt wss:// mit einem Serverzertifikat. 'Gegenseitiges TLS' verlangt zusätzlich von jeder Ladestation ein Client-Zertifikat, dessen Common Name (CN) mit der Ladepunkt-ID übereinstimmt. Lässt sich TLS nicht einrichten, bleiben die OCPP-Server gestoppt. Standard: Aus.",
+          "hsem_ocpp_tls_server_cert_path": "Vollständiger Pfad zu deinem eigenen Serverzertifikat (PEM). Leer lassen, um das Zertifikat zu nutzen, das HSEM in /ssl/hsem/ocpp/ erzeugt (oder in ssl/hsem/ocpp/ im Home-Assistant-Konfigurationsordner, wenn /ssl nicht existiert), signiert von HSEMs eigener CA.",
+          "hsem_ocpp_tls_server_key_path": "Vollständiger Pfad zum privaten Schlüssel (PEM) deines eigenen Serverzertifikats. Erforderlich, wenn ein Pfad zum Serverzertifikat gesetzt ist.",
+          "hsem_ocpp_tls_client_ca_path": "Nur gegenseitiges TLS: vollständiger Pfad zum CA-Zertifikat (PEM), von dem die Client-Zertifikate der Ladestationen signiert sein müssen. Leer lassen, um HSEMs eigene CA zu nutzen.",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Nur gegenseitiges TLS: akzeptiere eine Ladestation, deren Client-Zertifikat einen anderen Common Name (CN) als ihre Ladepunkt-ID hat, für Ladestationen, deren Zertifikat nach ihrer Seriennummer benannt ist. Das Zertifikat muss weiterhin von der Client-CA signiert sein, aber jedes solche Zertifikat kann sich dann unter jeder Ladepunkt-ID verbinden. Standard: aus."
         },
         "description": "Konfiguriere den eingebetteten OCPP-1.6-Server für die reine LAN-Steuerung von EV-Ladegeräten. Wenn aktiviert, sendet HSEM SetChargingProfile-Befehle direkt an dein EV-Ladegerät auf Basis des Ladeplans.",
         "title": "OCPP-Server"
@@ -548,7 +562,11 @@
       "invalid_time_value": "Gib eine gültige Uhrzeit ein (HH:MM).",
       "too_many_economics_deadlines": "Gib höchstens 3 verschiedene Uhrzeiten ein.",
       "house_power_required": "Wählen Sie einen Hausverbrauchssensor oder setzen Sie die Wirkleistung von Wechselrichter und Stromzähler, damit HSEM die Hauslast ableiten kann.",
-      "house_load_needs_inverter_1": "Setzen Sie die Wirkleistung des ersten Wechselrichters vor der des zweiten."
+      "house_load_needs_inverter_1": "Setzen Sie die Wirkleistung des ersten Wechselrichters vor der des zweiten.",
+      "tls_cert_key_pair_required": "Setze sowohl den Pfad zum Serverzertifikat als auch zum Serverschlüssel, oder lass beide leer.",
+      "tls_file_not_found": "Datei nicht gefunden oder nicht lesbar.",
+      "tls_cert_key_mismatch": "Serverzertifikat und Schlüssel konnten nicht zusammen geladen werden. Prüfe, dass beide PEM-Dateien sind und der Schlüssel zum Zertifikat gehört.",
+      "tls_invalid_ca": "Die Client-CA-Datei ist kein gültiges PEM-Zertifikat."
     },
     "step": {
       "batteries_excess_export": {
@@ -640,7 +658,12 @@
           "hsem_ocpp_second_port": "Zweiter OCPP-Port",
           "hsem_ocpp_second_cpid": "Zweite Ladepunkt-ID",
           "hsem_ocpp_charging_rate_unit": "Ladeeinheit (Watt/Ampere)",
-          "hsem_ocpp_second_charging_rate_unit": "Zweite Ladeeinheit (Watt/Ampere)"
+          "hsem_ocpp_second_charging_rate_unit": "Zweite Ladeeinheit (Watt/Ampere)",
+          "hsem_ocpp_tls_mode": "TLS-Modus",
+          "hsem_ocpp_tls_server_cert_path": "Pfad zum Serverzertifikat",
+          "hsem_ocpp_tls_server_key_path": "Pfad zum Serverschlüssel",
+          "hsem_ocpp_tls_client_ca_path": "Pfad zur Client-CA",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Abweichenden Zertifikatsnamen erlauben"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiviere den eingebetteten OCPP-1.6-WebSocket-Server für die direkte Steuerung des EV-Ladegeräts. Nur LAN — setze den Port nicht dem Internet aus.",
@@ -652,7 +675,12 @@
           "hsem_ocpp_second_port": "TCP-Port für den zweiten OCPP-WebSocket-Server. Standard: 9001. Muss sich vom Port des ersten Servers unterscheiden.",
           "hsem_ocpp_second_cpid": "Erwartete Ladepunkt-Kennung des zweiten EV-Ladegeräts. Leer lassen, um jedes Ladegerät zu akzeptieren.",
           "hsem_ocpp_charging_rate_unit": "Einheit für OCPP-Ladeprofile. 'Auto' handelt anhand der vom Ladegerät gemeldeten Fähigkeiten aus und bevorzugt Watt — eine Watt-Obergrenze ist eindeutig für Ladegeräte mit automatischer 1-/3-Phasen-Umschaltung. 'Ampere' oder 'Watt' erzwingt eine Einheit, wenn ein Ladegerät seine Unterstützung falsch meldet. Standard: Auto.",
-          "hsem_ocpp_second_charging_rate_unit": "Wie die Ladeeinheit des primären Servers, für den OCPP-Server des zweiten Ladegeräts."
+          "hsem_ocpp_second_charging_rate_unit": "Wie die Ladeeinheit des primären Servers, für den OCPP-Server des zweiten Ladegeräts.",
+          "hsem_ocpp_tls_mode": "Verschlüsselung für beide OCPP-Server. 'Aus' nutzt einfaches ws://. 'TLS' nutzt wss:// mit einem Serverzertifikat. 'Gegenseitiges TLS' verlangt zusätzlich von jeder Ladestation ein Client-Zertifikat, dessen Common Name (CN) mit der Ladepunkt-ID übereinstimmt. Lässt sich TLS nicht einrichten, bleiben die OCPP-Server gestoppt. Standard: Aus.",
+          "hsem_ocpp_tls_server_cert_path": "Vollständiger Pfad zu deinem eigenen Serverzertifikat (PEM). Leer lassen, um das Zertifikat zu nutzen, das HSEM in /ssl/hsem/ocpp/ erzeugt (oder in ssl/hsem/ocpp/ im Home-Assistant-Konfigurationsordner, wenn /ssl nicht existiert), signiert von HSEMs eigener CA.",
+          "hsem_ocpp_tls_server_key_path": "Vollständiger Pfad zum privaten Schlüssel (PEM) deines eigenen Serverzertifikats. Erforderlich, wenn ein Pfad zum Serverzertifikat gesetzt ist.",
+          "hsem_ocpp_tls_client_ca_path": "Nur gegenseitiges TLS: vollständiger Pfad zum CA-Zertifikat (PEM), von dem die Client-Zertifikate der Ladestationen signiert sein müssen. Leer lassen, um HSEMs eigene CA zu nutzen.",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Nur gegenseitiges TLS: akzeptiere eine Ladestation, deren Client-Zertifikat einen anderen Common Name (CN) als ihre Ladepunkt-ID hat, für Ladestationen, deren Zertifikat nach ihrer Seriennummer benannt ist. Das Zertifikat muss weiterhin von der Client-CA signiert sein, aber jedes solche Zertifikat kann sich dann unter jeder Ladepunkt-ID verbinden. Standard: aus."
         },
         "description": "Konfiguriere den eingebetteten OCPP-1.6-Server für die reine LAN-Steuerung von EV-Ladegeräten. Wenn aktiviert, sendet HSEM SetChargingProfile-Befehle direkt an dein EV-Ladegerät auf Basis des Ladeplans.",
         "title": "OCPP-Server"
@@ -1042,6 +1070,13 @@
         "auto": "Auto (aushandeln, Watt bevorzugt)",
         "amps": "Ampere",
         "watts": "Watt"
+      }
+    },
+    "ocpp_tls_mode": {
+      "options": {
+        "off": "Aus (ws://)",
+        "tls": "TLS (wss://, Serverzertifikat)",
+        "mtls": "Gegenseitiges TLS (wss://, Client-Zertifikat erforderlich)"
       }
     }
   },
@@ -1468,6 +1503,20 @@
         "current_a": {
           "name": "Strom",
           "description": "Angeforderte Strombegrenzung. 0 bedeutet nichts beziehen; sonst 6-32 A."
+        }
+      }
+    },
+    "ocpp_generate_client_certificate": {
+      "name": "OCPP Client-Zertifikat erzeugen",
+      "description": "Signiere einen Client-Schlüssel und ein Client-Zertifikat für einen Ladepunkt mit HSEMs OCPP-CA, für Ladestationen, die für gegenseitiges TLS ein hochgeladenes Zertifikat brauchen. Gibt nur die Dateipfade zurück.",
+      "fields": {
+        "cpid": {
+          "name": "Ladepunkt-ID",
+          "description": "Identität, mit der sich die Ladestation verbindet. Wird zum Common Name (CN) des Zertifikats."
+        },
+        "replace": {
+          "name": "Ersetzen",
+          "description": "Ein vorhandenes Zertifikat samt Schlüssel für diesen Ladepunkt überschreiben."
         }
       }
     }

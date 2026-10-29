@@ -39,6 +39,7 @@ from custom_components.hsem.coordinator import (
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.utils.ocpp_tls import TLS_MODE_OFF
 from custom_components.hsem.utils.sensornames.ocpp import (
     get_ocpp_charger_info_sensor_entity_id,
     get_ocpp_charger_info_sensor_unique_id,
@@ -125,8 +126,10 @@ def _charger_stalled(data: CoordinatorData, charger_index: int) -> bool:
     return data.ocpp_charger_stalled
 
 
-def _connection_url(hass: Any, port: int, cpid: str) -> str | None:
-    """Build a best-effort ``ws://<host>:<port>/<cpid>`` connection URL.
+def _connection_url(
+    hass: Any, port: int, cpid: str, *, tls: bool = False
+) -> str | None:
+    """Build a best-effort ``ws[s]://<host>:<port>/<cpid>`` connection URL.
 
     The embedded server binds ``0.0.0.0`` (all interfaces), which isn't a
     usable address for an EVSE to dial. Resolve HA's own LAN-reachable host
@@ -139,6 +142,9 @@ def _connection_url(hass: Any, port: int, cpid: str) -> str | None:
     (issue #892), so a URL missing the CPID would tell the user to dial an
     address that resolves to ``"default"`` instead of their configured
     charge-point ID.
+
+    With TLS on (issue #1341) the scheme is ``wss``: a charger given the
+    ``ws://`` address would fail the handshake.
     """
     try:
         base = get_url(hass, allow_internal=True, allow_ip=True, prefer_external=False)
@@ -147,7 +153,8 @@ def _connection_url(hass: Any, port: int, cpid: str) -> str | None:
     host = urlparse(base).hostname
     if not host:
         return None
-    return f"ws://{host}:{port}/{cpid}"
+    scheme = "wss" if tls else "ws"
+    return f"{scheme}://{host}:{port}/{cpid}"
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +273,9 @@ class HSEMOCPPChargerStatusSensor(
             "stalled": _charger_stalled(data, self._charger_index),
         }
         cpid = _configured_cpid(data.cfg, self._charger_index)
-        url = _connection_url(self.hass, port, cpid)
+        url = _connection_url(
+            self.hass, port, cpid, tls=data.cfg.ocpp_tls_mode != TLS_MODE_OFF
+        )
         if url is not None:
             attrs["url"] = url
 

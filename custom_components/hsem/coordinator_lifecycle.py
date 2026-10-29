@@ -43,6 +43,11 @@ from custom_components.hsem.utils.datetime_utils import (
 from custom_components.hsem.utils.logger import (
     async_log,
 )
+from custom_components.hsem.utils.ocpp_tls import (
+    TLS_MODE_OFF,
+    OCPPTLSSettings,
+    async_prepare_ocpp_tls,
+)
 
 
 class CoordinatorLifecycleMixin(CoordinatorSharedState):
@@ -79,7 +84,38 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
         # One server per EV: the primary EV uses the primary server, and the
         # optional second EV gets its own dedicated server on a separate port.
         cfg = build_sensor_config(self._config_entry)
-        if cfg.ocpp_enabled:
+        start_primary = cfg.ocpp_enabled
+        start_second = cfg.ev_second_planned_load_enabled and cfg.ocpp_second_enabled
+        ssl_context = None
+        self._ocpp_tls_status = {"mode": cfg.ocpp_tls_mode}
+        if (start_primary or start_second) and cfg.ocpp_tls_mode != TLS_MODE_OFF:
+            # One TLS context for both servers (issue #1341). If it cannot be
+            # built, neither server starts: falling back to plain ws:// would
+            # turn encryption off without the user knowing.
+            try:
+                ssl_context, tls_info = await async_prepare_ocpp_tls(
+                    self.hass,
+                    OCPPTLSSettings(
+                        mode=cfg.ocpp_tls_mode,
+                        server_cert_path=cfg.ocpp_tls_server_cert_path,
+                        server_key_path=cfg.ocpp_tls_server_key_path,
+                        client_ca_path=cfg.ocpp_tls_client_ca_path,
+                    ),
+                )
+                self._ocpp_tls_status = {
+                    **tls_info.as_dict(),
+                    "allow_cn_mismatch": cfg.ocpp_tls_allow_cn_mismatch,
+                }
+            except Exception as e:
+                async_log(
+                    "error",
+                    "OCPP TLS setup failed, OCPP server(s) not started: %s",
+                    e,
+                )
+                self._ocpp_tls_status = {"mode": cfg.ocpp_tls_mode, "error": str(e)}
+                start_primary = start_second = False
+
+        if start_primary:
             try:
                 self._ocpp_server = OCPPServer(
                     hass=self.hass,
@@ -89,6 +125,8 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
                     stop_window_s=cfg.ocpp_stop_window_s,
                     on_significant_event=self.async_ocpp_event,
                     charging_rate_unit=cfg.ocpp_charging_rate_unit,
+                    ssl_context=ssl_context,
+                    allow_cn_mismatch=cfg.ocpp_tls_allow_cn_mismatch,
                 )
                 await self._ocpp_server.start()
                 async_log("info", "OCPP server started on port %d", cfg.ocpp_port)
@@ -97,7 +135,7 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
                 self._ocpp_server = None
 
         # Second OCPP server — only when the second EV is configured/enabled.
-        if cfg.ev_second_planned_load_enabled and cfg.ocpp_second_enabled:
+        if start_second:
             try:
                 self._ocpp_second_server = OCPPServer(
                     hass=self.hass,
@@ -107,6 +145,8 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
                     stop_window_s=cfg.ocpp_stop_window_s,
                     on_significant_event=self.async_ocpp_event,
                     charging_rate_unit=cfg.ocpp_second_charging_rate_unit,
+                    ssl_context=ssl_context,
+                    allow_cn_mismatch=cfg.ocpp_tls_allow_cn_mismatch,
                 )
                 await self._ocpp_second_server.start()
                 async_log(

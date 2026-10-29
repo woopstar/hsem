@@ -4,6 +4,7 @@
     "after_dependencies": [
         "huawei_solar",
         "lovelace",
+        "network",
         "recorder",
         "solcast_solar",
         "statistics",
