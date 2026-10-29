@@ -181,6 +181,14 @@ async def get_ocpp_step_schema(
         fields[
             vol.Optional(field, default=get_config_value(config_entry, field) or "")
         ] = str
+    fields[
+        vol.Required(
+            "hsem_ocpp_tls_allow_cn_mismatch",
+            default=bool(
+                get_config_value(config_entry, "hsem_ocpp_tls_allow_cn_mismatch")
+            ),
+        )
+    ] = selector({"boolean": {}})
 
     return vol.Schema(fields)
 

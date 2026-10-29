@@ -190,6 +190,10 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_ocpp_tls_server_cert_path": "",
     "hsem_ocpp_tls_server_key_path": "",
     "hsem_ocpp_tls_client_ca_path": "",
+    # mtls only: accept a client certificate whose CN is not the CPID (for
+    # chargers whose certificate names their serial number). Off: a charger
+    # cannot connect under another charger's identity.
+    "hsem_ocpp_tls_allow_cn_mismatch": False,
     # Daily plan-vs-actual tracking — optional energy meter entities.
     # When not configured, the sensor falls back to Riemann-sum estimates
     # from instantaneous power sensors.

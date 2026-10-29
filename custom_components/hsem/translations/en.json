@@ -123,7 +123,8 @@
           "hsem_ocpp_tls_mode": "TLS Mode",
           "hsem_ocpp_tls_server_cert_path": "Server Certificate Path",
           "hsem_ocpp_tls_server_key_path": "Server Key Path",
-          "hsem_ocpp_tls_client_ca_path": "Client CA Path"
+          "hsem_ocpp_tls_client_ca_path": "Client CA Path",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Allow Certificate Name Mismatch"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Enable the embedded OCPP 1.6 WebSocket server for direct EV charger control. LAN-only — do not expose the port to the internet.",
@@ -139,7 +140,8 @@
           "hsem_ocpp_tls_mode": "Encryption for both OCPP servers. 'Off' serves plain ws://. 'TLS' serves wss:// with a server certificate. 'Mutual TLS' also requires each charger to present a client certificate whose common name (CN) matches its charge point ID. If TLS cannot be set up, the OCPP servers stay stopped. Default: Off.",
           "hsem_ocpp_tls_server_cert_path": "Full path to your own server certificate (PEM). Leave empty to use the certificate HSEM generates in /ssl/hsem/ocpp/ (or ssl/hsem/ocpp/ in the Home Assistant config folder when /ssl does not exist), signed by HSEM's own CA.",
           "hsem_ocpp_tls_server_key_path": "Full path to the private key (PEM) for your own server certificate. Required when a server certificate path is set.",
-          "hsem_ocpp_tls_client_ca_path": "Mutual TLS only: full path to the CA certificate (PEM) that charger client certificates must be signed by. Leave empty to use HSEM's own CA."
+          "hsem_ocpp_tls_client_ca_path": "Mutual TLS only: full path to the CA certificate (PEM) that charger client certificates must be signed by. Leave empty to use HSEM's own CA.",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Mutual TLS only: accept a charger whose client certificate's common name (CN) differs from its charge point ID, for chargers whose certificate is named after their serial number. The certificate must still be signed by the client CA, but any such certificate can then connect under any charge point ID. Default: off."
         },
         "description": "Configure the embedded OCPP 1.6 server for LAN-only EV charger control. When enabled, HSEM sends SetChargingProfile commands directly to your EV charger based on the charging plan.",
         "title": "OCPP Server"
@@ -650,7 +652,8 @@
           "hsem_ocpp_tls_mode": "TLS Mode",
           "hsem_ocpp_tls_server_cert_path": "Server Certificate Path",
           "hsem_ocpp_tls_server_key_path": "Server Key Path",
-          "hsem_ocpp_tls_client_ca_path": "Client CA Path"
+          "hsem_ocpp_tls_client_ca_path": "Client CA Path",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Allow Certificate Name Mismatch"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Enable the embedded OCPP 1.6 WebSocket server for direct EV charger control. LAN-only — do not expose the port to the internet.",
@@ -666,7 +669,8 @@
           "hsem_ocpp_tls_mode": "Encryption for both OCPP servers. 'Off' serves plain ws://. 'TLS' serves wss:// with a server certificate. 'Mutual TLS' also requires each charger to present a client certificate whose common name (CN) matches its charge point ID. If TLS cannot be set up, the OCPP servers stay stopped. Default: Off.",
           "hsem_ocpp_tls_server_cert_path": "Full path to your own server certificate (PEM). Leave empty to use the certificate HSEM generates in /ssl/hsem/ocpp/ (or ssl/hsem/ocpp/ in the Home Assistant config folder when /ssl does not exist), signed by HSEM's own CA.",
           "hsem_ocpp_tls_server_key_path": "Full path to the private key (PEM) for your own server certificate. Required when a server certificate path is set.",
-          "hsem_ocpp_tls_client_ca_path": "Mutual TLS only: full path to the CA certificate (PEM) that charger client certificates must be signed by. Leave empty to use HSEM's own CA."
+          "hsem_ocpp_tls_client_ca_path": "Mutual TLS only: full path to the CA certificate (PEM) that charger client certificates must be signed by. Leave empty to use HSEM's own CA.",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Mutual TLS only: accept a charger whose client certificate's common name (CN) differs from its charge point ID, for chargers whose certificate is named after their serial number. The certificate must still be signed by the client CA, but any such certificate can then connect under any charge point ID. Default: off."
         },
         "description": "Configure the embedded OCPP 1.6 server for LAN-only EV charger control. When enabled, HSEM sends SetChargingProfile commands directly to your EV charger based on the charging plan.",
         "title": "OCPP Server"

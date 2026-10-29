@@ -102,7 +102,10 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
                         client_ca_path=cfg.ocpp_tls_client_ca_path,
                     ),
                 )
-                self._ocpp_tls_status = tls_info.as_dict()
+                self._ocpp_tls_status = {
+                    **tls_info.as_dict(),
+                    "allow_cn_mismatch": cfg.ocpp_tls_allow_cn_mismatch,
+                }
             except Exception as e:
                 async_log(
                     "error",
@@ -123,6 +126,7 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
                     on_significant_event=self.async_ocpp_event,
                     charging_rate_unit=cfg.ocpp_charging_rate_unit,
                     ssl_context=ssl_context,
+                    allow_cn_mismatch=cfg.ocpp_tls_allow_cn_mismatch,
                 )
                 await self._ocpp_server.start()
                 async_log("info", "OCPP server started on port %d", cfg.ocpp_port)
@@ -142,6 +146,7 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
                     on_significant_event=self.async_ocpp_event,
                     charging_rate_unit=cfg.ocpp_second_charging_rate_unit,
                     ssl_context=ssl_context,
+                    allow_cn_mismatch=cfg.ocpp_tls_allow_cn_mismatch,
                 )
                 await self._ocpp_second_server.start()
                 async_log(

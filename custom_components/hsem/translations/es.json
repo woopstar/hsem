@@ -123,7 +123,8 @@
           "hsem_ocpp_tls_mode": "Modo TLS",
           "hsem_ocpp_tls_server_cert_path": "Ruta del certificado del servidor",
           "hsem_ocpp_tls_server_key_path": "Ruta de la clave del servidor",
-          "hsem_ocpp_tls_client_ca_path": "Ruta de la CA de clientes"
+          "hsem_ocpp_tls_client_ca_path": "Ruta de la CA de clientes",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Permitir nombre de certificado distinto"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Activa el servidor WebSocket OCPP 1.6 integrado para el control directo del cargador de VE. Solo para red local: no expongas el puerto a internet.",
@@ -139,7 +140,8 @@
           "hsem_ocpp_tls_mode": "Cifrado para ambos servidores OCPP. 'Desactivado' usa ws:// sin cifrar. 'TLS' usa wss:// con un certificado de servidor. 'TLS mutuo' además exige que cada cargador de VE presente un certificado de cliente cuyo nombre común (CN) coincida con el ID del punto de carga. Si TLS no se puede configurar, los servidores OCPP permanecen detenidos. Predeterminado: Desactivado.",
           "hsem_ocpp_tls_server_cert_path": "Ruta completa a tu propio certificado de servidor (PEM). Déjalo vacío para usar el certificado que HSEM genera en /ssl/hsem/ocpp/ (o en ssl/hsem/ocpp/ dentro de la carpeta de configuración de Home Assistant cuando /ssl no existe), firmado por la CA propia de HSEM.",
           "hsem_ocpp_tls_server_key_path": "Ruta completa a la clave privada (PEM) de tu propio certificado de servidor. Obligatoria cuando se indica una ruta de certificado de servidor.",
-          "hsem_ocpp_tls_client_ca_path": "Solo TLS mutuo: ruta completa al certificado de CA (PEM) que debe firmar los certificados de cliente de los cargadores. Déjalo vacío para usar la CA propia de HSEM."
+          "hsem_ocpp_tls_client_ca_path": "Solo TLS mutuo: ruta completa al certificado de CA (PEM) que debe firmar los certificados de cliente de los cargadores. Déjalo vacío para usar la CA propia de HSEM.",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Solo TLS mutuo: acepta un cargador cuyo certificado de cliente tenga un nombre común (CN) distinto de su ID de punto de carga, para cargadores cuyo certificado lleva su número de serie. El certificado debe seguir estando firmado por la CA de clientes, pero cualquier certificado así podrá conectarse con cualquier ID de punto de carga. Predeterminado: desactivado."
         },
         "description": "Configura el servidor OCPP 1.6 integrado para el control del cargador de VE únicamente en red local. Cuando está activado, HSEM envía órdenes SetChargingProfile directamente a tu cargador de VE según el plan de carga.",
         "title": "Servidor OCPP"
@@ -650,7 +652,8 @@
           "hsem_ocpp_tls_mode": "Modo TLS",
           "hsem_ocpp_tls_server_cert_path": "Ruta del certificado del servidor",
           "hsem_ocpp_tls_server_key_path": "Ruta de la clave del servidor",
-          "hsem_ocpp_tls_client_ca_path": "Ruta de la CA de clientes"
+          "hsem_ocpp_tls_client_ca_path": "Ruta de la CA de clientes",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Permitir nombre de certificado distinto"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Activa el servidor WebSocket OCPP 1.6 integrado para el control directo del cargador de VE. Solo para red local: no expongas el puerto a internet.",
@@ -666,7 +669,8 @@
           "hsem_ocpp_tls_mode": "Cifrado para ambos servidores OCPP. 'Desactivado' usa ws:// sin cifrar. 'TLS' usa wss:// con un certificado de servidor. 'TLS mutuo' además exige que cada cargador de VE presente un certificado de cliente cuyo nombre común (CN) coincida con el ID del punto de carga. Si TLS no se puede configurar, los servidores OCPP permanecen detenidos. Predeterminado: Desactivado.",
           "hsem_ocpp_tls_server_cert_path": "Ruta completa a tu propio certificado de servidor (PEM). Déjalo vacío para usar el certificado que HSEM genera en /ssl/hsem/ocpp/ (o en ssl/hsem/ocpp/ dentro de la carpeta de configuración de Home Assistant cuando /ssl no existe), firmado por la CA propia de HSEM.",
           "hsem_ocpp_tls_server_key_path": "Ruta completa a la clave privada (PEM) de tu propio certificado de servidor. Obligatoria cuando se indica una ruta de certificado de servidor.",
-          "hsem_ocpp_tls_client_ca_path": "Solo TLS mutuo: ruta completa al certificado de CA (PEM) que debe firmar los certificados de cliente de los cargadores. Déjalo vacío para usar la CA propia de HSEM."
+          "hsem_ocpp_tls_client_ca_path": "Solo TLS mutuo: ruta completa al certificado de CA (PEM) que debe firmar los certificados de cliente de los cargadores. Déjalo vacío para usar la CA propia de HSEM.",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Solo TLS mutuo: acepta un cargador cuyo certificado de cliente tenga un nombre común (CN) distinto de su ID de punto de carga, para cargadores cuyo certificado lleva su número de serie. El certificado debe seguir estando firmado por la CA de clientes, pero cualquier certificado así podrá conectarse con cualquier ID de punto de carga. Predeterminado: desactivado."
         },
         "description": "Configura el servidor OCPP 1.6 integrado para el control del cargador de VE únicamente en red local. Cuando está activado, HSEM envía órdenes SetChargingProfile directamente a tu cargador de VE según el plan de carga.",
         "title": "Servidor OCPP"

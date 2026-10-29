@@ -406,6 +406,7 @@ class SensorConfig:
     ocpp_tls_server_cert_path: str = ""
     ocpp_tls_server_key_path: str = ""
     ocpp_tls_client_ca_path: str = ""
+    ocpp_tls_allow_cn_mismatch: bool = False
 
     # Consumption weights
     house_consumption_energy_weight_1d: int = 50

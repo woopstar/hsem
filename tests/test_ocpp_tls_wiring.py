@@ -77,6 +77,7 @@ class TestFlowStep:
         assert validated["hsem_ocpp_tls_server_cert_path"] == ""
         assert validated["hsem_ocpp_tls_server_key_path"] == ""
         assert validated["hsem_ocpp_tls_client_ca_path"] == ""
+        assert validated["hsem_ocpp_tls_allow_cn_mismatch"] is False
 
     @pytest.mark.asyncio
     async def test_paths_are_ignored_while_tls_is_off(self) -> None:
@@ -132,6 +133,7 @@ class TestConfigReader:
         assert cfg.ocpp_tls_server_cert_path == ""
         assert cfg.ocpp_tls_server_key_path == ""
         assert cfg.ocpp_tls_client_ca_path == ""
+        assert cfg.ocpp_tls_allow_cn_mismatch is False
 
     def test_values_are_read_and_paths_trimmed(self) -> None:
         """Stray whitespace around a path is not part of the path."""
@@ -142,6 +144,7 @@ class TestConfigReader:
             "hsem_ocpp_tls_server_cert_path": " /ssl/cert.pem ",
             "hsem_ocpp_tls_server_key_path": "/ssl/key.pem",
             "hsem_ocpp_tls_client_ca_path": "/ssl/ca.pem\n",
+            "hsem_ocpp_tls_allow_cn_mismatch": True,
         }
 
         cfg = build_sensor_config(entry)
@@ -150,6 +153,7 @@ class TestConfigReader:
         assert cfg.ocpp_tls_server_cert_path == "/ssl/cert.pem"
         assert cfg.ocpp_tls_server_key_path == "/ssl/key.pem"
         assert cfg.ocpp_tls_client_ca_path == "/ssl/ca.pem"
+        assert cfg.ocpp_tls_allow_cn_mismatch is True
 
 
 def _coordinator(options: dict[str, Any]) -> Any:
@@ -197,7 +201,10 @@ class TestServerStartup:
     @pytest.mark.asyncio
     async def test_tls_context_is_shared_by_both_servers(self) -> None:
         """One prepared context goes to the primary and second server."""
-        coordinator = _coordinator(_BOTH_SERVERS | {"hsem_ocpp_tls_mode": "mtls"})
+        coordinator = _coordinator(
+            _BOTH_SERVERS
+            | {"hsem_ocpp_tls_mode": "mtls", "hsem_ocpp_tls_allow_cn_mismatch": True}
+        )
         context = MagicMock()
         prepare = AsyncMock(return_value=(context, _INFO))
 
@@ -217,7 +224,14 @@ class TestServerStartup:
             context,
             context,
         ]
-        assert coordinator._ocpp_tls_status == _INFO.as_dict()
+        assert [c.kwargs["allow_cn_mismatch"] for c in server_cls.call_args_list] == [
+            True,
+            True,
+        ]
+        assert coordinator._ocpp_tls_status == {
+            **_INFO.as_dict(),
+            "allow_cn_mismatch": True,
+        }
 
     @pytest.mark.asyncio
     async def test_failed_tls_setup_starts_no_server(self) -> None:

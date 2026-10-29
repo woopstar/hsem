@@ -519,6 +519,14 @@ connects on `/ocpp/<id>`, so its CN must be `<id>`. A valid certificate with a
 different CN is refused with HTTP 403 before the connection is accepted, so a
 charger cannot take over another charger's session with its own certificate.
 
+Some chargers come with a certificate named after their serial number rather
+than the charge point ID they connect with. For those, turn on
+`hsem_ocpp_tls_allow_cn_mismatch`. The certificate must still be signed by the
+client CA, but the name check is skipped: **any** certificate from that CA can
+then connect under **any** charge point ID, and could displace another
+charger's session. HSEM logs a warning on every such connection. Only turn it
+on when the client CA signs certificates for your own chargers alone.
+
 Diagnostics (`hsem.export_diagnostics` and _Download diagnostics_) include an
 `ocpp_tls` block: mode, certificate source, server certificate expiry, SANs and
 the CA's SHA-256 fingerprint, or the setup error. Key material never appears

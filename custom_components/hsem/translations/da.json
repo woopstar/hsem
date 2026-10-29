@@ -467,7 +467,8 @@
           "hsem_ocpp_tls_mode": "TLS-tilstand",
           "hsem_ocpp_tls_server_cert_path": "Sti til servercertifikat",
           "hsem_ocpp_tls_server_key_path": "Sti til servernøgle",
-          "hsem_ocpp_tls_client_ca_path": "Sti til klient-CA"
+          "hsem_ocpp_tls_client_ca_path": "Sti til klient-CA",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Tillad uoverensstemmende certifikatnavn"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiver den indbyggede OCPP 1.6 WebSocket-server til direkte EV-laderstyring. Kun LAN - eksponer ikke porten til internettet.",
@@ -483,7 +484,8 @@
           "hsem_ocpp_tls_mode": "Kryptering for begge OCPP-servere. 'Fra' bruger almindelig ws://. 'TLS' bruger wss:// med et servercertifikat. 'Gensidig TLS' kræver desuden, at hver EV-lader præsenterer et klientcertifikat, hvis common name (CN) matcher ladepunktets ID. Kan TLS ikke sættes op, forbliver OCPP-serverne stoppet. Standard: Fra.",
           "hsem_ocpp_tls_server_cert_path": "Fuld sti til dit eget servercertifikat (PEM). Lad feltet være tomt for at bruge det certifikat, HSEM genererer i /ssl/hsem/ocpp/ (eller ssl/hsem/ocpp/ i Home Assistants konfigurationsmappe, når /ssl ikke findes), signeret af HSEM's egen CA.",
           "hsem_ocpp_tls_server_key_path": "Fuld sti til den private nøgle (PEM) til dit eget servercertifikat. Påkrævet, når en sti til servercertifikatet er angivet.",
-          "hsem_ocpp_tls_client_ca_path": "Kun gensidig TLS: fuld sti til det CA-certifikat (PEM), som EV-laderens klientcertifikater skal være signeret af. Lad feltet være tomt for at bruge HSEM's egen CA."
+          "hsem_ocpp_tls_client_ca_path": "Kun gensidig TLS: fuld sti til det CA-certifikat (PEM), som EV-laderens klientcertifikater skal være signeret af. Lad feltet være tomt for at bruge HSEM's egen CA.",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Kun gensidig TLS: accepter en EV-lader, hvis klientcertifikats common name (CN) afviger fra ladepunktets ID, til EV-ladere hvis certifikat er navngivet efter serienummeret. Certifikatet skal stadig være signeret af klient-CA'en, men ethvert sådant certifikat kan så forbinde under ethvert ladepunkt-ID. Standard: fra."
         },
         "description": "Konfigurer den indbyggede OCPP 1.6 server til LAN-kun EV-laderstyring. Når aktiveret, sender HSEM SetChargingProfile-kommandoer direkte til din EV-lader baseret på opladeplanen.",
         "title": "OCPP Server"
@@ -972,7 +974,8 @@
           "hsem_ocpp_tls_mode": "TLS-tilstand",
           "hsem_ocpp_tls_server_cert_path": "Sti til servercertifikat",
           "hsem_ocpp_tls_server_key_path": "Sti til servernøgle",
-          "hsem_ocpp_tls_client_ca_path": "Sti til klient-CA"
+          "hsem_ocpp_tls_client_ca_path": "Sti til klient-CA",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Tillad uoverensstemmende certifikatnavn"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiver den indbyggede OCPP 1.6 WebSocket-server til direkte EV-laderstyring. Kun LAN - eksponer ikke porten til internettet.",
@@ -988,7 +991,8 @@
           "hsem_ocpp_tls_mode": "Kryptering for begge OCPP-servere. 'Fra' bruger almindelig ws://. 'TLS' bruger wss:// med et servercertifikat. 'Gensidig TLS' kræver desuden, at hver EV-lader præsenterer et klientcertifikat, hvis common name (CN) matcher ladepunktets ID. Kan TLS ikke sættes op, forbliver OCPP-serverne stoppet. Standard: Fra.",
           "hsem_ocpp_tls_server_cert_path": "Fuld sti til dit eget servercertifikat (PEM). Lad feltet være tomt for at bruge det certifikat, HSEM genererer i /ssl/hsem/ocpp/ (eller ssl/hsem/ocpp/ i Home Assistants konfigurationsmappe, når /ssl ikke findes), signeret af HSEM's egen CA.",
           "hsem_ocpp_tls_server_key_path": "Fuld sti til den private nøgle (PEM) til dit eget servercertifikat. Påkrævet, når en sti til servercertifikatet er angivet.",
-          "hsem_ocpp_tls_client_ca_path": "Kun gensidig TLS: fuld sti til det CA-certifikat (PEM), som EV-laderens klientcertifikater skal være signeret af. Lad feltet være tomt for at bruge HSEM's egen CA."
+          "hsem_ocpp_tls_client_ca_path": "Kun gensidig TLS: fuld sti til det CA-certifikat (PEM), som EV-laderens klientcertifikater skal være signeret af. Lad feltet være tomt for at bruge HSEM's egen CA.",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Kun gensidig TLS: accepter en EV-lader, hvis klientcertifikats common name (CN) afviger fra ladepunktets ID, til EV-ladere hvis certifikat er navngivet efter serienummeret. Certifikatet skal stadig være signeret af klient-CA'en, men ethvert sådant certifikat kan så forbinde under ethvert ladepunkt-ID. Standard: fra."
         },
         "description": "Konfigurer den indbyggede OCPP 1.6 server til LAN-kun EV-laderstyring.",
         "title": "OCPP Server"

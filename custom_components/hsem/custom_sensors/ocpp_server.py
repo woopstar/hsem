@@ -19,7 +19,7 @@ Architecture::
     exposed to the public internet — it is LAN-only by design. Without TLS
     it performs no authentication on incoming connections; with mutual TLS
     (issue #1341) a charger must present a client certificate whose CN
-    matches its charge point identity.
+    matches its charge point identity, unless ``allow_cn_mismatch`` is set.
 
 Usage
 -----
@@ -137,6 +137,7 @@ class OCPPServer(
         on_significant_event: Callable[[], Coroutine[Any, Any, None]] | None = None,
         charging_rate_unit: str = RATE_UNIT_PREF_AUTO,
         ssl_context: ssl.SSLContext | None = None,
+        allow_cn_mismatch: bool = False,
     ) -> None:
         """Initialise the OCPP server.
 
@@ -165,6 +166,10 @@ class OCPPServer(
                 plain ``ws://`` (issue #1341). When it requires client
                 certificates, a charger whose certificate CN does not match
                 its CPID is refused.
+            allow_cn_mismatch: Accept such a charger anyway, for chargers
+                whose certificate CN is their serial number rather than the
+                CPID they connect with. The certificate must still chain to
+                the client CA; only the identity binding is dropped.
         """
         self._hass = hass
         self._host = host
@@ -173,6 +178,7 @@ class OCPPServer(
         self._stop_window_s = stop_window_s
         self._on_significant_event = on_significant_event
         self._ssl_context = ssl_context
+        self._allow_cn_mismatch = allow_cn_mismatch
         self._charging_rate_unit: str = (
             charging_rate_unit
             if charging_rate_unit in RATE_UNIT_PREFERENCES
@@ -413,14 +419,24 @@ class OCPPServer(
                 transport.get_extra_info("peercert") if transport else None
             )
             if not cpid_matches_common_name(cpid, common_name):
+                if not self._allow_cn_mismatch:
+                    _LOGGER.warning(
+                        "OCPP %s: refused — client certificate CN %r does not "
+                        "match the charge point identity",
+                        cpid,
+                        common_name,
+                    )
+                    raise web.HTTPForbidden(
+                        text="Client certificate does not match the charge point "
+                        "identity"
+                    )
+                # Allowed by the user, but it means any certificate from the
+                # client CA can connect under this CPID, so say so each time.
                 _LOGGER.warning(
-                    "OCPP %s: refused — client certificate CN %r does not match "
-                    "the charge point identity",
+                    "OCPP %s: client certificate CN %r does not match the charge "
+                    "point identity; accepted because CN mismatches are allowed",
                     cpid,
                     common_name,
-                )
-                raise web.HTTPForbidden(
-                    text="Client certificate does not match the charge point identity"
                 )
 
         # A reconnect under the same CPID must not silently orphan a still-

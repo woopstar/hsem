@@ -15,7 +15,7 @@ import ssl
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import aiohttp
 import pytest
@@ -86,10 +86,16 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-async def _start(context: ssl.SSLContext | None) -> OCPPServer:
+async def _start(
+    context: ssl.SSLContext | None, *, allow_cn_mismatch: bool = False
+) -> OCPPServer:
     """Start an OCPP server on a free loopback port."""
     server = OCPPServer(
-        hass=MagicMock(), host="127.0.0.1", port=_free_port(), ssl_context=context
+        hass=MagicMock(),
+        host="127.0.0.1",
+        port=_free_port(),
+        ssl_context=context,
+        allow_cn_mismatch=allow_cn_mismatch,
     )
     await server.start()
     return server
@@ -258,5 +264,72 @@ class TestOcppServerTls:
                         pass
                 assert not genuine.closed
                 assert server.charger_sessions["CP1"].websocket is not None
+        finally:
+            await server.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("socket_enabled")
+class TestOcppServerTlsCnMismatchAllowed:
+    """With the mismatch setting on, only the CN check is dropped."""
+
+    async def test_a_cn_naming_another_charger_is_accepted(
+        self, material: _Material, http: aiohttp.ClientSession
+    ) -> None:
+        """CP1's certificate connects as CP2, with a warning logged."""
+        server = await _start(
+            material.server_context(mutual=True), allow_cn_mismatch=True
+        )
+        try:
+            with patch(f"{OCPPServer.__module__}._LOGGER") as logger:
+                async with http.ws_connect(
+                    f"wss://127.0.0.1:{server.port}/CP2",
+                    protocols=(_SUBPROTOCOL,),
+                    ssl=material.client_context(material.client),
+                ) as ws:
+                    assert ws.protocol == _SUBPROTOCOL
+                    assert await _wait_for_charger(server, "CP2")
+            warnings = [call.args[0] for call in logger.warning.call_args_list]
+            assert any(
+                "accepted because CN mismatches are allowed" in w for w in warnings
+            )
+        finally:
+            await server.stop()
+
+    async def test_the_client_ca_is_still_enforced(
+        self, material: _Material, http: aiohttp.ClientSession
+    ) -> None:
+        """A certificate from another CA still fails the handshake."""
+        server = await _start(
+            material.server_context(mutual=True), allow_cn_mismatch=True
+        )
+        try:
+            with pytest.raises(_HANDSHAKE_FAILURES):
+                async with http.ws_connect(
+                    f"wss://127.0.0.1:{server.port}/CP2",
+                    protocols=(_SUBPROTOCOL,),
+                    ssl=material.client_context(material.foreign),
+                ):
+                    pass
+            assert server.charger_sessions == {}
+        finally:
+            await server.stop()
+
+    async def test_a_missing_client_certificate_is_still_refused(
+        self, material: _Material, http: aiohttp.ClientSession
+    ) -> None:
+        """The setting does not make client certificates optional."""
+        server = await _start(
+            material.server_context(mutual=True), allow_cn_mismatch=True
+        )
+        try:
+            with pytest.raises(_HANDSHAKE_FAILURES):
+                async with http.ws_connect(
+                    f"wss://127.0.0.1:{server.port}/CP1",
+                    protocols=(_SUBPROTOCOL,),
+                    ssl=material.client_context(),
+                ):
+                    pass
+            assert server.charger_sessions == {}
         finally:
             await server.stop()

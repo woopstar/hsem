@@ -94,6 +94,7 @@ def _entity_gating_snapshot(entry: ConfigEntry) -> dict[str, object]:
         cfg.ocpp_tls_server_cert_path,
         cfg.ocpp_tls_server_key_path,
         cfg.ocpp_tls_client_ca_path,
+        cfg.ocpp_tls_allow_cn_mismatch,
     )
     return snapshot
 

@@ -123,7 +123,8 @@
           "hsem_ocpp_tls_mode": "TLS-Modus",
           "hsem_ocpp_tls_server_cert_path": "Pfad zum Serverzertifikat",
           "hsem_ocpp_tls_server_key_path": "Pfad zum Serverschlüssel",
-          "hsem_ocpp_tls_client_ca_path": "Pfad zur Client-CA"
+          "hsem_ocpp_tls_client_ca_path": "Pfad zur Client-CA",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Abweichenden Zertifikatsnamen erlauben"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiviere den eingebetteten OCPP-1.6-WebSocket-Server für die direkte Steuerung des EV-Ladegeräts. Nur LAN — setze den Port nicht dem Internet aus.",
@@ -139,7 +140,8 @@
           "hsem_ocpp_tls_mode": "Verschlüsselung für beide OCPP-Server. 'Aus' nutzt einfaches ws://. 'TLS' nutzt wss:// mit einem Serverzertifikat. 'Gegenseitiges TLS' verlangt zusätzlich von jeder Ladestation ein Client-Zertifikat, dessen Common Name (CN) mit der Ladepunkt-ID übereinstimmt. Lässt sich TLS nicht einrichten, bleiben die OCPP-Server gestoppt. Standard: Aus.",
           "hsem_ocpp_tls_server_cert_path": "Vollständiger Pfad zu deinem eigenen Serverzertifikat (PEM). Leer lassen, um das Zertifikat zu nutzen, das HSEM in /ssl/hsem/ocpp/ erzeugt (oder in ssl/hsem/ocpp/ im Home-Assistant-Konfigurationsordner, wenn /ssl nicht existiert), signiert von HSEMs eigener CA.",
           "hsem_ocpp_tls_server_key_path": "Vollständiger Pfad zum privaten Schlüssel (PEM) deines eigenen Serverzertifikats. Erforderlich, wenn ein Pfad zum Serverzertifikat gesetzt ist.",
-          "hsem_ocpp_tls_client_ca_path": "Nur gegenseitiges TLS: vollständiger Pfad zum CA-Zertifikat (PEM), von dem die Client-Zertifikate der Ladestationen signiert sein müssen. Leer lassen, um HSEMs eigene CA zu nutzen."
+          "hsem_ocpp_tls_client_ca_path": "Nur gegenseitiges TLS: vollständiger Pfad zum CA-Zertifikat (PEM), von dem die Client-Zertifikate der Ladestationen signiert sein müssen. Leer lassen, um HSEMs eigene CA zu nutzen.",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Nur gegenseitiges TLS: akzeptiere eine Ladestation, deren Client-Zertifikat einen anderen Common Name (CN) als ihre Ladepunkt-ID hat, für Ladestationen, deren Zertifikat nach ihrer Seriennummer benannt ist. Das Zertifikat muss weiterhin von der Client-CA signiert sein, aber jedes solche Zertifikat kann sich dann unter jeder Ladepunkt-ID verbinden. Standard: aus."
         },
         "description": "Konfiguriere den eingebetteten OCPP-1.6-Server für die reine LAN-Steuerung von EV-Ladegeräten. Wenn aktiviert, sendet HSEM SetChargingProfile-Befehle direkt an dein EV-Ladegerät auf Basis des Ladeplans.",
         "title": "OCPP-Server"
@@ -650,7 +652,8 @@
           "hsem_ocpp_tls_mode": "TLS-Modus",
           "hsem_ocpp_tls_server_cert_path": "Pfad zum Serverzertifikat",
           "hsem_ocpp_tls_server_key_path": "Pfad zum Serverschlüssel",
-          "hsem_ocpp_tls_client_ca_path": "Pfad zur Client-CA"
+          "hsem_ocpp_tls_client_ca_path": "Pfad zur Client-CA",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Abweichenden Zertifikatsnamen erlauben"
         },
         "data_description": {
           "hsem_ocpp_enabled": "Aktiviere den eingebetteten OCPP-1.6-WebSocket-Server für die direkte Steuerung des EV-Ladegeräts. Nur LAN — setze den Port nicht dem Internet aus.",
@@ -666,7 +669,8 @@
           "hsem_ocpp_tls_mode": "Verschlüsselung für beide OCPP-Server. 'Aus' nutzt einfaches ws://. 'TLS' nutzt wss:// mit einem Serverzertifikat. 'Gegenseitiges TLS' verlangt zusätzlich von jeder Ladestation ein Client-Zertifikat, dessen Common Name (CN) mit der Ladepunkt-ID übereinstimmt. Lässt sich TLS nicht einrichten, bleiben die OCPP-Server gestoppt. Standard: Aus.",
           "hsem_ocpp_tls_server_cert_path": "Vollständiger Pfad zu deinem eigenen Serverzertifikat (PEM). Leer lassen, um das Zertifikat zu nutzen, das HSEM in /ssl/hsem/ocpp/ erzeugt (oder in ssl/hsem/ocpp/ im Home-Assistant-Konfigurationsordner, wenn /ssl nicht existiert), signiert von HSEMs eigener CA.",
           "hsem_ocpp_tls_server_key_path": "Vollständiger Pfad zum privaten Schlüssel (PEM) deines eigenen Serverzertifikats. Erforderlich, wenn ein Pfad zum Serverzertifikat gesetzt ist.",
-          "hsem_ocpp_tls_client_ca_path": "Nur gegenseitiges TLS: vollständiger Pfad zum CA-Zertifikat (PEM), von dem die Client-Zertifikate der Ladestationen signiert sein müssen. Leer lassen, um HSEMs eigene CA zu nutzen."
+          "hsem_ocpp_tls_client_ca_path": "Nur gegenseitiges TLS: vollständiger Pfad zum CA-Zertifikat (PEM), von dem die Client-Zertifikate der Ladestationen signiert sein müssen. Leer lassen, um HSEMs eigene CA zu nutzen.",
+          "hsem_ocpp_tls_allow_cn_mismatch": "Nur gegenseitiges TLS: akzeptiere eine Ladestation, deren Client-Zertifikat einen anderen Common Name (CN) als ihre Ladepunkt-ID hat, für Ladestationen, deren Zertifikat nach ihrer Seriennummer benannt ist. Das Zertifikat muss weiterhin von der Client-CA signiert sein, aber jedes solche Zertifikat kann sich dann unter jeder Ladepunkt-ID verbinden. Standard: aus."
         },
         "description": "Konfiguriere den eingebetteten OCPP-1.6-Server für die reine LAN-Steuerung von EV-Ladegeräten. Wenn aktiviert, sendet HSEM SetChargingProfile-Befehle direkt an dein EV-Ladegerät auf Basis des Ladeplans.",
         "title": "OCPP-Server"

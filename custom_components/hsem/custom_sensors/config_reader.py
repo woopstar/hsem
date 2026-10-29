@@ -675,5 +675,8 @@ def build_sensor_config(
     cfg.ocpp_tls_client_ca_path = str(
         get_config_value(config_entry, "hsem_ocpp_tls_client_ca_path") or ""
     ).strip()
+    cfg.ocpp_tls_allow_cn_mismatch = convert_to_boolean(
+        get_config_value(config_entry, "hsem_ocpp_tls_allow_cn_mismatch")
+    )
 
     return cfg
