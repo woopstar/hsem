@@ -306,9 +306,26 @@ class TestExtraStateAttributes:
         ).extra_state_attributes
         assert attrs["target_deadline"] == target.isoformat()
 
+    def test_charging_cost_attributes(self) -> None:
+        """Points carry plan_total_cost; the result carries the baseline (#1348)."""
+        point = EVSoCEconomicsPoint(
+            target_soc_pct=80.0,
+            deadline_label="08:00",
+            deadline=datetime(2026, 8, 31, 8, 0, tzinfo=UTC),
+            total_cost=18.22,
+            plan_total_cost=151.6,
+        )
+        result = _make_result(points=[point], baseline_plan_cost=133.38)
+        attrs = _make_primary_sensor(
+            _make_coordinator_data(primary=result)
+        ).extra_state_attributes
+        assert attrs["baseline_plan_cost"] == pytest.approx(133.38)
+        assert attrs["points"][0]["total_cost"] == pytest.approx(18.22)
+        assert attrs["points"][0]["plan_total_cost"] == pytest.approx(151.6)
+
     def test_lists_are_not_recorded(self) -> None:
         """The structured attributes stay out of the recorder (#1099)."""
-        assert {"points", "configured_deadlines"} <= (
+        assert {"points", "configured_deadlines", "baseline_plan_cost"} <= (
             EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES
         )
         assert "target_deadline" not in EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES

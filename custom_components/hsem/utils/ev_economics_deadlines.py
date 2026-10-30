@@ -23,8 +23,8 @@ DEFAULT_ECONOMICS_DEADLINES: tuple[tuple[int, int], ...] = ((8, 0), (17, 0))
 
 #: Most configured deadlines per EV.  Every deadline costs one planner solve
 #: per target SoC above the car's SoC (up to 5), and both EVs share one
-#: 60 s executor job; with the target-deadline column that is at most
-#: 4 x 5 = 20 solves per EV.
+#: 60 s executor job; with the target-deadline column and the baseline solve
+#: (issue #1348) that is at most 4 x 5 + 1 = 21 solves per EV.
 MAX_ECONOMICS_DEADLINES = 3
 
 

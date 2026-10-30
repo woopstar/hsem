@@ -11,11 +11,13 @@ TestComputeEvSocEconomicsGuards — guard-clause short-circuits
 TestComputeEvSocEconomics       — end-to-end cost/feasibility computation
 TestDeadlineColumns             — configured deadlines and target deadline (#1344)
 TestDeadlineHelpers             — effective_target_deadline() / deadline_columns()
+TestChargingCost                — baseline solve and EV charging cost (#1348)
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -363,15 +365,20 @@ class TestComputeEvSocEconomics:
                 soc_targets=(50.0, 60.0, 70.0, 80.0, 100.0),
             )
 
-        assert call_count == 2
+        # One baseline solve (#1348) plus one per retained row.
+        assert call_count == 3
         assert [point.target_soc_pct for point in result.points] == [100.0, 100.0]
 
-    def test_target_equal_to_current_soc_remains_without_solve(self):
-        """A target equal to actual SoC remains as the zero-cost baseline."""
+    def test_target_equal_to_current_soc_remains_without_own_solve(self):
+        """A target equal to actual SoC is the zero-cost baseline row.
+
+        The only solve is the baseline (#1348); the row reuses it.
+        """
         base_input = _make_planner_input(current_soc=80.0)
         with patch(
             "custom_components.hsem.planner.ev_soc_economics.run_planner"
         ) as mock_run:
+            mock_run.return_value.plan_cost.total_cost = 12.5
             result = compute_ev_soc_economics(
                 base_input,
                 is_second=False,
@@ -387,7 +394,10 @@ class TestComputeEvSocEconomics:
             point.target_soc_pct == pytest.approx(80.0) for point in result.points
         )
         assert all(point.total_cost == pytest.approx(0.0) for point in result.points)
-        mock_run.assert_not_called()
+        assert all(
+            point.plan_total_cost == pytest.approx(12.5) for point in result.points
+        )
+        mock_run.assert_called_once()
 
     def test_monotonic_cost_per_deadline_column(self):
         """Cost is monotonically non-decreasing within a deadline column."""
@@ -573,7 +583,8 @@ class TestDeadlineColumns:
         assert [(p.deadline_label, p.deadline) for p in result.points] == [
             ("06:30", expected)
         ]
-        assert [clone.ev_planned_load_deadline for clone in seen] == [expected]
+        # seen[0] is the baseline solve (#1348), which keeps the base deadline.
+        assert [clone.ev_planned_load_deadline for clone in seen[1:]] == [expected]
 
     def test_no_configured_deadlines_and_no_target_is_an_empty_table(self):
         """An empty list with no target deadline yields no points and no solve."""
@@ -608,7 +619,10 @@ class TestDeadlineColumns:
         ]
         assert result.target_deadline == target
         target_point = result.points[1]
-        assert target_point.total_cost == pytest.approx(7.0)
+        assert target_point.plan_total_cost == pytest.approx(7.0)
+        # The baseline keeps the base deadline (the target), so it also gets
+        # the +1.0 offset: 50 / 10 + 1.0 = 6.0, and the charging cost is 1.0.
+        assert target_point.total_cost == pytest.approx(1.0)
         assert target in [clone.ev_planned_load_deadline for clone in seen]
         # The base input keeps its own deadline: only clones are overridden.
         assert base_input.ev_planned_load_deadline == target
@@ -702,7 +716,8 @@ class TestDeadlineColumns:
             ("18:00", False),
             ("09:30", True),
         ]
-        assert [c.ev_second_planned_load_deadline for c in seen] == [
+        # seen[0] is the baseline solve (#1348), which keeps the base deadline.
+        assert [c.ev_second_planned_load_deadline for c in seen[1:]] == [
             datetime(2024, 6, 15, 18, 0, tzinfo=UTC),
             second_target,
         ]
@@ -766,3 +781,181 @@ class TestDeadlineHelpers:
         """The same configured time twice is one column."""
         columns = deadline_columns(self._NOW, ((8, 0), (8, 0)), None)
         assert [label for label, _, _ in columns] == ["08:00"]
+
+
+# ---------------------------------------------------------------------------
+# TestChargingCost — the baseline solve and the EV charging cost (#1348)
+# ---------------------------------------------------------------------------
+
+
+def _plan_cost_by_target(
+    costs: dict[float, float],
+) -> tuple[Callable[[PlannerInput], MagicMock], list[PlannerInput]]:
+    """Return a run_planner stand-in whose plan cost depends on the target only.
+
+    ``costs`` maps the primary EV's target SoC to the whole-plan cost; the
+    second EV's target is read when the primary target is not in ``costs``.
+    """
+    seen: list[PlannerInput] = []
+
+    def _run(clone: PlannerInput) -> MagicMock:
+        seen.append(clone)
+        target = clone.ev_planned_load_target_soc_pct
+        if target not in costs:
+            target = clone.ev_second_planned_load_target_soc_pct
+        output = MagicMock()
+        output.plan_cost.total_cost = costs[target]
+        return output
+
+    return _run, seen
+
+
+class TestChargingCost:
+    """Each row's total_cost is its plan cost minus the EV's baseline (#1348)."""
+
+    _NOW = datetime(2024, 6, 15, 14, 0, tzinfo=UTC)
+    _PATCH = "custom_components.hsem.planner.ev_soc_economics.run_planner"
+
+    def _run(
+        self,
+        base_input: PlannerInput,
+        run: Callable[[PlannerInput], MagicMock],
+        **kw: Any,
+    ) -> EVSoCEconomicsResult:
+        with patch(self._PATCH, side_effect=run):
+            return compute_ev_soc_economics(
+                base_input,
+                is_second=kw.pop("is_second", False),
+                current_soc_pct=kw.pop("current_soc_pct", 72.0),
+                capacity_kwh=77.0,
+                max_charge_kw=11.0,
+                now=self._NOW,
+                **kw,
+            )
+
+    def test_total_cost_is_plan_cost_minus_baseline(self):
+        """72 % SoC: baseline 133.38 (house only), 80 % plan 151.6 -> 18.22."""
+        run, _ = _plan_cost_by_target({72.0: 133.38, 80.0: 151.6, 100.0: 196.41})
+        result = self._run(
+            _make_planner_input(current_soc=72.0), run, deadlines=((8, 0),)
+        )
+
+        assert result.baseline_plan_cost == pytest.approx(133.38)
+        assert [p.target_soc_pct for p in result.points] == [80.0, 100.0]
+        assert result.points[0].total_cost == pytest.approx(18.22)
+        assert result.points[0].plan_total_cost == pytest.approx(151.6)
+        assert result.points[1].total_cost == pytest.approx(63.03)
+        assert result.points[1].plan_total_cost == pytest.approx(196.41)
+
+    def test_deltas_unchanged_by_the_baseline(self):
+        """The baseline cancels out of the step between two rows."""
+        run, _ = _plan_cost_by_target({72.0: 133.38, 80.0: 151.6, 100.0: 196.41})
+        result = self._run(
+            _make_planner_input(current_soc=72.0), run, deadlines=((8, 0),)
+        )
+
+        upper = result.points[1]
+        assert upper.delta_from_previous == pytest.approx(196.41 - 151.6)
+        assert upper.delta_per_10pct == pytest.approx((196.41 - 151.6) / 2.0)
+        assert result.points[0].delta_from_previous is None
+
+    def test_one_baseline_solve_per_ev(self):
+        """Several columns share a single baseline solve."""
+        run, seen = _plan_cost_by_target({72.0: 1.0, 80.0: 2.0, 100.0: 3.0})
+        result = self._run(
+            _make_planner_input(current_soc=72.0),
+            run,
+            deadlines=((8, 0), (12, 0), (17, 0)),
+        )
+
+        baselines = [c for c in seen if c.ev_planned_load_target_soc_pct == 72.0]
+        assert len(baselines) == 1
+        assert len(seen) == 1 + len(result.points) == 1 + 2 * 3
+
+    def test_baseline_clone_overrides_only_the_target(self):
+        """The baseline keeps every other input, including the deadline."""
+        base_input = _make_planner_input(current_soc=72.0)
+        base_input.ev_planned_load_deadline = datetime(2024, 6, 16, 7, 0, tzinfo=UTC)
+        run, seen = _plan_cost_by_target({72.0: 1.0, 80.0: 2.0, 100.0: 3.0})
+        self._run(base_input, run, deadlines=())
+
+        baseline = seen[0]
+        assert baseline is not base_input
+        assert baseline == replace(base_input, ev_planned_load_target_soc_pct=72.0)
+        # The base input itself is never mutated.
+        assert base_input.ev_planned_load_target_soc_pct == pytest.approx(80.0)
+
+    def test_second_ev_baseline_overrides_second_target(self):
+        """is_second sets ev_second_planned_load_target_soc_pct for the baseline."""
+        base_input = _make_planner_input(
+            second_ev_enabled=True, second_current_soc=30.0
+        )
+        run, seen = _plan_cost_by_target({30.0: 10.0, 50.0: 12.0, 100.0: 20.0})
+        result = self._run(
+            base_input,
+            run,
+            is_second=True,
+            current_soc_pct=30.0,
+            soc_targets=(50.0, 100.0),
+            deadlines=((8, 0),),
+        )
+
+        baseline = seen[0]
+        assert baseline.ev_second_planned_load_target_soc_pct == pytest.approx(30.0)
+        assert baseline.ev_planned_load_target_soc_pct == pytest.approx(80.0)
+        assert result.baseline_plan_cost == pytest.approx(10.0)
+        assert [p.total_cost for p in result.points] == pytest.approx([2.0, 10.0])
+
+    def test_no_baseline_when_ev_short_circuits(self):
+        """A guard state solves nothing, baseline included."""
+        with patch(self._PATCH) as mock_run:
+            result = compute_ev_soc_economics(
+                _make_planner_input(ev_connected=False),
+                is_second=False,
+                current_soc_pct=72.0,
+                capacity_kwh=77.0,
+                max_charge_kw=11.0,
+                now=self._NOW,
+            )
+
+        mock_run.assert_not_called()
+        assert result.baseline_plan_cost is None
+        assert result.as_attributes()["baseline_plan_cost"] is None
+
+    def test_no_baseline_when_no_row_is_kept(self):
+        """Every target below the SoC: no rows, so no baseline solve either."""
+        with patch(self._PATCH) as mock_run:
+            result = compute_ev_soc_economics(
+                _make_planner_input(current_soc=95.0),
+                is_second=False,
+                current_soc_pct=95.0,
+                capacity_kwh=77.0,
+                max_charge_kw=11.0,
+                now=self._NOW,
+                soc_targets=(50.0, 80.0),
+            )
+
+        mock_run.assert_not_called()
+        assert result.state == "ready"
+        assert result.points == []
+        assert result.baseline_plan_cost is None
+
+    def test_negative_charging_cost_is_not_clamped(self):
+        """A plan that spends less money than the baseline shows a negative cost."""
+        run, _ = _plan_cost_by_target({72.0: 10.0, 80.0: 9.5, 100.0: 12.0})
+        result = self._run(
+            _make_planner_input(current_soc=72.0), run, deadlines=((8, 0),)
+        )
+
+        assert result.points[0].total_cost == pytest.approx(-0.5)
+
+    def test_attributes_expose_plan_and_baseline_costs(self):
+        """as_attributes carries plan_total_cost per point and the baseline."""
+        run, _ = _plan_cost_by_target({72.0: 133.38171, 80.0: 151.6, 100.0: 196.41})
+        attrs = self._run(
+            _make_planner_input(current_soc=72.0), run, deadlines=((8, 0),)
+        ).as_attributes()
+
+        assert attrs["baseline_plan_cost"] == pytest.approx(133.3817)
+        assert attrs["points"][0]["total_cost"] == pytest.approx(18.2183)
+        assert attrs["points"][0]["plan_total_cost"] == pytest.approx(151.6)

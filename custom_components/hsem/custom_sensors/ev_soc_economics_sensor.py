@@ -58,7 +58,10 @@ _VALID_STATES = {
 #: The cost table is recomputed every cycle and only read from the live
 #: state (dashboard ``groupby``) — never recorded (issue #1099). The
 #: configured deadline list is a list too, and only changes with the options.
-EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES = frozenset({"points", "configured_deadlines"})
+#: The baseline plan cost changes on every recompute (issue #1348).
+EV_SOC_ECONOMICS_UNRECORDED_ATTRIBUTES = frozenset(
+    {"points", "configured_deadlines", "baseline_plan_cost"}
+)
 
 
 class HSEMEVSoCEconomicsSensor(

@@ -6,8 +6,9 @@ pure ``planner/ev_soc_economics.py`` module into the coordinator: throttled
 recomputation of the "cost to reach target SoC by deadline" table for both
 EVs, run at most once per throttle window and always in a single executor
 job. Each recompute is one extra ``run_planner()`` solve per (target SoC above
-the car's SoC, deadline column) pair: up to 5 targets x 3 columns = 15 solves
-per EV with the default two deadlines plus the target deadline.
+the car's SoC, deadline column) pair, plus one baseline solve per EV that the
+charging costs are measured against (issue #1348): up to 5 targets x 3 columns
++ 1 = 16 solves per EV with the default two deadlines plus the target deadline.
 """
 
 from __future__ import annotations
