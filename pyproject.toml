@@ -26,11 +26,11 @@ dev = [
     "pyright==1.1.414",
     "vulture==2.16",
     "ruff==0.17.2",
-    "skylos==5.0.0",
+    "skylos==5.1.1",
 ]
 lint = [
     "ruff==0.17.2",
-    "skylos==5.0.0",
+    "skylos==5.1.1",
 ]
 typing = [
     "mypy==2.4.0",
