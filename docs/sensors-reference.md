@@ -32,7 +32,7 @@ sensor's `_unrecorded_attributes` and never reach the recorder:
 | `sensor.hsem_workingmode_sensor`               | all attributes                                                              |
 | `sensor.hsem_plan_explanation_sensor`          | `rejected_plans`, `constraints`, `current_slot_start`, `current_slot_end`   |
 | `sensor.hsem_ev_*optimal_charging_plan`        | `charging_slots`, `planned_load_by_slot`, `data_quality`                    |
-| `sensor.hsem_ev_*soc_economics`                | `points`, `configured_deadlines`                                            |
+| `sensor.hsem_ev_*soc_economics`                | `points`, `configured_deadlines`, `baseline_plan_cost`                      |
 | `sensor.hsem_ev_*charger_current_limit`        | `schedule`                                                                  |
 | `sensor.hsem_solar_confidence_sensor`          | `hour_factors`, `processed_through`, `_solar_corrector_data`                |
 | `sensor.hsem_forecast_accuracy_sensor`         | `_forecast_tracker_data`                                                    |
@@ -440,8 +440,9 @@ Diagnostic sensors displaying the EV charging plan details.
 ## EV SoC economics sensors
 
 Diagnostic sensors that answer one question for each EV: _what would it cost
-to charge to X % by time Y?_ They show a table of real-money costs for the
-target SoCs 50, 60, 70, 80 and 100 %, against a few deadlines:
+to charge from the current SoC to X % by time Y?_ They show a table of
+charging costs, in real money, for the target SoCs 50, 60, 70, 80 and 100 %,
+against a few deadlines:
 
 - the **configured times of day** (default 08:00 and 17:00, up to 3 per EV,
   set in **Configure → EV planned load** as
@@ -465,14 +466,30 @@ No target is recommended: the sensor shows the numbers and you decide.
 Each row is one extra run of the planner (`run_planner()`) on a copy of the
 input of the last plan. Only that EV's target SoC and deadline are changed;
 prices, the PV forecast, the house battery, the other EV and every setting are
-reused unchanged. So each row is the cost of the whole plan if you changed
-_only this one choice_ right now.
+reused unchanged. Its result is the money cost of the **whole plan** over the
+planning horizon (`PlannerOutput.plan_cost.total_cost`): grid import, minus
+export income, plus house-battery wear, for the house and the car together.
+That is `plan_total_cost`.
 
-`total_cost` is that plan's **total cost over the whole planning horizon**
-(`PlannerOutput.plan_cost.total_cost`). It is not the cost of the EV alone: it
-also contains the house load, the house battery and any export income. Only
-the **difference between two rows** can be put down to the EV, which is what
-`delta_from_previous` gives you.
+To isolate the car, one more run per EV sets only its target to its current
+SoC, so the plan does no target-driven charging. That is the **baseline**
+(`baseline_plan_cost`): what the house costs without charging the car any
+further. Each row's `total_cost` is the difference (issue #1348):
+
+```text
+total_cost = plan_total_cost − baseline_plan_cost
+```
+
+So `total_cost` is the charging cost from the current SoC to that row's
+target by that deadline, including any change it causes in how the house
+battery and export are used. The baseline does not depend on the deadline:
+an EV already at its target gets no deadline in the plan, so one baseline
+serves every column.
+
+`total_cost` is not clamped at zero. It can come out slightly negative: the
+planner minimises money plus the value of the energy left in the house
+battery at the end, not money alone, so a plan with more car charging can
+spend a little less money and leave the house battery a little emptier.
 
 ### States
 
@@ -485,33 +502,35 @@ the **difference between two rows** can be put down to the EV, which is what
 
 ### Attributes
 
-| Attribute              | Description                                                                                                                                                             |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `current_soc_pct`      | EV SoC when the table was computed (`null` when unavailable — the table is then empty, never computed from a made-up 0 %)                                               |
-| `target_deadline`      | The EV's target deadline (ISO 8601) when it is ahead of the computation time, else `null`. Shown in **every** state, also when the EV is not connected                  |
-| `configured_deadlines` | The configured times of day the table was computed for, e.g. `["08:00", "17:00"]`. Duplicates are removed and the list is sorted                                        |
-| `points`               | Flat list of rows, one per (target SoC, deadline column). Columns are in time order, earliest deadline first; within a column, targets ascend. Not recorded (see below) |
+| Attribute              | Description                                                                                                                                                                             |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `current_soc_pct`      | EV SoC when the table was computed (`null` when unavailable — the table is then empty, never computed from a made-up 0 %)                                                               |
+| `target_deadline`      | The EV's target deadline (ISO 8601) when it is ahead of the computation time, else `null`. Shown in **every** state, also when the EV is not connected                                  |
+| `configured_deadlines` | The configured times of day the table was computed for, e.g. `["08:00", "17:00"]`. Duplicates are removed and the list is sorted                                                        |
+| `baseline_plan_cost`   | Whole-plan cost with this EV's target at its current SoC (no target-driven charging), which every row's `total_cost` is measured against. `null` when no row was computed. Not recorded |
+| `points`               | Flat list of rows, one per (target SoC, deadline column). Columns are in time order, earliest deadline first; within a column, targets ascend. Not recorded (see below)                 |
 
 Each entry in `points` has:
 
-| Field                 | Description                                                                                                                                                                  |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `target_soc_pct`      | Target SoC of this row                                                                                                                                                       |
-| `deadline_label`      | Local `HH:MM` of the column, e.g. `"08:00"`. Unique per column                                                                                                               |
-| `deadline`            | ISO 8601 deadline actually used. A configured time resolves to its next occurrence (today if still ahead, else tomorrow); the target-deadline column uses the exact deadline |
-| `is_target_deadline`  | `true` in the column of the EV's own target deadline                                                                                                                         |
-| `total_cost`          | Whole-plan cost with this target and deadline (see above), in the price sensor's currency. `0.0` when the target equals the current SoC: no planner run happens for that row |
-| `feasible`            | Whether the charger can deliver the energy in time at its rated power: `capacity × (target − SoC) ≤ charger kW × hours left × charger efficiency`                            |
-| `delta_from_previous` | `total_cost` minus that of the previous (lower) row in the same column: what the extra SoC costs. `null` for the first row of a column                                       |
-| `delta_per_10pct`     | `delta_from_previous` scaled to 10 percentage points of SoC, to compare uneven steps (e.g. 80 → 100 % is a 20-point step). `null` for the first row                          |
+| Field                 | Description                                                                                                                                                                              |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `target_soc_pct`      | Target SoC of this row                                                                                                                                                                   |
+| `deadline_label`      | Local `HH:MM` of the column, e.g. `"08:00"`. Unique per column                                                                                                                           |
+| `deadline`            | ISO 8601 deadline actually used. A configured time resolves to its next occurrence (today if still ahead, else tomorrow); the target-deadline column uses the exact deadline             |
+| `is_target_deadline`  | `true` in the column of the EV's own target deadline                                                                                                                                     |
+| `total_cost`          | Charging cost from the current SoC to this target by this deadline: `plan_total_cost − baseline_plan_cost`, in the price sensor's currency. `0.0` when the target equals the current SoC |
+| `plan_total_cost`     | Money cost of the whole plan (house and car, whole horizon) with this target and deadline. Equals `baseline_plan_cost` when the target equals the current SoC                            |
+| `feasible`            | Whether the charger can deliver the energy in time at its rated power: `capacity × (target − SoC) ≤ charger kW × hours left × charger efficiency`                                        |
+| `delta_from_previous` | `total_cost` minus that of the previous (lower) row in the same column: what the extra SoC costs. `null` for the first row of a column                                                   |
+| `delta_per_10pct`     | `delta_from_previous` scaled to 10 percentage points of SoC, to compare uneven steps (e.g. 80 → 100 % is a 20-point step). `null` for the first row                                      |
 
 ### Reading the table
 
 **Rows below the current SoC are left out.** At 63 % the 50 and 60 % rows are
-missing and every column starts at 70 %. A target exactly
-equal to the SoC stays in with `total_cost` `0.0` and no planner run. Because
-that `0.0` is not a whole-plan cost, the `delta_from_previous` of the row above
-it is the whole plan's cost, not the cost of the step.
+missing and every column starts at 70 %. The first row's `total_cost` is
+already the full cost from the current SoC, so its `delta_from_previous` is
+`null`. A target exactly equal to the SoC stays in with `total_cost` `0.0`;
+it reuses the baseline run instead of a run of its own.
 
 **`feasible` only checks power and time.** It ignores price, the grid and
 phase fuse limits, the charger's minimum power, the deadline safety margin and
@@ -521,32 +540,37 @@ before the deadline and stops: its `total_cost` is the cost of that shortfall
 plan, not of reaching the target. That is why infeasible rows often show a
 delta of 0 — higher targets cannot be reached either, so they cost the same.
 
+**`total_cost` before issue #1348 was the whole-plan cost.** Automations or
+templates that read `total_cost` as the plan cost should read
+`plan_total_cost` instead.
+
 **Worked example.** An EV with a 77 kWh battery and an 11 kW charger at 35 %
 SoC, computed at 14:00, target deadline 07:00, default configured deadlines,
-prices 0.05 at night, 0.10 by day and 0.30 from 16:00 to 21:00:
+a house using 3 kWh an hour, prices 0.05 at night, 0.10 by day and 0.30 from
+16:00 to 21:00. The baseline (no further charging) costs 3.44:
 
-| Column (`deadline_label`)            | Target | `total_cost` | `delta_from_previous` | `delta_per_10pct` | `feasible` |
-| ------------------------------------ | -----: | -----------: | --------------------: | ----------------: | ---------- |
-| `17:00` (today)                      |   50 % |         1.11 |                       |                   | ✓          |
-|                                      |   60 % |         1.87 |                 +0.76 |              0.76 | ✓          |
-|                                      |   70 % |         3.85 |                 +1.98 |              1.98 | ✓          |
-|                                      |   80 % |         5.64 |                 +1.79 |              1.79 | ⚠         |
-|                                      |  100 % |         5.64 |                 +0.00 |              0.00 | ⚠         |
-| `07:00` (`is_target_deadline`: true) |   50 % |         1.11 |                       |                   | ✓          |
-|                                      |   60 % |         1.87 |                 +0.76 |              0.76 | ✓          |
-|                                      |   70 % |         2.65 |                 +0.78 |              0.78 | ✓          |
-|                                      |   80 % |         3.41 |                 +0.76 |              0.76 | ✓          |
-|                                      |  100 % |         4.95 |                 +1.54 |              0.77 | ✓          |
-| `08:00` (tomorrow)                   |    ... |              |                       |                   |            |
+| Column (`deadline_label`)            | Target | `total_cost` | `plan_total_cost` | `delta_from_previous` | `delta_per_10pct` | `feasible` |
+| ------------------------------------ | -----: | -----------: | ----------------: | --------------------: | ----------------: | ---------- |
+| `17:00` (today)                      |   50 % |         1.17 |              4.61 |                       |                   | ✓          |
+|                                      |   60 % |         1.93 |              5.37 |                 +0.76 |              0.76 | ✓          |
+|                                      |   70 % |         3.73 |              7.17 |                 +1.79 |              1.79 | ✓          |
+|                                      |   80 % |         5.52 |              8.96 |                 +1.79 |              1.79 | ⚠         |
+|                                      |  100 % |         5.52 |              8.96 |                 +0.00 |              0.00 | ⚠         |
+| `07:00` (`is_target_deadline`: true) |   50 % |         1.17 |              4.61 |                       |                   | ✓          |
+|                                      |   60 % |         1.93 |              5.37 |                 +0.76 |              0.76 | ✓          |
+|                                      |   70 % |         2.71 |              6.16 |                 +0.78 |              0.78 | ✓          |
+|                                      |   80 % |         3.47 |              6.91 |                 +0.76 |              0.76 | ✓          |
+|                                      |  100 % |         5.01 |              8.46 |                 +1.54 |              0.77 | ✓          |
+| `08:00` (tomorrow)                   |    ... |              |                   |                       |                   |            |
 
 Read it like this:
 
-- 50 % costs the same, 1.11, in every column: that is mostly the house load,
-  not the car. Compare rows, not single costs.
+- Charging from 35 to 80 % by 07:00 costs 3.47 (34.7 kWh, about 0.10 per
+  kWh). The plan as a whole costs 6.91, of which 3.44 is the house.
 - By 07:00, each extra 10 % (7.7 kWh) costs between 0.76 and 0.78.
-- By 17:00, 70 % costs 1.98 more than 60 %: with only three hours left, the
+- By 17:00, 70 % costs 1.79 more than 60 %: with only three hours left, the
   charging reaches into the 0.30 peak that starts at 16:00. Reaching 70 % by
-  07:00 instead costs 1.20 less (3.85 against 2.65).
+  07:00 instead costs 1.01 less (2.71 against 3.73).
 - 80 % and 100 % cannot be reached by 17:00 (34.7 kWh in 3 hours at 11 kW):
   both rows are `false` and show the same cost, the cost of charging flat out.
 - Here the 08:00 column repeats the 07:00 one, because the extra hour adds no
@@ -555,11 +579,12 @@ Read it like this:
 
 ### When the table is recomputed
 
-Each row needs one planner run for every target at or above the current SoC
-in every column, so up to **targets × columns** runs per EV:
+Each row needs one planner run for every target above the current SoC in
+every column, plus one baseline run per EV, so up to **targets × columns + 1**
+runs per EV:
 
-- default (08:00, 17:00 and the target deadline): up to 5 × 3 = 15 per EV;
-- most (3 configured times plus the target deadline): up to 5 × 4 = 20 per EV.
+- default (08:00, 17:00 and the target deadline): up to 5 × 3 + 1 = 16 per EV;
+- most (3 configured times plus the target deadline): up to 5 × 4 + 1 = 21 per EV.
 
 Both EVs are computed in one background job with a 60 s limit. If that job
 is still running, or runs out of time, the previous table stays.
@@ -574,9 +599,10 @@ while the previous plan is being reused, it is recomputed at most every
 
 ### Recorder and dashboard
 
-`points` and `configured_deadlines` are lists, so they are never written to
-the recorder (issue #1099): read them from the live state.
-`target_deadline`, `current_soc_pct` and the state are recorded.
+`points` and `configured_deadlines` are lists and `baseline_plan_cost`
+changes on every recompute, so they are never written to the recorder
+(issue #1099): read them from the live state. `target_deadline`,
+`current_soc_pct` and the state are recorded.
 
 `points` is flat and already in time order. To show one line per column, walk
 the distinct `deadline` values in order, as the bundled dashboard's _EV

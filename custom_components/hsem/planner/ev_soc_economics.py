@@ -1,4 +1,4 @@
-"""EV SoC economics — real-money cost of charging to each target SoC.
+"""EV SoC economics — what charging to each target SoC would cost.
 
 Single responsibility: for a given EV, answer "what would it cost to charge
 to X% by deadline Y" for a small grid of target SoC values and deadlines
@@ -6,6 +6,11 @@ to X% by deadline Y" for a small grid of target SoC values and deadlines
 re-running the existing pure :func:`run_planner` on a cloned
 :class:`~custom_components.hsem.models.planner_input.PlannerInput` with only
 that EV's target-SoC/deadline fields overridden.
+
+Each row's cost is the EV's **charging cost**: the plan's money cost
+(``PlannerOutput.plan_cost.total_cost``, which covers the whole house over
+the whole horizon) minus that of one baseline plan per EV in which its target
+is its current SoC, i.e. no target-driven charging (issue #1348).
 
 No planner/MILP semantics change — this module only calls ``run_planner``
 with different inputs and reads ``PlannerOutput.plan_cost.total_cost`` back
@@ -119,10 +124,12 @@ class EVSoCEconomicsPoint:
         target_soc_pct: Target SoC percentage evaluated (0-100).
         deadline_label: Human-readable deadline label (e.g. ``"08:00"``).
         deadline: Timezone-aware deadline datetime actually used.
-        total_cost: Real-money cost of reaching this target by this
-            deadline, read from ``PlannerOutput.plan_cost.total_cost``.
-            ``0.0`` when the target equals the current SoC (no solve is
-            triggered).
+        total_cost: EV charging cost of reaching this target by this
+            deadline: ``plan_total_cost`` minus the EV's baseline plan cost
+            (issue #1348). ``0.0`` when the target equals the current SoC.
+            Not clamped: it can be slightly negative, because the planner
+            minimises money plus the value of energy left in the house
+            battery, not money alone.
         feasible: Whether the charger's rated power can physically reach
             this target by this deadline, independent of price.
         delta_from_previous: Cost delta vs. the previous (lower) target in
@@ -132,6 +139,10 @@ class EVSoCEconomicsPoint:
             targets. ``None`` when there is no previous target.
         is_target_deadline: Whether this column is the EV's own target
             deadline (issue #1344).
+        plan_total_cost: Money cost of the whole plan (whole house, whole
+            horizon) with this target and deadline, read from
+            ``PlannerOutput.plan_cost.total_cost``. The baseline plan cost
+            when the target equals the current SoC.
     """
 
     target_soc_pct: float
@@ -142,6 +153,7 @@ class EVSoCEconomicsPoint:
     delta_from_previous: float | None = None
     delta_per_10pct: float | None = None
     is_target_deadline: bool = False
+    plan_total_cost: float = 0.0
 
 
 @dataclass
@@ -164,6 +176,10 @@ class EVSoCEconomicsResult:
             sensor always shows it (issue #1344).
         configured_deadlines: The configured ``(hour, minute)`` deadlines
             this table was computed for.
+        baseline_plan_cost: Money cost of the whole plan with this EV's
+            target at its current SoC (no target-driven charging), which
+            every row's ``total_cost`` is measured against. ``None`` when no
+            row was computed.
     """
 
     state: str = STATE_UNAVAILABLE
@@ -171,6 +187,7 @@ class EVSoCEconomicsResult:
     points: list[EVSoCEconomicsPoint] = field(default_factory=list)
     target_deadline: datetime | None = None
     configured_deadlines: tuple[tuple[int, int], ...] = ()
+    baseline_plan_cost: float | None = None
 
     def as_attributes(self) -> dict[str, Any]:
         """Serialise to a flat HA sensor attributes dict."""
@@ -189,12 +206,18 @@ class EVSoCEconomicsResult:
             "configured_deadlines": [
                 format_economics_deadline(d) for d in self.configured_deadlines
             ],
+            "baseline_plan_cost": (
+                round(self.baseline_plan_cost, 4)
+                if self.baseline_plan_cost is not None
+                else None
+            ),
             "points": [
                 {
                     "target_soc_pct": p.target_soc_pct,
                     "deadline_label": p.deadline_label,
                     "deadline": p.deadline.isoformat(),
                     "total_cost": round(p.total_cost, 4),
+                    "plan_total_cost": round(p.plan_total_cost, 4),
                     "feasible": p.feasible,
                     "delta_from_previous": (
                         round(p.delta_from_previous, 4)
@@ -211,6 +234,33 @@ class EVSoCEconomicsResult:
                 for p in self.points
             ],
         }
+
+
+def _plan_cost(
+    base_input: PlannerInput,
+    *,
+    is_second: bool,
+    target_soc_pct: float,
+    deadline: datetime | None = None,
+) -> float:
+    """Return the plan's money cost with only this EV's target overridden.
+
+    ``deadline`` replaces the EV's deadline when given; the baseline solve
+    keeps the base input's deadline, which has no effect once the target is
+    at or below the SoC (``engine_ev_milp`` maps a deadline to a slot only
+    for an EV below its target).
+    """
+    clone = deepcopy(base_input)
+    if is_second:
+        clone.ev_second_planned_load_target_soc_pct = target_soc_pct
+        if deadline is not None:
+            clone.ev_second_planned_load_deadline = deadline
+    else:
+        clone.ev_planned_load_target_soc_pct = target_soc_pct
+        if deadline is not None:
+            clone.ev_planned_load_deadline = deadline
+    output = run_planner(clone)
+    return output.plan_cost.total_cost if output.plan_cost is not None else 0.0
 
 
 def compute_ev_soc_economics(
@@ -250,9 +300,13 @@ def compute_ev_soc_economics(
     - SoC unavailable (``None``) → ``STATE_UNAVAILABLE`` with empty points
       (issue #988) — the table is never computed from a fabricated 0 %.
 
+    Each row's ``total_cost`` is its plan cost minus a baseline plan cost:
+    one extra solve per EV with only its target SoC set to its current SoC
+    (issue #1348). The baseline runs only when at least one row is kept.
+
     Targets below ``current_soc_pct`` are omitted. A target equal to the
-    current SoC remains visible with cost ``0.0`` and does not trigger a
-    ``run_planner()`` solve.
+    current SoC remains visible with cost ``0.0``; its plan cost is the
+    baseline, so it triggers no solve of its own.
 
     Args:
         base_input: The coordinator's last-used planner input, used as the
@@ -334,6 +388,7 @@ def compute_ev_soc_economics(
 
     result.state = "ready"
     eff = clamp_efficiency(charger_efficiency_pct)
+    baseline: float | None = None
 
     for deadline_label, deadline, is_target_deadline in deadline_columns(
         now, configured, target_deadline
@@ -353,20 +408,21 @@ def compute_ev_soc_economics(
             )
             feasible = energy_needed_kwh <= max_deliverable_kwh + 1e-9
 
-            if target <= current_soc_pct + 1e-9:
-                total_cost = 0.0
-            else:
-                clone = deepcopy(base_input)
-                if is_second:
-                    clone.ev_second_planned_load_target_soc_pct = target
-                    clone.ev_second_planned_load_deadline = deadline
-                else:
-                    clone.ev_planned_load_target_soc_pct = target
-                    clone.ev_planned_load_deadline = deadline
-                output = run_planner(clone)
-                total_cost = (
-                    output.plan_cost.total_cost if output.plan_cost is not None else 0.0
+            if baseline is None:
+                baseline = _plan_cost(
+                    base_input, is_second=is_second, target_soc_pct=current_soc_pct
                 )
+                result.baseline_plan_cost = round(baseline, 4)
+            if target <= current_soc_pct + 1e-9:
+                plan_cost = baseline
+            else:
+                plan_cost = _plan_cost(
+                    base_input,
+                    is_second=is_second,
+                    target_soc_pct=target,
+                    deadline=deadline,
+                )
+            total_cost = plan_cost - baseline
 
             delta_from_previous: float | None = None
             delta_per_10pct: float | None = None
@@ -386,6 +442,7 @@ def compute_ev_soc_economics(
                     delta_from_previous=delta_from_previous,
                     delta_per_10pct=delta_per_10pct,
                     is_target_deadline=is_target_deadline,
+                    plan_total_cost=round(plan_cost, 4),
                 )
             )
             previous_cost = total_cost
