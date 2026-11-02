@@ -33,7 +33,7 @@ lint = [
     "skylos==5.1.1",
 ]
 typing = [
-    "mypy==2.4.0",
+    "mypy==2.4.1",
 ]
 test = [
     "pytest==9.1.1",
