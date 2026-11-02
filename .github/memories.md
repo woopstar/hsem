@@ -385,6 +385,22 @@ both the temperature feature (#918) and wind chill (#943), plus the same
 class of gap for Wh-reporting energy meters corrupting ML training deltas
 by 1000×.
 
+The three history readers (`read_energy_history()`,
+`read_instantaneous_history()`, `read_instantaneous_attribute_history()`)
+return a `HistoryResult` (`samples`, `ready_at`), not a bare list. An
+insufficient span has empty samples and `ready_at` = earliest sample + the
+required days, the UTC instant at which the span is long enough. Callers
+remember an insufficient outcome for `insufficient_retry_window(now,
+ready_at)`: the time until `ready_at`, floored at
+`INSUFFICIENT_HISTORY_RETRY` (15 min), and the floor alone when the recorder
+held no states (`ready_at is None`). `populator._insufficient_history_cache`
+stores `(read_at, window)` per effective-configuration key and the
+weather-feature caches store `(read_at, window, values)`; usable history
+keeps the 60-minute refresh. Before #1355 every insufficient read was
+repeated every 15 min, re-reading the full 90-day window (7-22 s recorder
+query per call on a 720K-row sensor). An insufficient result never stands in
+for usable history (#780).
+
 **Live HA-state reads** (not recorder history) use a second pair of
 helpers in `utils/ha_helpers.py`, next to `ha_get_entity_state_and_convert()`:
 

@@ -457,12 +457,16 @@ Weights are normalised after scaling so they still sum to the original total.
 
 2. **Minimum history**: Requires at least 14 days of recorder history for the
    energy sensor. Falls back to legacy mode below this threshold. While
-   history is insufficient, the recorder is re-checked at most every 15
-   minutes, so ML mode takes over up to 15 minutes after enough history has
-   accumulated. Sufficient history is cached for 60 minutes. The temperature
-   and wind-speed histories follow the same cadence: without enough history
-   the model fits without that feature, and the recorder is re-checked at
-   most every 15 minutes.
+   history is insufficient, the read reports the date on which the recorded
+   span reaches the configured days (earliest sample plus the required days),
+   and the recorder is not queried again before that date, never sooner than
+   15 minutes after the last read. The log line that reports the shortfall
+   names that date. When the recorder holds no states at all, the next check
+   is 15 minutes later. ML mode therefore takes over on the next coordinator
+   cycle after enough history has accumulated. Sufficient history is cached
+   for 60 minutes. The temperature and wind-speed histories follow the same
+   rules: without enough history the model fits without that feature until
+   the recorder is expected to hold enough.
 
 3. **Single energy source**: The model predicts from one energy accumulator.
    It cannot combine signals from multiple meters (e.g. import + solar).

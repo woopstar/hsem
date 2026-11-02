@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,7 +13,12 @@ import pytest
 
 from homeassistant.const import UnitOfEnergy, UnitOfTemperature
 
-from custom_components.hsem.ml.history_reader import HistoryReader
+from custom_components.hsem.ml.history_reader import (
+    INSUFFICIENT_HISTORY_RETRY,
+    HistoryReader,
+    HistoryResult,
+    insufficient_retry_window,
+)
 from custom_components.hsem.utils.datetime_utils import utc_key
 
 STOCKHOLM = ZoneInfo("Europe/Stockholm")
@@ -244,10 +249,12 @@ async def test_instantaneous_history_orders_repeated_hour_by_physical_time() -> 
             return_value=now,
         ),
     ):
-        readings = await HistoryReader(MagicMock()).read_instantaneous_history(
-            ENTITY_ID,
-            days=0,
-        )
+        readings = (
+            await HistoryReader(MagicMock()).read_instantaneous_history(
+                ENTITY_ID,
+                days=0,
+            )
+        ).samples
 
     assert [(timestamp.fold, value) for timestamp, value in readings] == [
         (0, 10.0),
@@ -292,10 +299,12 @@ async def test_energy_history_with_nonfinite_states_falls_back() -> None:
             return_value=now,
         ),
     ):
-        history = await HistoryReader(MagicMock()).read_energy_history(
-            ENTITY_ID,
-            days=0,
-        )
+        history = (
+            await HistoryReader(MagicMock()).read_energy_history(
+                ENTITY_ID,
+                days=0,
+            )
+        ).samples
 
     assert history == []
 
@@ -321,11 +330,13 @@ async def test_energy_history_normalizes_wh_to_kwh() -> None:
             return_value=now,
         ),
     ):
-        history = await HistoryReader(MagicMock()).read_energy_history(
-            ENTITY_ID,
-            days=0,
-            expected_unit=UnitOfEnergy.KILO_WATT_HOUR,
-        )
+        history = (
+            await HistoryReader(MagicMock()).read_energy_history(
+                ENTITY_ID,
+                days=0,
+                expected_unit=UnitOfEnergy.KILO_WATT_HOUR,
+            )
+        ).samples
 
     assert len(history) == 1
     _slot_start, _slot_idx, energy_kwh = history[0]
@@ -358,10 +369,12 @@ async def test_energy_history_without_expected_unit_skips_normalization() -> Non
             return_value=now,
         ),
     ):
-        history = await HistoryReader(MagicMock()).read_energy_history(
-            ENTITY_ID,
-            days=0,
-        )
+        history = (
+            await HistoryReader(MagicMock()).read_energy_history(
+                ENTITY_ID,
+                days=0,
+            )
+        ).samples
 
     assert len(history) == 1
     _slot_start, _slot_idx, energy_raw = history[0]
@@ -404,10 +417,12 @@ async def test_instantaneous_history_filters_nonfinite_temperature() -> None:
             return_value=now,
         ),
     ):
-        readings = await HistoryReader(MagicMock()).read_instantaneous_history(
-            ENTITY_ID,
-            days=0,
-        )
+        readings = (
+            await HistoryReader(MagicMock()).read_instantaneous_history(
+                ENTITY_ID,
+                days=0,
+            )
+        ).samples
 
     assert readings == [(finite_timestamp.astimezone(STOCKHOLM), 18.5)]
 
@@ -432,11 +447,13 @@ async def test_instantaneous_history_normalizes_fahrenheit_to_celsius() -> None:
             return_value=now,
         ),
     ):
-        readings = await HistoryReader(MagicMock()).read_instantaneous_history(
-            ENTITY_ID,
-            days=0,
-            expected_unit=UnitOfTemperature.CELSIUS,
-        )
+        readings = (
+            await HistoryReader(MagicMock()).read_instantaneous_history(
+                ENTITY_ID,
+                days=0,
+                expected_unit=UnitOfTemperature.CELSIUS,
+            )
+        ).samples
 
     assert len(readings) == 1
     _, value = readings[0]
@@ -464,10 +481,12 @@ async def test_instantaneous_history_without_expected_unit_skips_normalization()
             return_value=now,
         ),
     ):
-        readings = await HistoryReader(MagicMock()).read_instantaneous_history(
-            ENTITY_ID,
-            days=0,
-        )
+        readings = (
+            await HistoryReader(MagicMock()).read_instantaneous_history(
+                ENTITY_ID,
+                days=0,
+            )
+        ).samples
 
     assert readings == [(timestamp.astimezone(STOCKHOLM), 98.6)]
 
@@ -491,11 +510,13 @@ async def test_instantaneous_history_missing_unit_assumes_expected_unit() -> Non
             return_value=now,
         ),
     ):
-        readings = await HistoryReader(MagicMock()).read_instantaneous_history(
-            ENTITY_ID,
-            days=0,
-            expected_unit=UnitOfTemperature.CELSIUS,
-        )
+        readings = (
+            await HistoryReader(MagicMock()).read_instantaneous_history(
+                ENTITY_ID,
+                days=0,
+                expected_unit=UnitOfTemperature.CELSIUS,
+            )
+        ).samples
 
     assert readings == [(timestamp.astimezone(STOCKHOLM), 21.5)]
 
@@ -519,11 +540,13 @@ async def test_instantaneous_history_already_canonical_unit_is_unchanged() -> No
             return_value=now,
         ),
     ):
-        readings = await HistoryReader(MagicMock()).read_instantaneous_history(
-            ENTITY_ID,
-            days=0,
-            expected_unit=UnitOfTemperature.CELSIUS,
-        )
+        readings = (
+            await HistoryReader(MagicMock()).read_instantaneous_history(
+                ENTITY_ID,
+                days=0,
+                expected_unit=UnitOfTemperature.CELSIUS,
+            )
+        ).samples
 
     assert readings == [(timestamp.astimezone(STOCKHOLM), 21.5)]
 
@@ -551,13 +574,13 @@ async def test_attribute_history_reads_named_attribute_not_state() -> None:
             return_value=now,
         ),
     ):
-        readings = await HistoryReader(
-            MagicMock()
-        ).read_instantaneous_attribute_history(
-            ENTITY_ID,
-            "wind_speed",
-            days=0,
-        )
+        readings = (
+            await HistoryReader(MagicMock()).read_instantaneous_attribute_history(
+                ENTITY_ID,
+                "wind_speed",
+                days=0,
+            )
+        ).samples
 
     assert readings == [(finite_timestamp.astimezone(STOCKHOLM), 22.5)]
 
@@ -583,13 +606,13 @@ async def test_attribute_history_skips_missing_attribute() -> None:
             return_value=now,
         ),
     ):
-        readings = await HistoryReader(
-            MagicMock()
-        ).read_instantaneous_attribute_history(
-            ENTITY_ID,
-            "wind_speed",
-            days=0,
-        )
+        readings = (
+            await HistoryReader(MagicMock()).read_instantaneous_attribute_history(
+                ENTITY_ID,
+                "wind_speed",
+                days=0,
+            )
+        ).samples
 
     assert readings == [(finite_timestamp.astimezone(STOCKHOLM), 10.0)]
 
@@ -617,13 +640,13 @@ async def test_attribute_history_skips_nonfinite_attribute_value() -> None:
             return_value=now,
         ),
     ):
-        readings = await HistoryReader(
-            MagicMock()
-        ).read_instantaneous_attribute_history(
-            ENTITY_ID,
-            "wind_speed",
-            days=0,
-        )
+        readings = (
+            await HistoryReader(MagicMock()).read_instantaneous_attribute_history(
+                ENTITY_ID,
+                "wind_speed",
+                days=0,
+            )
+        ).samples
 
     assert readings == [(finite_timestamp.astimezone(STOCKHOLM), 12.0)]
 
@@ -706,7 +729,7 @@ async def test_energy_history_query_and_conversion_run_in_one_executor_job() -> 
     executor job; the coroutine only returns what that job produced.
     """
     now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
-    produced = [(now, 39, 0.25)]
+    produced = HistoryResult([(now, 39, 0.25)])
     executor = AsyncMock(return_value=produced)
     recorder = SimpleNamespace(async_add_executor_job=executor)
     query = MagicMock()
@@ -725,11 +748,11 @@ async def test_energy_history_query_and_conversion_run_in_one_executor_job() -> 
             return_value=now,
         ),
     ):
-        history = await HistoryReader(MagicMock()).read_energy_history(
-            ENTITY_ID, days=0
-        )
+        history = (
+            await HistoryReader(MagicMock()).read_energy_history(ENTITY_ID, days=0)
+        ).samples
 
-    assert history is produced
+    assert history is produced.samples
     executor.assert_awaited_once()
     query.assert_not_called()
 
@@ -763,3 +786,126 @@ async def test_recorder_query_passes_flags_by_keyword() -> None:
         "include_start_time_state": True,
         "significant_changes_only": False,
     }
+
+
+def _patched_reader(states: list[SimpleNamespace], now: datetime) -> tuple[Any, Any]:
+    """Return context managers patching the recorder with *states* at *now*."""
+    executor, _query = _recorder_executor({ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+    return (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_insufficient_energy_history_reports_when_enough_is_expected() -> None:
+    """A short span returns no samples but the date the span reaches ``days`` (#1355)."""
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    states = [
+        _state(datetime(2026, 8, 20, 7, 29, 50, tzinfo=UTC), 100.0),
+        _state(datetime(2026, 8, 20, 7, 44, 50, tzinfo=UTC), 100.25),
+        _state(datetime(2026, 8, 20, 7, 59, 50, tzinfo=UTC), 100.5),
+    ]
+    get_instance, hsem_now = _patched_reader(states, now)
+
+    with get_instance, hsem_now:
+        result = await HistoryReader(MagicMock()).read_energy_history(
+            ENTITY_ID, days=14
+        )
+
+    assert result.samples == []
+    # The earliest delta is the 07:30 UTC slot; it is 14 days old on 3 Sep.
+    assert result.ready_at == datetime(2026, 9, 3, 7, 30, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_sufficient_energy_history_has_no_ready_date() -> None:
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    states = [
+        _state(datetime(2026, 8, 20, 7, 29, 50, tzinfo=UTC), 100.0),
+        _state(datetime(2026, 8, 20, 7, 44, 50, tzinfo=UTC), 100.25),
+    ]
+    get_instance, hsem_now = _patched_reader(states, now)
+
+    with get_instance, hsem_now:
+        result = await HistoryReader(MagicMock()).read_energy_history(ENTITY_ID, days=0)
+
+    assert len(result.samples) == 1
+    assert result.ready_at is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "states", [[], [_state(datetime(2026, 8, 20, tzinfo=UTC), 1.0)]]
+)
+async def test_energy_history_without_deltas_has_no_ready_date(
+    states: list[SimpleNamespace],
+) -> None:
+    """No states, or a single one, says nothing about when history is enough."""
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    get_instance, hsem_now = _patched_reader(states, now)
+
+    with get_instance, hsem_now:
+        result = await HistoryReader(MagicMock()).read_energy_history(
+            ENTITY_ID, days=14
+        )
+
+    assert result == HistoryResult()
+
+
+@pytest.mark.asyncio
+async def test_insufficient_instantaneous_history_reports_when_enough_is_expected() -> (
+    None
+):
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    states = [
+        _state(datetime(2026, 8, 20, 7, 45, tzinfo=UTC), 18.5),
+        _state(datetime(2026, 8, 20, 8, 45, tzinfo=UTC), 19.0),
+    ]
+    get_instance, hsem_now = _patched_reader(states, now)
+
+    with get_instance, hsem_now:
+        result = await HistoryReader(MagicMock()).read_instantaneous_history(
+            ENTITY_ID, days=14
+        )
+
+    assert result.samples == []
+    assert result.ready_at == datetime(2026, 9, 3, 7, 45, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_missing_instantaneous_states_have_no_ready_date() -> None:
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    get_instance, hsem_now = _patched_reader([], now)
+
+    with get_instance, hsem_now:
+        result = await HistoryReader(MagicMock()).read_instantaneous_history(
+            ENTITY_ID, days=14
+        )
+
+    assert result == HistoryResult()
+
+
+@pytest.mark.parametrize(
+    ("ready_at", "expected"),
+    [
+        (None, INSUFFICIENT_HISTORY_RETRY),
+        (datetime(2026, 8, 22, 13, 0, tzinfo=UTC), timedelta(days=2, hours=3)),
+        (datetime(2026, 8, 20, 10, 5, tzinfo=UTC), INSUFFICIENT_HISTORY_RETRY),
+        (datetime(2026, 8, 19, 10, 0, tzinfo=UTC), INSUFFICIENT_HISTORY_RETRY),
+    ],
+)
+def test_insufficient_retry_window_waits_for_ready_at_with_a_floor(
+    ready_at: datetime | None, expected: timedelta
+) -> None:
+    """The wait stretches to the ready date; the retry floor never shrinks (#1355)."""
+    now = datetime(2026, 8, 20, 12, 0, tzinfo=STOCKHOLM)
+
+    assert insufficient_retry_window(now, ready_at) == expected

@@ -23,6 +23,8 @@ from homeassistant.util.unit_conversion import SpeedConverter
 from custom_components.hsem.ml.history_reader import (
     INSUFFICIENT_HISTORY_RETRY,
     HistoryReader,
+    HistoryResult,
+    insufficient_retry_window,
 )
 from custom_components.hsem.ml.weather_forecast_reader import (
     WeatherForecastPoints,
@@ -33,13 +35,14 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER
 
 type _HistoryCacheKey = tuple[int, str, int]
 type _ForecastCacheKey = tuple[int, str]
+type _HistoryCacheEntry = tuple[datetime, timedelta, dict[datetime, float]]
 
 # Recorder history changes slowly — cache the processed series for 60 minutes
 # to avoid hammering the database on every 1-5 minute coordinator cycle.
-_temperature_history_cache: dict[
-    _HistoryCacheKey, tuple[datetime, dict[datetime, float]]
-] = {}
-_wind_history_cache: dict[_HistoryCacheKey, tuple[datetime, dict[datetime, float]]] = {}
+# Each entry holds when it was read, how long it stays valid and the values;
+# an empty read keeps its own, usually shorter, window (#1306, #1355).
+_temperature_history_cache: dict[_HistoryCacheKey, _HistoryCacheEntry] = {}
+_wind_history_cache: dict[_HistoryCacheKey, _HistoryCacheEntry] = {}
 _MIN_HISTORY_REFRESH = timedelta(minutes=60)
 
 # Forecast data changes more often than recorder history but a live
@@ -97,21 +100,24 @@ async def get_wind_history(
         unit_state.attributes.get("wind_speed_unit") if unit_state else None
     ) or hass.config.units.wind_speed_unit
 
-    async def _read() -> list[tuple[datetime, float]]:
+    async def _read() -> HistoryResult[tuple[datetime, float]]:
         raw = await reader.read_instantaneous_attribute_history(
             entity_id=entity_id, attribute="wind_speed", days=min_days
         )
         if wind_speed_unit == UnitOfSpeed.KILOMETERS_PER_HOUR:
             return raw
-        return [
-            (
-                ts,
-                SpeedConverter.convert(
-                    value, wind_speed_unit, UnitOfSpeed.KILOMETERS_PER_HOUR
-                ),
-            )
-            for ts, value in raw
-        ]
+        return HistoryResult(
+            [
+                (
+                    ts,
+                    SpeedConverter.convert(
+                        value, wind_speed_unit, UnitOfSpeed.KILOMETERS_PER_HOUR
+                    ),
+                )
+                for ts, value in raw.samples
+            ],
+            raw.ready_at,
+        )
 
     return await _get_cached_instantaneous_history(
         _wind_history_cache, hass, now_ts, entity_id, min_days, _read
@@ -119,40 +125,44 @@ async def get_wind_history(
 
 
 async def _get_cached_instantaneous_history(
-    cache: dict[_HistoryCacheKey, tuple[datetime, dict[datetime, float]]],
+    cache: dict[_HistoryCacheKey, _HistoryCacheEntry],
     hass: HomeAssistant,
     now_ts: datetime,
     entity_id: str,
     min_days: int,
-    reader_call: Callable[[], Awaitable[list[tuple[datetime, float]]]],
+    reader_call: Callable[[], Awaitable[HistoryResult[tuple[datetime, float]]]],
 ) -> dict[datetime, float]:
     cache_key: _HistoryCacheKey = (id(hass), entity_id, min_days)
     cached = cache.get(cache_key)
-    if cached is not None:
-        # An empty entry records a read that found too little history (or
-        # failed); it is re-checked sooner than usable history is refreshed,
-        # but not on every cycle (#1306).
-        window = _MIN_HISTORY_REFRESH if cached[1] else INSUFFICIENT_HISTORY_RETRY
-        if cache_is_fresh(cached[0], now_ts, window):
-            return cached[1]
+    if cached is not None and cache_is_fresh(cached[0], now_ts, cached[1]):
+        return cached[2]
 
     try:
-        raw_states = await reader_call()
+        result = await reader_call()
     except Exception:
+        # A failed read is remembered like an empty one, but only for the
+        # floor window: nothing is known about when it will succeed (#1306).
         HSEM_LOGGER.warning(
             "ML populator: failed to read instantaneous history for %s", entity_id
         )
-        cache[cache_key] = (now_ts, {})
+        cache[cache_key] = (now_ts, INSUFFICIENT_HISTORY_RETRY, {})
         return {}
 
     # Canonical UTC keys preserve both folds of an autumn repeated hour;
     # local ZoneInfo datetimes with identical wall fields compare equal.
     values = {
         utc_key(timestamp): value
-        for timestamp, value in raw_states
+        for timestamp, value in result.samples
         if math.isfinite(value)
     }
-    cache[cache_key] = (now_ts, values)
+    if values:
+        window = _MIN_HISTORY_REFRESH
+    else:
+        # Too little history is re-checked when the recorder is expected to
+        # hold enough, never sooner than the floor and never on every cycle
+        # (#1306, #1355).
+        window = insufficient_retry_window(now_ts, result.ready_at)
+    cache[cache_key] = (now_ts, window, values)
     return values
 
 

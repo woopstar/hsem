@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -25,6 +26,7 @@ from custom_components.hsem.utils.datetime_utils import (
     normalize_datetime,
     normalize_slot_start,
     now as hsem_now,
+    physical_elapsed,
     slot_key,
     utc_key,
 )
@@ -41,9 +43,12 @@ DEFAULT_MIN_HISTORY_DAYS = 14
 # with very long recorder retention.
 DEFAULT_MAX_HISTORY_DAYS = 90
 
-# How long a read that found too little history is remembered before the
-# recorder is queried again.  History grows by days, so re-checking more often
-# only repeats a large query with the same answer (#1302, #1306).
+# The shortest time a read that found too little history is remembered before
+# the recorder is queried again.  History grows by days, so re-checking more
+# often only repeats a large query with the same answer (#1302, #1306).  When
+# the read knows how much history is missing, the wait stretches to that
+# date instead (``HistoryResult.ready_at``, #1355); this value stays the floor
+# and is used alone when the recorder held no states at all.
 INSUFFICIENT_HISTORY_RETRY = timedelta(minutes=15)
 
 # Default slot resolution in minutes (15-minute slots = 96 per day).
@@ -51,6 +56,49 @@ DEFAULT_SLOT_MINUTES = 15
 
 # Maximum sane per-slot consumption in kWh (cap for data errors).
 MAX_SLOT_KWH = 12.5
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryResult[SampleT]:
+    """Outcome of one recorder history read.
+
+    Attributes:
+        samples: The usable history, oldest first.  Empty when the recorder
+            held no states, too few states, or less history than required.
+        ready_at: When ``samples`` is empty because the recorded span is
+            shorter than the required number of days, the physical UTC
+            instant at which the span is expected to be long enough (the
+            earliest sample plus the required days).  History only grows by
+            one day per day, so a caller can skip the recorder until then
+            instead of repeating the same large query (#1355).  ``None``
+            when the samples are usable or when the recorder held nothing
+            to extrapolate from.
+    """
+
+    samples: list[SampleT] = field(default_factory=list)
+    ready_at: datetime | None = None
+
+
+def insufficient_retry_window(now: datetime, ready_at: datetime | None) -> timedelta:
+    """Return how long an insufficient-history outcome should be remembered.
+
+    Args:
+        now: When the recorder was read.
+        ready_at: :attr:`HistoryResult.ready_at` of that read, or ``None``.
+
+    Returns:
+        The time until ``ready_at``, never shorter than
+        :data:`INSUFFICIENT_HISTORY_RETRY`, which is also the answer when no
+        ready date is known.
+    """
+    if ready_at is None:
+        return INSUFFICIENT_HISTORY_RETRY
+    return max(INSUFFICIENT_HISTORY_RETRY, physical_elapsed(ready_at, now))
+
+
+def _ready_at(earliest: datetime, days: int) -> datetime:
+    """Return the UTC instant at which ``earliest`` is ``days`` old."""
+    return utc_key(earliest) + timedelta(days=days)
 
 
 class HistoryReader:
@@ -62,12 +110,12 @@ class HistoryReader:
     Example usage::
 
         reader = HistoryReader(hass)
-        history = await reader.read_energy_history(
+        result = await reader.read_energy_history(
             entity_id="sensor.grid_import_energy",
             days=14,
             slot_minutes=15,
         )
-        # history is list[tuple[datetime, int, float]]
+        # result.samples is list[tuple[datetime, int, float]]
     """
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -85,7 +133,7 @@ class HistoryReader:
         max_days: int = DEFAULT_MAX_HISTORY_DAYS,
         slot_minutes: int = DEFAULT_SLOT_MINUTES,
         expected_unit: str | None = None,
-    ) -> list[tuple[datetime, int, float]]:
+    ) -> HistoryResult[tuple[datetime, int, float]]:
         """Read historical energy accumulator data and compute per-slot deltas.
 
         Args:
@@ -107,9 +155,10 @@ class HistoryReader:
                 normalization entirely.
 
         Returns:
-            A list of ``(datetime, slot_index, energy_kwh)`` tuples sorted
-            from oldest to newest.  Returns an empty list if insufficient
-            history is available.
+            A :class:`HistoryResult` whose samples are
+            ``(datetime, slot_index, energy_kwh)`` tuples sorted from oldest
+            to newest.  The samples are empty if insufficient history is
+            available; ``ready_at`` then says when enough is expected.
 
             ``slot_index`` is 0-based within the day (0 = 00:00-00:15 for
             15-min slots, up to 95 = 23:45-00:00).
@@ -146,7 +195,7 @@ class HistoryReader:
         days: int,
         slot_minutes: int,
         expected_unit: str | None,
-    ) -> list[tuple[datetime, int, float]]:
+    ) -> HistoryResult[tuple[datetime, int, float]]:
         """Run :meth:`read_energy_history`'s blocking part in the executor."""
         readings = self._query_readings(
             entity_id,
@@ -163,7 +212,7 @@ class HistoryReader:
                 "Check exclude settings and purge_keep_days.",
                 entity_id,
             )
-            return []
+            return HistoryResult()
 
         if len(readings) < 2:
             _LOGGER.warning(
@@ -172,7 +221,7 @@ class HistoryReader:
                 len(readings),
                 entity_id,
             )
-            return []
+            return HistoryResult()
 
         # Compute per-slot consumption deltas from the accumulator.
         history = self._compute_slot_deltas(readings, now, slot_minutes)
@@ -182,16 +231,19 @@ class HistoryReader:
             earliest = history[0][0]
             actual_days = (utc_key(now) - utc_key(earliest)).total_seconds() / 86400.0
             if actual_days < days:
+                ready_at = _ready_at(earliest, days)
                 _LOGGER.info(
-                    "ML history: only %.1f days available for %s (need %d). "
+                    "ML history: only %.1f days available for %s (need %d); "
+                    "enough history is expected at %s. "
                     "Predictions will use fallback.",
                     actual_days,
                     entity_id,
                     days,
+                    normalize_datetime(ready_at).isoformat(),
                 )
-                return []
+                return HistoryResult(ready_at=ready_at)
 
-        return history
+        return HistoryResult(history)
 
     async def read_instantaneous_history(
         self,
@@ -199,7 +251,7 @@ class HistoryReader:
         days: int = DEFAULT_MIN_HISTORY_DAYS,
         max_days: int = DEFAULT_MAX_HISTORY_DAYS,
         expected_unit: str | None = None,
-    ) -> list[tuple[datetime, float]]:
+    ) -> HistoryResult[tuple[datetime, float]]:
         """Read historical instantaneous sensor values (e.g. temperature).
 
         Unlike :meth:`read_energy_history`, this does NOT compute deltas —
@@ -219,8 +271,9 @@ class HistoryReader:
                 default) skips normalization entirely.
 
         Returns:
-            List of ``(timestamp, value)`` sorted oldest-first.
-            Empty list if insufficient history.
+            A :class:`HistoryResult` of ``(timestamp, value)`` samples sorted
+            oldest-first.  The samples are empty if insufficient history is
+            available; ``ready_at`` then says when enough is expected.
         """
         return await self._read_instantaneous(
             entity_id,
@@ -236,7 +289,7 @@ class HistoryReader:
         attribute: str,
         days: int = DEFAULT_MIN_HISTORY_DAYS,
         max_days: int = DEFAULT_MAX_HISTORY_DAYS,
-    ) -> list[tuple[datetime, float]]:
+    ) -> HistoryResult[tuple[datetime, float]]:
         """Read historical values of one *attribute* of an entity's state.
 
         Unlike :meth:`read_instantaneous_history`, this reads a named
@@ -251,8 +304,9 @@ class HistoryReader:
             max_days: Maximum days to fetch.
 
         Returns:
-            List of ``(timestamp, value)`` sorted oldest-first.
-            Empty list if insufficient history.
+            A :class:`HistoryResult` of ``(timestamp, value)`` samples sorted
+            oldest-first.  The samples are empty if insufficient history is
+            available; ``ready_at`` then says when enough is expected.
         """
         return await self._read_instantaneous(
             entity_id,
@@ -268,7 +322,7 @@ class HistoryReader:
         max_days: int,
         value_getter: Callable[[Any], Any],
         expected_unit: str | None = None,
-    ) -> list[tuple[datetime, float]]:
+    ) -> HistoryResult[tuple[datetime, float]]:
         """Shared recorder query + extraction for instantaneous value history.
 
         Args:
@@ -284,8 +338,9 @@ class HistoryReader:
                 (issue #945). ``None`` (the default) skips normalization.
 
         Returns:
-            List of ``(timestamp, value)`` sorted oldest-first.
-            Empty list if insufficient history.
+            A :class:`HistoryResult` of ``(timestamp, value)`` samples sorted
+            oldest-first.  The samples are empty if insufficient history is
+            available; ``ready_at`` then says when enough is expected.
         """
         now = hsem_now()
         end_time = utc_key(now)
@@ -309,7 +364,7 @@ class HistoryReader:
         days: int,
         value_getter: Callable[[Any], Any],
         expected_unit: str | None,
-    ) -> list[tuple[datetime, float]]:
+    ) -> HistoryResult[tuple[datetime, float]]:
         """Run :meth:`_read_instantaneous`'s blocking part in the executor."""
         readings = self._query_readings(
             entity_id,
@@ -323,21 +378,24 @@ class HistoryReader:
             _LOGGER.warning(
                 "ML history: no instantaneous states found for %s.", entity_id
             )
-            return []
+            return HistoryResult()
 
         if readings:
             earliest = readings[0][0]
             actual_days = (utc_key(now) - utc_key(earliest)).total_seconds() / 86400.0
             if actual_days < days:
+                ready_at = _ready_at(earliest, days)
                 _LOGGER.info(
-                    "ML history: only %.1f days available for %s (need %d).",
+                    "ML history: only %.1f days available for %s (need %d); "
+                    "enough history is expected at %s.",
                     actual_days,
                     entity_id,
                     days,
+                    normalize_datetime(ready_at).isoformat(),
                 )
-                return []
+                return HistoryResult(ready_at=ready_at)
 
-        return readings
+        return HistoryResult(readings)
 
     async def read_today_actuals(
         self,
