@@ -19,6 +19,7 @@ from custom_components.hsem.ml.history_reader import (
     HistoryResult,
     insufficient_retry_window,
 )
+from custom_components.hsem.ml.slot_deltas import compute_slot_deltas
 from custom_components.hsem.utils.datetime_utils import utc_key
 
 STOCKHOLM = ZoneInfo("Europe/Stockholm")
@@ -78,7 +79,7 @@ def _deltas(
     readings: list[tuple[datetime, float]],
     now: datetime,
 ) -> list[tuple[datetime, int, float]]:
-    return HistoryReader._compute_slot_deltas(readings, now, 15)
+    return compute_slot_deltas(readings, now, 15)
 
 
 @pytest.mark.parametrize(
@@ -310,7 +311,12 @@ async def test_energy_history_with_nonfinite_states_falls_back() -> None:
 
 
 @pytest.mark.asyncio
-async def test_energy_history_normalizes_wh_to_kwh() -> None:
+@pytest.mark.parametrize(
+    "unit_kwargs",
+    [{"with_attributes": True}, {"source_unit": "Wh"}],
+    ids=["per-state attributes", "resolved unit"],
+)
+async def test_energy_history_normalizes_wh_to_kwh(unit_kwargs: dict[str, Any]) -> None:
     """A Wh-reporting energy meter is converted when expected_unit is set (#946)."""
     now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
     states = [
@@ -335,6 +341,7 @@ async def test_energy_history_normalizes_wh_to_kwh() -> None:
                 ENTITY_ID,
                 days=0,
                 expected_unit=UnitOfEnergy.KILO_WATT_HOUR,
+                **unit_kwargs,
             )
         ).samples
 
@@ -452,6 +459,7 @@ async def test_instantaneous_history_normalizes_fahrenheit_to_celsius() -> None:
                 ENTITY_ID,
                 days=0,
                 expected_unit=UnitOfTemperature.CELSIUS,
+                with_attributes=True,
             )
         ).samples
 
@@ -785,6 +793,7 @@ async def test_recorder_query_passes_flags_by_keyword() -> None:
     assert query.call_args.kwargs == {
         "include_start_time_state": True,
         "significant_changes_only": False,
+        "no_attributes": True,
     }
 
 
@@ -909,3 +918,137 @@ def test_insufficient_retry_window_waits_for_ready_at_with_a_floor(
     now = datetime(2026, 8, 20, 12, 0, tzinfo=STOCKHOLM)
 
     assert insufficient_retry_window(now, ready_at) == expected
+
+
+@pytest.mark.asyncio
+async def test_incremental_energy_read_starts_one_slot_before_the_anchor() -> None:
+    """Reading from an anchor returns only the slots after the anchor's (#1355)."""
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    states = [
+        _state(datetime(2026, 8, 20, 7, 14, 50, tzinfo=UTC), 100.0),
+        _state(datetime(2026, 8, 20, 7, 29, 50, tzinfo=UTC), 100.25),
+        _state(datetime(2026, 8, 20, 7, 44, 50, tzinfo=UTC), 100.5),
+        _state(datetime(2026, 8, 20, 7, 59, 50, tzinfo=UTC), 101.0),
+    ]
+    executor, query = _recorder_executor({ENTITY_ID: states})
+    recorder = SimpleNamespace(async_add_executor_job=executor)
+    anchor = datetime(2026, 8, 20, 7, 29, 50, tzinfo=UTC)
+
+    with (
+        patch(
+            "custom_components.hsem.ml.history_reader.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.hsem.ml.history_reader.hsem_now",
+            return_value=now,
+        ),
+    ):
+        result = await HistoryReader(MagicMock()).read_energy_history(
+            ENTITY_ID, days=14, since=anchor, source_unit="kWh"
+        )
+
+    assert query.call_args.args[1] == anchor - timedelta(minutes=15)
+    assert [(utc_key(ts), kwh) for ts, _slot, kwh in result.samples] == [
+        (datetime(2026, 8, 20, 7, 30, tzinfo=UTC), pytest.approx(0.25)),
+        (datetime(2026, 8, 20, 7, 45, tzinfo=UTC), pytest.approx(0.5)),
+    ]
+    assert result.anchor == (
+        datetime(2026, 8, 20, 7, 59, 50, tzinfo=UTC).astimezone(STOCKHOLM),
+        101.0,
+    )
+    # The minimum-days check does not apply to a continuation.
+    assert result.ready_at is None
+
+
+@pytest.mark.asyncio
+async def test_incremental_energy_read_without_new_states_is_quiet() -> None:
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    anchor = datetime(2026, 8, 20, 7, 59, 50, tzinfo=UTC)
+    get_instance, hsem_now = _patched_reader([_state(anchor, 101.0)], now)
+
+    with get_instance, hsem_now:
+        result = await HistoryReader(MagicMock()).read_energy_history(
+            ENTITY_ID, days=14, since=anchor
+        )
+
+    assert result == HistoryResult()
+
+
+@pytest.mark.asyncio
+async def test_full_energy_read_reports_the_anchor() -> None:
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=STOCKHOLM)
+    states = [
+        _state(datetime(2026, 8, 20, 7, 29, 50, tzinfo=UTC), 100.0),
+        _state(datetime(2026, 8, 20, 7, 44, 50, tzinfo=UTC), 100.25),
+        _state(datetime(2026, 8, 20, 9, 59, 50, tzinfo=UTC), 100.5),
+    ]
+    get_instance, hsem_now = _patched_reader(states, now)
+
+    with get_instance, hsem_now:
+        result = await HistoryReader(MagicMock()).read_energy_history(ENTITY_ID, days=0)
+
+    # 09:59:50 UTC lies in the in-progress 10:00 Stockholm slot: not an anchor.
+    assert result.anchor == (
+        datetime(2026, 8, 20, 7, 44, 50, tzinfo=UTC).astimezone(STOCKHOLM),
+        100.25,
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_unit_prefers_the_live_state() -> None:
+    hass = MagicMock()
+    hass.states.get.return_value = SimpleNamespace(
+        attributes={"unit_of_measurement": "Wh"}
+    )
+    executor = AsyncMock()
+
+    with patch(
+        "custom_components.hsem.ml.history_reader.get_instance",
+        return_value=SimpleNamespace(async_add_executor_job=executor),
+    ):
+        unit = await HistoryReader(hass).resolve_unit(ENTITY_ID)
+
+    assert unit == "Wh"
+    executor.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("recorded", "expected"),
+    [
+        (
+            [
+                _state(datetime(2026, 8, 20, tzinfo=UTC), 1.0, unit="Wh"),
+                _state(datetime(2026, 8, 20, 1, tzinfo=UTC), 1.0),
+            ],
+            "Wh",
+        ),
+        ([_state(datetime(2026, 8, 20, tzinfo=UTC), 1.0)], None),
+        ([], None),
+    ],
+    ids=["newest declared unit", "unit-less", "no states"],
+)
+async def test_resolve_unit_falls_back_to_the_newest_recorded_unit(
+    recorded: list[SimpleNamespace], expected: str | None
+) -> None:
+    """An unavailable live state does not turn a Wh meter into a kWh one."""
+    hass = MagicMock()
+    hass.states.get.return_value = None
+    last_changes = MagicMock(return_value={ENTITY_ID: recorded} if recorded else {})
+
+    async def run(target: Callable[..., Any], *args: Any) -> Any:
+        with patch(
+            "custom_components.hsem.ml.history_reader.get_last_state_changes",
+            last_changes,
+        ):
+            return target(*args)
+
+    with patch(
+        "custom_components.hsem.ml.history_reader.get_instance",
+        return_value=SimpleNamespace(async_add_executor_job=AsyncMock(side_effect=run)),
+    ):
+        unit = await HistoryReader(hass).resolve_unit(ENTITY_ID)
+
+    assert unit == expected
+    assert last_changes.call_args.args[1:] == (20, ENTITY_ID)

@@ -73,6 +73,8 @@ cycle are durable; stale generations must not publish.
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `consumption_predictor.py` | Two-stage ridge: per-(DOW, slot) weighted group means shrunk toward slot-level means, then DOY/temp fitted on the residual |
 | `history_reader.py`        | Queries HA recorder for energy accumulator and instantaneous sensor history                                                |
+| `history_cache.py`         | Per-entity energy history cache: incremental refresh from the last completed slot, daily full read, unit-change tracking   |
+| `slot_deltas.py`           | Per-slot energy deltas from accumulator readings (completed slot ends, then deltas)                                        |
 | `populator.py`             | Bridges ML predictions into `HourlyRecommendation` slots with safety buffer                                                |
 
 ### Utils layer (`custom_components/hsem/utils/`)
@@ -395,11 +397,26 @@ ready_at)`: the time until `ready_at`, floored at
 `INSUFFICIENT_HISTORY_RETRY` (15 min), and the floor alone when the recorder
 held no states (`ready_at is None`). `populator._insufficient_history_cache`
 stores `(read_at, window)` per effective-configuration key and the
-weather-feature caches store `(read_at, window, values)`; usable history
-keeps the 60-minute refresh. Before #1355 every insufficient read was
-repeated every 15 min, re-reading the full 90-day window (7-22 s recorder
-query per call on a 720K-row sensor). An insufficient result never stands in
-for usable history (#780).
+weather-feature caches store `_HistoryCacheEntry(read_at, window, values,
+units)`; usable history keeps the 60-minute refresh. Before #1355 every
+insufficient read was repeated every 15 min, re-reading the full 90-day
+window (7-22 s recorder query per call on a 720K-row sensor). An
+insufficient result never stands in for usable history (#780).
+
+Sufficient energy history is refreshed incrementally by
+`ml/history_cache.py::get_energy_history()` (#1355): the entry keeps the
+processed samples plus the `anchor` (last reading of the newest completed
+slot, returned by every energy read); a refresh passes it as `since` and the
+reader queries from one slot before it and returns only the slots after the
+anchor's. A full window read happens on the first call, once per
+`FULL_READ_INTERVAL` (1 day), when the cache key `(id(hass), entity_id,
+slot_minutes)` is new and when the unit changes. Reads use
+`no_attributes=True` with the unit from `HistoryReader.resolve_unit()` (live
+state, else the newest recorded state that declares one); `UnitTracker`
+switches back to per-state attributes for `max_days` after a unit change so
+older states keep their own unit. `read_instantaneous_attribute_history()`
+and `read_today_actuals()` always join attributes. Only the energy path is
+incremental; temperature and wind stay full 60-minute reads.
 
 **Live HA-state reads** (not recorder history) use a second pair of
 helpers in `utils/ha_helpers.py`, next to `ha_get_entity_state_and_convert()`:

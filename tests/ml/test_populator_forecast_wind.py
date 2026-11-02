@@ -34,6 +34,7 @@ from tests.ml.test_populator_time_alignment import (
     _ha_local_timezone,  # noqa: F401 -- autouse fixture, activated by import
     _history,
     _recommendation,
+    _reset_ml_caches,
 )
 
 __all__ = ["_ha_local_timezone"]
@@ -43,17 +44,9 @@ WEATHER_ENTITY = "weather.home"
 
 @pytest.fixture(autouse=True)
 def _clear_ml_caches():
-    populator._processed_history_cache.clear()
-    populator._insufficient_history_cache.clear()
-    weather_features._temperature_history_cache.clear()
-    weather_features._wind_history_cache.clear()
-    weather_features._forecast_cache.clear()
+    _reset_ml_caches()
     yield
-    populator._processed_history_cache.clear()
-    populator._insufficient_history_cache.clear()
-    weather_features._temperature_history_cache.clear()
-    weather_features._wind_history_cache.clear()
-    weather_features._forecast_cache.clear()
+    _reset_ml_caches()
 
 
 def _measured_history(

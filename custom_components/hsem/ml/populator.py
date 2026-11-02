@@ -19,6 +19,10 @@ from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
+from custom_components.hsem.ml.history_cache import (
+    get_energy_history,
+    history_ready_at,
+)
 from custom_components.hsem.ml.history_reader import (
     DEFAULT_MAX_HISTORY_DAYS,
     HistoryReader,
@@ -52,6 +56,8 @@ type _PredictorContext = tuple[
 # Cache final, fully processed history rather than an import-only intermediate.
 # The effective configuration is part of the key so another config entry,
 # source entity, cadence, history window, or net/gross mode cannot reuse it.
+# A refresh goes through ``ml.history_cache``, which keeps each entity's
+# samples and reads only the states since its last completed slot (#1355).
 _processed_history_cache: dict[
     _HistoryCacheKey, tuple[datetime, list[_HistorySample]]
 ] = {}
@@ -154,12 +160,15 @@ async def populate_ml_house_consumption(
             physical_elapsed(now_ts, cached[0]).total_seconds() / 60,
         )
     else:
-        import_result = await reader.read_energy_history(
-            entity_id=energy_entity,
-            days=min_days,
-            slot_minutes=slot_minutes,
+        import_result = await get_energy_history(
+            hass,
+            reader,
+            energy_entity,
+            min_days=min_days,
             max_days=DEFAULT_MAX_HISTORY_DAYS,
+            slot_minutes=slot_minutes,
             expected_unit=UnitOfEnergy.KILO_WATT_HOUR,
+            now_ts=now_ts,
         )
         import_history = import_result.samples
         if not import_history:
@@ -177,12 +186,15 @@ async def populate_ml_house_consumption(
 
         history = import_history
         if net_enabled and export_entity is not None:
-            export_result = await reader.read_energy_history(
-                entity_id=export_entity,
-                days=min_days,
-                slot_minutes=slot_minutes,
+            export_result = await get_energy_history(
+                hass,
+                reader,
+                export_entity,
+                min_days=min_days,
                 max_days=DEFAULT_MAX_HISTORY_DAYS,
+                slot_minutes=slot_minutes,
                 expected_unit=UnitOfEnergy.KILO_WATT_HOUR,
+                now_ts=now_ts,
             )
             if export_result.samples:
                 history = _compute_net_consumption(
@@ -190,7 +202,7 @@ async def populate_ml_house_consumption(
                 )
                 if not _history_meets_minimum_span(history, now_ts, min_days):
                     next_check = _remember_insufficient(
-                        cache_key, now_ts, _history_ready_at(history, min_days)
+                        cache_key, now_ts, history_ready_at(history, min_days)
                     )
                     HSEM_LOGGER.info(
                         "ML populator: aligned import/export history is "
@@ -644,25 +656,6 @@ def _remember_insufficient(
     window = insufficient_retry_window(now_ts, ready_at)
     _insufficient_history_cache[cache_key] = (now_ts, window)
     return now_ts + window
-
-
-def _history_ready_at(
-    history: list[_HistorySample],
-    min_days: int,
-) -> datetime | None:
-    """Return when *history*'s oldest sample will be ``min_days`` old.
-
-    Args:
-        history: Processed history samples in any order.
-        min_days: The configured minimum history span in days.
-
-    Returns:
-        The UTC instant, or ``None`` when the history is empty.
-    """
-    if not history:
-        return None
-    oldest = min(utc_key(timestamp) for timestamp, _slot, _energy in history)
-    return oldest + timedelta(days=min_days)
 
 
 def _history_meets_minimum_span(

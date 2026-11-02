@@ -13,7 +13,7 @@ import pytest
 from homeassistant.const import UnitOfEnergy, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 
-from custom_components.hsem.ml import populator, weather_features
+from custom_components.hsem.ml import history_cache, populator, weather_features
 from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
 from custom_components.hsem.ml.history_reader import (
     INSUFFICIENT_HISTORY_RETRY,
@@ -84,6 +84,9 @@ class _FakeReader:
         self.wind_speeds = wind_speeds or {}
         # Entity -> ``ready_at`` reported alongside an insufficient read.
         self.ready_at: dict[str, datetime] = {}
+        # Entity -> unit reported by ``resolve_unit`` (``None`` = unit-less).
+        self.units: dict[str, str | None] = {}
+        self.unit_calls: list[str] = []
         self.energy_calls: list[str] = []
         self.energy_call_kwargs: list[dict[str, object]] = []
         self.actual_calls: list[str] = []
@@ -92,6 +95,10 @@ class _FakeReader:
         self.temperature_call_kwargs: list[dict[str, object]] = []
         self.wind_calls: list[tuple[str, str]] = []
 
+    async def resolve_unit(self, entity_id: str) -> str | None:
+        self.unit_calls.append(entity_id)
+        return self.units.get(entity_id, UnitOfEnergy.KILO_WATT_HOUR)
+
     async def read_energy_history(
         self,
         entity_id: str,
@@ -99,9 +106,13 @@ class _FakeReader:
     ) -> HistoryResult[_HistorySample]:
         self.energy_calls.append(entity_id)
         self.energy_call_kwargs.append(kwargs)
-        return HistoryResult(
-            list(self.histories.get(entity_id, [])), self.ready_at.get(entity_id)
-        )
+        samples = list(self.histories.get(entity_id, []))
+        since = kwargs.get("since")
+        if isinstance(since, datetime):
+            # Like the real reader: only slots after the anchor's slot.
+            samples = [s for s in samples if utc_key(s[0]) > slot_key(since, 15)]
+        anchor = (samples[-1][0], samples[-1][2]) if samples else None
+        return HistoryResult(samples, self.ready_at.get(entity_id), anchor)
 
     async def read_today_actuals(
         self,
@@ -253,14 +264,15 @@ def _ha_local_timezone():
 
 @pytest.fixture(autouse=True)
 def _clear_ml_caches():
-    populator._processed_history_cache.clear()
-    populator._insufficient_history_cache.clear()
-    weather_features._temperature_history_cache.clear()
-    weather_features._wind_history_cache.clear()
-    weather_features._forecast_cache.clear()
+    _reset_ml_caches()
     yield
+    _reset_ml_caches()
+
+
+def _reset_ml_caches() -> None:
     populator._processed_history_cache.clear()
     populator._insufficient_history_cache.clear()
+    history_cache._energy_history_cache.clear()
     weather_features._temperature_history_cache.clear()
     weather_features._wind_history_cache.clear()
     weather_features._forecast_cache.clear()
@@ -786,7 +798,11 @@ async def test_history_window_change_replaces_predictor_with_same_sample_count()
     None
 ):
     hass = _FakeHass()
-    reader = _FakeReader({"sensor.import": _history(NOW)})
+    # Long enough for both windows; the cached samples are checked against
+    # the new window without a full re-read (#1355).
+    reader = _FakeReader(
+        {"sensor.import": [(NOW - timedelta(days=22), 0, 1.0), *_history(NOW)]}
+    )
     initial_cfg = _cfg(history_days=14)
 
     initial_success, initial_predictor = await _populate(
@@ -1064,7 +1080,8 @@ async def test_reused_predictor_refreshes_decay_as_history_grows() -> None:
     assert predictor is not None
     assert predictor.decay_days == pytest.approx(7.5)
 
-    later = NOW + timedelta(minutes=61)
+    # A longer span only shows up on the daily full read (#1355).
+    later = NOW + history_cache.FULL_READ_INTERVAL + timedelta(minutes=1)
     reader.histories["sensor.import"] = [
         (later - timedelta(days=30), 0, 1.0),
         (later - timedelta(days=14), 1, 1.2),
@@ -1326,3 +1343,27 @@ async def test_insufficient_wind_history_waits_for_its_ready_date() -> None:
     reader.wind_speeds["weather.home"] = [(ready_at, 10.0)]
     assert await read(ready_at) == {utc_key(ready_at): pytest.approx(36.0)}
     assert len(reader.wind_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_temperature_unit_change_switches_to_attribute_reads() -> None:
+    """A unit change between reads forces per-state attributes (#1355)."""
+    reader = _FakeReader({}, temperatures={"sensor.temperature": [(NOW, 21.0)]})
+    reader.units["sensor.temperature"] = "°C"
+    hass = cast(HomeAssistant, _FakeHass())
+
+    async def read(now: datetime) -> dict[datetime, float]:
+        return await weather_features.get_temperature_history(
+            hass, cast(HistoryReader, reader), "sensor.temperature", 14, now
+        )
+
+    await read(NOW)
+    reader.units["sensor.temperature"] = "°F"
+    await read(NOW + timedelta(minutes=61))
+    await read(NOW + timedelta(hours=2, minutes=2))
+
+    assert [
+        (kwargs["with_attributes"], kwargs["source_unit"])
+        for kwargs in reader.temperature_call_kwargs
+    ] == [(False, "°C"), (True, "°F"), (True, "°F")]
+    assert reader.unit_calls == ["sensor.temperature"] * 3

@@ -19,12 +19,19 @@ from typing import Any
 from homeassistant.components.recorder import (
     get_instance,  # pyright: ignore[reportPrivateImportUsage] — HA public API, not in stubs
 )
-from homeassistant.components.recorder.history import get_significant_states
+from homeassistant.components.recorder.history import (
+    get_last_state_changes,
+    get_significant_states,
+)
 from homeassistant.core import HomeAssistant
 
+from custom_components.hsem.ml.slot_deltas import (
+    compute_slot_deltas,
+    deltas_from_slot_ends,
+    slot_ends as completed_slot_ends,
+)
 from custom_components.hsem.utils.datetime_utils import (
     normalize_datetime,
-    normalize_slot_start,
     now as hsem_now,
     physical_elapsed,
     slot_key,
@@ -54,9 +61,6 @@ INSUFFICIENT_HISTORY_RETRY = timedelta(minutes=15)
 # Default slot resolution in minutes (15-minute slots = 96 per day).
 DEFAULT_SLOT_MINUTES = 15
 
-# Maximum sane per-slot consumption in kWh (cap for data errors).
-MAX_SLOT_KWH = 12.5
-
 
 @dataclass(frozen=True, slots=True)
 class HistoryResult[SampleT]:
@@ -73,10 +77,16 @@ class HistoryResult[SampleT]:
             instead of repeating the same large query (#1355).  ``None``
             when the samples are usable or when the recorder held nothing
             to extrapolate from.
+        anchor: Energy reads only: the last reading of the newest completed
+            slot, as ``(timestamp, accumulator_value)``.  Passing its
+            timestamp back as ``since`` continues the history from there
+            without re-reading the whole window (#1355).  ``None`` when the
+            read produced no completed slot.
     """
 
     samples: list[SampleT] = field(default_factory=list)
     ready_at: datetime | None = None
+    anchor: tuple[datetime, float] | None = None
 
 
 def insufficient_retry_window(now: datetime, ready_at: datetime | None) -> timedelta:
@@ -99,6 +109,11 @@ def insufficient_retry_window(now: datetime, ready_at: datetime | None) -> timed
 def _ready_at(earliest: datetime, days: int) -> datetime:
     """Return the UTC instant at which ``earliest`` is ``days`` old."""
     return utc_key(earliest) + timedelta(days=days)
+
+
+# How many of the newest recorded states are inspected for a unit when the
+# live state carries none (an unavailable sensor, or HA still restoring).
+_NEWEST_STATES_FOR_UNIT = 20
 
 
 class HistoryReader:
@@ -133,6 +148,10 @@ class HistoryReader:
         max_days: int = DEFAULT_MAX_HISTORY_DAYS,
         slot_minutes: int = DEFAULT_SLOT_MINUTES,
         expected_unit: str | None = None,
+        *,
+        since: datetime | None = None,
+        with_attributes: bool = False,
+        source_unit: str | None = None,
     ) -> HistoryResult[tuple[datetime, int, float]]:
         """Read historical energy accumulator data and compute per-slot deltas.
 
@@ -153,6 +172,21 @@ class HistoryReader:
                 template) energy meter cannot silently corrupt the computed
                 deltas (issue #946). ``None`` (the default) skips
                 normalization entirely.
+            since: Timestamp of a previously returned ``anchor``.  When
+                given, only states from one slot before it are read and only
+                slots after the anchor's slot are returned, so a caller that
+                already holds the older history pays for the new rows alone
+                (#1355).  The minimum-days check is skipped: the caller
+                knows the span it already holds.
+            with_attributes: Read every state's own ``unit_of_measurement``
+                (the attributes join, one extra row per state).  Needed only
+                while the window may contain a unit change; otherwise the
+                recorder is queried with ``no_attributes=True`` and
+                ``source_unit`` applies to every state.
+            source_unit: The unit every state is assumed to report when
+                ``with_attributes`` is off, normally from
+                :meth:`resolve_unit`.  Ignored when ``expected_unit`` is
+                ``None``.
 
         Returns:
             A :class:`HistoryResult` whose samples are
@@ -165,13 +199,19 @@ class HistoryReader:
         """
         now = hsem_now()
         end_time = utc_key(now)
-        start_time = end_time - timedelta(days=max_days)
+        if since is None:
+            start_time = end_time - timedelta(days=max_days)
+        else:
+            # One slot earlier so the anchor's own slot is complete in the
+            # result; its delta is dropped again below as the caller has it.
+            start_time = utc_key(since) - timedelta(minutes=slot_minutes)
 
         _LOGGER.debug(
-            "ML history: fetching states for %s from %s to %s",
+            "ML history: fetching states for %s from %s to %s (%s)",
             entity_id,
             start_time.isoformat(),
             now.isoformat(),
+            "incremental" if since is not None else "full",
         )
 
         # The recorder query, the per-state conversion and the delta pass all
@@ -185,6 +225,9 @@ class HistoryReader:
             days,
             slot_minutes,
             expected_unit,
+            since,
+            with_attributes,
+            source_unit,
         )
 
     def _energy_history_blocking(
@@ -195,6 +238,9 @@ class HistoryReader:
         days: int,
         slot_minutes: int,
         expected_unit: str | None,
+        since: datetime | None,
+        with_attributes: bool,
+        source_unit: str | None,
     ) -> HistoryResult[tuple[datetime, int, float]]:
         """Run :meth:`read_energy_history`'s blocking part in the executor."""
         readings = self._query_readings(
@@ -204,6 +250,8 @@ class HistoryReader:
             lambda state_obj: state_obj.state,
             expected_unit,
             "energy history",
+            with_attributes=with_attributes,
+            source_unit=source_unit,
         )
         if readings is None:
             _LOGGER.warning(
@@ -215,6 +263,13 @@ class HistoryReader:
             return HistoryResult()
 
         if len(readings) < 2:
+            if since is not None:
+                _LOGGER.debug(
+                    "ML history: no new readings for %s since %s.",
+                    entity_id,
+                    since.isoformat(),
+                )
+                return HistoryResult()
             _LOGGER.warning(
                 "ML history: need at least 2 readings"
                 " (got %d) to compute deltas for %s",
@@ -224,7 +279,15 @@ class HistoryReader:
             return HistoryResult()
 
         # Compute per-slot consumption deltas from the accumulator.
-        history = self._compute_slot_deltas(readings, now, slot_minutes)
+        slot_ends = completed_slot_ends(readings, now, slot_minutes)
+        history = deltas_from_slot_ends(slot_ends, slot_minutes)
+        anchor = (slot_ends[-1][1], slot_ends[-1][2]) if slot_ends else None
+
+        if since is not None:
+            # The caller holds every slot up to and including the anchor's.
+            since_key = slot_key(since, slot_minutes)
+            history = [sample for sample in history if utc_key(sample[0]) > since_key]
+            return HistoryResult(history, anchor=anchor)
 
         # Check minimum history requirement.
         if history:
@@ -243,7 +306,41 @@ class HistoryReader:
                 )
                 return HistoryResult(ready_at=ready_at)
 
-        return HistoryResult(history)
+        return HistoryResult(history, anchor=anchor)
+
+    async def resolve_unit(self, entity_id: str) -> str | None:
+        """Return the unit *entity_id* reports in, for attribute-free reads.
+
+        The live state's ``unit_of_measurement`` is used when present.  An
+        unavailable sensor, or one HA is still restoring, carries none; the
+        newest recorded states are then inspected so a Wh meter is not
+        mistaken for a kWh one for a whole window (#1355).
+
+        Args:
+            entity_id: The HA entity ID.
+
+        Returns:
+            The unit, or ``None`` when neither the live state nor the
+            recorder declares one (a unit-less template sensor).
+        """
+        state = self._hass.states.get(entity_id)
+        unit = state.attributes.get("unit_of_measurement") if state else None
+        if unit:
+            return str(unit)
+        return await get_instance(self._hass).async_add_executor_job(
+            self._newest_recorded_unit, entity_id
+        )
+
+    def _newest_recorded_unit(self, entity_id: str) -> str | None:
+        """Return the unit of the newest recorded state that declares one."""
+        states = get_last_state_changes(
+            self._hass, _NEWEST_STATES_FOR_UNIT, entity_id
+        ).get(entity_id, [])
+        for state_obj in reversed(states):
+            unit = state_obj.attributes.get("unit_of_measurement")
+            if unit:
+                return str(unit)
+        return None
 
     async def read_instantaneous_history(
         self,
@@ -251,6 +348,9 @@ class HistoryReader:
         days: int = DEFAULT_MIN_HISTORY_DAYS,
         max_days: int = DEFAULT_MAX_HISTORY_DAYS,
         expected_unit: str | None = None,
+        *,
+        with_attributes: bool = False,
+        source_unit: str | None = None,
     ) -> HistoryResult[tuple[datetime, float]]:
         """Read historical instantaneous sensor values (e.g. temperature).
 
@@ -269,6 +369,11 @@ class HistoryReader:
                 so a °F-reporting or unit-less template sensor cannot
                 silently corrupt the reading (issue #945). ``None`` (the
                 default) skips normalization entirely.
+            with_attributes: Read every state's own unit instead of
+                assuming ``source_unit``; see :meth:`read_energy_history`.
+            source_unit: The unit every state is assumed to report when
+                ``with_attributes`` is off, normally from
+                :meth:`resolve_unit`.
 
         Returns:
             A :class:`HistoryResult` of ``(timestamp, value)`` samples sorted
@@ -281,6 +386,8 @@ class HistoryReader:
             max_days,
             lambda state_obj: state_obj.state,
             expected_unit=expected_unit,
+            with_attributes=with_attributes,
+            source_unit=source_unit,
         )
 
     async def read_instantaneous_attribute_history(
@@ -313,6 +420,7 @@ class HistoryReader:
             days,
             max_days,
             lambda state_obj: state_obj.attributes.get(attribute),
+            with_attributes=True,
         )
 
     async def _read_instantaneous(
@@ -322,6 +430,9 @@ class HistoryReader:
         max_days: int,
         value_getter: Callable[[Any], Any],
         expected_unit: str | None = None,
+        *,
+        with_attributes: bool,
+        source_unit: str | None = None,
     ) -> HistoryResult[tuple[datetime, float]]:
         """Shared recorder query + extraction for instantaneous value history.
 
@@ -336,6 +447,10 @@ class HistoryReader:
                 against it and the value is converted via
                 :func:`custom_components.hsem.utils.unit_normalize.normalize_to_unit`
                 (issue #945). ``None`` (the default) skips normalization.
+            with_attributes: Whether the recorder query joins the state
+                attributes; ``value_getter`` may only read them when it does.
+            source_unit: The unit assumed for every state when
+                ``with_attributes`` is off.
 
         Returns:
             A :class:`HistoryResult` of ``(timestamp, value)`` samples sorted
@@ -354,6 +469,8 @@ class HistoryReader:
             days,
             value_getter,
             expected_unit,
+            with_attributes,
+            source_unit,
         )
 
     def _instantaneous_blocking(
@@ -364,6 +481,8 @@ class HistoryReader:
         days: int,
         value_getter: Callable[[Any], Any],
         expected_unit: str | None,
+        with_attributes: bool,
+        source_unit: str | None,
     ) -> HistoryResult[tuple[datetime, float]]:
         """Run :meth:`_read_instantaneous`'s blocking part in the executor."""
         readings = self._query_readings(
@@ -373,6 +492,8 @@ class HistoryReader:
             value_getter,
             expected_unit,
             "instantaneous history",
+            with_attributes=with_attributes,
+            source_unit=source_unit,
         )
         if readings is None:
             _LOGGER.warning(
@@ -463,15 +584,16 @@ class HistoryReader:
             lambda state_obj: state_obj.state,
             expected_unit,
             "today actuals",
+            with_attributes=True,
         )
         if readings is None or len(readings) < 2:
             return {}
 
         # Compute per-slot deltas for today only.
-        history = self._compute_slot_deltas(readings, now, slot_minutes)
+        history = compute_slot_deltas(readings, now, slot_minutes)
 
         # Filter to today's completed slots and key by physical slot identity.
-        # ``_compute_slot_deltas`` has already excluded the in-progress slot.
+        # ``compute_slot_deltas`` has already excluded the in-progress slot.
         actuals: dict[datetime, float] = {}
         for slot_start, _slot_idx, energy in history:
             if slot_start.date() != now.date():
@@ -488,6 +610,9 @@ class HistoryReader:
         value_getter: Callable[[Any], Any],
         expected_unit: str | None,
         label: str,
+        *,
+        with_attributes: bool,
+        source_unit: str | None = None,
     ) -> list[tuple[datetime, float]] | None:
         """Query the recorder and convert states to sorted readings.
 
@@ -501,15 +626,20 @@ class HistoryReader:
             expected_unit: HSEM's canonical unit for this field, or ``None``
                 to skip unit normalization (issues #945, #946).
             label: Short description of the read, used in unit warnings.
+            with_attributes: Join the state attributes.  Off, the query skips
+                one ``state_attributes`` row per state (a utility meter
+                writes a distinct one for every update, #1355) and
+                ``source_unit`` stands in for every state's unit.
+            source_unit: The unit assumed for every state when
+                ``with_attributes`` is off.
 
         Returns:
             ``(timestamp, value)`` pairs sorted oldest-first, skipping states
             that are non-numeric, non-finite or in an unconvertible unit.
             ``None`` when the recorder holds no states for the entity.
         """
-        # Attributes stay on (``no_attributes`` defaults to False) because
-        # unit normalization reads ``unit_of_measurement``.  Every state
-        # change of an accumulator counts, so significant_changes_only is off.
+        # Every state change of an accumulator counts, so
+        # significant_changes_only is off.
         states = get_significant_states(
             self._hass,
             start_time,
@@ -517,6 +647,7 @@ class HistoryReader:
             [entity_id],
             include_start_time_state=True,
             significant_changes_only=False,
+            no_attributes=not with_attributes,
         )
 
         # Default arguments yield full ``State`` objects, never the
@@ -539,10 +670,14 @@ class HistoryReader:
                 if not math.isfinite(value):
                     continue
                 if expected_unit is not None:
-                    source_unit = state_obj.attributes.get("unit_of_measurement")
+                    unit = (
+                        state_obj.attributes.get("unit_of_measurement")
+                        if with_attributes
+                        else source_unit
+                    )
                     normalized = normalize_to_unit(
                         value,
-                        source_unit,
+                        unit,
                         expected_unit,
                         entity_id=entity_id,
                         label=label,
@@ -556,87 +691,3 @@ class HistoryReader:
 
         readings.sort(key=lambda item: utc_key(item[0]))
         return readings
-
-    @staticmethod
-    def _compute_slot_deltas(
-        readings: list[tuple[datetime, float]],
-        now: datetime,
-        slot_minutes: int,
-    ) -> list[tuple[datetime, int, float]]:
-        """Compute per-slot energy deltas from accumulator readings.
-
-        Groups readings into time slots of ``slot_minutes`` width and computes
-        the delta between the last reading of consecutive slots.
-
-        Args:
-            readings: Sorted list of ``(timestamp, accumulator_value)``.
-            now: Current time (used to skip incomplete slots).
-            slot_minutes: Width of each slot in minutes.
-
-        Returns:
-            List of ``(slot_start_dt, slot_index, energy_kwh)``.
-
-        Note:
-            Physical slot identity is a canonical UTC datetime, never an
-            ``ordinal * slots_per_day`` integer.  A wall-clock integer would
-            collapse both folds of an autumn repeated hour and cannot
-            represent a 92/100-slot DST day.
-        """
-
-        # Group readings by physical slot identity after converting recorder
-        # UTC timestamps to Home Assistant local time.  Calendar features
-        # (date, DOW, and wall slot) must be derived from the local timestamp;
-        # ordering and identity must remain UTC-based.
-        slot_groups: dict[datetime, list[tuple[datetime, float]]] = {}
-        for ts, val in readings:
-            if not math.isfinite(val):
-                continue
-            local_ts = normalize_datetime(ts)
-            key = slot_key(local_ts, slot_minutes)
-            slot_groups.setdefault(key, []).append((local_ts, val))
-
-        # Get the last reading of each slot.
-        slot_ends: list[tuple[datetime, datetime, float]] = []
-        for key in sorted(slot_groups.keys()):
-            group = slot_groups[key]
-            last_ts, last_val = max(group, key=lambda x: utc_key(x[0]))
-            slot_ends.append((key, last_ts, last_val))
-
-        # Compute the slot key for "now" and skip incomplete current slot.
-        now_key = slot_key(now, slot_minutes)
-        slot_ends = [(k, ts, v) for k, ts, v in slot_ends if k < now_key]
-
-        if len(slot_ends) < 2:
-            return []
-
-        # Compute deltas between consecutive slots.
-        history: list[tuple[datetime, int, float]] = []
-        for i in range(1, len(slot_ends)):
-            prev_key, _prev_ts, prev_val = slot_ends[i - 1]
-            curr_key, curr_ts, curr_val = slot_ends[i]
-
-            # Never turn a recorder outage into one oversized slot.  Only
-            # adjacent physical slots have compatible accumulator boundaries.
-            if curr_key - prev_key != timedelta(minutes=slot_minutes):
-                continue
-
-            delta_kwh = curr_val - prev_val
-
-            # Skip non-finite, negative, reset, and zero deltas.
-            if not math.isfinite(delta_kwh) or delta_kwh <= 0:
-                continue
-
-            # Cap unreasonably large deltas.
-            if delta_kwh > MAX_SLOT_KWH:
-                continue
-
-            # Consecutive end-of-slot readings delimit the *current* slot.
-            # Labelling the delta with ``prev_ts`` shifts every observation one
-            # interval early.  Keep the local timestamp (including DST fold)
-            # for calendar features and expose the wall slot separately.
-            slot_start = normalize_slot_start(curr_ts, slot_minutes)
-            slot_index = (slot_start.hour * 60 + slot_start.minute) // slot_minutes
-
-            history.append((slot_start, slot_index, round(delta_kwh, 4)))
-
-        return history

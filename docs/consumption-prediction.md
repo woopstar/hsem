@@ -463,10 +463,19 @@ Weights are normalised after scaling so they still sum to the original total.
    15 minutes after the last read. The log line that reports the shortfall
    names that date. When the recorder holds no states at all, the next check
    is 15 minutes later. ML mode therefore takes over on the next coordinator
-   cycle after enough history has accumulated. Sufficient history is cached
-   for 60 minutes. The temperature and wind-speed histories follow the same
-   rules: without enough history the model fits without that feature until
-   the recorder is expected to hold enough.
+   cycle after enough history has accumulated. Sufficient history is kept for
+   60 minutes; a refresh then reads only the states since the last completed
+   slot and appends the new slots, and the whole window is read again once a
+   day, after a restart and when the sensor's unit changes. The temperature
+   and wind-speed histories follow the same insufficient-history rules:
+   without enough history the model fits without that feature until the
+   recorder is expected to hold enough.
+
+   History reads skip the state-attributes join: the sensor's unit is taken
+   from its live state (or from its newest recorded state while it is
+   unavailable) and applied to every state in the window. After a unit
+   change, reads join the attributes again for 90 days so the older states
+   keep their own unit.
 
 3. **Single energy source**: The model predicts from one energy accumulator.
    It cannot combine signals from multiple meters (e.g. import + solar).
