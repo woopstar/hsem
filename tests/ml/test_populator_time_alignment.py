@@ -13,13 +13,19 @@ import pytest
 from homeassistant.const import UnitOfEnergy, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 
-from custom_components.hsem.ml import history_cache, populator, weather_features
+from custom_components.hsem.ml import (
+    history_cache,
+    history_status,
+    populator,
+    weather_features,
+)
 from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
 from custom_components.hsem.ml.history_reader import (
     INSUFFICIENT_HISTORY_RETRY,
     HistoryReader,
     HistoryResult,
 )
+from custom_components.hsem.ml.history_status import MLHistoryState
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.datetime_utils import slot_key, utc_key
@@ -272,6 +278,7 @@ def _clear_ml_caches():
 def _reset_ml_caches() -> None:
     populator._processed_history_cache.clear()
     populator._insufficient_history_cache.clear()
+    history_status._status_by_key.clear()
     history_cache._energy_history_cache.clear()
     weather_features._temperature_history_cache.clear()
     weather_features._wind_history_cache.clear()
@@ -1367,3 +1374,65 @@ async def test_temperature_unit_change_switches_to_attribute_reads() -> None:
         for kwargs in reader.temperature_call_kwargs
     ] == [(False, "°C"), (True, "°F"), (True, "°F")]
     assert reader.unit_calls == ["sensor.temperature"] * 3
+
+
+@pytest.mark.asyncio
+async def test_insufficient_history_status_reports_the_measured_span() -> None:
+    """A short span is published as days-so-far plus ready-at, not as 0.0 (#1365)."""
+    cfg = _cfg(history_days=40)
+    reader = _FakeReader({"sensor.import": []})
+    ready_at = NOW + timedelta(days=1, hours=12)
+    reader.ready_at["sensor.import"] = ready_at
+    hass = _FakeHass()
+
+    success, predictor = await _populate(hass, reader, cfg, [])
+
+    assert success is False
+    assert predictor is None
+    status = history_status.last_history_status(cast(HomeAssistant, hass), cfg)
+    assert status.state is MLHistoryState.INSUFFICIENT_HISTORY
+    assert status.available_history_days == pytest.approx(38.5)
+    assert status.ready_at == ready_at
+    assert status.reason == "sensor.import"
+
+    # The negative cache keeps the status while the recorder is not re-read.
+    success, _ = await _populate(hass, reader, cfg, [], now=NOW + timedelta(hours=2))
+    assert success is False
+    assert (
+        history_status.last_history_status(cast(HomeAssistant, hass), cfg).state
+        is MLHistoryState.INSUFFICIENT_HISTORY
+    )
+
+
+@pytest.mark.asyncio
+async def test_empty_recorder_status_is_recorder_empty() -> None:
+    """No samples and no ready date means the recorder holds nothing usable."""
+    cfg = _cfg(history_days=40)
+    reader = _FakeReader({"sensor.import": []})
+    hass = _FakeHass()
+
+    success, _ = await _populate(hass, reader, cfg, [])
+
+    assert success is False
+    status = history_status.last_history_status(cast(HomeAssistant, hass), cfg)
+    assert status.state is MLHistoryState.RECORDER_EMPTY
+    assert status.available_history_days == pytest.approx(0.0)
+    assert status.ready_at is None
+
+
+@pytest.mark.asyncio
+async def test_successful_populate_status_is_ready_with_the_span() -> None:
+    """A trained predictor reports ``ready`` and the real history span."""
+    cfg = _cfg(history_days=14)
+    reader = _FakeReader({"sensor.import": _history(NOW)})
+    hass = _FakeHass()
+
+    success, predictor = await _populate(hass, reader, cfg, [])
+
+    assert success is True
+    assert predictor is not None
+    status = history_status.last_history_status(cast(HomeAssistant, hass), cfg)
+    assert status.state is MLHistoryState.READY
+    assert status.available_history_days == pytest.approx(15.0)
+    assert status.available_history_days == pytest.approx(predictor.actual_history_days)
+    assert status.ready_at is None

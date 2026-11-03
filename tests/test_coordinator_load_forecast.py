@@ -9,7 +9,8 @@ them once per change.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -18,6 +19,7 @@ from custom_components.hsem.coordinator_data import CoordinatorData
 from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
     ConsumptionPopulation,
 )
+from custom_components.hsem.ml.history_status import MLHistoryState, MLHistoryStatus
 from custom_components.hsem.models.data_quality import DataQuality
 from tests.coordinator_fixtures import make_real_coordinator
 from tests.test_ha_mock_integration import (
@@ -152,3 +154,100 @@ class TestDataQualityGaps:
         ).as_dict()
         assert quality["load_forecast_missing_hours"] == [9, 17]
         assert quality["load_forecast_estimated_hours"] == [9, 17]
+
+
+# ---------------------------------------------------------------------------
+# ML history status (issue #1365)
+# ---------------------------------------------------------------------------
+
+_ML_POPULATE = "custom_components.hsem.ml.populator.populate_ml_house_consumption"
+_ML_STATUS = "custom_components.hsem.ml.history_status.last_history_status"
+
+
+def _ml_coordinator() -> HSEMDataUpdateCoordinator:
+    coordinator = make_real_coordinator(
+        hass=make_fake_hass(dict(_BASE_ENTITY_STATES)),
+        config_entry=make_fake_config_entry(
+            {"hsem_read_only": True, "hsem_ml_consumption_enabled": True}
+        ),
+    )
+    coordinator.async_set_updated_data = MagicMock()  # type: ignore[method-assign]
+    return coordinator
+
+
+async def _ml_cycle(
+    coordinator: HSEMDataUpdateCoordinator, status: MLHistoryStatus, *, ml_ok: bool
+) -> MagicMock:
+    log = MagicMock()
+    with (
+        _patch_all_ha_helpers(),
+        patch(_POPULATE, return_value=ConsumptionPopulation(ok=True)),
+        patch(_ML_POPULATE, AsyncMock(return_value=(ml_ok, None))),
+        patch(_ML_STATUS, return_value=status),
+        patch(f"{_MODULE}.async_log", log),
+    ):
+        await coordinator._async_run_update_cycle()
+    return log
+
+
+def _ml_lines(log: MagicMock) -> list[str]:
+    return [
+        call.args[1] % tuple(call.args[2:])
+        for call in log.call_args_list
+        if call.args[1].startswith("[ml]")
+    ]
+
+
+class TestMLHistoryStatusLogging:
+    """A known wait is logged as a wait, not as a failure."""
+
+    @pytest.mark.asyncio
+    async def test_insufficient_history_is_a_skip_with_the_reason(self) -> None:
+        coordinator = _ml_coordinator()
+        ready_at = datetime(2026, 11, 4, 20, 45, tzinfo=UTC)
+        status = MLHistoryStatus(
+            MLHistoryState.INSUFFICIENT_HISTORY, 38.6, ready_at, "sensor.e"
+        )
+
+        log = await _ml_cycle(coordinator, status, ml_ok=False)
+
+        lines = _ml_lines(log)
+        assert len(lines) == 1
+        assert "skipped: insufficient_history, 38.6/" in lines[0]
+        assert ready_at.isoformat() in lines[0]
+        assert "failed" not in lines[0]
+        assert coordinator._ml_history_status is status
+
+    @pytest.mark.asyncio
+    async def test_other_fallbacks_are_logged_as_failures(self) -> None:
+        coordinator = _ml_coordinator()
+        status = MLHistoryStatus(MLHistoryState.FAILED, reason="model not trained")
+
+        log = await _ml_cycle(coordinator, status, ml_ok=False)
+
+        lines = _ml_lines(log)
+        assert len(lines) == 1
+        assert lines[0].startswith(
+            "[ml] ML consumption failed (failed, model not trained)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_success_logs_the_span(self) -> None:
+        coordinator = _ml_coordinator()
+        status = MLHistoryStatus(MLHistoryState.READY, 41.0)
+
+        log = await _ml_cycle(coordinator, status, ml_ok=True)
+
+        lines = _ml_lines(log)
+        assert len(lines) == 1
+        assert lines[0].startswith(
+            "[ml] ML consumption populated the slots (ready, 41.0/"
+        )
+
+    @pytest.mark.asyncio
+    async def test_disabled_switch_records_disabled(self) -> None:
+        coordinator, _published = _coordinator()
+
+        await _cycle(coordinator, ConsumptionPopulation(ok=True))
+
+        assert coordinator._ml_history_status.state is MLHistoryState.DISABLED

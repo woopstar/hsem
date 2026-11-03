@@ -300,6 +300,23 @@ the battery SoC simulation to reality.
   equally cold but calm ones
 - **No custom sensors**: reads directly from recorder database
 
+### Diagnostics (issue #1365)
+
+`sensor.hsem_plan_explanation_sensor` says whether the ML forecast is in use:
+
+| Attribute                   | Meaning                                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `ml_status`                 | `disabled`, `pending` (no cycle yet), `insufficient_history`, `recorder_empty`, `ready` or `failed`                |
+| `ml_days_of_history`        | The configured minimum (`hsem_ml_consumption_history_days`)                                                        |
+| `ml_available_history_days` | The span the populator measured in the recorder, also while it is still short of the minimum; `null` if unmeasured |
+| `ml_history_ready_at`       | When the span is expected to reach the minimum (`insufficient_history` only)                                       |
+
+While `ml_status` is `insufficient_history` the legacy weighted averages are
+used by design, and the recorder is not re-read before `ml_history_ready_at`
+(the negative cache from issue #1355). The per-cycle debug log carries the
+same summary, e.g.
+`[ml] ML consumption skipped: insufficient_history, 38.6/40 days, next check 2026-11-04T21:45:00+01:00, sensor.energy_house — using legacy avg sensors until then.`
+
 ---
 
 ## Legacy mode (weighted average)

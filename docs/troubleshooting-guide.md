@@ -131,6 +131,25 @@ consumption sample for hour block(s) …`). More missing hours hold the
   lifetime running totals (e.g. `1.164 kWh`) and are not the hourly value.
   Only the utility meter's per-block difference is used.
 
+**1f. ML consumption forecast still using the legacy averages**
+
+With `hsem_ml_consumption_enabled` on, the ML model needs
+`hsem_ml_consumption_history_days` of recorder history before it trains. Until
+then the legacy weighted averages are used by design, and the recorder is only
+re-read when the span can be long enough (issue #1355).
+
+- **Check:** `sensor.hsem_plan_explanation_sensor` → `ml_status`. While it is
+  `insufficient_history`, `ml_available_history_days` shows the span measured
+  so far and `ml_history_ready_at` when the minimum is expected to be reached
+  (issue #1365). `recorder_empty` means the energy entity has no usable
+  recorder states at all; `failed` carries the reason in the debug log.
+- **Log:** `[ml] ML consumption skipped: insufficient_history, 38.6/40 days,
+next check …` once per cycle. A `[ml] ML consumption failed (…)` line is a
+  real failure, not a wait.
+- **Fix:** wait for `ml_history_ready_at`, lower the configured days, or make
+  sure the recorder keeps the energy entity (`purge_keep_days` ≥ the configured
+  days, see section 8).
+
 ---
 
 ## 2. Wrong prices

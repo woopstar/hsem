@@ -28,6 +28,14 @@ from custom_components.hsem.ml.history_reader import (
     HistoryReader,
     insufficient_retry_window,
 )
+from custom_components.hsem.ml.history_status import (
+    HistoryCacheKey,
+    MLHistoryState,
+    MLHistoryStatus,
+    history_cache_key,
+    insufficient_history_status,
+    record_history_status,
+)
 from custom_components.hsem.ml.weather_features import (
     get_cached_weather_forecast,
     get_temperature_history,
@@ -48,7 +56,7 @@ from custom_components.hsem.utils.datetime_utils import (
 from custom_components.hsem.utils.logger import HSEM_LOGGER
 
 type _HistorySample = tuple[datetime, int, float]
-type _HistoryCacheKey = tuple[int, str, str | None, bool, int, int]
+type _HistoryCacheKey = HistoryCacheKey
 type _PredictorContext = tuple[
     str, str | None, bool, int, int, str | None, str | None, float | None
 ]
@@ -116,21 +124,20 @@ async def populate_ml_house_consumption(
     # hammering the recorder database on every 1–5 minute coordinator cycle.
     now_ts = hsem_now()
     net_enabled = cfg.ml_consumption_net_consumption
-    if net_enabled and not cfg.grid_export_energy_entity:
+    export_entity = cfg.grid_export_energy_entity if net_enabled else None
+    cache_key = history_cache_key(hass, cfg)
+    if cache_key is None:  # pragma: no cover - the entity guard above returned
+        return False, None
+    if net_enabled and not export_entity:
+        record_history_status(
+            cache_key,
+            MLHistoryStatus(MLHistoryState.FAILED, reason="no grid export entity"),
+        )
         HSEM_LOGGER.warning(
             "ML populator: net consumption is enabled but no grid export "
             "energy entity is configured. Falling back to legacy avg sensors."
         )
         return False, None
-    export_entity = cfg.grid_export_energy_entity if net_enabled else None
-    cache_key: _HistoryCacheKey = (
-        id(hass),
-        energy_entity,
-        export_entity,
-        net_enabled,
-        slot_minutes,
-        min_days,
-    )
     cached = _processed_history_cache.get(cache_key)
     cache_valid = cached is not None and cache_is_fresh(
         cached[0], now_ts, _MIN_HISTORY_REFRESH
@@ -172,6 +179,12 @@ async def populate_ml_house_consumption(
         )
         import_history = import_result.samples
         if not import_history:
+            record_history_status(
+                cache_key,
+                insufficient_history_status(
+                    now_ts, import_result.ready_at, min_days, energy_entity
+                ),
+            )
             next_check = _remember_insufficient(
                 cache_key, now_ts, import_result.ready_at
             )
@@ -201,8 +214,15 @@ async def populate_ml_house_consumption(
                     import_history, export_result.samples
                 )
                 if not _history_meets_minimum_span(history, now_ts, min_days):
+                    aligned_ready_at = history_ready_at(history, min_days)
+                    record_history_status(
+                        cache_key,
+                        insufficient_history_status(
+                            now_ts, aligned_ready_at, min_days, "aligned import/export"
+                        ),
+                    )
                     next_check = _remember_insufficient(
-                        cache_key, now_ts, history_ready_at(history, min_days)
+                        cache_key, now_ts, aligned_ready_at
                     )
                     HSEM_LOGGER.info(
                         "ML populator: aligned import/export history is "
@@ -213,6 +233,12 @@ async def populate_ml_house_consumption(
                     )
                     return False, None
             else:
+                record_history_status(
+                    cache_key,
+                    insufficient_history_status(
+                        now_ts, export_result.ready_at, min_days, str(export_entity)
+                    ),
+                )
                 next_check = _remember_insufficient(
                     cache_key, now_ts, export_result.ready_at
                 )
@@ -233,6 +259,10 @@ async def populate_ml_house_consumption(
         )
 
     if not history:
+        record_history_status(
+            cache_key,
+            MLHistoryStatus(MLHistoryState.FAILED, reason="empty history"),
+        )
         HSEM_LOGGER.warning("ML populator: empty history after processing")
         return False, None
 
@@ -345,11 +375,18 @@ async def populate_ml_house_consumption(
     )
 
     if not predictor.trained:
+        record_history_status(
+            cache_key,
+            MLHistoryStatus(
+                MLHistoryState.FAILED, oldest_age, reason="model not trained"
+            ),
+        )
         HSEM_LOGGER.info(
             "ML populator: history did not produce a trained model;"
             " falling back to legacy avg sensors."
         )
         return False, None
+    record_history_status(cache_key, MLHistoryStatus(MLHistoryState.READY, oldest_age))
 
     if predictor.trained and not was_fitted_before:
         HSEM_LOGGER.info(

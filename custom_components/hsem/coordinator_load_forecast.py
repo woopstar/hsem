@@ -25,6 +25,7 @@ from custom_components.hsem.custom_sensors.hourly_data_populator.consumption imp
     ConsumptionPopulation,
     populate_avg_house_consumption_from_snapshot,
 )
+from custom_components.hsem.ml.history_status import MLHistoryState, MLHistoryStatus
 from custom_components.hsem.models.data_quality import DataQuality
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
@@ -60,8 +61,10 @@ class CoordinatorLoadForecastMixin(CoordinatorSharedState):
     async def _populate_consumption(self, cfg: SensorConfig) -> ConsumptionPopulation:
         """Run ML consumption prediction when enabled, else the avg sensors."""
         if not cfg.ml_consumption_enabled:
+            self._ml_history_status = MLHistoryStatus(MLHistoryState.DISABLED)
             return self._populate_from_avg_sensors(cfg)
 
+        from custom_components.hsem.ml.history_status import last_history_status
         from custom_components.hsem.ml.populator import (
             populate_ml_house_consumption,
         )
@@ -92,19 +95,35 @@ class CoordinatorLoadForecastMixin(CoordinatorSharedState):
                 exc,
             )
             ml_ok = False
+            self._ml_history_status = MLHistoryStatus(
+                MLHistoryState.FAILED, reason=f"raised {exc!r}"
+            )
+        else:
+            self._ml_history_status = last_history_status(self.hass, cfg)
+
+        # One line per cycle that says why (issue #1365): a site still
+        # accumulating recorder history is waiting, not failing.
+        status = self._ml_history_status
+        if ml_ok:
+            async_log(
+                "debug",
+                "[ml] ML consumption populated the slots (%s).",
+                status.describe(cfg.ml_consumption_history_days),
+            )
+            return ConsumptionPopulation(ok=True)
+        if status.is_waiting_for_history:
+            async_log(
+                "debug",
+                "[ml] ML consumption skipped: %s — using legacy avg sensors"
+                " until then.",
+                status.describe(cfg.ml_consumption_history_days),
+            )
         else:
             async_log(
                 "debug",
-                "[ml] populate_ml_house_consumption returned %s",
-                ml_ok,
+                "[ml] ML consumption failed (%s) — falling back to legacy avg sensors.",
+                status.describe(cfg.ml_consumption_history_days),
             )
-
-        if ml_ok:
-            return ConsumptionPopulation(ok=True)
-        async_log(
-            "debug",
-            "[ml] ML consumption failed — falling back to legacy avg sensors.",
-        )
         return self._populate_from_avg_sensors(cfg)
 
     def _log_load_forecast_gaps(self, population: ConsumptionPopulation) -> None:

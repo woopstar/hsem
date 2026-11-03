@@ -14,7 +14,7 @@ Acceptance criteria
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -25,6 +25,7 @@ from custom_components.hsem.coordinator import CoordinatorData
 from custom_components.hsem.custom_sensors.plan_explanation_sensor import (
     HSEMPlanExplanationSensor,
 )
+from custom_components.hsem.ml.history_status import MLHistoryState, MLHistoryStatus
 from custom_components.hsem.models.data_quality import DataQuality
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
@@ -405,3 +406,70 @@ class TestSensorContextAttributes:
         """data_quality_complete must be True for a default DataQuality."""
         sensor = _make_sensor(_make_coordinator_data(has_context=True))
         assert sensor.extra_state_attributes["data_quality_complete"] is True
+
+
+# ===========================================================================
+# ML history status (issue #1365)
+# ===========================================================================
+
+
+class TestMLHistoryStatusAttributes:
+    """The sensor says why the ML forecast is or is not in use."""
+
+    @staticmethod
+    def _sensor_with_status(
+        status: object, *, ml_enabled: bool = True
+    ) -> HSEMPlanExplanationSensor:
+        data = _make_coordinator_data(has_context=True)
+        assert data.cfg is not None
+        data.cfg.ml_consumption_enabled = ml_enabled
+        data.cfg.ml_consumption_history_days = 40
+        sensor = _make_sensor(data)
+        cast(Any, sensor.coordinator)._ml_history_status = status
+        return sensor
+
+    def test_insufficient_history_reports_measured_span(self):
+        ready_at = datetime(2026, 11, 4, 20, 45, tzinfo=UTC)
+        sensor = self._sensor_with_status(
+            MLHistoryStatus(
+                MLHistoryState.INSUFFICIENT_HISTORY, 38.6, ready_at, "sensor.e"
+            )
+        )
+        attrs = sensor.extra_state_attributes
+        assert attrs["ml_days_of_history"] == 40
+        assert attrs["ml_status"] == "insufficient_history"
+        assert attrs["ml_available_history_days"] == pytest.approx(38.6)
+        assert attrs["ml_history_ready_at"] == ready_at.isoformat()
+
+    def test_ready_reports_span_without_ready_at(self):
+        sensor = self._sensor_with_status(MLHistoryStatus(MLHistoryState.READY, 41.3))
+        attrs = sensor.extra_state_attributes
+        assert attrs["ml_status"] == "ready"
+        assert attrs["ml_available_history_days"] == pytest.approx(41.3)
+        assert attrs["ml_history_ready_at"] is None
+
+    def test_recorder_empty_reports_zero_days(self):
+        sensor = self._sensor_with_status(
+            MLHistoryStatus(MLHistoryState.RECORDER_EMPTY, 0.0)
+        )
+        attrs = sensor.extra_state_attributes
+        assert attrs["ml_status"] == "recorder_empty"
+        assert attrs["ml_available_history_days"] == pytest.approx(0.0)
+
+    def test_disabled_reports_null_history(self):
+        sensor = self._sensor_with_status(
+            MLHistoryStatus(MLHistoryState.DISABLED), ml_enabled=False
+        )
+        attrs = sensor.extra_state_attributes
+        assert attrs["ml_status"] == "disabled"
+        assert attrs["ml_available_history_days"] is None
+        assert attrs["ml_history_ready_at"] is None
+
+    def test_missing_status_falls_back_on_the_switch(self):
+        # A coordinator without the attribute (or a mock in its place) must
+        # not break the attribute build.
+        enabled = self._sensor_with_status(MagicMock(), ml_enabled=True)
+        assert enabled.extra_state_attributes["ml_status"] == "pending"
+        disabled = self._sensor_with_status(None, ml_enabled=False)
+        assert disabled.extra_state_attributes["ml_status"] == "disabled"
+        assert disabled.extra_state_attributes["ml_available_history_days"] is None

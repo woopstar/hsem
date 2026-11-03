@@ -37,6 +37,10 @@ Additional diagnostic attributes are merged from the coordinator snapshot:
 - ``last_apply_status`` — outcome of the most recent hardware-write cycle.
 - ``data_quality_complete`` — ``True`` when price, PV, and the house-load
   forecast are all available.
+- ``ml_status`` / ``ml_available_history_days`` / ``ml_history_ready_at`` —
+  whether the ML consumption forecast is in use and, while it waits for
+  recorder history, how many days exist and when enough is expected
+  (issue #1365).
 
 The sensor is a *diagnostic* entity (``EntityCategory.DIAGNOSTIC``) so it
 appears in the *Diagnostic* section of the device page and is excluded from
@@ -57,6 +61,7 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
+from custom_components.hsem.ml.history_status import MLHistoryState, MLHistoryStatus
 from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.sensornames.diagnostics import (
@@ -222,12 +227,20 @@ class HSEMPlanExplanationSensor(
             # Data quality summary
             d["data_quality_complete"] = data.data_quality.is_complete
 
-            # ML history — configured minimum vs actual recorder span.
+            # ML history — configured minimum vs the recorder span the
+            # populator measured, plus why the forecast is or is not in use
+            # (issue #1365): ``ml_status``, ``ml_available_history_days``
+            # and ``ml_history_ready_at``.
             d["ml_days_of_history"] = cfg.ml_consumption_history_days
             ml_predictor = getattr(self.coordinator, "_ml_predictor", None)
-            d["ml_available_history_days"] = (
-                ml_predictor.actual_history_days if ml_predictor is not None else 0.0
-            )
+            ml_status = getattr(self.coordinator, "_ml_history_status", None)
+            if not isinstance(ml_status, MLHistoryStatus):
+                ml_status = MLHistoryStatus(
+                    MLHistoryState.PENDING
+                    if cfg.ml_consumption_enabled
+                    else MLHistoryState.DISABLED
+                )
+            d.update(ml_status.as_attributes())
 
             # ML forecast-temperature diagnostics (issue #918).
             d["ml_forecast_temperature_configured"] = bool(
