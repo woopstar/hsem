@@ -40,7 +40,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from custom_components.hsem.ml.history_reader import MAX_SLOT_KWH
+from custom_components.hsem.ml.slot_deltas import MAX_SLOT_KWH
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.utils.datetime_utils import slot_key, utc_key
 from tests.backtest.site import SITE_KEY, site_of, validate_site
@@ -609,7 +609,7 @@ def slot_energy_from_readings(
     which the accumulator did not move is ``0.0``, and the first slot after a
     quiet stretch keeps its full energy — neither needs a reading *inside* the
     slot, which is what makes this different from the ML layer's
-    ``HistoryReader._compute_slot_deltas``.  That routine answers a different
+    ``ml.slot_deltas.compute_slot_deltas``.  That routine answers a different
     question (what did the house consume?) and correctly discards zero slots
     and any slot whose predecessor had no reading; for actuals, both are real
     observations.

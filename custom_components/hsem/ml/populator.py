@@ -19,10 +19,14 @@ from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
+from custom_components.hsem.ml.history_cache import (
+    get_energy_history,
+    history_ready_at,
+)
 from custom_components.hsem.ml.history_reader import (
     DEFAULT_MAX_HISTORY_DAYS,
-    INSUFFICIENT_HISTORY_RETRY,
     HistoryReader,
+    insufficient_retry_window,
 )
 from custom_components.hsem.ml.weather_features import (
     get_cached_weather_forecast,
@@ -52,6 +56,8 @@ type _PredictorContext = tuple[
 # Cache final, fully processed history rather than an import-only intermediate.
 # The effective configuration is part of the key so another config entry,
 # source entity, cadence, history window, or net/gross mode cannot reuse it.
+# A refresh goes through ``ml.history_cache``, which keeps each entity's
+# samples and reads only the states since its last completed slot (#1355).
 _processed_history_cache: dict[
     _HistoryCacheKey, tuple[datetime, list[_HistorySample]]
 ] = {}
@@ -60,10 +66,12 @@ _MIN_HISTORY_REFRESH = timedelta(minutes=60)
 # An insufficient-history outcome is remembered too, under the same key, so a
 # site still accumulating ``ml_consumption_history_days`` does not refetch 90
 # days of recorder states on every coordinator cycle (#1302).  It never stands
-# in for a usable history; it only delays the next fetch.  The window is
-# shorter than the success cache so a fixed recorder or meter alignment is
-# picked up promptly.
-_insufficient_history_cache: dict[_HistoryCacheKey, datetime] = {}
+# in for a usable history; it only delays the next fetch.  Each entry holds
+# when the recorder was read and how long to wait: the time until the
+# recorded span reaches the configured days when the read could tell (#1355),
+# otherwise ``INSUFFICIENT_HISTORY_RETRY``, so a fixed recorder or meter
+# alignment is still picked up promptly.
+_insufficient_history_cache: dict[_HistoryCacheKey, tuple[datetime, timedelta]] = {}
 
 
 async def populate_ml_house_consumption(
@@ -128,17 +136,18 @@ async def populate_ml_house_consumption(
         cached[0], now_ts, _MIN_HISTORY_REFRESH
     )
 
-    insufficient_at = _insufficient_history_cache.get(cache_key)
+    insufficient = _insufficient_history_cache.get(cache_key)
     if (
         not cache_valid
-        and insufficient_at is not None
-        and cache_is_fresh(insufficient_at, now_ts, INSUFFICIENT_HISTORY_RETRY)
+        and insufficient is not None
+        and cache_is_fresh(insufficient[0], now_ts, insufficient[1])
     ):
         HSEM_LOGGER.debug(
             "ML populator: history for %s was insufficient %.0f min ago; "
-            "using legacy avg sensors until the next check.",
+            "using legacy avg sensors until the next check at %s.",
             energy_entity,
-            physical_elapsed(now_ts, insufficient_at).total_seconds() / 60,
+            physical_elapsed(now_ts, insufficient[0]).total_seconds() / 60,
+            (insufficient[0] + insufficient[1]).isoformat(),
         )
         return False, None
 
@@ -151,49 +160,68 @@ async def populate_ml_house_consumption(
             physical_elapsed(now_ts, cached[0]).total_seconds() / 60,
         )
     else:
-        import_history = await reader.read_energy_history(
-            entity_id=energy_entity,
-            days=min_days,
-            slot_minutes=slot_minutes,
+        import_result = await get_energy_history(
+            hass,
+            reader,
+            energy_entity,
+            min_days=min_days,
             max_days=DEFAULT_MAX_HISTORY_DAYS,
+            slot_minutes=slot_minutes,
             expected_unit=UnitOfEnergy.KILO_WATT_HOUR,
+            now_ts=now_ts,
         )
+        import_history = import_result.samples
         if not import_history:
+            next_check = _remember_insufficient(
+                cache_key, now_ts, import_result.ready_at
+            )
             HSEM_LOGGER.info(
-                "ML populator: insufficient history for %s (need %d days). "
-                "Falling back to legacy avg sensors.",
+                "ML populator: insufficient history for %s (need %d days); "
+                "next recorder check at %s. Falling back to legacy avg sensors.",
                 energy_entity,
                 min_days,
+                next_check.isoformat(),
             )
-            _insufficient_history_cache[cache_key] = now_ts
             return False, None
 
         history = import_history
         if net_enabled and export_entity is not None:
-            export_history = await reader.read_energy_history(
-                entity_id=export_entity,
-                days=min_days,
-                slot_minutes=slot_minutes,
+            export_result = await get_energy_history(
+                hass,
+                reader,
+                export_entity,
+                min_days=min_days,
                 max_days=DEFAULT_MAX_HISTORY_DAYS,
+                slot_minutes=slot_minutes,
                 expected_unit=UnitOfEnergy.KILO_WATT_HOUR,
+                now_ts=now_ts,
             )
-            if export_history:
-                history = _compute_net_consumption(import_history, export_history)
+            if export_result.samples:
+                history = _compute_net_consumption(
+                    import_history, export_result.samples
+                )
                 if not _history_meets_minimum_span(history, now_ts, min_days):
+                    next_check = _remember_insufficient(
+                        cache_key, now_ts, history_ready_at(history, min_days)
+                    )
                     HSEM_LOGGER.info(
                         "ML populator: aligned import/export history is "
-                        "insufficient for %d days. Falling back to legacy "
-                        "avg sensors.",
+                        "insufficient for %d days; next recorder check at %s. "
+                        "Falling back to legacy avg sensors.",
                         min_days,
+                        next_check.isoformat(),
                     )
-                    _insufficient_history_cache[cache_key] = now_ts
                     return False, None
             else:
+                next_check = _remember_insufficient(
+                    cache_key, now_ts, export_result.ready_at
+                )
                 HSEM_LOGGER.info(
                     "ML populator: export history unavailable while net "
-                    "consumption is enabled. Falling back to legacy avg sensors."
+                    "consumption is enabled; next recorder check at %s. "
+                    "Falling back to legacy avg sensors.",
+                    next_check.isoformat(),
                 )
-                _insufficient_history_cache[cache_key] = now_ts
                 return False, None
 
         if history:
@@ -608,6 +636,26 @@ async def populate_ml_house_consumption(
         )
 
     return True, predictor
+
+
+def _remember_insufficient(
+    cache_key: _HistoryCacheKey,
+    now_ts: datetime,
+    ready_at: datetime | None,
+) -> datetime:
+    """Record an insufficient-history read and return the next check time.
+
+    Args:
+        cache_key: The effective-configuration key of the read.
+        now_ts: When the recorder was read.
+        ready_at: When enough history is expected, or ``None`` if unknown.
+
+    Returns:
+        The earliest time the recorder will be queried again for this key.
+    """
+    window = insufficient_retry_window(now_ts, ready_at)
+    _insufficient_history_cache[cache_key] = (now_ts, window)
+    return now_ts + window
 
 
 def _history_meets_minimum_span(

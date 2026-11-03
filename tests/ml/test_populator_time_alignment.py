@@ -13,11 +13,12 @@ import pytest
 from homeassistant.const import UnitOfEnergy, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 
-from custom_components.hsem.ml import populator, weather_features
+from custom_components.hsem.ml import history_cache, populator, weather_features
 from custom_components.hsem.ml.consumption_predictor import ConsumptionPredictor
 from custom_components.hsem.ml.history_reader import (
     INSUFFICIENT_HISTORY_RETRY,
     HistoryReader,
+    HistoryResult,
 )
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.sensor_config import SensorConfig
@@ -81,6 +82,11 @@ class _FakeReader:
         self.actuals = actuals or {}
         self.temperatures = temperatures or {}
         self.wind_speeds = wind_speeds or {}
+        # Entity -> ``ready_at`` reported alongside an insufficient read.
+        self.ready_at: dict[str, datetime] = {}
+        # Entity -> unit reported by ``resolve_unit`` (``None`` = unit-less).
+        self.units: dict[str, str | None] = {}
+        self.unit_calls: list[str] = []
         self.energy_calls: list[str] = []
         self.energy_call_kwargs: list[dict[str, object]] = []
         self.actual_calls: list[str] = []
@@ -89,14 +95,24 @@ class _FakeReader:
         self.temperature_call_kwargs: list[dict[str, object]] = []
         self.wind_calls: list[tuple[str, str]] = []
 
+    async def resolve_unit(self, entity_id: str) -> str | None:
+        self.unit_calls.append(entity_id)
+        return self.units.get(entity_id, UnitOfEnergy.KILO_WATT_HOUR)
+
     async def read_energy_history(
         self,
         entity_id: str,
         **kwargs: object,
-    ) -> list[_HistorySample]:
+    ) -> HistoryResult[_HistorySample]:
         self.energy_calls.append(entity_id)
         self.energy_call_kwargs.append(kwargs)
-        return list(self.histories.get(entity_id, []))
+        samples = list(self.histories.get(entity_id, []))
+        since = kwargs.get("since")
+        if isinstance(since, datetime):
+            # Like the real reader: only slots after the anchor's slot.
+            samples = [s for s in samples if utc_key(s[0]) > slot_key(since, 15)]
+        anchor = (samples[-1][0], samples[-1][2]) if samples else None
+        return HistoryResult(samples, self.ready_at.get(entity_id), anchor)
 
     async def read_today_actuals(
         self,
@@ -111,19 +127,23 @@ class _FakeReader:
         self,
         entity_id: str,
         **kwargs: object,
-    ) -> list[tuple[datetime, float]]:
+    ) -> HistoryResult[tuple[datetime, float]]:
         self.temperature_calls.append(entity_id)
         self.temperature_call_kwargs.append(kwargs)
-        return list(self.temperatures.get(entity_id, []))
+        return HistoryResult(
+            list(self.temperatures.get(entity_id, [])), self.ready_at.get(entity_id)
+        )
 
     async def read_instantaneous_attribute_history(
         self,
         entity_id: str,
         attribute: str,
         **_kwargs: object,
-    ) -> list[tuple[datetime, float]]:
+    ) -> HistoryResult[tuple[datetime, float]]:
         self.wind_calls.append((entity_id, attribute))
-        return list(self.wind_speeds.get(entity_id, []))
+        return HistoryResult(
+            list(self.wind_speeds.get(entity_id, [])), self.ready_at.get(entity_id)
+        )
 
 
 class _FakePredictor:
@@ -244,14 +264,15 @@ def _ha_local_timezone():
 
 @pytest.fixture(autouse=True)
 def _clear_ml_caches():
-    populator._processed_history_cache.clear()
-    populator._insufficient_history_cache.clear()
-    weather_features._temperature_history_cache.clear()
-    weather_features._wind_history_cache.clear()
-    weather_features._forecast_cache.clear()
+    _reset_ml_caches()
     yield
+    _reset_ml_caches()
+
+
+def _reset_ml_caches() -> None:
     populator._processed_history_cache.clear()
     populator._insufficient_history_cache.clear()
+    history_cache._energy_history_cache.clear()
     weather_features._temperature_history_cache.clear()
     weather_features._wind_history_cache.clear()
     weather_features._forecast_cache.clear()
@@ -777,7 +798,11 @@ async def test_history_window_change_replaces_predictor_with_same_sample_count()
     None
 ):
     hass = _FakeHass()
-    reader = _FakeReader({"sensor.import": _history(NOW)})
+    # Long enough for both windows; the cached samples are checked against
+    # the new window without a full re-read (#1355).
+    reader = _FakeReader(
+        {"sensor.import": [(NOW - timedelta(days=22), 0, 1.0), *_history(NOW)]}
+    )
     initial_cfg = _cfg(history_days=14)
 
     initial_success, initial_predictor = await _populate(
@@ -1055,7 +1080,8 @@ async def test_reused_predictor_refreshes_decay_as_history_grows() -> None:
     assert predictor is not None
     assert predictor.decay_days == pytest.approx(7.5)
 
-    later = NOW + timedelta(minutes=61)
+    # A longer span only shows up on the daily full read (#1355).
+    later = NOW + history_cache.FULL_READ_INTERVAL + timedelta(minutes=1)
     reader.histories["sensor.import"] = [
         (later - timedelta(days=30), 0, 1.0),
         (later - timedelta(days=14), 1, 1.2),
@@ -1131,7 +1157,7 @@ class _FailingTemperatureReader(_FakeReader):
         self,
         entity_id: str,
         **kwargs: object,
-    ) -> list[tuple[datetime, float]]:
+    ) -> HistoryResult[tuple[datetime, float]]:
         self.temperature_calls.append(entity_id)
         raise RuntimeError("recorder not ready")
 
@@ -1165,3 +1191,179 @@ async def test_insufficient_temperature_history_is_keyed_by_required_days() -> N
         )
 
     assert len(reader.temperature_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_insufficient_history_is_not_reread_before_it_can_be_enough() -> None:
+    """One recorder read per insufficient span, however long it takes (#1355)."""
+    cfg = _cfg(history_days=40)
+    reader = _FakeReader({"sensor.import": []})
+    ready_at = NOW + timedelta(days=2, hours=3)
+    reader.ready_at["sensor.import"] = ready_at
+    hass = _FakeHass()
+
+    for now in (
+        NOW,
+        NOW + INSUFFICIENT_HISTORY_RETRY,
+        NOW + timedelta(hours=1),
+        NOW + timedelta(days=1),
+        ready_at - timedelta(minutes=1),
+    ):
+        success, predictor = await _populate(hass, reader, cfg, [], now=now)
+        assert success is False
+        assert predictor is None
+
+    assert reader.energy_calls == ["sensor.import"]
+    assert list(populator._insufficient_history_cache.values()) == [
+        (NOW, timedelta(days=2, hours=3))
+    ]
+
+    reader.histories["sensor.import"] = _history(ready_at)
+    success, predictor = await _populate(hass, reader, cfg, [], now=ready_at)
+
+    assert success is True
+    assert predictor is not None
+    assert reader.energy_calls == ["sensor.import", "sensor.import"]
+    assert populator._insufficient_history_cache == {}
+
+
+@pytest.mark.asyncio
+async def test_ready_date_inside_the_retry_floor_keeps_the_floor() -> None:
+    """A span that is nearly long enough is still re-read no sooner than the floor."""
+    cfg = _cfg()
+    reader = _FakeReader({"sensor.import": []})
+    reader.ready_at["sensor.import"] = NOW + timedelta(minutes=5)
+    hass = _FakeHass()
+
+    for minute in (0, 5, 14):
+        await _populate(hass, reader, cfg, [], now=NOW + timedelta(minutes=minute))
+
+    assert reader.energy_calls == ["sensor.import"]
+
+    await _populate(hass, reader, cfg, [], now=NOW + INSUFFICIENT_HISTORY_RETRY)
+
+    assert reader.energy_calls == ["sensor.import", "sensor.import"]
+
+
+@pytest.mark.asyncio
+async def test_short_export_history_postpones_the_next_read_to_its_ready_date() -> None:
+    """The export channel's ready date is honoured like the import channel's (#1355)."""
+    cfg = _cfg(export_entity="sensor.export", net=True)
+    reader = _FakeReader({"sensor.import": _history(NOW), "sensor.export": []})
+    ready_at = NOW + timedelta(days=1)
+    reader.ready_at["sensor.export"] = ready_at
+    hass = _FakeHass()
+
+    for now in (NOW, NOW + INSUFFICIENT_HISTORY_RETRY, ready_at - timedelta(hours=1)):
+        success, _predictor = await _populate(hass, reader, cfg, [], now=now)
+        assert success is False
+
+    assert reader.energy_calls == ["sensor.import", "sensor.export"]
+
+    await _populate(hass, reader, cfg, [], now=ready_at)
+
+    assert reader.energy_calls == ["sensor.import", "sensor.export"] * 2
+
+
+@pytest.mark.asyncio
+async def test_short_aligned_net_history_postpones_the_next_read() -> None:
+    """Both channels are long enough but their overlap is not: wait for the overlap."""
+    cfg = _cfg(export_entity="sensor.export", net=True)
+    import_history = [
+        (NOW - timedelta(days=15), 0, 1.0),
+        (NOW - timedelta(days=13), 1, 1.2),
+        (NOW - timedelta(days=12), 2, 1.1),
+    ]
+    export_history = [
+        (NOW - timedelta(days=13), 1, 0.2),
+        (NOW - timedelta(days=12), 2, 0.3),
+    ]
+    reader = _FakeReader(
+        {"sensor.import": import_history, "sensor.export": export_history}
+    )
+    hass = _FakeHass()
+
+    # The overlap starts 13 days ago, so it is 14 days long in one day.
+    ready_at = NOW + timedelta(days=1)
+    for now in (NOW, NOW + INSUFFICIENT_HISTORY_RETRY, ready_at - timedelta(minutes=1)):
+        success, _predictor = await _populate(hass, reader, cfg, [], now=now)
+        assert success is False
+
+    assert reader.energy_calls == ["sensor.import", "sensor.export"]
+    assert list(populator._insufficient_history_cache.values()) == [
+        (NOW, timedelta(days=1))
+    ]
+
+    await _populate(hass, reader, cfg, [], now=ready_at)
+
+    assert reader.energy_calls == ["sensor.import", "sensor.export"] * 2
+
+
+@pytest.mark.asyncio
+async def test_insufficient_temperature_history_waits_for_its_ready_date() -> None:
+    """The temperature feature skips the recorder until enough history exists (#1355)."""
+    reader = _FakeReader({}, temperatures={})
+    ready_at = NOW + timedelta(days=1)
+    reader.ready_at["sensor.temperature"] = ready_at
+    hass = cast(HomeAssistant, _FakeHass())
+
+    async def read(now: datetime) -> dict[datetime, float]:
+        return await weather_features.get_temperature_history(
+            hass, cast(HistoryReader, reader), "sensor.temperature", 14, now
+        )
+
+    for now in (NOW, NOW + INSUFFICIENT_HISTORY_RETRY, ready_at - timedelta(hours=1)):
+        assert await read(now) == {}
+
+    assert reader.temperature_calls == ["sensor.temperature"]
+
+    reader.temperatures["sensor.temperature"] = [(ready_at, 21.0)]
+    assert await read(ready_at) == {utc_key(ready_at): 21.0}
+    assert reader.temperature_calls == ["sensor.temperature"] * 2
+
+
+@pytest.mark.asyncio
+async def test_insufficient_wind_history_waits_for_its_ready_date() -> None:
+    """The ready date survives the wind-speed unit conversion wrapper (#1355)."""
+    reader = _FakeReader({}, wind_speeds={})
+    ready_at = NOW + timedelta(days=1)
+    reader.ready_at["weather.home"] = ready_at
+    hass = cast(HomeAssistant, _FakeHass(wind_speed_unit="m/s"))
+
+    async def read(now: datetime) -> dict[datetime, float]:
+        return await weather_features.get_wind_history(
+            hass, cast(HistoryReader, reader), "weather.home", 14, now
+        )
+
+    for now in (NOW, NOW + INSUFFICIENT_HISTORY_RETRY, ready_at - timedelta(hours=1)):
+        assert await read(now) == {}
+
+    assert len(reader.wind_calls) == 1
+
+    reader.wind_speeds["weather.home"] = [(ready_at, 10.0)]
+    assert await read(ready_at) == {utc_key(ready_at): pytest.approx(36.0)}
+    assert len(reader.wind_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_temperature_unit_change_switches_to_attribute_reads() -> None:
+    """A unit change between reads forces per-state attributes (#1355)."""
+    reader = _FakeReader({}, temperatures={"sensor.temperature": [(NOW, 21.0)]})
+    reader.units["sensor.temperature"] = "°C"
+    hass = cast(HomeAssistant, _FakeHass())
+
+    async def read(now: datetime) -> dict[datetime, float]:
+        return await weather_features.get_temperature_history(
+            hass, cast(HistoryReader, reader), "sensor.temperature", 14, now
+        )
+
+    await read(NOW)
+    reader.units["sensor.temperature"] = "°F"
+    await read(NOW + timedelta(minutes=61))
+    await read(NOW + timedelta(hours=2, minutes=2))
+
+    assert [
+        (kwargs["with_attributes"], kwargs["source_unit"])
+        for kwargs in reader.temperature_call_kwargs
+    ] == [(False, "°C"), (True, "°F"), (True, "°F")]
+    assert reader.unit_calls == ["sensor.temperature"] * 3
