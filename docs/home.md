@@ -17,7 +17,7 @@ HSEM is a modular, secure, and highly configurable Home Assistant integration th
 ## Quick Start
 
 1. **Remove any previous Huawei Solar Battery Optimization Project integrations.**
-2. **Install HSEM** via HACS or manually.
+2. **Install HSEM** via the Marketplace (Home Assistant 2026.11+), HACS (2026.10) or manually. See the [installation instructions](https://github.com/woopstar/hsem#installation).
 3. **Configure your sensors** for solar battery, inverter, grid, and EV charger (if present) — do not use the Fusion Solar app for scheduling; HSEM's planner drives charge/discharge decisions automatically.
 4. **Let HSEM run for at least 14 days** to collect historical data for optimal performance.
 5. **Monitor the Working Mode Sensor** for system status and recommendations.

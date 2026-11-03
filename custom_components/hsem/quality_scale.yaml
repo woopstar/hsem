@@ -50,10 +50,10 @@ rules:
     comment: README.md explains HSEM's purpose, supported energy hardware, and features.
   docs-installation-instructions:
     status: done
-    comment: README.md provides step-by-step HACS and manual installation instructions.
+    comment: README.md provides step-by-step Marketplace, HACS and manual installation instructions.
   docs-removal-instructions:
     status: done
-    comment: README.md provides integration, HACS, and manual removal instructions.
+    comment: README.md provides integration, Marketplace, HACS, and manual removal instructions.
   docs-triggers:
     status: exempt
     comment: HSEM does not provide any triggers.
@@ -131,10 +131,10 @@ rules:
     comment: Not audited against Gold for this declaration.
   discovery:
     status: exempt
-    comment: Custom integrations are installed manually or via HACS, not discovered by HA.
+    comment: Custom integrations are installed manually or via the Marketplace/HACS, not discovered by HA.
   discovery-update-info:
     status: exempt
-    comment: Custom integrations are installed manually or via HACS, not discovered by HA.
+    comment: Custom integrations are installed manually or via the Marketplace/HACS, not discovered by HA.
   docs-data-update:
     status: todo
     comment: Not audited against Gold for this declaration.

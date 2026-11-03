@@ -6,19 +6,21 @@ Step-by-step guide for setting up the HSEM ApexCharts dashboard in Home Assistan
 
 ## Prerequisites
 
-- **[ApexCharts Card](https://github.com/RomRider/apexcharts-card)** installed via HACS
-- **[Multiple Entity Row](https://github.com/benct/lovelace-multiple-entity-row) v4.11.1 or newer** installed via HACS (requires Home Assistant 2024.4 or newer; used by the EV charging economics cards)
+- **[ApexCharts Card](https://github.com/RomRider/apexcharts-card)** installed via the Marketplace or HACS
+- **[Multiple Entity Row](https://github.com/benct/lovelace-multiple-entity-row) v4.11.1 or newer** installed via the Marketplace or HACS (used by the EV charging economics cards)
 - **HSEM integration** configured and running (the `sensor.hsem_workingmode_sensor` entity must be available)
 - The `hourly_recommendations` attribute must be populated (wait for the first planner cycle to complete)
 
-When Lovelace resources are managed in YAML instead of automatically by HACS, also add:
+When Lovelace resources are managed in YAML instead of automatically by the Marketplace or HACS, also add:
 
 ```yaml
 lovelace:
   resources:
-    - url: /hacsfiles/lovelace-multiple-entity-row/multiple-entity-row.js
+    - url: /local/community/lovelace-multiple-entity-row/multiple-entity-row.js
       type: module
 ```
+
+The Marketplace (Home Assistant 2026.11 and newer) serves installed resources from `/local/community/`. The old `/hacsfiles/` path still loads, but the Marketplace raises a repair asking you to change it.
 
 ---
 

@@ -2949,7 +2949,20 @@ Home Assistant 2026.10 replaced voluptuous with probatio (a drop-in with the sam
 **Rules:**
 
 - Import `vol` with `from custom_components.hsem.utils.schema import vol`. Never `import voluptuous` or `import probatio` in another module; `tests/utils/test_schema_compat.py` fails if one does.
-- `utils/schema.py` imports **voluptuous at runtime** and **probatio under `TYPE_CHECKING`**. Do not import probatio at runtime: `hacs.json` allows Home Assistant from 2024.6.0, which does not ship it.
+- `utils/schema.py` imports **voluptuous at runtime** and **probatio under `TYPE_CHECKING`**. Do not import probatio at runtime: 6.3.x allows Home Assistant versions that do not ship it, and the module is shared with that line (`hacs.json` on `main` declares 2026.10.0 since #1354 because of this alias, so the Marketplace never offers a `main` release to an older core).
 - A dependabot bump of `homeassistant` can turn the gate red without touching HSEM's code. Its "Quality gates" check must be green before it is merged; #1287 was merged red and every later commit on `main` inherited it.
 - The devcontainer image can be behind the pinned requirements (it had Home Assistant 2026.8.3 while `requirements.txt` pinned 2026.10.0). When CI and a local run disagree, build an isolated environment from the requirements files (`uv venv /tmp/...`, `uv pip install -r requirements.txt -r requirements_test.txt -r requirements_lint.txt`) and run `./scripts/quality.sh` with it first on `PATH`. Do not upgrade the shared container from inside a session.
 - An "INTERNAL ERROR" from mypy right after switching interpreters or mypy versions is a stale cache: clear `/tmp/hsem-cache/mypy/<worktree>`.
+
+## Home Assistant Marketplace Replaces HACS (issue #1354)
+
+Home Assistant 2026.11 ships HACS in core as the **Marketplace** (Settings → Marketplace). Existing HACS installs migrate on the first start; HSEM is not in the hacs/default catalog, so new users add it with **Add from link**. The maintainer decides on the catalog PR (it must come from the owner's personal account).
+
+**What the Marketplace reads, verified against `homeassistant/components/marketplace` on 2026-11-03:**
+
+- `hacs.json` is downloaded **from the release tag** (`raw.githubusercontent.com/<repo>/<tag>/hacs.json`) for every install, and the release is refused when `homeassistant` is newer than the running core (`_check_minimum_version`, AwesomeVersion comparison). `main` declares `2026.10.0` (probatio alias, `utils/schema.py`), `v6.3.0-hotfix` declares `2026.9.0` (the line was released against 2026.9.1 and never tested below it). The tests in `tests/test_marketplace_metadata.py` pin each branch's floor; bump it when the code starts needing a newer core.
+- The version shown and compared is the **release `tag_name`** (`v7.0.0`), never the manifest `version`. The manifest `version` only has to be loadable (CalVer/SemVer/SimpleVer/BuildVer/PEP 440); `7.0.0-beta7` is. So a tag with a leading `v` and a manifest without one is fine.
+- With `zip_release`, the files come from the `hsem.zip` asset, but `manifest.json` is also read **from the tagged tree** for `domain`, `name`, `codeowners` and `config_flow`. `release.yml` commits the version bump after the tag, so the tagged tree's manifest carries the previous version; that is harmless because the version is not read from it. Do not "fix" the release flow for this.
+- Dashboard resources move from `/hacsfiles/` to `/local/community/`; the old path still loads, with a repair. Docs use the new path.
+
+**HACS action (`hacs-validate.yml`):** the `brands` check passes with `custom_components/hsem/brand/icon.png` (256 px) and `icon@2x.png` (512 px), copied from `home-assistant/brands`; the `ignore: "brands"` is gone, and the catalog does not accept ignored checks. `manifest.json` carries `categories: ["energy.solar_batteries", "energy.ev_charging"]` (one to three known categories). hassfest rejects a parent category next to its subcategory (`energy` with `energy.ev_charging`), so never add the parent.
