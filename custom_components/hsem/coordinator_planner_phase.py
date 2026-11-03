@@ -245,13 +245,30 @@ class CoordinatorPlannerPhaseMixin(CoordinatorDynamicFloorMixin):
 
         # Window-level hysteresis (issue #315).
         window_hys_minutes = cfg.planner_window_hysteresis_minutes
+        self._window_hys_held = False
         if window_hys_minutes > 0:
+            solved_rec = next(
+                (
+                    s.recommendation
+                    for s in planner_output.slots
+                    if slot_contains(s.start, s.end, now)
+                ),
+                None,
+            )
             held_rec, held_start = apply_window_hysteresis(
                 planner_output.slots,
                 now,
                 window_hysteresis_minutes=window_hys_minutes,
                 previous_current_recommendation=self._window_hys_previous_rec,
                 previous_current_slot_start=self._window_hys_previous_slot_start,
+            )
+            # The hold swaps the live slot's label in place; the applier and
+            # the working-mode sensor need to know the energy fields still
+            # belong to the latest solve (issue #1364).
+            self._window_hys_held = (
+                held_rec is not None
+                and solved_rec is not None
+                and held_rec != solved_rec
             )
             self._window_hys_previous_rec = held_rec
             self._window_hys_previous_slot_start = held_start

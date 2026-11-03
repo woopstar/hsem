@@ -29,6 +29,7 @@ from custom_components.hsem.custom_sensors.config_reader import (  # noqa: F401 
     build_sensor_config,
 )
 from custom_components.hsem.custom_sensors.discharge_power_inputs import (
+    read_max_charge_power_limit,
     read_max_discharge_power,
 )
 from custom_components.hsem.custom_sensors.ev_deadline import (
@@ -344,6 +345,7 @@ async def async_collect_live_state(
             "Critical: battery max charge power returned None (unavailable/invalid)"
         )
     state.huawei_batteries_max_charge_power_w = max_charge_w
+    read_max_charge_power_limit(sensor, cfg, state)
 
     read_max_discharge_power(sensor, cfg, state, _read)
 

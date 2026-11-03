@@ -46,6 +46,30 @@ from custom_components.hsem.utils.misc import (
 from custom_components.hsem.utils.soc_bounds import finite_or
 
 
+def _resolve_max_charge_power_w(cfg: SensorConfig, live: LiveState) -> float:
+    """Return the charging power the planner may schedule, in watts.
+
+    While the top-up charge power scaling is on (issue #1364) HSEM owns the
+    commanded ``maximum_charging_power`` and writes slot-sized values to it,
+    so the planner must plan against the entity's ``max`` attribute — the
+    hardware capability — or a scaled write would become the next cycle's
+    ceiling (the discharge-side lesson of issue #592).  With the scaling off
+    the commanded value is the user's setting and is honoured as before.
+
+    Args:
+        cfg: Current sensor configuration.
+        live: Live state snapshot.
+
+    Returns:
+        The planning limit in watts, defaulting to 5000 when nothing is known.
+    """
+    if float(cfg.batteries_topup_min_power_pct or 0.0) > 0.0:
+        limit = convert_to_float(live.huawei_batteries_max_charge_power_limit_w)
+        if limit is not None and limit > 0.0:
+            return limit
+    return convert_to_float(live.huawei_batteries_max_charge_power_w) or 5000.0
+
+
 def _resolve_max_discharge_power_w(live: LiveState) -> float | None:
     """Return the battery's physical max discharge power for the planner.
 
@@ -368,9 +392,7 @@ def build_planner_input(
             live.huawei_batteries_charging_cutoff_capacity_pct
         )
         or 100.0,
-        battery_max_charge_power_w=(
-            convert_to_float(live.huawei_batteries_max_charge_power_w) or 5000.0
-        ),
+        battery_max_charge_power_w=_resolve_max_charge_power_w(cfg, live),
         battery_max_discharge_power_w=_resolve_max_discharge_power_w(live),
         battery_charge_efficiency_pct=convert_to_float(cfg.batteries_charge_efficiency)
         or 95.0,

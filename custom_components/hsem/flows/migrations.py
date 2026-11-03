@@ -81,6 +81,7 @@ _V2_NEW_KEY_DEFAULTS: dict[str, Any] = {
     "hsem_batteries_excess_export_discharge_buffer": 10,
     # Wait mode behaviour
     "hsem_batteries_wait_mode_behavior": DEFAULT_WAIT_MODE_BEHAVIOR,
+    "hsem_batteries_topup_min_power_pct": 10,
     # Energy price forecast sensors (optional — None = not configured)
     "hsem_import_electricity_price_forecast_sensor": None,
     "hsem_export_electricity_price_forecast_sensor": None,

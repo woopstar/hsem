@@ -154,6 +154,34 @@ in the same layer must not change it.
 > strategy to every slot independently — summer slots get discharge/solar and
 > winter slots get wait-mode, even within the same 48-hour plan.
 
+#### Executable minimum for the live slot (issue #1364)
+
+Applied to the MILP candidate's slots right after the solver write-out and
+**before** the per-candidate SoC simulation, so the simulation, the energy
+balance and the plan cost all see the result.
+
+`batteries_discharge_mode` and `batteries_discharge_window_mode` execute as
+MaximizeSelfConsumption, where the inverter serves the house load from the
+battery for the whole slot: the planned amount is not a setpoint. What the
+slot would actually deliver is
+`deliverable = min(max(estimated_net_consumption_kwh, 0), max_discharge_per_slot, current_kwh)`.
+A planned discharge on the **live slot only** that is smaller than
+`EXECUTABLE_DISCHARGE_FRACTION` (0.25) × `deliverable` is therefore cleared
+(`batteries_discharged_kwh = 0`) and the slot relabelled `batteries_wait_mode`.
+The energy stays in the battery and rides along the SoC trajectory to a later
+slot or the terminal SoC. A plan that discharges the deliverable amount is
+kept however small (a low-load house, or the last energy above the floor).
+Future slots are never touched (they are re-solved before they execute), nor
+are `force_batteries_discharge`, `force_export` or any EV label, nor a slot
+with PV surplus (`deliverable = 0`).
+
+The charge side needs no planner rule: `batteries_charge_grid` is executed by
+the applier at the slot-average rate of its planned energy
+(`planned_kwh / slot_hours`, clamped between the configured floor
+`hsem_batteries_topup_min_power_pct` × the entity's maximum and that maximum),
+so a small planned top-up delivers what was planned instead of a full slot at
+rated power.
+
 ### Layer 2 — EV planned load labelling (post-simulation)
 
 After the final SoC simulation, slots are relabelled where HSEM has actual
@@ -216,6 +244,15 @@ kept when none of the three runtime rules above fires.
 
 ### Invariants for tests
 
+- The live slot of the MILP candidate never carries a `batteries_discharge_mode`
+  / `batteries_discharge_window_mode` label with
+  `0 < batteries_discharged_kwh < 0.25 × min(net load, max_discharge_per_slot, current_kwh)`;
+  such a slot is `batteries_wait_mode` with zero discharge, and its SoC
+  simulation keeps the energy in the battery (issue #1364).
+- A live-slot discharge equal to the deliverable amount is never cleared,
+  however small (low house load, or the last energy above the floor).
+- A future slot, a forcible-mode slot and an EV-labelled slot are never changed
+  by the executable-minimum rule.
 - A slot assigned `batteries_charge_grid` by the planner must never be relabelled by
   the EV load labelling pass (layer 2).
 - A slot assigned `batteries_discharge_mode` or `batteries_discharge_window_mode`

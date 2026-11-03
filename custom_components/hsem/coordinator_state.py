@@ -176,6 +176,7 @@ class CoordinatorSharedState(_Base):
     _update_generation: int
     _update_lock: asyncio.Lock
     _pool_jobs: PoolJobGuard
+    _window_hys_held: bool
     _window_hys_previous_rec: str | None
     _window_hys_previous_slot_start: datetime | None
 

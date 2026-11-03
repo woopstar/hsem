@@ -56,6 +56,9 @@ from custom_components.hsem.planner.cost_function import (
     CostWeights,
     PlanCostBreakdown,
 )
+from custom_components.hsem.planner.executable_minimum import (
+    apply_executable_discharge_minimum,
+)
 from custom_components.hsem.planner.milp._battery_target import (
     solve_milp_with_battery_target,
 )
@@ -320,6 +323,15 @@ def generate_candidates(
         )
         if milp_result is not None:
             milp_slots, milp_diag = milp_result
+            # A live-slot discharge too small to execute as a full
+            # self-consumption slot is cleared before the SoC simulation
+            # (issue #1364).
+            apply_executable_discharge_minimum(
+                milp_slots,
+                now,
+                max_discharge_per_slot_kwh=max_discharge_per_slot or 0.0,
+                available_kwh=current_kwh,
+            )
             candidates.append(
                 CandidatePlan(
                     name=CANDIDATE_MILP, slots=milp_slots, diagnostics=milp_diag

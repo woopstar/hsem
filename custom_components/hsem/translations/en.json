@@ -32,7 +32,8 @@
       "tls_cert_key_pair_required": "Set both the server certificate and the server key path, or leave both empty.",
       "tls_file_not_found": "File not found or not readable.",
       "tls_cert_key_mismatch": "The server certificate and key could not be loaded together. Check that both are PEM files and that the key belongs to the certificate.",
-      "tls_invalid_ca": "The client CA file is not a valid PEM certificate."
+      "tls_invalid_ca": "The client CA file is not a valid PEM certificate.",
+      "invalid_topup_min_power_pct": "Top-up charge power floor must be between 0 and 100 %."
     },
     "step": {
       "batteries_excess_export": {
@@ -527,10 +528,12 @@
       },
       "batteries_wait_mode": {
         "data": {
-          "hsem_batteries_wait_mode_behavior": "Wait Mode Behaviour"
+          "hsem_batteries_wait_mode_behavior": "Wait Mode Behaviour",
+          "hsem_batteries_topup_min_power_pct": "Top-up charge power floor (%)"
         },
         "data_description": {
-          "hsem_batteries_wait_mode_behavior": "Choose how the battery behaves when HSEM selects Wait mode. Strict wait keeps the battery idle. Self-consumption with reserve allows the house to use surplus battery energy above the planner's required reserve, reducing unnecessary grid import."
+          "hsem_batteries_wait_mode_behavior": "Choose how the battery behaves when HSEM selects Wait mode. Strict wait keeps the battery idle. Self-consumption with reserve allows the house to use surplus battery energy above the planner's required reserve, reducing unnecessary grid import.",
+          "hsem_batteries_topup_min_power_pct": "Lowest grid-charging power, as a percentage of the inverter's maximum charging power, when HSEM scales the charging power to the energy planned for the current slot. A small planned top-up then charges slowly instead of at full power for the whole slot. 0 switches the scaling off and leaves the maximum charging power untouched."
         },
         "description": "Configure how the battery behaves during Wait mode.",
         "title": "Battery Wait Mode Behaviour"
@@ -566,7 +569,8 @@
       "tls_cert_key_pair_required": "Set both the server certificate and the server key path, or leave both empty.",
       "tls_file_not_found": "File not found or not readable.",
       "tls_cert_key_mismatch": "The server certificate and key could not be loaded together. Check that both are PEM files and that the key belongs to the certificate.",
-      "tls_invalid_ca": "The client CA file is not a valid PEM certificate."
+      "tls_invalid_ca": "The client CA file is not a valid PEM certificate.",
+      "invalid_topup_min_power_pct": "Top-up charge power floor must be between 0 and 100 %."
     },
     "step": {
       "batteries_excess_export": {
@@ -999,10 +1003,12 @@
       },
       "batteries_wait_mode": {
         "data": {
-          "hsem_batteries_wait_mode_behavior": "Wait Mode Behaviour"
+          "hsem_batteries_wait_mode_behavior": "Wait Mode Behaviour",
+          "hsem_batteries_topup_min_power_pct": "Top-up charge power floor (%)"
         },
         "data_description": {
-          "hsem_batteries_wait_mode_behavior": "Choose how the battery behaves when HSEM selects Wait mode. Strict wait keeps the battery idle. Self-consumption with reserve allows the house to use surplus battery energy above the planner's required reserve, reducing unnecessary grid import."
+          "hsem_batteries_wait_mode_behavior": "Choose how the battery behaves when HSEM selects Wait mode. Strict wait keeps the battery idle. Self-consumption with reserve allows the house to use surplus battery energy above the planner's required reserve, reducing unnecessary grid import.",
+          "hsem_batteries_topup_min_power_pct": "Lowest grid-charging power, as a percentage of the inverter's maximum charging power, when HSEM scales the charging power to the energy planned for the current slot. A small planned top-up then charges slowly instead of at full power for the whole slot. 0 switches the scaling off and leaves the maximum charging power untouched."
         },
         "description": "Configure how the battery behaves during Wait mode.",
         "title": "Battery Wait Mode Behaviour"

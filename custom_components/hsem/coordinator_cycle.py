@@ -509,6 +509,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             hourly_recommendation=self._hourly_recommendation,
             current_required_battery=self._current_required_battery,
             current_wait_mode_reserve=self._current_wait_mode_reserve,
+            current_slot_held=bool(getattr(self, "_window_hys_held", False)),
             state=state,
             last_updated=last_updated,
             next_update=self._next_update,

@@ -39,6 +39,8 @@ class CoordinatorData:
         current_required_battery: Required battery capacity from the planner (kWh),
             derived from ``calculate_required_battery_until_solar``. Used for
             excess-export scheduling and the EV discharge-cap SoC guard.
+        current_slot_held: ``True`` when window hysteresis kept the previous
+            label on the live slot against the latest solve (issue #1364).
         current_wait_mode_reserve: Wait-mode self-consumption reserve (kWh),
             derived from the selected plan's own SoC trajectory
             (``calculate_required_battery_for_plan``, issue #914). ``None``
@@ -56,6 +58,9 @@ class CoordinatorData:
     hourly_recommendation: HourlyRecommendation | None = None
     current_required_battery: float = 0.0
     current_wait_mode_reserve: float | None = None
+    #: The live slot's label is the previous one, held by window hysteresis
+    #: while the latest solve wanted another (issue #1364).
+    current_slot_held: bool = False
     state: str | None = None
     last_updated: str | None = None
     next_update: str | None = None

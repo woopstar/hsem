@@ -32,7 +32,8 @@
       "tls_cert_key_pair_required": "Indica tanto la ruta del certificado del servidor como la de la clave, o deja ambas vacías.",
       "tls_file_not_found": "Archivo no encontrado o no legible.",
       "tls_cert_key_mismatch": "No se pudieron cargar juntos el certificado y la clave del servidor. Comprueba que ambos sean archivos PEM y que la clave corresponda al certificado.",
-      "tls_invalid_ca": "El archivo de la CA de clientes no es un certificado PEM válido."
+      "tls_invalid_ca": "El archivo de la CA de clientes no es un certificado PEM válido.",
+      "invalid_topup_min_power_pct": "La potencia mínima de carga desde la red debe estar entre 0 y 100 %."
     },
     "step": {
       "batteries_excess_export": {
@@ -527,10 +528,12 @@
       },
       "batteries_wait_mode": {
         "data": {
-          "hsem_batteries_wait_mode_behavior": "Comportamiento del modo de espera"
+          "hsem_batteries_wait_mode_behavior": "Comportamiento del modo de espera",
+          "hsem_batteries_topup_min_power_pct": "Potencia mínima de carga desde la red (%)"
         },
         "data_description": {
-          "hsem_batteries_wait_mode_behavior": "Elige cómo se comporta la batería cuando HSEM selecciona el modo de espera. La espera estricta mantiene la batería inactiva. El autoconsumo con reserva permite que la vivienda use el excedente de energía de la batería por encima de la reserva requerida por el planificador, reduciendo la importación innecesaria de red."
+          "hsem_batteries_wait_mode_behavior": "Elige cómo se comporta la batería cuando HSEM selecciona el modo de espera. La espera estricta mantiene la batería inactiva. El autoconsumo con reserva permite que la vivienda use el excedente de energía de la batería por encima de la reserva requerida por el planificador, reduciendo la importación innecesaria de red.",
+          "hsem_batteries_topup_min_power_pct": "Potencia de carga desde la red más baja, como porcentaje de la potencia máxima de carga del inversor, cuando HSEM ajusta la potencia de carga a la energía planificada para el intervalo actual. Una pequeña recarga planificada se carga despacio en lugar de a plena potencia durante todo el intervalo. 0 desactiva el ajuste y no modifica la potencia máxima de carga."
         },
         "description": "Configura cómo se comporta la batería durante el modo de espera.",
         "title": "Comportamiento de la batería en modo de espera"
@@ -566,7 +569,8 @@
       "tls_cert_key_pair_required": "Indica tanto la ruta del certificado del servidor como la de la clave, o deja ambas vacías.",
       "tls_file_not_found": "Archivo no encontrado o no legible.",
       "tls_cert_key_mismatch": "No se pudieron cargar juntos el certificado y la clave del servidor. Comprueba que ambos sean archivos PEM y que la clave corresponda al certificado.",
-      "tls_invalid_ca": "El archivo de la CA de clientes no es un certificado PEM válido."
+      "tls_invalid_ca": "El archivo de la CA de clientes no es un certificado PEM válido.",
+      "invalid_topup_min_power_pct": "La potencia mínima de carga desde la red debe estar entre 0 y 100 %."
     },
     "step": {
       "batteries_excess_export": {
@@ -999,10 +1003,12 @@
       },
       "batteries_wait_mode": {
         "data": {
-          "hsem_batteries_wait_mode_behavior": "Comportamiento del modo de espera"
+          "hsem_batteries_wait_mode_behavior": "Comportamiento del modo de espera",
+          "hsem_batteries_topup_min_power_pct": "Potencia mínima de carga desde la red (%)"
         },
         "data_description": {
-          "hsem_batteries_wait_mode_behavior": "Elige cómo se comporta la batería cuando HSEM selecciona el modo de espera. La espera estricta mantiene la batería inactiva. El autoconsumo con reserva permite que la vivienda use el excedente de energía de la batería por encima de la reserva requerida por el planificador, reduciendo la importación innecesaria de red."
+          "hsem_batteries_wait_mode_behavior": "Elige cómo se comporta la batería cuando HSEM selecciona el modo de espera. La espera estricta mantiene la batería inactiva. El autoconsumo con reserva permite que la vivienda use el excedente de energía de la batería por encima de la reserva requerida por el planificador, reduciendo la importación innecesaria de red.",
+          "hsem_batteries_topup_min_power_pct": "Potencia de carga desde la red más baja, como porcentaje de la potencia máxima de carga del inversor, cuando HSEM ajusta la potencia de carga a la energía planificada para el intervalo actual. Una pequeña recarga planificada se carga despacio en lugar de a plena potencia durante todo el intervalo. 0 desactiva el ajuste y no modifica la potencia máxima de carga."
         },
         "description": "Configura cómo se comporta la batería durante el modo de espera.",
         "title": "Comportamiento de la batería en modo de espera"
