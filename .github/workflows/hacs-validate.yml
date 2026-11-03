@@ -2,6 +2,9 @@ name: Code validation
 
 on:
   push:
+    branches:
+      - main
+      - v6.3.0-hotfix
   pull_request:
   workflow_dispatch:
   schedule:
