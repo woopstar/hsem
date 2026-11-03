@@ -10,6 +10,10 @@
         "integration",
         "utility_meter"
     ],
+    "categories": [
+        "energy.solar_batteries",
+        "energy.ev_charging"
+    ],
     "codeowners": [
         "@woopstar",
         "@heinoskov"
