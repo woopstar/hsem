@@ -120,7 +120,24 @@ If a Huawei EMMA controls your batteries, the Huawei Solar integration only acce
 
 ## Installation
 
-### Method 1: HACS (Home Assistant Community Store)
+HSEM needs **Home Assistant 2026.10 or newer** (`hacs.json` declares the minimum, and the Marketplace and HACS only offer releases your Home Assistant can run).
+
+### Method 1: Marketplace (Home Assistant 2026.11 and newer)
+
+Home Assistant 2026.11 ships HACS inside core as the **Marketplace**. HSEM is not in the catalog yet, so add it from its repository link:
+
+1. In Home Assistant, go to **Settings** -> **Marketplace**.
+2. Click the three dots in the top-right corner, and select **Add from link**.
+3. Paste this repository URL and select **Integration** as the type:
+   `https://github.com/woopstar/hsem`
+4. Open **Huawei Solar Energy Management** in the Marketplace and click **Install**. Turn on **Pre-release** first if you want the 7.0.0 betas.
+5. A first install loads without a restart. Add the integration via the Home Assistant integrations page and configure your settings.
+
+Updates and removals of an already loaded integration still need a restart; the Marketplace creates a repair with a restart button.
+
+**Upgrading from HACS:** existing HACS installs migrate to the Marketplace automatically on the first start after the Home Assistant 2026.11 update. Nothing needs to be reinstalled.
+
+### Method 2: HACS (Home Assistant 2026.10)
 
 1. In HACS, go to **Integrations**.
 2. Click the three dots in the top-right corner, and select **Custom repositories**.
@@ -130,7 +147,7 @@ If a Huawei EMMA controls your batteries, the Huawei Solar integration only acce
 5. The integration will now appear in HACS under the **Integrations** section. Click **Install**.
 6. Restart Home Assistant.
 
-### Method 2: Manual Installation
+### Method 3: Manual Installation
 
 1. Copy the `hsem` folder to your `custom_components` folder in your Home Assistant configuration.
 2. Restart Home Assistant.
@@ -143,6 +160,11 @@ If a Huawei EMMA controls your batteries, the Huawei Solar integration only acce
 1. In Home Assistant, go to **Settings** -> **Devices & Services**.
 2. Find the **HSEM** integration, click the menu icon (three dots), and select **Delete**.
 3. Restart Home Assistant.
+
+### If installed via the Marketplace
+
+4. In **Settings** -> **Marketplace**, open **Huawei Solar Energy Management**, click the menu icon (three dots), and select **Remove**.
+5. Restart Home Assistant again.
 
 ### If installed via HACS
 
