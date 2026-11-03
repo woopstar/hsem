@@ -142,6 +142,17 @@ def solver_time_limit_s(value: Any) -> float:
     )
 
 
+MAX_DISCHARGE_POWER_CAPACITY_TOLERANCE = 0.05
+"""Relative distance a reported capacity may sit from a table entry.
+
+The nameplate value a battery reports is not always the marketing
+figure: a LUNA2000-7-E1 reports 6900 Wh, not 7000 Wh (issue #1360).
+"""
+
+MAX_DISCHARGE_POWER_FALLBACK_W = 2500
+"""Discharge power used when no table entry is close enough."""
+
+
 def get_max_discharge_power(usable_capacity: int) -> int:
     """Return the maximum discharge power in watts for a Huawei battery.
 
@@ -153,12 +164,20 @@ def get_max_discharge_power(usable_capacity: int) -> int:
     30000 Wh (2× 15 kWh) maps to 10 kW.  20000 Wh is ambiguous (15+5 vs
     10+10) and uses the safe 15+5 value of 7500 W.
 
+    The lookup picks the nearest table entry and accepts it when the
+    reported capacity is within ``MAX_DISCHARGE_POWER_CAPACITY_TOLERANCE``
+    of that entry.  Huawei reports the real module capacity rather than
+    the marketing figure, so a LUNA2000-7-E1 reads 6900 Wh (issue #1360)
+    and three of them 20700 Wh; an exact match used to send both to the
+    fallback.
+
     Args:
         usable_capacity: The usable battery capacity in watt-hours.
 
     Returns:
-        The maximum discharge power in watts.  Defaults to 2500 W for
-        unknown capacities and logs a warning, since a silent fallback
+        The maximum discharge power in watts.  Defaults to
+        ``MAX_DISCHARGE_POWER_FALLBACK_W`` for capacities not close to any
+        table entry and logs a warning, since a silent fallback
         previously caused under-powered plans for unlisted capacities.
     """
     mapping = {
@@ -175,16 +194,32 @@ def get_max_discharge_power(usable_capacity: int) -> int:
         14000: 7000,
         21000: 10500,
     }
-    if usable_capacity not in mapping:
+    if usable_capacity in mapping:
+        return mapping[usable_capacity]
+    nearest = min(mapping, key=lambda entry: abs(entry - usable_capacity))
+    if (
+        abs(nearest - usable_capacity)
+        <= nearest * MAX_DISCHARGE_POWER_CAPACITY_TOLERANCE
+    ):
         log_planner(
-            "warning",
-            "[battery] get_max_discharge_power  capacity=%d Wh not in "
-            "known table — falling back to %d W. Check that this matches "
-            "the physical discharge capability.",
+            "debug",
+            "[battery] get_max_discharge_power  capacity=%d Wh matched the "
+            "%d Wh table entry -> %d W",
             usable_capacity,
-            2500,
+            nearest,
+            mapping[nearest],
         )
-    return mapping.get(usable_capacity, 2500)
+        return mapping[nearest]
+    log_planner(
+        "warning",
+        "[battery] get_max_discharge_power  capacity=%d Wh not within %.0f%% "
+        "of any known table entry — falling back to %d W. Check that this "
+        "matches the physical discharge capability.",
+        usable_capacity,
+        MAX_DISCHARGE_POWER_CAPACITY_TOLERANCE * 100,
+        MAX_DISCHARGE_POWER_FALLBACK_W,
+    )
+    return MAX_DISCHARGE_POWER_FALLBACK_W
 
 
 def resolve_max_discharge_power(

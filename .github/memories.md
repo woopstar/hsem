@@ -1339,8 +1339,11 @@ the still-capped entity poison an off-schedule run — the substitution is
 now unconditional.)
 
 `get_max_discharge_power()` covers single- and two-stack S0/S1
-capacities explicitly (5000–30000 Wh); unknown capacities log a warning
-and fall back to 2500 W rather than failing silently (issue #723).
+capacities explicitly (5000–30000 Wh) and takes the nearest entry within
+5 % of the reported value (issue #1360: a LUNA2000-7-E1 reports 6900 Wh,
+not 7000 Wh, and the exact match sent it to the fallback); capacities
+further from every entry log a warning and fall back to 2500 W rather
+than failing silently (issue #723).
 
 The rated-capacity value is bounded by the number entity's `max`
 **attribute** (issue #1291): the Huawei Solar integration sets that range
