@@ -3052,7 +3052,10 @@ applier (`applier._planned_ev_discharge_cap_w()` +
 planner's `battery_max_discharge_power_w` are the same number: the
 rated-capacity table value (`get_max_discharge_power()`), bounded by the `max`
 attribute of the `maximum_discharging_power` number entity when that is lower
-(`utils.misc.resolve_max_discharge_power()`). Home Assistant rejects a write
+(`utils.misc.resolve_max_discharge_power()`). The table lookup takes the nearest
+entry within 5 % of the reported capacity (issue #1360): Huawei reports the real
+module capacity, so a LUNA2000-7-E1 reads 6900 Wh and an exact match sent it to
+the 2500 W fallback instead of 3500 W. Home Assistant rejects a write
 above the entity's `max`, so a higher value could not be commanded and a plan
 built on it could not be executed. Only the attribute bounds the value. The
 entity's state is a commanded cap and never becomes the limit (issue #592).

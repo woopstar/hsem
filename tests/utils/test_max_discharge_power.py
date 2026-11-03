@@ -47,6 +47,39 @@ def test_unknown_capacity_defaults() -> None:
     assert result == 2500
 
 
+class TestReportedCapacityNearATableEntry:
+    """Huawei reports the real module capacity, not the marketing figure (#1360)."""
+
+    @pytest.mark.parametrize(
+        ("reported_wh", "expected_w"),
+        [
+            (6900, 3500),  # one LUNA2000-7-E1 module, the report in #1360
+            (13800, 7000),  # two S1 modules
+            (20700, 10500),  # three S1 modules, nearer 21000 than 20000
+            (7350, 3500),  # exactly 5 % above the 7000 Wh entry
+            (6650, 3500),  # exactly 5 % below the 7000 Wh entry
+        ],
+    )
+    def test_within_tolerance_uses_the_nearest_entry(
+        self, reported_wh: int, expected_w: int
+    ) -> None:
+        assert get_max_discharge_power(reported_wh) == expected_w
+
+    @pytest.mark.parametrize("reported_wh", [6649, 7351, 12345, 1000, 40000])
+    def test_outside_tolerance_still_falls_back(self, reported_wh: int) -> None:
+        assert get_max_discharge_power(reported_wh) == 2500
+
+    def test_exact_entries_are_unchanged_by_the_tolerance(self) -> None:
+        """20000 Wh keeps the safe 15+5 value even though 21000 is close."""
+        assert get_max_discharge_power(20000) == 7500
+        assert get_max_discharge_power(21000) == 10500
+
+    def test_bounded_value_uses_the_matched_entry(self) -> None:
+        """The entity bound applies to the matched 3500 W, not the fallback."""
+        assert resolve_max_discharge_power(6900, None) == 3500
+        assert resolve_max_discharge_power(6900, 3000.0) == 3000
+
+
 class TestResolveMaxDischargePower:
     """The entity's own maximum bounds the capacity-table value (issue #1291)."""
 
