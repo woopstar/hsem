@@ -81,6 +81,7 @@ from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F40
     build_sensor_config,
 )
 from custom_components.hsem.entity_availability import EntityAvailabilityTracker
+from custom_components.hsem.ml.history_status import MLHistoryState, MLHistoryStatus
 from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
     DailyPlanVsActualTracker,
 )
@@ -382,6 +383,11 @@ class HSEMDataUpdateCoordinator(
         # ML consumption predictor — cached across cycles so the retrain
         # gate can skip re-fitting when no new history has arrived.
         self._ml_predictor: ConsumptionPredictor | None = None
+        # Why the ML forecast is or is not in use, for the Plan Strategy
+        # sensor and the per-cycle log line (issue #1365).
+        self._ml_history_status: MLHistoryStatus = MLHistoryStatus(
+            MLHistoryState.PENDING
+        )
 
         # Background task handle for option-change-triggered pipeline runs.
         # Tracked so repeated toggles cancel the pending run and so teardown

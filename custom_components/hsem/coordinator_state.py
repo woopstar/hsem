@@ -35,6 +35,7 @@ from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F40
     async_collect_all_states,
     build_sensor_config,
 )
+from custom_components.hsem.ml.history_status import MLHistoryStatus
 from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
     DailyPlanVsActualTracker,
 )
@@ -150,6 +151,7 @@ class CoordinatorSharedState(_Base):
     _live_power_replan_request_slot_this_cycle: datetime | None
     _live_power_timer_unsub: Callable[[], None] | None
     _load_forecast_recovery_replan_pending: bool
+    _ml_history_status: MLHistoryStatus
     _ml_predictor: ConsumptionPredictor | None
     _net_consumption_ema: float | None
     _next_update: str | None
