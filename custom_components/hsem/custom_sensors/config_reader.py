@@ -458,6 +458,14 @@ def build_sensor_config(
         _battery_export_min_price if _battery_export_min_price is not None else 0.0
     )
 
+    # Top-up charge power floor (issue #1364)
+    _topup_min_power_pct = convert_to_float(
+        get_config_value(config_entry, "hsem_batteries_topup_min_power_pct")
+    )
+    cfg.batteries_topup_min_power_pct = (
+        _topup_min_power_pct if _topup_min_power_pct is not None else 10.0
+    )
+
     # Wait mode behaviour
     _wait_mode_behavior = get_config_value(
         config_entry, "hsem_batteries_wait_mode_behavior"

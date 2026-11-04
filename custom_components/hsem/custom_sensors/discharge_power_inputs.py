@@ -48,3 +48,25 @@ def read_max_discharge_power(
     state.huawei_batteries_max_discharge_power_limit_w = entity_attribute_float(
         sensor, entity_id, "max"
     )
+
+
+def read_max_charge_power_limit(
+    sensor: Any,  # NOSONAR -- HA internal type; circular import risk
+    cfg: SensorConfig,
+    state: LiveState,
+) -> None:
+    """Read the charging-power entity's own maximum (issue #1364).
+
+    The ``max`` attribute is the hardware capability the top-up charge power
+    is scaled against and restored to; the entity's state is a commanded
+    value that HSEM itself writes, so it must never serve as the reference.
+
+    Args:
+        sensor: The working-mode sensor, used for ``hass`` access.
+        cfg: Current sensor configuration.
+        state: Live state to fill; a missing attribute is left as ``None``
+            and the scaling then skips its write.
+    """
+    state.huawei_batteries_max_charge_power_limit_w = entity_attribute_float(
+        sensor, cfg.huawei_solar_batteries_maximum_charging_power, "max"
+    )

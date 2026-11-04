@@ -151,6 +151,10 @@ class SensorConfig:
             daily deadline, funded only by otherwise-exported PV (issue #1109).
         batteries_target_soc_pct: House-battery target, absolute SoC percent.
         batteries_target_soc_time: Daily target time (``HH:MM:SS``).
+        batteries_topup_min_power_pct: Floor for the grid-charge power that is
+            scaled to the live slot's planned energy, as a percentage of the
+            charging-power entity's ``max`` attribute (issue #1364). ``0``
+            disables the scaling and HSEM never writes the entity.
         batteries_wait_mode_behavior: How ``batteries_wait_mode`` is interpreted.
             ``strict`` keeps the battery idle; ``self_consumption_with_reserve``
             allows normal household self-consumption while protecting the
@@ -310,6 +314,10 @@ class SensorConfig:
 
     # Wait mode behaviour
     batteries_wait_mode_behavior: str = DEFAULT_WAIT_MODE_BEHAVIOR
+    #: Floor for the slot-scaled grid-charge power, as a percentage of the
+    #: entity's maximum (issue #1364); 0 leaves ``maximum_charging_power``
+    #: untouched.
+    batteries_topup_min_power_pct: float = 10.0
 
     # EV planned load integration — primary EV (optional, disabled by default)
     ev_planned_load_enabled: bool = False

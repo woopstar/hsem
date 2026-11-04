@@ -894,7 +894,7 @@ class TestBatterySettingsSafetyGate:
         with (
             patch(_LOGGER_PATCH, new_callable=MagicMock),
             patch(
-                "custom_components.hsem.custom_sensors.applier.async_stop_forcible_discharge",
+                "custom_components.hsem.custom_sensors.applier_charge_power.async_stop_forcible_discharge",
                 new_callable=AsyncMock,
             ) as mock_stop,
         ):

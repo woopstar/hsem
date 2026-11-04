@@ -335,11 +335,16 @@ class TestDescribe:
         The site has battery export switched off, so the oracle may not export
         from the battery either (issue #1182): what the setting costs is not
         regret, and the planner error of this day is zero.
+
+        The forecast run is 0.04 cheaper than before issue #1364: at 04:00 the
+        re-solve planned a 0.026 kWh discharge against a 0.4 kWh house load,
+        which the executable minimum defers instead of running as a full
+        self-consumption slot.
         """
         assert describe([clouded]).splitlines() == [
             "day         realized forecast hindsight   regret = execution + forecast"
             " +  planner",
-            "2026-06-10     19.96    11.03     13.10     7.35        6.50       0.85"
+            "2026-06-10     19.96    10.99     13.10     7.35        6.55       0.80"
             "      0.00",
         ]
 

@@ -285,9 +285,10 @@ certificate. See
 
 Battery wait-mode behaviour.
 
-| Field               | Key                                 | Default  | Description                                                                                                                                                                    |
-| ------------------- | ----------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Wait mode behaviour | `hsem_batteries_wait_mode_behavior` | `strict` | `strict` keeps the battery idle in Wait mode; `self_consumption_with_reserve` allows normal household self-consumption while protecting the planner's required battery reserve |
+| Field                     | Key                                  | Default  | Description                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------- | ------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Wait mode behaviour       | `hsem_batteries_wait_mode_behavior`  | `strict` | `strict` keeps the battery idle in Wait mode; `self_consumption_with_reserve` allows normal household self-consumption while protecting the planner's required battery reserve                                                                                                                                                                |
+| Top-up charge power floor | `hsem_batteries_topup_min_power_pct` | 10 %     | Lowest grid-charging power, as a percentage of the charging-power entity's `max` attribute, when HSEM scales `maximum_charging_power` to the energy planned for the live `batteries_charge_grid` slot (issue #1364). On every other label the entity is restored to its maximum. 0 switches the scaling off and HSEM never writes the entity. |
 
 ### Step: `batteries_excess_export`
 

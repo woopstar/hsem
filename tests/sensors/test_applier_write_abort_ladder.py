@@ -153,7 +153,11 @@ async def _apply(
         patch(f"{_MODULE}.async_set_select_option", AsyncMock()),
         patch(f"{_MODULE}.async_set_number_value", AsyncMock()),
         patch(f"{_MODULE}.async_set_tou_periods", AsyncMock()),
-        patch(f"{_MODULE}.async_stop_forcible_discharge", AsyncMock()),
+        patch(
+            "custom_components.hsem.custom_sensors.applier_charge_power"
+            ".async_stop_forcible_discharge",
+            AsyncMock(),
+        ),
         patch(f"{_MODULE}.build_phase_aware_charge_commands", return_value=commands),
     ):
         return await async_apply_battery_settings(

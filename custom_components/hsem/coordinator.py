@@ -266,6 +266,7 @@ class HSEMDataUpdateCoordinator(
         # churn in the freshly solved plan doesn't reach the charger.
         self._ev_last_command_w: dict[str, float] = {}
         self._window_hys_previous_rec: str | None = None
+        self._window_hys_held: bool = False
         self._window_hys_previous_slot_start: datetime | None = None
 
         # Event-driven re-planning — track state at last plan to avoid

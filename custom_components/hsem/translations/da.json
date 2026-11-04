@@ -32,7 +32,8 @@
       "tls_cert_key_pair_required": "Angiv både stien til servercertifikatet og servernøglen, eller lad begge være tomme.",
       "tls_file_not_found": "Filen findes ikke eller kan ikke læses.",
       "tls_cert_key_mismatch": "Servercertifikatet og nøglen kunne ikke indlæses sammen. Kontroller, at begge er PEM-filer, og at nøglen hører til certifikatet.",
-      "tls_invalid_ca": "Klient-CA-filen er ikke et gyldigt PEM-certifikat."
+      "tls_invalid_ca": "Klient-CA-filen er ikke et gyldigt PEM-certifikat.",
+      "invalid_topup_min_power_pct": "Minimumseffekt for opladning fra nettet skal være mellem 0 og 100 %."
     },
     "step": {
       "batteries_excess_export": {
@@ -449,10 +450,12 @@
       },
       "batteries_wait_mode": {
         "data": {
-          "hsem_batteries_wait_mode_behavior": "Ventetilstand-adfærd"
+          "hsem_batteries_wait_mode_behavior": "Ventetilstand-adfærd",
+          "hsem_batteries_topup_min_power_pct": "Minimumseffekt for opladning fra nettet (%)"
         },
         "data_description": {
-          "hsem_batteries_wait_mode_behavior": "Vælg hvordan batteriet opfører sig, når HSEM vælger ventetilstand. Streng ventetilstand holder batteriet inaktivt. Selvforbrug med reserve tillader huset at bruge overskydende batterienergi over planlæggerens nødvendige reserve, hvilket reducerer unødvendig netimport."
+          "hsem_batteries_wait_mode_behavior": "Vælg hvordan batteriet opfører sig, når HSEM vælger ventetilstand. Streng ventetilstand holder batteriet inaktivt. Selvforbrug med reserve tillader huset at bruge overskydende batterienergi over planlæggerens nødvendige reserve, hvilket reducerer unødvendig netimport.",
+          "hsem_batteries_topup_min_power_pct": "Laveste ladeeffekt fra nettet, som procent af inverterens maksimale ladeeffekt, når HSEM skalerer ladeeffekten til den energi, der er planlagt for det aktuelle tidsinterval. En lille planlagt opladning lades så langsomt i stedet for med fuld effekt i hele intervallet. 0 slår skaleringen fra og rører ikke den maksimale ladeeffekt."
         },
         "description": "Konfigurer hvordan batteriet opfører sig i ventetilstand.",
         "title": "Batteri Ventetilstand-adfærd"
@@ -566,7 +569,8 @@
       "tls_cert_key_pair_required": "Angiv både stien til servercertifikatet og servernøglen, eller lad begge være tomme.",
       "tls_file_not_found": "Filen findes ikke eller kan ikke læses.",
       "tls_cert_key_mismatch": "Servercertifikatet og nøglen kunne ikke indlæses sammen. Kontroller, at begge er PEM-filer, og at nøglen hører til certifikatet.",
-      "tls_invalid_ca": "Klient-CA-filen er ikke et gyldigt PEM-certifikat."
+      "tls_invalid_ca": "Klient-CA-filen er ikke et gyldigt PEM-certifikat.",
+      "invalid_topup_min_power_pct": "Minimumseffekt for opladning fra nettet skal være mellem 0 og 100 %."
     },
     "step": {
       "batteries_excess_export": {
@@ -961,10 +965,12 @@
       },
       "batteries_wait_mode": {
         "data": {
-          "hsem_batteries_wait_mode_behavior": "Ventetilstand-adfærd"
+          "hsem_batteries_wait_mode_behavior": "Ventetilstand-adfærd",
+          "hsem_batteries_topup_min_power_pct": "Minimumseffekt for opladning fra nettet (%)"
         },
         "data_description": {
-          "hsem_batteries_wait_mode_behavior": "Vælg hvordan batteriet opfører sig, når HSEM vælger ventetilstand. Streng ventetilstand holder batteriet inaktivt. Selvforbrug med reserve tillader huset at bruge overskydende batterienergi over planlæggerens nødvendige reserve, hvilket reducerer unødvendig netimport."
+          "hsem_batteries_wait_mode_behavior": "Vælg hvordan batteriet opfører sig, når HSEM vælger ventetilstand. Streng ventetilstand holder batteriet inaktivt. Selvforbrug med reserve tillader huset at bruge overskydende batterienergi over planlæggerens nødvendige reserve, hvilket reducerer unødvendig netimport.",
+          "hsem_batteries_topup_min_power_pct": "Laveste ladeeffekt fra nettet, som procent af inverterens maksimale ladeeffekt, når HSEM skalerer ladeeffekten til den energi, der er planlagt for det aktuelle tidsinterval. En lille planlagt opladning lades så langsomt i stedet for med fuld effekt i hele intervallet. 0 slår skaleringen fra og rører ikke den maksimale ladeeffekt."
         },
         "description": "Konfigurer hvordan batteriet opfører sig i ventetilstand.",
         "title": "Batteri Ventetilstand-adfærd"

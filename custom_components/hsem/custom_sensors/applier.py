@@ -33,8 +33,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
-
 from custom_components.hsem.const import (
     DEFAULT_HSEM_BATTERIES_WAIT_MODE,
     DEFAULT_HSEM_TOU_MODES_FORCE_CHARGE,
@@ -56,6 +54,10 @@ from custom_components.hsem.custom_sensors.applier_caps import (  # noqa: F401
     _zero_ceiling_cap_reason,
     _zero_ceiling_ev_names,
     wait_mode_self_consumption_surplus_kwh,
+)
+from custom_components.hsem.custom_sensors.applier_charge_power import (
+    async_apply_topup_charge_power,
+    async_stop_stale_forcible_charge,
 )
 from custom_components.hsem.custom_sensors.applier_forcible_discharge import (  # noqa: F401
     _async_apply_forcible_discharge,
@@ -87,7 +89,6 @@ from custom_components.hsem.utils.ha_helpers import (
 )
 from custom_components.hsem.utils.huawei import (
     async_set_tou_periods,
-    async_stop_forcible_discharge,
 )
 from custom_components.hsem.utils.inverter_verify import (
     ApplyStatus,
@@ -389,27 +390,12 @@ async def async_apply_battery_settings(
                 _log_write_failed("Max discharge power", discharge_entity)
                 return summary
 
-    # If we're switching away from force discharge, explicitly stop any
-    # active forcible charge/discharge before applying the new mode.
-    if recommendation not in (
-        Recommendations.ForceBatteriesDischarge.value,
-        Recommendations.ForceExport.value,
-    ):
-        fc_state = live.huawei_batteries_forcible_charge_state or ""
-        battery_device_ids = _configured_battery_device_ids(cfg)
-        if (
-            fc_state
-            and fc_state.lower()
-            not in (
-                "stopped",
-                STATE_UNAVAILABLE,
-                STATE_UNKNOWN,
-                "",
-            )
-            and battery_device_ids
-        ):
-            for device_id in battery_device_ids:
-                await async_stop_forcible_discharge(sensor, device_id)
+    # Charging power scaled to the live slot's planned energy (issue #1364).
+    if not await async_apply_topup_charge_power(sensor, cfg, live, rec, summary):
+        return summary
+
+    # Stop any active forcible session the new label does not want.
+    await async_stop_stale_forcible_charge(sensor, cfg, live, recommendation)
 
     match recommendation:
         case Recommendations.ForceExport.value:

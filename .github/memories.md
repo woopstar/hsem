@@ -2969,3 +2969,49 @@ Home Assistant 2026.11 ships HACS in core as the **Marketplace** (Settings → M
 - Dashboard resources move from `/hacsfiles/` to `/local/community/`; the old path still loads, with a repair. Docs use the new path.
 
 **HACS action (`hacs-validate.yml`):** the `brands` check passes with `custom_components/hsem/brand/icon.png` (256 px) and `icon@2x.png` (512 px), copied from `home-assistant/brands`; the `ignore: "brands"` is gone, and the catalog does not accept ignored checks. `manifest.json` carries `categories: ["energy.solar_batteries", "energy.ev_charging"]` (one to three known categories). hassfest rejects a parent category next to its subcategory (`energy` with `energy.ev_charging`), so never add the parent.
+
+## Sub-Slot Planned Energy Executed Proportionally (issue #1364)
+
+A planned charge or discharge smaller than one slot used to execute as a
+full slot at rated power: `batteries_charge_grid` only set the TOU
+force-charge window and left `maximum_charging_power` at the user's value,
+and `batteries_discharge_mode` runs MaximizeSelfConsumption at live house
+load whatever the planned amount. On 2026-11-03 that turned a planned
+1.02 / 0.05 / 0.28 kWh sequence into +1.16 / −0.51 / +1.09 kWh and three
+replans of flapping before the evening peak.
+
+Rules now:
+
+- **Charge:** `custom_sensors/applier_charge_power.py` writes
+  `maximum_charging_power = clamp(planned_kwh / slot_hours, floor, max)` for
+  the live `batteries_charge_grid` slot and restores `max` on every other
+  label. `max` is the number entity's `max` **attribute**
+  (`LiveState.huawei_batteries_max_charge_power_limit_w`), never the
+  commanded state — the same feedback-loop rule as the discharge cap
+  (#592). `coordinator_builder._resolve_max_charge_power_w()` plans against
+  that attribute while the scaling is on. Floor =
+  `hsem_batteries_topup_min_power_pct` (default 10 %, 0 = off, HSEM never
+  touches the entity). Slot-average rate on purpose: a remaining-time rate
+  would amplify the integer-percent SoC noise in the re-solved amount.
+- **Discharge:** `planner/executable_minimum.py` clears a live-slot
+  `batteries_discharge_mode` / `_window_mode` discharge below
+  `EXECUTABLE_DISCHARGE_FRACTION` (0.25) × what self-consumption would
+  deliver — `min(net load, max_discharge_per_slot, current_kwh)` — and
+  relabels it `batteries_wait_mode`, in `candidate_generator` right after
+  the MILP write-out and before the SoC simulation, so the energy balance
+  and cost identity hold. The bound is the deliverable amount, **not** the
+  slot maximum: a first draft used `0.25 × max_discharge_per_slot` and
+  cleared every normal discharge of a low-load house (0.2 kWh/slot against
+  a 1.25 kWh slot maximum), which showed up as a recorded-day attribution
+  flipping sign and the dynamic-floor night tests losing their discharge
+  label. Not a config option: it would need a `PlannerInput` field and a
+  corpus refresh. Keeps the #983 exemption: no 0 W ceiling on a
+  discharge-mode slot.
+- **Hysteresis:** `CoordinatorData.current_slot_held` (published on the
+  working-mode sensor) is `True` when the window hold kept the previous
+  label against the latest solve; the energy fields are the latest
+  solve's, so a held `batteries_charge_grid` with 0 kWh charges at the
+  floor.
+
+`applier.py` was at 29 923 bytes: the stale forcible-charge stop moved to
+`applier_charge_power.py` to make room for the two calls.

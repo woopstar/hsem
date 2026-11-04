@@ -548,6 +548,26 @@ the planner may determine there's no surplus to charge the battery.
 - **Fix:** This is normal if consumption is high. The planner correctly
   prioritises serving house load over charging.
 
+**6h. Grid charge runs at reduced power, or the battery flaps charge/discharge before a peak**
+
+Since issue #1364 a `batteries_charge_grid` slot charges at the slot-average
+rate of its planned energy, not at the rated power: a planned 0.3 kWh in a
+15-minute slot is written as 1200 W to `number.batteries_maximum_charging_power`,
+and every other label restores the entity's maximum. A live-slot discharge
+smaller than a quarter of one slot's maximum is not executed at all (the slot
+is published as `batteries_wait_mode`), because MaximizeSelfConsumption would
+run the whole house load from the battery for the whole slot.
+
+- **Check:** `sensor.hsem_applier_status_sensor` → `last_apply_details` lists
+  the charging-power write; the debug log line starts with
+  `Top-up charge power:`. `sensor.hsem_workingmode_sensor` →
+  `current_slot_held` is `true` while window hysteresis keeps the previous
+  label against the latest solve; the energy fields then belong to the latest
+  solve and the charge runs at the floor.
+- **Fix:** raise `hsem_batteries_topup_min_power_pct` if the floor is too low
+  for your site, or set it to 0 to leave the charging power entirely to the
+  inverter's own setting.
+
 **6g. Non-critical configuration issues**
 
 - `batteries_charging_cutoff_capacity` in the Huawei Solar step: sets the

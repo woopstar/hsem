@@ -32,7 +32,8 @@
       "tls_cert_key_pair_required": "Setze sowohl den Pfad zum Serverzertifikat als auch zum Serverschlüssel, oder lass beide leer.",
       "tls_file_not_found": "Datei nicht gefunden oder nicht lesbar.",
       "tls_cert_key_mismatch": "Serverzertifikat und Schlüssel konnten nicht zusammen geladen werden. Prüfe, dass beide PEM-Dateien sind und der Schlüssel zum Zertifikat gehört.",
-      "tls_invalid_ca": "Die Client-CA-Datei ist kein gültiges PEM-Zertifikat."
+      "tls_invalid_ca": "Die Client-CA-Datei ist kein gültiges PEM-Zertifikat.",
+      "invalid_topup_min_power_pct": "Die Untergrenze der Netzladeleistung muss zwischen 0 und 100 % liegen."
     },
     "step": {
       "batteries_excess_export": {
@@ -527,10 +528,12 @@
       },
       "batteries_wait_mode": {
         "data": {
-          "hsem_batteries_wait_mode_behavior": "Wartemodus-Verhalten"
+          "hsem_batteries_wait_mode_behavior": "Wartemodus-Verhalten",
+          "hsem_batteries_topup_min_power_pct": "Untergrenze der Netzladeleistung (%)"
         },
         "data_description": {
-          "hsem_batteries_wait_mode_behavior": "Wähle, wie sich die Batterie verhält, wenn HSEM den Wartemodus auswählt. Strenges Warten hält die Batterie inaktiv. Eigenverbrauch mit Reserve erlaubt dem Haus, überschüssige Batterieenergie oberhalb der vom Planer benötigten Reserve zu nutzen, wodurch unnötiger Netzimport reduziert wird."
+          "hsem_batteries_wait_mode_behavior": "Wähle, wie sich die Batterie verhält, wenn HSEM den Wartemodus auswählt. Strenges Warten hält die Batterie inaktiv. Eigenverbrauch mit Reserve erlaubt dem Haus, überschüssige Batterieenergie oberhalb der vom Planer benötigten Reserve zu nutzen, wodurch unnötiger Netzimport reduziert wird.",
+          "hsem_batteries_topup_min_power_pct": "Niedrigste Netzladeleistung als Prozentsatz der maximalen Ladeleistung des Wechselrichters, wenn HSEM die Ladeleistung an die für den aktuellen Zeitabschnitt geplante Energie anpasst. Eine kleine geplante Nachladung lädt dann langsam statt mit voller Leistung über den ganzen Abschnitt. 0 schaltet die Anpassung ab und lässt die maximale Ladeleistung unverändert."
         },
         "description": "Konfiguriere, wie sich die Batterie im Wartemodus verhält.",
         "title": "Batterie-Wartemodus-Verhalten"
@@ -566,7 +569,8 @@
       "tls_cert_key_pair_required": "Setze sowohl den Pfad zum Serverzertifikat als auch zum Serverschlüssel, oder lass beide leer.",
       "tls_file_not_found": "Datei nicht gefunden oder nicht lesbar.",
       "tls_cert_key_mismatch": "Serverzertifikat und Schlüssel konnten nicht zusammen geladen werden. Prüfe, dass beide PEM-Dateien sind und der Schlüssel zum Zertifikat gehört.",
-      "tls_invalid_ca": "Die Client-CA-Datei ist kein gültiges PEM-Zertifikat."
+      "tls_invalid_ca": "Die Client-CA-Datei ist kein gültiges PEM-Zertifikat.",
+      "invalid_topup_min_power_pct": "Die Untergrenze der Netzladeleistung muss zwischen 0 und 100 % liegen."
     },
     "step": {
       "batteries_excess_export": {
@@ -999,10 +1003,12 @@
       },
       "batteries_wait_mode": {
         "data": {
-          "hsem_batteries_wait_mode_behavior": "Wartemodus-Verhalten"
+          "hsem_batteries_wait_mode_behavior": "Wartemodus-Verhalten",
+          "hsem_batteries_topup_min_power_pct": "Untergrenze der Netzladeleistung (%)"
         },
         "data_description": {
-          "hsem_batteries_wait_mode_behavior": "Wähle, wie sich die Batterie verhält, wenn HSEM den Wartemodus auswählt. Strenges Warten hält die Batterie inaktiv. Eigenverbrauch mit Reserve erlaubt dem Haus, überschüssige Batterieenergie oberhalb der vom Planer benötigten Reserve zu nutzen, wodurch unnötiger Netzimport reduziert wird."
+          "hsem_batteries_wait_mode_behavior": "Wähle, wie sich die Batterie verhält, wenn HSEM den Wartemodus auswählt. Strenges Warten hält die Batterie inaktiv. Eigenverbrauch mit Reserve erlaubt dem Haus, überschüssige Batterieenergie oberhalb der vom Planer benötigten Reserve zu nutzen, wodurch unnötiger Netzimport reduziert wird.",
+          "hsem_batteries_topup_min_power_pct": "Niedrigste Netzladeleistung als Prozentsatz der maximalen Ladeleistung des Wechselrichters, wenn HSEM die Ladeleistung an die für den aktuellen Zeitabschnitt geplante Energie anpasst. Eine kleine geplante Nachladung lädt dann langsam statt mit voller Leistung über den ganzen Abschnitt. 0 schaltet die Anpassung ab und lässt die maximale Ladeleistung unverändert."
         },
         "description": "Konfiguriere, wie sich die Batterie im Wartemodus verhält.",
         "title": "Batterie-Wartemodus-Verhalten"

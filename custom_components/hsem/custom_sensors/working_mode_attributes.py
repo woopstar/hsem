@@ -121,6 +121,7 @@ def build_working_mode_attributes(
     attributes = {
         "batteries_wait_mode_behavior": cfg.batteries_wait_mode_behavior,
         "wait_mode_self_consumption": _wait_mode_self_consumption(data, cfg, live),
+        "current_slot_held": bool(data.current_slot_held),
         "batteries_current_capacity": live.battery_current_capacity_kwh,
         "batteries_usable_capacity": live.battery_usable_capacity_kwh,
         "batteries_recommended_min_price_threshold": calculate_recommended_threshold(

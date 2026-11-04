@@ -13,15 +13,15 @@
 
 ### number entities
 
-| Friendly name             | Entity ID                                    | Unit | Used by HSEM                                                            |
-| ------------------------- | -------------------------------------------- | ---- | ----------------------------------------------------------------------- |
-| End-of-charge SOC         | `number.batteries_end_of_charge_soc`         | %    | ✅ `hsem_huawei_solar_batteries_charging_cutoff_capacity`               |
-| End-of-discharge SOC      | `number.batteries_end_of_discharge_soc`      | %    | ✅ `hsem_huawei_solar_batteries_end_of_discharge_soc`                   |
-| Grid charge cutoff SOC    | `number.batteries_grid_charge_cutoff_soc`    | %    | ✅ `hsem_huawei_solar_batteries_grid_charge_cutoff_soc`                 |
-| Grid charge maximum power | `number.batteries_grid_charge_maximum_power` | W    | ✅ `hsem_huawei_solar_batteries_grid_charge_maximum_power` (issue #831) |
-| Maximum charging power    | `number.batteries_maximum_charging_power`    | W    | ✅ `hsem_huawei_solar_batteries_maximum_charging_power`                 |
-| Maximum discharging power | `number.batteries_maximum_discharging_power` | W    | ✅ `hsem_huawei_solar_batteries_maximum_discharging_power`              |
-| Peak Shaving SOC          | `number.batteries_peak_shaving_soc`          | %    | —                                                                       |
+| Friendly name             | Entity ID                                    | Unit | Used by HSEM                                                                                                                                                                                                                                                |
+| ------------------------- | -------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| End-of-charge SOC         | `number.batteries_end_of_charge_soc`         | %    | ✅ `hsem_huawei_solar_batteries_charging_cutoff_capacity`                                                                                                                                                                                                   |
+| End-of-discharge SOC      | `number.batteries_end_of_discharge_soc`      | %    | ✅ `hsem_huawei_solar_batteries_end_of_discharge_soc`                                                                                                                                                                                                       |
+| Grid charge cutoff SOC    | `number.batteries_grid_charge_cutoff_soc`    | %    | ✅ `hsem_huawei_solar_batteries_grid_charge_cutoff_soc`                                                                                                                                                                                                     |
+| Grid charge maximum power | `number.batteries_grid_charge_maximum_power` | W    | ✅ `hsem_huawei_solar_batteries_grid_charge_maximum_power` (issue #831)                                                                                                                                                                                     |
+| Maximum charging power    | `number.batteries_maximum_charging_power`    | W    | ✅ `hsem_huawei_solar_batteries_maximum_charging_power` — written by HSEM while `hsem_batteries_topup_min_power_pct` > 0 (issue #1364): scaled to the live grid-charge slot's planned energy, restored to the entity's `max` attribute on every other label |
+| Maximum discharging power | `number.batteries_maximum_discharging_power` | W    | ✅ `hsem_huawei_solar_batteries_maximum_discharging_power`                                                                                                                                                                                                  |
+| Peak Shaving SOC          | `number.batteries_peak_shaving_soc`          | %    | —                                                                                                                                                                                                                                                           |
 
 ### sensor entities
 
