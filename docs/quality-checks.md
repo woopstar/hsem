@@ -201,6 +201,33 @@ directory, so a wrong working directory cannot pass.
 
 Nothing is set to `continue-on-error`; every check blocks the job on failure.
 
+### Next Home Assistant core (scheduled)
+
+`.github/workflows/next-core.yml` runs daily (and on `workflow_dispatch`). It
+installs `requirements.txt` with the `homeassistant` pin replaced by the newest
+pre-release (`pip install --pre --upgrade homeassistant`), then runs
+`mypy custom_components tests` and `pytest -o addopts="" tests/` against it and
+prints the resolved core version in the step summary. Home Assistant 2026.11
+removed `homeassistant.util.ssl.server_context_modern` and added a required
+`device_class` keyword to `IntegrationSensor.__init__` (issue #1370); the beta
+had been on PyPI for a week and the pinned run could not see either, which is
+what this job is for (issue #1372).
+
+It is never a required check: it runs on no pull request event, so it cannot
+block a merge. When mypy or pytest fails, `scripts/next_core_report.py` builds
+a report and the job opens one tracking issue per core version, titled
+`chore(ci): test suite fails on Home Assistant <version>`, or comments on the
+open one with that title. The job then fails so the run shows red.
+
+Reproduce a failure locally in an isolated environment:
+
+```bash
+python3 -m venv /tmp/ha-next
+/tmp/ha-next/bin/pip install homeassistant==<version> -r requirements_test.txt -r requirements_lint.txt
+/tmp/ha-next/bin/python -m pytest -o addopts="" tests/
+/tmp/ha-next/bin/mypy custom_components tests
+```
+
 **Known gap:** `main` has no branch protection, so no check is _required_ to
 merge. A failing check shows red on the PR and blocks anyone following the
 documented workflow, but auto-merge (e.g. Dependabot) can still merge past it.
