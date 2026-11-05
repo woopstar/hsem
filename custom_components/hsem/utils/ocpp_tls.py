@@ -44,8 +44,7 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from homeassistant.components import network
 from homeassistant.core import HomeAssistant
-from homeassistant.util import dt as dt_util
-from homeassistant.util.ssl import server_context_modern
+from homeassistant.util import dt as dt_util, ssl as ha_ssl
 
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
@@ -523,6 +522,33 @@ def issue_client_certificate(
 # ---------------------------------------------------------------------------
 
 
+def modern_server_context() -> ssl.SSLContext:
+    """Return Home Assistant's Mozilla "modern" (v4, TLS 1.2+) server context.
+
+    Home Assistant 2026.11 (home-assistant/core#183916) replaced
+    ``server_context_modern()`` with ``server_context(profile)`` and the
+    ``SSLProfile`` enum, without a shim for the old name. ``MODERN_V4`` is
+    the same configuration the old helper built (TLS 1.2 floor, server
+    cipher preference, same cipher list); ``MODERN_V6`` is TLS 1.3 only and
+    would lock out embedded charger TLS stacks. The fallback keeps the
+    2026.10 floor from ``hacs.json`` working and can go once that floor
+    moves past 2026.10.
+
+    Returns:
+        A fresh server ``SSLContext`` with no certificate loaded.
+    """
+    # The names differ by core version and the type stubs only know the
+    # pinned one, so the module is used untyped here.
+    core_ssl: Any = ha_ssl
+    server_context = getattr(core_ssl, "server_context", None)
+    context: ssl.SSLContext
+    if server_context is not None:  # Home Assistant >= 2026.11
+        context = server_context(core_ssl.SSLProfile.MODERN_V4)
+    else:  # Home Assistant 2026.10
+        context = core_ssl.server_context_modern()
+    return context
+
+
 def build_ssl_context(
     cert_path: Path, key_path: Path, client_ca_path: Path | None
 ) -> ssl.SSLContext:
@@ -539,7 +565,7 @@ def build_ssl_context(
     Returns:
         The configured context.
     """
-    context = server_context_modern()
+    context = modern_server_context()
     context.load_cert_chain(cert_path, key_path)
     if client_ca_path is not None:
         context.verify_mode = ssl.CERT_REQUIRED

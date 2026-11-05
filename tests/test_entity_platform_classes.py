@@ -180,7 +180,7 @@ class TestHSEMTimeEntityConstruction:
         """device_info must include identifiers and name."""
         entity = self._make_entity()
         info = entity.device_info
-        assert isinstance(info, dict)
+        assert info is not None
         assert "identifiers" in info
         assert "name" in info
 

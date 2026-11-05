@@ -242,6 +242,63 @@ class TestIssueClientCertificate:
         assert not (tls_dir / CLIENTS_DIR).exists()
 
 
+class TestModernServerContext:
+    """The server context comes from whichever ssl helper the core ships (#1370)."""
+
+    def test_home_assistant_2026_11_profile_api(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """2026.11 exposes server_context(profile); the v4 modern profile is used."""
+        calls: list[object] = []
+
+        def server_context(profile: object) -> ssl.SSLContext:
+            calls.append(profile)
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
+            return context
+
+        fake_ssl = MagicMock()
+        fake_ssl.server_context = server_context
+        fake_ssl.SSLProfile.MODERN_V4 = "modern_v4"
+        del fake_ssl.server_context_modern
+        monkeypatch.setattr(ocpp_tls, "ha_ssl", fake_ssl)
+
+        context = ocpp_tls.modern_server_context()
+
+        assert calls == ["modern_v4"]
+        assert context.minimum_version == ssl.TLSVersion.TLSv1_2
+
+    def test_home_assistant_2026_10_fallback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Before 2026.11 only server_context_modern() exists and it is used."""
+        calls: list[str] = []
+
+        def server_context_modern() -> ssl.SSLContext:
+            calls.append("modern")
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
+            return context
+
+        fake_ssl = MagicMock(spec=["server_context_modern"])
+        fake_ssl.server_context_modern = server_context_modern
+        monkeypatch.setattr(ocpp_tls, "ha_ssl", fake_ssl)
+
+        context = ocpp_tls.modern_server_context()
+
+        assert calls == ["modern"]
+        assert context.minimum_version == ssl.TLSVersion.TLSv1_2
+
+    def test_installed_core_builds_a_tls_1_2_server_context(self) -> None:
+        """Whatever core is installed, the real helper gives a TLS 1.2+ server context."""
+        context = ocpp_tls.modern_server_context()
+
+        assert context.protocol == ssl.PROTOCOL_TLS_SERVER
+        assert context.minimum_version == ssl.TLSVersion.TLSv1_2
+        assert context.options & ssl.OP_CIPHER_SERVER_PREFERENCE
+        assert context.options & ssl.OP_NO_COMPRESSION
+
+
 class TestPrepareOcppTls:
     """Settings resolve to a server context and the facts diagnostics show."""
 
