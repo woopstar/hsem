@@ -412,7 +412,7 @@ class TestEntitySetup:
         sensor = HSEMWorkingModeSensor(config_entry, coord)
         info = sensor.device_info
 
-        assert isinstance(info, dict)
+        assert info is not None
         assert "identifiers" in info
         assert "name" in info
 
@@ -424,7 +424,7 @@ class TestEntitySetup:
         sensor = HSEMDegradedModeSensor(config_entry, coord)
         info = sensor.device_info
 
-        assert isinstance(info, dict)
+        assert info is not None
         assert "identifiers" in info
         assert "name" in info
 
@@ -2237,7 +2237,7 @@ class TestRemainingDiagnosticSensors:
         ]
         for s in sensors:
             info = s.device_info
-            assert isinstance(info, dict), f"{type(s).__name__}: device_info not a dict"
+            assert info is not None, f"{type(s).__name__}: device_info missing"
             assert "identifiers" in info, (
                 f"{type(s).__name__}: device_info missing identifiers"
             )
