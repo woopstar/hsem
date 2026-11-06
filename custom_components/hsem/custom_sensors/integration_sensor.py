@@ -43,14 +43,18 @@ class HSEMIntegrationSensor(IntegrationSensor, HSEMEntity):
             config_entry: The HSEM config entry (required).
             **kwargs: Keyword arguments forwarded to :class:`IntegrationSensor`.
         """
-        # Home Assistant core removed the `hass` parameter from
-        # IntegrationSensor.__init__ in 2026.8 (home-assistant/core#177596)
-        # without listing it as a breaking change, since the class is
-        # considered internal API. Only pass `hass` through when the
-        # installed HA version still accepts it, so this works on both
-        # sides of that change.
-        if "hass" not in inspect.signature(IntegrationSensor.__init__).parameters:
+        # IntegrationSensor is internal core API and its signature moves
+        # without a breaking-change note. Match whatever the installed core
+        # accepts so this works on both sides of each change:
+        # - 2026.8 (home-assistant/core#177596) removed the `hass` parameter.
+        # - 2026.11 (home-assistant/core#174545) added a required keyword-only
+        #   `device_class`; None keeps deriving it from the source sensor, as
+        #   every earlier core did (issues #1370, #1375).
+        parent_params = inspect.signature(IntegrationSensor.__init__).parameters
+        if "hass" not in parent_params:
             kwargs.pop("hass", None)
+        if "device_class" in parent_params:
+            kwargs.setdefault("device_class", None)
         IntegrationSensor.__init__(self, *args, **kwargs)
         assert config_entry is not None, (
             "config_entry is required for HSEMIntegrationSensor"

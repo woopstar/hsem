@@ -725,8 +725,9 @@ class TestDeviceInfo:
     def test_device_info_type(self) -> None:
         entity = _make_switch()
         info = entity.device_info
-        # DeviceInfo is a TypedDict — it's a plain dict at runtime.
-        assert isinstance(info, dict)
+        # A TypedDict before Home Assistant 2026.11 and a dataclass with
+        # dict-style access from 2026.11 on; membership works on both.
+        assert info is not None
         assert "identifiers" in info
         assert "name" in info
 
