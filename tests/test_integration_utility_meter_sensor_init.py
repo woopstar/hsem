@@ -40,6 +40,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from homeassistant.components.integration.sensor import IntegrationSensor
+from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.components.utility_meter.sensor import UtilityMeterSensor
 from homeassistant.const import UnitOfTime
 
@@ -210,6 +211,64 @@ class TestRealConstructor:
 # installed homeassistant version. Patches only the parent HA class's
 # __init__, so the real HSEM wrapper __init__ (including the fix) still runs.
 # ---------------------------------------------------------------------------
+
+
+class TestSimulatedHa2026_11Signature:
+    """HSEM wrapper supplies `device_class` only when the parent requires it (#1375).
+
+    Home Assistant 2026.11 (home-assistant/core#174545) made ``device_class`` a
+    required keyword-only parameter of ``IntegrationSensor.__init__``; earlier
+    cores reject the keyword. ``None`` keeps the device class derived from the
+    source sensor, which is what every core did before.
+    """
+
+    def test_passes_device_class_none_when_parent_requires_it(self) -> None:
+        hass = MagicMock()
+        config_entry = _mock_config_entry()
+        received: dict[str, Any] = {}
+
+        def fake_2026_11_init(self: Any, *, device_class: Any, **kwargs: Any) -> None:  # noqa: ANN001 - test stand-in
+            received["device_class"] = device_class
+            received.update(kwargs)
+            self._attr_unique_id = kwargs["unique_id"]
+
+        with patch.object(IntegrationSensor, "__init__", fake_2026_11_init):
+            sensor = HSEMIntegrationSensor(
+                **_integration_sensor_kwargs(hass, config_entry)
+            )
+
+        assert sensor.unique_id == "integral_unique_id"
+        assert "device_class" in received
+        assert received["device_class"] is None
+        assert "hass" not in received
+
+    def test_does_not_pass_device_class_when_parent_lacks_it(self) -> None:
+        hass = MagicMock()
+        config_entry = _mock_config_entry()
+
+        with patch.object(IntegrationSensor, "__init__", _fake_2026_8_integration_init):
+            sensor = HSEMIntegrationSensor(
+                **_integration_sensor_kwargs(hass, config_entry)
+            )
+
+        assert "device_class" not in sensor._received_kwargs  # type: ignore[attr-defined]  # set by fake init in test
+
+    def test_caller_supplied_device_class_is_kept(self) -> None:
+        hass = MagicMock()
+        config_entry = _mock_config_entry()
+        received: dict[str, Any] = {}
+
+        def fake_2026_11_init(self: Any, *, device_class: Any, **kwargs: Any) -> None:  # noqa: ANN001 - test stand-in
+            received["device_class"] = device_class
+            self._attr_unique_id = kwargs["unique_id"]
+
+        with patch.object(IntegrationSensor, "__init__", fake_2026_11_init):
+            HSEMIntegrationSensor(
+                **_integration_sensor_kwargs(hass, config_entry),
+                device_class=SensorDeviceClass.ENERGY,
+            )
+
+        assert received["device_class"] is SensorDeviceClass.ENERGY
 
 
 class TestSimulatedHa2026_8Signature:
