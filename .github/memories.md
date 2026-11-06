@@ -13,6 +13,15 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 
 ---
 
+## Release Lines — 7.0.0 Is Out, 6.3.x Support Has Ended (2026-11-06)
+
+- **v7.0.0 was released on 2026-11-06** from `main`, after eight betas. The feedback and bug-report thread is **#1377** (pinned, labels `feedback` + `skip-changelog`); its _What changed since 6.3_ section is the upgrade-pitfall list and must be kept current when a 7.0.x release changes behaviour. Rename the issue to the current patch version at each release, as #978 was.
+- **v6.3.15 is the last 6.3.x release.** The `v6.3.0-hotfix` branch is frozen: no more backport PRs, no more "one PR on `main`, one on `v6.3.0-hotfix`". #978 (the 6.3.x thread) is closed with a handover comment pointing to #1377. A 6.3.x user with a bug is told to upgrade to 7.0.
+- Fixes go to `main` only. `Fixes #N` in a PR body closes the issue because `main` is the default branch; it was inert on the hotfix branch.
+- Why the line ended: 7.0 was in beta for a month, Home Assistant 2026.11 broke both lines at once (#1370, #1375) and keeping two lines working against each new core doubled every fix.
+
+---
+
 ## Architecture — Module Responsibilities
 
 ### Coordinator layer (`custom_components/hsem/`)
@@ -2952,7 +2961,7 @@ Home Assistant 2026.10 replaced voluptuous with probatio (a drop-in with the sam
 **Rules:**
 
 - Import `vol` with `from custom_components.hsem.utils.schema import vol`. Never `import voluptuous` or `import probatio` in another module; `tests/utils/test_schema_compat.py` fails if one does.
-- `utils/schema.py` imports **voluptuous at runtime** and **probatio under `TYPE_CHECKING`**. Do not import probatio at runtime: 6.3.x allows Home Assistant versions that do not ship it, and the module is shared with that line (`hacs.json` on `main` declares 2026.10.0 since #1354 because of this alias, so the Marketplace never offers a `main` release to an older core).
+- `utils/schema.py` imports **voluptuous at runtime** and **probatio under `TYPE_CHECKING`**. Do not import probatio at runtime: `hacs.json` on `main` declares 2026.10.0 since #1354 because of this alias, so the Marketplace never offers a `main` release to an older core, and a runtime import would gain nothing while coupling the module to probatio's import path. (The frozen 6.3.x line allowed cores without probatio, which is where the rule came from.)
 - A dependabot bump of `homeassistant` can turn the gate red without touching HSEM's code. Its "Quality gates" check must be green before it is merged; #1287 was merged red and every later commit on `main` inherited it.
 - The devcontainer image can be behind the pinned requirements (it had Home Assistant 2026.8.3 while `requirements.txt` pinned 2026.10.0). When CI and a local run disagree, build an isolated environment from the requirements files (`uv venv /tmp/...`, `uv pip install -r requirements.txt -r requirements_test.txt -r requirements_lint.txt`) and run `./scripts/quality.sh` with it first on `PATH`. Do not upgrade the shared container from inside a session.
 - An "INTERNAL ERROR" from mypy right after switching interpreters or mypy versions is a stale cache: clear `/tmp/hsem-cache/mypy/<worktree>`.
