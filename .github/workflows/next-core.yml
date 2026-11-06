@@ -1,0 +1,117 @@
+name: Next Home Assistant core
+
+# Runs mypy and the test suite against the newest Home Assistant pre-release
+# so a core API change shows up while the core is still in beta, not when
+# users upgrade (issue #1372). Home Assistant 2026.11 broke HSEM twice and
+# the pinned CI run saw neither (issue #1370); the beta had been on PyPI for
+# a week.
+#
+# Never a required check: it only runs on a schedule or by hand, so it
+# cannot block a pull request. A failure opens one tracking issue per core
+# version (scripts/next_core_report.py) and later runs comment on it.
+
+on:
+  schedule:
+    # Daily; core betas land through the last week of each month.
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: next-core
+  cancel-in-progress: false
+
+jobs:
+  next-core:
+    name: Test suite against the newest Home Assistant pre-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+
+      - name: Install the requirements with the newest Home Assistant pre-release
+        run: |
+          grep -v '^homeassistant==' requirements.txt > /tmp/requirements-next-core.txt
+          python3 -m pip install --disable-pip-version-check \
+            -r /tmp/requirements-next-core.txt \
+            -r requirements_test.txt \
+            -r requirements_lint.txt
+          python3 -m pip install --disable-pip-version-check --pre --upgrade homeassistant
+
+      - name: Resolve the installed core version
+        id: core
+        run: |
+          version=$(python3 -c "from homeassistant.const import __version__; print(__version__)")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "## Home Assistant $version" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pinned in requirements.txt: $(grep '^homeassistant==' requirements.txt)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Type-check against the pre-release
+        id: mypy
+        continue-on-error: true
+        run: |
+          status=0
+          mypy custom_components tests > mypy.log 2>&1 || status=$?
+          cat mypy.log
+          exit "$status"
+
+      - name: Run the test suite against the pre-release
+        id: pytest
+        continue-on-error: true
+        run: pytest -o addopts="" -q -p no:cacheprovider --junitxml=next-core-results.xml tests/
+
+      - name: Summarise
+        env:
+          MYPY: ${{ steps.mypy.outcome }}
+          PYTEST: ${{ steps.pytest.outcome }}
+        run: |
+          {
+            echo ""
+            echo "- mypy: $MYPY"
+            echo "- pytest: $PYTEST"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update the tracking issue
+        if: steps.mypy.outcome == 'failure' || steps.pytest.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.core.outputs.version }}
+          MYPY: ${{ steps.mypy.outcome }}
+          PYTEST: ${{ steps.pytest.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title=$(python3 scripts/next_core_report.py title --version "$VERSION")
+          python3 scripts/next_core_report.py body \
+            --version "$VERSION" \
+            --pytest-status "$PYTEST" \
+            --mypy-status "$MYPY" \
+            --junit next-core-results.xml \
+            --mypy-log mypy.log \
+            --run-url "$RUN_URL" \
+            --out /tmp/next-core-issue.md
+          number=$(gh issue list --state open --search "\"$title\" in:title" \
+            --json number,title --jq "map(select(.title == \"$title\")) | .[0].number // empty")
+          if [ -n "$number" ]; then
+            echo "Commenting on existing issue #$number"
+            gh issue comment "$number" --body-file /tmp/next-core-issue.md
+          else
+            echo "Creating the tracking issue"
+            gh issue create --title "$title" --body-file /tmp/next-core-issue.md \
+              --label area:tests --label dependencies
+          fi
+
+      - name: Fail the job when either check failed
+        if: steps.mypy.outcome == 'failure' || steps.pytest.outcome == 'failure'
+        run: |
+          echo "mypy or pytest failed against the pre-release; see the tracking issue."
+          exit 1
