@@ -188,3 +188,17 @@ async def test_expiry_after_disconnect_is_a_noop(
     await call_later.call_args.args[2](datetime.now(UTC))
 
     assert "RemoteStartTransaction" not in _actions(session)
+
+
+@pytest.mark.asyncio
+async def test_expiry_after_external_state_reset_is_a_noop(
+    server: OCPPServer, session: ChargerSession, call_later: MagicMock
+) -> None:
+    """A timer whose state was reset elsewhere (e.g. disconnect) sends nothing."""
+    await server.update_charge_target(_CPID, 11.04)
+    server._flap_state = FlapState.Idle
+
+    await call_later.call_args.args[2](datetime.now(UTC))
+
+    assert "RemoteStartTransaction" not in _actions(session)
+    assert server._flap_state == FlapState.Idle
