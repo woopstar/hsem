@@ -161,3 +161,21 @@ def test_ocpp_management_flags_carries_both_answers() -> None:
         "managed": False,
         "management_enabled": True,
     }
+
+
+@pytest.mark.parametrize("is_second", [False, True])
+def test_ocpp_management_flags_immediate_follows_own_force_switch(
+    is_second: bool,
+) -> None:
+    """Force charge now on one EV sets ``immediate`` for that EV only (#1381)."""
+    from tests.test_ha_mock_integration import make_fake_config_entry
+
+    cfg, live = _ev_state(enabled=True, smart=True, connected=True, is_second=is_second)
+    key = "hsem_ev_second_force_charge_now" if is_second else "hsem_ev_force_charge_now"
+    entry = make_fake_config_entry({key: True})
+    assert ocpp_management_flags(cfg, live, is_second=is_second, config_entry=entry)[
+        "immediate"
+    ]
+    assert not ocpp_management_flags(
+        cfg, live, is_second=not is_second, config_entry=entry
+    )["immediate"]

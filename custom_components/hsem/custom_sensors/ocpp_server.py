@@ -294,6 +294,7 @@ class OCPPServer(
         to 0 A with nothing left in HA to explain why. This runs before the
         sockets close, since it needs them.
         """
+        self._cancel_window_timer()
         await self.release_charging_profiles(HSEM_PROFILE_IDS)
 
         # Close all charger sessions

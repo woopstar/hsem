@@ -30,6 +30,9 @@ from custom_components.hsem.custom_sensors.ocpp_commands import (
 )
 from custom_components.hsem.custom_sensors.ocpp_flap_state import FlapState
 from custom_components.hsem.custom_sensors.ocpp_profiles import HSEM_PROFILE_IDS
+from custom_components.hsem.custom_sensors.ocpp_window_timer import (
+    OCPPWindowTimerMixin,
+)
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,7 +41,7 @@ _LOGGER = logging.getLogger(__name__)
 _SLOT_EPSILON = 1e-6
 
 
-class OCPPAntiFlapMixin:
+class OCPPAntiFlapMixin(OCPPWindowTimerMixin):
     """Turns a continuous charge target into stable start/stop commands."""
 
     # Declared (not assigned) so mypy resolves these against OCPPServer and
@@ -82,6 +85,7 @@ class OCPPAntiFlapMixin:
         managed: bool = True,
         number_phases: int | None = None,
         management_enabled: bool | None = None,
+        immediate: bool = False,
     ) -> None:
         """Update the charge target for a charger with anti-flap logic.
 
@@ -116,9 +120,24 @@ class OCPPAntiFlapMixin:
                 managed even if the Home Assistant "connected" entity says
                 otherwise, so a one-cycle blip cannot release an enforced
                 zero. ``None`` treats it as equal to *managed*.
+            immediate: ``True`` for an explicit user command (force charge
+                now, issue #1381): a positive target starts at once instead
+                of waiting out the start window.
         """
         if cpid not in self._chargers:
             return
+        # Kept for the window-expiry timer, which re-applies it (issue #1381).
+        self._last_target_call = {
+            "cpid": cpid,
+            "target_power_kw": target_power_kw,
+            "max_current_a": max_current_a,
+            "managed": managed,
+            "number_phases": number_phases,
+            "management_enabled": management_enabled,
+            "immediate": immediate,
+        }
+        # Seconds left of the window being waited on; None = not waiting.
+        wait_s: float | None = None
 
         session = self._chargers[cpid]
         if now is None:
@@ -218,7 +237,7 @@ class OCPPAntiFlapMixin:
                 if target_at is None:
                     target_at = now
                 elapsed = (now - target_at).total_seconds()
-                if elapsed >= self._start_window_s:
+                if immediate or elapsed >= self._start_window_s:
                     remote_start_ok = True
                     if session.transaction_id is None:
                         remote_start_ok = await self._send_remote_start(
@@ -240,6 +259,7 @@ class OCPPAntiFlapMixin:
                             session.cpid,
                         )
                 else:
+                    wait_s = self._start_window_s - elapsed
                     _LOGGER.debug(
                         "OCPP anti-flap: waiting for start window "
                         "(elapsed=%.1fs, needed=%ds)",
@@ -388,6 +408,7 @@ class OCPPAntiFlapMixin:
                                 session.cpid,
                             )
                 else:
+                    wait_s = self._stop_window_s - elapsed
                     _LOGGER.debug(
                         "OCPP anti-flap: waiting for stop window "
                         "(elapsed=%.1fs, needed=%ds)",
@@ -408,6 +429,7 @@ class OCPPAntiFlapMixin:
                 )
                 await self._release_connect_gate(session)
             self._target_entered_at = None
+        self._sync_window_timer(wait_s)
 
     # ------------------------------------------------------------------
     # Connect-time "pending plan" gate (issue #969)
@@ -508,6 +530,7 @@ class OCPPAntiFlapMixin:
         """
         session.gate_pending_plan = False
         await self._release_connect_gate(session)
+        self._cancel_window_timer()
         self._flap_state = FlapState.Idle
         self._target_entered_at = None
         self._zero_entered_at = None
