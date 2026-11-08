@@ -538,26 +538,61 @@ class OCPPMessageHandlersMixin:
         await self._notify_significant_event()
         return {"idTagInfo": {"status": "Accepted"}}
 
-    async def _handle_unknown(
+    async def _handle_data_transfer(
         self, session: ChargerSession, payload: dict
-    ) -> dict | None:
-        """Handle an unknown/unsupported OCPP action.
+    ) -> dict:
+        """Handle a ``DataTransfer`` request.
 
-        Logs a warning and returns ``None`` so no CALLERROR is sent.
+        HSEM implements no vendor extensions, so the OCPP 1.6 answer is
+        ``UnknownVendorId`` (issue #1390). Before, the charger got no reply
+        at all.
 
         Args:
             session: The charger session.
-            payload: Message payload.
+            payload: DataTransfer payload.
 
         Returns:
-            ``None``.
+            Response dict with status ``UnknownVendorId``.
         """
         _LOGGER.debug(
-            "OCPP unknown action from charger %s: payload=%s",
+            "OCPP DataTransfer from %s: vendorId=%s, messageId=%s",
             session.cpid,
-            payload,
+            payload.get("vendorId"),
+            payload.get("messageId"),
         )
-        return None
+        return {"status": "UnknownVendorId"}
+
+    async def _handle_firmware_status(
+        self, session: ChargerSession, payload: dict
+    ) -> dict:
+        """Handle a ``FirmwareStatusNotification`` request (issue #1390).
+
+        Args:
+            session: The charger session.
+            payload: FirmwareStatusNotification payload.
+
+        Returns:
+            Empty response, as OCPP 1.6 defines it.
+        """
+        _LOGGER.info("OCPP %s: firmware status %s", session.cpid, payload.get("status"))
+        return {}
+
+    async def _handle_diagnostics_status(
+        self, session: ChargerSession, payload: dict
+    ) -> dict:
+        """Handle a ``DiagnosticsStatusNotification`` request (issue #1390).
+
+        Args:
+            session: The charger session.
+            payload: DiagnosticsStatusNotification payload.
+
+        Returns:
+            Empty response, as OCPP 1.6 defines it.
+        """
+        _LOGGER.info(
+            "OCPP %s: diagnostics status %s", session.cpid, payload.get("status")
+        )
+        return {}
 
 
 __all__ = ["OCPPMessageHandlersMixin"]

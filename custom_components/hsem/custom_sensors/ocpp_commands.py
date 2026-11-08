@@ -33,6 +33,7 @@ _LOGGER = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _CALL = 2  # Client → Server request (expects CALLRESULT or CALLERROR)
 _CALLRESULT = 3  # Server → Client response
+_CALLERROR = 4  # Server → Client error (issue #1390)
 
 # OCPP 1.6 requires a non-empty idTag on RemoteStartTransaction. HSEM has no
 # per-user RFID/app identity concept, so every session it authorizes uses the
@@ -210,6 +211,30 @@ class OCPPCommandsMixin:
         except Exception:
             _LOGGER.exception(
                 "Failed to send OCPP response to charger %s", session.cpid
+            )
+
+    async def _send_call_error(
+        self, session: ChargerSession, msg_id: str, code: str, description: str
+    ) -> None:
+        """Send a CALLERROR (type 4) message back to the charger.
+
+        OCPP-J 1.6 §4.1.3 requires every CALL to get a CALLRESULT or a
+        CALLERROR (issue #1390). A charger left without either waits for
+        its own timeout, and some firmware retries or holds back later
+        messages until then.
+
+        Args:
+            session: The charger session.
+            msg_id: The original message ID being answered.
+            code: OCPP-J error code, e.g. ``"NotImplemented"``.
+            description: Short human-readable reason.
+        """
+        try:
+            msg = json.dumps([_CALLERROR, msg_id, code, description, {}])
+            await session.websocket.send_str(msg)
+        except Exception:
+            _LOGGER.exception(
+                "Failed to send OCPP CALLERROR to charger %s", session.cpid
             )
 
     async def _send_call(
