@@ -369,6 +369,11 @@ All cloud endpoints or external integrations must be clearly documented.
 ## Testing Requirements
 
 - Write unit tests for new logic and behavior changes.
+- A new sensor or diagnostic attribute needs at least one test where its data
+  comes from the real producer (a coordinator cycle, an OCPP message), not from
+  a hand-built `CoordinatorData`. A hand-built test passes even when nothing
+  produces the data (issue #1398). `./scripts/quality.sh unfilled-state`
+  catches attributes that are created empty and never filled.
 - Test edge cases: missing sensors, unavailable entities, invalid data types, empty datasets.
 - Document test scenarios and expected behaviors.
 - Test concurrent or async operations for race conditions before marking changes complete.

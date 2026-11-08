@@ -29,6 +29,14 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: unfilled-state
+        name: State created but never filled
+        language: system
+        entry: ./scripts/quality.sh
+        args: [unfilled-state]
+        pass_filenames: false
+        always_run: true
+
       - id: typing
         name: Type check (mypy)
         language: system

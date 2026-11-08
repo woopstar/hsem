@@ -72,6 +72,13 @@ file_size_check() {
     run python3 scripts/check_file_size.py
 }
 
+# State that is created empty, read, and never filled (issue #1398): the
+# sessions sensor showed 0 for that reason and coverage could not see it.
+# Static, so it only verifies.
+unfilled_state_check() {
+    run python3 scripts/check_unfilled_state.py
+}
+
 # 100 % coverage on the lines a change adds or edits (issue #1386). The
 # per-module floor above only protects the total, so a well-covered module
 # could take new untested lines and still pass. Compared against
@@ -112,15 +119,16 @@ Commands:
   lint      Format and lint code (ruff format + ruff check + prettier --write + docs math check)
   typing    Type check with mypy
   quality   Static quality checks (pyright + vulture)
-  format-check  Verify ruff format, ruff lint, prettier, docs math and file sizes without writing (used by CI)
+  format-check  Verify ruff format, ruff lint, prettier, docs math, file sizes and unfilled state without writing (used by CI)
   docs-math     Check that the LaTeX math in docs/ survives prettier and GitHub
   file-size     Assert every Python file is within the file-size limits
+  unfilled-state  Assert no attribute is created empty, read, and never filled
   translations  Validate en/da/de/es translation files stay in sync
   skylos    Run Skylos static analysis (experimental, not in 'all')
   test      Run tests with pytest and coverage
   coverage-floor  Assert every module meets the 95% per-module coverage floor
   patch-coverage  Assert 100% coverage on lines changed vs \$PATCH_COVERAGE_BASE (default origin/main)
-  all       Run lint, file-size, typing, quality, translations, and test in sequence
+  all       Run lint, file-size, unfilled-state, typing, quality, translations, and test in sequence
 EOF
     exit 1
 }
@@ -150,12 +158,16 @@ case "${1:-}" in
         prettier_run --check
         docs_math_check
         file_size_check
+        unfilled_state_check
         ;;
     docs-math)
         docs_math_check
         ;;
     file-size)
         file_size_check
+        ;;
+    unfilled-state)
+        unfilled_state_check
         ;;
     translations)
         run python3 scripts/validate_translations.py
@@ -193,6 +205,9 @@ case "${1:-}" in
         echo ""
         echo "=== File Size ==="
         file_size_check
+        echo ""
+        echo "=== Unfilled State ==="
+        unfilled_state_check
         echo ""
         echo "=== Type Check ==="
         run mypy custom_components tests

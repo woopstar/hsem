@@ -300,6 +300,8 @@ pytest tests/test_module.py::test_function_name
 - Use meaningful test names that describe what is being tested
 - Test edge cases: missing data, unavailable entities, invalid values
 - Test async and concurrent operations for race conditions
+- A new sensor or diagnostic attribute needs a test where its data comes from the
+  real producer, not from a hand-built `CoordinatorData` (issue #1398)
 
 ## What to Do
 

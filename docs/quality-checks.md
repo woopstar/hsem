@@ -199,13 +199,35 @@ back within the limits, so the list cannot go stale, and on a missing scope
 directory, so a wrong working directory cannot pass.
 `format-check` and `all` run it.
 
+### Check for unfilled state
+
+```bash
+./scripts/quality.sh unfilled-state
+```
+
+Runs `scripts/check_unfilled_state.py` over `custom_components/hsem` (issue
+#1398). It fails on an attribute whose every assignment is an empty value
+(`None`, `0`, `False`, `""`, `[]`, `{}`, `set()`, `deque()` …), that is read,
+and that is never filled: not mutated (`.append()`, `.update()`, `x[k] = …`),
+not passed to a function that may fill it, and not set by keyword or
+`setattr()`. `coordinator._ocpp_sessions` was exactly that, so
+`sensor.hsem_ocpp_charger_sessions_sensor` showed 0 with full coverage (issue #1392).
+
+Names are matched across the whole package, so the check does not report an
+attribute that something fills. It can miss a case, which is why the "test the
+data from its real producer" rule in `CODE_QUALITY_STANDARDS.md` exists too.
+
+The script's `ALLOWLIST` exempts a name with a reason. An entry that is no
+longer needed fails the check, like the file-size allowlist. `format-check` and
+`all` run it.
+
 ## CI Integration
 
 `.github/workflows/lint-and-test.yml` runs the checks in two jobs:
 
 - **`validate`** calls `./scripts/quality.sh format-check`, which verifies
-  `ruff format`, `ruff check`, prettier, the math in `docs/` and the file
-  sizes without writing. This is what gates formatting and lint — `lint` and `all` fix in
+  `ruff format`, `ruff check`, prettier, the math in `docs/`, the file
+  sizes and unfilled state without writing. This is what gates formatting and lint — `lint` and `all` fix in
   place, so in an ephemeral CI container they cannot fail on anything
   auto-fixable.
 - **`quality`** runs `./scripts/quality.sh all` in the devcontainer, covering

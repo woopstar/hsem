@@ -144,6 +144,15 @@ Coverage rules, enforced by `./scripts/quality.sh test` and in CI:
 - `# pragma: no cover` is only for lines that cannot be reached through the
   public interface. Restructure code before reaching for it.
 
+**Test the data from its real producer** (issue #1398). A new sensor or
+diagnostic attribute needs at least one test where its data comes from the code
+that produces it, for example a coordinator cycle or an OCPP message, not from
+a hand-built `CoordinatorData`. A test that builds the data itself passes even
+when nothing ever produces it: `sensor.hsem_ocpp_charger_sessions_sensor` showed 0
+for that reason, with full coverage (issue #1392).
+`./scripts/quality.sh unfilled-state` catches the simplest form of it: an
+attribute created empty, read, and never filled.
+
 ### 9. **Comments Explain Why, Not What**
 
 Code should be self-documenting. Comments explain non-obvious decisions:
@@ -222,16 +231,17 @@ This section is the single statement of the rule; every other document points he
 
 The following checks run on every PR:
 
-| Check         | Tool                       | Command                             | Purpose                        |
-| ------------- | -------------------------- | ----------------------------------- | ------------------------------ |
-| Formatting    | `ruff format`              | `./scripts/quality.sh lint`         | Consistent Python code style   |
-| Doc format    | `prettier`                 | `./scripts/quality.sh lint`         | Markdown / YAML / JSON style   |
-| Linting       | `ruff check`               | `./scripts/quality.sh lint`         | Bugs, style issues, complexity |
-| File size     | `check_file_size.py`       | `./scripts/quality.sh file-size`    | 30 KiB / 1000-line file limit  |
-| Type Checking | `mypy`                     | `./scripts/quality.sh typing`       | Type errors and unsafe code    |
-| Translations  | `validate_translations.py` | `./scripts/quality.sh translations` | en/da/de/es keys stay in sync  |
-| Tests         | `pytest`                   | `./scripts/quality.sh test`         | Verifies functionality         |
-| Coverage      | `coverage`                 | `--cov` flag                        | Ensures new code is tested     |
+| Check          | Tool                       | Command                               | Purpose                        |
+| -------------- | -------------------------- | ------------------------------------- | ------------------------------ |
+| Formatting     | `ruff format`              | `./scripts/quality.sh lint`           | Consistent Python code style   |
+| Doc format     | `prettier`                 | `./scripts/quality.sh lint`           | Markdown / YAML / JSON style   |
+| Linting        | `ruff check`               | `./scripts/quality.sh lint`           | Bugs, style issues, complexity |
+| File size      | `check_file_size.py`       | `./scripts/quality.sh file-size`      | 30 KiB / 1000-line file limit  |
+| Unfilled state | `check_unfilled_state.py`  | `./scripts/quality.sh unfilled-state` | State created but never filled |
+| Type Checking  | `mypy`                     | `./scripts/quality.sh typing`         | Type errors and unsafe code    |
+| Translations   | `validate_translations.py` | `./scripts/quality.sh translations`   | en/da/de/es keys stay in sync  |
+| Tests          | `pytest`                   | `./scripts/quality.sh test`           | Verifies functionality         |
+| Coverage       | `coverage`                 | `--cov` flag                          | Ensures new code is tested     |
 
 **All checks must pass before merge.**
 
