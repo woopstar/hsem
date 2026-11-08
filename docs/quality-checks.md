@@ -81,7 +81,20 @@ unused because they are called dynamically by HA.
 ./scripts/quality.sh test
 ```
 
-This runs `pytest` with coverage reporting.
+This runs `pytest` with coverage reporting. A full run then checks two rules:
+
+- **Per-module floor:** every module of the integration is at or above 95 %
+  (`./scripts/quality.sh coverage-floor`).
+- **Patch coverage:** every line the change adds or edits under
+  `custom_components/` is covered, 100 % (`./scripts/quality.sh patch-coverage`,
+  issue #1386). It compares against `origin/main`; set `PATCH_COVERAGE_BASE` to
+  use another base. A line that cannot be reached through the public interface
+  may carry `# pragma: no cover`; nothing else is exempt.
+
+```bash
+git fetch origin main
+./scripts/quality.sh patch-coverage
+```
 
 ### QA pipeline quick reference
 
@@ -197,7 +210,8 @@ directory, so a wrong working directory cannot pass.
   auto-fixable.
 - **`quality`** runs `./scripts/quality.sh all` in the devcontainer, covering
   typing (mypy), static quality (pyright + vulture), translations and the test
-  suite with its per-module coverage floor.
+  suite with its per-module coverage floor and 100 % patch coverage. The job
+  checks out with `fetch-depth: 0` so `origin/main` exists for the patch check.
 
 Nothing is set to `continue-on-error`; every check blocks the job on failure.
 

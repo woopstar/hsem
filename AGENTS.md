@@ -173,6 +173,8 @@ If credentials, API keys, or tokens are required:
 - Run `./scripts/quality.sh quality` after typing (pyright + vulture static checks).
 - Run `./scripts/quality.sh translations` if any user-facing string changed (en/da/de/es sync).
 - Run `./scripts/quality.sh test` to run the full test suite with coverage before opening a PR.
+  A full run fails unless every module is at or above 95 % and every changed line under
+  `custom_components/` is covered (100 % patch coverage against `origin/main`, issue #1386).
 - See `CODE_QUALITY_STANDARDS.md` for full quality rules and conventions.
 - **Never use `==` or `!=` to compare floating-point values.** In production code use an epsilon
   guard (e.g. `abs(x) > 1e-9` instead of `x != 0`). In tests always use `pytest.approx()`.

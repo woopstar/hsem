@@ -36,7 +36,9 @@ please refer to `AGENTS.md`.
    - Run `./scripts/quality.sh lint` before committing (ruff format + ruff check + prettier)
    - Run `./scripts/quality.sh typing` after lint (mypy type checking)
    - Run `./scripts/quality.sh quality` after typing (pyright + vulture)
-   - Run `./scripts/quality.sh test` to run tests with coverage before opening a PR
+   - Run `./scripts/quality.sh test` to run tests with coverage before opening a PR.
+     It requires 100 % coverage on every changed line under `custom_components/`
+     (`./scripts/quality.sh patch-coverage`, against `origin/main`)
    - Include type hints for all public functions
    - Write docstrings for all public modules, classes, and functions
    - Write tests for new functionality

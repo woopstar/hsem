@@ -53,7 +53,11 @@ jobs:
     permissions:
       contents: read
     steps:
+      # Full history so origin/main exists for the 100 % patch-coverage
+      # check in quality.sh (issue #1386).
       - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Create mount stubs for CI
         run: |

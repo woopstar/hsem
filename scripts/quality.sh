@@ -72,6 +72,38 @@ file_size_check() {
     run python3 scripts/check_file_size.py
 }
 
+# 100 % coverage on the lines a change adds or edits (issue #1386). The
+# per-module floor above only protects the total, so a well-covered module
+# could take new untested lines and still pass. Compared against
+# PATCH_COVERAGE_BASE (default origin/main) using the coverage.xml the test
+# run wrote. Lines that cannot be reached through the public interface may
+# carry "# pragma: no cover"; nothing else is exempt.
+#
+# safe.directory is passed through the environment because CI runs this in
+# the devcontainer, where the bind-mounted checkout belongs to another uid
+# and git would otherwise refuse to read it.
+PATCH_COVERAGE_BASE="${PATCH_COVERAGE_BASE:-origin/main}"
+
+patch_coverage_check() {
+    if [[ ! -f coverage.xml ]]; then
+        echo "[error] coverage.xml not found — run './scripts/quality.sh test' first" >&2
+        return 1
+    fi
+    (
+        export GIT_CONFIG_COUNT=1
+        export GIT_CONFIG_KEY_0=safe.directory
+        GIT_CONFIG_VALUE_0="$(pwd -P)"
+        export GIT_CONFIG_VALUE_0
+        if ! git rev-parse --verify --quiet "${PATCH_COVERAGE_BASE}^{commit}" >/dev/null; then
+            echo "[error] compare branch '${PATCH_COVERAGE_BASE}' not found — run 'git fetch origin main' (CI checks out with fetch-depth: 0)" >&2
+            exit 1
+        fi
+        run diff-cover coverage.xml \
+            --compare-branch="${PATCH_COVERAGE_BASE}" \
+            --fail-under=100
+    )
+}
+
 usage() {
     cat <<EOF
 Usage: quality <command>
@@ -87,6 +119,7 @@ Commands:
   skylos    Run Skylos static analysis (experimental, not in 'all')
   test      Run tests with pytest and coverage
   coverage-floor  Assert every module meets the 95% per-module coverage floor
+  patch-coverage  Assert 100% coverage on lines changed vs \$PATCH_COVERAGE_BASE (default origin/main)
   all       Run lint, file-size, typing, quality, translations, and test in sequence
 EOF
     exit 1
@@ -133,6 +166,9 @@ case "${1:-}" in
     coverage-floor)
         run python3 scripts/check_coverage_floor.py
         ;;
+    patch-coverage)
+        patch_coverage_check
+        ;;
     test)
         run python -m pytest tests/ \
             -o cache_dir="${PYTEST_CACHE_DIR}" \
@@ -145,6 +181,7 @@ case "${1:-}" in
         # per-module floor is only meaningful for a full run.
         if [[ $# -le 1 ]]; then
             run python3 scripts/check_coverage_floor.py
+            patch_coverage_check
         fi
         ;;
     all)
@@ -184,6 +221,7 @@ case "${1:-}" in
         # per-module floor is only meaningful for a full run.
         if [[ $# -le 1 ]]; then
             run python3 scripts/check_coverage_floor.py
+            patch_coverage_check
         fi
         ;;
     *)
