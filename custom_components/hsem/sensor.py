@@ -50,6 +50,7 @@ from custom_components.hsem.custom_sensors.ev_second_soc_economics_sensor import
 from custom_components.hsem.custom_sensors.ev_soc_economics_sensor import (
     HSEMEVSoCEconomicsSensor,
 )
+from custom_components.hsem.custom_sensors.ev_soc_sensor import HSEMEVSoCSensor
 from custom_components.hsem.custom_sensors.financial_sensors import (
     HSEMExportIncomeSensor,
     HSEMImportCostSensor,
@@ -155,6 +156,7 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             HSEMEVChargerCalculatedPowerSensor(config_entry, coordinator),
             HSEMEVChargerCurrentLimitSensor(config_entry, coordinator),
             HSEMEVSoCEconomicsSensor(config_entry, coordinator),
+            HSEMEVSoCSensor(config_entry, coordinator),
         ]
 
     # EV2 sensors — only when the second EV's planned load is configured.
@@ -165,6 +167,7 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             HSEMEVSecondChargerCalculatedPowerSensor(config_entry, coordinator),
             HSEMEVSecondChargerCurrentLimitSensor(config_entry, coordinator),
             HSEMEVSecondSoCEconomicsSensor(config_entry, coordinator),
+            HSEMEVSoCSensor(config_entry, coordinator, is_second=True),
         ]
 
     # Forecast accuracy sensor — exposes predicted-vs-actual metrics.

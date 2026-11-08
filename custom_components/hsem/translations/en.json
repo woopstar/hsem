@@ -1153,6 +1153,12 @@
           "unavailable": "Unavailable"
         }
       },
+      "ev_second_soc": {
+        "name": "EV State of Charge"
+      },
+      "ev_soc": {
+        "name": "EV State of Charge"
+      },
       "ev_soc_economics": {
         "name": "EV SoC Economics",
         "state": {

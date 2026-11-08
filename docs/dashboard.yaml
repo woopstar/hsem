@@ -1863,8 +1863,8 @@ views:
                   }); return out;
           - type: custom:mushroom-template-card
             primary: >
-              {% set p = state_attr('sensor.hsem_ev_optimal_charging_plan', 'current_soc') %}
-              {{ p if p != None else '?' }}% &rarr;
+              {% set p = states('sensor.hsem_ev_soc') %}
+              {{ p if p not in ['unknown', 'unavailable'] else '?' }}% &rarr;
               {% set t = state_attr('sensor.hsem_ev_optimal_charging_plan', 'target_soc') %}
               {{ t if t != None else '?' }}%
             secondary: >
@@ -2121,8 +2121,8 @@ views:
                   }); return out;
           - type: custom:mushroom-template-card
             primary: >
-              {% set p = state_attr('sensor.hsem_ev_second_optimal_charging_plan', 'current_soc') %}
-              {{ p if p != None else '?' }}% &rarr;
+              {% set p = states('sensor.hsem_ev_second_soc') %}
+              {{ p if p not in ['unknown', 'unavailable'] else '?' }}% &rarr;
               {% set t = state_attr('sensor.hsem_ev_second_optimal_charging_plan', 'target_soc') %}
               {{ t if t != None else '?' }}%
             secondary: >

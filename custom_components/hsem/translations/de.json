@@ -1136,6 +1136,12 @@
           "unavailable": "Nicht verfügbar"
         }
       },
+      "ev_second_soc": {
+        "name": "EV-Ladezustand"
+      },
+      "ev_soc": {
+        "name": "EV-Ladezustand"
+      },
       "ev_soc_economics": {
         "name": "EV SoC-Wirtschaftlichkeit",
         "state": {

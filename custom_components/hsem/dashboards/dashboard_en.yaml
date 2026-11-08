@@ -262,6 +262,18 @@ views:
                 - type: toggle
           - type: conditional
             conditions:
+              - entity: sensor.hsem_ev_soc
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: sensor.hsem_ev_soc
+              name: EV SoC
+              icon: mdi:car-battery
+              color: state
+          - type: conditional
+            conditions:
               - entity: number.hsem_ev_target_soc
                 state_not: unavailable
             grid_options:
@@ -360,6 +372,18 @@ views:
               color: state
               features:
                 - type: toggle
+          - type: conditional
+            conditions:
+              - entity: sensor.hsem_ev_second_soc
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: sensor.hsem_ev_second_soc
+              name: EV 2 SoC
+              icon: mdi:car-battery
+              color: state
           - type: conditional
             conditions:
               - entity: number.hsem_ev_second_target_soc

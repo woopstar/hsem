@@ -1243,6 +1243,12 @@
           "unavailable": "Utilgængelig"
         }
       },
+      "ev_second_soc": {
+        "name": "Elbilens ladetilstand"
+      },
+      "ev_soc": {
+        "name": "Elbilens ladetilstand"
+      },
       "ev_soc_economics": {
         "name": "EV SoC-økonomi",
         "state": {

@@ -331,6 +331,18 @@ views:
                 - type: toggle
           - type: conditional
             conditions:
+              - entity: sensor.hsem_ev_soc
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: sensor.hsem_ev_soc
+              name: EV SoC
+              icon: mdi:car-battery
+              color: state
+          - type: conditional
+            conditions:
               - entity: number.hsem_ev_target_soc
                 state_not: unavailable
             grid_options:
@@ -429,6 +441,18 @@ views:
               color: state
               features:
                 - type: toggle
+          - type: conditional
+            conditions:
+              - entity: sensor.hsem_ev_second_soc
+                state_not: unavailable
+            grid_options:
+              columns: 2
+            card:
+              type: tile
+              entity: sensor.hsem_ev_second_soc
+              name: EV 2 SoC
+              icon: mdi:car-battery
+              color: state
           - type: conditional
             conditions:
               - entity: number.hsem_ev_second_target_soc
@@ -1682,7 +1706,7 @@ The dashboard has two views. The **HSEM** view uses an eight-section layout:
 | **Financial Insights**          | 1 column    | 5     | Export income, import cost, net grid balance, savings tracker                                                                                            |
 | **Performance**                 | 1 column    | 7     | Savings capture, actual benefit, missed opportunity, where it was lost (battery, solar) and EV charging efficiency (conditional), over the last 24 hours |
 | **Forecast Quality**            | 1 column    | 4     | Forecast accuracy, prediction accuracy, solar confidence                                                                                                 |
-| **EV Charging**                 | 1 column    | 14    | EV plan, active status, smart charging, force charge, target SoC, deadline, SoC economics table (primary + secondary, conditional)                       |
+| **EV Charging**                 | 1 column    | 16    | EV plan, active status, smart charging, force charge, SoC, target SoC, deadline, SoC economics table (primary + secondary, conditional)                  |
 | **Working Mode Recommendation** | 2 columns   | 7     | Recommendation timeline, battery status, charged kWh, consumption breakdown                                                                              |
 | **Planner Output (left)**       | 1 column    | 4     | Net consumption, estimated cost, consumption, export price                                                                                               |
 | **Planner Output (right)**      | 1 column    | 4     | Battery capacity, simulated SoC, PV forecast, import price                                                                                               |
@@ -1819,12 +1843,14 @@ secondary EV when configured:
 | EV Charging Active      | `sensor.hsem_ev_charging_sensor`              | Whether an EV is currently charging                                                                       |
 | EV Smart Charging       | `switch.hsem_ev_smart_charging`               | Enable/disable smart EV charging                                                                          |
 | EV Force Charge         | `switch.hsem_ev_force_charge_now`             | Override and start charging now                                                                           |
+| EV SoC                  | `sensor.hsem_ev_soc`                          | SoC HSEM plans with: effective SoC while charging, otherwise the reported SoC                             |
 | EV Target SoC           | `number.hsem_ev_target_soc`                   | Target state of charge for smart charging                                                                 |
 | EV Deadline             | `time.hsem_ev_deadline_time`                  | Deadline by which the EV must reach target SoC                                                            |
 | EV Charging Economics   | `sensor.hsem_ev_soc_economics`                | Multiple Entity Row: cost per target SoC × deadline, columns in time order, ★ marks the EV's own deadline |
 | EV 2 Plan               | `sensor.hsem_ev_second_optimal_charging_plan` | Second EV charging plan state                                                                             |
 | EV 2 Smart Charging     | `switch.hsem_ev_second_smart_charging`        | Enable/disable smart charging for second EV                                                               |
 | EV 2 Force Charge       | `switch.hsem_ev_second_force_charge_now`      | Override and start second EV charging now                                                                 |
+| EV 2 SoC                | `sensor.hsem_ev_second_soc`                   | SoC HSEM plans with for the second EV                                                                     |
 | EV 2 Target SoC         | `number.hsem_ev_second_target_soc`            | Target SoC for second EV                                                                                  |
 | EV 2 Deadline           | `time.hsem_ev_second_deadline_time`           | Deadline for second EV                                                                                    |
 | EV 2 Charging Economics | `sensor.hsem_ev_second_soc_economics`         | Multiple Entity Row: cost per target SoC × deadline, columns in time order, ★ marks the EV's own deadline |
