@@ -1533,5 +1533,11 @@
         }
       }
     }
+  },
+  "issues": {
+    "ocpp_charger_blocked": {
+      "title": "OCPP-lader {cpid} ignorerer HSEM's start",
+      "description": "HSEM startede lader {cpid} med en positiv ladeprofil, men den bliver i {status} og leverer ingen strøm. HSEM har prøvet gendannelsen for sin {handler} device handler 3 gange.\n\nTjek laderens egen app eller display for et lokalt stop eller en lås. På en go-e Charger skal force state sættes tilbage til neutral. Denne meddelelse forsvinder af sig selv, når laderen begynder at lade."
+    }
   }
 }

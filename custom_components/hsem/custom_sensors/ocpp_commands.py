@@ -478,10 +478,11 @@ class OCPPCommandsMixin:
             )
             return False
         session = self._chargers[cpid]
-        # Take the charger back from any local "don't charge" state first,
-        # or the start below is accepted and then ignored (issue #920).
-        await self.ensure_charging_allowed(session)
         if session.transaction_id is not None:
+            # Still take the charger back from any local "don't charge"
+            # state (issue #920). _send_remote_start() does it on the start
+            # path below, so it is written once either way (issue #1383).
+            await self.ensure_charging_allowed(session)
             _LOGGER.info(
                 "OCPP %s already has transaction %s in progress — skipping "
                 "RemoteStartTransaction (a charger rejects it while one is "

@@ -674,6 +674,26 @@ go out on the cycle the switch triggers. The minimum-SoC charge, negative-price
 auto-full and cheap-price charge are automatic, threshold-driven overrides and
 keep the start window.
 
+**Charger device handlers and blocked starts (issue #1383).** Charger-specific
+behaviour lives in `custom_sensors/ocpp_devices/`, one module per brand. HSEM
+picks the handler from the `BootNotification` vendor and model and shows it as
+`handler` on `sensor.hsem_ocpp_charger_info_sensor` (`go-e` or `generic`).
+
+- **go-e:** before every `RemoteStartTransaction`, HSEM writes `ForceState=Neutral`
+  with `ChangeConfiguration`. go-e sets `ForceState=Off` when charging is stopped
+  in its own app, and while it is `Off` the charger accepts every OCPP command and
+  delivers no power. HSEM no longer trusts the value it read at boot, since it
+  goes stale as soon as the app changes it.
+- **Blocked start:** when HSEM has started the charger with a positive profile and
+  the connector stays `SuspendedEVSE` for more than 90 s, HSEM runs the handler's
+  recovery every 5 minutes. The generic handler sends `GetConfiguration` and
+  `TriggerMessage` (`StatusNotification`). The go-e handler writes `ForceState`
+  first. After 3 failed attempts HSEM raises a Home Assistant repair issue, which
+  clears itself once the charger leaves `SuspendedEVSE` or the plan drops to zero.
+- `ChangeAvailability` is not used for recovery. It controls Operative/Inoperative
+  (connector `Unavailable`), not `SuspendedEVSE`, and cycling it can interrupt a
+  session.
+
 **Charging rate unit (issue #1001).** Charging profiles are published in the
 unit the charger actually accepts: after `BootNotification` HSEM reads the
 charger's reported `ChargingScheduleAllowedChargingRateUnit` from its

@@ -29,6 +29,18 @@ class ChargerCommands(Protocol):
         """Write one OCPP configuration key on the charger."""
         ...
 
+    async def send_get_configuration(
+        self, cpid: str
+    ) -> bool:  # pragma: no cover - protocol signature only
+        """Ask the charger for its full OCPP configuration."""
+        ...
+
+    async def send_trigger_message(
+        self, cpid: str, requested_message: str, connector_id: int | None = 1
+    ) -> bool:  # pragma: no cover - protocol signature only
+        """Ask the charger to send one message now (Remote Trigger)."""
+        ...
+
 
 class ChargerHandler:
     """Standard-OCPP behaviour, used for any charger without its own handler."""
@@ -61,6 +73,24 @@ class ChargerHandler:
             commands: The OCPP senders.
             session: The charger session.
         """
+
+    async def recover_blocked_start(
+        self, commands: ChargerCommands, session: ChargerSession
+    ) -> None:
+        """Try to unblock a charger that ignores a start (issue #1383).
+
+        Called on a cooldown when the charger stays ``SuspendedEVSE`` after
+        HSEM started it with a positive profile. Standard OCPP only: refresh
+        the cached configuration with ``GetConfiguration`` (a vendor block
+        set after boot shows up there) and ask for a fresh
+        ``StatusNotification`` with ``TriggerMessage``.
+
+        Args:
+            commands: The OCPP senders.
+            session: The charger session.
+        """
+        await commands.send_get_configuration(session.cpid)
+        await commands.send_trigger_message(session.cpid, "StatusNotification")
 
 
 __all__ = ["ChargerCommands", "ChargerHandler"]

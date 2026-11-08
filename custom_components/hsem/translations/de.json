@@ -1526,5 +1526,11 @@
         }
       }
     }
+  },
+  "issues": {
+    "ocpp_charger_blocked": {
+      "title": "OCPP-Ladegerät {cpid} ignoriert den Start von HSEM",
+      "description": "HSEM hat das Ladegerät {cpid} mit einem positiven Ladeprofil gestartet, aber es bleibt in {status} und liefert keinen Strom. HSEM hat die Wiederherstellung für seinen Gerätehandler {handler} 3-mal versucht.\n\nPrüfe in der App oder am Display des Ladegeräts, ob ein lokaler Stopp oder eine Sperre aktiv ist. Bei einem go-e Charger setze den Force State wieder auf neutral. Diese Meldung verschwindet von selbst, sobald das Ladegerät lädt."
+    }
   }
 }
