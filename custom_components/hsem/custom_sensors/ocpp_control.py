@@ -22,11 +22,15 @@ these calls can answer.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
 
 from custom_components.hsem.custom_sensors.ocpp_devices import resolve_handler
+from custom_components.hsem.custom_sensors.ocpp_meter_values import (
+    meter_config_changes,
+)
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -128,6 +132,7 @@ class OCPPControlMixin:
     # OCPPCommandsMixin rather than reporting missing attributes.
     _chargers: dict[str, ChargerSession]
     _send_call: Callable[[ChargerSession, str, dict], Coroutine[Any, Any, bool]]
+    _background_tasks: set[asyncio.Task[Any]]
 
     def _require_session(self, cpid: str, action: str) -> ChargerSession | None:
         """Return the session for *cpid*, logging a warning when absent.
@@ -289,15 +294,19 @@ class OCPPControlMixin:
         if not isinstance(entries, list):
             return
         found: dict[str, str] = {}
+        readonly: set[str] = set()
         for entry in entries:
             if not isinstance(entry, dict):
                 continue
             key = entry.get("key")
             if isinstance(key, str):
                 found[key] = str(entry.get("value", ""))
+                if entry.get("readonly") is True:
+                    readonly.add(key)
         if not found:
             return
         session.configuration_keys = found
+        session.readonly_config_keys = readonly
         _LOGGER.info(
             "OCPP %s: recorded %d configuration keys (%s=%s, %s=%s, handler=%s)",
             session.cpid,
@@ -308,6 +317,32 @@ class OCPPControlMixin:
             found.get(STATION_MAX_CURRENT_KEY, "?"),
             resolve_handler(session).name,
         )
+        changes = meter_config_changes(found, readonly)
+        if changes:
+            # Detached: this runs while the CALLRESULT is being handled
+            # (issue #1391).
+            task = asyncio.create_task(self._apply_meter_config(session, changes))
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
+
+    async def _apply_meter_config(
+        self, session: ChargerSession, changes: dict[str, str]
+    ) -> None:
+        """Write the MeterValues configuration HSEM needs (issue #1391).
+
+        A charger that rejects a key keeps its own setting. Its next
+        ``GetConfiguration`` reply shows the real value, and HSEM tries
+        again only then.
+
+        Args:
+            session: The charger session.
+            changes: Key to value, from :func:`meter_config_changes`.
+        """
+        for key, value in changes.items():
+            _LOGGER.info(
+                "OCPP %s: configuring MeterValues, %s=%s", session.cpid, key, value
+            )
+            await self.send_change_configuration(session.cpid, key, value)
 
     async def ensure_charging_allowed(self, session: ChargerSession) -> None:
         """Clear a charger-local block that would veto remote control.

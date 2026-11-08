@@ -14,6 +14,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from custom_components.hsem.coordinator_data import CoordinatorData
 from custom_components.hsem.custom_sensors.ocpp_sensors import (
     HSEMOCPPChargerPowerSensor,
@@ -130,6 +132,23 @@ def test_attributes_include_per_charger_session_details() -> None:
     attrs = sensor.extra_state_attributes
     assert attrs["CP1"]["status"] == "Charging"
     assert attrs["CP1"]["power_w"] == 7400.0
+
+
+def test_attributes_expose_phase_currents() -> None:
+    """Per-phase current and active phase count are shown (issue #1391)."""
+    session = ChargerSession(cpid="CP1", status="Charging")
+    session.phase_currents_a = {"L2": 0.24, "L1": 15.86}
+    data = CoordinatorData(
+        cfg=SensorConfig(ocpp_enabled=True, ocpp_port=9000),
+        ocpp_listening=True,
+        ocpp_chargers={"CP1": session},
+    )
+    sensor = HSEMOCPPChargerStatusSensor(_make_config_entry(), _make_coordinator(data))
+    sensor.hass = _make_hass_without_url()
+    attrs = sensor.extra_state_attributes["CP1"]
+    assert list(attrs["phase_currents_a"]) == ["L1", "L2"]
+    assert attrs["phase_currents_a"]["L1"] == pytest.approx(15.9)
+    assert attrs["active_phases"] == 1
 
 
 def test_attributes_expose_pending_calls() -> None:

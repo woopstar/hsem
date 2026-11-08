@@ -37,6 +37,9 @@ from custom_components.hsem.coordinator import (
     HSEMDataUpdateCoordinator,
 )
 from custom_components.hsem.custom_sensors.ocpp_devices import resolve_handler
+from custom_components.hsem.custom_sensors.ocpp_meter_values import (
+    active_phase_count,
+)
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.sensor_config import SensorConfig
@@ -286,6 +289,11 @@ class HSEMOCPPChargerStatusSensor(
                 attrs[cpid] = {
                     "status": session.status,
                     "power_w": round(session.current_power_w, 1),
+                    "phase_currents_a": {
+                        phase: round(amps, 1)
+                        for phase, amps in sorted(session.phase_currents_a.items())
+                    },
+                    "active_phases": active_phase_count(session.phase_currents_a),
                     "transaction_id": session.transaction_id,
                     "last_call_status": dict(session.last_call_status),
                     "pending_calls": dict(session.pending_calls),

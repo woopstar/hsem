@@ -40,6 +40,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from custom_components.hsem.custom_sensors.ocpp_flap_state import FlapState
+from custom_components.hsem.custom_sensors.ocpp_meter_values import PHASES
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -282,6 +283,10 @@ class OCPPMessageHandlersMixin:
                     session.current_power_w = numeric_value
                 elif measurand == "Energy.Active.Import.Register":
                     session.current_energy_wh = numeric_value
+                elif measurand == "Current.Import" and sv.get("phase") in PHASES:
+                    # Per-phase current (issue #1391); a phase-less total
+                    # says nothing about how many phases are in use.
+                    session.phase_currents_a[sv["phase"]] = numeric_value
                 elif measurand == "":
                     # Many chargers send power in an unlabelled field
                     unit = sv.get("unit", "")

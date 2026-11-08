@@ -29,6 +29,9 @@ class ChargerSession:
             MeterValues).
         current_energy_wh: Latest measured energy in watt-hours (from
             MeterValues).
+        phase_currents_a: Latest ``Current.Import`` per phase (``L1``,
+            ``L2``, ``L3``) from MeterValues (issue #1391). Empty when the
+            charger reports no per-phase current.
         transaction_id: Active OCPP transaction ID, or ``None`` when idle.
         last_heartbeat: Timestamp of the most recent Heartbeat message.
         connected_at: Timestamp when the WebSocket connection was established.
@@ -54,6 +57,9 @@ class ChargerSession:
             (``ChargeProfileMaxStackLevel``), the current it is physically
             capped at (``Station-MaxCurrent``), and any vendor key that
             governs whether it will charge at all (go-e's ``ForceState``).
+        readonly_config_keys: Keys the charger marked ``readonly`` in its
+            ``GetConfiguration`` reply (issue #1391). HSEM never writes
+            these.
         gate_pending_plan: ``True`` while HSEM is holding this connector at
             a transient 0 A block because the charger's own status just
             left ``"Available"`` (a car connected, or free-vended locally)
@@ -87,6 +93,7 @@ class ChargerSession:
     serial: str = ""
     current_power_w: float = 0.0
     current_energy_wh: float = 0.0
+    phase_currents_a: dict[str, float] = field(default_factory=dict)
     transaction_id: int | None = None
     last_heartbeat: datetime | None = None
     connected_at: datetime | None = None
@@ -94,6 +101,7 @@ class ChargerSession:
     pending_calls: dict[str, str] = field(default_factory=dict)
     last_call_status: dict[str, str] = field(default_factory=dict)
     configuration_keys: dict[str, str] = field(default_factory=dict)
+    readonly_config_keys: set[str] = field(default_factory=set)
     gate_pending_plan: bool = False
     charge_point_status: str = "Available"
     hsem_zero_profile_active: bool = False
