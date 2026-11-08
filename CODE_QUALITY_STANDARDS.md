@@ -136,6 +136,14 @@ pytest tests/ -v
 pytest tests/ --cov=custom_components --cov-report=html
 ```
 
+Coverage rules, enforced by `./scripts/quality.sh test` and in CI:
+
+- Every module stays at or above 95 % (`coverage-floor`).
+- Every changed line under `custom_components/` is covered: 100 % patch
+  coverage against `origin/main` (`patch-coverage`, issue #1386).
+- `# pragma: no cover` is only for lines that cannot be reached through the
+  public interface. Restructure code before reaching for it.
+
 ### 9. **Comments Explain Why, Not What**
 
 Code should be self-documenting. Comments explain non-obvious decisions:
