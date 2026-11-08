@@ -41,12 +41,15 @@ from typing import Any
 
 from custom_components.hsem.custom_sensors.ocpp_flap_state import FlapState
 from custom_components.hsem.custom_sensors.ocpp_meter_values import PHASES
+from custom_components.hsem.custom_sensors.ocpp_session_log import (
+    OCPPSessionLogMixin,
+)
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class OCPPMessageHandlersMixin:
+class OCPPMessageHandlersMixin(OCPPSessionLogMixin):
     """Handlers for OCPP messages initiated by a connected charger."""
 
     # Declared (not assigned) so mypy uses OCPPServer.__init__'s type rather
@@ -415,7 +418,8 @@ class OCPPMessageHandlersMixin:
 
         Args:
             session: The charger session.
-            payload: StartTransaction payload (unused — see above).
+            payload: StartTransaction payload. Only ``meterStart`` is read
+                (issue #1392); the transaction ID is HSEM's own, see above.
 
         Returns:
             Response dict with the CS-assigned transactionId and idTagInfo.
@@ -423,6 +427,7 @@ class OCPPMessageHandlersMixin:
         transaction_id = self._next_transaction_id
         self._next_transaction_id += 1
         session.transaction_id = transaction_id
+        self._record_transaction_start(session, payload)
         # A fresh transaction supersedes any "already ended" marker for this
         # charger (issue #920 follow-up) — that marker only exists to stop
         # trailing meter values from reviving a closed transaction.
@@ -539,6 +544,7 @@ class OCPPMessageHandlersMixin:
                 session.cpid,
                 transaction_id,
             )
+        self._record_completed_session(session, payload)
         session.transaction_id = None
         await self._notify_significant_event()
         return {"idTagInfo": {"status": "Accepted"}}

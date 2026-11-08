@@ -38,6 +38,7 @@ import asyncio
 import json
 import logging
 import ssl
+from collections import deque
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
@@ -65,6 +66,7 @@ from custom_components.hsem.custom_sensors.ocpp_profiles import (
     HSEM_PROFILE_IDS,
     OCPPProfilesMixin,
 )
+from custom_components.hsem.custom_sensors.ocpp_session_log import MAX_SESSION_LOG
 from custom_components.hsem.models.ocpp_session import ChargerSession
 from custom_components.hsem.utils.ocpp_tls import (
     cpid_matches_common_name,
@@ -252,6 +254,8 @@ class OCPPServer(
         # Without a strong reference, asyncio may garbage-collect a task
         # before it completes.
         self._background_tasks: set[asyncio.Task[Any]] = set()
+        # Completed sessions, newest last (issue #1392).
+        self._completed_sessions: deque[dict[str, Any]] = deque(maxlen=MAX_SESSION_LOG)
 
     # ------------------------------------------------------------------
     # Public API

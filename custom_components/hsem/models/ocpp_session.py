@@ -33,6 +33,11 @@ class ChargerSession:
             ``L2``, ``L3``) from MeterValues (issue #1391). Empty when the
             charger reports no per-phase current.
         transaction_id: Active OCPP transaction ID, or ``None`` when idle.
+        meter_start_wh: ``meterStart`` of the open transaction in Wh
+            (issue #1392). ``None`` when idle, or for a transaction adopted
+            from MeterValues after a restart.
+        transaction_started_at: When HSEM saw ``StartTransaction`` for the
+            open transaction (issue #1392). ``None`` when idle or adopted.
         last_heartbeat: Timestamp of the most recent Heartbeat message.
         connected_at: Timestamp when the WebSocket connection was established.
         status_changed_at: Timestamp when ``status`` last actually changed
@@ -95,6 +100,8 @@ class ChargerSession:
     current_energy_wh: float = 0.0
     phase_currents_a: dict[str, float] = field(default_factory=dict)
     transaction_id: int | None = None
+    meter_start_wh: float | None = None
+    transaction_started_at: datetime | None = None
     last_heartbeat: datetime | None = None
     connected_at: datetime | None = None
     status_changed_at: datetime | None = None

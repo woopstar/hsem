@@ -182,6 +182,7 @@ class TestOcppStatePackaging:
         server.last_requested_current_a = 16
         server.anti_flap_state = FlapState.Charging.value
         server.is_stalled = True
+        server.completed_sessions = [{"cpid": f"charger_{port_label}"}]
         server.update_charge_target = AsyncMock()
         return server
 
@@ -225,6 +226,9 @@ class TestOcppStatePackaging:
         assert data.ocpp_charger_stalled is True
         assert data.ocpp_second_chargers == second.charger_sessions
         assert data.ocpp_second_listening is True
+        # Each EV's sessions sensor reads its own server's log (issue #1392).
+        assert data.ocpp_sessions == primary.completed_sessions
+        assert data.ocpp_second_sessions == second.completed_sessions
         primary.update_charge_target.assert_awaited_once()
         second.update_charge_target.assert_awaited_once()
 
