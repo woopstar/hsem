@@ -1530,7 +1530,7 @@
   "issues": {
     "ocpp_charger_blocked": {
       "title": "OCPP charger {cpid} ignores HSEM's start",
-      "description": "HSEM started charger {cpid} with a positive charging profile, but it stays in '{status}' and delivers no power. HSEM retried the recovery for its '{handler}' device handler 3 times.\n\nCheck the charger's own app or display for a local stop or lock. On a go-e Charger, set the force state back to neutral. This issue clears itself once the charger starts charging."
+      "description": "HSEM started charger {cpid} with a positive charging profile, but it stays in {status} and delivers no power. HSEM retried the recovery for its {handler} device handler 3 times.\n\nCheck the charger's own app or display for a local stop or lock. On a go-e Charger, set the force state back to neutral. This issue clears itself once the charger starts charging."
     }
   }
 }
