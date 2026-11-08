@@ -38,6 +38,12 @@ class ChargerSession:
             from MeterValues after a restart.
         transaction_started_at: When HSEM saw ``StartTransaction`` for the
             open transaction (issue #1392). ``None`` when idle or adopted.
+        transaction_started_by: Who started the open transaction (issue
+            #1393): ``"hsem"`` when the ``StartTransaction`` idTag is HSEM's
+            own, ``"local"`` for any other idTag (RFID card, vendor app,
+            free-vend), ``"unknown"`` for a transaction adopted from
+            MeterValues. ``None`` when idle. Diagnostic only: HSEM keeps
+            control either way while smart charging is on.
         last_heartbeat: Timestamp of the most recent Heartbeat message.
         connected_at: Timestamp when the WebSocket connection was established.
         status_changed_at: Timestamp when ``status`` last actually changed
@@ -102,6 +108,7 @@ class ChargerSession:
     transaction_id: int | None = None
     meter_start_wh: float | None = None
     transaction_started_at: datetime | None = None
+    transaction_started_by: str | None = None
     last_heartbeat: datetime | None = None
     connected_at: datetime | None = None
     status_changed_at: datetime | None = None

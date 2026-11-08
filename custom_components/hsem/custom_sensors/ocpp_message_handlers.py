@@ -39,6 +39,9 @@ from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
+from custom_components.hsem.custom_sensors.ocpp_commands import (
+    _REMOTE_START_ID_TAG,
+)
 from custom_components.hsem.custom_sensors.ocpp_flap_state import FlapState
 from custom_components.hsem.custom_sensors.ocpp_meter_values import PHASES
 from custom_components.hsem.custom_sensors.ocpp_session_log import (
@@ -47,6 +50,11 @@ from custom_components.hsem.custom_sensors.ocpp_session_log import (
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
 _LOGGER = logging.getLogger(__name__)
+
+# Values for ChargerSession.transaction_started_by (issue #1393).
+STARTED_BY_HSEM = "hsem"
+STARTED_BY_LOCAL = "local"
+STARTED_BY_UNKNOWN = "unknown"
 
 
 class OCPPMessageHandlersMixin(OCPPSessionLogMixin):
@@ -362,6 +370,7 @@ class OCPPMessageHandlersMixin(OCPPSessionLogMixin):
                     return
 
         session.transaction_id = transaction_id
+        session.transaction_started_by = STARTED_BY_UNKNOWN
         # Never hand out an ID at or below one the charger is already using:
         # _next_transaction_id restarts at 1 on every HSEM restart, so
         # without this the next StartTransaction would be assigned an ID the
@@ -428,6 +437,7 @@ class OCPPMessageHandlersMixin(OCPPSessionLogMixin):
         self._next_transaction_id += 1
         session.transaction_id = transaction_id
         self._record_transaction_start(session, payload)
+        self._record_started_by(session, payload.get("idTag"))
         # A fresh transaction supersedes any "already ended" marker for this
         # charger (issue #920 follow-up) — that marker only exists to stop
         # trailing meter values from reviving a closed transaction.
@@ -477,6 +487,36 @@ class OCPPMessageHandlersMixin(OCPPSessionLogMixin):
             "transactionId": transaction_id,
             "idTagInfo": {"status": "Accepted"},
         }
+
+    @staticmethod
+    def _record_started_by(session: ChargerSession, id_tag: Any) -> None:
+        """Record whether HSEM or the charger started the transaction.
+
+        HSEM's own ``RemoteStartTransaction`` always carries
+        :data:`~ocpp_commands._REMOTE_START_ID_TAG`, and the charger echoes
+        it back. Any other idTag means a local start (issue #1393). This is
+        diagnostic only. HSEM keeps control while smart charging is on, so
+        a start or stop from the app during the day cannot cancel the
+        night's planned charge, and a free-vend charger sends its own idTag
+        on every plug-in anyway.
+
+        The idTag itself is logged at debug level only, since it can be an
+        RFID card number.
+
+        Args:
+            session: The charger session.
+            id_tag: ``idTag`` from the StartTransaction payload.
+        """
+        if id_tag == _REMOTE_START_ID_TAG:
+            session.transaction_started_by = STARTED_BY_HSEM
+            return
+        session.transaction_started_by = STARTED_BY_LOCAL
+        _LOGGER.info(
+            "OCPP %s: transaction started locally, not by HSEM. HSEM keeps "
+            "control while smart charging is on",
+            session.cpid,
+        )
+        _LOGGER.debug("OCPP %s: local start idTag=%s", session.cpid, id_tag)
 
     async def _resend_profile_after_start(
         self,
@@ -546,6 +586,7 @@ class OCPPMessageHandlersMixin(OCPPSessionLogMixin):
             )
         self._record_completed_session(session, payload)
         session.transaction_id = None
+        session.transaction_started_by = None
         await self._notify_significant_event()
         return {"idTagInfo": {"status": "Accepted"}}
 

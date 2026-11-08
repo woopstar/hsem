@@ -171,6 +171,24 @@ def test_attributes_expose_session_energy() -> None:
     assert attrs["session_energy_kwh"] == pytest.approx(2.5)
 
 
+def test_attributes_expose_transaction_started_by() -> None:
+    """Who started the open transaction is shown per charger (issue #1393)."""
+    session = ChargerSession(
+        cpid="CP1",
+        status="Charging",
+        transaction_id=2,
+        transaction_started_by="local",
+    )
+    data = CoordinatorData(
+        cfg=SensorConfig(ocpp_enabled=True, ocpp_port=9000),
+        ocpp_listening=True,
+        ocpp_chargers={"CP1": session},
+    )
+    sensor = HSEMOCPPChargerStatusSensor(_make_config_entry(), _make_coordinator(data))
+    sensor.hass = _make_hass_without_url()
+    assert sensor.extra_state_attributes["CP1"]["transaction_started_by"] == "local"
+
+
 def test_attributes_expose_pending_calls() -> None:
     """pending_calls (issue #920) surfaces commands awaiting a CALLRESULT."""
     session = ChargerSession(cpid="CP1", status="Charging")

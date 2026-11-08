@@ -642,6 +642,27 @@ raw `pv - house_load` fields.
 
 If you are on a version before this fix, update HSEM.
 
+### Starts and stops from the charger app or an RFID card (issue #1393)
+
+HSEM keeps control of the charger while smart charging is on. A start or stop
+from the charger app or an RFID card does not change the plan. If you stop
+charging from the app during the day, HSEM still starts the planned charge at
+night.
+
+`transaction_started_by` on `sensor.hsem_ocpp_charger_status_sensor` shows who
+started the open transaction:
+
+- `hsem`: HSEM's own `RemoteStartTransaction` (idTag `HSEM`)
+- `local`: any other idTag, for example an RFID card, the vendor app, or a
+  charger in free-vend mode, which starts a transaction on every plug-in
+- `unknown`: a transaction HSEM adopted from `MeterValues` after a restart
+
+A local start is logged at info level. The idTag itself is logged at debug
+level only, since it can be an RFID card number.
+
+To take control back yourself, turn smart charging off. To charge now, use
+Force Charge Now.
+
 ### How real chargers follow HSEM's ceiling
 
 HSEM publishes a **ceiling**, not a setpoint. `sensor.hsem_ev_charger_calculated_power`
