@@ -299,6 +299,7 @@ class HSEMOCPPChargerStatusSensor(
                     "active_phases": active_phase_count(session.phase_currents_a),
                     "transaction_id": session.transaction_id,
                     "session_energy_kwh": session_energy_kwh(session),
+                    "transaction_started_by": session.transaction_started_by,
                     "last_call_status": dict(session.last_call_status),
                     "pending_calls": dict(session.pending_calls),
                     "connected_at": (
