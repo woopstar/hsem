@@ -636,7 +636,9 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 target_kw,
                 max_current_a=max_current_a,
                 now=now,
-                **ocpp_management_flags(self._cfg, live, is_second=False),
+                **ocpp_management_flags(
+                    self._cfg, live, is_second=False, config_entry=self._config_entry
+                ),
                 number_phases=number_phases,
             )
 
@@ -676,7 +678,9 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
                 second_target_kw,
                 max_current_a=second_max_current_a,
                 now=now,
-                **ocpp_management_flags(self._cfg, live, is_second=True),
+                **ocpp_management_flags(
+                    self._cfg, live, is_second=True, config_entry=self._config_entry
+                ),
                 number_phases=second_number_phases,
             )
 

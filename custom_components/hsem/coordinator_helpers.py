@@ -279,7 +279,11 @@ def ev_is_managed(cfg: SensorConfig, live: LiveState, *, is_second: bool) -> boo
 
 
 def ocpp_management_flags(
-    cfg: SensorConfig, live: LiveState, *, is_second: bool
+    cfg: SensorConfig,
+    live: LiveState,
+    *,
+    is_second: bool,
+    config_entry: ConfigEntry | None = None,
 ) -> dict[str, bool]:
     """Return the ``managed`` and ``management_enabled`` arguments for OCPP dispatch.
 
@@ -288,11 +292,25 @@ def ocpp_management_flags(
     car-connected reading, while ``management_enabled`` is configuration only,
     so a one-cycle "connected" blip cannot release an enforced zero on a car
     the charger still reports plugged in (issue #1018).
+
+    With *config_entry*, ``immediate`` is added too: ``True`` while that EV's
+    force-charge-now switch is on. Force charge is an explicit user command,
+    so it skips the anti-flap start window (issue #1381). The automatic
+    overrides (minimum-SoC, negative-price auto-full, cheap-price charge)
+    follow SoC and price thresholds and keep the window.
     """
-    return {
+    flags = {
         "managed": ev_is_managed(cfg, live, is_second=is_second),
         "management_enabled": ev_management_enabled(cfg, live, is_second=is_second),
     }
+    if config_entry is not None:
+        key = (
+            "hsem_ev_second_force_charge_now"
+            if is_second
+            else "hsem_ev_force_charge_now"
+        )
+        flags["immediate"] = bool(get_config_value(config_entry, key))
+    return flags
 
 
 # ---------------------------------------------------------------------------

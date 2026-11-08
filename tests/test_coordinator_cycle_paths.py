@@ -229,6 +229,38 @@ class TestOcppStatePackaging:
         second.update_charge_target.assert_awaited_once()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("primary_forced", "second_forced"), [(True, False), (False, True)]
+    )
+    async def test_force_charge_now_pushes_immediate_per_ev(
+        self, primary_forced: bool, second_forced: bool
+    ) -> None:
+        """Each EV's own force-charge switch reaches its server as ``immediate``."""
+        coordinator, _published = _coordinator(
+            {
+                "hsem_ocpp_enabled": True,
+                "hsem_ocpp_second_enabled": True,
+                "hsem_ev_planned_load_enabled": True,
+                "hsem_ev_second_planned_load_enabled": True,
+                "hsem_ev_force_charge_now": primary_forced,
+                "hsem_ev_second_force_charge_now": second_forced,
+            }
+        )
+        primary = self._server("primary")
+        second = self._server("second")
+        coordinator._ocpp_server = primary
+        coordinator._ocpp_second_server = second
+
+        await _run_cycle(coordinator)
+
+        assert primary.update_charge_target.await_args.kwargs["immediate"] is (
+            primary_forced
+        )
+        assert second.update_charge_target.await_args.kwargs["immediate"] is (
+            second_forced
+        )
+
+    @pytest.mark.asyncio
     async def test_disabled_ocpp_never_pushes_a_target(self) -> None:
         """A server object with OCPP disabled in config stays idle."""
         coordinator, _published = _coordinator({"hsem_ocpp_enabled": False})

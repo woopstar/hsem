@@ -661,6 +661,19 @@ The requested amperage is derived from the same command and phase topology backi
 `coordinator_helpers.ocpp_charge_target()` (issue #886), and is exposed for
 diagnostics as `requested_current_a` on `sensor.hsem_ocpp_charger_status_sensor`.
 
+**Start and stop window timing (issue #1381).** A positive target waits
+`hsem_ocpp_start_window_s` in `"starting"`, and a zero target waits
+`hsem_ocpp_stop_window_s` in `"stopping"`. On entering either wait, HSEM arms
+a timer for the rest of the window. When it fires, HSEM re-applies the latest
+target, so `RemoteStartTransaction` + `SetChargingProfile` (or the stop) go out
+at window expiry, not on the next coordinator cycle. The timer is cancelled
+when the target flips, the state machine leaves the wait, or HSEM unloads.
+Force charge now (`switch.hsem_ev_force_charge_now`, and the second-EV
+switch) is an explicit command and skips the start window: the start commands
+go out on the cycle the switch triggers. The minimum-SoC charge, negative-price
+auto-full and cheap-price charge are automatic, threshold-driven overrides and
+keep the start window.
+
 **Charging rate unit (issue #1001).** Charging profiles are published in the
 unit the charger actually accepts: after `BootNotification` HSEM reads the
 charger's reported `ChargingScheduleAllowedChargingRateUnit` from its
