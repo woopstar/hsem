@@ -1029,6 +1029,24 @@ narrow window rather than reintroducing a general idle-time block:
   zero (smart charging switched off mid-hold), the next coordinator cycle
   releases the profile exactly once.
 
+### MeterValues HSEM asks for (issue #1391)
+
+After the charger's `GetConfiguration` reply, HSEM writes two keys with
+`ChangeConfiguration`. It writes a key only when the charger reports it, it is
+not read-only, and its value is not good enough already:
+
+- `MeterValueSampleInterval` = `60`, when it is `0`, missing a number, or
+  slower than 60 s. A charger that already samples faster keeps its setting.
+- `MeterValuesSampledData` =
+  `Energy.Active.Import.Register,Power.Active.Import,Current.Import`, when one
+  of them is missing. If the charger reports a shorter
+  `MeterValuesSampledDataMaxLength`, HSEM writes only the first ones.
+
+`Current.Import` per phase is shown as `phase_currents_a` and `active_phases`
+on `sensor.hsem_ocpp_charger_status_sensor`. A charger that rejects the write
+keeps its own setting. HSEM tries again only after the next `GetConfiguration`
+reply.
+
 ### What a planned zero guarantees (issue #990)
 
 When the plan allocates **0 W** to a managed, plugged-in EV, HSEM guarantees
