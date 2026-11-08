@@ -63,26 +63,48 @@ class GoEHandler(ChargerHandler):
     async def before_start(
         self, commands: ChargerCommands, session: ChargerSession
     ) -> None:
-        """Write ``ForceState`` back to ``Neutral`` when it reads ``Off``.
+        """Write ``ForceState=Neutral`` before every remote start.
 
-        No-ops when the charger does not report the key, or reports a
-        permissive value, so it is safe to call before every start.
+        Written whatever the cached value says (issue #1383). The cache is
+        only refreshed by ``GetConfiguration``, which HSEM sends at boot,
+        so a ``ForceState=Off`` set later from the go-e app was never seen
+        and the start was silently ignored all night. HSEM manages this
+        charger while smart charging is on, so a local "don't charge" from
+        before the start must not veto it. The write is idempotent.
 
         Args:
             commands: The OCPP senders.
             session: The charger session.
         """
+        await self._clear_force_state(commands, session)
+
+    async def recover_blocked_start(
+        self, commands: ChargerCommands, session: ChargerSession
+    ) -> None:
+        """Clear ``ForceState`` again, then run the generic recovery.
+
+        Args:
+            commands: The OCPP senders.
+            session: The charger session.
+        """
+        await self._clear_force_state(commands, session)
+        await super().recover_blocked_start(commands, session)
+
+    @staticmethod
+    async def _clear_force_state(
+        commands: ChargerCommands, session: ChargerSession
+    ) -> None:
+        """Write ``ForceState=Neutral`` and cache it on success."""
         current = session.configuration_keys.get(FORCE_STATE_KEY)
-        if current is None or current != FORCE_STATE_OFF:
-            return
-        _LOGGER.warning(
-            "OCPP %s: charger is locally forced off (%s=%s) — clearing to "
-            "%s so remote start can take effect",
-            session.cpid,
-            FORCE_STATE_KEY,
-            current,
-            FORCE_STATE_NEUTRAL,
-        )
+        if current == FORCE_STATE_OFF:
+            _LOGGER.warning(
+                "OCPP %s: charger is locally forced off (%s=%s) — clearing "
+                "to %s so remote start can take effect",
+                session.cpid,
+                FORCE_STATE_KEY,
+                current,
+                FORCE_STATE_NEUTRAL,
+            )
         if await commands.send_change_configuration(
             session.cpid, FORCE_STATE_KEY, FORCE_STATE_NEUTRAL
         ):

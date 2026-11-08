@@ -41,6 +41,7 @@ DIAGNOSTIC_ACTIONS = frozenset(
         "GetCompositeSchedule",
         "ChangeAvailability",
         "ChangeConfiguration",
+        "TriggerMessage",
     }
 )
 
@@ -169,6 +170,34 @@ class OCPPControlMixin:
             return False
         # An empty/absent key list means "return every key" per OCPP 1.6.
         return await self._send_call(session, "GetConfiguration", {})
+
+    async def send_trigger_message(
+        self, cpid: str, requested_message: str, connector_id: int | None = 1
+    ) -> bool:
+        """Ask the charger to send one message now (OCPP 1.6 Remote Trigger).
+
+        Standard OCPP, so it works on any charger that implements the
+        RemoteTrigger profile. Used by blocked-start recovery (issue #1383)
+        to get a fresh ``StatusNotification`` instead of waiting for the
+        charger's next one.
+
+        Args:
+            cpid: Charge-point identifier.
+            requested_message: The message to trigger, e.g.
+                ``"StatusNotification"`` or ``"MeterValues"``.
+            connector_id: Connector to report on, or ``None`` for the whole
+                charge point.
+
+        Returns:
+            ``True`` if the request was written to the socket.
+        """
+        session = self._require_session(cpid, "TriggerMessage")
+        if session is None:
+            return False
+        payload: dict[str, Any] = {"requestedMessage": requested_message}
+        if connector_id is not None:
+            payload["connectorId"] = connector_id
+        return await self._send_call(session, "TriggerMessage", payload)
 
     async def send_get_composite_schedule(
         self, cpid: str, duration_s: int = 3600, connector_id: int = 1

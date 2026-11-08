@@ -102,8 +102,49 @@ class TestBeforeStart:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("keys", [{}, {FORCE_STATE_KEY: FORCE_STATE_NEUTRAL}])
-    async def test_go_e_not_blocked_sends_nothing(self, keys: dict[str, str]) -> None:
-        """No key, or a permissive value, means nothing to clear."""
+    async def test_go_e_writes_neutral_whatever_the_cache_says(
+        self, keys: dict[str, str]
+    ) -> None:
+        """A missing or Neutral cache can be stale, so it is written (#1383)."""
         commands = AsyncMock()
-        await GoEHandler().before_start(commands, _session("go-e", keys=keys))
+        commands.send_change_configuration.return_value = True
+        session = _session("go-e", keys=keys)
+
+        await GoEHandler().before_start(commands, session)
+
+        commands.send_change_configuration.assert_awaited_once_with(
+            "cp1", FORCE_STATE_KEY, FORCE_STATE_NEUTRAL
+        )
+        assert session.configuration_keys[FORCE_STATE_KEY] == FORCE_STATE_NEUTRAL
+
+
+class TestRecoverBlockedStart:
+    """Recovery refreshes state generically; go-e also clears ForceState."""
+
+    @pytest.mark.asyncio
+    async def test_generic_recovery_is_standard_ocpp_only(self) -> None:
+        """GetConfiguration and TriggerMessage, never a vendor key."""
+        commands = AsyncMock()
+
+        await ChargerHandler().recover_blocked_start(commands, _session("ACME"))
+
+        commands.send_get_configuration.assert_awaited_once_with("cp1")
+        commands.send_trigger_message.assert_awaited_once_with(
+            "cp1", "StatusNotification"
+        )
         commands.send_change_configuration.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_go_e_recovery_clears_force_state_first(self) -> None:
+        """go-e writes ForceState=Neutral, then runs the generic steps."""
+        commands = AsyncMock()
+        commands.send_change_configuration.return_value = True
+        session = _session("go-e", keys={FORCE_STATE_KEY: FORCE_STATE_OFF})
+
+        await GoEHandler().recover_blocked_start(commands, session)
+
+        assert [c[0] for c in commands.method_calls] == [
+            "send_change_configuration",
+            "send_get_configuration",
+            "send_trigger_message",
+        ]

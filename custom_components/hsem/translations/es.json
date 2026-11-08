@@ -1526,5 +1526,11 @@
         }
       }
     }
+  },
+  "issues": {
+    "ocpp_charger_blocked": {
+      "title": "El cargador OCPP {cpid} ignora el inicio de HSEM",
+      "description": "HSEM inició el cargador {cpid} con un perfil de carga positivo, pero sigue en '{status}' y no entrega energía. HSEM reintentó la recuperación de su controlador de dispositivo '{handler}' 3 veces.\n\nRevisa la app o la pantalla del cargador por si hay una parada o un bloqueo local. En un go-e Charger, vuelve a poner el force state en neutral. Este aviso desaparece solo cuando el cargador empieza a cargar."
+    }
   }
 }

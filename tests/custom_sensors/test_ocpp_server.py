@@ -447,8 +447,12 @@ class TestForceStateTakeOver:
         assert charger_session.configuration_keys["ForceState"] == "Neutral"
 
     @pytest.mark.asyncio
-    async def test_no_write_when_already_permissive(self, ocpp_server, charger_session):
-        """A charger already in Neutral is left alone."""
+    async def test_cached_neutral_is_still_written(self, ocpp_server, charger_session):
+        """A cached Neutral can be stale, so it is written anyway (issue #1383).
+
+        The cache is only refreshed at boot; a ForceState=Off set later from
+        the go-e app was never seen, and the start was ignored all night.
+        """
         ocpp_server._chargers["test-cpid"] = charger_session
         ocpp_server.absorb_configuration_reply(
             charger_session, _configuration_reply(ForceState="Neutral")
@@ -456,8 +460,25 @@ class TestForceStateTakeOver:
 
         await ocpp_server.send_remote_start("test-cpid")
 
-        actions = _sent_actions(charger_session)
-        assert "ChangeConfiguration" not in actions
+        assert _sent_actions(charger_session) == [
+            "ChangeConfiguration",
+            "RemoteStartTransaction",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_open_transaction_still_clears_force_state(
+        self, ocpp_server, charger_session
+    ):
+        """With a transaction open, the debug start only clears ForceState."""
+        ocpp_server._chargers["test-cpid"] = charger_session
+        charger_session.transaction_id = 7
+        ocpp_server.absorb_configuration_reply(
+            charger_session, _configuration_reply(ForceState="Off")
+        )
+
+        assert await ocpp_server.send_remote_start("test-cpid") is True
+
+        assert _sent_actions(charger_session) == ["ChangeConfiguration"]
 
     @pytest.mark.asyncio
     async def test_no_write_when_charger_lacks_the_key(

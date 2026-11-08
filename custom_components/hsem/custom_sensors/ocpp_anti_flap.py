@@ -23,6 +23,9 @@ from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
+from custom_components.hsem.custom_sensors.ocpp_blocked_start import (
+    OCPPBlockedStartMixin,
+)
 from custom_components.hsem.custom_sensors.ocpp_commands import (
     CHARGER_STALL_THRESHOLD_S,
     charger_appears_stalled,
@@ -41,7 +44,7 @@ _LOGGER = logging.getLogger(__name__)
 _SLOT_EPSILON = 1e-6
 
 
-class OCPPAntiFlapMixin(OCPPWindowTimerMixin):
+class OCPPAntiFlapMixin(OCPPWindowTimerMixin, OCPPBlockedStartMixin):
     """Turns a continuous charge target into stable start/stop commands."""
 
     # Declared (not assigned) so mypy resolves these against OCPPServer and
@@ -248,6 +251,7 @@ class OCPPAntiFlapMixin(OCPPWindowTimerMixin):
                     )
                     if remote_start_ok and profile_ok:
                         self._flap_state = FlapState.Charging
+                        self._charging_since = now
                     else:
                         # Stay "starting" so the next cycle retries — the
                         # start window has already elapsed, so elapsed
@@ -319,11 +323,15 @@ class OCPPAntiFlapMixin(OCPPWindowTimerMixin):
                 else:
                     self._stalled = False
                     self._stall_logged = False
+                # A start the charger ignores gets a bounded recovery
+                # instead of a log line only (issue #1383).
+                await self._check_blocked_start(session, now)
             self._zero_entered_at = None
         else:
             # Target is zero — handle stop window
             self._stalled = False
             self._stall_logged = False
+            self._clear_blocked_start(session)
             # "stopping" must stay in this guard alongside "charging" and
             # "starting" (issue #906) — without it, once the state machine
             # entered "stopping" below, this whole block was skipped on
@@ -531,6 +539,7 @@ class OCPPAntiFlapMixin(OCPPWindowTimerMixin):
         session.gate_pending_plan = False
         await self._release_connect_gate(session)
         self._cancel_window_timer()
+        self._clear_blocked_start(session)
         self._flap_state = FlapState.Idle
         self._target_entered_at = None
         self._zero_entered_at = None
