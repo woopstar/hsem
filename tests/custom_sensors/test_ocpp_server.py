@@ -1373,9 +1373,10 @@ class TestUnknownAction:
     async def test_unknown_action_handled_gracefully(
         self, ocpp_server, charger_session
     ):
-        """Unknown actions should return None without raising."""
-        result = await ocpp_server._handle_unknown(charger_session, {"some": "data"})
-        assert result is None
+        """Unknown actions are answered with a CALLERROR, never raised (#1390)."""
+        await ocpp_server._dispatch(charger_session, "m1", "Unknown", {"some": "data"})
+        frame = json.loads(charger_session.websocket.send_str.await_args.args[0])
+        assert frame[:3] == [4, "m1", "NotImplemented"]
 
 
 # ---------------------------------------------------------------------------

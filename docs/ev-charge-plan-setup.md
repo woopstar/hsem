@@ -966,6 +966,21 @@ has elapsed, HSEM retries `RemoteStopTransaction` roughly once a minute
 instead of assuming a single attempt worked — a charger that silently
 ignores or rejects the first stop request no longer gets stuck charging.
 
+### OCPP messages HSEM answers (issue #1390)
+
+Every message the charger sends gets a reply, as OCPP-J 1.6 requires.
+
+| Charger message                                                                                                          | HSEM reply                                              |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| `BootNotification`, `Heartbeat`, `StatusNotification`, `MeterValues`, `Authorize`, `StartTransaction`, `StopTransaction` | Handled, see the sections above                         |
+| `DataTransfer`                                                                                                           | `UnknownVendorId`. HSEM implements no vendor extensions |
+| `FirmwareStatusNotification`, `DiagnosticsStatusNotification`                                                            | Empty reply. The status is logged at info level         |
+| Anything else                                                                                                            | CALLERROR `NotImplemented`                              |
+
+If a handler fails, the charger gets CALLERROR `InternalError` and the error is
+logged. Before, HSEM sent nothing in both cases, and some chargers waited for
+their own timeout or held back later messages.
+
 ### Preventing free-vend on fresh connect (issue #969)
 
 Some OCPP chargers (confirmed: go-e Charger V4) authorize and start a

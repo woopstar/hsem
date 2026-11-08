@@ -641,15 +641,33 @@ class OCPPServer(
             "Authorize": self._handle_authorize,
             "StartTransaction": self._handle_start_transaction,
             "StopTransaction": self._handle_stop_transaction,
+            "DataTransfer": self._handle_data_transfer,
+            "FirmwareStatusNotification": self._handle_firmware_status,
+            "DiagnosticsStatusNotification": self._handle_diagnostics_status,
         }
 
-        handler = handlers.get(action, self._handle_unknown)
+        # Every CALL gets a reply (issue #1390): NotImplemented for an
+        # action HSEM has no handler for, InternalError when one raises.
+        handler = handlers.get(action) if isinstance(action, str) else None
         if handler is None:
-            handler = self._handle_unknown
-
-        response = await handler(session, payload)
-        if response is not None:
-            await self._send_response(session, msg_id, response)
+            _LOGGER.info(
+                "OCPP %s: unsupported action %s, answered NotImplemented",
+                session.cpid,
+                action,
+            )
+            await self._send_call_error(
+                session, msg_id, "NotImplemented", f"{action} is not supported"
+            )
+            return
+        try:
+            response = await handler(session, payload)
+        except Exception:
+            _LOGGER.exception("OCPP %s: %s handler failed", session.cpid, action)
+            await self._send_call_error(
+                session, msg_id, "InternalError", f"{action} failed"
+            )
+            return
+        await self._send_response(session, msg_id, response)
 
 
 # Re-exported so the stall diagnostic keeps its documented home here even
