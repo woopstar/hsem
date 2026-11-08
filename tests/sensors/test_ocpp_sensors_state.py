@@ -340,6 +340,7 @@ class TestChargerInfoSensor:
             "firmware": "1.2.3",
             "serial": "SN-1",
             "cpid": "charger01",
+            "handler": "generic",
         }
 
     @pytest.mark.parametrize("charger_index", _INDEXES)
