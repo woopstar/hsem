@@ -47,7 +47,6 @@ ALLOWLIST: dict[str, str] = {
         "ConsumptionPredictor keeps a fixed 0 intercept, the one-hot weekday "
         "columns carry it; dead but harmless"
     ),
-    "_ocpp_sessions": "never filled; removed by #1396 (issue #1392)",
 }
 
 # Methods that change a container in place.
