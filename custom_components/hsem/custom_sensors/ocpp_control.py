@@ -26,6 +26,7 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
 
+from custom_components.hsem.custom_sensors.ocpp_devices import resolve_handler
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,25 +44,6 @@ DIAGNOSTIC_ACTIONS = frozenset(
     }
 )
 
-
-# go-e's vendor-specific key governing whether the charge point will
-# deliver power at all, independent of any OCPP transaction (issue #920).
-# Confirmed against a go-e Charger V4 (firmware 60.6): it reads back
-# ``Neutral`` normally and flips to ``Off`` the moment "stop charge" is
-# pressed in the go-e app — and while it is ``Off`` the charger accepts
-# RemoteStart/RemoteStop/SetChargingProfile and ignores all of them,
-# sitting in ``SuspendedEVSE``. It is writable, so a central system can
-# take back control. Keyed by name because it is vendor-specific: HSEM
-# only ever touches it on a charger that reports the key in its own
-# GetConfiguration reply.
-FORCE_STATE_KEY = "ForceState"
-
-#: ``ForceState`` value meaning "no local override — follow normal rules",
-#: which is what lets OCPP RemoteStart/RemoteStop actually govern.
-FORCE_STATE_NEUTRAL = "Neutral"
-
-#: ``ForceState`` value meaning "do not charge", which blocks everything.
-FORCE_STATE_OFF = "Off"
 
 # The charger's own physical current ceiling, reported read-only. Asking
 # for more than this is silently a no-op — the cause of "it did not set
@@ -288,58 +270,32 @@ class OCPPControlMixin:
             return
         session.configuration_keys = found
         _LOGGER.info(
-            "OCPP %s: recorded %d configuration keys (%s=%s, %s=%s, %s=%s)",
+            "OCPP %s: recorded %d configuration keys (%s=%s, %s=%s, handler=%s)",
             session.cpid,
             len(found),
             MAX_STACK_LEVEL_KEY,
             found.get(MAX_STACK_LEVEL_KEY, "?"),
             STATION_MAX_CURRENT_KEY,
             found.get(STATION_MAX_CURRENT_KEY, "?"),
-            FORCE_STATE_KEY,
-            found.get(FORCE_STATE_KEY, "n/a"),
+            resolve_handler(session).name,
         )
 
     async def ensure_charging_allowed(self, session: ChargerSession) -> None:
         """Clear a charger-local block that would veto remote control.
 
-        HSEM "taking over" the charger (issue #920). A go-e parks
-        :data:`FORCE_STATE_KEY` at :data:`FORCE_STATE_OFF` when charging is
-        stopped from its own app, and while it sits there the charger
-        accepts every OCPP command and obeys none of them. Nothing in the
-        OCPP core profile clears that — ``ChangeAvailability`` addresses a
-        different axis (Operative/Inoperative, i.e. connector status
-        ``Unavailable``, not ``SuspendedEVSE``) — so it has to be written
-        back through the vendor key.
-
-        Stopping a charge no longer writes this key automatically (issue
-        #920 follow-up — user testing showed a bare 0 A profile suffices),
-        so in normal HSEM-only operation this now mostly no-ops. It still
-        matters for the case it was built for: a charge stopped from the
-        charger's own app, which does set this key.
-
-        No-ops on any charger that doesn't report the key, and on one
-        already in a permissive state, so this is safe to call before every
+        HSEM "taking over" the charger (issue #920). Some chargers keep a
+        local "don't charge" state that makes them accept every OCPP
+        command and obey none of them, and nothing in the OCPP core profile
+        clears it. What to clear is charger-specific, so this delegates to
+        the charger's device handler (issue #1383): see
+        :class:`~ocpp_devices.goe.GoEHandler` for go-e's ``ForceState``.
+        The generic handler no-ops, so this is safe to call before every
         start.
 
         Args:
             session: The charger session.
         """
-        current = session.configuration_keys.get(FORCE_STATE_KEY)
-        if current is None or current != FORCE_STATE_OFF:
-            return
-        _LOGGER.warning(
-            "OCPP %s: charger is locally forced off (%s=%s) — clearing to "
-            "%s so remote start can take effect",
-            session.cpid,
-            FORCE_STATE_KEY,
-            current,
-            FORCE_STATE_NEUTRAL,
-        )
-        if await self.send_change_configuration(
-            session.cpid, FORCE_STATE_KEY, FORCE_STATE_NEUTRAL
-        ):
-            # Optimistic local update; the next GetConfiguration confirms it.
-            session.configuration_keys[FORCE_STATE_KEY] = FORCE_STATE_NEUTRAL
+        await resolve_handler(session).before_start(self, session)
 
     async def send_clear_charging_profile(self, cpid: str, profile_id: int) -> bool:
         """Remove one charging profile HSEM installed.

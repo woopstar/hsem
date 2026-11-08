@@ -347,7 +347,7 @@ class OCPPCommandsMixin:
         #      for ending the transaction itself.
         #
         # No vendor key is written here. This was originally step 3 of a
-        # three-step ladder (a vendor `ForceState` write, escalated to
+        # three-step ladder (a vendor force-state write, escalated to
         # automatically on every stop) — but user testing proved a bare 0 A
         # profile alone (no RemoteStop, no vendor write) stops a go-e
         # Charger V4 and is reported by the charger's own app as "stopped

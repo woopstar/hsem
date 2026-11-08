@@ -36,6 +36,7 @@ from custom_components.hsem.coordinator import (
     CoordinatorData,
     HSEMDataUpdateCoordinator,
 )
+from custom_components.hsem.custom_sensors.ocpp_devices import resolve_handler
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.sensor_config import SensorConfig
@@ -520,6 +521,8 @@ class HSEMOCPPChargerInfoSensor(
             "firmware": first.firmware,
             "serial": first.serial,
             "cpid": first.cpid,
+            # Device handler HSEM applies to this charger (issue #1383).
+            "handler": resolve_handler(first).name,
         }
 
     @property

@@ -843,11 +843,11 @@ fresh meter data to explain why.
 
 ### `sensor.hsem_ocpp_charger_info_sensor`
 
-| Property       | Value                                                  |
-| -------------- | ------------------------------------------------------ |
-| **Type**       | `sensor`                                               |
-| **State**      | Charger summary string                                 |
-| **Attributes** | `vendor`, `model`, `firmware_version`, `serial_number` |
+| Property       | Value                                                                                                                      |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **Type**       | `sensor`                                                                                                                   |
+| **State**      | Charger model string                                                                                                       |
+| **Attributes** | `vendor`, `model`, `firmware`, `serial`, `cpid`, `handler` (device handler HSEM applies: `go-e` or `generic`, issue #1383) |
 
 ### `sensor.hsem_ocpp_charger_sessions_sensor`
 
