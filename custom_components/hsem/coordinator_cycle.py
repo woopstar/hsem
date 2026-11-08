@@ -480,7 +480,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         ocpp = getattr(self, "_ocpp_server", None)
         if ocpp is not None:
             ocpp_chargers = ocpp.charger_sessions
-            ocpp_sessions = list(self._ocpp_sessions)
+            ocpp_sessions = ocpp.completed_sessions
             ocpp_listening = ocpp.is_listening
             ocpp_last_requested_current_a = ocpp.last_requested_current_a
             ocpp_anti_flap_state = ocpp.anti_flap_state
@@ -496,7 +496,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
         ocpp_second = getattr(self, "_ocpp_second_server", None)
         if ocpp_second is not None:
             ocpp_second_chargers = ocpp_second.charger_sessions
-            ocpp_second_sessions = []
+            ocpp_second_sessions = ocpp_second.completed_sessions
             ocpp_second_listening = ocpp_second.is_listening
             ocpp_second_last_requested_current_a = ocpp_second.last_requested_current_a
             ocpp_second_anti_flap_state = ocpp_second.anti_flap_state

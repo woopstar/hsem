@@ -151,6 +151,26 @@ def test_attributes_expose_phase_currents() -> None:
     assert attrs["active_phases"] == 1
 
 
+def test_attributes_expose_session_energy() -> None:
+    """The open transaction's energy is shown per charger (issue #1392)."""
+    session = ChargerSession(
+        cpid="CP1",
+        status="Charging",
+        transaction_id=4,
+        meter_start_wh=1000.0,
+        current_energy_wh=3500.0,
+    )
+    data = CoordinatorData(
+        cfg=SensorConfig(ocpp_enabled=True, ocpp_port=9000),
+        ocpp_listening=True,
+        ocpp_chargers={"CP1": session},
+    )
+    sensor = HSEMOCPPChargerStatusSensor(_make_config_entry(), _make_coordinator(data))
+    sensor.hass = _make_hass_without_url()
+    attrs = sensor.extra_state_attributes["CP1"]
+    assert attrs["session_energy_kwh"] == pytest.approx(2.5)
+
+
 def test_attributes_expose_pending_calls() -> None:
     """pending_calls (issue #920) surfaces commands awaiting a CALLRESULT."""
     session = ChargerSession(cpid="CP1", status="Charging")

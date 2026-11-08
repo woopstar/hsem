@@ -379,7 +379,6 @@ class HSEMDataUpdateCoordinator(
         self._ocpp_second_server: OCPPServer | None = None
         # TLS facts (or the setup error) for diagnostics (issue #1341).
         self._ocpp_tls_status: dict | None = None
-        self._ocpp_sessions: list = []
 
         # ML consumption predictor — cached across cycles so the retrain
         # gate can skip re-fitting when no new history has arrived.

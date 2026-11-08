@@ -40,6 +40,9 @@ from custom_components.hsem.custom_sensors.ocpp_devices import resolve_handler
 from custom_components.hsem.custom_sensors.ocpp_meter_values import (
     active_phase_count,
 )
+from custom_components.hsem.custom_sensors.ocpp_session_log import (
+    session_energy_kwh,
+)
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.sensor_config import SensorConfig
@@ -295,6 +298,7 @@ class HSEMOCPPChargerStatusSensor(
                     },
                     "active_phases": active_phase_count(session.phase_currents_a),
                     "transaction_id": session.transaction_id,
+                    "session_energy_kwh": session_energy_kwh(session),
                     "last_call_status": dict(session.last_call_status),
                     "pending_calls": dict(session.pending_calls),
                     "connected_at": (
