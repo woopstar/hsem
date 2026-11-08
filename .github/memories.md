@@ -178,6 +178,14 @@ assert result == pytest.approx(expected, rel=1e-6)
 # ambiguous rather than as a definite idle charger.
 ```
 
+### EV planning SoC sensor (issue #1388)
+
+`custom_sensors/ev_soc_sensor.py` (`HSEMEVSoCSensor`, `is_second=` for EV 2)
+exposes `LiveState.ev_planning_soc_pct()` as `sensor.hsem_ev_soc` /
+`sensor.hsem_ev_second_soc` (battery, measurement, diagnostic). Unknown SoC
+makes it unavailable, never 0. `soc_kind` says whether the state is the
+effective or the reported SoC. Read-only: no planner change.
+
 ### Missing-price estimation (issue #1002)
 
 ```python

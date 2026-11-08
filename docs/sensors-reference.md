@@ -76,7 +76,7 @@ dashboards, automations, and Areas.
 | **Hourly Consumption Profile** | `_hourly_consumption` | All 168 per-hour-block entities (`HSEMHouseConsumptionPowerSensor` + integral + utility-meter + 1/3/7/14-day averages × 24 hour blocks)                                                                                                                                                  |
 | **Financial**                  | `_financial`          | Export income, import cost, net grid balance, savings, performance (savings capture, actual benefit, missed opportunity, battery and solar utilisation, EV charging efficiency)                                                                                                          |
 | **Forecast**                   | `_forecast`           | Forecast accuracy, prediction accuracy, solar confidence, Solcast likelihood selector                                                                                                                                                                                                    |
-| **EV Primary**                 | `_ev_primary`         | EV charging/plan sensors, calculated power, current limit, target SoC number, deadline time, smart-charging/force-charge-now/force-discharge/auto-full switches, OCPP charger sensors for `charger_index=1`                                                                              |
+| **EV Primary**                 | `_ev_primary`         | EV charging/plan/SoC sensors, calculated power, current limit, target SoC number, deadline time, smart-charging/force-charge-now/force-discharge/auto-full switches, OCPP charger sensors for `charger_index=1`                                                                          |
 | **EV Secondary**               | `_ev_secondary`       | The same set as EV Primary for `charger_index=2` / the second EV (only present when the second EV is configured)                                                                                                                                                                         |
 
 The Controller device keeps the original `(DOMAIN, entry_id)` identifier that
@@ -434,6 +434,62 @@ Diagnostic sensors displaying the EV charging plan details.
 | `charging_slots`             | List of allocated charging slots with details |
 | `planned_load_by_slot`       | Dict of slot → kWh load                       |
 | `data_quality`               | Diagnostic warnings                           |
+
+---
+
+## EV SoC sensors
+
+Diagnostic sensors exposing the EV state of charge HSEM plans with
+(issue #1388). The state is always the value the planner and the EV
+overrides act on, so it can be recorded, graphed and used in automations.
+Because the entity follows the SoC sensor configured in the options flow,
+switching source (for example from a vendor API to ABRP) changes the value
+but keeps the entity ID.
+
+**Entities:**
+
+- `sensor.hsem_ev_soc` — Primary EV, created only when `hsem_ev_planned_load_enabled` is set
+- `sensor.hsem_ev_second_soc` — Second EV, created only when `hsem_ev_second_planned_load_enabled` is set
+
+Device class `battery`, state class `measurement` (long-term statistics),
+unit `%`, entity category `diagnostic`. Updated on every coordinator cycle.
+
+**State: effective or reported SoC.**
+
+- **Effective SoC** while it is known: the reported SoC plus the bounded
+  energy delivered since the last SoC update (issue #789). It is only
+  tracked when a connection sensor is configured and the car is plugged in.
+- **Reported SoC** otherwise: the raw value of the configured SoC sensor.
+- **`unavailable`** when neither is known. Never `0` (issue #988).
+
+**Attributes:**
+
+| Attribute                     | Type          | Description                                                              |
+| ----------------------------- | ------------- | ------------------------------------------------------------------------ |
+| `reported_soc_pct`            | float \| None | Raw value from the configured SoC sensor                                 |
+| `effective_soc_pct`           | float \| None | Effective SoC, or `null` when delivered-energy tracking is inactive      |
+| `delivered_energy_credit_kwh` | float         | Delivered battery energy not yet reflected in the reported SoC           |
+| `source_entity`               | str \| None   | Entity ID of the configured SoC sensor                                   |
+| `source_last_updated`         | str \| None   | ISO-8601 `last_updated` of the source sensor, so stale vendor data shows |
+| `soc_kind`                    | str \| None   | `effective` or `reported`, whichever the state uses; `null` when unknown |
+
+Compare HSEM's SoC with the car's own sensor over a charge session (replace
+`sensor.my_car_soc` with your source sensor):
+
+```yaml
+type: history-graph
+hours_to_show: 12
+entities:
+  - entity: sensor.hsem_ev_soc
+    name: HSEM
+  - entity: sensor.my_car_soc
+    name: Car
+```
+
+Or in a template: `{{ state_attr('sensor.hsem_ev_soc', 'reported_soc_pct') }}`.
+
+The existing attributes `ev_soc_pct` / `ev_effective_soc_pct` on
+`sensor.hsem_ev_charging_sensor` are unchanged.
 
 ---
 

@@ -1136,6 +1136,12 @@
           "unavailable": "No disponible"
         }
       },
+      "ev_second_soc": {
+        "name": "Estado de carga del VE"
+      },
+      "ev_soc": {
+        "name": "Estado de carga del VE"
+      },
       "ev_soc_economics": {
         "name": "Economía de SoC del VE",
         "state": {

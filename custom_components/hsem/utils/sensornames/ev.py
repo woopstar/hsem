@@ -3,10 +3,10 @@
 Display names for these entities come from Home Assistant's translation
 system (``_attr_translation_key`` + ``translations/*.json``), not from
 functions in this module. Provides getter functions for EV charging, EV
-optimal charging plan (primary and second), EV target SoC (primary and
-second), EV force discharge, EV smart charging switches (primary and
-second), EV force charge now switches (primary and second), and EV
-deadline time entities (primary and second) unique IDs and entity IDs.
+optimal charging plan (primary and second), EV SoC (primary and second),
+EV target SoC (primary and second), EV force discharge, EV smart charging
+switches (primary and second), EV force charge now switches (primary and
+second), and EV deadline time entities (primary and second) unique IDs and entity IDs.
 """
 
 from homeassistant.util import slugify as s
@@ -84,6 +84,35 @@ def get_ev_second_soc_economics_sensor_unique_id(entry_id: str) -> str:
 def get_ev_second_soc_economics_sensor_entity_id() -> str:
     """Return the entity_id for the second EV SoC economics sensor."""
     return f"sensor.{s(f'{DOMAIN}_ev_second_soc_economics')}"
+
+
+# EV SoC Sensors (issue #1388)
+def get_ev_soc_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the EV SoC sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_ev_soc"
+
+
+def get_ev_soc_sensor_entity_id() -> str:
+    """Return the entity_id for the EV SoC sensor."""
+    return f"sensor.{s(f'{DOMAIN}_ev_soc')}"
+
+
+def get_ev_second_soc_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the second EV SoC sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_ev_second_soc"
+
+
+def get_ev_second_soc_sensor_entity_id() -> str:
+    """Return the entity_id for the second EV SoC sensor."""
+    return f"sensor.{s(f'{DOMAIN}_ev_second_soc')}"
 
 
 def get_ev_charger_calculated_power_sensor_unique_id(entry_id: str) -> str:
