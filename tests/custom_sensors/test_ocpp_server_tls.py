@@ -281,7 +281,7 @@ class TestOcppServerTlsCnMismatchAllowed:
             material.server_context(mutual=True), allow_cn_mismatch=True
         )
         try:
-            with patch(f"{OCPPServer.__module__}._LOGGER") as logger:
+            with patch(f"{OCPPServer._handle_charger.__module__}._LOGGER") as logger:
                 async with http.ws_connect(
                     f"wss://127.0.0.1:{server.port}/CP2",
                     protocols=(_SUBPROTOCOL,),

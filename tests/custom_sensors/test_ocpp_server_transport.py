@@ -22,7 +22,7 @@ from aiohttp import web
 from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
-_MODULE = "custom_components.hsem.custom_sensors.ocpp_server"
+_MODULE = "custom_components.hsem.custom_sensors.ocpp_connection"
 _OCPP_SUBPROTOCOL = "ocpp1.6"
 
 
