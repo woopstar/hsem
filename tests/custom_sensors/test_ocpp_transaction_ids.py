@@ -17,7 +17,7 @@ from custom_components.hsem.custom_sensors.ocpp_transaction_ids import (
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
 _CLOCK = "custom_components.hsem.custom_sensors.ocpp_transaction_ids.time.time"
-_HANDLERS = "custom_components.hsem.custom_sensors.ocpp_message_handlers"
+_HANDLERS = "custom_components.hsem.custom_sensors.ocpp_transactions"
 
 
 def _server() -> OCPPServer:
