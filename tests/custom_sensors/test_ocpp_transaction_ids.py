@@ -122,6 +122,8 @@ class TestServerTransactions:
         server, session = _server(), _session()
         session.status = "Charging"
         reply = await server._handle_start_transaction(session, {"idTag": "HSEM"})
+        session.current_power_w = 7400.0
+        session.phase_currents_a = {"L1": 32.0}
         with caplog.at_level(logging.WARNING, logger=_HANDLERS):
             await server._handle_status_notification(
                 session, {"connectorId": 1, "status": "Available"}
@@ -129,6 +131,8 @@ class TestServerTransactions:
         assert session.transaction_id is None
         assert session.transaction_started_by is None
         assert "treating it as ended" in caplog.text
+        assert session.current_power_w == pytest.approx(0.0)
+        assert session.phase_currents_a == {}
         # Trailing MeterValues for that ID must not adopt it again.
         await server._handle_meter_values(
             session,

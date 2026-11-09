@@ -286,6 +286,8 @@ class OCPPMessageHandlersMixin(OCPPSessionLogMixin):
             self._ended_transactions[session.cpid] = transaction_id
         session.transaction_id = None
         session.transaction_started_by = None
+        session.current_power_w = 0.0
+        session.phase_currents_a = {}
 
     async def _handle_meter_values(
         self, session: ChargerSession, payload: dict
