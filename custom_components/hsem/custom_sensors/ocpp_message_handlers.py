@@ -651,5 +651,30 @@ class OCPPMessageHandlersMixin(OCPPSessionLogMixin):
         )
         return {}
 
+    async def _handle_security_event(
+        self, session: ChargerSession, payload: dict
+    ) -> dict:
+        """Handle a ``SecurityEventNotification`` request (issue #1406).
+
+        Sent by chargers with the OCPP 1.6 security extension, for example
+        on a firmware update, tamper detection or a rejected certificate.
+        Logged at warning, since it is a security event.
+
+        Args:
+            session: The charger session.
+            payload: SecurityEventNotification payload.
+
+        Returns:
+            Empty response, as the security extension defines it.
+        """
+        _LOGGER.warning(
+            "OCPP %s: security event %s at %s (techInfo: %r)",
+            session.cpid,
+            payload.get("type"),
+            payload.get("timestamp"),
+            payload.get("techInfo"),
+        )
+        return {}
+
 
 __all__ = ["OCPPMessageHandlersMixin"]
