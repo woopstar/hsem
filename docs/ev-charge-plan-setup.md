@@ -762,11 +762,11 @@ range, the counter is used alone.
 
 Because IDs only rise, HSEM can recognise a stale stop:
 
-| Charger sends                                            | HSEM does                                                                                      |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `StopTransaction` with the open ID, a higher ID, or none | Ends the open transaction, as before                                                           |
-| `StopTransaction` with a lower ID than the open one      | Answers `Accepted`, logs a warning, and keeps the open transaction and its session energy      |
-| `StatusNotification` `Available` while HSEM holds an ID  | Treats the transaction as ended, logs a warning, and blocks MeterValues from adopting it again |
+| Charger sends                                            | HSEM does                                                                                                    |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `StopTransaction` with the open ID, a higher ID, or none | Ends the open transaction, as before                                                                         |
+| `StopTransaction` with a lower ID than the open one      | Answers `Accepted`, logs a warning, and keeps the open transaction and its session energy                    |
+| `StatusNotification` `Available` while HSEM holds an ID  | Treats the transaction as ended, zeroes power, logs a warning, and blocks MeterValues from adopting it again |
 
 A connector in `Available` has no transaction in the OCPP 1.6 state
 machine, so the last rule also covers firmware that numbers transactions
