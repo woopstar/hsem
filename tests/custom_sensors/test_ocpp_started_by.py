@@ -11,7 +11,7 @@ import pytest
 from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
-_HANDLERS_LOGGER = "custom_components.hsem.custom_sensors.ocpp_message_handlers"
+_HANDLERS_LOGGER = "custom_components.hsem.custom_sensors.ocpp_transactions"
 
 
 @pytest.fixture

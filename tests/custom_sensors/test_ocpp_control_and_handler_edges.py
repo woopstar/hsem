@@ -23,6 +23,7 @@ from custom_components.hsem.models.ocpp_session import ChargerSession
 
 _CONTROL_MODULE = "custom_components.hsem.custom_sensors.ocpp_control"
 _HANDLERS_MODULE = "custom_components.hsem.custom_sensors.ocpp_message_handlers"
+_TRANSACTIONS_MODULE = "custom_components.hsem.custom_sensors.ocpp_transactions"
 
 
 @pytest.fixture
@@ -198,7 +199,7 @@ class TestBackgroundTaskFailures:
                 "_send_set_charging_profile",
                 AsyncMock(side_effect=RuntimeError("rejected")),
             ),
-            patch(f"{_HANDLERS_MODULE}._LOGGER") as logger,
+            patch(f"{_TRANSACTIONS_MODULE}._LOGGER") as logger,
         ):
             await server._resend_profile_after_start(session, 7400, 32)
 
@@ -243,7 +244,7 @@ class TestTransactionIdParsing:
         self, server: OCPPServer, session: ChargerSession
     ) -> None:
         """A malformed stop is still accepted, but nothing is latched."""
-        with patch(f"{_HANDLERS_MODULE}._LOGGER") as logger:
+        with patch(f"{_TRANSACTIONS_MODULE}._LOGGER") as logger:
             response = await server._handle_stop_transaction(
                 session, {"transactionId": "abc"}
             )

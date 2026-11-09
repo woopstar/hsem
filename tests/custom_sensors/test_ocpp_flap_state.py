@@ -22,6 +22,7 @@ _SOURCE_FILES = (
     "custom_sensors/ocpp_anti_flap.py",
     "custom_sensors/ocpp_server.py",
     "custom_sensors/ocpp_message_handlers.py",
+    "custom_sensors/ocpp_transactions.py",
     "custom_sensors/ocpp_commands.py",
     "coordinator_cycle.py",
     "coordinator_data.py",
