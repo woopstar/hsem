@@ -28,10 +28,12 @@ import aiohttp
 import pytest
 from aiohttp import web
 
+from custom_components.hsem.custom_sensors.ocpp_connection import (
+    _WS_HEARTBEAT_INTERVAL_S,
+)
 from custom_components.hsem.custom_sensors.ocpp_flap_state import FlapState
 from custom_components.hsem.custom_sensors.ocpp_profiles import HSEM_PROFILE_IDS
 from custom_components.hsem.custom_sensors.ocpp_server import (
-    _WS_HEARTBEAT_INTERVAL_S,
     CHARGER_STALL_THRESHOLD_S,
     OCPPServer,
     charger_appears_stalled,
@@ -1459,7 +1461,8 @@ class TestWireLevelDebugLogging:
         # before it ever reaches root, so raising only root's level here
         # would not actually let DEBUG through for this module's logger.
         with caplog.at_level(
-            logging.DEBUG, logger="custom_components.hsem.custom_sensors.ocpp_server"
+            logging.DEBUG,
+            logger="custom_components.hsem.custom_sensors.ocpp_connection",
         ):
             await ocpp_server._handle_message(charger_session, raw)
         assert "StatusNotification" in caplog.text
@@ -2293,7 +2296,7 @@ class TestWebSocketHeartbeat:
         await server.start()
         try:
             with patch(
-                "custom_components.hsem.custom_sensors.ocpp_server.web"
+                "custom_components.hsem.custom_sensors.ocpp_connection.web"
                 ".WebSocketResponse",
                 wraps=web.WebSocketResponse,
             ) as mock_ws_cls:
