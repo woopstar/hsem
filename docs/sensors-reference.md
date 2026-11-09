@@ -884,12 +884,12 @@ Sensors providing live status and diagnostics for an OCPP-compliant EV charger c
 
 ### `sensor.hsem_ocpp_charger_power_sensor`
 
-| Property         | Value                    |
-| ---------------- | ------------------------ |
-| **Type**         | `sensor`                 |
-| **State**        | Live charging power (kW) |
-| **Device class** | `power`                  |
-| **Unit**         | kW                       |
+| Property         | Value                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| **Type**         | `sensor`                                                                              |
+| **State**        | Live charging power (kW) from MeterValues, 0 once the transaction stops (issue #1405) |
+| **Device class** | `power`                                                                               |
+| **Unit**         | kW                                                                                    |
 
 Reports `0` whenever the connector's status is anything other than
 `"Charging"` (issue #969) — previously it kept showing the last

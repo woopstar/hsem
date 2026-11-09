@@ -117,6 +117,52 @@ class TestParsing:
         }
 
 
+class TestStopClearsFlowReadings:
+    """StopTransaction zeroes power and phase currents (issue #1405)."""
+
+    @pytest.mark.asyncio
+    async def test_stop_zeroes_power_and_keeps_energy(
+        self, ocpp_server, charger_session
+    ):
+        """The last reading does not outlive the transaction."""
+        reply = await ocpp_server._handle_start_transaction(
+            charger_session, {"connectorId": 1, "meterStart": 1000}
+        )
+        await ocpp_server._handle_meter_values(
+            charger_session,
+            {
+                "connectorId": 1,
+                "transactionId": reply["transactionId"],
+                "meterValue": [
+                    {
+                        "sampledValue": [
+                            {"measurand": "Power.Active.Import", "value": "7400"},
+                            {
+                                "measurand": "Current.Import",
+                                "phase": "L1",
+                                "value": "32.0",
+                            },
+                            {
+                                "measurand": "Energy.Active.Import.Register",
+                                "value": "3500",
+                            },
+                        ]
+                    }
+                ],
+            },
+        )
+        assert charger_session.current_power_w == pytest.approx(7400.0)
+        assert charger_session.phase_currents_a == {"L1": pytest.approx(32.0)}
+
+        await ocpp_server._handle_stop_transaction(
+            charger_session,
+            {"transactionId": reply["transactionId"], "meterStop": 3500},
+        )
+        assert charger_session.current_power_w == pytest.approx(0.0)
+        assert charger_session.phase_currents_a == {}
+        assert charger_session.current_energy_wh == pytest.approx(3500.0)
+
+
 class TestConfigurationReply:
     """GetConfiguration reply triggers the MeterValues writes."""
 
