@@ -12,7 +12,7 @@ Covers:
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -21,6 +21,7 @@ from custom_components.hsem.custom_sensors.ocpp_sensors import (
     HSEMOCPPChargerPowerSensor,
     HSEMOCPPChargerStatusSensor,
 )
+from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
 from custom_components.hsem.models.ocpp_session import ChargerSession
 from custom_components.hsem.models.sensor_config import SensorConfig
 
@@ -149,6 +150,43 @@ def test_attributes_expose_phase_currents() -> None:
     assert list(attrs["phase_currents_a"]) == ["L1", "L2"]
     assert attrs["phase_currents_a"]["L1"] == pytest.approx(15.9)
     assert attrs["active_phases"] == 1
+
+
+@pytest.mark.asyncio
+async def test_attributes_after_stop_show_no_power() -> None:
+    """A stopped transaction leaves no power on the sensors (issue #1405)."""
+    server = OCPPServer(hass=MagicMock(), host="127.0.0.1", port=19000)
+    session = ChargerSession(cpid="CP1", status="Charging", websocket=AsyncMock())
+    reply = await server._handle_start_transaction(session, {"meterStart": 0})
+    await server._handle_meter_values(
+        session,
+        {
+            "connectorId": 1,
+            "transactionId": reply["transactionId"],
+            "meterValue": [
+                {
+                    "sampledValue": [
+                        {"measurand": "Power.Active.Import", "value": "7400"},
+                        {"measurand": "Current.Import", "phase": "L1", "value": "32"},
+                    ]
+                }
+            ],
+        },
+    )
+    await server._handle_stop_transaction(
+        session, {"transactionId": reply["transactionId"], "meterStop": 900}
+    )
+    data = CoordinatorData(
+        cfg=SensorConfig(ocpp_enabled=True, ocpp_port=9000),
+        ocpp_listening=True,
+        ocpp_chargers={"CP1": session},
+    )
+    sensor = HSEMOCPPChargerStatusSensor(_make_config_entry(), _make_coordinator(data))
+    sensor.hass = _make_hass_without_url()
+    attrs = sensor.extra_state_attributes["CP1"]
+    assert attrs["power_w"] == pytest.approx(0.0)
+    assert attrs["phase_currents_a"] == {}
+    assert attrs["active_phases"] is None
 
 
 def test_attributes_expose_session_energy() -> None:

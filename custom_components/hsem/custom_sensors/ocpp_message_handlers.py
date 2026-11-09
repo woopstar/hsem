@@ -586,6 +586,11 @@ class OCPPMessageHandlersMixin(OCPPSessionLogMixin):
             )
         self._record_completed_session(session, payload)
         session.transaction_id = None
+        # Many chargers send no MeterValues once the transaction has ended,
+        # so the last reading would otherwise stay on the power sensor until
+        # the next session (issue #1405). The energy register is kept.
+        session.current_power_w = 0.0
+        session.phase_currents_a = {}
         session.transaction_started_by = None
         await self._notify_significant_event()
         return {"idTagInfo": {"status": "Accepted"}}
