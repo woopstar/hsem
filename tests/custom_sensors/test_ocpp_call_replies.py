@@ -99,6 +99,35 @@ class TestCallReplies:
         assert "status Idle" in caplog.text
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("payload", "expected"),
+        [
+            (
+                {
+                    "type": "TamperDetectionActivated",
+                    "timestamp": "2026-11-09T08:00:00Z",
+                    "techInfo": "lid opened",
+                },
+                "security event TamperDetectionActivated at "
+                "2026-11-09T08:00:00Z (techInfo: 'lid opened')",
+            ),
+            ({}, "security event None at None (techInfo: None)"),
+        ],
+    )
+    async def test_security_event_gets_empty_reply(
+        self, ocpp_server, charger_session, caplog, payload, expected
+    ):
+        """SecurityEventNotification is acknowledged and logged (issue #1406)."""
+        raw = json.dumps([2, "m6", "SecurityEventNotification", payload])
+        with caplog.at_level(
+            logging.WARNING,
+            logger="custom_components.hsem.custom_sensors.ocpp_message_handlers",
+        ):
+            await ocpp_server._handle_message(charger_session, raw)
+        assert _sent(charger_session) == [3, "m6", {}]
+        assert expected in caplog.text
+
+    @pytest.mark.asyncio
     async def test_call_error_send_failure_is_logged(
         self, ocpp_server, charger_session, caplog
     ):

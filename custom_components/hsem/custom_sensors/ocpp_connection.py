@@ -326,6 +326,7 @@ class OCPPConnectionMixin(OCPPMessageHandlersMixin):
             "DataTransfer": self._handle_data_transfer,
             "FirmwareStatusNotification": self._handle_firmware_status,
             "DiagnosticsStatusNotification": self._handle_diagnostics_status,
+            "SecurityEventNotification": self._handle_security_event,
         }
 
         # Every CALL gets a reply (issue #1390): NotImplemented for an

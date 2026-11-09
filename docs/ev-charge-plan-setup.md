@@ -991,12 +991,13 @@ ignores or rejects the first stop request no longer gets stuck charging.
 
 Every message the charger sends gets a reply, as OCPP-J 1.6 requires.
 
-| Charger message                                                                                                          | HSEM reply                                              |
-| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
-| `BootNotification`, `Heartbeat`, `StatusNotification`, `MeterValues`, `Authorize`, `StartTransaction`, `StopTransaction` | Handled, see the sections above                         |
-| `DataTransfer`                                                                                                           | `UnknownVendorId`. HSEM implements no vendor extensions |
-| `FirmwareStatusNotification`, `DiagnosticsStatusNotification`                                                            | Empty reply. The status is logged at info level         |
-| Anything else                                                                                                            | CALLERROR `NotImplemented`                              |
+| Charger message                                                                                                          | HSEM reply                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `BootNotification`, `Heartbeat`, `StatusNotification`, `MeterValues`, `Authorize`, `StartTransaction`, `StopTransaction` | Handled, see the sections above                                                     |
+| `DataTransfer`                                                                                                           | `UnknownVendorId`. HSEM implements no vendor extensions                             |
+| `FirmwareStatusNotification`, `DiagnosticsStatusNotification`                                                            | Empty reply. The status is logged at info level                                     |
+| `SecurityEventNotification`                                                                                              | Empty reply. Type, timestamp and techInfo are logged at warning level (issue #1406) |
+| Anything else                                                                                                            | CALLERROR `NotImplemented`                                                          |
 
 If a handler fails, the charger gets CALLERROR `InternalError` and the error is
 logged. Before, HSEM sent nothing in both cases, and some chargers waited for
