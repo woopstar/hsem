@@ -47,6 +47,10 @@ from custom_components.hsem.custom_sensors.ocpp_meter_values import PHASES
 from custom_components.hsem.custom_sensors.ocpp_session_log import (
     OCPPSessionLogMixin,
 )
+from custom_components.hsem.custom_sensors.ocpp_transaction_ids import (
+    is_stale_stop,
+    next_transaction_id,
+)
 from custom_components.hsem.models.ocpp_session import ChargerSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -256,7 +260,32 @@ class OCPPMessageHandlersMixin(OCPPSessionLogMixin):
                 self._schedule_release_connect_gate(session)
         else:
             session.status = new_status
+        if new_status == "Available" and session.transaction_id is not None:
+            self._drop_transaction_on_available(session)
         return {}
+
+    def _drop_transaction_on_available(self, session: ChargerSession) -> None:
+        """Forget a transaction the charger no longer has (issue #1404).
+
+        A connector reporting ``Available`` has no transaction in the OCPP
+        1.6 state machine. Reaching here means HSEM missed or ignored the
+        ``StopTransaction``, for example one it took for stale. The ID is
+        recorded as ended so trailing MeterValues cannot adopt it again.
+
+        Args:
+            session: The charger session.
+        """
+        transaction_id = session.transaction_id
+        _LOGGER.warning(
+            "OCPP %s: connector is Available but HSEM still held transaction "
+            "%s; treating it as ended",
+            session.cpid,
+            transaction_id,
+        )
+        if transaction_id is not None:
+            self._ended_transactions[session.cpid] = transaction_id
+        session.transaction_id = None
+        session.transaction_started_by = None
 
     async def _handle_meter_values(
         self, session: ChargerSession, payload: dict
@@ -433,8 +462,8 @@ class OCPPMessageHandlersMixin(OCPPSessionLogMixin):
         Returns:
             Response dict with the CS-assigned transactionId and idTagInfo.
         """
-        transaction_id = self._next_transaction_id
-        self._next_transaction_id += 1
+        transaction_id = next_transaction_id(self._next_transaction_id)
+        self._next_transaction_id = transaction_id + 1
         session.transaction_id = transaction_id
         self._record_transaction_start(session, payload)
         self._record_started_by(session, payload.get("idTag"))
@@ -574,6 +603,17 @@ class OCPPMessageHandlersMixin(OCPPSessionLogMixin):
             session.cpid,
             transaction_id,
         )
+        if is_stale_stop(session.transaction_id, transaction_id):
+            # Answered, as every CALL must be, but the running transaction
+            # and its session-log data are kept (issue #1404).
+            _LOGGER.warning(
+                "OCPP %s: StopTransaction for tx=%s is older than the open "
+                "tx=%s; ignored",
+                session.cpid,
+                transaction_id,
+                session.transaction_id,
+            )
+            return {"idTagInfo": {"status": "Accepted"}}
         try:
             if transaction_id is not None:
                 self._ended_transactions[session.cpid] = int(transaction_id)

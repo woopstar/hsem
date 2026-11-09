@@ -56,11 +56,12 @@ class TestStartedBy:
     @pytest.mark.asyncio
     async def test_stop_clears_started_by(self, ocpp_server, charger_session):
         """A stop clears the field."""
-        await ocpp_server._handle_start_transaction(
+        reply = await ocpp_server._handle_start_transaction(
             charger_session, {"connectorId": 1, "idTag": "HSEM", "meterStart": 0}
         )
         await ocpp_server._handle_stop_transaction(
-            charger_session, {"transactionId": 1, "meterStop": 0}
+            charger_session,
+            {"transactionId": reply["transactionId"], "meterStop": 0},
         )
         assert charger_session.transaction_started_by is None
 
