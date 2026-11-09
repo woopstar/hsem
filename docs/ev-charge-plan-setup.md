@@ -754,6 +754,24 @@ every session's transaction ID silently defaulted to `0`, and a charger
 firmware that treats `0` as an unset/sentinel value could then reject or
 ignore a subsequent `RemoteStopTransaction` naming it.
 
+Transaction IDs are unique across HSEM restarts (issue #1404). The counter
+restarts at 1 when HSEM restarts, so HSEM takes the current Unix time as a
+floor: the next ID is the larger of the counter and the clock in seconds.
+No ID is stored. After January 2038, when the clock passes the int32
+range, the counter is used alone.
+
+Because IDs only rise, HSEM can recognise a stale stop:
+
+| Charger sends                                            | HSEM does                                                                                                    |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `StopTransaction` with the open ID, a higher ID, or none | Ends the open transaction, as before                                                                         |
+| `StopTransaction` with a lower ID than the open one      | Answers `Accepted`, logs a warning, and keeps the open transaction and its session energy                    |
+| `StatusNotification` `Available` while HSEM holds an ID  | Treats the transaction as ended, zeroes power, logs a warning, and blocks MeterValues from adopting it again |
+
+A connector in `Available` has no transaction in the OCPP 1.6 state
+machine, so the last rule also covers firmware that numbers transactions
+itself.
+
 **CALLRESULT status is now tracked for the three commands HSEM sends**
 (`RemoteStartTransaction`, `SetChargingProfile`, `RemoteStopTransaction`,
 issue #906). A `"Rejected"`/`"NotSupported"` response is logged as a warning
