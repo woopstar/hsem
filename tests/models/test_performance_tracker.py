@@ -287,6 +287,63 @@ class TestMissingIsNotZero:
 
         assert tracker.slots == {}
 
+    @pytest.mark.parametrize(
+        "broken",
+        [
+            {"grid_import": None},
+            {"grid_export": None},
+            {"soc": None},
+        ],
+    )
+    def test_a_short_outage_is_bridged_by_the_next_complete_sample(
+        self, broken: dict[str, None]
+    ) -> None:
+        """Cumulative meters still tell what happened across a failed read."""
+        tracker = PerformanceTracker()
+
+        _feed(
+            tracker,
+            _sample(_T0, grid_import=10.0),
+            _sample(_T0 + timedelta(minutes=2), **broken),
+            _sample(_T0 + timedelta(minutes=4), grid_import=10.4),
+        )
+
+        slot = _slot(tracker, _T0)
+        assert slot.coverage_seconds == pytest.approx(240.0)
+        assert slot.grid_import_kwh == pytest.approx(0.4)
+
+    def test_an_outage_longer_than_the_tolerance_is_not_bridged(self) -> None:
+        tracker = PerformanceTracker()
+
+        _feed(
+            tracker,
+            _sample(_T0, grid_import=10.0),
+            _sample(_T0 + timedelta(minutes=5), soc=None),
+            _sample(_T0 + timedelta(minutes=30), grid_import=15.0),
+            _sample(_T0 + timedelta(minutes=35), grid_import=15.2),
+        )
+
+        assert list(tracker.slots) == [(_T0 + timedelta(minutes=30)).astimezone(UTC)]
+        assert _slot(
+            tracker, _T0 + timedelta(minutes=30)
+        ).grid_import_kwh == pytest.approx(0.2)
+
+    def test_a_bridged_outage_out_of_control_is_not_counted_as_controlled(
+        self,
+    ) -> None:
+        tracker = PerformanceTracker()
+
+        _feed(
+            tracker,
+            _sample(_T0, in_control=True),
+            _sample(_T0 + timedelta(minutes=2), soc=None, in_control=False),
+            _sample(_T0 + timedelta(minutes=4), in_control=True),
+        )
+
+        slot = _slot(tracker, _T0)
+        assert slot.coverage_seconds == pytest.approx(240.0)
+        assert slot.control_seconds == pytest.approx(0.0)
+
     @pytest.mark.parametrize("price", ["import_price", "export_price"])
     def test_an_interval_without_a_price_is_left_out(self, price: str) -> None:
         """The price that counts is the one in force when the interval began."""

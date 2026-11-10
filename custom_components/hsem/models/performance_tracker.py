@@ -156,6 +156,15 @@ def _mean_power_kwh(
     return (before_w + after_w) / 2.0 * hours / 1000.0
 
 
+def _has_meters(sample: PerformanceSample) -> bool:
+    """Return whether *sample* read both grid meters and the SoC."""
+    return None not in (
+        sample.grid_import_energy_kwh,
+        sample.grid_export_energy_kwh,
+        sample.soc_pct,
+    )
+
+
 def _interval(
     previous: PerformanceSample, sample: PerformanceSample
 ) -> _Interval | None:
@@ -297,8 +306,11 @@ class PerformanceTracker:
         """Add what happened since the previous sample to the slots it spans.
 
         Meter deltas are split over the slots by time.  An interval longer
-        than *max_gap_seconds*, or one missing a required reading, is left
-        unobserved: the slots it would have touched simply gain no coverage.
+        than *max_gap_seconds* is left unobserved: the slots it would have
+        touched simply gain no coverage.  A sample missing a meter or the SoC
+        is skipped, and the next complete one is measured from the last
+        complete one, so a short sensor outage costs no coverage as long as
+        the two are within *max_gap_seconds*.
 
         An interval that crosses a slot boundary is priced on each side with
         the price sampled on that side: prices change at slot boundaries, and
@@ -312,6 +324,14 @@ class PerformanceTracker:
                 still attributed.
         """
         previous = self._last_sample
+        if previous is not None and _has_meters(previous) and not _has_meters(sample):
+            # A cycle that could not read a meter is not the end of what was
+            # observed: the meters are cumulative, so the next complete
+            # sample still tells what happened since *previous*.
+            self._last_sample = replace(
+                previous, in_control=previous.in_control and sample.in_control
+            )
+            return
         self._last_sample = sample
         if previous is None:
             return
