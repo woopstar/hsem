@@ -41,7 +41,7 @@ flowchart TD
         subgraph External[External Integrations]
             Huawei[Huawei Solar\nInverter and battery]
             Solcast[Solcast Solar\nPV forecast]
-            Prices[Electricity Prices\nEnergi Data Service, Nordpool, etc.]
+            Prices[Electricity Prices\nStrømligning, Open Spot Forecast, etc.]
             EV[EV charger\nGeneric]
         end
 
@@ -58,7 +58,8 @@ flowchart TD
 | --------------------------------------------- | ----------------------------------- | ------------------------------------------------------------ |
 | **Huawei Solar** (`wlcrs/huawei_solar`)       | Inverter/battery hardware interface | SoC, power limits, working mode, TOU periods, rated capacity |
 | **Solcast Solar** (`solcast_solar`)           | PV production forecast              | Hourly or half-hourly PV estimates for today and tomorrow    |
-| **Energi Data Service** (`energidataservice`) | Electricity spot prices             | Hourly import and export prices                              |
+| **Strømligning** (`stromligning`)             | Electricity prices                  | Import price with tariffs and VAT, raw spot price for export |
+| **Open Spot Forecast** (`open_spot_forecast`) | Electricity price forecast          | Multi-day import and export price forecast (optional)        |
 | **EV charger** (generic)                      | EV state monitoring                 | Connected status, SoC, charging power                        |
 
 ---

@@ -57,8 +57,8 @@ DEFAULT_CONFIG_VALUES = {
     # export continues for any non-negative price.
     "hsem_curtail_pv_below_export_min_price": False,
     "hsem_electricity_price_update_interval": 15,
-    "hsem_export_electricity_price_sensor": "sensor.energi_data_service_produktion",
-    "hsem_import_electricity_price_sensor": "sensor.energi_data_service",
+    "hsem_export_electricity_price_sensor": "sensor.stromligning_spotprice_ex_vat",
+    "hsem_import_electricity_price_sensor": "sensor.stromligning_current_price_vat",
     "hsem_import_electricity_price_forecast_sensor": vol.UNDEFINED,
     "hsem_export_electricity_price_forecast_sensor": vol.UNDEFINED,
     "hsem_ev_allow_charge_past_target_soc": False,

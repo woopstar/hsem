@@ -57,15 +57,16 @@ inverter entities will be found.
   the Huawei Solar integration's device list.
 - **Fix:** Correct the device IDs in the config flow and save.
 
-**1c. Price feed (Energi Data Service) not installed or broken**
+**1c. Price feed not installed or broken**
 
-HSEM reads electricity prices from the `energidataservice` integration. If it's
+HSEM reads electricity prices from the price sensors chosen in the
+**Electricity Prices** step (Strømligning by default). If the integration is
 missing, not configured, or its entities are unavailable, prices default to
 `0.0`.
 
 - **Check:** Look at the `data_quality` attribute on `sensor.hsem_plan_explanation_sensor`.
   Are `today_price_missing_hours` or `tomorrow_price_missing_hours` high?
-- **Fix:** Verify the EDS integration is installed, configured for your
+- **Fix:** Verify the price integration is installed, configured for your
   price area, and its entities show valid data in HA Developer Tools → States.
 
 **1d. Critical sensors missing → Error mode**
@@ -171,7 +172,7 @@ If an attribute has fewer than two parseable timestamps, or the timestamps are
 malformed, HSEM falls back to the configured EDS interval and may only match
 part of the data.
 
-- **Check:** HSEM → **Configure** → **Energi Data Service** step. Verify the
+- **Check:** HSEM → **Configure** → **Electricity Prices** step. Verify the
   sensor attributes contain valid timestamps and that the active attribute key
   matches the data actually published by your price source.
 - **Fix:** Correct the timestamp format or attribute key so HSEM can detect
@@ -183,7 +184,7 @@ part of the data.
 HSEM adds grid fees and taxes to spot prices. Wrong values here distort the
 cost function.
 
-- **Check:** HSEM → **Configure** → **Energi Data Service** step. Review
+- **Check:** HSEM → **Configure** → **Electricity Prices** step. Review
   _Grid Fee_ (net-tariff), _Grid Tariff_ (transmissions-net), _El-afgift_,
   and _Reduktion_. Verify against your electricity bill.
 - **Fix:** Correct any mismatched values.
@@ -200,7 +201,7 @@ connection point, because exporting would then cost money. If PV export
 looks blocked at a positive-but-low price, look elsewhere (grid export power
 cap, inverter fault, `no_export` setting) — it is not this setting.
 
-- **Check:** HSEM → **Configure** → **Energi Data Service** step.
+- **Check:** HSEM → **Configure** → **Electricity Prices** step.
   _Export Minimum Price_. Compare against current export spot prices.
 - **Fix:** Lower or set to 0 if you want the battery to export at all
   positive prices too.

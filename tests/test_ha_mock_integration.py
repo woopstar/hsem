@@ -298,8 +298,8 @@ _BASE_ENTITY_STATES: dict[str, str | dict] = {
     "sensor.power_inverter_input_total": "800",
     "sensor.inverter_active_power_control": "100%",
     # Electricity prices
-    "sensor.energi_data_service": "0.25",
-    "sensor.energi_data_service_produktion": "0.15",
+    "sensor.stromligning_current_price_vat": "0.25",
+    "sensor.stromligning_spotprice_ex_vat": "0.15",
     # Solcast
     "sensor.solcast_pv_forecast_forecast_today": {
         "state": "5.0",
@@ -1152,7 +1152,7 @@ class TestDryRunCycle:
     async def test_missing_price_entity_triggers_degraded_mode(self) -> None:
         """When import price is unavailable, degraded mode must be Degraded (not Error)."""
         states = dict(_BASE_ENTITY_STATES)
-        states["sensor.energi_data_service"] = "unavailable"
+        states["sensor.stromligning_current_price_vat"] = "unavailable"
 
         config_entry = make_fake_config_entry({"hsem_read_only": True})
         hass = make_fake_hass(states)

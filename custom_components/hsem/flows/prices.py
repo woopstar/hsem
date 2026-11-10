@@ -9,8 +9,8 @@ prices step that supports:
 * A minimum export price slider
 
 The naming convention uses ``electricity_price`` rather than a specific
-provider name so that users of Energi Data Service, Nordpool, Amber Electric,
-or any other price source share the same configuration step.
+provider name so that users of Strømligning, Open Spot Forecast, Energi Data
+Service, Nordpool, Amber Electric, or any other price source share the same configuration step.
 """
 
 from __future__ import annotations
@@ -26,6 +26,10 @@ from custom_components.hsem.utils.config_validator import (
 )
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.schema import vol
+
+# A forecast source may be a binary sensor: Strømligning publishes tomorrow's
+# prices on ``binary_sensor.stromligning_tomorrow_*``.
+FORECAST_SENSOR_DOMAINS = ["sensor", "binary_sensor"]
 
 
 async def get_prices_step_schema(
@@ -62,14 +66,14 @@ async def get_prices_step_schema(
                     config_entry,
                     "hsem_import_electricity_price_forecast_sensor",
                 ),
-            ): selector({"entity": {"domain": "sensor"}}),
+            ): selector({"entity": {"domain": FORECAST_SENSOR_DOMAINS}}),
             vol.Optional(
                 "hsem_export_electricity_price_forecast_sensor",
                 default=get_config_value(
                     config_entry,
                     "hsem_export_electricity_price_forecast_sensor",
                 ),
-            ): selector({"entity": {"domain": "sensor"}}),
+            ): selector({"entity": {"domain": FORECAST_SENSOR_DOMAINS}}),
             vol.Required(
                 "hsem_export_electricity_min_price",
                 default=get_config_value(

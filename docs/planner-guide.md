@@ -280,8 +280,8 @@ Each `PricePoint` carries:
 - `import_price` — cost to buy 1 kWh from the grid (local currency/kWh)
 - `export_price` — revenue from selling 1 kWh to the grid (local currency/kWh)
 
-Prices sourced from Energi Data Service (EDS) are auto-detected per attribute
-from their timestamps. The populator stores the raw currency/kWh value and the
+The cadence of a price source is auto-detected per attribute from its
+timestamps. The populator stores the raw currency/kWh value and the
 planner receives that raw rate unchanged, whether the source cadence is 15 min,
 30 min, or 60 min.
 See [Price interval semantics](planner-spec.md#price-interval-semantics) in the spec.

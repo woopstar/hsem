@@ -287,7 +287,7 @@ def build_sensor_config(
         or DEFAULT_SOLCAST_LIKELIHOOD
     )
 
-    # Electricity prices (generic — Energi Data Service, Nordpool, Amber Electric, …)
+    # Electricity prices (generic — Strømligning, Energi Data Service, Nordpool, Amber Electric, …)
     cfg.import_electricity_price_sensor = get_config_value(
         config_entry, "hsem_import_electricity_price_sensor"
     )

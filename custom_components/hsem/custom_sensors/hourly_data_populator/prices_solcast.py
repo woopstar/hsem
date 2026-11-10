@@ -8,7 +8,7 @@ or from a pre-collected :class:`StateSnapshot` (snapshot).
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from custom_components.hsem.models.forecast_coverage import ForecastCoverage
@@ -122,9 +122,11 @@ def _attribute_formats(solcast_likelihood_key: str) -> dict[str, list[dict[str, 
             {"k": "start", "v": "value"},  # custom-components/nordpool
         ],
         "prices": [
-            {"k": "start", "v": "price"},
+            {"k": "start", "v": "price"},  # Strømligning
             {"k": "start_time", "v": "price"},  # Tibber Prices
         ],
+        # Open Spot Forecast "Price Forecast (ML)", detailed or compact layout
+        "predictions": [{"k": "start", "v": "price"}],
         "prices_today": [
             {"k": "start", "v": "price"},
             {"k": "time", "v": "price"},
@@ -139,6 +141,31 @@ def _attribute_formats(solcast_likelihood_key: str) -> dict[str, list[dict[str, 
         # Amber Electric forecast sensor format
         "forecasts": [{"k": "start_time", "v": "per_kwh"}],
     }
+
+
+def _attribute_entries(value: Any) -> list[dict[str, Any]]:
+    """Return a forecast attribute's value as one dict per data point.
+
+    Most integrations publish a list of dicts, which is returned as is.
+    Open Spot Forecast's compact layout is a dict of parallel arrays: ``s``
+    (unix start seconds) and ``t`` (prices).  It is turned into
+    ``{"start", "price"}`` entries so it is matched like the detailed layout.
+
+    Args:
+        value: The attribute's value, or ``None``.
+
+    Returns:
+        The data points; empty when the value holds none.
+    """
+    if isinstance(value, dict):
+        return [
+            {"start": datetime.fromtimestamp(start, tz=UTC), "price": price}
+            for start, price in zip(
+                value.get("s") or [], value.get("t") or [], strict=False
+            )
+            if isinstance(start, (int, float))
+        ]
+    return value or []
 
 
 def _flat_price(snapshot: StateSnapshot, entity_id: str | None) -> float | None:
@@ -411,7 +438,7 @@ def _populate_from_attributes(
 
     matched = 0
     for attr, kv_list in data_sources.items():
-        sensor_data: list[dict[str, Any]] = attributes.get(attr) or []
+        sensor_data = _attribute_entries(attributes.get(attr))
         if not sensor_data:
             continue
 

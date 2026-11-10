@@ -52,7 +52,7 @@ _EV = Recommendations.EVSmartCharging.value
 # 11.0 kW three-phase is the 16 A whole-amp nameplate (issue #1112).
 _CHARGER_W = 16 * 3 * 230.0
 _REMAINING_H = 10.0 / 60.0
-_PRICE_SENSOR = "sensor.energi_data_service"
+_PRICE_SENSOR = "sensor.stromligning_current_price_vat"
 _PLANNER_MODULE = "custom_components.hsem.coordinator_planner_phase"
 _LOAD_FORECAST_MODULE = "custom_components.hsem.coordinator_load_forecast"
 
