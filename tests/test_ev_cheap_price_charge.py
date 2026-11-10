@@ -55,7 +55,7 @@ _CHARGER_W = 16 * 3 * 230.0
 _SECOND_CHARGER_W = 10 * 3 * 230.0
 _REMAINING_H = 10.0 / 60.0
 _THRESHOLD = 0.50
-_PRICE_SENSOR = "sensor.energi_data_service"
+_PRICE_SENSOR = "sensor.stromligning_current_price_vat"
 _PLANNER_MODULE = "custom_components.hsem.coordinator_planner_phase"
 _LOAD_FORECAST_MODULE = "custom_components.hsem.coordinator_load_forecast"
 

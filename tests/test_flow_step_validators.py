@@ -27,6 +27,7 @@ from custom_components.hsem.flows.huawei_solar import validate_huawei_solar_inpu
 from custom_components.hsem.flows.init import validate_init_step_input
 from custom_components.hsem.flows.migrations import _migrate_v1_to_v2
 from custom_components.hsem.flows.ocpp import validate_ocpp_step_input
+from custom_components.hsem.flows.prices import get_prices_step_schema
 from custom_components.hsem.flows.quick_setup import auto_detect_entities
 
 _CONFIG_VALIDATOR_MODULE = "custom_components.hsem.utils.config_validator"
@@ -413,6 +414,38 @@ class TestQuickSetupAutoDetection:
         assert detected["solar_power"] == "sensor.pv_power"
         assert detected["solcast_tomorrow"] is None
         assert detected["tou_periods"] is None
+
+    @pytest.mark.asyncio
+    async def test_stromligning_is_preferred_for_import_and_export(self) -> None:
+        """Consumer price incl. VAT for import, raw spot excl. VAT for export."""
+        hass = _hass_with_entities(
+            "sensor.energi_data_service",
+            "sensor.stromligning_spotprice_ex_vat",
+            "sensor.stromligning_current_price_vat",
+        )
+
+        detected = await auto_detect_entities(hass)
+
+        assert detected["import_price"] == "sensor.stromligning_current_price_vat"
+        assert detected["export_price"] == "sensor.stromligning_spotprice_ex_vat"
+
+    @pytest.mark.asyncio
+    async def test_price_forecast_selectors_accept_binary_sensors(self) -> None:
+        """Strømligning publishes tomorrow's prices on a binary sensor."""
+        schema = await get_prices_step_schema(None)
+
+        domains = {
+            str(key): field.config.get("domain") for key, field in schema.schema.items()
+        }
+        assert domains["hsem_import_electricity_price_forecast_sensor"] == [
+            "sensor",
+            "binary_sensor",
+        ]
+        assert domains["hsem_export_electricity_price_forecast_sensor"] == [
+            "sensor",
+            "binary_sensor",
+        ]
+        assert domains["hsem_import_electricity_price_sensor"] == ["sensor"]
 
     @pytest.mark.asyncio
     async def test_nothing_detected_without_matching_entities(self) -> None:

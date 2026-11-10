@@ -66,11 +66,47 @@ HSEM is provider-agnostic. Prices are read from generic electricity price sensor
 | `hsem_import_electricity_price_forecast_sensor` | Optional dedicated import forecast (e.g. Amber Electric) |
 | `hsem_export_electricity_price_forecast_sensor` | Optional dedicated export forecast                       |
 
-Supported providers include Energi Data Service, Nordpool, Amber Electric, and any
-sensor that publishes hourly (or sub-hourly) price records with a `raw_today` /
-`raw_tomorrow` attribute structure. The populator reads the full time-series from
+Supported providers include Strømligning, Open Spot Forecast, Energi Data
+Service, Nordpool, Tibber, Amber Electric, and any sensor that publishes hourly
+(or sub-hourly) price records in one of the recognised attributes (`prices`,
+`predictions`, `prices_today` / `prices_tomorrow`, `raw_today` / `raw_tomorrow`,
+`forecast`, `forecasts`, `data`). The populator reads the full time-series from
 sensor attributes, detects each attribute's cadence independently, and projects
 the raw values onto the planning horizon.
+
+The forecast sensor is read after the main sensor, so where both cover a slot
+the forecast sensor's price is used. A forecast source may be a binary sensor.
+
+### Recommended setup: Strømligning and Open Spot Forecast
+
+HSEM plans with what a kWh costs to buy and what it pays to sell. In Denmark
+these differ by more than the spot price:
+
+- **Import** is the consumer price: spot price, the retailer's surcharge, grid
+  and system tariffs, electricity tax, and VAT on all of it.
+- **Export** is the raw spot price excl. VAT, minus the per-kWh selling costs
+  (feed-in tariff, balancing tariff, the retailer's fee). Put those costs in
+  `hsem_export_fee_per_kwh`; a private seller receives no VAT.
+
+| Field                 | Sensor                                                     | Covers                                              |
+| --------------------- | ---------------------------------------------------------- | --------------------------------------------------- |
+| Import price          | `sensor.stromligning_current_price_vat`                    | Today, tariffs and VAT included                     |
+| Import price forecast | `sensor.open_spot_forecast_<area>_predbat_import_tomorrow` | Tomorrow and the following days, same price basis   |
+| Export price          | `sensor.stromligning_spotprice_ex_vat`                     | Today, raw spot price excl. VAT                     |
+| Export price forecast | `sensor.open_spot_forecast_<area>_predbat_export_tomorrow` | Tomorrow and the following days, raw spot excl. VAT |
+
+The two forecast sensors exist when Open Spot Forecast's _Predbat rate
+entities_ option is on. They hold the confirmed day-ahead prices first and the
+ML forecast after them.
+
+Without that option, `sensor.open_spot_forecast_<area>_price_forecast_ml` (the
+`predictions` attribute, detailed or compact) works as the import price
+forecast. It has no raw spot counterpart for export.
+
+Without Open Spot Forecast, use Strømligning's
+`binary_sensor.stromligning_tomorrow_available_vat` (import) and
+`binary_sensor.stromligning_tomorrow_spotprice_ex_vat` (export) as the forecast
+sensors. They cover tomorrow only.
 
 ---
 

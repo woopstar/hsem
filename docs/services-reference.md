@@ -518,7 +518,7 @@ action:
 alias: "HSEM: Re-plan after price update"
 trigger:
   - platform: state
-    entity_id: sensor.energi_data_service
+    entity_id: sensor.stromligning_current_price_vat
 action:
   - service: hsem.force_recalculation
 ```

@@ -399,8 +399,8 @@ over months while regret waits for paired data.
 
 Confirm rather than assume, per installation:
 
-- the sensor must already carry tariffs (Energi Data Service does; a bare spot
-  feed does not);
+- the sensor must already carry tariffs (Strømligning's current price does; a bare
+  spot feed does not);
 - `hsem_export_fee_per_kwh`, when set, is subtracted from the export price by
   the planner and must be subtracted here too.
 

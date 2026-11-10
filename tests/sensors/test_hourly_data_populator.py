@@ -699,3 +699,86 @@ class TestFlatTariffPriceSensor:
             _FLAT_IMPORT: {"data": []},
             _FLAT_EXPORT: {},
         }
+
+
+def _stromligning_prices(day_start: datetime, quarters: Iterable[int]) -> dict:
+    """Return Strømligning ``prices`` attributes, one price per quarter."""
+    return {
+        "prices": [
+            {
+                "price": round(2.0 + q / 1000.0, 5),
+                "start": (day_start + timedelta(minutes=15 * q)).isoformat(),
+                "end": (day_start + timedelta(minutes=15 * (q + 1))).isoformat(),
+            }
+            for q in quarters
+        ]
+    }
+
+
+class TestStromligningAndOpenSpotForecast:
+    """Strømligning's ``prices`` with Open Spot Forecast's ``predictions``."""
+
+    def test_detailed_predictions_extend_stromligning_today(self) -> None:
+        """Today comes from Strømligning, tomorrow from the ML forecast."""
+        tomorrow = _FLAT_MIDNIGHT + timedelta(days=1)
+        predictions = [
+            {
+                "start": (tomorrow + timedelta(minutes=15 * q)).isoformat(),
+                "end": (tomorrow + timedelta(minutes=15 * (q + 1))).isoformat(),
+                "price": round(3.0 + q / 1000.0, 5),
+                "confidence": 0.7,
+                "source": "predicted",
+                "unit": "DKK/kWh",
+            }
+            for q in range(96)
+        ]
+
+        recs, coverage = _populate_flat(
+            {_FLAT_IMPORT: "2.036", _FLAT_EXPORT: "0.08"},
+            {
+                _FLAT_IMPORT: _stromligning_prices(_FLAT_MIDNIGHT, range(96)),
+                _FLAT_EXPORT: {},
+                _FLAT_IMPORT_FORECAST: {"predictions": predictions},
+            },
+            import_forecast_sensor=_FLAT_IMPORT_FORECAST,
+        )
+
+        assert coverage.import_price == _all_slots(recs)
+        assert recs[5].import_price == pytest.approx(2.005)
+        assert recs[96 + 5].import_price == pytest.approx(3.005)
+
+    def test_compact_predictions_are_matched_by_unix_start(self) -> None:
+        """The compact layout's parallel arrays give the same prices."""
+        tomorrow = _FLAT_MIDNIGHT + timedelta(days=1)
+        starts = [
+            int((tomorrow + timedelta(minutes=15 * q)).timestamp()) for q in range(8)
+        ]
+        compact = {
+            "interval_minutes": 15,
+            "unit": "DKK/kWh",
+            "s": [*starts, "not a timestamp"],
+            "t": [*(round(3.0 + q / 1000.0, 5) for q in range(8)), 9.0],
+            "c": [70] * 9,
+        }
+
+        recs, coverage = _populate_flat(
+            {_FLAT_IMPORT: "2.036", _FLAT_EXPORT: "0.08"},
+            {
+                _FLAT_IMPORT: {"predictions": compact},
+                _FLAT_EXPORT: {},
+            },
+        )
+
+        assert coverage.import_price == frozenset(
+            utc_key(rec.start) for rec in recs[96:104]
+        )
+        assert recs[96 + 3].import_price == pytest.approx(3.003)
+
+    def test_empty_compact_predictions_cover_nothing(self) -> None:
+        """A compact forecast without data points is not a flat price."""
+        _recs, coverage = _populate_flat(
+            {_FLAT_IMPORT: "2.036", _FLAT_EXPORT: "0.08"},
+            {_FLAT_IMPORT: {"predictions": {"unit": "DKK/kWh"}}, _FLAT_EXPORT: {}},
+        )
+
+        assert coverage.import_price == frozenset()

@@ -46,8 +46,8 @@ MAPPING=(
     # sensors, so their recorded state *is* the price a slot was settled at --
     # confirm that with --verify before relying on it.  If you set
     # hsem_export_fee_per_kwh, the effective export price is this minus the fee.
-    "${HSEM_IMPORT_PRICE_ENTITY:-sensor.energi_data_service}=import_price"
-    "${HSEM_EXPORT_PRICE_ENTITY:-sensor.energi_data_service_produktion}=export_price"
+    "${HSEM_IMPORT_PRICE_ENTITY:-sensor.stromligning_current_price_vat}=import_price"
+    "${HSEM_EXPORT_PRICE_ENTITY:-sensor.stromligning_spotprice_ex_vat}=export_price"
 )
 
 usage() {

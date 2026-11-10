@@ -78,9 +78,11 @@ async def auto_detect_entities(hass: HomeAssistant) -> dict[str, str | None]:
         entity_ids, ["solcast_pv_forecast_forecast_tomorrow"]
     )
 
-    # Prices
-    detected["import_price"] = _find_first(
+    # Prices.  Strømligning first: the consumer price incl. VAT (tariffs and
+    # fees included) for import, the raw spot price excl. VAT for export.
+    detected["import_price"] = _find_exact_or_first(
         entity_ids,
+        "sensor.stromligning_current_price_vat",
         [
             "energi_data_service",
             "nordpool",
@@ -90,7 +92,9 @@ async def auto_detect_entities(hass: HomeAssistant) -> dict[str, str | None]:
             "electricity_price",
         ],
     )
-    detected["export_price"] = detected.get("import_price")
+    detected["export_price"] = _find_exact_or_first(
+        entity_ids, "sensor.stromligning_spotprice_ex_vat", []
+    ) or detected.get("import_price")
 
     # Power meters.  House power (issue #1310): an EMMA or SDongle load power
     # sensor first; then, with the inverter and power meter found, nothing —

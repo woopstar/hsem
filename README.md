@@ -98,7 +98,7 @@ To use this package, you need the following integrations:
 
 - [Huawei Solar integration by wlcrs](https://github.com/wlcrs/huawei_solar) **VERSION 1.5.0a1 REQUIRED**
 - [Solcast integration by oziee](https://github.com/BJReplay/ha-solcast-solar)
-- Any electricity price integration ([Energi Data Service](https://github.com/MTrab/energidataservice), [Nordpool](https://github.com/custom-components/nordpool), [Amber Electric](https://amber.com.au), etc.)
+- Any electricity price integration ([Strømligning](https://github.com/MTrab/stromligning), [Open Spot Forecast](https://github.com/woopstar/open_spot_forecast), [Energi Data Service](https://github.com/MTrab/energidataservice), [Nordpool](https://github.com/custom-components/nordpool), [Amber Electric](https://amber.com.au), etc.)
 
 ### Complementary integrations
 
