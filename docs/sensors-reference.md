@@ -1281,6 +1281,11 @@ does a restart that kept Home Assistant down for more than about eight
 minutes: the energy meters keep counting, so a short gap loses nothing, but a
 long one cannot be placed in time.
 
+A cycle that cannot read a grid meter or the battery SoC (an inverter that
+does not answer, for example) is skipped, and the next complete reading is
+measured from the last complete one. Such an outage costs no coverage as long
+as it is shorter than the same limit (issue #1414).
+
 ### Requirements
 
 - **Grid import and export energy meters** configured in HSEM (the same ones
