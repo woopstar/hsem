@@ -603,6 +603,43 @@ class TestRegisterListeners:
         assert cfg.export_electricity_price_sensor in registered_entities
 
     @pytest.mark.asyncio
+    async def test_ev_soc_sensors_are_tracked(self) -> None:
+        """Both EV SoC source sensors must be registered for state-change events.
+
+        Without the listener, a new SoC from the vehicle is only picked up by
+        the next scheduled cycle, so ``sensor.hsem_ev_soc`` lags the source.
+        """
+        sensor = MagicMock()
+        sensor.hass = MagicMock()
+        sensor._async_handle_update = MagicMock()
+
+        cfg = build_sensor_config(_make_config_entry())
+        cfg.ev.soc_entity = "sensor.car_battery_level"
+        cfg.ev_second.soc_entity = "sensor.second_car_battery_level"
+        state = LiveState()
+        tracked: set[str] = set()
+
+        registered_entities: list[str] = []
+
+        def _fake_track(
+            hass: MagicMock,
+            entities: list[str],
+            callback: object,
+        ) -> MagicMock:
+            registered_entities.extend(entities)
+            return MagicMock()
+
+        with patch(
+            "custom_components.hsem.custom_sensors.state_collector.async_track_state_change_event",
+            side_effect=_fake_track,
+        ):
+            await _register_listeners(sensor, cfg, state, tracked)
+            await _register_listeners(sensor, cfg, state, tracked)
+
+        assert registered_entities.count("sensor.car_battery_level") == 1
+        assert registered_entities.count("sensor.second_car_battery_level") == 1
+
+    @pytest.mark.asyncio
     async def test_price_sensors_not_duplicated(self) -> None:
         """Price sensors must not be registered twice if already tracked."""
         sensor = MagicMock()
