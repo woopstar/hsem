@@ -654,11 +654,13 @@ async def _register_listeners(
     candidates = [
         cfg.ev.status_entity,
         cfg.ev.connected_entity,
+        cfg.ev.soc_entity,  # replan on a new vehicle SoC
         get_ev_target_soc_number_entity_id(),
         get_ev_smart_charging_switch_entity_id(),
         get_ev_deadline_time_entity_id(),
         cfg.ev_second.status_entity,
         cfg.ev_second.connected_entity,
+        cfg.ev_second.soc_entity,
         get_ev_second_target_soc_number_entity_id(),
         get_ev_second_smart_charging_switch_entity_id(),
         get_ev_second_deadline_time_entity_id(),
