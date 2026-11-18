@@ -189,6 +189,12 @@ class PlanCostBreakdown:
             (credit) when the plan ends with more stored energy than it
             started with; positive (penalty) when it ends with less.
             Selector-only — does not enter :attr:`total_cost`.
+        charge_timing_bias:
+            Charge-timing term ``κ × (1 − d^t)`` per kWh stored (issue
+            #1420), the same term as the MILP objective's.  It cancels the
+            time discount's preference for exporting PV first and charging
+            later.  Zero without a time discount.  Selector-only — does not
+            enter :attr:`total_cost`.
         total_cost:
             Money outcome of the plan in the horizon.  Equal to
             ``import_cost − export_revenue + cycle_cost + conversion_loss_cost``.
@@ -196,7 +202,8 @@ class PlanCostBreakdown:
         score:
             Selector objective.  Equal to
             ``total_cost + soc_penalty + grid_limit_penalty
-            + terminal_soc_value + battery_target_penalty``.
+            + terminal_soc_value + battery_target_penalty
+            + charge_timing_bias``.
             **Lower is better.**  The candidate selector picks the plan
             with the lowest score.
         total:
@@ -214,6 +221,7 @@ class PlanCostBreakdown:
     grid_limit_penalty: float = 0.0
     terminal_soc_value: float = 0.0
     battery_target_penalty: float = 0.0
+    charge_timing_bias: float = 0.0
     total_cost: float = 0.0
     score: float = 0.0
     # Deprecated alias for ``score``; kept for backward compatibility.

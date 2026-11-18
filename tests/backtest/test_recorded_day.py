@@ -357,14 +357,16 @@ class TestRefreshRecordedDays:
 # ---------------------------------------------------------------------------
 
 #: The day committed with issue #1229 and what its attribution must reproduce.
+#: The charge-timing term (issue #1420) moved the forecast run from 11.668 to
+#: 11.711: it stores PV before it exports, which cost 0.043 on this day.
 _COMMITTED_DAY = date(2026, 9, 29)
 _COMMITTED = {
     "realized_cost": 15.293,
     "regret": 2.294,
-    "forecast_run_cost": 11.668,
+    "forecast_run_cost": 11.711,
     "hindsight_run_cost": 10.421,
-    "execution_error": 0.789,
-    "forecast_error": 1.247,
+    "execution_error": 0.746,
+    "forecast_error": 1.295,
     "planner_error": 0.258,
 }
 

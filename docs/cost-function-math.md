@@ -105,10 +105,11 @@ configures grid tariff fees.
 ## Score (selector objective)
 
 $$
-S = C_{total} + P_{soc} + P_{grid} + V_{terminal} + B
+S = C_{total} + P_{soc} + P_{grid} + V_{terminal} + B + T_{chg}
 $$
 
 $B$ is the battery target penalty, zero unless that opt-in feature is active.
+$T_{chg}$ is the charge-timing term, zero without a time discount.
 
 ### SoC penalties (quadratic guard)
 
@@ -198,6 +199,25 @@ $$
 
 $B$ enters the score only, never the total cost. See `docs/planner-spec.md`
 § House-battery target SoC by deadline.
+
+### Charge-timing term (issue #1420)
+
+The time discount $d^t$ alone prefers "export PV now, charge later" when the
+export price is the same in both slots. The late charge then depends on PV
+that is still a forecast. This term cancels that preference:
+
+$$
+T_{chg} = \kappa \sum_t (1 - d^t) \cdot E_{charged}[t],
+\qquad \kappa = 1.1 \cdot \left(\max(c, 0) + \max(\max_t p_{exp}[t],\ 0)\right)
+$$
+
+- $E_{charged}[t]$ = `batteries_charged_kwh` (DC energy stored)
+- $c$ = cycle cost per kWh, $p_{exp}$ = net export price (after the export fee)
+
+The MILP objective applies the same value on every charge variable, through
+the shared helpers `cost_helpers.charge_timing_rate` and
+`cost_helpers.charge_timing_cost`. $T_{chg}$ enters the score only, never the
+total cost. See `docs/planner-spec.md` § Charge timing.
 
 ---
 
