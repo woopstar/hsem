@@ -1112,9 +1112,9 @@ the ordinary days:
 
 | Day        | Missed | Battery loss | Solar loss | Capture | Battery | Solar  |
 | ---------- | ------ | ------------ | ---------- | ------- | ------- | ------ |
-| 2026-09-15 | 3.26   | 2.57         | 0.70       | 65.0 %  | 72.4 %  | 92.5 % |
-| 2026-09-26 | 19.51  | 13.03        | 6.48       | −26.7 % | 15.3 %  | 57.9 % |
-| 2026-09-29 | 2.29   | 1.77         | 0.53       | 54.5 %  | 65.0 %  | 89.5 % |
+| 2026-09-15 | 2.78   | 2.24         | 0.54       | 69.6 %  | 75.5 %  | 94.1 % |
+| 2026-09-26 | 19.07  | 11.96        | 7.11       | −44.3 % | 9.5 %   | 46.2 % |
+| 2026-09-29 | 2.03   | 1.56         | 0.47       | 62.1 %  | 70.9 %  | 91.2 % |
 
 (from the backtest's battery energy meters; the sensors use SoC-derived flows
 and differ by a few points, see _The same numbers as the backtest_ below).

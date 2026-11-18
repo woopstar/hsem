@@ -224,7 +224,7 @@ python3 scripts/backtest_score.py ~/hsem-actuals/actuals.json
 
 ```text
 day         realized   oracle   regret potential  savings  capture
-2026-09-15     13.45    10.19     3.26      9.32     6.05    65.0%
+2026-09-15     13.26    10.48     2.78      9.14     6.36    69.6%
 ```
 
 Add `--battery-flows soc` to take the battery's flows from its SoC instead of
@@ -261,7 +261,7 @@ python3 scripts/backtest_attribute.py ~/hsem-actuals/actuals.json \
 
 ```text
 day         realized forecast hindsight   regret = execution + forecast +  planner
-2026-09-29     15.29    11.67     10.42     2.29        0.79       1.25      0.26
+2026-09-29     14.93    11.43     10.36     2.03        0.79       1.07      0.17
 ```
 
 Without arguments the script attributes the recorded day committed in

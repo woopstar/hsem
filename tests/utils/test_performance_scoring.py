@@ -590,7 +590,7 @@ class TestTheSameDayAsTheBacktest:
         assert device.residual_kwh is not None and device.residual_kwh < 0.5
 
     def test_the_split_adds_up_on_the_committed_day(self) -> None:
-        """Battery and solar loss of a real day: 1.53 + 0.48 of 2.02 missed."""
+        """Battery and solar loss of a real day: 1.23 + 0.46 of 1.68 missed."""
         day, actuals, site = _recorded()
         keys = day_slot_keys(day, _TZ, actuals.slot_minutes)
 
@@ -601,10 +601,10 @@ class TestTheSameDayAsTheBacktest:
         assert device.battery_loss is not None and device.solar_loss is not None
         assert device.battery_loss + device.solar_loss == pytest.approx(device.regret)
         assert device.battery_loss >= -1e-6 and device.solar_loss >= -1e-6
-        assert device.battery_loss == pytest.approx(1.53, abs=0.01)
-        assert device.solar_loss == pytest.approx(0.48, abs=0.01)
-        assert device.battery_utilisation == pytest.approx(0.699, abs=0.002)
-        assert device.solar_utilisation == pytest.approx(0.905, abs=0.002)
+        assert device.battery_loss == pytest.approx(1.23, abs=0.01)
+        assert device.solar_loss == pytest.approx(0.46, abs=0.01)
+        assert device.battery_utilisation == pytest.approx(0.776, abs=0.002)
+        assert device.solar_utilisation == pytest.approx(0.916, abs=0.002)
 
     def test_the_run_ends_where_the_battery_really_was(self) -> None:
         """SoC-derived flows cannot drift away from the measured SoC."""

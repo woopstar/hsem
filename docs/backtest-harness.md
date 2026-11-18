@@ -351,7 +351,10 @@ python3 scripts/build_actuals.py history-*.json \
 ```
 
 `slot_energy_kwh` holds integrated per-slot energy; `slot_values` holds one
-scalar per slot. An unrecognised series name is reported and ignored rather
+scalar per slot. Battery SoC is the value in force at the slot start. A price
+is the value in force at the middle of the slot: a price sensor changes a
+second or two after the boundary, so a sample at the slot start would return
+the price of the slot before. An unrecognised series name is reported and ignored rather
 than silently accepted. The `schema` tag is mandatory so a format change is
 loud. `site` is optional and says which installation the file is from.
 
@@ -489,9 +492,9 @@ python3 scripts/backtest_score.py ~/hsem-actuals/actuals.json  # your own collec
 ```text
 site limits from cycle-2026-09-25-0816.json: 15 kWh, 5-100 % SoC, 5/5 kW, efficiency 0.98/0.98
 day         realized   oracle   regret potential  savings  capture
-2026-09-15     13.45    10.19     3.26      9.32     6.05    65.0%
-2026-09-26     84.19    64.68    19.51     15.40    -4.12   -26.7%
-   2 day(s)    97.64    74.87    22.78     24.71     1.94     7.8%
+2026-09-15     13.26    10.48     2.78      9.14     6.36    69.6%
+2026-09-26     84.94    65.87    19.07     13.22    -5.85   -44.3%
+   2 day(s)    98.20    76.35    21.85     22.36     0.51     2.3%
 ```
 
 Costs are in the currency of the price sensors. That table is produced from the
@@ -581,7 +584,7 @@ feasible answer to the oracle's problem.
 
 `tests/planner/test_hindsight_oracle.py` checks the same property from the
 other side: on random days, no random feasible run that ends at least as full
-is cheaper than the oracle. On the committed days regret is 3.26 and 19.51.
+is cheaper than the oracle. On the committed days regret is 2.78 and 19.07.
 
 ### Days that cannot be scored
 
@@ -613,10 +616,10 @@ python3 scripts/backtest_score.py tests/backtest/days/2026-09-29 --battery-flows
 
 ```text
 day         realized   oracle   regret potential  savings  capture
-2026-09-29     15.29    13.27     2.02      5.10     3.08    60.4%
+2026-09-29     14.93    13.24     1.68      5.46     3.78    69.2%
 ```
 
-against 54.5 % from the energy meters for the same day. This is the mode the
+against 62.1 % from the energy meters for the same day. This is the mode the
 on-device [performance sensors](sensors-reference.md#performance-sensors) use
 (issue #1182): HSEM has the battery's SoC on every cycle but not its energy
 meters. The definitions and the code are shared
@@ -662,7 +665,7 @@ python3 scripts/backtest_attribute.py ~/hsem-actuals/actuals.json \
 
 ```text
 day         realized forecast hindsight   regret = execution + forecast +  planner
-2026-09-29     15.29    11.67     10.42     2.29        0.79       1.25      0.26
+2026-09-29     14.93    11.43     10.36     2.03        0.79       1.07      0.17
 ```
 
 The attribution needs a planner cycle for (almost) every slot of the day,

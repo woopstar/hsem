@@ -21,6 +21,7 @@ from tests.backtest.actuals import (
     load_actuals,
     readings_from_ha_history,
     slot_energy_from_readings,
+    slot_prices_from_readings,
     slot_values_from_readings,
 )
 
@@ -491,6 +492,50 @@ class TestSlotValues:
         assert keys[2] not in values
 
 
+class TestSlotPrices:
+    """A price is the value in force inside the slot, not at its start."""
+
+    def _prices(self) -> list[tuple[datetime, float | None]]:
+        """Return a sensor that moves a second after each slot boundary."""
+        late = timedelta(seconds=1.4)
+        return [
+            (_minutes(-15) + late, 1.0),
+            (_minutes(0) + late, 2.0),
+            (_minutes(15) + late, 3.0),
+            (_minutes(30) + late, 4.0),
+        ]
+
+    def test_price_stamped_after_the_boundary_belongs_to_its_slot(self) -> None:
+        keys = [_minutes(15 * i).astimezone(UTC) for i in range(3)]
+        prices = slot_prices_from_readings(self._prices(), keys, 15)
+        assert [prices[k] for k in keys] == pytest.approx([2.0, 3.0, 4.0])
+
+    def test_sampling_at_the_slot_start_would_be_one_slot_late(self) -> None:
+        """The start-of-slot sample is what made every price one slot late."""
+        keys = [_minutes(15 * i).astimezone(UTC) for i in range(3)]
+        lagged = slot_values_from_readings(self._prices(), keys)
+        assert [lagged[k] for k in keys] == pytest.approx([1.0, 2.0, 3.0])
+
+    def test_hourly_price_covers_every_slot_of_its_hour(self) -> None:
+        hourly: list[tuple[datetime, float | None]] = [
+            (_minutes(0), 1.5),
+            (_minutes(60), 2.5),
+        ]
+        keys = [_minutes(15 * i).astimezone(UTC) for i in range(6)]
+        prices = slot_prices_from_readings(hourly, keys, 15)
+        assert [prices[k] for k in keys] == pytest.approx([1.5] * 4 + [2.5] * 2)
+
+    def test_unavailable_price_is_absent(self) -> None:
+        prices_in: list[tuple[datetime, float | None]] = [
+            (_minutes(0), 1.5),
+            (_minutes(20), None),
+        ]
+        keys = [_minutes(15 * i).astimezone(UTC) for i in range(2)]
+        prices = slot_prices_from_readings(prices_in, keys, 15)
+        assert keys[0] in prices
+        assert keys[1] not in prices
+
+
 def _history_block(
     entity_id: str, values: list[str], step_minutes: int = 5
 ) -> list[dict[str, Any]]:
@@ -586,6 +631,25 @@ class TestBuildActualsPayload:
         assert actuals.energy_kwh["pv_produced"]
         assert actuals.values["battery_soc_pct"]
         assert not actuals.unknown_series
+
+    def test_prices_are_sampled_inside_the_slot(self) -> None:
+        """A price row stamped just after the boundary lands in its own slot."""
+        late = timedelta(seconds=1.4)
+        readings = self._readings()
+        readings["sensor.price"] = [
+            (_START + timedelta(minutes=15 * i) + late, 1.0 + i) for i in range(-1, 12)
+        ]
+        payload = build_actuals_payload(
+            readings,
+            {"sensor.price": "import_price", "sensor.soc": "battery_soc_pct"},
+            _START + timedelta(hours=1),
+            15,
+        )
+        prices = dict(map(tuple, payload["slot_values"]["import_price"]))
+        assert prices[_START.astimezone(UTC).isoformat()] == pytest.approx(1.0)
+        assert prices[
+            (_START + timedelta(minutes=15)).astimezone(UTC).isoformat()
+        ] == pytest.approx(2.0)
 
     def test_energy_is_integrated_and_levels_are_sampled(self) -> None:
         payload = build_actuals_payload(
