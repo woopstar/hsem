@@ -2,7 +2,7 @@ name: Dependabot Auto-Approve and Merge
 
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize]
+    types: [opened, reopened, synchronize, labeled]
 
 permissions:
   pull-requests: write
@@ -11,7 +11,7 @@ permissions:
 jobs:
   dependabot:
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
+    if: github.actor == 'dependabot[bot]' && github.event.action != 'labeled'
     steps:
       - name: Fetch Dependabot metadata
         id: metadata
@@ -41,4 +41,28 @@ jobs:
           gh pr comment "$PR_URL" --body ":warning: Major version bump — auto-merge skipped. Please review the changelog and breaking changes before merging."
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Dependabot adds `major` or `minor` to its PRs by itself when labels with
+  # those names exist. Release Drafter reads them as the bump for HSEM's own
+  # version, so a major update of a dependency drafted a major HSEM release.
+  # A dependency update is a patch release: `patch` comes from dependabot.yml.
+  release-labels:
+    name: Drop release-bump labels
+    runs-on: ubuntu-latest
+    if: |
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      (contains(github.event.pull_request.labels.*.name, 'major') ||
+       contains(github.event.pull_request.labels.*.name, 'minor'))
+    steps:
+      - name: Remove major and minor
+        run: |
+          for label in major minor; do
+            if [[ ",${LABELS}," == *",${label},"* ]]; then
+              gh pr edit "$PR_URL" --remove-label "${label}"
+            fi
+          done
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
