@@ -133,17 +133,17 @@ class TestCommittedDays:
         by_day = {score.day: score for score in committed}
 
         september_15 = by_day[date(2026, 9, 15)]
-        assert september_15.realized_cost == pytest.approx(13.45, abs=0.01)
-        assert september_15.oracle_cost == pytest.approx(10.19, abs=0.01)
-        assert september_15.potential == pytest.approx(9.32, abs=0.01)
-        assert september_15.capture == pytest.approx(0.650, abs=0.001)
+        assert september_15.realized_cost == pytest.approx(13.26, abs=0.01)
+        assert september_15.oracle_cost == pytest.approx(10.48, abs=0.01)
+        assert september_15.potential == pytest.approx(9.14, abs=0.01)
+        assert september_15.capture == pytest.approx(0.696, abs=0.001)
 
         september_26 = by_day[date(2026, 9, 26)]
-        assert september_26.realized_cost == pytest.approx(84.19, abs=0.01)
-        assert september_26.oracle_cost == pytest.approx(64.68, abs=0.01)
-        assert september_26.potential == pytest.approx(15.40, abs=0.01)
+        assert september_26.realized_cost == pytest.approx(84.94, abs=0.01)
+        assert september_26.oracle_cost == pytest.approx(65.87, abs=0.01)
+        assert september_26.potential == pytest.approx(13.22, abs=0.01)
         # Worse than plain self-consumption that day, and reported as such.
-        assert september_26.capture == pytest.approx(-0.267, abs=0.001)
+        assert september_26.capture == pytest.approx(-0.443, abs=0.001)
 
     def test_scoring_is_deterministic(self, committed: list[DayScore]) -> None:
         assert _committed_scores() == committed

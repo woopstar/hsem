@@ -359,13 +359,13 @@ class TestRefreshRecordedDays:
 #: The day committed with issue #1229 and what its attribution must reproduce.
 _COMMITTED_DAY = date(2026, 9, 29)
 _COMMITTED = {
-    "realized_cost": 15.293,
-    "regret": 2.294,
-    "forecast_run_cost": 11.668,
-    "hindsight_run_cost": 10.421,
-    "execution_error": 0.789,
-    "forecast_error": 1.247,
-    "planner_error": 0.258,
+    "realized_cost": 14.927,
+    "regret": 2.034,
+    "forecast_run_cost": 11.439,
+    "hindsight_run_cost": 10.356,
+    "execution_error": 0.785,
+    "forecast_error": 1.082,
+    "planner_error": 0.166,
 }
 
 

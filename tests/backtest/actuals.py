@@ -49,6 +49,7 @@ __all__ = [
     "ACTUALS_SCHEMA",
     "PriceComparison",
     "ENERGY_SERIES",
+    "PRICE_SERIES",
     "VALUE_SERIES",
     "Actuals",
     "AlignmentReport",
@@ -60,6 +61,7 @@ __all__ = [
     "load_actuals",
     "readings_from_ha_history",
     "slot_energy_from_readings",
+    "slot_prices_from_readings",
     "slot_values_from_readings",
 ]
 
@@ -83,6 +85,10 @@ VALUE_SERIES: tuple[str, ...] = (
     "import_price",
     "export_price",
 )
+
+#: The value series that are prices.  A price belongs to a whole slot, so it is
+#: sampled inside the slot, not at its start.
+PRICE_SERIES: tuple[str, ...] = ("import_price", "export_price")
 
 
 @dataclass(frozen=True)
@@ -670,6 +676,36 @@ def slot_values_from_readings(
     return sampled
 
 
+def slot_prices_from_readings(
+    readings: Sequence[Reading], keys: Sequence[datetime], slot_minutes: int
+) -> dict[datetime, float]:
+    """Per-slot price — the value in force at the middle of each slot.
+
+    A price sensor moves to the slot's price *after* the slot starts: in
+    recorded history its state row is stamped one to two seconds past the
+    boundary.  Sampling at the slot start, as :func:`slot_values_from_readings`
+    does for a level, therefore returns the price of the slot before, and every
+    price ends up one slot late.  The middle of the slot is clear of the
+    boundary on both sides.
+
+    Args:
+        readings: One price sensor's readings; ``None`` marks unavailability.
+        keys: The slot keys to sample.
+        slot_minutes: Slot width in minutes.
+
+    Returns:
+        Canonical slot key to price, for every slot with a known price.
+    """
+    times, values = _step_series(readings)
+    half = timedelta(minutes=slot_minutes) / 2
+    sampled: dict[datetime, float] = {}
+    for key in keys:
+        value = _value_at(times, values, key + half)
+        if value is not None:
+            sampled[key] = value
+    return sampled
+
+
 def build_actuals_payload(
     readings: dict[str, list[Reading]],
     mapping: dict[str, str],
@@ -716,6 +752,9 @@ def build_actuals_payload(
         if series in ENERGY_SERIES:
             keyed = slot_energy_from_readings(rows, live, slot_minutes)
             target = energy
+        elif series in PRICE_SERIES:
+            keyed = slot_prices_from_readings(rows, live, slot_minutes)
+            target = values
         elif series in VALUE_SERIES:
             keyed = slot_values_from_readings(rows, live)
             target = values
