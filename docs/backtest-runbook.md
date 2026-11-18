@@ -261,7 +261,7 @@ python3 scripts/backtest_attribute.py ~/hsem-actuals/actuals.json \
 
 ```text
 day         realized forecast hindsight   regret = execution + forecast +  planner
-2026-09-29     14.93    11.44     10.36     2.03        0.79       1.08      0.17
+2026-09-29     14.93    11.43     10.36     2.03        0.79       1.07      0.17
 ```
 
 Without arguments the script attributes the recorded day committed in

@@ -1072,7 +1072,12 @@ score
   + grid_limit_penalty
   + terminal_soc_value
   + battery_target_penalty
+  + charge_timing_bias
 ```
+
+`charge_timing_bias` is not money (issue #1420). It makes the plan fill the
+battery from PV before it exports, when the export price is the same either
+way. It is zero without a time discount and never enters `total_cost`.
 
 `battery_target_penalty` is zero unless the opt-in house-battery target is
 active (issue #1109). It prices a shortfall against the target at the next

@@ -1223,7 +1223,8 @@ how that plays out per slot, from cheapest to most expensive action.
 
 ```text
 Σ_t [ p_imp[t]·gi[t] − p_exp[t]·ge[t] + cycle_cost·m[t]
-      + p_soc·(s_max_pen[t] + s_min_pen[t]) ]
+      + p_soc·(s_max_pen[t] + s_min_pen[t])
+      + κ·(1 − d^t)·ec[t] ]              (charge timing, issue #1420)
 + Σ_ev [ ev_penalty·ev_pen + tiebreaker·Σ_t ev_c[t] ]
 + P·battery_target_pen            (house-battery target stage 2 only, issue #1109)
 ```
@@ -1696,6 +1697,54 @@ In the #1125 fixture (0.03 night, full PV tomorrow) the floor releases to the
 hardware minimum, and the final plan costs the same as the floor-free
 reference plan (0.097); before #1156 the floor held 77.5 % and the plan cost
 0.917. See `tests/test_dynamic_floor_reference_plan.py`.
+
+#### 5b. Charge timing (issue #1420)
+
+The time discount `d^t` (`time_discount_rate ^ hours_ahead`, default `0.995`)
+makes every cost cheaper the later it falls and every revenue smaller. For a
+PV surplus that fits the battery in slot `t1` or in a later slot `t2`, at one
+export price `p`, that alone prefers "export at `t1`, charge at `t2`" by
+
+```
+(cycle_cost + p) × (d^t1 − d^t2)      per kWh
+```
+
+Both orders move the same energy at the same prices. The late charge depends
+on PV that is still a forecast: when the forecast comes in short, the battery
+never fills and the PV exported early is missing at peak price (issue #1420).
+
+The objective therefore carries a charge-timing term on every stored kWh:
+
+```
+c_obj[ec[t]] += κ × (1 − d^t)
+κ = 1.1 × (max(cycle_cost, 0) + max(max_t p_exp_net[t], 0))
+```
+
+- With `κ > cycle_cost + p` the earlier charge wins a tie. At one export price
+  the battery fills before PV is exported.
+- A real price difference still decides. Selling at `t1` and charging at `t2`
+  wins when `p1·d^t1 − p2·d^t2 > (κ − cycle_cost) × (d^t1 − d^t2)`, a
+  threshold of about 0.5 % of the price level per hour between the slots. A
+  negative export price later in the day still moves the charge there.
+- The term is zero for the live slot (`d^t ≈ 1`) and zero without a discount
+  (`time_discount_rate = 1.0`).
+- It applies to every charge, grid charge included: it removes the discount
+  on the charge side of a cycle, so among equal import prices the plan no
+  longer prefers the later charge.
+- It is not money. `score_plan` reports it as
+  `PlanCostBreakdown.charge_timing_bias` and adds it to `score` only, through
+  the shared helpers `cost_helpers.charge_timing_rate` and
+  `cost_helpers.charge_timing_cost`.
+
+##### Invariants for tests
+
+- One export price, PV surplus larger than the battery: no slot exports before
+  the last PV charge slot.
+- A higher export price early, or a negative one late, keeps the sale early.
+- `charge_timing_bias` is `0.0` when `time_discount_rate = 1.0` or `now` is
+  `None`, and never enters `total_cost`.
+
+See `tests/planner/test_charge_timing.py`.
 
 #### 6. House-battery target SoC (opt-in, issue #1109)
 
@@ -2383,6 +2432,7 @@ score
 + grid_limit_penalty
 + terminal_soc_value
 + battery_target_penalty
++ charge_timing_bias
 ```
 
 Where:
@@ -2398,6 +2448,8 @@ Where:
 - `battery_target_penalty` is **selector-only** and zero unless the opt-in
   house-battery target is active (issue #1109). See
   [Battery target penalty](#battery-target-penalty-issue-1109).
+- `charge_timing_bias` is **selector-only** and zero without a time discount
+  (issue #1420). See _Charge timing_ under _MILP decision priority_.
 
 The implementation exposes both numbers on `PlanCostBreakdown` together with
 a deprecated `total` alias that equals `score` (kept so older code and tests

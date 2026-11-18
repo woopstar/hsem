@@ -80,6 +80,8 @@ from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.planner.battery_target import battery_target_penalty
 from custom_components.hsem.planner.cost_helpers import (
     _resolve_cycle_cost,
+    charge_timing_cost,
+    charge_timing_rate,
     terminal_soc_value,
 )
 from custom_components.hsem.planner.cost_types import (  # noqa: F401
@@ -247,6 +249,8 @@ def score_plan(
     cycle_cost_total_disc = 0.0
     soc_penalty_disc = 0.0
     grid_limit_penalty_disc = 0.0
+    charge_timing_total = 0.0
+    timing_rate = _charge_timing_rate_for(slots, weights, cycle_cost_kwh, now)
 
     _time_passed_value = Recommendations.TimePassed.value
 
@@ -349,6 +353,12 @@ def score_plan(
             cycle_cost_total += cycle
             cycle_cost_total_disc += cycle * discount
 
+        # 4b. Charge-timing term (selector-only, issue #1420): zero for an
+        #     undiscounted slot, so it never applies without a discount.
+        charge_timing_total += charge_timing_cost(
+            slot.batteries_charged_kwh, timing_rate, discount
+        )
+
         # 5. SoC guard penalties (quadratic in the violation magnitude).
         soc = slot.estimated_battery_soc_pct
         if soc < weights.min_soc_pct:
@@ -408,6 +418,7 @@ def score_plan(
             + cycle_cost_total_disc
             + soc_penalty_disc
             + grid_limit_penalty_disc
+            + charge_timing_total
             + terminal_soc_value_total
             + target_penalty
         )
@@ -430,6 +441,7 @@ def score_plan(
         soc_penalty=round(soc_penalty, 6),
         grid_limit_penalty=round(grid_limit_penalty, 6),
         terminal_soc_value=round(terminal_soc_value_total, 6),
+        charge_timing_bias=round(charge_timing_total, 6),
         battery_target_penalty=round(target_penalty, 6),
         total_cost=round(total_cost, 6),
         score=score_rounded,
@@ -454,6 +466,27 @@ def score_plan(
     )
 
     return result
+
+
+def _charge_timing_rate_for(
+    slots: Sequence[PlannedSlot],
+    weights: CostWeights,
+    cycle_cost_kwh: float,
+    now: datetime | None,
+) -> float:
+    """Return the charge-timing rate for a plan (issue #1420).
+
+    Mirrors the MILP objective: the highest finite net export price over the
+    slots that are not past.  ``0.0`` when no time discount applies.
+    """
+    if now is None or weights.time_discount_rate >= 1.0 - 1e-9:
+        return 0.0
+    export_prices = [
+        slot.price.export_price - weights.export_fee_per_kwh
+        for slot in slots
+        if slot.end > now and math.isfinite(slot.price.export_price)
+    ]
+    return charge_timing_rate(cycle_cost_kwh, max(export_prices, default=0.0))
 
 
 def compare_plans(

@@ -10,7 +10,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from custom_components.hsem.planner.cost_helpers import terminal_soc_value
+from custom_components.hsem.planner.cost_helpers import (
+    charge_timing_cost,
+    charge_timing_rate,
+    terminal_soc_value,
+)
 from custom_components.hsem.utils.units import hours_ahead
 
 if TYPE_CHECKING:
@@ -129,6 +133,13 @@ def _build_objective(
     p_imp_max = float(np.max(p_imp_obj)) if m > 0 else 0.1
     use_discount = time_discount_rate < 1.0 - 1e-9
 
+    # Charge-timing term (issue #1420): cancels the discount's preference for
+    # exporting PV now and charging from forecast PV later.  Shared with
+    # score_plan via charge_timing_cost.
+    timing_rate = charge_timing_rate(
+        cycle_cost_per_kwh, float(np.max(p_exp_net)) if m > 0 else 0.0
+    )
+
     for t in range(m):
         discount = 1.0
         if use_discount:
@@ -151,6 +162,7 @@ def _build_objective(
         # curt[t] has zero objective cost (curtailment is free)
 
         c_obj[ec_off + t] += terminal_charge_coef
+        c_obj[ec_off + t] += charge_timing_cost(1.0, timing_rate, discount)
         c_obj[ed_off + t] += terminal_discharge_coef
 
         # Penalty costs: high enough that penalties are zero when SoC is

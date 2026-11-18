@@ -935,6 +935,16 @@ day of prices. It stands for the value of energy **after** the horizon; never
 derive it from a price inside the horizon (the old `R`). The 0.9 factor is what
 keeps #638's flat-price case discharging.
 
+**Charge-timing term (issue #1420).** The time discount alone prefers "export
+PV now, charge later" at one export price, by `(cycle_cost + p_exp) × (d^t1 − d^t2)`
+per kWh. The late charge then rests on forecast PV. `c_obj[ec[t]] += κ × (1 − d^t)`
+with `κ = 1.1 × (cycle_cost + max net export price)` cancels it, so the battery
+fills before PV is exported. Real export-price differences still decide.
+`score_plan` mirrors it as `PlanCostBreakdown.charge_timing_bias` (score only)
+through `cost_helpers.charge_timing_rate` / `charge_timing_cost`. Do not move
+the term to `ge` or `m`: a zero export price would leave the cycle-cost
+discount unopposed.
+
 **Never reintroduce a per-slot terminal premium (issues #1118, #1138).** The
 old term was `max(0, R − p_imp[t])` on discharge (#638/#655) with a charge
 credit further capped by `p_exp[t]/η_chg` (#694) and a deferred-export

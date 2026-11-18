@@ -357,15 +357,19 @@ class TestRefreshRecordedDays:
 # ---------------------------------------------------------------------------
 
 #: The day committed with issue #1229 and what its attribution must reproduce.
+#: The charge-timing term (issue #1420) moved the forecast run from 11.439 to
+#: 11.433 and the hindsight run from 10.356 to 10.362.  In the forecast run one
+#: grid charge of 0.53 kWh moved from 15:00 to 12:45, where the import price
+#: was lower (1.122 against 1.132).
 _COMMITTED_DAY = date(2026, 9, 29)
 _COMMITTED = {
     "realized_cost": 14.927,
     "regret": 2.034,
-    "forecast_run_cost": 11.439,
-    "hindsight_run_cost": 10.356,
-    "execution_error": 0.785,
-    "forecast_error": 1.082,
-    "planner_error": 0.166,
+    "forecast_run_cost": 11.433,
+    "hindsight_run_cost": 10.362,
+    "execution_error": 0.791,
+    "forecast_error": 1.072,
+    "planner_error": 0.171,
 }
 
 

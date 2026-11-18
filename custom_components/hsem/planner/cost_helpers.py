@@ -298,3 +298,53 @@ def terminal_soc_value(
     if end_value_per_kwh is None or abs(end_value_per_kwh) <= 1e-9:
         return 0.0
     return (discharged_kwh - charged_kwh) * end_value_per_kwh
+
+
+#: Margin over the exact break-even of the charge-timing term (issue #1420).
+#: At 1.0 an early and a late charge at one export price tie exactly.
+_CHARGE_TIMING_MARGIN = 1.1
+
+
+def charge_timing_rate(cycle_cost_per_kwh: float, max_export_price: float) -> float:
+    """Return the charge-timing rate ``κ`` per kWh stored (issue #1420).
+
+    Time discounting makes every cost cheaper the later it falls and every
+    revenue smaller.  For a PV surplus that fits the battery either now or
+    later, that alone prefers "export now, charge later" by
+    ``(cycle_cost + export_price) × (d^t1 − d^t2)`` per kWh, although both
+    orders move the same energy at the same prices.  The later charge then
+    depends on PV that is still only a forecast.
+
+    ``κ × (1 − d^t)`` on each stored kWh cancels that preference: with
+    ``κ > cycle_cost + export_price`` the earlier charge wins a tie.  A real
+    export-price difference still decides, since the term is worth only the
+    discount step between the two slots.
+
+    Args:
+        cycle_cost_per_kwh: Battery cycle cost per kWh throughput.
+        max_export_price: Highest net export price over the scored horizon.
+
+    Returns:
+        ``κ`` in currency per kWh; never negative.
+    """
+    return _CHARGE_TIMING_MARGIN * (
+        max(cycle_cost_per_kwh, 0.0) + max(max_export_price, 0.0)
+    )
+
+
+def charge_timing_cost(charged_kwh: float, rate: float, discount: float) -> float:
+    """Return the charge-timing term for a DC charge flow (issue #1420).
+
+    The MILP builds its ``ec`` objective coefficient from a unit flow and
+    :func:`~custom_components.hsem.planner.cost_function.score_plan` sums this
+    over each slot's charge, so both apply the same term.
+
+    Args:
+        charged_kwh: DC energy stored in the slot (kWh).
+        rate: ``κ`` from :func:`charge_timing_rate`.
+        discount: The slot's time discount ``d^t``; ``1.0`` disables the term.
+
+    Returns:
+        The term in currency; ``0.0`` for an undiscounted slot.
+    """
+    return charged_kwh * rate * (1.0 - discount)
