@@ -358,7 +358,10 @@ class TestRefreshRecordedDays:
 
 #: The day committed with issue #1229 and what its attribution must reproduce.
 #: The charge-timing term (issue #1420) moved the forecast run from 11.668 to
-#: 11.711: it stores PV before it exports, which cost 0.043 on this day.
+#: 11.711.  One grid charge of 0.53 kWh moved from 15:00 to 12:45, where the
+#: plan's import price was lower (1.122 against 1.132).  The actuals price the
+#: two slots at 1.245 and 1.165: the recorded prices sit one slot later than
+#: the plan's on this day.
 _COMMITTED_DAY = date(2026, 9, 29)
 _COMMITTED = {
     "realized_cost": 15.293,
