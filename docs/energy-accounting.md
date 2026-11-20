@@ -196,6 +196,25 @@ Charging 10 kWh from the grid:
 - House receives: $10 \cdot 0.97 = 9.7$ kWh
 - Net round-trip: 10.31 kWh grid → 9.7 kWh house = 5.91 % loss
 
+### Measured efficiency
+
+HSEM also measures both efficiencies from the battery power sensor and the SoC
+(issue #1431), per 500 W power step:
+
+$$
+\eta_{chg,measured} = \frac{\Delta soc / 100 \cdot capacity\\_kwh}{energy\\_at\\_sensor}
+$$
+
+$$
+\eta_{dis,measured} = \frac{energy\\_at\\_sensor}{\Delta soc / 100 \cdot capacity\\_kwh}
+$$
+
+The capacity cancels out in $\eta_{chg,measured} \cdot \eta_{dis,measured}$, so
+the measured round trip does not depend on it.
+
+The values are published on `sensor.hsem_battery_efficiency_sensor`. The planner
+keeps the configured $\eta_{chg}$ and $\eta_{dis}$.
+
 ---
 
 ## PV confidence decay

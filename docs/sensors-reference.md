@@ -72,7 +72,7 @@ dashboards, automations, and Areas.
 | Device                         | Identifier suffix     | Entities                                                                                                                                                                                                                                                                                 |
 | ------------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Controller**                 | _(none — legacy)_     | Working mode, degraded mode, read-only, hardware-writes, missing-entities, force-mode, last/next-updated, update-interval, applier-status, plan-explanation, daily-plan-vs-actual, recommendation-interval, force-working-mode selector, extended-attributes/verbose-logging/ML switches |
-| **Battery & Energy**           | `_battery_energy`     | Battery SoC, effective discharge floor, net consumption, PV curtailment, charge/discharge efficiency numbers, dynamic discharge floor switch                                                                                                                                             |
+| **Battery & Energy**           | `_battery_energy`     | Battery SoC, effective discharge floor, battery efficiency, net consumption, PV curtailment, charge/discharge efficiency numbers, dynamic discharge floor switch                                                                                                                         |
 | **Hourly Consumption Profile** | `_hourly_consumption` | All 168 per-hour-block entities (`HSEMHouseConsumptionPowerSensor` + integral + utility-meter + 1/3/7/14-day averages × 24 hour blocks)                                                                                                                                                  |
 | **Financial**                  | `_financial`          | Export income, import cost, net grid balance, savings, performance (savings capture, actual benefit, missed opportunity, battery and solar utilisation, EV charging efficiency)                                                                                                          |
 | **Forecast**                   | `_forecast`           | Forecast accuracy, prediction accuracy, solar confidence, Solcast likelihood selector                                                                                                                                                                                                    |
@@ -857,6 +857,75 @@ While the floor reserves energy, the `constraints` attribute of `sensor.hsem_pla
 
 ---
 
+## Battery efficiency sensor
+
+Measured charge and discharge efficiency of the battery per 500 W power step
+(issue #1431). Diagnostic only: the planner keeps the configured
+_Charge efficiency_ and _Discharge efficiency_.
+
+**Entity:** `sensor.hsem_battery_efficiency_sensor`
+
+| State | Unit | Description                                                                            |
+| ----- | ---- | -------------------------------------------------------------------------------------- |
+| 0–100 | %    | Measured round trip (charge × discharge). `unknown` until both directions have a step. |
+
+**How it measures:**
+
+- Once per update cycle HSEM reads the battery charge/discharge power and the SoC.
+- A measurement starts at a SoC change and ends when the SoC has moved 2 % further.
+- Energy at the power sensor is compared with `SoC change × capacity`. Capacity is
+  `learned_capacity_kwh` from the battery SoC sensor, or the rated capacity until
+  that is learned.
+- Charge efficiency is stored ÷ measured. Discharge efficiency is measured ÷ stored.
+- The measurement lands in the 500 W step of its mean power.
+
+**A measurement is rejected when:**
+
+- the battery idled (below 100 W) or changed direction
+- the power sensor, the SoC or the capacity was unavailable
+- two readings were more than 10 minutes apart (or two update intervals, if longer)
+- the SoC moved against the power
+- the power varied by more than 500 W
+- the result is below 30 % or above 130 % (a sensor fault)
+
+**A step is used when** it holds at least 10 samples and 2 kWh, and its
+efficiency is between 50 % and 100 %. A step outside that band has the status
+`implausible` and is left out. Each step weighs its latest 200 samples, so the
+curve follows an ageing battery.
+
+**Key attributes:**
+
+| Attribute                              | Unit | Description                                                                                                                                                      |
+| -------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `measured_round_trip_efficiency_pct`   | %    | Measured charge × discharge efficiency                                                                                                                           |
+| `configured_round_trip_efficiency_pct` | %    | Configured charge × discharge efficiency, the value the planner uses                                                                                             |
+| `round_trip_difference_pct`            | %    | Measured minus configured. Negative: the battery loses more than configured                                                                                      |
+| `measured_charge_efficiency_pct`       | %    | Energy-weighted charge efficiency over the usable steps                                                                                                          |
+| `measured_discharge_efficiency_pct`    | %    | Energy-weighted discharge efficiency over the usable steps                                                                                                       |
+| `charge_samples`, `discharge_samples`  | int  | Samples held per direction                                                                                                                                       |
+| `charge_curve`, `discharge_curve`      | list | One entry per step: `power_from_w`, `power_to_w`, `efficiency_pct`, `samples`, `energy_kwh`, `status` (`learning`, `ok`, `implausible`). Not recorded in history |
+| `power_step_w`                         | W    | Step width (500)                                                                                                                                                 |
+| `min_samples_per_step`                 | int  | Samples a step needs (10)                                                                                                                                        |
+| `min_energy_per_step_kwh`              | kWh  | Energy a step needs (2)                                                                                                                                          |
+
+**Reading the numbers:**
+
+- The Huawei charge/discharge power is measured at the battery, not at the AC
+  side of the inverter. Inverter conversion loss is not in the measurement, so
+  the true AC round trip is lower.
+- A wrong capacity shifts charge and discharge efficiency in opposite
+  directions. It cancels out in the round trip, so trust the round trip first.
+- Power is sampled once per update cycle. With a long update interval and a
+  fast-changing load, most measurements are rejected and learning is slow.
+- Requires the _Huawei Battery Charge/Discharge Power Sensor_
+  (`hsem_huawei_solar_batteries_charge_discharge_power`). Without it the sensor
+  stays `unknown`.
+
+The learned steps are stored in `.storage/hsem_battery_efficiency.json` and
+survive a restart.
+
+---
+
 ## OCPP charger sensors
 
 Sensors providing live status and diagnostics for an OCPP-compliant EV charger connected via the integrated OCPP server. HSEM runs **one OCPP server per EV** (primary EV on port 9000 by default, second EV on port 9001). The primary sensors below are only created when `hsem_ocpp_enabled` is set; the `_second` variants exist only when the second EV is configured and the second OCPP server is enabled (issue #859).
@@ -1389,6 +1458,7 @@ Detects when the inverter is actively curtailing PV production.
 | `sensor.hsem_import_cost`                        | Import Cost                         | Cumulative import cost                                           | Monetary (total)                        |
 | `sensor.hsem_net_grid_balance`                   | Net Grid Balance                    | Export income minus import cost                                  | Monetary (total)                        |
 | `sensor.hsem_effective_discharge_floor_sensor`   | Effective Discharge Floor           | Current effective floor SoC                                      | Percentage                              |
+| `sensor.hsem_battery_efficiency_sensor`          | Battery Efficiency                  | Measured round-trip efficiency per power step                    | Percentage                              |
 | `sensor.hsem_ocpp_charger_status_sensor`         | OCPP Charger Status                 | Charger connection/charging state                                | String                                  |
 | `sensor.hsem_ocpp_charger_power_sensor`          | OCPP Charger Power                  | Live charging power                                              | kW                                      |
 | `sensor.hsem_ocpp_charger_info_sensor`           | OCPP Charger Info                   | Vendor, model, firmware, serial                                  | String                                  |

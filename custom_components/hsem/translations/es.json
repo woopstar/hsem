@@ -1247,6 +1247,9 @@
       "effective_discharge_floor": {
         "name": "Límite de descarga efectivo"
       },
+      "battery_efficiency": {
+        "name": "Eficiencia de la batería"
+      },
       "ocpp_charger_status": {
         "name": "Estado del cargador"
       },

@@ -22,6 +22,7 @@ from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.models.savings_tracker import SavingsTracker
+from custom_components.hsem.utils.efficiency_learner import EfficiencyLearner
 from custom_components.hsem.utils.prediction_tracker import PredictionTracker
 
 _MODULE = "custom_components.hsem.coordinator_persistence"
@@ -47,6 +48,9 @@ def _coordinator(
     coordinator._performance_tracker = PerformanceTracker(
         history_file=str(tmp_path / "performance.json") if performance_history else ""
     )
+    coordinator._efficiency_learner = EfficiencyLearner(
+        history_file=str(tmp_path / "efficiency.json")
+    )
     return cast(CoordinatorSharedState, coordinator)
 
 
@@ -67,6 +71,7 @@ class TestPersistAllTrackers:
             "financial.json",
             "prediction.json",
             "performance.json",
+            "efficiency.json",
         ):
             assert (tmp_path / name).exists(), name
 
@@ -130,4 +135,19 @@ class TestPersistAllTrackers:
             "_financial_tracker",
             "_performance_tracker",
             "_prediction_tracker",
+            "_efficiency_learner",
         }
+
+    @pytest.mark.asyncio
+    async def test_efficiency_learner_is_skipped_before_setup(
+        self, tmp_path: Path
+    ) -> None:
+        """Without a history file the efficiency learner is not written."""
+        coordinator = _coordinator(tmp_path)
+        coordinator._efficiency_learner = EfficiencyLearner()
+        save_history = AsyncMock(return_value=True)
+        coordinator._efficiency_learner.save_history = save_history  # type: ignore[method-assign]  # test spy
+
+        await persist_all_trackers(coordinator, only=["_efficiency_learner"])
+
+        save_history.assert_not_awaited()

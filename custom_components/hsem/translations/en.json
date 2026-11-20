@@ -1247,6 +1247,9 @@
       "effective_discharge_floor": {
         "name": "Effective Discharge Floor"
       },
+      "battery_efficiency": {
+        "name": "Battery Efficiency"
+      },
       "ocpp_charger_status": {
         "name": "Charger Status"
       },

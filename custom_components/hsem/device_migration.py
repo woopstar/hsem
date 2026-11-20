@@ -117,6 +117,7 @@ def classify_entity_device(unique_id: str) -> HSEMDevice:
         for marker in (
             "battery_soc_sensor",
             "effective_discharge_floor_sensor",
+            "battery_efficiency_sensor",
             "net_consumption_sensor",
             "pv_curtailment_sensor",
             "battery_charge_efficiency",
