@@ -222,8 +222,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
 
         # 6. Populate electricity prices and Solcast PV estimates.  The
         # coverage tells the builder which slots no source wrote (#1196).
-        # The price history then records the real prices, or in a price
-        # outage restores the held ones and degrades the cycle (#1434).
+        # The price history records them or bridges an outage (#1434).
         self._forecast_coverage = await async_apply_price_history(
             self,
             populate_price_and_solcast_from_snapshot(
@@ -235,7 +234,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             live,
             cfg,
         )
-        # A price outage past its time limit is a missing input: stop planning.
+        # An expired price outage is a missing input: stop planning.
         if live.missing_entities and live.force_working_mode_state == "auto":
             state = Recommendations.MissingInputEntities.value
 
