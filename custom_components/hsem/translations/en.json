@@ -1214,7 +1214,7 @@
         "name": "Monthly Battery Wear Cost"
       },
       "monthly_round_trip_loss": {
-        "name": "Monthly Round-Trip Loss"
+        "name": "Monthly Battery-Side Round-Trip Loss"
       },
       "monthly_self_sufficiency": {
         "name": "Monthly Self-Sufficiency"

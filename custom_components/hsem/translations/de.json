@@ -1214,7 +1214,7 @@
         "name": "Monatliche Batterieverschleißkosten"
       },
       "monthly_round_trip_loss": {
-        "name": "Monatlicher Lade-Entlade-Verlust"
+        "name": "Monatlicher batterieseitiger Lade-Entlade-Verlust"
       },
       "monthly_self_sufficiency": {
         "name": "Monatlicher Autarkiegrad"

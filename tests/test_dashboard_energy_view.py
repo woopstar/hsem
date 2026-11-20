@@ -80,6 +80,12 @@ def _day(day: str, *, charged: float = 60.0, wear_cost: float = 1.5) -> EnergyDa
         measured_discharged_kwh=charged * 0.9,
         usable_capacity_kwh=9.0,
         rated_capacity_kwh=10.0,
+        house_hours=24.0,
+        grid_import_hours=24.0,
+        grid_export_hours=24.0,
+        pv_hours=24.0,
+        battery_hours=24.0,
+        priced_throughput_kwh=charged * 1.9,
     )
 
 
@@ -172,7 +178,7 @@ class TestMonthTable:
         _status, table = _render(EnergyTracker())
 
         rows = [line for line in table.splitlines() if line.startswith("| 20")]
-        assert rows == ["| 2026-06 | 0 | 0 | 0 | 0 | 0 | 0 | – | – | – | – |"]
+        assert rows == ["| 2026-06 | – | – | – | – | – | – | – | – | – | – |"]
 
     def test_every_field_the_templates_read_is_published(self) -> None:
         published = set(EnergyTracker().month_summary("2026-06"))

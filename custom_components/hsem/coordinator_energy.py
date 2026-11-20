@@ -5,6 +5,10 @@ reads: the grid and PV energy meters, the house and battery power, and the
 SoC.  The tracker turns consecutive samples into daily energy totals, from
 which the monthly energy sensors are built.
 
+The planner gets ``0 W`` for a house or PV power sensor that gives no reading.
+The tracker must not: a sample takes those two readings only while their
+entity has a numeric state, and they are missing otherwise.
+
 Extracted into its own module to keep :mod:`coordinator_tracking` under the
 30 KB / 1000-line limit.
 """
@@ -26,6 +30,7 @@ from custom_components.hsem.models.energy_tracker import (
 )
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.logger import async_log
 from custom_components.hsem.utils.misc import clamp_efficiency, resolve_cycle_cost
 
@@ -47,12 +52,62 @@ def _finite(value: float | None) -> float | None:
     return float(value)
 
 
-def build_energy_sample(now: datetime, live: LiveState) -> EnergySample:
+def _measured(
+    hass: HomeAssistant, entity_id: str | None, value: float | None
+) -> float | None:
+    """Return *value* while the entity it was read from has a numeric state.
+
+    Args:
+        hass: Home Assistant instance.
+        entity_id: The entity the live state read *value* from.
+        value: The value in the live state, where a failed read may be zero.
+    """
+    if not entity_id:
+        return None
+    state = hass.states.get(entity_id)
+    if state is None or convert_to_float(state.state) is None:
+        return None
+    return _finite(value)
+
+
+def consumption_power_w(
+    hass: HomeAssistant, live: LiveState, cfg: SensorConfig
+) -> float | None:
+    """Return what the house draws, EV charging included, or ``None``.
+
+    The grid meter counts the EV chargers.  When the house power sensor does
+    not (``hsem_house_power_includes_ev_charger_power`` off), their power is
+    added, so the consumption covers what the import covers.  A configured
+    charger without a power reading leaves the consumption unknown.
+
+    Args:
+        hass: Home Assistant instance.
+        live: The live HA entity state snapshot.
+        cfg: The sensor configuration.
+    """
+    power = _measured(hass, cfg.house_consumption_power, live.house_consumption_power_w)
+    if power is None or cfg.house_power_includes_ev_charger_power:
+        return power
+    for ev_cfg, ev in ((cfg.ev, live.ev), (cfg.ev_second, live.ev_second)):
+        if not ev_cfg.power_entity:
+            continue
+        ev_power = _finite(ev.power_w)
+        if ev_power is None:
+            return None
+        power += max(ev_power, 0.0)
+    return power
+
+
+def build_energy_sample(
+    hass: HomeAssistant, now: datetime, live: LiveState, cfg: SensorConfig
+) -> EnergySample:
     """Return this cycle's readings as an energy sample.
 
     Args:
+        hass: Home Assistant instance.
         now: Current time (timezone-aware).
         live: The live HA entity state snapshot.
+        cfg: The sensor configuration.
 
     Returns:
         The sample.  A reading that is missing or not finite is ``None``.
@@ -62,8 +117,10 @@ def build_energy_sample(now: datetime, live: LiveState) -> EnergySample:
         grid_import_energy_kwh=_finite(live.grid_import_energy_kwh),
         grid_export_energy_kwh=_finite(live.grid_export_energy_kwh),
         pv_energy_kwh=_finite(live.pv_energy_kwh),
-        pv_power_w=_finite(live.solar_production_power_w),
-        house_power_w=_finite(live.house_consumption_power_w),
+        pv_power_w=_measured(
+            hass, cfg.solar_production_power, live.solar_production_power_w
+        ),
+        house_power_w=consumption_power_w(hass, live, cfg),
         battery_power_w=_finite(live.huawei_batteries_charge_discharge_power_w),
         soc_pct=_finite(live.huawei_batteries_soc_pct),
     )
@@ -74,7 +131,9 @@ def build_battery_site(live: LiveState, cfg: SensorConfig) -> BatterySite:
 
     The cycle cost is the planner's own: the depreciation per kWh of
     throughput from :func:`resolve_cycle_cost`, with the configured cycle
-    cost as its floor.
+    cost as its floor.  Where that comes to nothing (no purchase price,
+    expected cycles or usable capacity, and no configured cost) the cycle
+    cost is unknown, not zero.
 
     Args:
         live: The live HA entity state snapshot.
@@ -84,18 +143,19 @@ def build_battery_site(live: LiveState, cfg: SensorConfig) -> BatterySite:
     rated_kwh = max(
         (_finite(live.huawei_batteries_rated_capacity_wh) or 0.0) / 1000.0, 0.0
     )
+    cycle_cost = resolve_cycle_cost(
+        purchase_price=cfg.batteries_purchase_price,
+        usable_kwh=usable_kwh,
+        expected_cycles=cfg.batteries_expected_cycles,
+        capacity_loss_pct=cfg.batteries_capacity_loss_pct,
+        user_margin=cfg.batteries_cycle_cost,
+    )
     return BatterySite(
         rated_capacity_kwh=rated_kwh,
         usable_capacity_kwh=usable_kwh,
         charge_efficiency=clamp_efficiency(cfg.batteries_charge_efficiency),
         discharge_efficiency=clamp_efficiency(cfg.batteries_discharge_efficiency),
-        cycle_cost_per_kwh=resolve_cycle_cost(
-            purchase_price=cfg.batteries_purchase_price,
-            usable_kwh=usable_kwh,
-            expected_cycles=cfg.batteries_expected_cycles,
-            capacity_loss_pct=cfg.batteries_capacity_loss_pct,
-            user_margin=cfg.batteries_cycle_cost,
-        ),
+        cycle_cost_per_kwh=cycle_cost if cycle_cost > 1e-9 else None,
     )
 
 
@@ -135,7 +195,7 @@ async def async_track_energy(
             return
         await init_energy_tracker(tracker, coordinator.hass)
         tracker.accumulate(
-            build_energy_sample(now, live),
+            build_energy_sample(coordinator.hass, now, live, cfg),
             build_battery_site(live, cfg),
             max_gap_seconds=max(MAX_GAP_S, 2.0 * cfg.update_interval * 60.0),
         )

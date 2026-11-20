@@ -1214,7 +1214,7 @@
         "name": "Coste mensual de desgaste de la batería"
       },
       "monthly_round_trip_loss": {
-        "name": "Pérdida mensual de ida y vuelta"
+        "name": "Pérdida mensual de ida y vuelta en la batería"
       },
       "monthly_self_sufficiency": {
         "name": "Autosuficiencia mensual"

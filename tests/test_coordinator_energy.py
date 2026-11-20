@@ -17,6 +17,7 @@ from custom_components.hsem.coordinator_energy import (
     async_track_energy,
     build_battery_site,
     build_energy_sample,
+    consumption_power_w,
     init_energy_tracker,
 )
 from custom_components.hsem.coordinator_meter_tracking import (
@@ -29,13 +30,19 @@ from custom_components.hsem.custom_sensors.monthly_energy_sensors import (
 )
 from custom_components.hsem.models.energy_tracker import REASON_NO_DATA, EnergyTracker
 from custom_components.hsem.models.financial_tracker import FinancialTracker
-from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.live_state import EVLiveState, LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
 from tests.test_coordinator_cycle_paths import _coordinator, _run_cycle
-from tests.test_ha_mock_integration import FakeState
+from tests.test_ha_mock_integration import FakeState, make_fake_hass
 
 _T0 = datetime(2026, 6, 10, 12, 0, tzinfo=UTC)
+_HOUSE = "sensor.power_house_load"
+_PV = "sensor.power_inverter_input_total"
+_EV = "sensor.ev_charger_power"
 _CFG = SensorConfig(
+    house_consumption_power=_HOUSE,
+    solar_production_power=_PV,
+    house_power_includes_ev_charger_power=True,
     update_interval=5,
     batteries_charge_efficiency=95.0,
     batteries_discharge_efficiency=90.0,
@@ -51,11 +58,17 @@ _TRACKING = "custom_components.hsem.coordinator_tracking"
 
 def _state(tmp_path: Path) -> CoordinatorSharedState:
     """Return the slice of the coordinator the energy tracking uses."""
-    hass = SimpleNamespace(config=SimpleNamespace(config_dir=str(tmp_path)))
+    hass = _hass()
+    hass.config = SimpleNamespace(config_dir=str(tmp_path))
     return cast(
         CoordinatorSharedState,
         SimpleNamespace(hass=hass, _energy_tracker=EnergyTracker()),
     )
+
+
+def _hass(**states: str) -> Any:
+    """Return a hass in which the house and PV power sensors give readings."""
+    return make_fake_hass({_HOUSE: "1200", _PV: "2400", **states})
 
 
 def _live(
@@ -80,7 +93,7 @@ def _live(
 
 class TestBuildSample:
     def test_the_sample_carries_the_live_readings(self) -> None:
-        sample = build_energy_sample(_T0, _live())
+        sample = build_energy_sample(_hass(), _T0, _live(), _CFG)
 
         assert sample.at == _T0
         assert sample.grid_import_energy_kwh == pytest.approx(100.0)
@@ -94,7 +107,7 @@ class TestBuildSample:
     def test_a_missing_or_non_finite_reading_is_none(self) -> None:
         live = _live(grid_import=None, pv=float("nan"), soc=float("inf"))
 
-        sample = build_energy_sample(_T0, live)
+        sample = build_energy_sample(_hass(), _T0, live, _CFG)
 
         assert sample.grid_import_energy_kwh is None
         assert sample.pv_energy_kwh is None
@@ -119,12 +132,133 @@ class TestBuildSite:
 
         assert site.cycle_cost_per_kwh == pytest.approx(0.25)
 
-    def test_unknown_capacities_are_zero(self) -> None:
+    def test_unknown_capacities_are_zero_and_the_cycle_cost_is_unknown(self) -> None:
         site = build_battery_site(LiveState(), SensorConfig())
 
         assert site.rated_capacity_kwh == pytest.approx(0.0)
         assert site.usable_capacity_kwh == pytest.approx(0.0)
-        assert site.cycle_cost_per_kwh == pytest.approx(0.0)
+        assert site.cycle_cost_per_kwh is None
+
+    def test_without_a_purchase_price_the_cycle_cost_is_unknown(self) -> None:
+        site = build_battery_site(_live(), SensorConfig(batteries_expected_cycles=6000))
+
+        assert site.usable_capacity_kwh == pytest.approx(9.0)
+        assert site.cycle_cost_per_kwh is None
+
+
+class TestAvailability:
+    """The live state holds 0 W for a power sensor that gives no reading."""
+
+    @pytest.mark.parametrize("state", ["unavailable", "unknown", ""])
+    def test_a_house_sensor_without_a_reading_is_missing(self, state: str) -> None:
+        live = _live()
+        live.house_consumption_power_w = 0.0
+        live.solar_production_power_w = 0.0
+
+        sample = build_energy_sample(
+            _hass(**{_HOUSE: state, _PV: state}), _T0, live, _CFG
+        )
+
+        assert sample.house_power_w is None
+        assert sample.pv_power_w is None
+
+    def test_a_sensor_that_does_not_exist_or_is_not_configured_is_missing(
+        self,
+    ) -> None:
+        hass = make_fake_hass({})
+
+        assert build_energy_sample(hass, _T0, _live(), _CFG).house_power_w is None
+        assert (
+            build_energy_sample(hass, _T0, _live(), SensorConfig()).house_power_w
+            is None
+        )
+
+    def test_a_reading_of_zero_is_a_reading(self) -> None:
+        live = _live()
+        live.house_consumption_power_w = 0.0
+
+        sample = build_energy_sample(_hass(**{_HOUSE: "0"}), _T0, live, _CFG)
+
+        assert sample.house_power_w == pytest.approx(0.0)
+
+
+class TestEvConsumption:
+    """The grid meter counts the EV; the house sensor may not."""
+
+    @staticmethod
+    def _cfg(*, includes_ev: bool) -> SensorConfig:
+        cfg = SensorConfig(
+            house_consumption_power=_HOUSE,
+            house_power_includes_ev_charger_power=includes_ev,
+        )
+        cfg.ev.power_entity = _EV
+        return cfg
+
+    @staticmethod
+    def _live(ev_power_w: float | None, second_w: float | None = None) -> LiveState:
+        live = _live()
+        live.ev = EVLiveState(power_w=ev_power_w)
+        live.ev_second = EVLiveState(power_w=second_w)
+        return live
+
+    def test_ev_power_is_added_when_the_house_sensor_leaves_it_out(self) -> None:
+        power = consumption_power_w(
+            _hass(), self._live(7000.0), self._cfg(includes_ev=False)
+        )
+
+        assert power == pytest.approx(8200.0)
+
+    def test_ev_power_is_not_added_twice(self) -> None:
+        power = consumption_power_w(
+            _hass(), self._live(7000.0), self._cfg(includes_ev=True)
+        )
+
+        assert power == pytest.approx(1200.0)
+
+    def test_both_chargers_count_and_a_feeding_one_counts_as_nothing(self) -> None:
+        cfg = self._cfg(includes_ev=False)
+        cfg.ev_second.power_entity = "sensor.ev_second_charger_power"
+
+        power = consumption_power_w(_hass(), self._live(-500.0, 3000.0), cfg)
+
+        assert power == pytest.approx(4200.0)
+
+    def test_a_charger_without_a_reading_leaves_the_consumption_unknown(self) -> None:
+        power = consumption_power_w(
+            _hass(), self._live(None), self._cfg(includes_ev=False)
+        )
+
+        assert power is None
+
+    def test_a_charger_that_is_not_configured_is_no_charger(self) -> None:
+        cfg = SensorConfig(house_consumption_power=_HOUSE)
+
+        assert consumption_power_w(_hass(), self._live(None), cfg) == pytest.approx(
+            1200.0
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_month_with_an_ev_on_the_grid_meter(self, tmp_path: Path) -> None:
+        """House 300, EV 400, import 550 kWh: 21 % and not a clamped 0 %."""
+        coordinator = _state(tmp_path)
+        cfg = self._cfg(includes_ev=False)
+        cfg.update_interval = 5
+        hours = 100.0
+        steps = int(hours * 12)
+
+        for step in range(steps + 1):
+            live = self._live(4000.0)
+            live.house_consumption_power_w = 3000.0
+            live.grid_import_energy_kwh = 1000.0 + 5.5 * step / 12.0
+            live.huawei_batteries_charge_discharge_power_w = 0.0
+            await async_track_energy(
+                coordinator, _T0 + timedelta(minutes=5 * step), live, cfg
+            )
+
+        summary = coordinator._energy_tracker.month_summary("2026-06")
+        assert summary["house_consumption_kwh"] == pytest.approx(700.0)
+        assert summary["grid_import_kwh"] == pytest.approx(550.0)
+        assert summary["self_sufficiency"] == pytest.approx(21.4, abs=0.05)
 
 
 class TestTracking:
@@ -318,6 +452,10 @@ class TestThroughTheRealCycle:
                 await _run_cycle(coordinator)
 
         tracker = coordinator._energy_tracker
+        # The cycle read the house power from a sensor that gave a reading.
+        assert tracker.daily_log["2026-06-10"].house_consumption_kwh == pytest.approx(
+            0.1
+        )
         assert tracker.history_file.endswith(HISTORY_FILE)
         assert tracker.daily_log["2026-06-10"].grid_import_kwh == pytest.approx(0.5)
 
@@ -327,3 +465,43 @@ class TestThroughTheRealCycle:
         assert attributes is not None
         assert attributes["this_month"]["days"] == 1
         assert attributes["this_month"]["grid_import_kwh"] == pytest.approx(0.5)
+
+    @pytest.mark.asyncio
+    async def test_an_unavailable_house_sensor_is_missing_not_zero(self) -> None:
+        """2 kW for ten minutes, then no reading, 0.09 kWh imported per cycle.
+
+        The state collector hands the planner 0 W for the unavailable sensor.
+        The energy record must hold the ten measured minutes only.
+        """
+        coordinator, _published = _coordinator(
+            {"hsem_grid_import_energy_entity": "sensor.grid_import_energy"},
+            states={_HOUSE: "2000"},
+        )
+        states: Any = coordinator.hass.states._states
+
+        for step in range(5):
+            states["sensor.grid_import_energy"] = FakeState(
+                "sensor.grid_import_energy",
+                str(round(100.0 + 0.09 * step, 2)),
+                {"unit_of_measurement": "kWh"},
+            )
+            if step == 3:
+                states[_HOUSE] = FakeState(_HOUSE, "unavailable", {})
+            with (
+                patch(
+                    f"{_CYCLE}.hsem_now", return_value=_T0 + timedelta(minutes=5 * step)
+                ),
+                patch(f"{_TRACKING}.async_track_time_change"),
+            ):
+                await _run_cycle(coordinator)
+
+        assert coordinator._live is not None
+        assert coordinator._live.house_consumption_power_w == pytest.approx(0.0)
+        entry = coordinator._energy_tracker.daily_log["2026-06-10"]
+        assert entry.observed_hours == pytest.approx(20.0 / 60.0)
+        assert entry.house_hours == pytest.approx(10.0 / 60.0)
+        assert entry.house_consumption_kwh == pytest.approx(2.0 / 6.0)
+        assert entry.grid_import_kwh == pytest.approx(0.36)
+        # Of the import, only what fell in the measured minutes is paired.
+        assert entry.paired_consumption_kwh == pytest.approx(2.0 / 6.0)
+        assert entry.paired_import_kwh == pytest.approx(0.18)

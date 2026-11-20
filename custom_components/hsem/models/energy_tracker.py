@@ -42,20 +42,43 @@ MONTHLY_ATTRIBUTE_MONTHS = 12
 #: House consumption below which a self-sufficiency share is not given.
 MIN_CONSUMPTION_KWH = 1.0
 
-#: Measured battery charge below which the round-trip loss is not given.  The
-#: SoC is read in whole percent and the capacity is a nameplate figure, so the
-#: correction for the SoC difference is only small against enough throughput.
+#: Measured battery charge below which the round-trip loss is not given.
 MIN_ROUND_TRIP_CHARGED_KWH = 20.0
 
 #: The same minimum as a multiple of the rated capacity; the larger applies.
-MIN_ROUND_TRIP_CAPACITY_MULTIPLE = 2.0
+MIN_ROUND_TRIP_CAPACITY_MULTIPLE = 5.0
+
+#: How far off the stored-energy change may be, as a share of itself.  It is
+#: the SoC change times the nameplate capacity: an aged battery holds less,
+#: and what it holds comes out with a loss the measurement is yet to find.
+STORED_DELTA_RELATIVE_ERROR = 0.15
+
+#: Largest uncertainty of the round-trip loss still published, as a share of
+#: the charged energy.  It is met while the stored-energy change is at most a
+#: tenth of the charged energy.
+MAX_ROUND_TRIP_UNCERTAINTY = 0.015
+
+#: Share of the battery throughput that must have a known cycle cost before
+#: a wear cost is given.
+MIN_PRICED_THROUGHPUT_SHARE = 0.95
+
+#: Allowance on the grid import a month's consumption and battery charge can
+#: explain, as a share and in kWh, before the import is taken for something
+#: the consumption does not cover.
+IMPORT_EXCESS_SHARE = 0.05
+IMPORT_EXCESS_KWH = 1.0
 
 #: Highest measured round-trip efficiency still taken for a measurement.
 MAX_ROUND_TRIP_EFFICIENCY = 1.02
 
 #: Why a monthly figure is unknown.
 REASON_NO_DATA = "no_data"
+REASON_CONSUMPTION_NOT_MEASURED = "consumption_not_measured"
 REASON_CONSUMPTION_BELOW_MINIMUM = "consumption_below_minimum"
+REASON_IMPORT_EXCEEDS_CONSUMPTION = "import_exceeds_consumption"
+REASON_BATTERY_NOT_MEASURED = "battery_not_measured"
+REASON_CYCLE_COST_UNKNOWN = "cycle_cost_unknown"
+REASON_SOC_CHANGE_TOO_LARGE = "soc_change_too_large"
 REASON_GRID_IMPORT_NOT_MEASURED = "grid_import_not_measured"
 REASON_CAPACITY_UNKNOWN = "capacity_unknown"
 REASON_BATTERY_POWER_NOT_MEASURED = "battery_power_not_measured"
@@ -78,16 +101,23 @@ SUMMED_FIELDS: tuple[str, ...] = (
     "measured_charged_kwh",
     "measured_discharged_kwh",
     "measured_stored_delta_kwh",
+    "house_hours",
+    "grid_import_hours",
+    "grid_export_hours",
+    "pv_hours",
+    "battery_hours",
+    "priced_throughput_kwh",
 )
 
-#: The summed quantities a month publishes as they are.
-_PUBLISHED_TOTALS: tuple[str, ...] = (
-    "house_consumption_kwh",
-    "grid_import_kwh",
-    "grid_export_kwh",
-    "pv_kwh",
-    "battery_charged_kwh",
-    "battery_discharged_kwh",
+#: The summed quantities a month publishes, each with the hours in which it
+#: was measured.  A quantity that was never measured is published as unknown.
+_PUBLISHED_TOTALS: tuple[tuple[str, str], ...] = (
+    ("house_consumption_kwh", "house_hours"),
+    ("grid_import_kwh", "grid_import_hours"),
+    ("grid_export_kwh", "grid_export_hours"),
+    ("pv_kwh", "pv_hours"),
+    ("battery_charged_kwh", "battery_hours"),
+    ("battery_discharged_kwh", "battery_hours"),
 )
 
 #: The readings of a sample, in the order they are persisted.
@@ -112,7 +142,7 @@ class EnergySample:
         grid_export_energy_kwh: Cumulative grid export meter.
         pv_energy_kwh: Cumulative PV production meter.
         pv_power_w: PV power, used when the PV meter is not available.
-        house_power_w: House consumption power.
+        house_power_w: House consumption power, EV charging included.
         battery_power_w: Signed battery power, positive while charging.
         soc_pct: Battery state of charge.
     """
@@ -156,14 +186,15 @@ class BatterySite:
             full equivalent cycle.
         charge_efficiency: Charge efficiency as a fraction.
         discharge_efficiency: Discharge efficiency as a fraction.
-        cycle_cost_per_kwh: The planner's cycle cost per kWh of throughput.
+        cycle_cost_per_kwh: The planner's cycle cost per kWh of throughput,
+            or ``None`` when it cannot be worked out.
     """
 
     rated_capacity_kwh: float = 0.0
     usable_capacity_kwh: float = 0.0
     charge_efficiency: float = 1.0
     discharge_efficiency: float = 1.0
-    cycle_cost_per_kwh: float = 0.0
+    cycle_cost_per_kwh: float | None = None
 
 
 @dataclass
@@ -187,6 +218,12 @@ class EnergyDayEntry:
             reading, in intervals whose SoC change is known.
         measured_discharged_kwh: Battery discharge of those intervals.
         measured_stored_delta_kwh: Change in stored energy over them.
+        house_hours: Hours in which the house consumption was measured.
+        grid_import_hours: Hours in which the grid import was measured.
+        grid_export_hours: Hours in which the grid export was measured.
+        pv_hours: Hours in which the PV production was measured.
+        battery_hours: Hours in which the battery flows were known.
+        priced_throughput_kwh: Battery throughput with a known cycle cost.
         usable_capacity_kwh: Usable capacity as last seen that day.
         rated_capacity_kwh: Rated capacity as last seen that day.
     """
@@ -205,6 +242,12 @@ class EnergyDayEntry:
     measured_charged_kwh: float = 0.0
     measured_discharged_kwh: float = 0.0
     measured_stored_delta_kwh: float = 0.0
+    house_hours: float = 0.0
+    grid_import_hours: float = 0.0
+    grid_export_hours: float = 0.0
+    pv_hours: float = 0.0
+    battery_hours: float = 0.0
+    priced_throughput_kwh: float = 0.0
     usable_capacity_kwh: float = 0.0
     rated_capacity_kwh: float = 0.0
 
@@ -254,6 +297,10 @@ class EnergyTracker:
     history_file: str = ""
     _last_sample: EnergySample | None = field(default=None, repr=False)
     _saved_at: datetime | None = field(default=None, repr=False)
+    _revision: int = field(default=0, repr=False)
+    _published: tuple[int, date, dict[str, Any]] | None = field(
+        default=None, repr=False
+    )
 
     # ------------------------------------------------------------------
     # Accumulation
@@ -265,9 +312,11 @@ class EnergyTracker:
         """Add the energy between the previous sample and *sample*.
 
         The interval is booked on the local day of *sample*.  Nothing missing
-        is read as zero: a quantity is only added when both of its readings
-        are there, and an interval longer than *max_gap_seconds* only sets a
-        new baseline.
+        is read as zero: a quantity is only added, and its hours only counted,
+        when both of its readings are there, and an interval longer than
+        *max_gap_seconds* only sets a new baseline.  The length of the
+        interval is elapsed time, so a daylight-saving shift between two
+        samples changes nothing.
 
         Args:
             sample: This cycle's readings.
@@ -281,7 +330,8 @@ class EnergyTracker:
         self._last_sample = sample
         if previous is None:
             return False
-        seconds = (sample.at - previous.at).total_seconds()
+        # Two datetimes of one time zone subtract as wall-clock times.
+        seconds = sample.at.timestamp() - previous.at.timestamp()
         if seconds <= 0.0 or seconds > max_gap_seconds:
             return False
         hours = seconds / 3600.0
@@ -292,6 +342,7 @@ class EnergyTracker:
             entry = self.daily_log[day.isoformat()] = EnergyDayEntry(day.isoformat())
             self._prune(day)
         entry.observed_hours += hours
+        self._revision += 1
 
         grid_import = meter_delta(
             previous.grid_import_energy_kwh, sample.grid_import_energy_kwh, hours
@@ -304,12 +355,19 @@ class EnergyTracker:
             pv = mean_power_kwh(previous.pv_power_w, sample.pv_power_w, hours)
         house = mean_power_kwh(previous.house_power_w, sample.house_power_w, hours)
 
-        entry.grid_import_kwh += grid_import or 0.0
-        entry.grid_export_kwh += grid_export or 0.0
-        entry.pv_kwh += max(pv or 0.0, 0.0)
+        if grid_import is not None:
+            entry.grid_import_kwh += grid_import
+            entry.grid_import_hours += hours
+        if grid_export is not None:
+            entry.grid_export_kwh += grid_export
+            entry.grid_export_hours += hours
+        if pv is not None:
+            entry.pv_kwh += max(pv, 0.0)
+            entry.pv_hours += hours
         if house is not None:
             house = max(house, 0.0)
             entry.house_consumption_kwh += house
+            entry.house_hours += hours
             if grid_import is not None:
                 entry.paired_consumption_kwh += house
                 entry.paired_import_kwh += grid_import
@@ -366,7 +424,10 @@ class EnergyTracker:
 
         entry.battery_charged_kwh += charged
         entry.battery_discharged_kwh += discharged
-        entry.wear_cost += (charged + discharged) * max(site.cycle_cost_per_kwh, 0.0)
+        entry.battery_hours += hours
+        if site.cycle_cost_per_kwh is not None:
+            entry.wear_cost += (charged + discharged) * site.cycle_cost_per_kwh
+            entry.priced_throughput_kwh += charged + discharged
 
     def _prune(self, today: date) -> None:
         """Drop records older than :data:`MAX_DAILY_LOG_DAYS` days."""
@@ -419,8 +480,9 @@ class EnergyTracker:
             "days": len(days),
             "observed_hours": round(total["observed_hours"], 1),
         }
-        for name in _PUBLISHED_TOTALS:
-            summary[name] = round(total[name], 3)
+        for name, hours_name in _PUBLISHED_TOTALS:
+            measured = total[hours_name] > 1e-9
+            summary[name] = round(total[name], 3) if measured else None
 
         share, share_reason = _self_sufficiency(total, bool(days))
         summary["self_sufficiency"] = round_or_none(
@@ -432,6 +494,8 @@ class EnergyTracker:
         cycles_reason: str | None = None
         if not days:
             cycles_reason = REASON_NO_DATA
+        elif total["battery_hours"] <= 1e-9:
+            cycles_reason = REASON_BATTERY_NOT_MEASURED
         elif usable <= 1e-9:
             cycles_reason = REASON_CAPACITY_UNKNOWN
         else:
@@ -440,15 +504,21 @@ class EnergyTracker:
         summary["battery_cycles_reason"] = cycles_reason
         summary["usable_capacity_kwh"] = round(usable, 2) if usable > 1e-9 else None
 
-        summary["battery_wear_cost"] = round(total["wear_cost"], 3) if days else None
-        summary["battery_wear_cost_reason"] = None if days else REASON_NO_DATA
+        wear, wear_reason = _wear_cost(total, bool(days))
+        summary["battery_wear_cost"] = round_or_none(wear, 3)
+        summary["battery_wear_cost_reason"] = wear_reason
 
-        efficiency, loss_reason = _round_trip_efficiency(total, rated, bool(days))
+        efficiency, uncertainty, loss_reason = _round_trip_efficiency(
+            total, rated, bool(days)
+        )
         summary["round_trip_efficiency"] = round_or_none(
             None if efficiency is None else efficiency * 100.0, 1
         )
         summary["round_trip_loss"] = round_or_none(
             None if efficiency is None else (1.0 - efficiency) * 100.0, 1
+        )
+        summary["round_trip_loss_uncertainty"] = round_or_none(
+            None if uncertainty is None else uncertainty * 100.0, 1
         )
         summary["round_trip_loss_reason"] = loss_reason
         summary["round_trip_charged_kwh"] = round(total["measured_charged_kwh"], 3)
@@ -471,21 +541,28 @@ class EnergyTracker:
             ``previous_month`` and ``monthly``: the current month and every
             month with a record among the eleven before it, oldest first.
         """
+        published = self._published
+        if published is not None and published[:2] == (self._revision, today):
+            return dict(published[2])
         current = today.strftime("%Y-%m")
         months = [current]
         while len(months) < MONTHLY_ATTRIBUTE_MONTHS:
             months.append(previous_month(months[-1]))
         recorded = {key[:7] for key in self.daily_log}
-        return {
+        monthly = [
+            self.month_summary(month)
+            for month in reversed(months)
+            if month == current or month in recorded
+        ]
+        attributes: dict[str, Any] = {
             "month": current,
-            "this_month": self.month_summary(current),
+            "this_month": monthly[-1],
             "previous_month": self.month_summary(previous_month(current)),
-            "monthly": [
-                self.month_summary(month)
-                for month in reversed(months)
-                if month == current or month in recorded
-            ],
+            "monthly": monthly,
         }
+        # Four sensors ask for the same tables on every cycle.
+        self._published = (self._revision, today, attributes)
+        return dict(attributes)
 
     # ------------------------------------------------------------------
     # JSON persistence
@@ -524,8 +601,10 @@ class EnergyTracker:
     def restore_from(self, loaded: EnergyTracker) -> None:
         """Replace this tracker's state with a reconstructed tracker's."""
         history_file = self.history_file
+        revision = self._revision
         self.__dict__.update(loaded.__dict__)
         self.history_file = history_file
+        self._revision = revision + 1
 
     def save_due(self, interval_seconds: float) -> bool:
         """Return whether the samples since the last save are worth a write.
@@ -537,7 +616,7 @@ class EnergyTracker:
             return False
         if self._saved_at is None:
             return True
-        unsaved = (self._last_sample.at - self._saved_at).total_seconds()
+        unsaved = self._last_sample.at.timestamp() - self._saved_at.timestamp()
         return unsaved >= interval_seconds
 
     async def save_history(self) -> bool:
@@ -571,41 +650,80 @@ def _self_sufficiency(
     """Return the share of the consumption not imported, or why it is unknown.
 
     ``1 − grid import ÷ house consumption`` over the intervals in which both
-    were measured, limited to 0…1: a month that charged the battery from the
-    grid for use in the next one can import more than the house used.
+    were measured.  Grid energy goes to the house or into the battery, so a
+    month can import more than the house used by what it charged: the share is
+    then zero.  An import beyond that is energy the consumption figure does
+    not cover, and the share is unknown instead of zero.
     """
     if not has_days:
         return None, REASON_NO_DATA
+    if total["house_hours"] <= 1e-9:
+        return None, REASON_CONSUMPTION_NOT_MEASURED
     if total["house_consumption_kwh"] < MIN_CONSUMPTION_KWH:
         return None, REASON_CONSUMPTION_BELOW_MINIMUM
     consumption = total["paired_consumption_kwh"]
     if consumption < MIN_CONSUMPTION_KWH:
         return None, REASON_GRID_IMPORT_NOT_MEASURED
-    return min(max(1.0 - total["paired_import_kwh"] / consumption, 0.0), 1.0), None
+    grid_import = total["paired_import_kwh"]
+    explained = consumption + total["battery_charged_kwh"]
+    if grid_import > explained * (1.0 + IMPORT_EXCESS_SHARE) + IMPORT_EXCESS_KWH:
+        return None, REASON_IMPORT_EXCEEDS_CONSUMPTION
+    return max(1.0 - grid_import / consumption, 0.0), None
+
+
+def _wear_cost(
+    total: dict[str, float], has_days: bool
+) -> tuple[float | None, str | None]:
+    """Return the cycle cost of the battery throughput, or why it is unknown.
+
+    A throughput without a cycle cost (no purchase price, expected cycles or
+    usable capacity) is not worth nothing: the cost is then unknown.
+    """
+    if not has_days:
+        return None, REASON_NO_DATA
+    if total["battery_hours"] <= 1e-9:
+        return None, REASON_BATTERY_NOT_MEASURED
+    throughput = total["battery_charged_kwh"] + total["battery_discharged_kwh"]
+    if total["priced_throughput_kwh"] < MIN_PRICED_THROUGHPUT_SHARE * throughput:
+        return None, REASON_CYCLE_COST_UNKNOWN
+    return total["wear_cost"], None
 
 
 def _round_trip_efficiency(
     total: dict[str, float], rated_capacity_kwh: float, has_days: bool
-) -> tuple[float | None, str | None]:
-    """Return the measured round-trip efficiency, or why it is unknown.
+) -> tuple[float | None, float | None, str | None]:
+    """Return the measured round-trip efficiency, its uncertainty, or a reason.
 
     ``(discharged + stored-energy change) ÷ charged``: energy still in the
     battery at the end of the period counts as delivered, and energy that was
     already there at the start is taken off what was delivered.
+
+    The stored-energy change is the weak term: the SoC times the nameplate
+    capacity, taken at full value.  Its possible error, as a share of the
+    charged energy, is the uncertainty.  The efficiency is only given once
+    enough has been charged and that uncertainty is small.
+
+    Returns:
+        The efficiency and its uncertainty as fractions, and ``None``; or
+        ``None``, ``None`` and the reason.
     """
     if not has_days:
-        return None, REASON_NO_DATA
+        return None, None, REASON_NO_DATA
     charged = total["measured_charged_kwh"]
     discharged = total["measured_discharged_kwh"]
     if charged + discharged <= 1e-9:
-        return None, REASON_BATTERY_POWER_NOT_MEASURED
+        return None, None, REASON_BATTERY_POWER_NOT_MEASURED
     minimum = max(
         MIN_ROUND_TRIP_CHARGED_KWH,
         MIN_ROUND_TRIP_CAPACITY_MULTIPLE * rated_capacity_kwh,
     )
     if charged < minimum:
-        return None, REASON_THROUGHPUT_BELOW_MINIMUM
-    efficiency = (discharged + total["measured_stored_delta_kwh"]) / charged
+        return None, None, REASON_THROUGHPUT_BELOW_MINIMUM
+    stored_delta = total["measured_stored_delta_kwh"]
+    uncertainty = abs(stored_delta) * STORED_DELTA_RELATIVE_ERROR / charged
+    if uncertainty > MAX_ROUND_TRIP_UNCERTAINTY:
+        return None, None, REASON_SOC_CHANGE_TOO_LARGE
+    efficiency = (discharged + stored_delta) / charged
     if efficiency <= 0.0 or efficiency > MAX_ROUND_TRIP_EFFICIENCY:
-        return None, REASON_IMPLAUSIBLE_RATIO
-    return min(efficiency, 1.0), None
+        return None, None, REASON_IMPLAUSIBLE_RATIO
+    return min(efficiency, 1.0), uncertainty, None

@@ -17,8 +17,10 @@ from custom_components.hsem.models.energy_tracker import (
     REASON_BATTERY_POWER_NOT_MEASURED,
     REASON_CAPACITY_UNKNOWN,
     REASON_CONSUMPTION_BELOW_MINIMUM,
+    REASON_CONSUMPTION_NOT_MEASURED,
     REASON_GRID_IMPORT_NOT_MEASURED,
     REASON_IMPLAUSIBLE_RATIO,
+    REASON_IMPORT_EXCEEDS_CONSUMPTION,
     REASON_NO_DATA,
     REASON_THROUGHPUT_BELOW_MINIMUM,
     SCHEMA_VERSION,
@@ -53,6 +55,32 @@ def _feed(
     gap: float = 600.0,
 ) -> list[bool]:
     return [tracker.accumulate(sample, site, max_gap_seconds=gap) for sample in samples]
+
+
+#: The hours field that says a quantity was measured.
+_HOURS = {
+    "house_consumption_kwh": "house_hours",
+    "paired_consumption_kwh": "house_hours",
+    "grid_import_kwh": "grid_import_hours",
+    "grid_export_kwh": "grid_export_hours",
+    "pv_kwh": "pv_hours",
+    "battery_charged_kwh": "battery_hours",
+    "battery_discharged_kwh": "battery_hours",
+    "wear_cost": "battery_hours",
+}
+
+
+def _day(day: str, **fields: float) -> EnergyDayEntry:
+    """Return a day in which every given quantity was measured and priced."""
+    for name, hours_name in _HOURS.items():
+        if name in fields:
+            fields.setdefault(hours_name, 1.0)
+    fields.setdefault(
+        "priced_throughput_kwh",
+        fields.get("battery_charged_kwh", 0.0)
+        + fields.get("battery_discharged_kwh", 0.0),
+    )
+    return EnergyDayEntry(day, **fields)
 
 
 def _tracker(*entries: EnergyDayEntry) -> EnergyTracker:
@@ -277,14 +305,14 @@ class TestMonthSummary:
     def test_self_sufficiency_is_a_ratio_of_sums(self) -> None:
         """A 10 % day and a 90 % day are not 50 % when one is nine times larger."""
         tracker = _tracker(
-            EnergyDayEntry(
+            _day(
                 "2026-06-01",
                 house_consumption_kwh=10.0,
                 paired_consumption_kwh=10.0,
                 paired_import_kwh=9.0,
                 grid_import_kwh=9.0,
             ),
-            EnergyDayEntry(
+            _day(
                 "2026-06-02",
                 house_consumption_kwh=90.0,
                 paired_consumption_kwh=90.0,
@@ -301,19 +329,48 @@ class TestMonthSummary:
         assert summary["house_consumption_kwh"] == pytest.approx(100.0)
         assert summary["grid_import_kwh"] == pytest.approx(18.0)
 
-    def test_self_sufficiency_does_not_go_below_zero(self) -> None:
+    def test_an_import_the_battery_charge_explains_is_zero_not_negative(self) -> None:
+        """Grid energy charged into the battery is not house consumption."""
         tracker = _tracker(
-            EnergyDayEntry(
+            _day(
                 "2026-06-01",
                 house_consumption_kwh=10.0,
                 paired_consumption_kwh=10.0,
                 paired_import_kwh=25.0,
+                battery_charged_kwh=16.0,
             )
         )
 
-        assert tracker.month_summary("2026-06")["self_sufficiency"] == pytest.approx(
-            0.0
+        summary = tracker.month_summary("2026-06")
+
+        assert summary["self_sufficiency"] == pytest.approx(0.0)
+        assert summary["self_sufficiency_reason"] is None
+
+    def test_an_import_nothing_explains_is_unknown_not_zero(self) -> None:
+        """House 300 kWh, an EV the house sensor leaves out, 550 kWh imported."""
+        tracker = _tracker(
+            _day(
+                "2026-06-01",
+                house_consumption_kwh=300.0,
+                paired_consumption_kwh=300.0,
+                paired_import_kwh=550.0,
+            )
         )
+
+        summary = tracker.month_summary("2026-06")
+
+        assert summary["self_sufficiency"] is None
+        assert summary["self_sufficiency_reason"] == REASON_IMPORT_EXCEEDS_CONSUMPTION
+
+    def test_a_month_without_house_readings_has_no_share(self) -> None:
+        tracker = _tracker(_day("2026-06-01", grid_import_kwh=12.0))
+
+        summary = tracker.month_summary("2026-06")
+
+        assert summary["self_sufficiency"] is None
+        assert summary["self_sufficiency_reason"] == REASON_CONSUMPTION_NOT_MEASURED
+        assert summary["house_consumption_kwh"] is None
+        assert summary["grid_import_kwh"] == pytest.approx(12.0)
 
     def test_a_month_without_records_has_no_figures(self) -> None:
         summary = EnergyTracker().month_summary("2026-06")
@@ -329,10 +386,10 @@ class TestMonthSummary:
             assert summary[f"{key}_reason"] == REASON_NO_DATA
         assert summary["round_trip_efficiency"] is None
         assert summary["usable_capacity_kwh"] is None
-        assert summary["grid_import_kwh"] == pytest.approx(0.0)
+        assert summary["grid_import_kwh"] is None
 
     def test_too_little_consumption_gives_no_share(self) -> None:
-        tracker = _tracker(EnergyDayEntry("2026-06-01", house_consumption_kwh=0.5))
+        tracker = _tracker(_day("2026-06-01", house_consumption_kwh=0.5))
 
         summary = tracker.month_summary("2026-06")
 
@@ -340,7 +397,7 @@ class TestMonthSummary:
         assert summary["self_sufficiency_reason"] == REASON_CONSUMPTION_BELOW_MINIMUM
 
     def test_consumption_without_a_measured_import_gives_no_share(self) -> None:
-        tracker = _tracker(EnergyDayEntry("2026-06-01", house_consumption_kwh=12.0))
+        tracker = _tracker(_day("2026-06-01", house_consumption_kwh=12.0))
 
         summary = tracker.month_summary("2026-06")
 
@@ -349,13 +406,9 @@ class TestMonthSummary:
 
     def test_cycles_are_the_discharge_over_the_latest_known_capacity(self) -> None:
         tracker = _tracker(
-            EnergyDayEntry(
-                "2026-06-01", battery_discharged_kwh=20.0, usable_capacity_kwh=10.0
-            ),
-            EnergyDayEntry(
-                "2026-06-02", battery_discharged_kwh=25.0, usable_capacity_kwh=9.0
-            ),
-            EnergyDayEntry("2026-06-03"),
+            _day("2026-06-01", battery_discharged_kwh=20.0, usable_capacity_kwh=10.0),
+            _day("2026-06-02", battery_discharged_kwh=25.0, usable_capacity_kwh=9.0),
+            _day("2026-06-03"),
         )
 
         summary = tracker.month_summary("2026-06")
@@ -366,7 +419,7 @@ class TestMonthSummary:
         assert summary["battery_discharged_kwh"] == pytest.approx(45.0)
 
     def test_cycles_need_a_capacity(self) -> None:
-        tracker = _tracker(EnergyDayEntry("2026-06-01", battery_discharged_kwh=20.0))
+        tracker = _tracker(_day("2026-06-01", battery_discharged_kwh=20.0))
 
         summary = tracker.month_summary("2026-06")
 
@@ -375,9 +428,9 @@ class TestMonthSummary:
 
     def test_wear_cost_is_the_sum_of_the_days(self) -> None:
         tracker = _tracker(
-            EnergyDayEntry("2026-06-01", wear_cost=1.25),
-            EnergyDayEntry("2026-06-02", wear_cost=0.5),
-            EnergyDayEntry("2026-07-01", wear_cost=9.0),
+            _day("2026-06-01", wear_cost=1.25),
+            _day("2026-06-02", wear_cost=0.5),
+            _day("2026-07-01", wear_cost=9.0),
         )
 
         summary = tracker.month_summary("2026-06")
@@ -399,16 +452,14 @@ class TestMonthSummary:
         self, stored_delta: float, efficiency: float
     ) -> None:
         tracker = _tracker(
-            EnergyDayEntry(
+            _day(
                 "2026-06-01",
                 measured_charged_kwh=80.0,
                 measured_discharged_kwh=10.0,
                 measured_stored_delta_kwh=stored_delta,
                 rated_capacity_kwh=10.0,
             ),
-            EnergyDayEntry(
-                "2026-06-02", measured_charged_kwh=20.0, measured_discharged_kwh=80.0
-            ),
+            _day("2026-06-02", measured_charged_kwh=20.0, measured_discharged_kwh=80.0),
         )
 
         summary = tracker.month_summary("2026-06")
@@ -422,9 +473,7 @@ class TestMonthSummary:
 
     def test_round_trip_loss_needs_a_battery_power_reading(self) -> None:
         tracker = _tracker(
-            EnergyDayEntry(
-                "2026-06-01", battery_charged_kwh=50.0, battery_discharged_kwh=45.0
-            )
+            _day("2026-06-01", battery_charged_kwh=50.0, battery_discharged_kwh=45.0)
         )
 
         summary = tracker.month_summary("2026-06")
@@ -437,15 +486,15 @@ class TestMonthSummary:
         [
             # Below the absolute minimum of 20 kWh.
             (19.0, 5.0),
-            # Above it, but less than twice a 15 kWh battery.
-            (25.0, 15.0),
+            # Above it, but less than five times a 15 kWh battery.
+            (60.0, 15.0),
         ],
     )
     def test_round_trip_loss_needs_a_minimum_throughput(
         self, charged: float, rated: float
     ) -> None:
         tracker = _tracker(
-            EnergyDayEntry(
+            _day(
                 "2026-06-01",
                 measured_charged_kwh=charged,
                 measured_discharged_kwh=charged * 0.9,
@@ -472,7 +521,7 @@ class TestMonthSummary:
         self, discharged: float, stored_delta: float
     ) -> None:
         tracker = _tracker(
-            EnergyDayEntry(
+            _day(
                 "2026-06-01",
                 measured_charged_kwh=100.0,
                 measured_discharged_kwh=discharged,
@@ -487,7 +536,7 @@ class TestMonthSummary:
 
     def test_an_efficiency_a_hair_above_one_is_no_loss(self) -> None:
         tracker = _tracker(
-            EnergyDayEntry(
+            _day(
                 "2026-06-01",
                 measured_charged_kwh=100.0,
                 measured_discharged_kwh=101.0,
@@ -508,11 +557,11 @@ class TestSensorAttributes:
     def test_current_and_previous_month_and_the_last_twelve(self) -> None:
         tracker = _tracker(
             # Twelve months back: outside the table.
-            EnergyDayEntry("2025-06-30", pv_kwh=1.0),
-            EnergyDayEntry("2025-07-01", pv_kwh=2.0),
-            EnergyDayEntry("2026-05-20", pv_kwh=3.0),
-            EnergyDayEntry("2026-05-21", pv_kwh=4.0),
-            EnergyDayEntry("2026-06-01", pv_kwh=5.0),
+            _day("2025-06-30", pv_kwh=1.0),
+            _day("2025-07-01", pv_kwh=2.0),
+            _day("2026-05-20", pv_kwh=3.0),
+            _day("2026-05-21", pv_kwh=4.0),
+            _day("2026-06-01", pv_kwh=5.0),
         )
 
         attributes = tracker.as_sensor_attributes(date(2026, 6, 10))

@@ -1743,11 +1743,16 @@ views:
               {%- set s = 'sensor.hsem_monthly_self_sufficiency' -%}
               {%- set why = {
                 'no_data': 'nothing has been recorded this month yet.',
+                'consumption_not_measured': 'the house consumption power sensor gave no readings.',
                 'consumption_below_minimum': 'the house consumption recorded so far is too small for a share.',
+                'import_exceeds_consumption': 'more was imported than the house consumption and the battery charging can explain. Check whether the house power sensor leaves out a load, such as an EV charger.',
+                'battery_not_measured': 'neither the battery power nor the SoC gave readings.',
+                'cycle_cost_unknown': 'the cycle cost cannot be worked out. Set the battery purchase price and expected cycles, or a cycle cost.',
+                'soc_change_too_large': 'the SoC differs too much between the start and now, against the energy charged so far.',
                 'grid_import_not_measured': 'no grid import energy sensor is configured, or it gave no readings.',
                 'capacity_unknown': 'the usable battery capacity is not known yet.',
                 'battery_power_not_measured': 'the battery power sensor gave no readings, so there is nothing to measure the loss with.',
-                'throughput_below_minimum': 'too little energy has been charged so far. The SoC difference would dominate the result.',
+                'throughput_below_minimum': 'too little energy has been charged so far (20 kWh, and five times the rated capacity).',
                 'implausible_ratio': 'the battery power readings and the SoC contradict each other.'
               } -%}
               {%- set names = {
@@ -1788,7 +1793,7 @@ views:
               | {{ m.get('month') }} | {{ num(m.get('house_consumption_kwh'), '%.0f') }} | {{ num(m.get('grid_import_kwh'), '%.0f') }} | {{ num(m.get('grid_export_kwh'), '%.0f') }} | {{ num(m.get('pv_kwh'), '%.0f') }} | {{ num(m.get('battery_charged_kwh'), '%.0f') }} | {{ num(m.get('battery_discharged_kwh'), '%.0f') }} | {{ num(m.get('self_sufficiency'), '%.0f %%') }} | {{ num(m.get('battery_cycles'), '%.1f') }} | {{ num(m.get('battery_wear_cost'), '%.2f') }} | {{ num(m.get('round_trip_loss'), '%.1f %%') }} |
               {%- endfor %}
 
-              Energy in kWh, newest month first. Every figure is computed from the month's summed energy, not from daily percentages. A dash means the figure is unknown for that month; the Status card says why for the current one.
+              Energy in kWh, newest month first. Every figure is computed from the month's summed energy, not from daily percentages. A dash means the figure is unknown for that month; the Status card says why for the current one. The round-trip loss is measured at the battery, so it leaves out the inverter.
 ```
 
 ---
@@ -1947,9 +1952,13 @@ Reading it:
   record: the table has one row and it fills from then on.
 - The **current month** is the month so far, so its cycles and wear cost grow
   through the month.
-- The **round-trip loss** shows a dash until enough energy has been charged in
-  the month (20 kWh, and twice the rated capacity). In a winter month with an
-  idle battery it can stay unknown.
+- The **round-trip loss** is measured at the battery and leaves out the
+  inverter. It shows a dash until enough energy has been charged in the month
+  (20 kWh, and five times the rated capacity) and the SoC is close enough to
+  where the month started. In a winter month with an idle battery it can stay
+  unknown.
+- The months **before the upgrade** are not filled in. The existing financial
+  history holds money only, so there is no energy to build them from.
 - A dash in an older row means the figure was unknown for that month.
 
 Both Markdown cards read attributes of

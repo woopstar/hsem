@@ -7,8 +7,8 @@ Four sensors, each the current calendar month so far (issue #1435):
 - ``sensor.hsem_monthly_battery_cycles`` — full equivalent battery cycles.
 - ``sensor.hsem_monthly_battery_wear_cost`` — cycle cost of the battery
   throughput (currency).
-- ``sensor.hsem_monthly_round_trip_loss`` — measured share of the energy
-  charged into the battery that did not come out again (%).
+- ``sensor.hsem_monthly_round_trip_loss`` — share of the energy charged into
+  the battery that did not come out again, measured at the battery (%).
 
 All four publish the same attributes: ``this_month`` and ``previous_month``
 with every figure and the energy totals behind it, and ``monthly`` with the
