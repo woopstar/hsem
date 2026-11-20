@@ -108,3 +108,51 @@ async def test_async_unload_entry_skips_service_removal_when_platforms_fail(
     assert not any(
         mock_hass.services.has_service(DOMAIN, name) for name in SERVICE_HANDLER_MAP
     )
+
+
+@pytest.mark.asyncio
+async def test_services_are_back_after_a_reload(mock_hass: MagicMock) -> None:
+    """A reload must leave the services registered (issue #1436).
+
+    ``async_unload_entry`` removes them and ``async_setup`` runs once per Home
+    Assistant start, so ``async_setup_entry`` has to register them again.
+    ``hsem.import_data`` reloads the entry and relies on it.
+    """
+    from unittest.mock import patch
+
+    from custom_components.hsem import async_setup_entry
+
+    await async_register_services(mock_hass)
+    mock_coordinator = MagicMock()
+    mock_coordinator.async_teardown = AsyncMock()
+    mock_coordinator.async_setup = AsyncMock()
+    mock_coordinator.async_run_first_refresh = AsyncMock()
+    mock_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    entry.options = {}
+    entry.data = {}
+    entry.runtime_data = HSEMRuntimeData(coordinator=mock_coordinator)
+
+    await async_unload_entry(mock_hass, entry)
+    assert not mock_hass.services.has_service(DOMAIN, "import_data")
+
+    with (
+        patch(
+            "custom_components.hsem.check_huawei_solar_version",
+            new=AsyncMock(return_value=True),
+        ),
+        patch("custom_components.hsem.async_init_hsem_logger", new=AsyncMock()),
+        patch("custom_components.hsem.async_close_hsem_logger", new=AsyncMock()),
+        patch(
+            "custom_components.hsem.HSEMDataUpdateCoordinator",
+            return_value=mock_coordinator,
+        ),
+        patch("custom_components.hsem.async_migrate_devices", new=AsyncMock()),
+    ):
+        assert await async_setup_entry(mock_hass, entry) is True
+
+    assert all(
+        mock_hass.services.has_service(DOMAIN, name) for name in SERVICE_HANDLER_MAP
+    )
