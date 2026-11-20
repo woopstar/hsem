@@ -176,11 +176,11 @@ class TestSlotValues:
         for slot in result.slots:
             h = slot.start.hour
             if h in price_by_hour:
-                assert (
-                    abs(slot.price.import_price - price_by_hour[h].import_price) < 1e-9
+                assert slot.price.import_price == pytest.approx(
+                    price_by_hour[h].import_price
                 )
-                assert (
-                    abs(slot.price.export_price - price_by_hour[h].export_price) < 1e-9
+                assert slot.price.export_price == pytest.approx(
+                    price_by_hour[h].export_price
                 )
 
 

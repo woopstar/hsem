@@ -61,13 +61,30 @@ inverter entities will be found.
 
 HSEM reads electricity prices from the price sensors chosen in the
 **Electricity Prices** step (Strømligning by default). If the integration is
-missing, not configured, or its entities are unavailable, prices default to
-`0.0`.
+missing, not configured, or its entities are unavailable, HSEM plans from the
+prices it has kept (see below) and prices the rest at `0.0`.
 
 - **Check:** Look at the `data_quality` attribute on `sensor.hsem_plan_explanation_sensor`.
   Are `today_price_missing_hours` or `tomorrow_price_missing_hours` high?
 - **Fix:** Verify the price integration is installed, configured for your
   price area, and its entities show valid data in HA Developer Tools → States.
+
+When a price sensor publishes no slot of the horizon, HSEM keeps planning for
+up to 48 hours: the failed side keeps the prices its sensor last published,
+the rest uses the price history (median real price per weekday and time of
+day over 8 weeks). The state is `degraded`, the planner runs and writes stay
+allowed. After 48 hours the planner stops with `missing_input_entities`.
+
+- **Check:** `sensor.hsem_degraded_mode_sensor` → `degraded_reasons` attribute
+  starts with `Price data unavailable`, or `missing_entities` lists
+  `electricity price data (unavailable for more than 48 h)`.
+- **Fix:** Restore the price integration. With a new installation the price
+  history is empty, so the remaining slots are priced `0.0` until it holds 3
+  days.
+- **Changed price sensor:** the price history is dropped when the import or
+  export price entity or its unit changes, and starts again. After a change
+  inside the same sensor (VAT, tariff), delete
+  `.storage/hsem_price_history.json` and restart Home Assistant.
 
 **1d. Critical sensors missing → Error mode**
 

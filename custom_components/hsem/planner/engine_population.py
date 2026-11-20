@@ -83,7 +83,7 @@ def _populate_slots(
         inp.interval_minutes,
         inp.interval_length_hours,
     )
-    populate_prices(slots, inp.price_points, tsi)
+    populate_prices(slots, inp.price_points, tsi, inp.price_profile)
     populate_solcast(
         slots,
         inp.solcast_slots,

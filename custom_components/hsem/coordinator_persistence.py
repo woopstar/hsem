@@ -82,6 +82,16 @@ def _get_prediction_tracker(
     return tracker
 
 
+def _get_price_history_tracker(
+    coordinator: CoordinatorSharedState,
+) -> Persistable | None:
+    """Return the price history tracker only once its history file is set."""
+    tracker = coordinator._price_history_tracker
+    if not tracker.history_file:
+        return None
+    return tracker
+
+
 def _get_efficiency_learner(
     coordinator: CoordinatorSharedState,
 ) -> Persistable | None:
@@ -103,6 +113,7 @@ TRACKER_REGISTRY: dict[str, Callable[[CoordinatorSharedState], Persistable | Non
     "_energy_tracker": _get_energy_tracker,
     "_performance_tracker": _get_performance_tracker,
     "_prediction_tracker": _get_prediction_tracker,
+    "_price_history_tracker": _get_price_history_tracker,
     "_efficiency_learner": _get_efficiency_learner,
 }
 

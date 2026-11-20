@@ -2812,6 +2812,20 @@ Tests: `tests/planner/test_battery_target_milp.py` (every acceptance scenario, a
 
 Tests: `tests/test_dynamic_floor_reference_plan.py::TestBuildBridgeSlots::test_unplanned_slot_scales_the_hourly_pv_to_the_slot` (real populator, 15/30/60 min), `::test_load_pv_and_charge_come_from_the_plan_slot`, and `TestRealPlanner::test_quarter_hour_bridge_ends_at_the_plans_first_surplus` / `::test_quarter_hour_cheap_night_still_releases_the_floor`.
 
+## Price History Fills Missing Prices and Outages (issue #1434)
+
+**Rule:** `models/price_history_tracker.py` (`PriceHistoryTracker`, `.storage/hsem_price_history.json`, 56 days) records the real price pair of every slot that has **started**, as the import and export price sensor themselves published it (`ForecastCoverage.published_import` / `published_export`, never a forecast sensor's overlay), plus the last published prices per side (_held_). `coordinator_price_history.py::async_apply_price_history` runs right after the populator in `_async_collect_and_populate`. The planner gets `PlannerInput.price_profile` (`models/price_profile.py`, pure, 15-minute grid in local time, median per bucket, 3 days minimum, every-weekday fallback).
+
+**Fill order per side** (`planner/slot_price_population.py::_fill_side`): published, profile shifted to the published level (needs 240 minutes of overlap), nearest earlier day, profile as recorded, median level, `0.0`. The slot stays in `tsi.missing_price_slots`. Never use the profile's absolute level while prices are published.
+
+**Outage:** a side whose price sensor publishes no slot. Its held prices are written to the recommendations; the other side keeps its live prices (`ForecastCoverage.single_sided_prices`, `PricePoint` with `None` on one side). The cause goes to `LiveState.add_degraded_reason` (not `add_missing_entity`, which stops the planner). After `PRICE_OUTAGE_MAX_HOURS` (48) it does become a missing entity. `in_control` in `coordinator_performance.py` is `not missing_entities`, so a reason-only cycle counts.
+
+**Predictions (`PREDICTION_ATTRIBUTES`):** `forecast` (Energi Data Service, Carnot), `predictions` (Open Spot Forecast) and `forecasts` (Amber) are predictions also on the main price sensor. They price slots as before, never enter `published_*` (so never recorded or held), and a sensor that publishes only them is alive, not an outage (`ForecastCoverage.import_predictions_only`). In an outage a failed side is covered on its held slots only, so a forecast sensor's prediction there is estimated by the planner and reported missing.
+
+**Gotchas:** never record a future slot, a held price, a forecast sensor value or an estimate. The store is bound to the price entities and units (`set_source`) and dropped when they change. The tracker only writes when something changed (`_dirty`). An empty history must plan exactly as before.
+
+Tests: `tests/test_price_history.py`.
+
 ## Uncovered Price/PV Slots Are Missing, Not 0.0 (issue #1196)
 
 **Bug:** `generate_recommendation_intervals` creates every slot with price and PV at `0.0`, the populator only writes covered slots, and `build_planner_input` emitted a `PricePoint` / PV entry for **every** slot. No key was ever absent in the planner, so the #1002 missing-price estimate and the `DataQuality` missing-hour fields never ran in production: until the day-ahead prices publish, tomorrow was planned at `0.0` and `is_complete` was true. The #1002 tests built `PricePoint` lists by hand and never went through the builder.

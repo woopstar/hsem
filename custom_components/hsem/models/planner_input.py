@@ -11,6 +11,7 @@ from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
 from custom_components.hsem.models.price_point import PricePoint
+from custom_components.hsem.models.price_profile import PriceProfile
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 
 
@@ -78,7 +79,11 @@ class PlannerInput:
             hours default to zero consumption.
         price_points:
             Import / export prices.  Should cover every planned slot; missing
-            slots default to zero.
+            slots are filled from ``price_profile``, then from the nearest
+            earlier day, and only then default to zero.
+        price_profile:
+            Weekday and time-of-day profile of real prices (issue #1434), or
+            ``None``.
         solcast_slots:
             PV production forecast.  Should cover every planned slot; missing
             slots default to zero.
@@ -179,6 +184,10 @@ class PlannerInput:
     consumption_averages: list[HourlyConsumptionAverage] = field(default_factory=list)
     price_points: list[PricePoint] = field(default_factory=list)
     solcast_slots: list[SolcastSlot] = field(default_factory=list)
+    #: Weekday and time-of-day profile of real prices, used for a slot with
+    #: no published price before the nearest-earlier-day estimate (issue
+    #: #1434).  ``None`` or an empty profile keeps the estimate unchanged.
+    price_profile: PriceProfile | None = None
 
     # --- excess export ---
     excess_export_enabled: bool = False

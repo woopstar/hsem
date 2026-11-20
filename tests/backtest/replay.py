@@ -34,6 +34,7 @@ from custom_components.hsem.models.hourly_consumption_average import (
 )
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
+from custom_components.hsem.models.price_profile import PriceProfile
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 
 __all__ = [
@@ -220,6 +221,8 @@ def planner_input_from_dict(
             kwargs[key] = built
             if nested_dropped:
                 dropped_nested[key] = nested_dropped
+        elif key == "price_profile" and isinstance(value, dict):
+            kwargs[key] = PriceProfile.from_dict(value)
         elif key in DATETIME_FIELDS:
             parsed, bad = _parse_datetime(value)
             kwargs[key] = parsed

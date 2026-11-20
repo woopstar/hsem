@@ -33,6 +33,7 @@ from custom_components.hsem.coordinator_meter_tracking import (
 )
 from custom_components.hsem.coordinator_performance import async_track_performance
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
+from custom_components.hsem.coordinator_price_history import async_apply_price_history
 from custom_components.hsem.coordinator_staleness import (
     cycle_is_stale,
     record_publication,
@@ -221,11 +222,21 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
 
         # 6. Populate electricity prices and Solcast PV estimates.  The
         # coverage tells the builder which slots no source wrote (#1196).
-        self._forecast_coverage = populate_price_and_solcast_from_snapshot(
-            self._hourly_recommendations,
-            self._snapshot,
+        # The price history records them or bridges an outage (#1434).
+        self._forecast_coverage = await async_apply_price_history(
+            self,
+            populate_price_and_solcast_from_snapshot(
+                self._hourly_recommendations,
+                self._snapshot,
+                cfg,
+            ),
+            now,
+            live,
             cfg,
         )
+        # An expired price outage is a missing input: stop planning.
+        if live.missing_entities and live.force_working_mode_state == "auto":
+            state = Recommendations.MissingInputEntities.value
 
         return consumption_ok, state
 

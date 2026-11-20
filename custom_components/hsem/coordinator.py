@@ -95,6 +95,7 @@ from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.models.price_history_tracker import PriceHistoryTracker
 from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
@@ -346,6 +347,8 @@ class HSEMDataUpdateCoordinator(
         # Financial tracker — cumulative import cost and export income (never reset).
         # The history file path is set in async_setup() once hass.config is available.
         self._financial_tracker: FinancialTracker = FinancialTracker()
+        # Real prices per slot, for missing prices and outages (issue #1434).
+        self._price_history_tracker: PriceHistoryTracker = PriceHistoryTracker()
         # Energy tracker — daily energy totals behind the monthly energy
         # sensors (issue #1435). Its history file is loaded on the first cycle.
         self._energy_tracker: EnergyTracker = EnergyTracker()

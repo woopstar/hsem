@@ -86,6 +86,8 @@ class LiveState:
         missing_entities: True when one or more required entities were absent or
             returned an unparseable value.
         missing_entities_list: Human-readable list of which entities were missing.
+        degraded_reasons: Causes that put the cycle in ``Degraded`` mode while
+            every required entity is readable (issue #1434).
         force_working_mode: Resolved entity_id of the force-mode select, or None.
         force_working_mode_state: Current value of the force-mode select
             (``"auto"`` when not overriding).
@@ -143,6 +145,9 @@ class LiveState:
     # Validation
     missing_entities: bool = False
     missing_entities_list: list[str] = field(default_factory=list)
+    # Causes that degrade the cycle without a missing entity, e.g. a price
+    # sensor outage planned from held and stored prices (issue #1434).
+    degraded_reasons: list[str] = field(default_factory=list)
 
     # Degraded-mode health state — computed lazily via the property below.
     # Stored as a plain field so it can be overridden in unit tests.
@@ -293,7 +298,9 @@ class LiveState:
         """
         if self._degraded_mode is None:
             self._degraded_mode = classify_degraded_mode(
-                self.missing_entities, self.missing_entities_list
+                self.missing_entities,
+                self.missing_entities_list,
+                self.degraded_reasons,
             )
         return self._degraded_mode
 
@@ -306,3 +313,13 @@ class LiveState:
         self.missing_entities = True
         self.missing_entities_list.append(label)
         self._degraded_mode = None  # invalidate cached classification
+
+    def add_degraded_reason(self, reason: str) -> None:
+        """Record a cause that degrades this cycle without blocking the planner.
+
+        Unlike :meth:`add_missing_entity` this does not set
+        ``missing_entities``, so the planner still runs.  Invalidates the
+        cached :attr:`degraded_mode`.
+        """
+        self.degraded_reasons.append(reason)
+        self._degraded_mode = None

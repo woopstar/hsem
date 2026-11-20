@@ -49,6 +49,7 @@ from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.models.price_history_tracker import PriceHistoryTracker
 from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
@@ -171,6 +172,7 @@ class CoordinatorSharedState(_Base):
     _performance_tracker: PerformanceTracker
     _plan_explanation: PlanExplanation
     _prediction_tracker: PredictionTracker
+    _price_history_tracker: PriceHistoryTracker
     _previous_planner_winner_name: str | None
     _previous_planner_winner_score: float
     _savings_tracker: SavingsTracker
