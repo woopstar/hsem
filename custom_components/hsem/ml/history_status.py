@@ -11,7 +11,7 @@ and the per-cycle log line can say what is actually going on.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
@@ -57,12 +57,17 @@ class MLHistoryStatus:
             :attr:`MLHistoryState.INSUFFICIENT_HISTORY`; ``None`` otherwise.
         reason: Free-text detail for the log line (which entity fell short,
             why the populate failed).
+        statistics_history_days: Days of the history that came from hourly
+            long-term statistics rather than raw states (issue #1433).
+            ``0.0`` when the last read used raw states only, ``None`` when no
+            read has finished.
     """
 
     state: MLHistoryState
     available_history_days: float | None = None
     ready_at: datetime | None = None
     reason: str | None = None
+    statistics_history_days: float | None = None
 
     @property
     def is_waiting_for_history(self) -> bool:
@@ -83,6 +88,11 @@ class MLHistoryStatus:
             ),
             "ml_history_ready_at": (
                 None if self.ready_at is None else self.ready_at.isoformat()
+            ),
+            "ml_statistics_history_days": (
+                None
+                if self.statistics_history_days is None
+                else round(self.statistics_history_days, 1)
             ),
         }
 
@@ -155,6 +165,23 @@ def insufficient_history_status(
 _status_by_key: dict[HistoryCacheKey, MLHistoryStatus] = {}
 
 
+# Days of each energy entity's history that came from long-term statistics,
+# written by ``ml.history_cache`` after every read (issue #1433).
+_statistics_days: dict[tuple[int, str], float] = {}
+
+
+def record_statistics_days(hass: HomeAssistant, entity_id: str, days: float) -> None:
+    """Remember how much of *entity_id*'s history came from statistics.
+
+    Args:
+        hass: The Home Assistant instance the read ran under.
+        entity_id: The energy entity that was read.
+        days: Days of history taken from long-term statistics; ``0.0`` when
+            the read used raw states only.
+    """
+    _statistics_days[(id(hass), entity_id)] = days
+
+
 def history_cache_key(hass: HomeAssistant, cfg: SensorConfig) -> HistoryCacheKey | None:
     """Return the effective-configuration key, or ``None`` without an entity.
 
@@ -200,4 +227,11 @@ def last_history_status(hass: HomeAssistant, cfg: SensorConfig) -> MLHistoryStat
     key = history_cache_key(hass, cfg)
     if key is None:
         return MLHistoryStatus(MLHistoryState.FAILED, reason="no energy entity")
-    return _status_by_key.get(key, MLHistoryStatus(MLHistoryState.PENDING))
+    status = _status_by_key.get(key, MLHistoryStatus(MLHistoryState.PENDING))
+    # Import and, in net mode, export are read separately; report the larger.
+    days = [
+        _statistics_days[(key[0], entity_id)]
+        for entity_id in (key[1], key[2])
+        if entity_id is not None and (key[0], entity_id) in _statistics_days
+    ]
+    return replace(status, statistics_history_days=max(days)) if days else status

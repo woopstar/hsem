@@ -20,6 +20,9 @@ from custom_components.hsem.coordinator_builder import (
     generate_recommendation_intervals,
 )
 from custom_components.hsem.coordinator_data import CoordinatorData
+from custom_components.hsem.coordinator_efficiency import (
+    async_track_battery_efficiency,
+)
 from custom_components.hsem.coordinator_helpers import (
     _StaleUpdateCycle,
     ocpp_charge_target,
@@ -30,6 +33,7 @@ from custom_components.hsem.coordinator_meter_tracking import (
 )
 from custom_components.hsem.coordinator_performance import async_track_performance
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
+from custom_components.hsem.coordinator_price_history import async_apply_price_history
 from custom_components.hsem.coordinator_staleness import (
     cycle_is_stale,
     record_publication,
@@ -134,6 +138,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             getattr(self, "_capacity_learner", CapacityLearner()).update(
                 live.bms_kwh_remaining, live.huawei_batteries_soc_pct
             )
+        await async_track_battery_efficiency(self, now, live, cfg)  # issue #1431
 
         # Update the weekday/weekend consumption profile (issue #612).
         house_w = live.house_consumption_power_w
@@ -217,11 +222,21 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
 
         # 6. Populate electricity prices and Solcast PV estimates.  The
         # coverage tells the builder which slots no source wrote (#1196).
-        self._forecast_coverage = populate_price_and_solcast_from_snapshot(
-            self._hourly_recommendations,
-            self._snapshot,
+        # The price history records them or bridges an outage (#1434).
+        self._forecast_coverage = await async_apply_price_history(
+            self,
+            populate_price_and_solcast_from_snapshot(
+                self._hourly_recommendations,
+                self._snapshot,
+                cfg,
+            ),
+            now,
+            live,
             cfg,
         )
+        # An expired price outage is a missing input: stop planning.
+        if live.missing_entities and live.force_working_mode_state == "auto":
+            state = Recommendations.MissingInputEntities.value
 
         return consumption_ok, state
 

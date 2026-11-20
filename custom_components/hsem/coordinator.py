@@ -86,6 +86,7 @@ from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
     DailyPlanVsActualTracker,
 )
 from custom_components.hsem.models.data_quality import DataQuality
+from custom_components.hsem.models.energy_tracker import EnergyTracker
 from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.forecast_coverage import ForecastCoverage
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
@@ -94,6 +95,7 @@ from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.models.price_history_tracker import PriceHistoryTracker
 from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
@@ -102,6 +104,7 @@ from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.planner.ev_soc_economics import EVSoCEconomicsResult
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
+from custom_components.hsem.utils.efficiency_learner import EfficiencyLearner
 from custom_components.hsem.utils.ev_delivered_energy import EVDeliveredEnergyTracker
 from custom_components.hsem.utils.forecast_tracker import ForecastTracker
 from custom_components.hsem.utils.live_power import LivePowerEstimate, LivePowerWindow
@@ -345,6 +348,11 @@ class HSEMDataUpdateCoordinator(
         # Financial tracker — cumulative import cost and export income (never reset).
         # The history file path is set in async_setup() once hass.config is available.
         self._financial_tracker: FinancialTracker = FinancialTracker()
+        # Real prices per slot, for missing prices and outages (issue #1434).
+        self._price_history_tracker: PriceHistoryTracker = PriceHistoryTracker()
+        # Energy tracker — daily energy totals behind the monthly energy
+        # sensors (issue #1435). Its history file is loaded on the first cycle.
+        self._energy_tracker: EnergyTracker = EnergyTracker()
         # Performance tracker — per-slot actuals scored against hindsight
         # (issue #1182). Its evaluation runs as a background executor task.
         self._performance_tracker: PerformanceTracker = PerformanceTracker()
@@ -370,6 +378,8 @@ class HSEMDataUpdateCoordinator(
 
         # Battery capacity learner (issue #605).
         self._capacity_learner: CapacityLearner = CapacityLearner()
+        # Battery efficiency learner (issue #1431). Diagnostics only.
+        self._efficiency_learner: EfficiencyLearner = EfficiencyLearner()
         # Session-local credit for vehicle APIs whose SoC updates lag behind
         # measured charger power. Never persisted across integration restarts.
         self._ev_delivered_energy_tracker = EVDeliveredEnergyTracker()

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import AsyncIterator
 from datetime import timedelta
 
 from homeassistant.helpers.event import (
@@ -21,6 +22,9 @@ from custom_components.hsem.coordinator_helpers import (
     OCPP_EVENT_DEBOUNCE_SECONDS,
     OPTIONS_UPDATE_DEBOUNCE_SECONDS,
     LoadForecastSignature,
+)
+from custom_components.hsem.coordinator_price_history import (
+    init_price_history_tracker,
 )
 from custom_components.hsem.coordinator_state import (
     CoordinatorSharedState,
@@ -80,6 +84,12 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
             await init_financial_tracker(self._financial_tracker, self.hass)
         except Exception as e:
             async_log("error", "Failed to initialise financial tracker: %s", e)
+
+        # Price history: empty on failure, which plans as before (issue #1434).
+        try:
+            await init_price_history_tracker(self._price_history_tracker, self.hass)
+        except Exception as e:
+            async_log("error", "Failed to initialise price history tracker: %s", e)
 
         # Start the embedded OCPP 1.6 server(s) if enabled (issue #603).
         # One server per EV: the primary EV uses the primary server, and the
@@ -268,6 +278,43 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
         # Clear retained live-power state (window, replan budget, source
         # signature) so a stale estimate cannot survive teardown.
         self.reset_live_power_state()
+
+    @contextlib.asynccontextmanager
+    async def async_hold_updates(self) -> AsyncIterator[None]:
+        """Hold the update lock so no cycle writes a history file (issue #1436).
+
+        Waits for a running cycle, for the hindsight evaluation and for the
+        midnight save of the daily tracker, since each of them persists a
+        tracker when it ends. While the lock is held a new cycle is deferred,
+        so the history files stay as they are until the block exits.
+        ``async_teardown`` only cancels the timers: a cycle a timer already
+        started runs to its end, and its save would otherwise land after the
+        caller replaced the files.
+
+        The writers are awaited again when the block exits: the midnight timer
+        can fire while the block runs, and its save must be over before the
+        caller goes on.
+        """
+        async with self._update_lock:
+            await self._async_wait_for_history_writers()
+            try:
+                yield
+            finally:
+                await self._async_wait_for_history_writers()
+
+    async def _async_wait_for_history_writers(self) -> None:
+        """Wait for the background tasks that persist a tracker when they end."""
+        daily_tracker = getattr(self, "_daily_tracker", None)
+        writers = [
+            task
+            for task in (
+                getattr(self, "_performance_task", None),
+                getattr(daily_tracker, "_midnight_task", None),
+            )
+            if task is not None and not task.done()
+        ]
+        if writers:
+            await asyncio.wait(writers)
 
     async def async_options_updated(self) -> None:
         """Schedule a debounced pipeline re-run after an options change.

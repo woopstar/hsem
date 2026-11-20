@@ -1,6 +1,6 @@
 # HSEM Services Reference
 
-HSEM exposes thirteen Home Assistant services that allow automation, script, and
+HSEM exposes fifteen Home Assistant services that allow automation, script, and
 manual control over the planner and hardware writes.
 
 These services are **integration-level actions**: they operate on the single
@@ -26,6 +26,8 @@ below.
 | `hsem.ocpp_debug_set_availability`      | Diagnostics-only: set a connector Operative/Inoperative            | None     |
 | `hsem.ocpp_debug_set_configuration`     | Diagnostics-only: write one OCPP configuration key                 | None     |
 | `hsem.ocpp_generate_client_certificate` | Sign a client key and certificate for mutual TLS                   | Dict     |
+| `hsem.export_data`                      | Back up the learned data and configuration to one file             | Dict     |
+| `hsem.import_data`                      | Restore the learned data from a backup file                        | Dict     |
 | `hsem.what_if`                          | Replay recorded days with another battery, read-only               | Dict     |
 
 ---
@@ -186,7 +188,11 @@ Exports a structured diagnostics dump containing the most recent planner input,
 planner output, hardware write status, and integration version. All entity IDs
 are redacted for safe sharing in issue reports.
 
-**Schema:** No fields.
+**Schema:**
+
+| Field        | Type   | Required | Description                                                                                         |
+| ------------ | ------ | -------- | --------------------------------------------------------------------------------------------------- |
+| `write_file` | `bool` | No       | Also write the dump to `<config>/hsem_debug/` and create a notification. Default `false`. See below |
 
 **Response:** A dict with the following structure:
 
@@ -199,10 +205,31 @@ are redacted for safe sharing in issue reports.
 | `apply_result`   | `dict` | Latest hardware write status summary                                                                                               |
 | `ocpp_tls`       | `dict` | OCPP TLS mode, server certificate expiry, SANs, CA fingerprint and the CN-mismatch setting, or the setup error. Never key material |
 
+With `write_file: true` the response also holds `debug_file`, the path of the
+written file.
+
 **Example:**
 
 ```yaml
 service: hsem.export_diagnostics
+response_variable: diagnostics_result
+```
+
+**Debug file for a bug report.** With `write_file: true` the same redacted dump
+is written to `<config>/hsem_debug/hsem_debug_<date>_<time>.json`, and a
+persistent notification shows the path and a link that opens a new issue on
+GitHub. The link is prefilled with the HSEM and Home Assistant versions and
+nothing else: no entity IDs, prices or configuration. Attach the file to the
+issue yourself.
+
+The file is redacted once more than the response: fields named like a secret
+(passphrase, credentials, auth, charge point ID) and any PEM block are
+replaced. The certificate facts under `ocpp_tls` stay readable.
+
+```yaml
+service: hsem.export_diagnostics
+data:
+  write_file: true
 response_variable: diagnostics_result
 ```
 
@@ -472,7 +499,136 @@ response_variable: client_cert
 
 ---
 
-## 13. `hsem.what_if`
+## 13. `hsem.export_data`
+
+Writes one JSON file with everything HSEM has learned, so it can be moved to
+another Home Assistant or kept before a reinstall.
+
+**Schema:** No fields.
+
+**File:** `<config>/hsem_backups/hsem_backup_<date>_<time>.json`
+
+| Key                | Description                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------- |
+| `schema`           | Always `hsem_backup`                                                                          |
+| `schema_version`   | Version of the file layout, currently `1`                                                     |
+| `hsem_version`     | HSEM version that wrote the file                                                              |
+| `created`          | ISO-8601 timestamp                                                                            |
+| `reason`           | `manual`, `before_import` or `deleted`                                                        |
+| `history`          | The five history files from `.storage`: prediction, financial, savings, daily and performance |
+| `solar_corrector`  | The learned solar forecast correction, or `null`                                              |
+| `forecast_tracker` | The forecast accuracy records, or `null`                                                      |
+| `average_sensors`  | The daily samples of the hourly consumption averages, keyed `<hour_start>_<hour_end>_<days>`  |
+| `configuration`    | `entry_version`, `entry_minor_version`, and the config entry `data` and `options`, redacted   |
+
+The last three learners live in the restore state of HSEM's sensors, not in a
+file. They are `null` only when HSEM has not run since Home Assistant started.
+
+A backup never holds OCPP certificates, private keys or tokens. HSEM does not
+read the certificate files for a backup. Redacted in `configuration`: secrets,
+charge point IDs (`hsem_ocpp_cpid`) and certificate paths.
+
+Entity IDs are kept, so a backup can restore the full configuration. They show
+which devices you have. Do not post a backup publicly; for a bug report use
+the debug file of `hsem.export_diagnostics`, which redacts them.
+
+**Not in a backup.** The battery capacity learner keeps no state. Other
+sensors that restore their last value after a restart (EV state of charge,
+PV curtailment, net consumption and similar) are not included: they hold a
+last reading, not learned data, and fill again within a cycle.
+
+**Response:** `backup_path`, the path of the written file.
+
+**Automatic backups.** HSEM writes the same file on its own in two cases:
+
+- `hsem_backup_<date>_<time>_before_import.json` before `hsem.import_data`
+  replaces anything.
+- `hsem_backup_<date>_<time>_deleted.json` when the HSEM config entry is
+  deleted.
+
+HSEM never deletes backup files. Remove old ones by hand.
+
+**Example:**
+
+```yaml
+service: hsem.export_data
+response_variable: backup
+```
+
+---
+
+## 14. `hsem.import_data`
+
+Replaces the learned data with the contents of a backup file.
+
+**Schema:**
+
+| Field                   | Type   | Required | Description                                                                |
+| ----------------------- | ------ | -------- | -------------------------------------------------------------------------- |
+| `filename`              | `str`  | Yes      | Name of a file in `<config>/hsem_backups/`. A file name only, without path |
+| `restore_configuration` | `bool` | No       | Also restore the configuration options. Default `false`                    |
+
+**What happens, in order:**
+
+1. The file is read and checked. It is rejected, and nothing changes, when the
+   `schema` is not `hsem_backup`, when `schema_version` is newer than this HSEM
+   reads, or when the backup was written by a newer HSEM version than the one
+   installed.
+2. The import waits for a planning cycle that is still running, so the cycle
+   cannot write its own data over the import.
+3. The current data is saved as `hsem_backup_<date>_<time>_before_import.json`.
+4. HSEM is unloaded and the history files are replaced, all or nothing: if one
+   file cannot be written, the others are put back. A history file that is
+   `null` in the backup is left as it is.
+5. HSEM starts again and loads the solar correction, the forecast accuracy
+   records and the hourly averages from the backup. If the start fails and
+   Home Assistant retries it later, they are loaded then.
+
+Only one import runs at a time. A second call is rejected while one is
+running. If Home Assistant stops while the files are being replaced, HSEM puts
+the history from before the import back on its next start.
+
+The import is rejected when HSEM is retrying or failed its setup, or failed to
+unload. Fix that first. A disabled HSEM can be imported into: it stays
+disabled and loads the learned state when it is enabled.
+
+**Restoring the configuration.** With `restore_configuration: true` the options
+from the backup are merged into the current options, entity IDs included.
+Redacted values cannot be restored: secrets, charge point IDs and certificate
+paths keep their current value and are listed in the response. On a new Home
+Assistant, set HSEM up through the config flow first, then import. Entity IDs
+that do not exist there show up as missing entities until you correct them in
+the options.
+
+The options are only restored when the backup was written with the same config
+entry version as the installed HSEM. Otherwise the call is rejected and nothing
+changes. Import again without `restore_configuration` to restore the learned
+data only.
+
+**Response:**
+
+| Key                          | Description                                 |
+| ---------------------------- | ------------------------------------------- |
+| `imported_from`              | The file name that was imported             |
+| `before_import_path`         | Path of the backup taken before the import  |
+| `history_files_restored`     | The history files that were replaced        |
+| `learned_state_restored`     | Learners loaded after the restart           |
+| `learned_state_pending`      | Learners that load when HSEM next starts    |
+| `configuration_restored`     | Whether the options were restored           |
+| `configuration_keys_skipped` | Options left unchanged because of redaction |
+
+**Example:**
+
+```yaml
+service: hsem.import_data
+data:
+  filename: hsem_backup_20261120_143000.json
+response_variable: import_result
+```
+
+---
+
+## 15. `hsem.what_if`
 
 Answers "would 5 kWh more battery pay off?" and "what does my cycle cost
 setting cost me?" from the days HSEM has recorded.

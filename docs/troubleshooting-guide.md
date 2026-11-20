@@ -61,13 +61,30 @@ inverter entities will be found.
 
 HSEM reads electricity prices from the price sensors chosen in the
 **Electricity Prices** step (Strømligning by default). If the integration is
-missing, not configured, or its entities are unavailable, prices default to
-`0.0`.
+missing, not configured, or its entities are unavailable, HSEM plans from the
+prices it has kept (see below) and prices the rest at `0.0`.
 
 - **Check:** Look at the `data_quality` attribute on `sensor.hsem_plan_explanation_sensor`.
   Are `today_price_missing_hours` or `tomorrow_price_missing_hours` high?
 - **Fix:** Verify the price integration is installed, configured for your
   price area, and its entities show valid data in HA Developer Tools → States.
+
+When a price sensor publishes no slot of the horizon, HSEM keeps planning for
+up to 48 hours: the failed side keeps the prices its sensor last published,
+the rest uses the price history (median real price per weekday and time of
+day over 8 weeks). The state is `degraded`, the planner runs and writes stay
+allowed. After 48 hours the planner stops with `missing_input_entities`.
+
+- **Check:** `sensor.hsem_degraded_mode_sensor` → `degraded_reasons` attribute
+  starts with `Price data unavailable`, or `missing_entities` lists
+  `electricity price data (unavailable for more than 48 h)`.
+- **Fix:** Restore the price integration. With a new installation the price
+  history is empty, so the remaining slots are priced `0.0` until it holds 3
+  days.
+- **Changed price sensor:** the price history is dropped when the import or
+  export price entity or its unit changes, and starts again. After a change
+  inside the same sensor (VAT, tariff), delete
+  `.storage/hsem_price_history.json` and restart Home Assistant.
 
 **1d. Critical sensors missing → Error mode**
 
@@ -149,7 +166,9 @@ next check …` once per cycle. A `[ml] ML consumption failed (…)` line is a
   real failure, not a wait.
 - **Fix:** wait for `ml_history_ready_at`, lower the configured days, or make
   sure the recorder keeps the energy entity (`purge_keep_days` ≥ the configured
-  days, see section 8).
+  days, see section 8). An energy entity with long-term statistics does not
+  need this: the purged days are read from its hourly statistics
+  (`ml_statistics_history_days`, issue #1433).
 
 ---
 
@@ -746,7 +765,7 @@ their history graphs:
 
 ```yaml
 recorder:
-  purge_keep_days: 15 # must be >= ML history days (default 14)
+  purge_keep_days: 15 # >= ML history days (default 14), see below
   exclude:
     entity_globs:
       - sensor.hsem_house_consumption_power_*
@@ -759,8 +778,11 @@ recorder:
 
 **Do not exclude** the entities configured as ML energy, grid import
 energy, grid export energy, outdoor temperature or weather forecast. ML
-consumption prediction reads their recorder history (up to 90 days), and
-`purge_keep_days` must be at least `hsem_ml_consumption_history_days`.
+consumption prediction reads their recorder history (up to 90 days).
+`purge_keep_days` should be at least `hsem_ml_consumption_history_days`.
+With a shorter retention the energy entities fall back to their hourly
+long-term statistics for the purged days (issue #1433), which have no
+15-minute shape; temperature and wind history have no such fallback.
 
 To delete existing rows after adding the excludes, call
 `recorder.purge_entities` with the same globs and `keep_days: 0`, then
@@ -834,6 +856,7 @@ If you've checked everything and HSEM still doesn't work:
 
 6. **Check for known issues:** Review open issues at
    [github.com/woopstar/hsem/issues](https://github.com/woopstar/hsem/issues).
+   To report a new one, see [Reporting a bug](#reporting-a-bug).
 
 7. **Reset the house-consumption history:** wiping the recorder database
    does **not** reset HSEM's hour-block sensors. The integral totals,
@@ -861,8 +884,57 @@ If you've checked everything and HSEM still doesn't work:
       `data_quality.load_forecast_estimated_hours`).
 
    HSEM's own tracker files (`.storage/hsem_*_history.json`: prediction,
-   financial, savings, daily) are separate. Delete them only to reset those
-   statistics as well.
+   financial, savings, daily, performance) are separate. Delete them only to
+   reset those statistics as well. Call `hsem.export_data` first to keep a
+   copy.
+
+---
+
+## Reporting a bug
+
+1. Call `hsem.export_diagnostics` with `write_file: true` in **Developer Tools
+   → Actions**.
+2. Open the notification _HSEM debug export_. It shows the path of the file,
+   `<config>/hsem_debug/hsem_debug_<date>_<time>.json`, and a link to a new
+   GitHub issue.
+3. Follow the link. The issue is prefilled with your HSEM and Home Assistant
+   versions only.
+4. Describe what happened and attach the debug file.
+
+The file is redacted: entity IDs and secrets are replaced with
+`**REDACTED**`. It still holds your prices, forecasts and battery numbers, so
+read it before you share it.
+
+---
+
+## Backing up and moving learned data
+
+HSEM learns over weeks. The history lives in `.storage/hsem_*_history.json`
+and in the restore state of the solar confidence sensor, the forecast accuracy
+sensor and the hourly average sensors. A backup holds all of them.
+
+- **Back up:** call `hsem.export_data`. The file lands in
+  `<config>/hsem_backups/`.
+- **Move to another Home Assistant:** set HSEM up there, copy the backup file
+  into `<config>/hsem_backups/` and call `hsem.import_data` with its
+  `filename`.
+- **Undo an import:** every import first writes
+  `hsem_backup_<date>_<time>_before_import.json`. Import that file.
+- **Deleted the integration:** HSEM wrote
+  `hsem_backup_<date>_<time>_deleted.json` on the way out. It holds the
+  learned sensor state only when HSEM ran since Home Assistant started.
+
+| Symptom                               | Cause                                                                               |
+| ------------------------------------- | ----------------------------------------------------------------------------------- |
+| `The file is not an HSEM backup`      | The file is not a backup, or it was edited                                          |
+| `... is newer than the installed ...` | The backup comes from a newer HSEM. Update HSEM, then import                        |
+| `... is not a backup file name`       | `filename` held a path. Give the file name only                                     |
+| `HSEM is in the state '...'`          | HSEM is retrying or failed its setup. Fix that, then import                         |
+| `Another import is running`           | Wait for the first import to finish, then call the service again                    |
+| `... has config entry version ...`    | The options come from another HSEM generation. Import without restore_configuration |
+| Entities are missing after a restore  | The entity IDs from the backup do not exist on this Home Assistant. Fix the options |
+
+See [Services Reference](services-reference.md) for the file layout.
 
 ---
 

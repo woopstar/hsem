@@ -27,6 +27,7 @@ from custom_components.hsem.models.hourly_recommendation import HourlyRecommenda
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
+from custom_components.hsem.models.price_profile import PriceProfile
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
@@ -241,6 +242,7 @@ def build_planner_input(
     ev_second_held_slot_start: datetime | None = None,
     ev_second_held_power_w: float = 0.0,
     forecast_coverage: ForecastCoverage | None = None,
+    price_profile: PriceProfile | None = None,
 ) -> PlannerInput:
     """Assemble a :class:`PlannerInput` from the coordinator's current pipeline state.
 
@@ -258,6 +260,9 @@ def build_planner_input(
             ``PricePoint`` and a slot without PV data no PV entry, so the
             planner estimates the price, plans the PV as zero and reports
             both gaps.  ``None`` treats every slot as covered.
+        price_profile: Weekday and time-of-day profile of real prices from
+            the price history, used by the planner for slots without a
+            published price (issue #1434).
 
     Returns:
         A fully populated :class:`PlannerInput` ready for the planner engine.
@@ -303,12 +308,20 @@ def build_planner_input(
         # Prices are stored at face value by the populator (no scaling).  A
         # slot no source covered still reads 0.0 there; it is left out, so the
         # planner estimates its price and reports the gap (issue #1196).
-        if forecast_coverage is None or forecast_coverage.has_price(rec.start):
+        # In a price sensor outage a slot with one side only keeps that side
+        # and the planner estimates the other (issue #1434).
+        has_import = has_export = (
+            forecast_coverage is None or forecast_coverage.has_price(rec.start)
+        )
+        if forecast_coverage is not None and forecast_coverage.single_sided_prices:
+            has_import = forecast_coverage.has_import_price(rec.start)
+            has_export = forecast_coverage.has_export_price(rec.start)
+        if has_import or has_export:
             price_points.append(
                 PricePoint(
                     hour=h,
-                    import_price=round(rec.import_price, 5),
-                    export_price=round(rec.export_price, 5),
+                    import_price=round(rec.import_price, 5) if has_import else None,
+                    export_price=round(rec.export_price, 5) if has_export else None,
                     day_offset=day_offset,
                     slot_in_day=slot_in_day,
                 )
@@ -410,6 +423,7 @@ def build_planner_input(
         weight_14d=_w14d if _w14d is not None else 15,
         consumption_averages=consumption_averages,
         price_points=price_points,
+        price_profile=price_profile,
         solcast_slots=solcast_slots,
         excess_export_enabled=bool(cfg.batteries_enable_excess_export),
         excess_export_discharge_buffer_pct=(

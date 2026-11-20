@@ -31,6 +31,7 @@ Design notes
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from enum import Enum
 
 
@@ -72,6 +73,7 @@ _CRITICAL_KEYWORDS: frozenset[str] = frozenset(
 def classify_degraded_mode(
     missing_entities: bool,
     missing_entities_list: list[str],
+    degraded_reasons: Sequence[str] = (),
 ) -> DegradedMode:
     """Return the appropriate :class:`DegradedMode` for the current cycle.
 
@@ -79,14 +81,19 @@ def classify_degraded_mode(
         missing_entities: True when ``LiveState.missing_entities`` is set.
         missing_entities_list: Human-readable labels of missing/errored
             entities, as recorded by ``LiveState.add_missing_entity``.
+        degraded_reasons: Causes recorded by
+            ``LiveState.add_degraded_reason``: the cycle runs on fallback
+            data although every entity is readable (issue #1434).
 
     Returns:
-        :attr:`DegradedMode.OK` when no entities are missing.
+        :attr:`DegradedMode.OK` when no entities are missing and no reason
+        is recorded.
         :attr:`DegradedMode.Error` when any *critical* entity is missing.
-        :attr:`DegradedMode.Degraded` when only non-critical entities are missing.
+        :attr:`DegradedMode.Degraded` when only non-critical entities are
+        missing, or a degraded reason is recorded.
     """
     if not missing_entities:
-        return DegradedMode.OK
+        return DegradedMode.Degraded if degraded_reasons else DegradedMode.OK
 
     for label in missing_entities_list:
         label_lower = label.lower()

@@ -50,12 +50,68 @@ Examples:
 - EV charger states
 - Export price sensor
 
+### Degraded reasons (trigger `Degraded` mode, planner keeps running)
+
+A cycle can also be degraded while every entity is readable. The cause is
+then listed in the `degraded_reasons` attribute of
+`sensor.hsem_degraded_mode_sensor`, not in `missing_entities`. The planner
+runs and hardware writes stay allowed.
+
+**Price sensor outage (issue #1434).** A price side is in an outage when its
+price sensor publishes no slot of the horizon: the sensor is `unavailable`
+or `unknown`, publishes neither a forecast attribute nor a numeric state, or
+publishes only days that are over. A sensor with a numeric state and no
+forecast attribute is a flat price that covers every slot, not an outage. HSEM then plans from what it has kept:
+
+1. The failed side gets the price its sensor last published for a slot (the
+   _held_ prices). The other side keeps its live prices. Predictions are
+   never held: the `forecast` (Energi Data Service with Carnot),
+   `predictions` (Open Spot Forecast) and `forecasts` (Amber Electric)
+   attributes, and everything a price forecast sensor publishes.
+2. The remaining slots use the price history: the median real price per
+   weekday and time of day of the last 8 weeks, stored in
+   `.storage/hsem_price_history.json`. They are listed as missing in
+   `data_quality`.
+3. A slot the history does not know is estimated from the nearest earlier
+   day, or from the level of the other prices.
+
+A prediction does not price the failed side during an outage. A slot that
+only a price forecast sensor covers, or that a prediction attribute priced
+before the outage, is estimated as in step 2 and 3 and listed as missing.
+A price sensor that still publishes a prediction attribute and no real
+price is not in an outage: its predictions price the slots as they do on a
+normal day, and nothing is stored from them.
+
+The reason reads, for example:
+
+```text
+Price data unavailable (import and export price) for 3.5 h: planning 96 of 192
+slots from held published prices and the rest from the price history (4032
+recorded slots). The planner stops after 48 h
+```
+
+**Time limit.** After 48 hours without published prices the outage is
+reported as a missing entity instead:
+`electricity price data (unavailable for more than 48 h)`. The planner is
+then skipped and the working mode is `missing_input_entities`, as for any
+other missing input.
+
+| Case                                     | Before issue #1434                         | Now                                                                          |
+| ---------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------- |
+| Both price sensors down                  | Every price `0.0`, mode `OK`, planner runs | Held and stored prices, mode `Degraded` with a reason, planner runs for 48 h |
+| One price sensor down                    | Both sides `0.0`, mode `OK`                | Live side kept, other side held or estimated, mode `Degraded` with a reason  |
+| Outage longer than 48 h                  | Every price `0.0`, mode `OK`, planner runs | Mode `Degraded` with a missing entity, planner skipped                       |
+| Both down, new installation (no history) | Every price `0.0`, mode `OK`               | Every price `0.0`, mode `Degraded` with a reason, planner skipped after 48 h |
+| Price entity removed from Home Assistant | Missing entity, planner skipped            | Unchanged                                                                    |
+
+See `docs/planner-spec.md` → _Price history profile_ for the exact rules.
+
 ### Classification logic
 
 ```python
-def classify_degraded_mode(missing_entities, missing_entities_list):
+def classify_degraded_mode(missing_entities, missing_entities_list, degraded_reasons=()):
     if not missing_entities:
-        return DegradedMode.OK
+        return DegradedMode.Degraded if degraded_reasons else DegradedMode.OK
     for label in missing_entities_list:
         if any(kw in label.lower() for kw in _CRITICAL_KEYWORDS):
             return DegradedMode.Error

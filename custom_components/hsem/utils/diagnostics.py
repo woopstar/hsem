@@ -50,7 +50,9 @@ _SENSITIVE_FIELD_SUBSTRINGS: frozenset[str] = frozenset(
     }
 )
 
-_REDACTED = "**REDACTED**"
+#: Placeholder written in place of a redacted value.
+REDACTED = "**REDACTED**"
+_REDACTED = REDACTED
 
 
 def _is_sensitive_key(key: str) -> bool:
@@ -190,6 +192,10 @@ def _planner_input_to_dict(inp: PlannerInput) -> dict[str, Any]:
     # The solar corrector is a runtime object; it is not serialisable and is
     # not needed to reproduce planner logic offline, so replace it with None.
     raw["solar_corrector"] = None
+    # The price profile is keyed by tuples, which JSON has no form for.
+    raw["price_profile"] = (
+        inp.price_profile.as_dict() if inp.price_profile is not None else None
+    )
 
     return cast(dict[str, Any], _serialise_value(raw))
 

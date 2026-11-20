@@ -530,7 +530,7 @@ def _replan(
         planner_input.price_points = [
             PricePoint(
                 hour=p.hour,
-                import_price=max(p.import_price, export_spike + 0.02),
+                import_price=max(p.import_price or 0.0, export_spike + 0.02),
                 export_price=export_spike,
                 day_offset=p.day_offset,
             )
@@ -577,7 +577,7 @@ def _flat_night_input(
     for point in planner_input.price_points:
         import_price, export_price = point.import_price, point.export_price
         if point.day_offset == 0 and point.hour in (21, 22):
-            import_price = max(import_price, export_spike + 0.02)
+            import_price = max(import_price or 0.0, export_spike + 0.02)
             export_price = export_spike
         elif (point.day_offset == 0 and point.hour == 23) or (
             point.day_offset == 1 and point.hour < _REFILL.hour

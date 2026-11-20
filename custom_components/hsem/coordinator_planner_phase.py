@@ -119,6 +119,7 @@ class CoordinatorPlannerPhaseMixin(CoordinatorDynamicFloorMixin):
 
         planner_output: PlannerOutput | None = None
         if should_replan:
+            price_history = getattr(self, "_price_history_tracker", None)
             planner_input = build_planner_input(
                 cfg=cfg,
                 live=live,
@@ -134,6 +135,9 @@ class CoordinatorPlannerPhaseMixin(CoordinatorDynamicFloorMixin):
                 ev_second_held_slot_start=self._ev_second_held_slot_start,
                 ev_second_held_power_w=self._ev_second_held_power_w,
                 forecast_coverage=getattr(self, "_forecast_coverage", None),
+                price_profile=price_history.profile(now.tzinfo)
+                if price_history is not None
+                else None,
             )
             planner_input.solar_corrector = self._solar_corrector
             accepted_planner_input = self._last_planner_input

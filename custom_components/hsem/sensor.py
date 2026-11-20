@@ -14,6 +14,9 @@ from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.custom_sensors.applier_status_sensor import (
     HSEMApplierStatusSensor,
 )
+from custom_components.hsem.custom_sensors.battery_efficiency_sensor import (
+    HSEMBatteryEfficiencySensor,
+)
 from custom_components.hsem.custom_sensors.battery_soc_sensor import (
     HSEMBatterySoCSensor,
 )
@@ -74,6 +77,9 @@ from custom_components.hsem.custom_sensors.last_updated_sensor import (
 )
 from custom_components.hsem.custom_sensors.missing_entities_sensor import (
     HSEMMissingEntitiesSensor,
+)
+from custom_components.hsem.custom_sensors.monthly_energy_sensors import (
+    build_monthly_energy_sensors,
 )
 from custom_components.hsem.custom_sensors.net_consumption_sensor import (
     HSEMNetConsumptionSensor,
@@ -199,6 +205,9 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
         config_entry, coordinator
     )
 
+    # Battery efficiency sensor — measured efficiency per power step (#1431).
+    battery_efficiency_sensor = HSEMBatteryEfficiencySensor(config_entry, coordinator)
+
     # Financial sensors — export income, import cost, and net grid balance.
     export_income_sensor = HSEMExportIncomeSensor(config_entry, coordinator)
     import_cost_sensor = HSEMImportCostSensor(config_entry, coordinator)
@@ -209,6 +218,9 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
 
     # Performance (KPI) sensors — the last 24 h scored against hindsight.
     performance_sensors = build_performance_sensors(config_entry, coordinator)
+
+    # Monthly energy sensors — self-sufficiency, cycles, wear, round-trip loss.
+    monthly_energy_sensors = build_monthly_energy_sensors(config_entry, coordinator)
 
     # OCPP charger sensors — expose charger state when OCPP server is enabled.
     # One set per EV: each set only when that EV's OCPP server is configured
@@ -256,8 +268,10 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             pv_curtailment_sensor,
             daily_plan_vs_actual_sensor,
             effective_discharge_floor_sensor,
+            battery_efficiency_sensor,
             savings_sensor,
             *performance_sensors,
+            *monthly_energy_sensors,
             export_income_sensor,
             import_cost_sensor,
             net_grid_balance_sensor,
