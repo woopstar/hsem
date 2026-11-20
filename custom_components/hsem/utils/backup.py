@@ -72,6 +72,14 @@ LEARNER_KEYS: tuple[str, ...] = (
 #: retries later.
 PENDING_IMPORT_FILE = "hsem_pending_import.json"
 
+#: ``hass.data`` key under which the samples of a pending import wait for the
+#: hourly average sensors, which take their own when they are added.
+PENDING_AVERAGES_KEY = "hsem_pending_average_sensors"
+
+#: Suffixes of the files an import stages next to its targets.
+_NEW_SUFFIX = ".import_new"
+_OLD_SUFFIX = ".import_old"
+
 #: Why a backup was written; also the file-name suffix.
 REASON_MANUAL = "manual"
 REASON_BEFORE_IMPORT = "before_import"
@@ -453,10 +461,10 @@ def write_history_files(storage_dir: Path, payload: Mapping[str, Any]) -> list[s
     try:
         for name, content in contents.items():
             target = storage_dir / name
-            new = storage_dir / f"{name}.import_new"
+            new = storage_dir / f"{name}{_NEW_SUFFIX}"
             if not write_json_history_file(new, content):
                 raise BackupError(f"Could not write {target}.")
-            staged.append((target, new, storage_dir / f"{name}.import_old"))
+            staged.append((target, new, storage_dir / f"{name}{_OLD_SUFFIX}"))
         _swap_in(staged)
     finally:
         for _target, new, old in staged:
@@ -492,8 +500,49 @@ def _swap_in(staged: list[tuple[Path, Path, Path]]) -> None:
         ) from err
 
 
+def recover_interrupted_import(storage_dir: Path) -> bool:
+    """Undo an import that was cut off while it replaced the files. Blocking.
+
+    An import stages ``<name>.import_new``, moves each target to
+    ``<name>.import_old`` and the new file in, and deletes the old copies at
+    the end. Leftovers mean the process died on the way:
+
+    - A ``.import_new`` file is left: not every file was moved in. The old
+      copies are put back, so the history is the one from before the import
+      rather than a mix, and the staged files are deleted.
+    - Only ``.import_old`` files are left: every file was moved in. The old
+      copies are deleted.
+
+    Returns:
+        ``True`` when an import was rolled back.
+    """
+    names = (*HISTORY_FILES, PENDING_IMPORT_FILE)
+    staged = [storage_dir / f"{name}{_NEW_SUFFIX}" for name in names]
+    incomplete = any(path.exists() for path in staged)
+    put_back: set[str] = set()
+    for name in names:
+        old = storage_dir / f"{name}{_OLD_SUFFIX}"
+        with suppress(OSError):
+            if incomplete and old.is_file():
+                os.replace(old, storage_dir / name)
+                put_back.add(name)
+            else:
+                old.unlink()
+    for path in staged:
+        with suppress(OSError):
+            path.unlink()
+    if incomplete and PENDING_IMPORT_FILE not in put_back:
+        # A pending file that was not put back belongs to the cut-off import.
+        remove_pending_import(storage_dir)
+    return incomplete
+
+
 def read_pending_import(storage_dir: Path) -> dict[str, Any] | None:
-    """Read the learner state an import left for the next start. Blocking."""
+    """Read the learner state an import left for the next start. Blocking.
+
+    Recovers an interrupted import first.
+    """
+    recover_interrupted_import(storage_dir)
     return read_json_history_file(
         storage_dir / PENDING_IMPORT_FILE, max_bytes=_MAX_BACKUP_FILE_BYTES
     )

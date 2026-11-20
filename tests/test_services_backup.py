@@ -7,6 +7,7 @@ import json
 from collections.abc import Callable, Generator
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlsplit
@@ -22,6 +23,7 @@ from homeassistant.exceptions import (
     ServiceValidationError,
 )
 from homeassistant.helpers.entity_platform import DATA_ENTITY_PLATFORM
+from homeassistant.helpers.restore_state import RestoreEntity
 
 import custom_components.hsem as hsem_init
 from custom_components.hsem import (
@@ -73,6 +75,9 @@ class _Coordinator:
     """
 
     async_hold_updates = CoordinatorLifecycleMixin.async_hold_updates
+    _async_wait_for_history_writers = (
+        CoordinatorLifecycleMixin._async_wait_for_history_writers
+    )
 
     def __init__(self, storage: Path, *, not_ready: bool = False) -> None:
         self._update_lock = asyncio.Lock()
@@ -255,6 +260,34 @@ def _average_sensor(hass: MagicMock, measurements: dict[str, float]) -> HSEMAvgS
     return sensor
 
 
+def _readd_on_setup(
+    hass: MagicMock, sensor: HSEMAvgSensor, restored: dict[str, float]
+) -> None:
+    """Make the platform setup add *sensor* again, as a reload does.
+
+    The sensor first restores *restored*, the samples it held before the
+    unload, through its real ``async_added_to_hass``.
+    """
+    sensor.async_get_last_state = AsyncMock(  # type: ignore[method-assign]
+        return_value=SimpleNamespace(state="9.0", attributes={"measurements": restored})
+    )
+    sensor.async_get_last_extra_data = AsyncMock(return_value=None)  # type: ignore[method-assign]
+
+    async def _forward(*_args: Any) -> bool:
+        with (
+            patch(
+                "custom_components.hsem.custom_sensors.avg_sensor"
+                ".async_track_time_interval",
+                return_value=MagicMock(),
+            ),
+            patch.object(RestoreEntity, "async_added_to_hass", new_callable=AsyncMock),
+        ):
+            await sensor.async_added_to_hass()
+        return True
+
+    hass.config_entries.async_forward_entry_setups = AsyncMock(side_effect=_forward)
+
+
 def _import_call(hass: MagicMock, exported: dict[str, Any], **data: Any) -> ServiceCall:
     """Return an import_data call for the file *exported* names."""
     return _call(
@@ -341,7 +374,10 @@ async def test_export_data_writes_one_versioned_file(
 async def test_backup_never_holds_certificates_keys_or_tokens(
     hass: MagicMock, entry: MagicMock, tmp_path: Path
 ) -> None:
-    """No OCPP certificate, key, token or charge point ID reaches the backup."""
+    """No certificate, key, token or charge point ID reaches the backup.
+
+    Entity IDs are kept (owner decision), every secret is still redacted.
+    """
     ocpp_dir = tmp_path / "ssl" / "hsem" / "ocpp"
     ocpp_dir.mkdir(parents=True)
     (ocpp_dir / "ca.key").write_text(PEM, encoding="utf-8")
@@ -351,8 +387,11 @@ async def test_backup_never_holds_certificates_keys_or_tokens(
     )
     entry.data = {"password": "hunter2", "pasted_key": PEM}
     entry.options = {
+        "hsem_house_power": "sensor.house_power",
+        "hsem_ev_charger_status": "sensor.wallbox_status",
         "api_token": "tok-123",
         "client_secret": "s3cret",
+        "oauth_client_id": "client-9f2",
         "hsem_ocpp_cpid": "CP-GARAGE-01",
         "hsem_ocpp_second_cpid": "CP-DRIVEWAY-02",
         "key_passphrase": "open-sesame",
@@ -374,6 +413,7 @@ async def test_backup_never_holds_certificates_keys_or_tokens(
         "tok-123",
         "s3cret",
         "AKIA123",
+        "client-9f2",
         "CP-GARAGE-01",
         "CP-DRIVEWAY-02",
         "open-sesame",
@@ -383,6 +423,10 @@ async def test_backup_never_holds_certificates_keys_or_tokens(
         str(ocpp_dir),
     ):
         assert secret not in raw
+    # Entity IDs are kept, so the configuration can be restored elsewhere.
+    options = json.loads(raw)["configuration"]["options"]
+    assert options["hsem_house_power"] == "sensor.house_power"
+    assert options["hsem_ev_charger_status"] == "sensor.wallbox_status"
 
 
 @pytest.mark.asyncio
@@ -547,7 +591,8 @@ async def test_import_data_restores_learned_state(hass: MagicMock, home: _Home) 
         slot, datetime(2026, 11, 20, 14, 45, tzinfo=UTC)
     )
     exported = await async_handle_export_data(_call(hass))
-    sensor._measurements = {"2026-11-20": 9.0}
+    # The reload adds the sensor again; it restores what it held before.
+    _readd_on_setup(hass, sensor, {"2026-11-20": 9.0})
 
     result = await async_handle_import_data(_import_call(hass, exported))
 
@@ -608,37 +653,41 @@ async def test_pending_import_with_bad_sections_does_not_block_setup(
     hass: MagicMock, home: _Home, tmp_path: Path
 ) -> None:
     """A learner section that cannot be loaded is skipped; the rest is loaded."""
-    sensor = _average_sensor(hass, {"2026-11-19": 1.25})
+    sensor = _average_sensor(hass, {})
+    _readd_on_setup(hass, sensor, {"2026-11-19": 1.25})
     pending = tmp_path / ".storage" / PENDING_IMPORT_FILE
+    pending.write_text(
+        json.dumps(
+            {
+                "solar_corrector": {"schema_version": 3},
+                "forecast_tracker": {"records": []},
+                "average_sensors": {
+                    "14_15_7": {"measurements": {"not-a-date": 1}},
+                    "0_1_7": {"measurements": {}},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
     with patch.object(
         ForecastTracker, "load_from_dict", side_effect=RuntimeError("boom")
     ):
-        pending.write_text(
-            json.dumps(
-                {
-                    "solar_corrector": {"schema_version": 3},
-                    "forecast_tracker": {"records": []},
-                    "average_sensors": {
-                        "14_15_7": {"measurements": {"not-a-date": 1}},
-                        "0_1_7": {"measurements": {}},
-                    },
-                }
-            ),
-            encoding="utf-8",
-        )
         assert await home.setup("entry-1")
 
     assert hass.data["hsem_applied_import"] == ["solar_corrector"]
+    # The sensor keeps the samples it restored.
     assert sensor.export_measurements() == {"2026-11-19": 1.25}
     assert not pending.exists()
 
 
 @pytest.mark.asyncio
-async def test_pending_import_skips_sensor_without_samples(
+async def test_pending_import_without_learner_sections(
     hass: MagicMock, home: _Home, tmp_path: Path
 ) -> None:
-    """A sensor the backup does not know keeps its samples."""
-    sensor = _average_sensor(hass, {"2026-11-19": 1.25})
+    """A sensor the import does not know keeps its samples."""
+    sensor = _average_sensor(hass, {})
+    _readd_on_setup(hass, sensor, {"2026-11-19": 1.25})
     (tmp_path / ".storage" / PENDING_IMPORT_FILE).write_text(
         json.dumps({"average_sensors": {"0_1_7": {"measurements": {}}}}),
         encoding="utf-8",
@@ -648,6 +697,83 @@ async def test_pending_import_skips_sensor_without_samples(
 
     assert sensor.export_measurements() == {"2026-11-19": 1.25}
     assert hass.data["hsem_applied_import"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_second_import_is_rejected_while_one_runs(
+    hass: MagicMock, home: _Home, tmp_path: Path
+) -> None:
+    """Two imports never work on the same staged files or set up twice.
+
+    The first import is parked behind a running cycle. A second call passed
+    the entry-state check before the lock existed and then ran against the
+    unloaded entry.
+    """
+    storage = tmp_path / ".storage"
+    await _save_savings(storage, 42.5)
+    exported = await async_handle_export_data(_call(hass))
+    await _save_savings(storage, 1.0)
+    gate = asyncio.Event()
+    cycle = asyncio.create_task(home.coordinator.run_cycle(gate))
+    await asyncio.sleep(0)
+    first = asyncio.create_task(async_handle_import_data(_import_call(hass, exported)))
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert not first.done()
+
+    with pytest.raises(ServiceValidationError, match="Another import is running"):
+        await async_handle_import_data(_import_call(hass, exported))
+
+    gate.set()
+    await cycle
+    await first
+
+    assert home.events == ["unload", "setup"]
+    assert len(list((tmp_path / "hsem_backups").iterdir())) == 2
+    assert (await _load_savings(storage)).actual_savings == pytest.approx(42.5)
+    # The lock is free again.
+    await async_handle_import_data(_import_call(hass, exported))
+
+
+@pytest.mark.asyncio
+async def test_import_waits_for_a_midnight_save_that_starts_during_the_unload(
+    hass: MagicMock, home: _Home, tmp_path: Path
+) -> None:
+    """A midnight save that starts while the entry unloads is over before the swap."""
+    storage = tmp_path / ".storage"
+    await _save_savings(storage, 42.5)
+    exported = await async_handle_export_data(_call(hass))
+    coordinator = home.coordinator
+    coordinator._savings_tracker.actual_savings = 1.0
+
+    async def _late_save() -> None:
+        for _ in range(10):
+            await asyncio.sleep(0)
+        assert await coordinator._savings_tracker.save_history()
+
+    async def _teardown() -> None:
+        # The midnight timer fires just before the teardown cancels it.
+        coordinator._daily_tracker._midnight_task = asyncio.create_task(_late_save())
+
+    coordinator.async_teardown = _teardown  # type: ignore[method-assign]
+
+    await async_handle_import_data(_import_call(hass, exported))
+
+    assert coordinator._daily_tracker._midnight_task.done()
+    assert (await _load_savings(storage)).actual_savings == pytest.approx(42.5)
+
+
+@pytest.mark.asyncio
+async def test_state_kept_from_an_unload_is_dropped_by_the_next_setup(
+    hass: MagicMock, home: _Home
+) -> None:
+    """A later backup never pairs old learner state with newer history."""
+    assert await home.unload("entry-1")
+    assert "hsem_captured_learned_state" in hass.data
+
+    assert await home.setup("entry-1")
+
+    assert "hsem_captured_learned_state" not in hass.data
 
 
 @pytest.mark.asyncio
@@ -878,6 +1004,8 @@ async def test_import_data_into_unloaded_entry(
     assert result["learned_state_restored"] == []
     assert result["learned_state_pending"] == ["forecast_tracker", "solar_corrector"]
     assert (storage / PENDING_IMPORT_FILE).exists()
+    # The state kept from the unload belonged to the replaced history.
+    assert "hsem_captured_learned_state" not in hass.data
     assert (await _load_savings(storage)).actual_savings == pytest.approx(42.5)
 
 

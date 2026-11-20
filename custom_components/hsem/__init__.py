@@ -31,6 +31,7 @@ from custom_components.hsem.services import (
 from custom_components.hsem.services_backup import (
     async_apply_pending_import,
     async_capture_learned_state,
+    async_stage_pending_import,
     async_write_removal_backup,
 )
 from custom_components.hsem.utils.house_load import cfg_house_load_inputs
@@ -271,6 +272,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool
         coordinator=coordinator,
         entity_gating=_entity_gating_snapshot(entry),
     )
+
+    # Read the learner state an import left behind before the sensors are
+    # added: the hourly average sensors take their samples from it (#1436).
+    await async_stage_pending_import(hass)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

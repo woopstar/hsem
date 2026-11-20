@@ -908,6 +908,7 @@ sensor and the hourly average sensors. A backup holds all of them.
 | `... is newer than the installed ...` | The backup comes from a newer HSEM. Update HSEM, then import                        |
 | `... is not a backup file name`       | `filename` held a path. Give the file name only                                     |
 | `HSEM is in the state '...'`          | HSEM is retrying or failed its setup. Fix that, then import                         |
+| `Another import is running`           | Wait for the first import to finish, then call the service again                    |
 | `... has config entry version ...`    | The options come from another HSEM generation. Import without restore_configuration |
 | Entities are missing after a restore  | The entity IDs from the backup do not exist on this Home Assistant. Fix the options |
 

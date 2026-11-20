@@ -59,6 +59,7 @@ from custom_components.hsem.custom_sensors.block_observation import (
 )
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.utils.backup import PENDING_AVERAGES_KEY
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.ha_helpers import ha_get_entity_state_and_convert
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
@@ -289,16 +290,31 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         """Return a copy of the daily samples for a backup (issue #1436)."""
         return dict(self._measurements or {})
 
-    async def async_import_measurements(self, raw: Mapping[str, Any]) -> None:
-        """Replace the daily samples with those from a backup (issue #1436).
+    def _take_pending_import(self) -> None:
+        """Replace the samples with those an import left for this sensor.
 
-        Raises:
-            ValueError: When a date or a value in *raw* cannot be parsed. The
-                current samples are kept.
-            TypeError: When a value in *raw* is not a number.
+        ``async_setup_entry`` puts the samples of a pending import in
+        ``hass.data`` before the platforms are set up (issue #1436). They are
+        taken here, after the restore, so they win over the restored samples
+        whenever this sensor happens to be created.
         """
-        self._measurements = self._parse_measurements(raw)
-        await self._async_handle_update(None)
+        pending = self.hass.data.get(PENDING_AVERAGES_KEY)
+        if not isinstance(pending, dict):
+            return
+        state = pending.get(self.backup_key)
+        measurements = state.get("measurements") if isinstance(state, dict) else None
+        if not isinstance(measurements, dict):
+            return
+        try:
+            self._measurements = self._parse_measurements(measurements)
+        except TypeError, ValueError:
+            _LOGGER.exception(
+                "Could not load the imported samples of %s; the current ones are kept",
+                self.entity_id,
+            )
+            return
+        # Taken: the setup reports the samples that are no longer waiting.
+        del pending[self.backup_key]
 
     @override
     async def async_added_to_hass(self) -> None:
@@ -328,6 +344,8 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
                 self._measurements = self._parse_measurements(restored_measurements)
 
             self._last_updated = old_state.attributes.get("last_updated", None)
+
+        self._take_pending_import()
 
         # Register new timer — store unsub so it is cancelled on removal.
         self._unsub_callbacks.append(

@@ -583,6 +583,10 @@ Replaces the learned data with the contents of a backup file.
    records and the hourly averages from the backup. If the start fails and
    Home Assistant retries it later, they are loaded then.
 
+Only one import runs at a time. A second call is rejected while one is
+running. If Home Assistant stops while the files are being replaced, HSEM puts
+the history from before the import back on its next start.
+
 The import is rejected when HSEM is retrying or failed its setup, or failed to
 unload. Fix that first. A disabled HSEM can be imported into: it stays
 disabled and loads the learned state when it is enabled.

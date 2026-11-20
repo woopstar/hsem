@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
 from custom_components.hsem.utils import backup
 from custom_components.hsem.utils.backup import (
     BACKUP_SCHEMA,
@@ -28,6 +29,7 @@ from custom_components.hsem.utils.backup import (
     read_backup_file,
     read_history_files,
     read_pending_import,
+    recover_interrupted_import,
     redact_configuration,
     redact_debug_dump,
     remove_pending_import,
@@ -346,6 +348,86 @@ def test_write_history_files_rollback_removes_a_new_file(tmp_path: Path) -> None
         write_history_files(tmp_path, _two_file_payload())
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_recover_puts_the_history_back_after_a_cut_off_import(tmp_path: Path) -> None:
+    """Power lost mid-swap: the old copies win over a mix of old and new."""
+    (tmp_path / "hsem_financial_history.json").write_text("new", encoding="utf-8")
+    (tmp_path / "hsem_financial_history.json.import_old").write_text("old", "utf-8")
+    # Savings was moved aside, its new file never moved in.
+    (tmp_path / "hsem_savings_history.json.import_old").write_text("old", "utf-8")
+    (tmp_path / "hsem_savings_history.json.import_new").write_text("new", "utf-8")
+    (tmp_path / "hsem_pending_import.json.import_new").write_text("{}", "utf-8")
+    (tmp_path / "hsem_pending_import.json").write_text('{"a": 1}', "utf-8")
+
+    assert recover_interrupted_import(tmp_path) is True
+
+    assert sorted(path.name for path in tmp_path.iterdir()) == [
+        "hsem_financial_history.json",
+        "hsem_savings_history.json",
+    ]
+    assert (tmp_path / "hsem_financial_history.json").read_text() == "old"
+    assert (tmp_path / "hsem_savings_history.json").read_text() == "old"
+
+
+def test_recover_keeps_an_earlier_pending_import(tmp_path: Path) -> None:
+    """A pending file from an earlier import is put back, not deleted."""
+    (tmp_path / "hsem_pending_import.json").write_text('{"new": 1}', "utf-8")
+    (tmp_path / "hsem_pending_import.json.import_old").write_text('{"old": 1}', "utf-8")
+    (tmp_path / "hsem_savings_history.json.import_new").write_text("new", "utf-8")
+
+    assert read_pending_import(tmp_path) == {"old": 1}
+    assert [path.name for path in tmp_path.iterdir()] == ["hsem_pending_import.json"]
+
+
+def test_recover_finishes_a_completed_import(tmp_path: Path) -> None:
+    """Only old copies are left: the import was complete, they are deleted."""
+    (tmp_path / "hsem_savings_history.json").write_text("new", encoding="utf-8")
+    (tmp_path / "hsem_savings_history.json.import_old").write_text("old", "utf-8")
+
+    assert recover_interrupted_import(tmp_path) is False
+
+    assert [path.name for path in tmp_path.iterdir()] == ["hsem_savings_history.json"]
+    assert (tmp_path / "hsem_savings_history.json").read_text() == "new"
+
+
+def test_recover_without_leftovers(tmp_path: Path) -> None:
+    """A clean storage folder is left alone."""
+    (tmp_path / "hsem_savings_history.json").write_text("{}", encoding="utf-8")
+
+    assert recover_interrupted_import(tmp_path) is False
+
+    assert [path.name for path in tmp_path.iterdir()] == ["hsem_savings_history.json"]
+
+
+def test_every_secret_option_of_hsem_is_redacted_and_entity_ids_are_kept() -> None:
+    """With the real defaults: charge point IDs and TLS paths go, entities stay."""
+    options = {
+        key: (value if value not in ("", None) else "filled-in")
+        for key, value in DEFAULT_CONFIG_VALUES.items()
+    }
+
+    redacted = redact_configuration(options)
+
+    secret_keys = {
+        key for key in options if "cpid" in key or "_tls_" in key and "path" in key
+    }
+    assert secret_keys >= {
+        "hsem_ocpp_cpid",
+        "hsem_ocpp_second_cpid",
+        "hsem_ocpp_tls_server_cert_path",
+        "hsem_ocpp_tls_server_key_path",
+        "hsem_ocpp_tls_client_ca_path",
+    }
+    assert {key for key, value in redacted.items() if value == REDACTED} == secret_keys
+    entity_ids = {
+        key: value
+        for key, value in options.items()
+        if isinstance(value, str)
+        and value.startswith(("sensor.", "number.", "select."))
+    }
+    assert entity_ids
+    assert all(redacted[key] == value for key, value in entity_ids.items())
 
 
 @pytest.mark.parametrize("version", [3, None, True, "4"])

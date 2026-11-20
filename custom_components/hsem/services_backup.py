@@ -6,9 +6,10 @@
   the history files and reload the entry.
 - :func:`async_write_removal_backup` — the backup written when the config
   entry is deleted.
-- :func:`async_capture_learned_state` / :func:`async_apply_pending_import` —
-  the hooks ``async_unload_entry`` and ``async_setup_entry`` call, so learner
-  state reaches the removal backup and an import survives a delayed start.
+- :func:`async_capture_learned_state`, :func:`async_stage_pending_import` and
+  :func:`async_apply_pending_import` — the hooks ``async_unload_entry`` and
+  ``async_setup_entry`` call, so learner state reaches the removal backup and
+  an import survives a delayed start.
 - :func:`async_write_debug_export` — the file and notification behind the
   ``write_file`` option of ``export_diagnostics``.
 
@@ -18,6 +19,7 @@ All file I/O runs in the executor; the payload logic lives in
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -36,6 +38,7 @@ from custom_components.hsem.utils.backup import (
     LEARNER_FORECAST_TRACKER,
     LEARNER_KEYS,
     LEARNER_SOLAR_CORRECTOR,
+    PENDING_AVERAGES_KEY,
     REASON_BEFORE_IMPORT,
     REASON_DELETED,
     REASON_MANUAL,
@@ -85,6 +88,13 @@ _CAPTURED_STATE_KEY = f"{DOMAIN}_captured_learned_state"
 
 #: ``hass.data`` key: the learner sections the last setup loaded from an import.
 _APPLIED_IMPORT_KEY = f"{DOMAIN}_applied_import"
+
+#: ``hass.data`` key: the learner state of a pending import, read from the
+#: file before the platforms are set up.
+_STAGED_IMPORT_KEY = f"{DOMAIN}_staged_import"
+
+#: ``hass.data`` key: the lock that lets one import run at a time.
+_IMPORT_LOCK_KEY = f"{DOMAIN}_import_lock"
 
 #: Entry states an import can start from. In any other state (a setup that
 #: is retrying or failed, a failed unload) the entry cannot be unloaded or
@@ -167,70 +177,82 @@ def async_capture_learned_state(hass: HomeAssistant, entry: ConfigEntry) -> None
         _LOGGER.exception("HSEM could not capture its learned state before unload")
 
 
-async def async_apply_pending_import(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Load the learner state an import left behind, then delete the file.
+async def async_stage_pending_import(hass: HomeAssistant) -> None:
+    """Read the learner state an import left behind, before the platforms load.
 
-    Called at the end of ``async_setup_entry``, after the sensors have
-    restored their previous state, so the imported state wins. Because it
-    runs on every successful setup, an import whose first start failed is
-    still applied when Home Assistant retries. Never raises.
+    Called from ``async_setup_entry`` before the platforms are forwarded. The
+    samples of the hourly average sensors go to ``hass.data``, where each
+    sensor takes its own when it is added: those sensors are created by
+    another sensor, at a moment the setup does not control. Reading the file
+    also undoes an import that was cut off mid-replace. Never raises.
     """
     storage_dir = _config_dir(hass) / ".storage"
     pending = await hass.async_add_executor_job(read_pending_import, storage_dir)
+    hass.data.pop(_STAGED_IMPORT_KEY, None)
+    hass.data.pop(PENDING_AVERAGES_KEY, None)
     if pending is None:
         return
+    hass.data[_STAGED_IMPORT_KEY] = pending
+    averages = pending.get(LEARNER_AVERAGE_SENSORS)
+    if isinstance(averages, dict):
+        hass.data[PENDING_AVERAGES_KEY] = dict(averages)
+
+
+async def async_apply_pending_import(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Load the staged learner state into the coordinator, then delete the file.
+
+    Called at the end of ``async_setup_entry``, after the sensors have
+    restored their previous state, so the imported state wins. The file is
+    only deleted here, at the end of a setup that succeeded: an import whose
+    first start failed is applied again when Home Assistant retries. A
+    section that cannot be loaded is logged and dropped; it is still in the
+    backup file. Never raises.
+    """
+    # The learner state kept from the last unload is older than this setup.
+    hass.data.pop(_CAPTURED_STATE_KEY, None)
+    pending = hass.data.pop(_STAGED_IMPORT_KEY, None)
     coordinator = _coordinator(entry)
+    if pending is None or coordinator is None:
+        return
     now = hsem_now()
     applied: list[str] = []
     for key, target, load in (
         (
             LEARNER_SOLAR_CORRECTOR,
-            getattr(coordinator, "_solar_corrector", None),
+            coordinator._solar_corrector,
             lambda target, state: target.load_from_dict(state, restored_at=now),
         ),
         (
             LEARNER_FORECAST_TRACKER,
-            getattr(coordinator, "_forecast_tracker", None),
+            coordinator._forecast_tracker,
             lambda target, state: target.load_from_dict(state),
         ),
     ):
         state = pending.get(key)
-        if target is None or not isinstance(state, dict):
+        if not isinstance(state, dict):
             continue
         try:
             load(target, state)
         except Exception:  # noqa: BLE001 — setup must go through
-            _LOGGER.exception("HSEM could not load the imported %s", key)
+            _LOGGER.exception(
+                "HSEM could not load the imported %s; it is still in the backup file",
+                key,
+            )
         else:
             applied.append(key)
 
     averages = pending.get(LEARNER_AVERAGE_SENSORS)
-    if isinstance(averages, dict):
-        restored = 0
-        for sensor in _average_sensors(hass):
-            state = averages.get(sensor.backup_key)
-            measurements = (
-                state.get("measurements") if isinstance(state, dict) else None
-            )
-            if not isinstance(measurements, dict):
-                continue
-            try:
-                await sensor.async_import_measurements(measurements)
-            except TypeError, ValueError:
-                _LOGGER.exception(
-                    "HSEM could not load the imported samples of %s", sensor.entity_id
-                )
-            else:
-                restored += 1
-        if restored:
-            applied.append(LEARNER_AVERAGE_SENSORS)
+    waiting = hass.data.get(PENDING_AVERAGES_KEY, {})
+    if isinstance(averages, dict) and len(waiting) < len(averages):
+        applied.append(LEARNER_AVERAGE_SENSORS)
 
-    await hass.async_add_executor_job(remove_pending_import, storage_dir)
+    await hass.async_add_executor_job(
+        remove_pending_import, _config_dir(hass) / ".storage"
+    )
     hass.data[_APPLIED_IMPORT_KEY] = applied
-    if coordinator is not None:
-        # The confidence and accuracy sensors write the loaded state to their
-        # restore attributes, so it survives the next restart.
-        coordinator.async_update_listeners()
+    # The confidence and accuracy sensors write the loaded state to their
+    # restore attributes, so it survives the next restart.
+    coordinator.async_update_listeners()
     _LOGGER.info("HSEM loaded imported learned state: %s", ", ".join(applied) or "none")
 
 
@@ -309,12 +331,28 @@ async def async_handle_import_data(call: ServiceCall) -> dict[str, Any]:
     Returns:
         The paths and what was restored.
 
+    Only one import runs at a time: a second call is rejected while the first
+    one is between its unload and its setup, where it would otherwise work on
+    the same staged files.
+
     Raises:
-        ServiceValidationError: When HSEM is not configured, the entry is in
-            a state an import cannot start from, or the backup is rejected.
-            Nothing has changed.
+        ServiceValidationError: When HSEM is not configured, another import
+            is running, the entry is in a state an import cannot start from,
+            or the backup is rejected. Nothing has changed.
         HomeAssistantError: When saving, replacing or reloading fails.
     """
+    lock: asyncio.Lock = call.hass.data.setdefault(_IMPORT_LOCK_KEY, asyncio.Lock())
+    if lock.locked():
+        raise ServiceValidationError(
+            "Another import is running, so nothing was imported. Wait until it "
+            "has finished."
+        )
+    async with lock:
+        return await _async_import(call)
+
+
+async def _async_import(call: ServiceCall) -> dict[str, Any]:
+    """Run one import. The caller holds the import lock."""
     hass = call.hass
     entry = _get_entry(hass)
     config_dir = _config_dir(hass)
@@ -366,6 +404,8 @@ async def async_handle_import_data(call: ServiceCall) -> dict[str, Any]:
         written = await hass.async_add_executor_job(
             write_history_files, config_dir / ".storage", payload
         )
+        # What was kept from the unload belongs to the replaced history.
+        hass.data.pop(_CAPTURED_STATE_KEY, None)
         if restore_configuration:
             options, skipped = restorable_options(payload)
             hass.config_entries.async_update_entry(

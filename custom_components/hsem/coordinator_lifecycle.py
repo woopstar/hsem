@@ -277,20 +277,31 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
         ``async_teardown`` only cancels the timers: a cycle a timer already
         started runs to its end, and its save would otherwise land after the
         caller replaced the files.
+
+        The writers are awaited again when the block exits: the midnight timer
+        can fire while the block runs, and its save must be over before the
+        caller goes on.
         """
         async with self._update_lock:
-            daily_tracker = getattr(self, "_daily_tracker", None)
-            writers = [
-                task
-                for task in (
-                    getattr(self, "_performance_task", None),
-                    getattr(daily_tracker, "_midnight_task", None),
-                )
-                if task is not None and not task.done()
-            ]
-            if writers:
-                await asyncio.wait(writers)
-            yield
+            await self._async_wait_for_history_writers()
+            try:
+                yield
+            finally:
+                await self._async_wait_for_history_writers()
+
+    async def _async_wait_for_history_writers(self) -> None:
+        """Wait for the background tasks that persist a tracker when they end."""
+        daily_tracker = getattr(self, "_daily_tracker", None)
+        writers = [
+            task
+            for task in (
+                getattr(self, "_performance_task", None),
+                getattr(daily_tracker, "_midnight_task", None),
+            )
+            if task is not None and not task.done()
+        ]
+        if writers:
+            await asyncio.wait(writers)
 
     async def async_options_updated(self) -> None:
         """Schedule a debounced pipeline re-run after an options change.
