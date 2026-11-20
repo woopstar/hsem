@@ -228,6 +228,24 @@ async def test_without_statistics_the_raw_read_is_returned_unchanged(
 
 
 @pytest.mark.asyncio
+async def test_a_failed_statistics_read_leaves_the_raw_read_unchanged(
+    long_term_statistics: AsyncMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A recorder error in the fallback must not fail the history read."""
+    recorder = _Recorder(_meter_states(NOW - timedelta(hours=2), NOW))
+    long_term_statistics.side_effect = RuntimeError("database is locked")
+
+    with caplog.at_level("WARNING"):
+        result = await _read(_hass(), recorder, NOW)
+
+    assert result.samples == []
+    assert result.partial
+    assert result.ready_at is not None
+    assert history_cache._energy_history_cache == {}
+    assert "reading long-term statistics of" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_sufficient_raw_history_never_reads_statistics(
     long_term_statistics: AsyncMock,
 ) -> None:

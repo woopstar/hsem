@@ -261,12 +261,23 @@ async def _statistics_before(
     Returns:
         Samples for whole hours that end no later than the oldest raw sample
         (or than now, without raw samples), oldest first.  Empty when the
-        entity has no long-term statistics in the window.
+        entity has no long-term statistics in the window or the read failed.
     """
     until = utc_key(raw[0][0]) if raw else utc_key(now_ts)
-    hours = await StatisticsReader(hass).read_hourly_energy(
-        entity_id, utc_key(now_ts) - timedelta(days=max_days), until, expected_unit
-    )
+    try:
+        hours = await StatisticsReader(hass).read_hourly_energy(
+            entity_id, utc_key(now_ts) - timedelta(days=max_days), until, expected_unit
+        )
+    except Exception as exc:
+        # The fallback is optional: a recorder error leaves the raw read as
+        # it is instead of failing the whole history read.
+        HSEM_LOGGER.warning(
+            "ML history: reading long-term statistics of %s failed: %s: %r",
+            entity_id,
+            type(exc).__name__,
+            exc,
+        )
+        return []
     return hourly_energy_to_slots(
         {
             hour_start: energy

@@ -1964,14 +1964,30 @@ them (recorder executor) and is used in two places:
 
 - `custom_sensors/consumption_backfill.py::async_consumption_profile()` builds
   `{(iso_date, hour): kWh}` from the hourly **mean** of the house power
-  source, minus both EV chargers when the house power includes them. An hour
-  missing a required source, or negative, is left out. One read per config
-  entry, cached for an hour. `HSEMAvgSensor._async_backfill_from_statistics()`
-  fills only free places (`len(measurements) < average`), newest day first,
-  never a date that has a measurement. Backfilled dates live in
-  `_backfilled` / the `backfilled_days` attribute and lose the mark when a
-  measurement replaces them or they roll out of the window. Tests that build
-  a `MagicMock(spec=HSEMAvgSensor)` must set `_backfilled = set()`.
+  source, minus both EV chargers when the house power includes them. It
+  mirrors the live path on purpose:
+
+  - No unit conversion (`unit=None`): the live path reads raw states, so a
+    converted backfill would put two scales in one window.
+  - A charger hour without statistics is 0 W. A charger with no statistics at
+    all stops the backfill (info log).
+  - The source comes from the config (`configured_house_power_entity`), not
+    from `hass.states`, so start-up cannot pick the derived house load.
+  - A failed read is caught, logged once and cached for the hour.
+    `_async_handle_update` runs before `super().async_added_to_hass()`, so it
+    must never raise.
+
+  One read per config entry, cached for an hour.
+  `HSEMAvgSensor._async_backfill_from_statistics()` fills only free places
+  (`len(measurements) < average`), newest day first, never a date that has a
+  measurement, and only days before `_backfill_before` (attribute
+  `backfill_before`: the oldest measured day or the day of the first run,
+  fixed once and restored). Later gaps are blocks the #1101/#1110 guard
+  rejected; their statistics cover part of the hour and must stay out.
+  Backfilled dates live in `_backfilled` / the `backfilled_days` attribute.
+  Tests that build a `MagicMock(spec=HSEMAvgSensor)` must set
+  `_backfilled = set()`.
+
 - `ml/history_cache.py::get_energy_history()`: when a full read is too short,
   `HistoryResult.partial` (the too-short raw samples) is extended with the
   hourly **sum** deltas for whole hours before the oldest raw sample, spread
@@ -1986,7 +2002,10 @@ the recorder statistics.
 
 Tests: `tests/custom_sensors/test_consumption_backfill.py`,
 `tests/ml/test_statistics_reader.py`,
-`tests/ml/test_history_statistics_fallback.py`.
+`tests/ml/test_history_statistics_fallback.py`, and
+`tests/ml/test_statistics_reader_recorder.py`, which runs a real recorder on
+a temporary SQLite database (the fixture there shows how to start one
+without `pytest-homeassistant-custom-component`).
 
 ### Missing hour blocks do not block the whole plan (issue #1110)
 

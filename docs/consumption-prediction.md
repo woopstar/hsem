@@ -483,19 +483,33 @@ Each `sensor.hsem_house_consumption_energy_avg_*` window (1, 3, 7 or 14 days)
 fills its free places from statistics on every update:
 
 - The source is the configured house power sensor
-  (`hsem_house_consumption_power`). The hourly `mean` in W is the energy of
-  that hour in Wh.
+  (`hsem_house_consumption_power`), or the derived house load when none is
+  configured. It is taken from the configuration, not from the current
+  states, so a sensor that has no state yet during start-up is still the
+  source. The hourly `mean` in W is the energy of that hour in Wh.
+- Values are read in the sensor's own unit, without conversion, exactly as
+  the live path reads the states. Measured and backfilled days in one window
+  are always on the same scale.
 - When `hsem_house_power_includes_ev_charger_power` is on, the hourly mean of
-  both EV charger power sensors is subtracted, as in the live path.
-- An hour is left out when a required source has no statistics for it or when
+  both EV charger power sensors is subtracted, as in the live path. A charger
+  hour without statistics counts as 0 W, as an unavailable charger does live.
+  A charger sensor without any statistics (for example one without a
+  `state_class`) cannot be subtracted, so nothing is backfilled and an info
+  line is logged.
+- An hour is left out when the house sensor has no statistics for it or when
   the result is negative. That hour block stays unavailable: up to four such
   hours are estimated from their neighbours, more are reported in
   `missing_hours` and the load forecast is not ready (issue #1110).
 - Only days without a measurement are added, newest first, and only until the
   window holds its number of days. A day HSEM measured is never replaced and
   never pushed out by a backfilled day.
-- When HSEM measures a block of a day that was backfilled, the measurement
-  replaces the backfilled value.
+- Only days before HSEM started measuring the block are added. That date is
+  fixed the first time the sensor runs: the oldest measured day, or the day
+  of the first run on a new install. It is kept across restarts and shown in
+  the `backfill_before` attribute. A later day without a measurement was
+  rejected by the unobserved-block guard (issues #1101 and #1110) or lost to
+  downtime. Its statistics cover only part of the hour, so it stays missing.
+  The current day is never backfilled.
 - The backfilled dates are listed in the sensor's `backfilled_days` attribute.
 
 A fresh install with statistics for the house power sensor has a load
@@ -503,7 +517,15 @@ forecast after the first update. Without statistics (a new sensor, or one
 without a `state_class`) nothing changes: the windows fill one day at a time.
 
 The 96 average sensors share one statistics read per config entry, repeated
-at most once an hour and only while a window has a free place.
+at most once an hour and only while a window has a free place. A failed read
+is logged once as a warning and shared the same way: the sensors keep
+updating and the recorder is asked again an hour later.
+
+On upgrade the forecast shifts for every hour block whose window holds fewer
+measured days than its length. The free places are filled with days from
+before the oldest measured day, so the 3, 7 and 14-day averages of that block
+change on the first update after the upgrade. A window that is already full
+does not change.
 
 Limits:
 
@@ -511,8 +533,10 @@ Limits:
   Statistics hours are UTC hours and would not line up with the hour blocks
   otherwise, so nothing is backfilled.
 - Home Assistant fills statistics for an hour it was down with the last value
-  it knew. A backfilled hour from such a period is that value, not a
-  measurement.
+  it knew. A backfilled hour from before HSEM was installed can be such a
+  value, not a measurement. HSEM cannot tell from the statistics.
+- On the day the clocks go back, both passes of the repeated hour are summed
+  into one block. The utility meter resets once a day and does the same.
 
 ### ML mode: days with purged raw states
 

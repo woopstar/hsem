@@ -8,14 +8,28 @@ installed, so the days HSEM did not observe can be taken from there
 
 The profile is built the way the live path measures it
 (:class:`~custom_components.hsem.custom_sensors.house_consumption_power_sensor.HSEMHouseConsumptionPowerSensor`):
-the hourly mean of the house power source, minus both EV chargers when the
-house power includes them.  An hour is left out when a required source has
-no statistics for it, when the result is negative, and when the Home
-Assistant time zone is not a whole number of hours from UTC (statistics
-hours would not line up with the hour blocks).
+
+- The hourly mean of the house power source, minus both EV chargers when the
+  house power includes them.
+- Values are read in each sensor's own unit, without conversion, exactly as
+  the live path reads the states.  Measured and backfilled days in one window
+  are therefore always on the same scale.
+- A charger hour without statistics counts as 0 W, as an unavailable charger
+  does live.  A charger without any statistics cannot be subtracted, so
+  nothing is backfilled then.
+- The source is the configured house sensor, whatever its current state, so
+  a sensor that is slow at start-up is not replaced by the derived house
+  load.
+
+An hour is left out when the house source has no statistics for it and when
+the result is negative.  Nothing is backfilled when the Home Assistant time
+zone is not a whole number of hours from UTC (statistics hours would not
+line up with the hour blocks).
 
 All 96 average sensors of a config entry share one read, refreshed at most
-once an hour.
+once an hour.  A failed read is logged once and shared the same way, so the
+sensors keep updating and the recorder is not asked again until the next
+refresh.
 """
 
 from __future__ import annotations
@@ -28,12 +42,11 @@ from datetime import datetime, timedelta
 
 import homeassistant.util.dt as dt_util
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfPower
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.ml.statistics_reader import StatisticsReader
 from custom_components.hsem.utils.datetime_utils import cache_is_fresh
-from custom_components.hsem.utils.house_load import entry_house_power_entity
+from custom_components.hsem.utils.house_load import configured_house_power_entity
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.misc import get_config_value, optional_entity_id
 
@@ -64,9 +77,9 @@ _profile_cache: dict[str, _CachedProfile] = {}
 _profile_locks: dict[str, asyncio.Lock] = {}
 
 
-def _sources(hass: HomeAssistant, config_entry: ConfigEntry) -> _Sources | None:
-    """Return the entities the live path reads, or ``None`` without a source."""
-    house = entry_house_power_entity(hass, config_entry)
+def _sources(config_entry: ConfigEntry) -> _Sources | None:
+    """Return the configured entities, or ``None`` without a house source."""
+    house = configured_house_power_entity(config_entry)
     if not house:
         return None
     chargers: tuple[str, ...] = ()
@@ -91,11 +104,12 @@ async def async_consumption_profile(
     Returns:
         Energy in kWh per ``(ISO date, hour)`` for the last
         :data:`BACKFILL_DAYS` days.  Empty when the recorder is not loaded,
-        no house power source is configured or it has no statistics.
+        no house power source is configured, it has no statistics or the
+        read failed.
     """
     if "recorder" not in hass.config.components:
         return {}
-    sources = _sources(hass, config_entry)
+    sources = _sources(config_entry)
     if sources is None:
         return {}
 
@@ -109,7 +123,20 @@ async def async_consumption_profile(
             and cache_is_fresh(cached.fetched_at, now, PROFILE_REFRESH)
         ):
             return cached.profile
-        profile = await _read_profile(hass, sources, now)
+        try:
+            profile = await _read_profile(hass, sources, now)
+        except Exception as exc:
+            # A recorder or database error must not stop the sensor update.
+            # The empty result is cached, so the 96 sensors log and ask once.
+            _LOGGER.warning(
+                "Consumption backfill: reading statistics of %s failed, next "
+                "try in %s: %s: %r",
+                sources[0],
+                PROFILE_REFRESH,
+                type(exc).__name__,
+                exc,
+            )
+            profile = {}
         _profile_cache[entry_id] = _CachedProfile(now, sources, profile)
         _LOGGER.debug(
             "Consumption backfill: %d hour blocks from statistics of %s",
@@ -126,39 +153,50 @@ async def _read_profile(
     house_entity, charger_entities = sources
     start = now - timedelta(days=BACKFILL_DAYS)
     reader = StatisticsReader(hass)
-    house = await reader.read_hourly_mean(house_entity, start, now, UnitOfPower.WATT)
+    house = await reader.read_hourly_mean(house_entity, start, now)
     if not house:
         return {}
-    chargers = [
-        await reader.read_hourly_mean(entity_id, start, now, UnitOfPower.WATT)
-        for entity_id in charger_entities
-    ]
+    chargers: list[dict[datetime, float]] = []
+    for entity_id in charger_entities:
+        series = await reader.read_hourly_mean(entity_id, start, now)
+        if not series:
+            _LOGGER.info(
+                "Consumption backfill: %s has no long-term statistics, so EV "
+                "charging cannot be subtracted from %s. Nothing is backfilled.",
+                entity_id,
+                house_entity,
+            )
+            return {}
+        chargers.append(series)
 
     profile: ConsumptionProfile = {}
-    incomplete: set[tuple[str, int]] = set()
-    for hour_start, house_watts in house.items():
+    for hour_start, house_power in house.items():
         local = dt_util.as_local(hour_start)
         if local.minute:
             return {}
         block = (local.date().isoformat(), local.hour)
-        charger_watts = [series.get(hour_start) for series in chargers]
-        if any(watts is None for watts in charger_watts):
-            incomplete.add(block)
-            continue
+        # A charger hour without statistics is 0 W, as an unavailable charger
+        # is in the live path.
+        ev_power = sum(series.get(hour_start, 0.0) for series in chargers)
         # A mean of W over one hour is Wh.  Both folds of an autumn repeated
-        # hour land in the same block, as they do in the utility meter.
-        energy = (house_watts - sum(w for w in charger_watts if w is not None)) / 1000.0
+        # hour land in the same block: the utility meter resets once a day,
+        # on the first fold, and so holds both as well.
+        energy = (house_power - ev_power) / 1000.0
         profile[block] = profile.get(block, 0.0) + energy
 
     return {
         block: round(energy, 2)
         for block, energy in profile.items()
-        if block not in incomplete and math.isfinite(energy) and energy >= 0.0
+        if math.isfinite(energy) and energy >= 0.0
     }
 
 
 def missing_days(
-    profile: ConsumptionProfile, hour: int, observed: Collection[str], count: int
+    profile: ConsumptionProfile,
+    hour: int,
+    observed: Collection[str],
+    count: int,
+    before: str,
 ) -> dict[str, float]:
     """Return the newest days of *hour* that statistics know and HSEM does not.
 
@@ -167,6 +205,7 @@ def missing_days(
         hour: Start hour (0-23) of the block.
         observed: ISO dates that already have a measurement; never returned.
         count: The most days to return.
+        before: ISO date; only days earlier than it are returned.
 
     Returns:
         Energy in kWh per ISO date, at most ``count`` entries.
@@ -175,7 +214,7 @@ def missing_days(
         (
             day
             for day, block_hour in profile
-            if block_hour == hour and day not in observed
+            if block_hour == hour and day < before and day not in observed
         ),
         reverse=True,
     )
