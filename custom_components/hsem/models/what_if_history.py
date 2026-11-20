@@ -7,7 +7,10 @@ form, and kept for :data:`MAX_RECORDED_DAYS` days in its own history file.
 
 Only what the meters read is stored: grid import and export, the SoC at each
 slot boundary, both prices and PV.  The house load is derived from them at
-replay time, the same way the performance scoring derives it.
+replay time, the same way the performance scoring derives it.  That takes the
+battery's capacity and efficiencies, which turn a change in SoC into energy,
+so the ones in force on the day are stored with it: a battery that is changed
+later must not rewrite the days before the change.
 
 No Home Assistant imports.
 """
@@ -22,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from custom_components.hsem.models.performance_record import PerformanceSlot
+from custom_components.hsem.planner.hindsight_scoring import SiteLimits
 from custom_components.hsem.utils.persistence import (
     aware_datetime_from_iso,
     finite_float,
@@ -31,6 +35,9 @@ from custom_components.hsem.utils.persistence import (
 
 #: Version of the history file.  A file of another version is not read.
 SCHEMA_VERSION = 1
+
+#: Decimals kept of an efficiency fraction.
+_EFFICIENCY_DIGITS = 6
 
 #: Recorded days kept, and the longest history a what-if can replay.
 MAX_RECORDED_DAYS = 90
@@ -67,6 +74,9 @@ class RecordedDay:
         day: The local day as an ISO date.
         start: UTC start of the day's first slot.
         slot_minutes: Slot width.
+        rated_kwh: Rated battery capacity the day was recorded with.
+        charge_efficiency: Charge efficiency of that day, as a fraction.
+        discharge_efficiency: Discharge efficiency of that day, as a fraction.
         soc_pct: Battery SoC at each slot boundary: one value more than there
             are slots.
         grid_import_kwh: Grid import per slot.
@@ -79,6 +89,9 @@ class RecordedDay:
     day: str
     start: datetime
     slot_minutes: int
+    rated_kwh: float
+    charge_efficiency: float
+    discharge_efficiency: float
     soc_pct: tuple[float, ...]
     grid_import_kwh: tuple[float, ...]
     grid_export_kwh: tuple[float, ...]
@@ -87,7 +100,9 @@ class RecordedDay:
     pv_kwh: tuple[float | None, ...]
 
     @classmethod
-    def from_slots(cls, day: str, slots: Sequence[PerformanceSlot]) -> RecordedDay:
+    def from_slots(
+        cls, day: str, slots: Sequence[PerformanceSlot], site: SiteLimits
+    ) -> RecordedDay:
         """Return the day made of consecutive, complete recorded slots.
 
         A slot's SoC runs to the next slot's first reading, as in the
@@ -96,6 +111,7 @@ class RecordedDay:
         Args:
             day: The local day as an ISO date.
             slots: The day's slots in order, each with both SoC readings.
+            site: The installation's limits on that day.
 
         Raises:
             ValueError: If *slots* is empty.
@@ -106,6 +122,9 @@ class RecordedDay:
             day=day,
             start=slots[0].start.astimezone(UTC),
             slot_minutes=slots[0].minutes,
+            rated_kwh=site.rated_kwh,
+            charge_efficiency=site.charge_efficiency,
+            discharge_efficiency=site.discharge_efficiency,
             soc_pct=(
                 *(slot.soc_start_pct or 0.0 for slot in slots),
                 slots[-1].soc_end_pct or 0.0,
@@ -143,6 +162,11 @@ class RecordedDay:
             "day": self.day,
             "start": self.start.isoformat(),
             "slot_minutes": self.slot_minutes,
+            "rated_kwh": round(self.rated_kwh, _ENERGY_DIGITS),
+            "charge_efficiency": round(self.charge_efficiency, _EFFICIENCY_DIGITS),
+            "discharge_efficiency": round(
+                self.discharge_efficiency, _EFFICIENCY_DIGITS
+            ),
             "soc_pct": [round(value, _ENERGY_DIGITS) for value in self.soc_pct],
             "grid_import_kwh": [
                 round(value, _ENERGY_DIGITS) for value in self.grid_import_kwh
@@ -171,10 +195,18 @@ class RecordedDay:
         start = aware_datetime_from_iso(data.get("start"))
         minutes = finite_float(data.get("slot_minutes"), minimum=1.0, maximum=1440.0)
         pv = data.get("pv_kwh")
+        rated = finite_float(data.get("rated_kwh"), minimum=1e-6)
+        charge = finite_float(data.get("charge_efficiency"), minimum=1e-6, maximum=1.0)
+        discharge = finite_float(
+            data.get("discharge_efficiency"), minimum=1e-6, maximum=1.0
+        )
         if (
             not isinstance(day, str)
             or start is None
             or minutes is None
+            or rated is None
+            or charge is None
+            or discharge is None
             or not isinstance(pv, list)
             or not pv
         ):
@@ -188,6 +220,9 @@ class RecordedDay:
             day=day,
             start=start.astimezone(UTC),
             slot_minutes=int(minutes),
+            rated_kwh=rated,
+            charge_efficiency=charge,
+            discharge_efficiency=discharge,
             soc_pct=soc,
             pv_kwh=tuple(finite_float(value) for value in pv),
             **{name: values or () for name, values in series.items()},

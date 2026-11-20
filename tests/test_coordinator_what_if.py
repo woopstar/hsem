@@ -4,7 +4,9 @@ Two promises are pinned here.  A completed day reaches the what-if history
 through the same evaluation that scores it, so the service has something to
 replay long after the performance tracker dropped the slots.  And a replay
 runs off the event loop, one at a time, reading only: it leaves the planner's
-input, the plan and the hardware alone.
+input, the plan and the hardware alone.  One at a time means one executor
+thread: a caller that stops waiting, or a reload, does not free the slot
+before the thread has returned.
 """
 
 from __future__ import annotations
@@ -14,11 +16,12 @@ import copy
 import json
 import threading
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -32,12 +35,16 @@ from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.coordinator_what_if import (
     HISTORY_FILE,
     ORACLE_TIME_LIMIT_S,
+    PAUSE_BETWEEN_DAYS_S,
+    RUN_TIME_LIMIT_S,
     WhatIfBusyError,
     WhatIfUnavailableError,
     async_record_days,
     async_run_what_if,
     build_what_if_request,
+    cancel_what_if,
     init_what_if_history,
+    what_if_running,
 )
 from custom_components.hsem.models.performance_record import (
     REASON_INSUFFICIENT_COVERAGE,
@@ -58,7 +65,7 @@ from custom_components.hsem.utils.what_if import (
 )
 from tests.test_coordinator_cycle_paths import _coordinator
 from tests.test_coordinator_performance import _FakeHass, _finish, _live
-from tests.utils.what_if_days import FIRST_DAY, make_days
+from tests.utils.what_if_days import FIRST_DAY, SITE, make_days
 
 needs_scipy = pytest.mark.skipif(
     not is_scipy_available(), reason="scipy not available in this environment"
@@ -80,6 +87,22 @@ def _copenhagen() -> Iterator[None]:
         dt_util.set_default_time_zone(previous)
 
 
+@pytest.fixture(autouse=True)
+def _free_slot() -> Iterator[None]:
+    """Leave the process-wide replay slot free after every test."""
+    yield
+    coordinator_what_if._Flight.cancel = None
+
+
+async def _until_free() -> None:
+    """Wait for the executor thread of a replay to return."""
+    for _ in range(1000):
+        if not what_if_running():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("the replay never released its slot")
+
+
 def _coordinator_state(
     tmp_path: Path, planner_input: PlannerInput | None = None
 ) -> CoordinatorSharedState:
@@ -91,7 +114,6 @@ def _coordinator_state(
             _performance_tracker=PerformanceTracker(),
             _performance_task=None,
             _what_if_history=WhatIfHistory(),
-            _what_if_cancel=None,
             _last_planner_input=planner_input,
         ),
     )
@@ -101,7 +123,9 @@ def _history_file(tmp_path: Path) -> Path:
     return tmp_path / ".storage" / HISTORY_FILE
 
 
-def _day_request(*, complete: bool) -> PerformanceRequest:
+def _day_request(
+    *, complete: bool, site: SiteLimits | None = SITE
+) -> PerformanceRequest:
     """Return an evaluation request holding one local day of hourly slots."""
     start = datetime(2026, 6, 9, 22, 0, tzinfo=UTC)
     keys = tuple(start + timedelta(hours=index) for index in range(24))
@@ -125,7 +149,7 @@ def _day_request(*, complete: bool) -> PerformanceRequest:
         slot_minutes=60,
         window=keys,
         days=(("2026-06-10", keys),),
-        site=None,
+        site=site,
     )
 
 
@@ -171,6 +195,86 @@ class TestRecordingDays:
         assert day.start == datetime(2026, 6, 9, 22, 0, tzinfo=UTC)
         saved = json.loads(_history_file(tmp_path).read_text(encoding="utf-8"))
         assert [entry["day"] for entry in saved["days"]] == ["2026-06-10"]
+
+    @pytest.mark.asyncio
+    async def test_a_day_is_kept_with_the_battery_of_that_day(
+        self, tmp_path: Path
+    ) -> None:
+        coordinator = _coordinator_state(tmp_path)
+        site = SiteLimits(
+            rated_kwh=7.0,
+            min_soc_pct=5.0,
+            max_soc_pct=100.0,
+            max_charge_kw=3.5,
+            max_discharge_kw=3.5,
+            charge_efficiency=0.95,
+            discharge_efficiency=0.94,
+        )
+
+        await async_record_days(coordinator, _day_request(complete=True, site=site))
+
+        day = coordinator._what_if_history.days["2026-06-10"]
+        assert day.rated_kwh == pytest.approx(7.0)
+        assert day.charge_efficiency == pytest.approx(0.95)
+        assert day.discharge_efficiency == pytest.approx(0.94)
+
+    @pytest.mark.asyncio
+    async def test_a_day_before_the_limits_are_known_is_not_kept(
+        self, tmp_path: Path
+    ) -> None:
+        """Without the battery, the SoC of the day cannot be turned into energy."""
+        coordinator = _coordinator_state(tmp_path)
+
+        await async_record_days(coordinator, _day_request(complete=True, site=None))
+
+        assert coordinator._what_if_history.days == {}
+        assert not _history_file(tmp_path).exists()
+
+    @pytest.mark.asyncio
+    async def test_the_same_day_again_does_not_rewrite_the_file(
+        self, tmp_path: Path
+    ) -> None:
+        """An evaluation that keeps asking for a day writes it once."""
+        coordinator = _coordinator_state(tmp_path)
+
+        with patch.object(
+            coordinator_what_if, "persist_all_trackers", AsyncMock()
+        ) as persist:
+            await async_record_days(coordinator, _day_request(complete=True))
+            await async_record_days(coordinator, _day_request(complete=True))
+            assert persist.await_count == 1
+
+            # The day did change: it is written again.
+            changed = replace(SITE, rated_kwh=12.0)
+            await async_record_days(
+                coordinator, _day_request(complete=True, site=changed)
+            )
+            assert persist.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_an_evaluation_that_keeps_failing_writes_a_day_once(
+        self, tmp_path: Path
+    ) -> None:
+        """Through the real evaluation: it raises, the day stays unscored."""
+        coordinator = _coordinator_state(tmp_path)
+        request = _day_request(complete=True)
+
+        with (
+            patch.object(
+                coordinator_performance,
+                "evaluate_performance",
+                side_effect=RuntimeError("solver broke"),
+            ),
+            patch.object(coordinator_performance, "async_log"),
+            patch.object(
+                coordinator_what_if, "persist_all_trackers", AsyncMock()
+            ) as persist,
+        ):
+            await coordinator_performance._async_evaluate(coordinator, request)
+            await coordinator_performance._async_evaluate(coordinator, request)
+
+        assert "2026-06-10" in coordinator._what_if_history.days
+        assert persist.await_count == 1
 
     @pytest.mark.asyncio
     async def test_a_day_with_a_gap_is_not_kept(self, tmp_path: Path) -> None:
@@ -285,6 +389,10 @@ class TestRequest:
         assert request.scenarios == _BIGGER
         assert request.capacity_price_per_kwh == pytest.approx(2500.0)
         assert request.time_limit_s == pytest.approx(ORACLE_TIME_LIMIT_S)
+        # The whole run is bounded and hands the processor over between days.
+        assert request.budget_s == pytest.approx(RUN_TIME_LIMIT_S)
+        assert request.pause_s == pytest.approx(PAUSE_BETWEEN_DAYS_S)
+        assert request.pause_s > 0.0
         assert request.site == SiteLimits.from_planner_input(PlannerInput())
 
     def test_the_recorded_days_are_a_copy(self, tmp_path: Path) -> None:
@@ -390,7 +498,7 @@ class TestRun:
         assert coordinator._performance_tracker.days == {}
         # Nothing was written: the history file was never created.
         assert not _history_file(tmp_path).exists()
-        assert coordinator._what_if_cancel is None
+        await _until_free()
 
     @pytest.mark.asyncio
     async def test_only_one_runs_at_a_time(self, tmp_path: Path) -> None:
@@ -416,7 +524,146 @@ class TestRun:
             release.set()
             assert await first == {"cancelled": False}
 
-        assert coordinator._what_if_cancel is None
+        await _until_free()
+
+    @pytest.mark.asyncio
+    async def test_a_planner_cycle_is_not_delayed_by_a_running_replay(
+        self, tmp_path: Path
+    ) -> None:
+        """While a replay sits in the executor, a cycle runs and finishes.
+
+        The cycle here does what a planner cycle does to the machinery the
+        replay shares with it: it takes turns on the event loop and sends a
+        job of its own to the executor.  Both finish while the replay is still
+        running.
+        """
+        coordinator = _coordinator_state(tmp_path, PlannerInput())
+        release = threading.Event()
+        running = threading.Event()
+
+        def slow(request: Any, cancelled: Any) -> dict[str, Any]:
+            running.set()
+            release.wait(timeout=10.0)
+            return {}
+
+        async def cycle() -> str:
+            for _ in range(50):
+                await asyncio.sleep(0)
+            return await coordinator.hass.async_add_executor_job(lambda: "planned")
+
+        with patch.object(coordinator_what_if, "run_what_if", slow):
+            replay = asyncio.create_task(
+                async_run_what_if(coordinator, _NOW, history_days=1, scenarios=_BIGGER)
+            )
+            await asyncio.to_thread(running.wait, 10.0)
+
+            assert await asyncio.wait_for(cycle(), timeout=5.0) == "planned"
+            assert not replay.done()
+            assert what_if_running()
+
+            release.set()
+            await replay
+
+    @pytest.mark.asyncio
+    async def test_a_caller_that_is_cancelled_stops_the_replay(
+        self, tmp_path: Path
+    ) -> None:
+        """A stopped script must not leave a thread solving for nobody.
+
+        The slot stays taken until that thread has returned: a second call,
+        also from a coordinator made by a reload, is refused meanwhile.
+        """
+        coordinator = _coordinator_state(tmp_path, PlannerInput())
+        running = threading.Event()
+        finish = threading.Event()
+        seen: list[bool] = []
+
+        def slow(request: Any, cancelled: Any) -> None:
+            running.set()
+            for _ in range(1000):
+                if cancelled():
+                    break
+                finish.wait(timeout=0.01)
+            seen.append(cancelled())
+            finish.wait(timeout=10.0)
+
+        with patch.object(coordinator_what_if, "run_what_if", slow):
+            caller = asyncio.create_task(
+                async_run_what_if(coordinator, _NOW, history_days=1, scenarios=_BIGGER)
+            )
+            await asyncio.to_thread(running.wait, 10.0)
+
+            caller.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await caller
+
+            # The thread is still in its last solve: the slot is not free.
+            assert what_if_running()
+            reloaded = _coordinator_state(tmp_path, PlannerInput())
+            for other in (coordinator, reloaded):
+                with pytest.raises(WhatIfBusyError):
+                    await async_run_what_if(
+                        other, _NOW, history_days=1, scenarios=_BIGGER
+                    )
+
+            finish.set()
+            await _until_free()
+
+        assert seen == [True]
+
+    @pytest.mark.asyncio
+    async def test_a_reload_cannot_start_a_second_replay(self, tmp_path: Path) -> None:
+        """Teardown asks the replay to stop; the new coordinator waits for it."""
+        old = _coordinator_state(tmp_path, PlannerInput())
+        running = threading.Event()
+        finish = threading.Event()
+
+        def slow(request: Any, cancelled: Any) -> None:
+            running.set()
+            finish.wait(timeout=10.0)
+            return None
+
+        with patch.object(coordinator_what_if, "run_what_if", slow):
+            caller = asyncio.create_task(
+                async_run_what_if(old, _NOW, history_days=1, scenarios=_BIGGER)
+            )
+            await asyncio.to_thread(running.wait, 10.0)
+
+            cancel_what_if()
+            new = _coordinator_state(tmp_path, PlannerInput())
+            with pytest.raises(WhatIfBusyError):
+                await async_run_what_if(new, _NOW, history_days=1, scenarios=_BIGGER)
+
+            finish.set()
+            assert await caller is None
+            await _until_free()
+            # The old thread is gone: the new coordinator may run.
+            finish.clear()
+            running.clear()
+            again = asyncio.create_task(
+                async_run_what_if(new, _NOW, history_days=1, scenarios=_BIGGER)
+            )
+            await asyncio.to_thread(running.wait, 10.0)
+            finish.set()
+            assert await again is None
+
+    @pytest.mark.asyncio
+    async def test_a_call_that_lost_the_race_for_the_slot_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """Another call may take the slot while the history file is read."""
+        coordinator = _coordinator_state(tmp_path, PlannerInput())
+
+        async def taken(*_args: Any) -> None:
+            coordinator_what_if._Flight.cancel = threading.Event()
+
+        with (
+            patch.object(coordinator_what_if, "init_what_if_history", taken),
+            pytest.raises(WhatIfBusyError),
+        ):
+            await async_run_what_if(
+                coordinator, _NOW, history_days=1, scenarios=_BIGGER
+            )
 
     @pytest.mark.asyncio
     async def test_a_run_that_fails_frees_the_slot(self, tmp_path: Path) -> None:
@@ -432,7 +679,7 @@ class TestRun:
                 coordinator, _NOW, history_days=1, scenarios=_BIGGER
             )
 
-        assert coordinator._what_if_cancel is None
+        await _until_free()
 
     @pytest.mark.asyncio
     async def test_a_request_that_cannot_be_built_does_not_take_the_slot(
@@ -445,11 +692,16 @@ class TestRun:
                 coordinator, _NOW, history_days=1, scenarios=_BIGGER
             )
 
-        assert coordinator._what_if_cancel is None
+        assert not what_if_running()
+
+    def test_cancelling_when_nothing_runs_does_nothing(self) -> None:
+        cancel_what_if()
+
+        assert not what_if_running()
 
     def test_teardown_stops_a_running_replay(self) -> None:
         coordinator, _published = _coordinator()
-        cancel = coordinator._what_if_cancel = threading.Event()
+        cancel = coordinator_what_if._Flight.cancel = threading.Event()
         loop = asyncio.new_event_loop()
         try:
             loop.run_until_complete(coordinator.async_teardown())
@@ -457,10 +709,11 @@ class TestRun:
             loop.close()
 
         assert cancel.is_set()
+        # Asked to stop, but the slot is the thread's to give back.
+        assert what_if_running()
 
-    def test_a_new_coordinator_has_an_empty_history_and_no_replay(self) -> None:
+    def test_a_new_coordinator_has_an_empty_history(self) -> None:
         coordinator, _published = _coordinator()
 
         assert coordinator._what_if_history.days == {}
-        assert coordinator._what_if_cancel is None
         assert FIRST_DAY.isoformat() not in coordinator._what_if_history.days

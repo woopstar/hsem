@@ -16,7 +16,6 @@ assigns and is never instantiated.
 from __future__ import annotations
 
 import asyncio
-import threading
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -178,7 +177,6 @@ class CoordinatorSharedState(_Base):
     _tracked_entities: set[str]
     _update_generation: int
     _update_lock: asyncio.Lock
-    _what_if_cancel: threading.Event | None
     _what_if_history: WhatIfHistory
     _pool_jobs: PoolJobGuard
     _window_hys_held: bool

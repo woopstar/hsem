@@ -8,10 +8,15 @@ Two jobs, both read-only towards the planner and the hardware:
 
 Nothing here is awaited by a coordinator cycle except the copy of a day, which
 solves nothing.
+
+One replay runs per process, not per coordinator: a reload makes a new
+coordinator while the old one's replay may still be in its last solve, and the
+slot stays taken until that thread has really returned.
 """
 
 from __future__ import annotations
 
+import asyncio
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -41,6 +46,30 @@ HISTORY_FILE = "hsem_what_if_history.json"
 #: Wall-clock limit for one hindsight solve, as for the performance sensors.
 ORACLE_TIME_LIMIT_S = 10.0
 
+#: Wall-clock limit for a whole replay.  Days it does not reach are reported
+#: as skipped, so a run of slow solves cannot occupy the device for hours.
+RUN_TIME_LIMIT_S = 600.0
+
+#: Sleep after each replayed day.
+PAUSE_BETWEEN_DAYS_S = 0.02
+
+
+class _Flight:
+    """The one replay that may run: its cancel flag, or ``None`` when idle."""
+
+    cancel: threading.Event | None = None
+
+
+def what_if_running() -> bool:
+    """Return whether a replay holds the slot, cancelled or not."""
+    return _Flight.cancel is not None
+
+
+def cancel_what_if() -> None:
+    """Ask the running replay, if any, to stop before its next solve."""
+    if _Flight.cancel is not None:
+        _Flight.cancel.set()
+
 
 class WhatIfBusyError(Exception):
     """A what-if is already running."""
@@ -69,14 +98,17 @@ async def async_record_days(
     """Copy the completed days of an evaluation into the what-if history.
 
     A day is kept only when every one of its slots is complete, which is what
-    the performance scoring asks before it scores a day.
+    the performance scoring asks before it scores a day, and only once the
+    battery's limits are known.  The file is written only when a day is new
+    or has changed: an evaluation that asks for the same day again, slot
+    after slot, does not rewrite it.
 
     Args:
         coordinator: The running coordinator.
         request: The evaluation request, whose slots are already detached.
     """
     history = getattr(coordinator, "_what_if_history", None)
-    if history is None:
+    if history is None or request.site is None:
         return
     await init_what_if_history(history, coordinator.hass)
     added = False
@@ -84,8 +116,11 @@ async def async_record_days(
         usable = usable_slots(
             [request.slots.get(key) for key in keys], request.slot_minutes
         )
-        if len(usable) == len(keys):
-            history.add(RecordedDay.from_slots(day, usable))
+        if len(usable) != len(keys):
+            continue
+        recorded = RecordedDay.from_slots(day, usable, request.site)
+        if history.days.get(day) != recorded:
+            history.add(recorded)
             added = True
     if added:
         await persist_all_trackers(coordinator, only=["_what_if_history"])
@@ -142,6 +177,8 @@ def build_what_if_request(
         scenarios=scenarios,
         capacity_price_per_kwh=capacity_price_per_kwh,
         time_limit_s=ORACLE_TIME_LIMIT_S,
+        budget_s=RUN_TIME_LIMIT_S,
+        pause_s=PAUSE_BETWEEN_DAYS_S,
     )
 
 
@@ -165,6 +202,10 @@ async def async_run_what_if(
         scenarios: The batteries to compare.
         capacity_price_per_kwh: Price of one kWh of usable capacity.
 
+    A caller that is cancelled (a script that is stopped, an automation that
+    restarts) stops the replay too.  The slot is released when the executor
+    thread has returned, not when the caller stopped waiting for it.
+
     Returns:
         The response of :func:`run_what_if`, or ``None`` when the run was
         cancelled because the integration is shutting down.
@@ -173,7 +214,7 @@ async def async_run_what_if(
         WhatIfBusyError: While another what-if is running.
         WhatIfUnavailableError: When the battery's limits are not known.
     """
-    if coordinator._what_if_cancel is not None:
+    if what_if_running():
         raise WhatIfBusyError("a what-if is already running")
     await init_what_if_history(coordinator._what_if_history, coordinator.hass)
     request = build_what_if_request(
@@ -183,10 +224,25 @@ async def async_run_what_if(
         scenarios=scenarios,
         capacity_price_per_kwh=capacity_price_per_kwh,
     )
-    cancel = coordinator._what_if_cancel = threading.Event()
+    if what_if_running():
+        # Another call took the slot while the history was being read.
+        raise WhatIfBusyError("a what-if is already running")
+    cancel = _Flight.cancel = threading.Event()
+
+    def release(done: asyncio.Future[Any]) -> None:
+        """Free the slot once the executor thread has returned."""
+        if _Flight.cancel is cancel:
+            _Flight.cancel = None
+        if not done.cancelled():
+            # Retrieved here too: the caller may have stopped waiting.
+            done.exception()
+
+    job = asyncio.ensure_future(
+        coordinator.hass.async_add_executor_job(run_what_if, request, cancel.is_set)
+    )
+    job.add_done_callback(release)
     try:
-        return await coordinator.hass.async_add_executor_job(
-            run_what_if, request, cancel.is_set
-        )
-    finally:
-        coordinator._what_if_cancel = None
+        return await asyncio.shield(job)
+    except asyncio.CancelledError:
+        cancel.set()
+        raise

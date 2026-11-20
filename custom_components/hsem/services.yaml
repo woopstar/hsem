@@ -72,8 +72,9 @@ what_if:
     load, PV and prices. Both costs are perfect-foresight bounds, so read the
     difference as an estimate, not a promise. Read-only: nothing is written to
     the inverter and the active plan is not touched. Response keys:
-    history_days, days_compared, days_skipped, skipped_reasons, current,
-    scenarios, days, note, duration_seconds.
+    history_days, days_compared, first_day_compared, last_day_compared,
+    days_skipped, days_timed_out, skipped_reasons, current, scenarios, days,
+    note, duration_seconds.
   fields:
     history_days:
       required: false

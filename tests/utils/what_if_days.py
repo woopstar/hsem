@@ -68,6 +68,9 @@ def make_day(
         day=day.isoformat(),
         start=datetime(day.year, day.month, day.day, tzinfo=UTC),
         slot_minutes=minutes,
+        rated_kwh=site.rated_kwh,
+        charge_efficiency=site.charge_efficiency,
+        discharge_efficiency=site.discharge_efficiency,
         soc_pct=(
             start_soc_pct,
             *(stored / site.rated_kwh * 100.0 for stored in run.stored_kwh),

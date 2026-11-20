@@ -2917,13 +2917,17 @@ Tests: `tests/planner/test_hindsight_scoring.py`, `tests/models/test_performance
 
 ## `hsem.what_if` Replays Recorded Days With Another Battery (issue #1432)
 
-- The performance tracker keeps slots for 50 hours and only a score per day after that. A replay needs the slots, so `models/what_if_history.py` (`RecordedDay`, `WhatIfHistory`) keeps the meter readings of each complete local day for 90 days in `.storage/hsem_what_if_history.json`. `coordinator_what_if.async_record_days` fills it from the same `PerformanceRequest` that scores the day; it is saved only when a day is added.
+- The performance tracker keeps slots for 50 hours and only a score per day after that. A replay needs the slots, so `models/what_if_history.py` (`RecordedDay`, `WhatIfHistory`) keeps the meter readings of each complete local day for 90 days in `.storage/hsem_what_if_history.json`. `coordinator_what_if.async_record_days` fills it from the same `PerformanceRequest` that scores the day; it is saved only when a day is new or changed, so an evaluation that keeps failing does not rewrite the file every slot.
 - `utils/what_if.py::run_what_if` is pure and blocking. Per day: `RecordedDay.performance_slots()` → `realized_slots` → `realized_window` → `meter_contradiction`, then `solve_hindsight_oracle` once for the configured battery and once per scenario. Never write a second simulator or a second load reconstruction for this.
 - A scenario is a `SiteLimits` derived from the configured one (`WhatIfScenario.site`). Usable capacity scales `rated_kwh`, the SoC limits stay.
 - Start and end energy are carried over counted from the end-of-discharge floor and capped at the scenario's capacity. Extra capacity starts each day empty.
 - Battery wear enters through `solve_hindsight_oracle(throughput_cost_per_kwh=...)`. `HindsightRun.cost` stays the grid cost; the what-if adds wear itself. Scores never pass a wear.
 - A day counts only when every scenario of the call solved, so all rows cover the same days.
-- Single flight is `coordinator._what_if_cancel` (a `threading.Event`, `None` when idle). Teardown sets it; the run checks it before each day.
+- Single flight is process-wide: `coordinator_what_if._Flight.cancel` (a `threading.Event`, `None` when idle), not a coordinator attribute, so a reload cannot start a second replay. `async_run_what_if` shields the executor job, sets the event when the caller is cancelled, and frees the slot in the job's done-callback: only when the thread has returned. Teardown calls `cancel_what_if()`. The run checks the event before each day and before each solve.
+- Payback is `investment ÷ grid_savings_per_year`. Never divide by a wear-inclusive figure: `resolve_cycle_cost` is the purchase price spread over the battery's life, so that charges the battery twice. `savings_after_wear` is reported next to `grid_savings`. No yearly figure below `MIN_DAYS_FOR_YEARLY` compared days.
+- A scenario's per-slot power cap is its own limit plus what the meter read above the configured limit (`_power_caps`), for both sides. An identical scenario must save exactly nothing.
+- `RecordedDay` stores `rated_kwh` and both efficiencies of its day; `replay_day` rebuilds the load with them and solves both sides with today's limits. A day is not recorded before `PerformanceRequest.site` is known.
+- A run is bounded: `RUN_TIME_LIMIT_S` (days not reached are `run_time_limit`), `oracle_timeout` is told apart from `oracle_unsolved` by the solve's elapsed time, and `PAUSE_BETWEEN_DAYS_S` sleeps between days. scipy's HiGHS releases the GIL during a solve.
 - The service lives in `services_what_if.py` and is read-only: no hardware write, no planner cycle, no tracker write.
 
 Tests: `tests/models/test_what_if_history.py`, `tests/utils/test_what_if.py`, `tests/test_coordinator_what_if.py`, `tests/test_services_what_if.py`.

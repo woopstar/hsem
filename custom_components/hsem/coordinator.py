@@ -30,7 +30,6 @@ it from the config entry and passes it to the relevant entity constructors.
 from __future__ import annotations
 
 import asyncio
-import threading
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, override
@@ -350,10 +349,8 @@ class HSEMDataUpdateCoordinator(
         # (issue #1182). Its evaluation runs as a background executor task.
         self._performance_tracker: PerformanceTracker = PerformanceTracker()
         self._performance_task: asyncio.Task | None = None
-        # Recorded days for the what_if service (issue #1432), and the cancel
-        # flag of the one replay that may run at a time.
+        # Recorded days for the what_if service (issue #1432).
         self._what_if_history: WhatIfHistory = WhatIfHistory()
-        self._what_if_cancel: threading.Event | None = None
         # Last slot end time accumulated from planner output (prevents double-counting).
         self._daily_plan_last_accumulated: datetime | None = None
         # Timestamp of the last actual-energy accumulation cycle.

@@ -22,7 +22,7 @@ from custom_components.hsem.models.what_if_history import (
     RecordedDay,
     WhatIfHistory,
 )
-from tests.utils.what_if_days import FIRST_DAY, make_day
+from tests.utils.what_if_days import FIRST_DAY, SITE, make_day
 
 _START = datetime(2026, 6, 9, 22, 0, tzinfo=UTC)
 
@@ -49,20 +49,24 @@ def _slots(count: int = 4) -> list[PerformanceSlot]:
 class TestRecordedDay:
     def test_the_soc_boundaries_form_one_series(self) -> None:
         """A slot runs to the next slot's first reading, as in the scoring."""
-        day = RecordedDay.from_slots("2026-06-10", _slots())
+        day = RecordedDay.from_slots("2026-06-10", _slots(), SITE)
 
         assert day.start == _START
         assert day.slot_minutes == 60
+        # The battery that turns the SoC into energy is kept with the day.
+        assert day.rated_kwh == pytest.approx(SITE.rated_kwh)
+        assert day.charge_efficiency == pytest.approx(SITE.charge_efficiency)
+        assert day.discharge_efficiency == pytest.approx(SITE.discharge_efficiency)
         assert day.soc_pct == pytest.approx((50.0, 51.0, 52.0, 53.0, 53.9))
         assert day.grid_import_kwh == pytest.approx((1.0, 2.0, 3.0, 4.0))
         assert day.pv_kwh[2] is None
 
     def test_a_day_without_slots_is_refused(self) -> None:
         with pytest.raises(ValueError, match="at least one slot"):
-            RecordedDay.from_slots("2026-06-10", [])
+            RecordedDay.from_slots("2026-06-10", [], SITE)
 
     def test_it_comes_back_as_slots_the_scoring_takes(self) -> None:
-        slots = RecordedDay.from_slots("2026-06-10", _slots()).performance_slots()
+        slots = RecordedDay.from_slots("2026-06-10", _slots(), SITE).performance_slots()
 
         assert [slot.start for slot in slots] == [
             _START + timedelta(hours=index) for index in range(4)
@@ -86,6 +90,9 @@ class TestRecordedDay:
         assert restored.day == day.day
         assert restored.start == day.start
         assert restored.slot_minutes == day.slot_minutes
+        assert restored.rated_kwh == pytest.approx(day.rated_kwh)
+        assert restored.charge_efficiency == pytest.approx(day.charge_efficiency)
+        assert restored.discharge_efficiency == pytest.approx(day.discharge_efficiency)
         assert restored.soc_pct == pytest.approx(day.soc_pct, abs=1e-4)
         assert restored.grid_import_kwh == pytest.approx(day.grid_import_kwh, abs=1e-4)
         assert restored.grid_export_kwh == pytest.approx(day.grid_export_kwh, abs=1e-4)
@@ -94,7 +101,7 @@ class TestRecordedDay:
         assert restored.pv_kwh == pytest.approx(day.pv_kwh, abs=1e-4)
 
     def test_unobserved_pv_stays_unobserved(self) -> None:
-        day = RecordedDay.from_slots("2026-06-10", _slots())
+        day = RecordedDay.from_slots("2026-06-10", _slots(), SITE)
 
         restored = RecordedDay.from_dict(day.as_dict())
 
@@ -113,10 +120,14 @@ class TestRecordedDay:
             {"soc_pct": [50.0, 51.0]},
             {"grid_import_kwh": [1.0, 2.0, 3.0, "much"]},
             {"export_price": "none"},
+            {"rated_kwh": None},
+            {"rated_kwh": 0.0},
+            {"charge_efficiency": 1.2},
+            {"discharge_efficiency": "good"},
         ],
     )
     def test_a_damaged_entry_is_not_read(self, damage: dict[str, Any]) -> None:
-        data = RecordedDay.from_slots("2026-06-10", _slots()).as_dict()
+        data = RecordedDay.from_slots("2026-06-10", _slots(), SITE).as_dict()
 
         assert RecordedDay.from_dict({**data, **damage}) is None
 

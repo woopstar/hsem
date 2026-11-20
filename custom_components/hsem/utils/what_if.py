@@ -16,12 +16,19 @@ really had, counted from the end-of-discharge floor and capped at what the
 battery in question can hold.  Extra capacity therefore starts the day empty
 and is worth only what it shifts within the day.
 
+Two figures are kept apart.  The *grid* savings are money not paid to the
+grid, and they are what a payback time is counted from.  The savings *after
+wear* also subtract the battery's depreciation per kWh cycled, which is the
+purchase price spread over its life: dividing an investment by them would
+charge the battery twice.
+
 Pure functions with no Home Assistant imports: the coordinator runs
 :func:`run_what_if` in the executor.
 """
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from typing import Any
@@ -35,7 +42,6 @@ from custom_components.hsem.planner._scipy_probe import is_scipy_available
 from custom_components.hsem.planner.hindsight_oracle import (
     ORACLE_TIME_LIMIT_S,
     HindsightBattery,
-    HindsightRun,
     solve_hindsight_oracle,
 )
 from custom_components.hsem.planner.hindsight_scoring import (
@@ -53,8 +59,17 @@ from custom_components.hsem.utils.performance_scoring import (
 #: complete record of it.
 REASON_NOT_RECORDED = "not_recorded"
 
+#: Why a day has no comparison: a solve ran into its time limit.
+REASON_ORACLE_TIMEOUT = "oracle_timeout"
+
+#: Why a day has no comparison: the whole run ran out of time before it.
+REASON_RUN_TIME_LIMIT = "run_time_limit"
+
 #: Most scenarios one call may compare: each costs one solve per day.
 MAX_SCENARIOS = 10
+
+#: Fewest compared days a yearly figure, and so a payback time, is given for.
+MIN_DAYS_FOR_YEARLY = 7
 
 #: What every response says about its own figures.
 NOTE = (
@@ -62,7 +77,12 @@ NOTE = (
     "been with the battery's hard limits and full knowledge of load, PV and "
     "prices. Neither is what HSEM would have achieved. Read the difference as "
     "an estimate of what the hardware change is worth, not as a promise. "
-    "Every day starts and ends with the stored energy the battery really had."
+    "Every day starts and ends with the stored energy the battery really had. "
+    "Yearly figures and the payback time scale the compared days to 365 days: "
+    "they carry the season of those days and are biased unless the days cover "
+    f"a full year. They are left out below {MIN_DAYS_FOR_YEARLY} compared days. "
+    "The payback time is counted from the grid savings alone, since battery "
+    "wear is the purchase price spread over the battery's life."
 )
 
 _DAYS_PER_YEAR = 365.0
@@ -134,12 +154,18 @@ class WhatIfRequest:
         recorded: The recorded days by ISO date.
         reasons: Why the performance scoring had no score for a day, by ISO
             date; used to say why a day that is not recorded is skipped.
-        site: The installation's hard limits as configured.
+        site: The installation's hard limits as configured today.  A day's
+            load is rebuilt with the capacity and efficiencies recorded with
+            that day; both sides of the comparison then use these limits.
         cycle_cost_per_kwh: The configured wear per kWh of battery throughput.
         scenarios: The batteries to compare, at least one.
         capacity_price_per_kwh: Price of one kWh of usable capacity, for the
             payback time; ``None`` for no payback.
         time_limit_s: Wall-clock limit for each oracle solve.
+        budget_s: Wall-clock limit for the whole run; days it does not reach
+            are skipped.  ``None`` for no limit.
+        pause_s: Sleep after each replayed day, which hands the processor to
+            whatever else is waiting for it.
     """
 
     days: tuple[str, ...]
@@ -150,6 +176,8 @@ class WhatIfRequest:
     scenarios: tuple[WhatIfScenario, ...]
     capacity_price_per_kwh: float | None = None
     time_limit_s: float | None = None
+    budget_s: float | None = None
+    pause_s: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -196,19 +224,32 @@ def capacity_range(start_kwh: float, end_kwh: float, step_kwh: float) -> list[fl
     return [round(start_kwh + index * step_kwh, 6) for index in range(count)]
 
 
+def _power_caps(
+    battery_kw: float,
+    configured_kw: float,
+    measured_kwh: tuple[float, ...],
+    window: RealizedWindow,
+) -> list[float]:
+    """Return a battery's per-slot power limit for a recorded day.
+
+    The battery's own limit, plus whatever the meter read above the
+    *configured* limit in that slot.  The same rule for both sides of a
+    comparison: the configured battery can repeat what it really did, and a
+    scenario with the configured power gets the configured battery's limits.
+    """
+    return [
+        battery_kw * slot.hours + max(measured - configured_kw * slot.hours, 0.0)
+        for slot, measured in zip(window.slots, measured_kwh, strict=True)
+    ]
+
+
 def _solve(
     window: RealizedWindow,
     battery: HindsightBattery,
-    scenario: WhatIfScenario,
     cycle_cost_per_kwh: float,
-    time_limit_s: float | None,
-) -> HindsightRun | None:
-    """Return the oracle of a day for one battery.
-
-    The grid limits, and any battery power limit the scenario leaves alone,
-    are the day's own: never below what was measured, so the configured
-    battery can always repeat what it really did.
-    """
+    time_limit_s: float,
+) -> _Cost | None:
+    """Return what a day costs with one battery, or ``None`` if unsolved."""
     floor = window.configured.min_stored_kwh
 
     def placed(stored_kwh: float) -> float:
@@ -218,65 +259,99 @@ def _solve(
             battery.max_stored_kwh,
         )
 
-    return solve_hindsight_oracle(
+    run = solve_hindsight_oracle(
         window.slots,
         battery,
         placed(window.start_kwh),
         placed(window.stored_kwh[-1]),
-        max_charge_kwh=(
-            window.caps["max_charge_kwh"] if scenario.max_charge_kw is None else None
+        max_charge_kwh=_power_caps(
+            battery.max_charge_kw,
+            window.configured.max_charge_kw,
+            window.charged_kwh,
+            window,
         ),
-        max_discharge_kwh=(
-            window.caps["max_discharge_kwh"]
-            if scenario.max_discharge_kw is None
-            else None
+        max_discharge_kwh=_power_caps(
+            battery.max_discharge_kw,
+            window.configured.max_discharge_kw,
+            window.discharged_kwh,
+            window,
         ),
         max_grid_import_kwh=window.caps["max_grid_import_kwh"],
         max_grid_export_kwh=window.caps["max_grid_export_kwh"],
         throughput_cost_per_kwh=cycle_cost_per_kwh,
-        time_limit_s=ORACLE_TIME_LIMIT_S if time_limit_s is None else time_limit_s,
+        time_limit_s=time_limit_s,
     )
+    if run is None:
+        return None
+    throughput = sum(run.charged_kwh) + sum(run.discharged_kwh)
+    return _Cost(grid=run.cost, wear=cycle_cost_per_kwh * throughput)
 
 
 def replay_day(
-    day: RecordedDay, request: WhatIfRequest, sides: tuple[WhatIfScenario, ...]
-) -> list[_Cost] | str:
+    day: RecordedDay,
+    request: WhatIfRequest,
+    sides: tuple[WhatIfScenario, ...],
+    cancelled: Callable[[], bool] = lambda: False,
+) -> list[_Cost] | str | None:
     """Return what a recorded day costs with each of *sides*.
+
+    The day's load is rebuilt with the capacity and efficiencies the day was
+    recorded with, so a battery that has been changed since does not distort
+    the days before the change.
 
     Args:
         day: The recorded day.
         request: The what-if being run.
         sides: The batteries to run the day with.
+        cancelled: Asked before each solve.
 
     Returns:
-        One cost per side, or the reason the day cannot be compared.  A day
-        counts only when every side could be solved, so that all scenarios of
-        one call cover the same days.
+        One cost per side, the reason the day cannot be compared, or ``None``
+        when the run was cancelled.  A day counts only when every side could
+        be solved, so that all scenarios of one call cover the same days.
     """
     if not is_scipy_available():
         return REASON_SCIPY_UNAVAILABLE
-    site = request.site
-    realized = realized_slots(day.performance_slots(), site)
-    window = realized_window(realized, site.rated_kwh * day.soc_pct[0] / 100.0, site)
+    recorded = replace(
+        request.site,
+        rated_kwh=day.rated_kwh,
+        charge_efficiency=day.charge_efficiency,
+        discharge_efficiency=day.discharge_efficiency,
+    )
+    realized = realized_slots(day.performance_slots(), recorded)
+    window = realized_window(
+        realized, recorded.rated_kwh * day.soc_pct[0] / 100.0, recorded
+    )
     contradiction = meter_contradiction(
         window, realized, unexplained_energy_kwh(realized)
     )
     if contradiction is not None:
         return contradiction
+    limit = (
+        ORACLE_TIME_LIMIT_S if request.time_limit_s is None else request.time_limit_s
+    )
     costs: list[_Cost] = []
     for side in sides:
-        cycle_cost = (
-            request.cycle_cost_per_kwh
-            if side.cycle_cost_per_kwh is None
-            else side.cycle_cost_per_kwh
+        if cancelled():
+            return None
+        started = time.monotonic()
+        cost = _solve(
+            window,
+            side.site(request.site).battery(),
+            (
+                request.cycle_cost_per_kwh
+                if side.cycle_cost_per_kwh is None
+                else side.cycle_cost_per_kwh
+            ),
+            limit,
         )
-        run = _solve(
-            window, side.site(site).battery(), side, cycle_cost, request.time_limit_s
-        )
-        if run is None:
-            return REASON_ORACLE_UNSOLVED
-        throughput = sum(run.charged_kwh) + sum(run.discharged_kwh)
-        costs.append(_Cost(grid=run.cost, wear=cycle_cost * throughput))
+        if cost is None:
+            return (
+                REASON_ORACLE_TIMEOUT
+                if time.monotonic() - started >= limit
+                else REASON_ORACLE_UNSOLVED
+            )
+        costs.append(cost)
     return costs
 
 
@@ -305,18 +380,25 @@ def _row(
         if scenario.cycle_cost_per_kwh is None
         else scenario.cycle_cost_per_kwh
     )
-    current_cost = sum(cost.total for cost in current)
-    scenario_cost = sum(cost.total for cost in changed)
-    savings = current_cost - scenario_cost
-    yearly = savings / len(current) * _DAYS_PER_YEAR if current else None
+    current_grid = sum(cost.grid for cost in current)
+    scenario_grid = sum(cost.grid for cost in changed)
+    current_wear = sum(cost.wear for cost in current)
+    scenario_wear = sum(cost.wear for cost in changed)
+    grid_savings = current_grid - scenario_grid
+    yearly = (
+        grid_savings / len(current) * _DAYS_PER_YEAR
+        if len(current) >= MIN_DAYS_FOR_YEARLY
+        else None
+    )
     row: dict[str, Any] = {
         **_limits(site, cycle_cost),
-        "current_cost": round(current_cost, 3),
-        "scenario_cost": round(scenario_cost, 3),
-        "savings": round(savings, 3),
-        "current_grid_cost": round(sum(cost.grid for cost in current), 3),
-        "scenario_grid_cost": round(sum(cost.grid for cost in changed), 3),
-        "savings_per_year": None if yearly is None else round(yearly, 2),
+        "current_grid_cost": round(current_grid, 3),
+        "scenario_grid_cost": round(scenario_grid, 3),
+        "grid_savings": round(grid_savings, 3),
+        "current_wear_cost": round(current_wear, 3),
+        "scenario_wear_cost": round(scenario_wear, 3),
+        "savings_after_wear": round(grid_savings + current_wear - scenario_wear, 3),
+        "grid_savings_per_year": None if yearly is None else round(yearly, 2),
     }
     if request.capacity_price_per_kwh is not None:
         extra = usable_capacity_kwh(site) - usable_capacity_kwh(request.site)
@@ -341,8 +423,8 @@ def run_what_if(
 
     Args:
         request: The days, the limits and the scenarios.
-        cancelled: Asked before each day; the run stops when it returns
-            ``True``.
+        cancelled: Asked before each day and before each solve; the run stops
+            when it returns ``True``.
 
     Returns:
         The JSON-serialisable response, or ``None`` when the run was
@@ -352,15 +434,25 @@ def run_what_if(
     sides = (WhatIfScenario(), *request.scenarios)
     compared: list[tuple[str, list[_Cost]]] = []
     skipped: dict[str, int] = {}
+    started = time.monotonic()
     for date in request.days:
         if cancelled():
             return None
         day = request.recorded.get(date)
-        outcome = (
-            request.reasons.get(date, REASON_NOT_RECORDED)
-            if day is None
-            else replay_day(day, request, sides)
-        )
+        outcome: list[_Cost] | str | None
+        if day is None:
+            outcome = request.reasons.get(date, REASON_NOT_RECORDED)
+        elif (
+            request.budget_s is not None
+            and time.monotonic() - started >= request.budget_s
+        ):
+            outcome = REASON_RUN_TIME_LIMIT
+        else:
+            outcome = replay_day(day, request, sides, cancelled)
+            if request.pause_s > 0.0:
+                time.sleep(request.pause_s)
+        if outcome is None:
+            return None
         if isinstance(outcome, str):
             skipped[outcome] = skipped.get(outcome, 0) + 1
         else:
@@ -370,7 +462,11 @@ def run_what_if(
     response: dict[str, Any] = {
         "history_days": len(request.days),
         "days_compared": len(compared),
+        "first_day_compared": compared[0][0] if compared else None,
+        "last_day_compared": compared[-1][0] if compared else None,
         "days_skipped": len(request.days) - len(compared),
+        "days_timed_out": skipped.get(REASON_ORACLE_TIMEOUT, 0)
+        + skipped.get(REASON_RUN_TIME_LIMIT, 0),
         "skipped_reasons": dict(sorted(skipped.items())),
         "current": _limits(request.site, request.cycle_cost_per_kwh),
         "scenarios": [
@@ -388,9 +484,10 @@ def run_what_if(
         response["days"] = [
             {
                 "date": date,
-                "current_cost": round(costs[0].total, 3),
-                "scenario_cost": round(costs[1].total, 3),
-                "savings": round(costs[0].total - costs[1].total, 3),
+                "current_grid_cost": round(costs[0].grid, 3),
+                "scenario_grid_cost": round(costs[1].grid, 3),
+                "grid_savings": round(costs[0].grid - costs[1].grid, 3),
+                "savings_after_wear": round(costs[0].total - costs[1].total, 3),
             }
             for date, costs in compared
         ]

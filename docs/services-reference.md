@@ -484,7 +484,9 @@ configured and once with the scenario battery. It returns the difference.
 **It is read-only.** It never writes to the inverter, never changes the active
 plan and never starts a planner cycle, in read-only mode or outside it. The
 solves run in a worker thread, one what-if at a time. A second call while one
-is running is refused.
+is running is refused. Stopping the script or automation that called it stops
+the run before its next solve, and so does unloading the integration. A new
+call is accepted once the worker thread has returned.
 
 **Read the result as an estimate.** Both costs are perfect-foresight bounds:
 the best any controller could have done with full knowledge of the day. HSEM
@@ -514,39 +516,65 @@ capacity range. With a range, every size also carries the other overrides.
 
 **Response:**
 
-| Key                | Type    | Description                                                                                      |
-| ------------------ | ------- | ------------------------------------------------------------------------------------------------ |
-| `history_days`     | `int`   | Days asked for                                                                                   |
-| `days_compared`    | `int`   | Days that were replayed                                                                          |
-| `days_skipped`     | `int`   | Days that were not                                                                               |
-| `skipped_reasons`  | `dict`  | Count per reason, see below                                                                      |
-| `current`          | `dict`  | The configured battery: capacity, power, efficiencies and cycle cost                             |
-| `scenarios`        | `list`  | One row per scenario: its limits, `current_cost`, `scenario_cost`, `savings`, `savings_per_year` |
-| `days`             | `list`  | Per compared day: `date`, `current_cost`, `scenario_cost`, `savings`. Only without a range       |
-| `note`             | `str`   | States that both costs are perfect-foresight bounds                                              |
-| `duration_seconds` | `float` | How long the run took                                                                            |
+| Key                  | Type    | Description                                                                                                                     |
+| -------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `history_days`       | `int`   | Days asked for                                                                                                                  |
+| `days_compared`      | `int`   | Days that were replayed                                                                                                         |
+| `first_day_compared` | `str`   | First replayed day, `null` when none was                                                                                        |
+| `last_day_compared`  | `str`   | Last replayed day, `null` when none was                                                                                         |
+| `days_skipped`       | `int`   | Days that were not                                                                                                              |
+| `days_timed_out`     | `int`   | Of those, days lost to a time limit (`oracle_timeout` and `run_time_limit`)                                                     |
+| `skipped_reasons`    | `dict`  | Count per reason, see below                                                                                                     |
+| `current`            | `dict`  | The configured battery: capacity, power, efficiencies and cycle cost                                                            |
+| `scenarios`          | `list`  | One row per scenario: its limits and the figures below                                                                          |
+| `days`               | `list`  | Per compared day: `date`, `current_grid_cost`, `scenario_grid_cost`, `grid_savings`, `savings_after_wear`. Only without a range |
+| `note`               | `str`   | States that both costs are perfect-foresight bounds and that yearly figures carry the season                                    |
+| `duration_seconds`   | `float` | How long the run took                                                                                                           |
 
-`savings` is `current_cost − scenario_cost`. A cost is the grid bill (import
-paid minus export earned) plus battery wear at the cycle cost of that side.
-`current_grid_cost` and `scenario_grid_cost` give the grid bill alone.
-`savings_per_year` scales the compared days to 365.
+Each row of `scenarios` holds two savings figures, and they answer different
+questions:
+
+| Key                     | Meaning                                                                           |
+| ----------------------- | --------------------------------------------------------------------------------- |
+| `current_grid_cost`     | Grid bill of the configured battery: import paid minus export earned              |
+| `scenario_grid_cost`    | Grid bill of the scenario battery                                                 |
+| `grid_savings`          | `current_grid_cost − scenario_grid_cost`: money not paid to the grid              |
+| `current_wear_cost`     | Battery wear of the configured side: its cycle cost times the energy cycled       |
+| `scenario_wear_cost`    | Battery wear of the scenario side                                                 |
+| `savings_after_wear`    | `grid_savings` minus the extra wear of the scenario                               |
+| `grid_savings_per_year` | `grid_savings` scaled from the compared days to 365. `null` below 7 compared days |
+
+Both sides are solved with their wear in the objective, so neither cycles the
+battery for a price difference smaller than the wear.
 
 With `capacity_price_per_kwh`, each row also has `extra_capacity_kwh`,
 `investment` (extra capacity times the price) and `payback_years`
-(`investment ÷ savings_per_year`). `payback_years` is `null` when the scenario
-is not larger or saves nothing.
+(`investment ÷ grid_savings_per_year`). `payback_years` is `null` when the
+scenario is not larger, saves nothing, or fewer than 7 days were compared.
+
+The payback is counted from the grid savings, not from `savings_after_wear`.
+The cycle cost HSEM derives is the battery's purchase price spread over its
+life. Subtracting it and then dividing the purchase price by what is left
+would charge the battery twice.
+
+**The yearly figure carries the season.** It is the mean of the compared days
+times 365. 30 days in June say little about December. `days_compared`,
+`first_day_compared` and `last_day_compared` say what the figure rests on.
+Recording keeps 90 days, so it never rests on a full year.
 
 **Skipped days.** Every day of the asked-for history is either compared or
 counted under a reason:
 
-| Reason                         | Meaning                                                                  |
-| ------------------------------ | ------------------------------------------------------------------------ |
-| `not_recorded`                 | HSEM holds no complete record of the day                                 |
-| `insufficient_coverage`        | Part of the day was not observed, for example during a restart           |
-| `stored_energy_outside_limits` | The recorded SoC does not fit the configured capacity                    |
-| `energy_balance_residual`      | The meters contradict each other                                         |
-| `oracle_unsolved`              | A solve did not finish in 10 seconds, or the scenario cannot run the day |
-| `scipy_unavailable`            | The solver is not installed                                              |
+| Reason                         | Meaning                                                        |
+| ------------------------------ | -------------------------------------------------------------- |
+| `not_recorded`                 | HSEM holds no complete record of the day                       |
+| `insufficient_coverage`        | Part of the day was not observed, for example during a restart |
+| `stored_energy_outside_limits` | The recorded SoC does not fit the configured capacity          |
+| `energy_balance_residual`      | The meters contradict each other                               |
+| `oracle_unsolved`              | The solver found no run of the day for one of the batteries    |
+| `oracle_timeout`               | A solve did not finish in 10 seconds                           |
+| `run_time_limit`               | The whole run reached 10 minutes before it got to the day      |
+| `scipy_unavailable`            | The solver is not installed                                    |
 
 A day counts only when it could be solved for every scenario of the call, so
 all rows of a range cover the same days.
@@ -555,7 +583,10 @@ all rows of a range cover the same days.
 (grid import and export, SoC, both prices, PV) for 90 days in
 `.storage/hsem_what_if_history.json`. Recording starts with the version that
 added this service: days before that are `not_recorded`. A day is kept only
-when every slot of it was observed.
+when every slot of it was observed. The battery's rated capacity and
+efficiencies of that day are kept with it. They turn the day's SoC into
+energy, so a battery that is changed later does not distort the days before
+the change. Both sides of the comparison use the limits configured today.
 
 **How a day is compared.** The house load is rebuilt from the meters the same
 way the [performance sensors](sensors-reference.md#performance-sensors) do
@@ -566,6 +597,10 @@ Extra capacity therefore starts each day empty: what it would carry from one
 day to the next is not counted. The grid limits (fuse, export limit, battery
 export settings) are the configured ones for both sides.
 
+Where a meter read more battery power in a slot than the configured limit,
+that excess is added to the limit of both sides in that slot. Entering the
+configured power as an override therefore saves exactly nothing.
+
 **Limits of the estimate:**
 
 - The cycle cost of the configured side is the one the planner uses. The
@@ -575,9 +610,18 @@ export settings) are the configured ones for both sides.
 - An EV is part of the fixed load: it is not rescheduled.
 
 **Run time.** One solve per day for the configured battery plus one per
-scenario. 90 days of 15-minute slots with one scenario take about 15 seconds
-on a desktop CPU. A range of 10 sizes takes about seven times as long. Expect a
-multiple of that on a Raspberry Pi. The planner keeps running meanwhile.
+scenario. 90 days of 15-minute slots with one scenario take 15 to 20 seconds
+on a desktop CPU. A range of 10 sizes takes about eight times as long. Held to
+a fifth of one desktop core, one scenario over 90 days took 2.5 minutes:
+expect that order on a Raspberry Pi.
+
+A run stops after 10 minutes. The days it did not reach are counted as
+`run_time_limit`, and the rows cover the days that were reached. On a slow
+device, ask for fewer days or fewer sizes when that happens.
+
+The planner keeps running meanwhile. The solver releases Python's interpreter
+lock while it works, so the event loop is not held up: measured next to a
+running replay, it was never more than 6 ms late.
 
 **Examples:**
 
