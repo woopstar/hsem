@@ -1,8 +1,12 @@
 """Diagnostic sensor for the measured battery efficiency (issue #1431).
 
 State is the measured round-trip efficiency in percent.  The attributes hold
-the charge and discharge curve per 500 W step, the sample count per step and
-the configured round trip the planner uses.
+the apparent charge and discharge curve per 500 W step, the sample count per
+step and the configured round trip the planner uses.
+
+Only the round trip stands on its own.  The charge and discharge figures are
+measured against the rated capacity, so they carry the battery's capacity
+error and are named *apparent*.
 
 The sensor only reports.  The planner keeps the configured efficiencies.
 """
@@ -24,6 +28,8 @@ from custom_components.hsem.utils.efficiency_learner import (
     DISCHARGE,
     MIN_ENERGY_KWH,
     MIN_SAMPLES,
+    MIN_TOTAL_ENERGY_KWH,
+    MIN_TOTAL_SAMPLES,
     STEP_W,
     EfficiencyLearner,
 )
@@ -101,10 +107,14 @@ class HSEMBatteryEfficiencySensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntit
                 if measured is not None and configured is not None
                 else None
             ),
-            "measured_charge_efficiency_pct": _rounded(learner.charge_efficiency_pct),
-            "measured_discharge_efficiency_pct": _rounded(
+            "round_trip_status": learner.round_trip_status,
+            "capacity_basis": "rated",
+            "apparent_charge_efficiency_pct": _rounded(learner.charge_efficiency_pct),
+            "apparent_discharge_efficiency_pct": _rounded(
                 learner.discharge_efficiency_pct
             ),
+            "charge_status": learner.status(CHARGE),
+            "discharge_status": learner.status(DISCHARGE),
             "charge_samples": learner.sample_count(CHARGE),
             "discharge_samples": learner.sample_count(DISCHARGE),
             "charge_curve": learner.curve(CHARGE),
@@ -112,6 +122,8 @@ class HSEMBatteryEfficiencySensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntit
             "power_step_w": STEP_W,
             "min_samples_per_step": MIN_SAMPLES,
             "min_energy_per_step_kwh": MIN_ENERGY_KWH,
+            "min_samples_per_direction": MIN_TOTAL_SAMPLES,
+            "min_energy_per_direction_kwh": MIN_TOTAL_ENERGY_KWH,
         }
 
     def _get_learner(self) -> EfficiencyLearner | None:

@@ -14,7 +14,6 @@ from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
-from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.efficiency_learner import EfficiencyLearner
 from custom_components.hsem.utils.logger import async_log
 
@@ -25,26 +24,17 @@ HISTORY_FILE = "hsem_battery_efficiency.json"
 MAX_GAP_S = 600.0
 
 
-def battery_capacity_kwh(
-    coordinator: CoordinatorSharedState, live: LiveState
-) -> float | None:
-    """Return the battery capacity at 100 % SoC in kWh, or ``None``.
+def battery_capacity_kwh(live: LiveState) -> float | None:
+    """Return the rated battery capacity in kWh, or ``None``.
 
-    The learned capacity wins.  The rated capacity is the fallback until the
-    capacity learner has enough samples.
+    HSEM has no reading of what the battery really holds: the capacity
+    learner works from ``SoC x rated capacity`` and so returns the rated
+    capacity too.  The efficiency learner therefore measures against the
+    rated capacity, and only its round trip is free of the capacity error.
 
     Args:
-        coordinator: The running coordinator.
         live: The live HA entity state snapshot.
     """
-    capacity_learner: CapacityLearner | None = getattr(
-        coordinator, "_capacity_learner", None
-    )
-    learned = (
-        capacity_learner.learned_capacity_kwh if capacity_learner is not None else None
-    )
-    if learned is not None:
-        return learned
     rated_wh = live.huawei_batteries_rated_capacity_wh
     if rated_wh is None or rated_wh <= 0.0:
         return None
@@ -92,7 +82,7 @@ async def async_track_battery_efficiency(
             now,
             live.huawei_batteries_charge_discharge_power_w,
             live.huawei_batteries_soc_pct,
-            battery_capacity_kwh(coordinator, live),
+            battery_capacity_kwh(live),
             max_gap_seconds=max(MAX_GAP_S, 2.0 * cfg.update_interval * 60.0),
         )
         if learner.dirty:

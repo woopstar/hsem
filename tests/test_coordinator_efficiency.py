@@ -30,10 +30,14 @@ from custom_components.hsem.custom_sensors.battery_efficiency_sensor import (
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
-from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.efficiency_learner import (
+    STATUS_LEARNING,
     STATUS_OK,
     EfficiencyLearner,
+)
+from tests.test_coordinator_cycle_paths import (
+    _coordinator as _cycle_coordinator,
+    _run_cycle,
 )
 
 _T0 = datetime(2026, 6, 10, 12, 0, tzinfo=UTC)
@@ -48,7 +52,6 @@ def _coordinator(tmp_path: Path) -> CoordinatorSharedState:
         SimpleNamespace(
             hass=SimpleNamespace(config=SimpleNamespace(config_dir=str(tmp_path))),
             _efficiency_learner=EfficiencyLearner(),
-            _capacity_learner=CapacityLearner(),
             last_update_success=True,
             data=CoordinatorData(cfg=SensorConfig()),
         ),
@@ -75,8 +78,8 @@ async def _run_cycles(
 ) -> None:
     """Run the cycles that complete *samples* measurements at *power_w*."""
     sign = 1.0 if power_w > 0 else -1.0
-    start_soc = 20.0 if power_w > 0 else 80.0
-    for i in range(2 * samples + 2):
+    start_soc = 10.0 if power_w > 0 else 90.0
+    for i in range(5 * samples + 2):
         await async_track_battery_efficiency(
             coordinator,
             start + timedelta(seconds=step_s * i),
@@ -87,13 +90,13 @@ async def _run_cycles(
 
 async def _learn_both_directions(coordinator: CoordinatorSharedState) -> None:
     """Charge at 80 % and discharge at 90 % through the real cycle hook."""
-    # Charge: 1500 W for 600 s = 0.25 kWh measured, 0.2 kWh stored.
-    await _run_cycles(coordinator, 1500.0, samples=12, step_s=300.0, start=_T0)
-    # Discharge: 2000 W for 324 s = 0.18 kWh measured, 0.2 kWh stored.
+    # Charge: 1500 W for 1500 s = 0.625 kWh measured, 0.5 kWh stored.
+    await _run_cycles(coordinator, 1500.0, samples=24, step_s=300.0, start=_T0)
+    # Discharge: 2000 W for 810 s = 0.45 kWh measured, 0.5 kWh stored.
     await _run_cycles(
         coordinator,
         -2000.0,
-        samples=12,
+        samples=24,
         step_s=162.0,
         start=_T0 + timedelta(days=1),
     )
@@ -109,31 +112,19 @@ def _sensor(coordinator: Any) -> HSEMBatteryEfficiencySensor:
 
 
 class TestBatteryCapacity:
-    """The learned capacity wins; the rated capacity is the fallback."""
+    """The learner measures against the rated capacity."""
 
-    def test_rated_capacity_until_the_capacity_is_learned(self, tmp_path: Path) -> None:
-        """An empty capacity learner falls back to the rated capacity."""
-        coordinator = _coordinator(tmp_path)
-
-        assert battery_capacity_kwh(coordinator, _live(0.0, 50.0)) == pytest.approx(
-            10.0
-        )
-
-    def test_learned_capacity_wins(self, tmp_path: Path) -> None:
-        """Enough capacity samples replace the rated capacity."""
-        coordinator = _coordinator(tmp_path)
-        coordinator._capacity_learner.samples = [9.2] * 20
-
-        assert battery_capacity_kwh(coordinator, _live(0.0, 50.0)) == pytest.approx(9.2)
+    def test_rated_capacity_in_kwh(self) -> None:
+        """10 000 Wh rated is 10 kWh."""
+        assert battery_capacity_kwh(_live(0.0, 50.0)) == pytest.approx(10.0)
 
     @pytest.mark.parametrize("rated_wh", [None, 0.0])
-    def test_no_capacity_at_all(self, tmp_path: Path, rated_wh: float | None) -> None:
-        """Without a learned or rated capacity there is nothing to measure with."""
-        coordinator = cast(CoordinatorSharedState, SimpleNamespace())
+    def test_no_rated_capacity(self, rated_wh: float | None) -> None:
+        """Without a rated capacity there is nothing to measure with."""
         live = _live(0.0, 50.0)
         live.huawei_batteries_rated_capacity_wh = rated_wh
 
-        assert battery_capacity_kwh(coordinator, live) is None
+        assert battery_capacity_kwh(live) is None
 
 
 class TestTracking:
@@ -144,10 +135,10 @@ class TestTracking:
         """Clean charge cycles end up as a step on disk."""
         coordinator = _coordinator(tmp_path)
 
-        await _run_cycles(coordinator, 1500.0, samples=12, step_s=300.0, start=_T0)
+        await _run_cycles(coordinator, 1500.0, samples=24, step_s=300.0, start=_T0)
 
         learner = coordinator._efficiency_learner
-        assert learner.charge[1500].samples == 12
+        assert learner.charge[1500].samples == 24
         assert learner.charge_efficiency_pct == pytest.approx(80.0)
         assert learner.dirty is False
         assert (tmp_path / ".storage" / HISTORY_FILE).exists()
@@ -156,7 +147,7 @@ class TestTracking:
     async def test_a_restart_restores_the_steps(self, tmp_path: Path) -> None:
         """A fresh coordinator reads the previous one's file on its first cycle."""
         await _run_cycles(
-            _coordinator(tmp_path), 1500.0, samples=12, step_s=300.0, start=_T0
+            _coordinator(tmp_path), 1500.0, samples=24, step_s=300.0, start=_T0
         )
         restarted = _coordinator(tmp_path)
 
@@ -164,7 +155,7 @@ class TestTracking:
             restarted, _T0 + timedelta(days=1), _live(0.0, 50.0), SensorConfig()
         )
 
-        assert restarted._efficiency_learner.charge[1500].samples == 12
+        assert restarted._efficiency_learner.charge[1500].samples == 24
         assert restarted._efficiency_learner.charge_efficiency_pct == pytest.approx(
             80.0
         )
@@ -232,25 +223,33 @@ class TestBatteryEfficiencySensor:
         # SensorConfig defaults: 98 % x 98 %.
         assert attributes["configured_round_trip_efficiency_pct"] == pytest.approx(96.0)
         assert attributes["round_trip_difference_pct"] == pytest.approx(-24.0)
-        assert attributes["measured_charge_efficiency_pct"] == pytest.approx(80.0)
-        assert attributes["measured_discharge_efficiency_pct"] == pytest.approx(90.0)
-        assert attributes["charge_samples"] == 12
-        assert attributes["discharge_samples"] == 12
+        assert attributes["round_trip_status"] == STATUS_OK
+        assert attributes["capacity_basis"] == "rated"
+        assert attributes["apparent_charge_efficiency_pct"] == pytest.approx(80.0)
+        assert attributes["apparent_discharge_efficiency_pct"] == pytest.approx(90.0)
+        assert attributes["charge_status"] == STATUS_OK
+        assert attributes["discharge_status"] == STATUS_OK
+        assert attributes["charge_samples"] == 24
+        assert attributes["discharge_samples"] == 24
         assert attributes["charge_curve"] == [
             {
                 "power_from_w": 1500,
                 "power_to_w": 2000,
-                "efficiency_pct": pytest.approx(80.0),
-                "samples": 12,
-                "energy_kwh": pytest.approx(2.4),
+                "apparent_efficiency_pct": pytest.approx(80.0),
+                "samples": 24,
+                "energy_kwh": pytest.approx(12.0),
                 "status": STATUS_OK,
             }
         ]
         assert attributes["discharge_curve"][0]["power_from_w"] == 2000
-        assert attributes["discharge_curve"][0]["efficiency_pct"] == pytest.approx(90.0)
+        assert attributes["discharge_curve"][0][
+            "apparent_efficiency_pct"
+        ] == pytest.approx(90.0)
         assert attributes["power_step_w"] == 500
         assert attributes["min_samples_per_step"] == 10
         assert attributes["min_energy_per_step_kwh"] == pytest.approx(2.0)
+        assert attributes["min_samples_per_direction"] == 20
+        assert attributes["min_energy_per_direction_kwh"] == pytest.approx(10.0)
 
     def test_unknown_until_both_directions_are_learned(self, tmp_path: Path) -> None:
         """A fresh learner has no round trip and empty curves."""
@@ -261,6 +260,7 @@ class TestBatteryEfficiencySensor:
         assert attributes is not None
         assert attributes["measured_round_trip_efficiency_pct"] is None
         assert attributes["round_trip_difference_pct"] is None
+        assert attributes["round_trip_status"] == STATUS_LEARNING
         assert attributes["charge_curve"] == []
         assert attributes["discharge_curve"] == []
         assert attributes["charge_samples"] == 0
@@ -305,3 +305,24 @@ class TestBatteryEfficiencySensor:
         assert sensor.native_unit_of_measurement == PERCENTAGE
         assert sensor.translation_key == "battery_efficiency"
         assert sensor._hsem_device is HSEMDevice.BATTERY_ENERGY
+
+
+class TestTheUpdateCycle:
+    """The update cycle is what feeds the learner."""
+
+    @pytest.mark.asyncio
+    async def test_the_cycle_hands_each_reading_to_the_learner(
+        self, _efficiency_tracking_off_in_cycle_tests: Any
+    ) -> None:
+        """Removing the call from the cycle fails this test."""
+        coordinator, _published = _cycle_coordinator()
+
+        await _run_cycle(coordinator)
+
+        tracked = _efficiency_tracking_off_in_cycle_tests
+        tracked.assert_awaited_once()
+        handed_coordinator, now, live, cfg = tracked.await_args.args
+        assert handed_coordinator is coordinator
+        assert now.tzinfo is not None
+        assert live is coordinator._live
+        assert cfg is coordinator._cfg
