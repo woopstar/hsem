@@ -50,7 +50,9 @@ _SENSITIVE_FIELD_SUBSTRINGS: frozenset[str] = frozenset(
     }
 )
 
-_REDACTED = "**REDACTED**"
+#: Placeholder written in place of a redacted value.
+REDACTED = "**REDACTED**"
+_REDACTED = REDACTED
 
 
 def _is_sensitive_key(key: str) -> bool:

@@ -20,6 +20,9 @@ from custom_components.hsem.coordinator_builder import (
     generate_recommendation_intervals,
 )
 from custom_components.hsem.coordinator_data import CoordinatorData
+from custom_components.hsem.coordinator_efficiency import (
+    async_track_battery_efficiency,
+)
 from custom_components.hsem.coordinator_helpers import (
     _StaleUpdateCycle,
     ocpp_charge_target,
@@ -135,6 +138,7 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             getattr(self, "_capacity_learner", CapacityLearner()).update(
                 live.bms_kwh_remaining, live.huawei_batteries_soc_pct
             )
+        await async_track_battery_efficiency(self, now, live, cfg)  # issue #1431
 
         # Update the weekday/weekend consumption profile (issue #612).
         house_w = live.house_consumption_power_w

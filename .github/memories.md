@@ -26,21 +26,23 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 
 ### Coordinator layer (`custom_components/hsem/`)
 
-| File                                  | Responsibility                                                                                                                                     |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `coordinator.py`                      | HA lifecycle and collect/populate/plan/publication orchestration                                                                                   |
-| `coordinator_data.py`                 | Atomic `CoordinatorData` snapshot exposed to entities                                                                                              |
-| `coordinator_dynamic_floor.py`        | Dynamic floor from a floor-free reference solve: its per-slot net load, charge decisions and prices (#1140, #1187)                                 |
-| `coordinator_helpers.py`              | Pure strict-hold, load-readiness/signature, fuse-budget and coherent EV-write helpers                                                              |
-| `coordinator_ev_overrides.py`         | Current-slot EV overrides after the hold: force charge (#1103), auto-full on price ≤ 0 (#1325), cheap-price (#1324) and minimum-SoC charge (#1323) |
-| `coordinator_load_forecast.py`        | ML/avg consumption population, load readiness, missing/estimated-hour diagnostics (issue #1110)                                                    |
-| `coordinator_load_hold.py`            | Non-planner load-forecast safety hold, grid-only EV-only fallback (issue #1106), force-charge re-apply (issue #1103)                               |
-| `coordinator_tracking.py`             | Forecast, daily, financial, and savings accumulation                                                                                               |
-| `coordinator_meter_tracking.py`       | Feeds the daily, financial and savings trackers once per cycle, with or without a plan (issue #1267)                                               |
-| `coordinator_daily_plan.py`           | Plan side of the daily plan-vs-actual tracker: each slot's planned energy, once                                                                    |
-| `coordinator_performance.py`          | Performance record: per-cycle sample, hindsight evaluation as a background executor task (issue #1182)                                             |
-| `entity_availability.py`              | Per-input unavailable/recovery transition tracking and logging                                                                                     |
-| `custom_sensors/block_observation.py` | Avg-sensor downtime tracking: heartbeat, unobserved intervals, `block_observed()` (issues #1101/#1110)                                             |
+| File                                     | Responsibility                                                                                                                                     |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `coordinator.py`                         | HA lifecycle and collect/populate/plan/publication orchestration                                                                                   |
+| `coordinator_data.py`                    | Atomic `CoordinatorData` snapshot exposed to entities                                                                                              |
+| `coordinator_dynamic_floor.py`           | Dynamic floor from a floor-free reference solve: its per-slot net load, charge decisions and prices (#1140, #1187)                                 |
+| `coordinator_helpers.py`                 | Pure strict-hold, load-readiness/signature, fuse-budget and coherent EV-write helpers                                                              |
+| `coordinator_ev_overrides.py`            | Current-slot EV overrides after the hold: force charge (#1103), auto-full on price ≤ 0 (#1325), cheap-price (#1324) and minimum-SoC charge (#1323) |
+| `coordinator_load_forecast.py`           | ML/avg consumption population, load readiness, missing/estimated-hour diagnostics (issue #1110)                                                    |
+| `coordinator_load_hold.py`               | Non-planner load-forecast safety hold, grid-only EV-only fallback (issue #1106), force-charge re-apply (issue #1103)                               |
+| `coordinator_tracking.py`                | Forecast, daily, financial, and savings accumulation                                                                                               |
+| `coordinator_meter_tracking.py`          | Feeds the daily, financial and savings trackers once per cycle, with or without a plan (issue #1267)                                               |
+| `coordinator_daily_plan.py`              | Plan side of the daily plan-vs-actual tracker: each slot's planned energy, once                                                                    |
+| `coordinator_performance.py`             | Performance record: per-cycle sample, hindsight evaluation as a background executor task (issue #1182)                                             |
+| `coordinator_efficiency.py`              | Feeds and persists the battery efficiency learner once per cycle (issue #1431)                                                                     |
+| `entity_availability.py`                 | Per-input unavailable/recovery transition tracking and logging                                                                                     |
+| `custom_sensors/block_observation.py`    | Avg-sensor downtime tracking: heartbeat, unobserved intervals, `block_observed()` (issues #1101/#1110)                                             |
+| `custom_sensors/consumption_backfill.py` | Hour-block consumption profile from long-term statistics, shared per config entry; seeds the avg-sensor windows (issue #1433)                      |
 
 Load-average availability must remain explicit: unknown/non-finite values are
 missing, genuine finite zero is valid, and contradictory zero load above 50 W
@@ -83,6 +85,7 @@ cycle are durable; stale generations must not publish.
 | `consumption_predictor.py` | Two-stage ridge: per-(DOW, slot) weighted group means shrunk toward slot-level means, then DOY/temp fitted on the residual |
 | `history_reader.py`        | Queries HA recorder for energy accumulator and instantaneous sensor history                                                |
 | `history_cache.py`         | Per-entity energy history cache: incremental refresh from the last completed slot, daily full read, unit-change tracking   |
+| `statistics_reader.py`     | Hourly long-term statistics (`sum` deltas, `mean`) via `statistics_during_period`; fallback for purged raw states (#1433)  |
 | `slot_deltas.py`           | Per-slot energy deltas from accumulator readings (completed slot ends, then deltas)                                        |
 | `populator.py`             | Bridges ML predictions into `HourlyRecommendation` slots with safety buffer                                                |
 
@@ -101,6 +104,7 @@ cycle are durable; stale generations must not publish.
 | `dynamic_floor_bridge.py`   | Stateless bridge arithmetic of the dynamic floor: refill detection, planned-charge credit, cheap window, per-slot reserve profile (split out in #1274)                                                                                                 |
 | `soc_bounds.py`             | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094); `reserve_floor_pct()` — reserve kWh to floor SoC (#1221)                                                                                            |
 | `capacity_learner.py`       | Battery usable capacity auto-detection from BMS readings                                                                                                                                                                                               |
+| `efficiency_learner.py`     | Battery round trip and apparent charge/discharge efficiency per 500 W step, as ratios of summed energy against rated capacity; diagnostics only (issue #1431)                                                                                          |
 | `prediction_tracker.py`     | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                                                                                                                                                                        |
 | `weekday_profile.py`        | Weekday/weekend split house load EWMA profiles                                                                                                                                                                                                         |
 | `ev_accounting.py`          | Raw CT versus per-EV normalized-baseline accounting helper                                                                                                                                                                                             |
@@ -109,6 +113,7 @@ cycle are durable; stale generations must not publish.
 | `persistence.py`            | Validation helpers for restored JSON, bounded `read_json_history_file`, atomic `write_json_history_file` — use these for any new history file                                                                                                          |
 | `ocpp_tls.py`               | OCPP server TLS (#1341): generated CA/server/client certs in `/ssl/hsem/ocpp/` (or `<config>/ssl/hsem/ocpp/`), `SSLContext`, CN↔CPID check; no `ws://` fallback; `modern_server_context()` wraps the core's ssl helper, which 2026.11 renamed (#1370) |
 | `ev_economics_deadlines.py` | Configured EV SoC economics deadlines (issue #1344): default 08:00/17:00, max 3, `parse_economics_deadlines()` shared by flow validator and config reader; the EV's target deadline is always an extra column                                          |
+| `backup.py`                 | Backup payload of `hsem.export_data` / `hsem.import_data` and the debug export file (#1436). A new `.storage` history file must be added to `HISTORY_FILES`; `redact_configuration()` redacts secrets and certificate paths, not entity IDs            |
 
 ---
 
@@ -1953,6 +1958,63 @@ System recovery steps).
 
 Regression tests: `tests/test_avg_sensor_unobserved_block.py`.
 
+### Consumption backfill from long-term statistics (issue #1433)
+
+A default recorder purges raw states after 10 days, so
+`get_significant_states` can never return the 14 days the ML predictor needs.
+Hourly long-term statistics are never purged. `ml/statistics_reader.py` reads
+them (recorder executor) and is used in two places:
+
+- `custom_sensors/consumption_backfill.py::async_consumption_profile()` builds
+  `{(iso_date, hour): kWh}` from the hourly **mean** of the house power
+  source, minus both EV chargers when the house power includes them. It
+  mirrors the live path on purpose:
+
+  - No unit conversion (`unit=None`): the live path reads raw states, so a
+    converted backfill would put two scales in one window.
+  - A charger hour without statistics is 0 W, but only from the charger's
+    first statistics on (`_charger_known_from`, looks `CHARGER_LOOKBACK` = 90
+    days before the window). Earlier hours are skipped: the car may have
+    charged before the sensor existed. A charger with no statistics at all
+    stops the backfill (info log, once).
+  - The source comes from the config (`configured_house_power_entity`), not
+    from `hass.states`, so start-up cannot pick the derived house load.
+  - A failed read is caught, logged once and cached for the hour.
+    `_async_handle_update` runs before `super().async_added_to_hass()`, so it
+    must never raise.
+
+  One read per config entry, cached for an hour.
+  `HSEMAvgSensor._async_backfill_from_statistics()` fills only free places
+  (`len(measurements) < average`), newest day first, never a date that has a
+  measurement, and only days before `_backfill_before` (attribute
+  `backfill_before`: the oldest of the first measured day, the day of the
+  first run and `config_entry.created_at`, fixed once and restored; a test
+  entry built from `MagicMock` needs a real `created_at`). Later gaps are blocks the #1101/#1110 guard
+  rejected; their statistics cover part of the hour and must stay out.
+  Backfilled dates live in `_backfilled` / the `backfilled_days` attribute.
+  Tests that build a `MagicMock(spec=HSEMAvgSensor)` must set
+  `_backfilled = set()`.
+
+- `ml/history_cache.py::get_energy_history()`: when a full read is too short,
+  `HistoryResult.partial` (the too-short raw samples) is extended with the
+  hourly **sum** deltas for whole hours before the oldest raw sample, spread
+  evenly over the slots (`hourly_energy_to_slots`). A failed statistics read
+  is remembered for an hour (`_statistics_failed_at`). The share is published
+  through `history_status.record_statistics_days()` as
+  `ml_statistics_history_days`. The ML path subtracts no EV energy, raw or
+  statistics.
+
+`tests/ml/conftest.py` makes `StatisticsReader.read_hourly_energy` return
+nothing for every ML test; set `long_term_statistics.return_value` to give
+the recorder statistics.
+
+Tests: `tests/custom_sensors/test_consumption_backfill.py`,
+`tests/ml/test_statistics_reader.py`,
+`tests/ml/test_history_statistics_fallback.py`, and
+`tests/ml/test_statistics_reader_recorder.py`, which runs a real recorder on
+a temporary SQLite database (the fixture there shows how to start one
+without `pytest-homeassistant-custom-component`).
+
 ### Missing hour blocks do not block the whole plan (issue #1110)
 
 `populate_avg_house_consumption_from_snapshot()` returns a
@@ -3070,3 +3132,28 @@ Rules now:
 
 `applier.py` was at 29 923 bytes: the stale forcible-charge stop moved to
 `applier_charge_power.py` to make room for the two calls.
+
+## Monthly Energy Sensors Are Built From a Daily Energy Record (issue #1435)
+
+`sensor.hsem_monthly_self_sufficiency`, `..._battery_cycles`, `..._battery_wear_cost` and `..._round_trip_loss` report the current calendar month; `this_month`, `previous_month` and `monthly` (12 months) are unrecorded attributes. The bundled dashboard has a third view, **Energy**.
+
+**Layout:**
+
+- `models/energy_tracker.py` (`EnergySample`, `BatterySite`, `EnergyDayEntry`, `EnergyTracker`): one record per local day, 366 days, in `.storage/hsem_energy_history.json`. It is a sibling of `FinancialTracker` with a file of its own, so the financial history format is untouched.
+- `coordinator_energy.py` builds the sample and is called from `async_accumulate_meter_trackers`, so it runs every cycle, plan or not. It loads its file lazily and saves at most every 120 s through `persist_all_trackers`.
+- `utils/metering.py` holds `meter_delta` and `mean_power_kwh`, moved out of `models/performance_tracker.py`. Use them for any new per-cycle meter arithmetic.
+- `custom_sensors/monthly_energy_sensors.py`, `utils/sensornames/monthly_energy.py`.
+
+**Rules:**
+
+- **A period is a ratio of sums.** A new monthly figure adds its additive quantities to `SUMMED_FIELDS` and is computed in `month_summary`. Never store a daily percentage.
+- **Missing is not zero.** A quantity is booked only when both of its readings exist, and its `*_hours` field counts the hours it was measured: a month publishes `None` for a quantity with no hours. `LiveState` holds `0.0` for an unavailable house or PV power sensor (`or 0.0` in `state_collector.py`, which the planner relies on), so `coordinator_energy._measured()` takes those two readings only while their entity has a numeric state. Self-sufficiency uses `paired_consumption_kwh` and `paired_import_kwh`, which only count intervals where both the house power and the import meter were read.
+- **Consumption includes the EV.** With `hsem_house_power_includes_ev_charger_power` off, `consumption_power_w()` adds the EV charger power, since the grid meter counts it. Self-sufficiency is not clamped blindly: import above consumption plus battery charge is `import_exceeds_consumption`.
+- **Interval length is elapsed time** (`timestamp()` difference). Two datetimes of the same `ZoneInfo` subtract as wall-clock times, which is wrong across a DST shift.
+- **Battery flows come from the battery power reading here**, not from SoC deltas as in the performance tracker. SoC-derived flows equal the configured efficiencies by construction, so they cannot measure a round-trip loss. Without a power reading the flows fall back to the SoC change (enough for cycles and wear) and the loss is `battery_power_not_measured`.
+- **Round-trip loss = 1 − (discharged + Δstored) ÷ charged** over the intervals that have both a power reading and a SoC change. It is battery-side (inverter loss excluded). It is unknown below `max(20 kWh, 5 × rated capacity)` charged, and while the SoC term's possible error (15 % of it) exceeds 1.5 % of the charged energy; the published `round_trip_loss_uncertainty` is that error.
+- **Wear cost uses `resolve_cycle_cost()` on charge plus discharge**, as the planner's cost function does. `hsem_batteries_cycle_cost` alone is only the user's floor and is 0 by default. A cycle cost of 0 is unknown (`BatterySite.cycle_cost_per_kwh = None`), and the month's wear cost is then `cycle_cost_unknown`, not 0.
+- `as_sensor_attributes()` is memoised per recorded interval and day (`_revision`), since four sensors ask for the same tables.
+- Every `REASON_*` constant needs an entry in the Energy view's Status card; `tests/test_dashboard_energy_view.py` fails otherwise. `docs/dashboard.yaml` and the YAML in `docs/dashboard-setup.md` carry the same view.
+
+Tests: `tests/models/test_energy_tracker.py`, `tests/models/test_energy_tracker_inputs.py`, `tests/test_coordinator_energy.py`, `tests/custom_sensors/test_monthly_energy_sensors.py`, `tests/test_dashboard_energy_view.py`, `tests/utils/test_metering.py`.

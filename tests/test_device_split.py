@@ -399,6 +399,10 @@ class TestClassifyEntityDevice:
                 HSEMDevice.BATTERY_ENERGY,
             ),
             (
+                f"{DOMAIN}_{_ENTRY_ID}_battery_efficiency_sensor",
+                HSEMDevice.BATTERY_ENERGY,
+            ),
+            (
                 f"{DOMAIN}_{_ENTRY_ID}_net_consumption_sensor",
                 HSEMDevice.BATTERY_ENERGY,
             ),

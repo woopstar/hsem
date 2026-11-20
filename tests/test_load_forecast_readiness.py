@@ -310,6 +310,7 @@ def _avg_sensor() -> HSEMAvgSensor:
     """Return an average sensor with its HA dependencies mocked."""
     entry = MagicMock()
     entry.entry_id = "test_entry"
+    entry.created_at = datetime(2026, 1, 1, tzinfo=UTC)
     entry.options = {}
     entry.data = {}
     sensor = HSEMAvgSensor(

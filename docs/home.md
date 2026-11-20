@@ -19,7 +19,7 @@ HSEM is a modular, secure, and highly configurable Home Assistant integration th
 1. **Remove any previous Huawei Solar Battery Optimization Project integrations.**
 2. **Install HSEM** via the Marketplace (Home Assistant 2026.11+), HACS (2026.10) or manually. See the [installation instructions](https://github.com/woopstar/hsem#installation).
 3. **Configure your sensors** for solar battery, inverter, grid, and EV charger (if present) — do not use the Fusion Solar app for scheduling; HSEM's planner drives charge/discharge decisions automatically.
-4. **Let HSEM run for at least 14 days** to collect historical data for optimal performance.
+4. **Check the load forecast.** HSEM builds it from Home Assistant's long-term statistics of your house power sensor, so it is ready after the first update when that sensor has history. Without statistics it needs about one day for a first forecast and 14 days to fill all averaging windows.
 5. **Monitor the Working Mode Sensor** for system status and recommendations.
 
 > **Tip:** New user? Enable **Read-Only** mode to safely observe what HSEM would do before letting it control your system.
@@ -102,7 +102,7 @@ HSEM calculates and rewrites the time slots in Fusion Solar as needed. You do no
 
 ### How long does it take for HSEM to optimize my system?
 
-Allow **at least 14 days** for HSEM to collect enough historical data for accurate optimization.
+HSEM reads the long-term statistics of your house power sensor, so the load forecast is ready after the first update when that sensor has history in Home Assistant. Without statistics, allow about one day for a first forecast and **14 days** for all averaging windows to fill.
 
 ### Is there a "dry run" mode for safe testing?
 
@@ -211,7 +211,7 @@ Every update cycle, the sensor:
 
 - **Do not configure schedules in the Fusion Solar app.** HSEM overwrites them.
 - **Ensure all required sensors are available and correctly configured.**
-- **Allow HSEM to collect 14 days of data** before expecting optimal results.
+- **Allow HSEM to collect 14 days of data** before expecting optimal results when your house power sensor has no long-term statistics.
 
 ---
 

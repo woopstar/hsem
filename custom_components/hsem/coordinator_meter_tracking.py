@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from custom_components.hsem.coordinator_energy import async_track_energy
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.coordinator_tracking import (
@@ -106,6 +107,9 @@ async def async_accumulate_meter_trackers(
             )
         except Exception as e:
             async_log("error", "Savings tracker accumulation failed: %s", e)
+
+    # Energy tracker accumulation (issue #1435).  Guards and persists itself.
+    await async_track_energy(coordinator, now, live, cfg)
 
     # Persist financial and savings tracker state (issues #599, #604, #890)
     # through the shared registry -- see coordinator_persistence.py.

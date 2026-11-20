@@ -146,6 +146,25 @@ def resolve_house_power(hass: Any, cfg: SensorConfig) -> None:
     )
 
 
+def _entry_house_power_entity(
+    config_entry: Any, entity_exists: Callable[[str], bool]
+) -> str | None:
+    """Apply :func:`effective_house_power_entity` to *config_entry*."""
+    inputs = house_load_inputs(
+        *(
+            optional_entity_id(get_config_value(config_entry, key))
+            for key in (*HOUSE_LOAD_INVERTER_KEYS, HOUSE_LOAD_METER_KEY)
+        )
+    )
+    return effective_house_power_entity(
+        optional_entity_id(
+            get_config_value(config_entry, "hsem_house_consumption_power")
+        ),
+        inputs is not None,
+        entity_exists,
+    )
+
+
 def entry_house_power_entity(hass: Any, config_entry: Any) -> str | None:
     """Return the house power entity to read for *config_entry*.
 
@@ -160,16 +179,24 @@ def entry_house_power_entity(hass: Any, config_entry: Any) -> str | None:
     Returns:
         The entity ID to read, or ``None``.
     """
-    inputs = house_load_inputs(
-        *(
-            optional_entity_id(get_config_value(config_entry, key))
-            for key in (*HOUSE_LOAD_INVERTER_KEYS, HOUSE_LOAD_METER_KEY)
-        )
+    return _entry_house_power_entity(
+        config_entry, lambda entity_id: hass.states.get(entity_id) is not None
     )
-    return effective_house_power_entity(
-        optional_entity_id(
-            get_config_value(config_entry, "hsem_house_consumption_power")
-        ),
-        inputs is not None,
-        lambda entity_id: hass.states.get(entity_id) is not None,
-    )
+
+
+def configured_house_power_entity(config_entry: Any) -> str | None:
+    """Return the house power entity *config_entry* names, whatever its state.
+
+    Unlike :func:`entry_house_power_entity` this does not look at the state
+    machine: a configured sensor is returned even while it has no state yet,
+    as during start-up.  Readers of history use it so a slow sensor is not
+    mistaken for a missing one (issue #1433).
+
+    Args:
+        config_entry: The HSEM config entry.
+
+    Returns:
+        The configured sensor, the derived house load when none is
+        configured and its inputs are set, or ``None``.
+    """
+    return _entry_house_power_entity(config_entry, lambda _entity_id: True)

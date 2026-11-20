@@ -1207,6 +1207,18 @@
       "missing_entities": {
         "name": "Entidades de entrada faltantes"
       },
+      "monthly_battery_cycles": {
+        "name": "Ciclos de batería mensuales"
+      },
+      "monthly_battery_wear_cost": {
+        "name": "Coste mensual de desgaste de la batería"
+      },
+      "monthly_round_trip_loss": {
+        "name": "Pérdida mensual de ida y vuelta en la batería"
+      },
+      "monthly_self_sufficiency": {
+        "name": "Autosuficiencia mensual"
+      },
       "net_consumption": {
         "name": "Consumo neto"
       },
@@ -1246,6 +1258,9 @@
       },
       "effective_discharge_floor": {
         "name": "Límite de descarga efectivo"
+      },
+      "battery_efficiency": {
+        "name": "Eficiencia de la batería"
       },
       "ocpp_charger_status": {
         "name": "Estado del cargador"
@@ -1428,7 +1443,31 @@
     },
     "export_diagnostics": {
       "name": "Exportar diagnósticos",
-      "description": "Exporta un volcado de diagnóstico estructurado de la integración HSEM con todos los ID de entidad ocultos."
+      "description": "Exporta un volcado de diagnóstico estructurado de la integración HSEM con todos los ID de entidad ocultos. También puede escribirlo en un archivo y crear una notificación con un enlace de incidencia ya rellenado.",
+      "fields": {
+        "write_file": {
+          "name": "Escribir archivo",
+          "description": "Escribe también el volcado censurado en la carpeta hsem_debug y crea una notificación con la ruta del archivo y un enlace de incidencia ya rellenado."
+        }
+      }
+    },
+    "export_data": {
+      "name": "Exportar datos",
+      "description": "Guarda una copia de los datos aprendidos por HSEM y de la configuración censurada en un archivo JSON en la carpeta hsem_backups. Nunca se incluyen certificados ni claves."
+    },
+    "import_data": {
+      "name": "Importar datos",
+      "description": "Sustituye los datos aprendidos por HSEM por una copia de la carpeta hsem_backups. Los datos actuales se guardan primero y HSEM se recarga. Se rechaza una copia de una versión más reciente de HSEM.",
+      "fields": {
+        "filename": {
+          "name": "Nombre del archivo",
+          "description": "Nombre del archivo de copia en la carpeta hsem_backups, sin ruta."
+        },
+        "restore_configuration": {
+          "name": "Restaurar configuración",
+          "description": "Restaura también la configuración de la copia, incluidos los ID de entidad. Los valores censurados, como los secretos y las rutas de certificados, conservan su valor actual."
+        }
+      }
     },
     "create_dashboard": {
       "name": "Crear panel",

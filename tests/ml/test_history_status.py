@@ -95,6 +95,7 @@ class TestAttributesAndDescription:
             "ml_status": "insufficient_history",
             "ml_available_history_days": pytest.approx(38.6),
             "ml_history_ready_at": ready_at.isoformat(),
+            "ml_statistics_history_days": None,
         }
 
     def test_attributes_are_null_when_nothing_was_measured(self) -> None:
@@ -102,7 +103,16 @@ class TestAttributesAndDescription:
             "ml_status": "disabled",
             "ml_available_history_days": None,
             "ml_history_ready_at": None,
+            "ml_statistics_history_days": None,
         }
+
+    def test_statistics_share_is_rounded(self) -> None:
+        status = MLHistoryStatus(
+            MLHistoryState.READY, 20.0, statistics_history_days=9.96
+        )
+        assert status.as_attributes()["ml_statistics_history_days"] == pytest.approx(
+            10.0
+        )
 
     def test_describe_lists_only_known_parts(self) -> None:
         ready_at = NOW + timedelta(days=1)

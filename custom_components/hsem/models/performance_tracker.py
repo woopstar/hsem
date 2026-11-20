@@ -49,6 +49,7 @@ from custom_components.hsem.utils.datetime_utils import (
     slot_key,
     utc_key,
 )
+from custom_components.hsem.utils.metering import mean_power_kwh, meter_delta
 from custom_components.hsem.utils.misc import round_or_none
 from custom_components.hsem.utils.performance_scoring import PerformanceRequest
 from custom_components.hsem.utils.persistence import (
@@ -106,14 +107,6 @@ SUMMED_FIELDS: tuple[str, ...] = (
     "potential",
 )
 
-#: Largest grid power a meter delta may imply before it is taken for a meter
-#: glitch and the interval is left unobserved.
-_MAX_GRID_KW = 50.0
-
-#: Allowance on top of that for a meter that counts in coarse steps: two
-#: cycles a few seconds apart can straddle a whole step.
-_METER_STEP_KWH = 2.0
-
 
 @dataclass(frozen=True)
 class _Interval:
@@ -133,27 +126,6 @@ class _Interval:
     ev_kwh: float | None
     ev_connected: bool | None
     chargers: tuple[ChargerPiece, ...]
-
-
-def _meter_delta(
-    before: float | None, after: float | None, hours: float
-) -> float | None:
-    """Return a cumulative meter's increase, or ``None`` when it is unusable."""
-    if before is None or after is None:
-        return None
-    delta = after - before
-    if delta < -1e-9 or delta > _MAX_GRID_KW * hours + _METER_STEP_KWH:
-        return None
-    return max(delta, 0.0)
-
-
-def _mean_power_kwh(
-    before_w: float | None, after_w: float | None, hours: float
-) -> float | None:
-    """Return the energy of a power reading held between two samples."""
-    if before_w is None or after_w is None:
-        return None
-    return (before_w + after_w) / 2.0 * hours / 1000.0
 
 
 def _has_meters(sample: PerformanceSample) -> bool:
@@ -178,10 +150,10 @@ def _interval(
     """
     seconds = (sample.at - previous.at).total_seconds()
     hours = seconds / 3600.0
-    grid_import = _meter_delta(
+    grid_import = meter_delta(
         previous.grid_import_energy_kwh, sample.grid_import_energy_kwh, hours
     )
-    grid_export = _meter_delta(
+    grid_export = meter_delta(
         previous.grid_export_energy_kwh, sample.grid_export_energy_kwh, hours
     )
     if (
@@ -193,9 +165,9 @@ def _interval(
         or previous.export_price is None
     ):
         return None
-    pv = _meter_delta(previous.pv_energy_kwh, sample.pv_energy_kwh, hours)
+    pv = meter_delta(previous.pv_energy_kwh, sample.pv_energy_kwh, hours)
     if pv is None:
-        pv = _mean_power_kwh(previous.pv_power_w, sample.pv_power_w, hours)
+        pv = mean_power_kwh(previous.pv_power_w, sample.pv_power_w, hours)
     connected = [
         state
         for state in (previous.ev_connected, sample.ev_connected)
@@ -221,7 +193,7 @@ def _interval(
         ),
         in_control=previous.in_control and sample.in_control,
         pv_kwh=pv,
-        ev_kwh=_mean_power_kwh(previous.ev_power_w, sample.ev_power_w, hours),
+        ev_kwh=mean_power_kwh(previous.ev_power_w, sample.ev_power_w, hours),
         ev_connected=any(connected) if connected else None,
         chargers=charger_pieces(previous.chargers, sample.chargers, hours),
     )

@@ -40,6 +40,7 @@ from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
     DailyPlanVsActualTracker,
 )
 from custom_components.hsem.models.data_quality import DataQuality
+from custom_components.hsem.models.energy_tracker import EnergyTracker
 from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.forecast_coverage import ForecastCoverage
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
@@ -56,6 +57,7 @@ from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.planner.ev_soc_economics import EVSoCEconomicsResult
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
+from custom_components.hsem.utils.efficiency_learner import EfficiencyLearner
 from custom_components.hsem.utils.ev_delivered_energy import EVDeliveredEnergyTracker
 from custom_components.hsem.utils.forecast_tracker import ForecastTracker
 from custom_components.hsem.utils.live_power import LivePowerEstimate, LivePowerWindow
@@ -90,9 +92,11 @@ class CoordinatorSharedState(_Base):
     _data_quality: DataQuality
     _forecast_coverage: ForecastCoverage | None
     _dynamic_floor: DynamicDischargeFloor
+    _efficiency_learner: EfficiencyLearner
     _effective_discharge_floor_diag: dict | None
     _effective_discharge_floor_profile: list[tuple[str, float]] | None
     _effective_discharge_floor_pct: float | None
+    _energy_tracker: EnergyTracker
     _ev_charging_plan: EVChargingPlan | None
     _ev_delivered_energy_tracker: EVDeliveredEnergyTracker
     _ev_held_power_w: float

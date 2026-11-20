@@ -411,6 +411,14 @@ roundtrip_loss  = 1 − roundtrip_yield
 
 Example (90 % / 90 %): yield = 0.81, loss = 19 %.
 
+### Measured efficiency is diagnostic only
+
+`sensor.hsem_battery_efficiency_sensor` publishes the round-trip efficiency
+HSEM measures, with the apparent charge and discharge efficiency per 500 W
+power step (issue #1431). The planner does not read it. `battery_charge_efficiency_pct` and
+`battery_discharge_efficiency_pct` stay the configured values, so the
+measurement changes no plan, cost or invariant.
+
 ### Physical conversion-loss accounting
 
 Conversion loss is represented completely by the AC/DC energy balance. If

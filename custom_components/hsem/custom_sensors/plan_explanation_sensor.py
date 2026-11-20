@@ -40,7 +40,8 @@ Additional diagnostic attributes are merged from the coordinator snapshot:
 - ``ml_status`` / ``ml_available_history_days`` / ``ml_history_ready_at`` —
   whether the ML consumption forecast is in use and, while it waits for
   recorder history, how many days exist and when enough is expected
-  (issue #1365).
+  (issue #1365). ``ml_statistics_history_days`` is the part of that history
+  read from long-term statistics (issue #1433).
 
 The sensor is a *diagnostic* entity (``EntityCategory.DIAGNOSTIC``) so it
 appears in the *Diagnostic* section of the device page and is excluded from

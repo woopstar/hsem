@@ -19,10 +19,12 @@ from custom_components.hsem.coordinator_persistence import (
     persist_all_trackers,
 )
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
+from custom_components.hsem.models.energy_tracker import EnergyTracker
 from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.models.price_history_tracker import PriceHistoryTracker
 from custom_components.hsem.models.savings_tracker import SavingsTracker
+from custom_components.hsem.utils.efficiency_learner import EfficiencyLearner
 from custom_components.hsem.utils.prediction_tracker import PredictionTracker
 
 _MODULE = "custom_components.hsem.coordinator_persistence"
@@ -42,6 +44,9 @@ def _coordinator(
     coordinator._financial_tracker = FinancialTracker(
         history_file=str(tmp_path / "financial.json")
     )
+    coordinator._energy_tracker = EnergyTracker(
+        history_file=str(tmp_path / "energy.json")
+    )
     coordinator._prediction_tracker = PredictionTracker(
         history_file=str(tmp_path / "prediction.json") if prediction_history else ""
     )
@@ -50,6 +55,9 @@ def _coordinator(
     )
     coordinator._price_history_tracker = PriceHistoryTracker(
         history_file=str(tmp_path / "price_history.json")
+    )
+    coordinator._efficiency_learner = EfficiencyLearner(
+        history_file=str(tmp_path / "efficiency.json")
     )
     return cast(CoordinatorSharedState, coordinator)
 
@@ -69,8 +77,10 @@ class TestPersistAllTrackers:
         for name in (
             "savings.json",
             "financial.json",
+            "energy.json",
             "prediction.json",
             "performance.json",
+            "efficiency.json",
         ):
             assert (tmp_path / name).exists(), name
 
@@ -127,12 +137,40 @@ class TestPersistAllTrackers:
 
         save_history.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_energy_tracker_is_skipped_before_setup(self, tmp_path: Path) -> None:
+        """Without a history file the energy tracker is not written."""
+        coordinator = _coordinator(tmp_path)
+        coordinator._energy_tracker.history_file = ""
+        save_history = AsyncMock(return_value=True)
+        coordinator._energy_tracker.save_history = save_history  # type: ignore[method-assign]  # test spy
+
+        await persist_all_trackers(coordinator, only=["_energy_tracker"])
+
+        save_history.assert_not_awaited()
+
     def test_registry_keys_match_coordinator_attributes(self) -> None:
         """Every registry key is the attribute name it reads."""
         assert set(TRACKER_REGISTRY) == {
             "_savings_tracker",
             "_financial_tracker",
+            "_energy_tracker",
             "_performance_tracker",
             "_prediction_tracker",
             "_price_history_tracker",
+            "_efficiency_learner",
         }
+
+    @pytest.mark.asyncio
+    async def test_efficiency_learner_is_skipped_before_setup(
+        self, tmp_path: Path
+    ) -> None:
+        """Without a history file the efficiency learner is not written."""
+        coordinator = _coordinator(tmp_path)
+        coordinator._efficiency_learner = EfficiencyLearner()
+        save_history = AsyncMock(return_value=True)
+        coordinator._efficiency_learner.save_history = save_history  # type: ignore[method-assign]  # test spy
+
+        await persist_all_trackers(coordinator, only=["_efficiency_learner"])
+
+        save_history.assert_not_awaited()
