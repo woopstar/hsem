@@ -40,6 +40,7 @@ from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
     DailyPlanVsActualTracker,
 )
 from custom_components.hsem.models.data_quality import DataQuality
+from custom_components.hsem.models.energy_tracker import EnergyTracker
 from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.forecast_coverage import ForecastCoverage
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
@@ -94,6 +95,7 @@ class CoordinatorSharedState(_Base):
     _effective_discharge_floor_diag: dict | None
     _effective_discharge_floor_profile: list[tuple[str, float]] | None
     _effective_discharge_floor_pct: float | None
+    _energy_tracker: EnergyTracker
     _ev_charging_plan: EVChargingPlan | None
     _ev_delivered_energy_tracker: EVDeliveredEnergyTracker
     _ev_held_power_w: float

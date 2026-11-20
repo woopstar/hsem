@@ -1207,6 +1207,18 @@
       "missing_entities": {
         "name": "Missing Input Entities"
       },
+      "monthly_battery_cycles": {
+        "name": "Monthly Battery Cycles"
+      },
+      "monthly_battery_wear_cost": {
+        "name": "Monthly Battery Wear Cost"
+      },
+      "monthly_round_trip_loss": {
+        "name": "Monthly Battery-Side Round-Trip Loss"
+      },
+      "monthly_self_sufficiency": {
+        "name": "Monthly Self-Sufficiency"
+      },
       "net_consumption": {
         "name": "Net Consumption"
       },

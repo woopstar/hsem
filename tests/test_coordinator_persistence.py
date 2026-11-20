@@ -19,6 +19,7 @@ from custom_components.hsem.coordinator_persistence import (
     persist_all_trackers,
 )
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
+from custom_components.hsem.models.energy_tracker import EnergyTracker
 from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.models.savings_tracker import SavingsTracker
@@ -41,6 +42,9 @@ def _coordinator(
     )
     coordinator._financial_tracker = FinancialTracker(
         history_file=str(tmp_path / "financial.json")
+    )
+    coordinator._energy_tracker = EnergyTracker(
+        history_file=str(tmp_path / "energy.json")
     )
     coordinator._prediction_tracker = PredictionTracker(
         history_file=str(tmp_path / "prediction.json") if prediction_history else ""
@@ -69,6 +73,7 @@ class TestPersistAllTrackers:
         for name in (
             "savings.json",
             "financial.json",
+            "energy.json",
             "prediction.json",
             "performance.json",
             "efficiency.json",
@@ -128,11 +133,24 @@ class TestPersistAllTrackers:
 
         save_history.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_energy_tracker_is_skipped_before_setup(self, tmp_path: Path) -> None:
+        """Without a history file the energy tracker is not written."""
+        coordinator = _coordinator(tmp_path)
+        coordinator._energy_tracker.history_file = ""
+        save_history = AsyncMock(return_value=True)
+        coordinator._energy_tracker.save_history = save_history  # type: ignore[method-assign]  # test spy
+
+        await persist_all_trackers(coordinator, only=["_energy_tracker"])
+
+        save_history.assert_not_awaited()
+
     def test_registry_keys_match_coordinator_attributes(self) -> None:
         """Every registry key is the attribute name it reads."""
         assert set(TRACKER_REGISTRY) == {
             "_savings_tracker",
             "_financial_tracker",
+            "_energy_tracker",
             "_performance_tracker",
             "_prediction_tracker",
             "_efficiency_learner",

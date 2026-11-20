@@ -1300,6 +1300,18 @@
       "missing_entities": {
         "name": "Manglende enheder"
       },
+      "monthly_battery_cycles": {
+        "name": "Månedlige battericyklusser"
+      },
+      "monthly_battery_wear_cost": {
+        "name": "Månedlig omkostning til batterislid"
+      },
+      "monthly_round_trip_loss": {
+        "name": "Månedligt tab i batteriet ved op- og afladning"
+      },
+      "monthly_self_sufficiency": {
+        "name": "Månedlig selvforsyningsgrad"
+      },
       "net_consumption": {
         "name": "Nettoforbrug"
       },

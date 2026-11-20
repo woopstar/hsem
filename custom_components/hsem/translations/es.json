@@ -1207,6 +1207,18 @@
       "missing_entities": {
         "name": "Entidades de entrada faltantes"
       },
+      "monthly_battery_cycles": {
+        "name": "Ciclos de batería mensuales"
+      },
+      "monthly_battery_wear_cost": {
+        "name": "Coste mensual de desgaste de la batería"
+      },
+      "monthly_round_trip_loss": {
+        "name": "Pérdida mensual de ida y vuelta en la batería"
+      },
+      "monthly_self_sufficiency": {
+        "name": "Autosuficiencia mensual"
+      },
       "net_consumption": {
         "name": "Consumo neto"
       },

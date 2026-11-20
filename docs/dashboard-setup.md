@@ -1692,13 +1692,115 @@ views:
                   entity.attributes.daily : [];
                   return days.map((day) => [new Date(day.date +
                   'T00:00:00').getTime(), day.ev_charging_efficiency]);
+  - title: Energy
+    path: energy
+    type: sections
+    max_columns: 2
+    cards: []
+    badges: []
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: This Month
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 2
+          - type: tile
+            entity: sensor.hsem_monthly_self_sufficiency
+            name: Self-Sufficiency
+            icon: mdi:home-lightning-bolt
+            color: state
+            grid_options:
+              columns: 3
+          - type: tile
+            entity: sensor.hsem_monthly_battery_cycles
+            name: Battery Cycles
+            icon: mdi:battery-sync
+            color: state
+            grid_options:
+              columns: 3
+          - type: tile
+            entity: sensor.hsem_monthly_battery_wear_cost
+            name: Battery Wear Cost
+            icon: mdi:battery-clock
+            color: state
+            grid_options:
+              columns: 3
+          - type: tile
+            entity: sensor.hsem_monthly_round_trip_loss
+            name: Round-Trip Loss
+            icon: mdi:battery-arrow-down
+            color: state
+            grid_options:
+              columns: 3
+          - type: markdown
+            title: Status
+            grid_options:
+              columns: full
+            content: |
+              {%- set s = 'sensor.hsem_monthly_self_sufficiency' -%}
+              {%- set why = {
+                'no_data': 'nothing has been recorded this month yet.',
+                'consumption_not_measured': 'the house consumption power sensor gave no readings.',
+                'consumption_below_minimum': 'the house consumption recorded so far is too small for a share.',
+                'import_exceeds_consumption': 'more was imported than the house consumption and the battery charging can explain. Check whether the house power sensor leaves out a load, such as an EV charger.',
+                'battery_not_measured': 'neither the battery power nor the SoC gave readings.',
+                'cycle_cost_unknown': 'the cycle cost cannot be worked out. Set the battery purchase price and expected cycles, or a cycle cost.',
+                'soc_change_too_large': 'the SoC differs too much between the start and now, against the energy charged so far.',
+                'grid_import_not_measured': 'no grid import energy sensor is configured, or it gave no readings.',
+                'capacity_unknown': 'the usable battery capacity is not known yet.',
+                'battery_power_not_measured': 'the battery power sensor gave no readings, so there is nothing to measure the loss with.',
+                'throughput_below_minimum': 'too little energy has been charged so far (20 kWh, and five times the rated capacity).',
+                'implausible_ratio': 'the battery power readings and the SoC contradict each other.'
+              } -%}
+              {%- set names = {
+                'self_sufficiency': 'Self-sufficiency',
+                'battery_cycles': 'Battery cycles',
+                'battery_wear_cost': 'Battery wear cost',
+                'round_trip_loss': 'Round-trip loss'
+              } -%}
+              {%- set m = state_attr(s, 'this_month') or {} -%}
+              {%- set known = namespace(all=true) -%}
+              **Month:** {{ m.get('month', '–') }} · **Days recorded:** {{ m.get('days', 0) }} · **Hours observed:** {{ '%.0f' | format(m.get('observed_hours') or 0) }}
+
+              {% for key, name in names.items() -%}
+              {%- set reason = m.get(key ~ '_reason', 'no_data') -%}
+              {%- if reason %}{% set known.all = false %}**{{ name }} unknown:** {{ why.get(reason, reason) }}
+
+              {% endif -%}
+              {%- endfor -%}
+              {%- if known.all %}All figures of this month are available.{% endif %}
+      - type: grid
+        cards:
+          - type: heading
+            heading: Last 12 Months
+            heading_style: title
+            grid_options:
+              columns: full
+              rows: 2
+          - type: markdown
+            grid_options:
+              columns: full
+            content: |
+              {%- set s = 'sensor.hsem_monthly_self_sufficiency' -%}
+              {%- set months = state_attr(s, 'monthly') or [] -%}
+              {%- macro num(value, pattern) -%}{{ '–' if value is none else pattern | format(value) }}{%- endmacro -%}
+              | Month | Used | Import | Export | PV | Charged | Discharged | Self-sufficiency | Cycles | Wear cost | Round-trip loss |
+              |:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+              {%- for m in months | reverse %}
+              | {{ m.get('month') }} | {{ num(m.get('house_consumption_kwh'), '%.0f') }} | {{ num(m.get('grid_import_kwh'), '%.0f') }} | {{ num(m.get('grid_export_kwh'), '%.0f') }} | {{ num(m.get('pv_kwh'), '%.0f') }} | {{ num(m.get('battery_charged_kwh'), '%.0f') }} | {{ num(m.get('battery_discharged_kwh'), '%.0f') }} | {{ num(m.get('self_sufficiency'), '%.0f %%') }} | {{ num(m.get('battery_cycles'), '%.1f') }} | {{ num(m.get('battery_wear_cost'), '%.2f') }} | {{ num(m.get('round_trip_loss'), '%.1f %%') }} |
+              {%- endfor %}
+
+              Energy in kWh, newest month first. Every figure is computed from the month's summed energy, not from daily percentages. A dash means the figure is unknown for that month; the Status card says why for the current one. The round-trip loss is measured at the battery, so it leaves out the inverter.
 ```
 
 ---
 
 ## Dashboard layout
 
-The dashboard has two views. The **HSEM** view uses an eight-section layout:
+The dashboard has three views. The **HSEM** view uses an eight-section layout:
 
 | Section                         | Column span | Cards | Description                                                                                                                                              |
 | ------------------------------- | ----------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1720,6 +1822,13 @@ control turned out to be, scored against perfect hindsight:
 | **Periods**           | 1 column    | 2     | Every figure for 24 h, yesterday, 7 days and 30 days                                  |
 | **Where It Was Lost** | 2 columns   | 2     | Missed opportunity per day, stacked by battery dispatch, PV surplus and EV timing     |
 | **Trend**             | 2 columns   | 2     | Savings capture, battery and solar utilisation and EV charging efficiency per day     |
+
+The **Energy** view (`/hsem/energy`) shows the month in energy figures:
+
+| Section            | Column span | Cards | Description                                                                            |
+| ------------------ | ----------- | ----- | -------------------------------------------------------------------------------------- |
+| **This Month**     | 1 column    | 6     | Self-sufficiency, battery cycles, battery wear cost, round-trip loss and a status card |
+| **Last 12 Months** | 1 column    | 2     | One row per month: energy totals and the four figures                                  |
 
 ---
 
@@ -1820,6 +1929,42 @@ performance sensors (the charts read `daily`, the newest 30 completed days).
 `tests/test_dashboard_performance_view.py` renders the Markdown templates
 against the attributes the integration really publishes, so a renamed
 attribute fails the test suite instead of showing a dash.
+
+### Energy view
+
+A third tab of the dashboard, with the energy figures of the calendar month.
+The figures are defined in
+[Monthly energy sensors](sensors-reference.md#monthly-energy-sensors).
+
+| Card           | Type     | What it shows                                                                                               |
+| -------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
+| Tiles          | Tile     | Self-sufficiency, battery cycles, battery wear cost and round-trip loss for the current month so far        |
+| Status         | Markdown | The month, the days and hours recorded, and why a figure is unknown                                         |
+| Last 12 Months | Markdown | One row per month, newest first: house consumption, import, export, PV, charged, discharged and the figures |
+
+**Already have the HSEM dashboard?** Add the view the same way as the
+Performance view above: copy the block that starts with `- title: Energy`
+and paste it at the end, as a further entry under `views:`.
+
+Reading it:
+
+- A **new installation**, and one that just upgraded, starts with an empty
+  record: the table has one row and it fills from then on.
+- The **current month** is the month so far, so its cycles and wear cost grow
+  through the month.
+- The **round-trip loss** is measured at the battery and leaves out the
+  inverter. It shows a dash until enough energy has been charged in the month
+  (20 kWh, and five times the rated capacity) and the SoC is close enough to
+  where the month started. In a winter month with an idle battery it can stay
+  unknown.
+- The months **before the upgrade** are not filled in. The existing financial
+  history holds money only, so there is no energy to build them from.
+- A dash in an older row means the figure was unknown for that month.
+
+Both Markdown cards read attributes of
+`sensor.hsem_monthly_self_sufficiency` (`this_month` and `monthly`).
+`tests/test_dashboard_energy_view.py` renders them against the attributes the
+integration really publishes.
 
 ### Forecast Quality tiles
 

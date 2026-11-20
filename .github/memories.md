@@ -3058,3 +3058,28 @@ Rules now:
 
 `applier.py` was at 29 923 bytes: the stale forcible-charge stop moved to
 `applier_charge_power.py` to make room for the two calls.
+
+## Monthly Energy Sensors Are Built From a Daily Energy Record (issue #1435)
+
+`sensor.hsem_monthly_self_sufficiency`, `..._battery_cycles`, `..._battery_wear_cost` and `..._round_trip_loss` report the current calendar month; `this_month`, `previous_month` and `monthly` (12 months) are unrecorded attributes. The bundled dashboard has a third view, **Energy**.
+
+**Layout:**
+
+- `models/energy_tracker.py` (`EnergySample`, `BatterySite`, `EnergyDayEntry`, `EnergyTracker`): one record per local day, 366 days, in `.storage/hsem_energy_history.json`. It is a sibling of `FinancialTracker` with a file of its own, so the financial history format is untouched.
+- `coordinator_energy.py` builds the sample and is called from `async_accumulate_meter_trackers`, so it runs every cycle, plan or not. It loads its file lazily and saves at most every 120 s through `persist_all_trackers`.
+- `utils/metering.py` holds `meter_delta` and `mean_power_kwh`, moved out of `models/performance_tracker.py`. Use them for any new per-cycle meter arithmetic.
+- `custom_sensors/monthly_energy_sensors.py`, `utils/sensornames/monthly_energy.py`.
+
+**Rules:**
+
+- **A period is a ratio of sums.** A new monthly figure adds its additive quantities to `SUMMED_FIELDS` and is computed in `month_summary`. Never store a daily percentage.
+- **Missing is not zero.** A quantity is booked only when both of its readings exist, and its `*_hours` field counts the hours it was measured: a month publishes `None` for a quantity with no hours. `LiveState` holds `0.0` for an unavailable house or PV power sensor (`or 0.0` in `state_collector.py`, which the planner relies on), so `coordinator_energy._measured()` takes those two readings only while their entity has a numeric state. Self-sufficiency uses `paired_consumption_kwh` and `paired_import_kwh`, which only count intervals where both the house power and the import meter were read.
+- **Consumption includes the EV.** With `hsem_house_power_includes_ev_charger_power` off, `consumption_power_w()` adds the EV charger power, since the grid meter counts it. Self-sufficiency is not clamped blindly: import above consumption plus battery charge is `import_exceeds_consumption`.
+- **Interval length is elapsed time** (`timestamp()` difference). Two datetimes of the same `ZoneInfo` subtract as wall-clock times, which is wrong across a DST shift.
+- **Battery flows come from the battery power reading here**, not from SoC deltas as in the performance tracker. SoC-derived flows equal the configured efficiencies by construction, so they cannot measure a round-trip loss. Without a power reading the flows fall back to the SoC change (enough for cycles and wear) and the loss is `battery_power_not_measured`.
+- **Round-trip loss = 1 − (discharged + Δstored) ÷ charged** over the intervals that have both a power reading and a SoC change. It is battery-side (inverter loss excluded). It is unknown below `max(20 kWh, 5 × rated capacity)` charged, and while the SoC term's possible error (15 % of it) exceeds 1.5 % of the charged energy; the published `round_trip_loss_uncertainty` is that error.
+- **Wear cost uses `resolve_cycle_cost()` on charge plus discharge**, as the planner's cost function does. `hsem_batteries_cycle_cost` alone is only the user's floor and is 0 by default. A cycle cost of 0 is unknown (`BatterySite.cycle_cost_per_kwh = None`), and the month's wear cost is then `cycle_cost_unknown`, not 0.
+- `as_sensor_attributes()` is memoised per recorded interval and day (`_revision`), since four sensors ask for the same tables.
+- Every `REASON_*` constant needs an entry in the Energy view's Status card; `tests/test_dashboard_energy_view.py` fails otherwise. `docs/dashboard.yaml` and the YAML in `docs/dashboard-setup.md` carry the same view.
+
+Tests: `tests/models/test_energy_tracker.py`, `tests/models/test_energy_tracker_inputs.py`, `tests/test_coordinator_energy.py`, `tests/custom_sensors/test_monthly_energy_sensors.py`, `tests/test_dashboard_energy_view.py`, `tests/utils/test_metering.py`.
