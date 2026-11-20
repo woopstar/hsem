@@ -1450,7 +1450,31 @@
     },
     "export_diagnostics": {
       "name": "Eksportér diagnosticering",
-      "description": "Eksportér et struktureret diagnosticeringsdump for HSEM-integrationen med alle enheds-ID'er redigeret."
+      "description": "Eksporter et struktureret diagnostikudtræk for HSEM-integrationen med alle entitets-id'er fjernet. Kan også skrive det til en fil og oprette en notifikation med et forudfyldt issue-link.",
+      "fields": {
+        "write_file": {
+          "name": "Skriv fil",
+          "description": "Skriv også det redigerede udtræk til mappen hsem_debug og opret en notifikation med filstien og et forudfyldt issue-link."
+        }
+      }
+    },
+    "export_data": {
+      "name": "Eksporter data",
+      "description": "Tag backup af HSEM's indlærte data og den redigerede konfiguration til én JSON-fil i mappen hsem_backups. Certifikater og nøgler medtages aldrig."
+    },
+    "import_data": {
+      "name": "Importer data",
+      "description": "Erstat HSEM's indlærte data med en backup fra mappen hsem_backups. De nuværende data gemmes først, og HSEM genindlæses. En backup fra en nyere HSEM afvises.",
+      "fields": {
+        "filename": {
+          "name": "Filnavn",
+          "description": "Navnet på backupfilen i mappen hsem_backups, uden sti."
+        },
+        "restore_configuration": {
+          "name": "Gendan konfiguration",
+          "description": "Gendan også konfigurationen fra backuppen, inklusive entitets-id'er. Redigerede værdier som hemmeligheder og certifikatstier beholder deres nuværende værdi."
+        }
+      }
     },
     "create_dashboard": {
       "name": "Opret dashboard",

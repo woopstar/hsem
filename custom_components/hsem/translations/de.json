@@ -1443,7 +1443,31 @@
     },
     "export_diagnostics": {
       "name": "Diagnose exportieren",
-      "description": "Exportiert einen strukturierten Diagnose-Dump für die HSEM-Integration mit allen geschwärzten Entitäts-IDs."
+      "description": "Exportiert einen strukturierten Diagnoseauszug der HSEM-Integration, in dem alle Entitäts-IDs geschwärzt sind. Kann ihn auch in eine Datei schreiben und eine Benachrichtigung mit einem vorausgefüllten Issue-Link erstellen.",
+      "fields": {
+        "write_file": {
+          "name": "Datei schreiben",
+          "description": "Schreibt den geschwärzten Auszug zusätzlich in den Ordner hsem_debug und erstellt eine Benachrichtigung mit dem Dateipfad und einem vorausgefüllten Issue-Link."
+        }
+      }
+    },
+    "export_data": {
+      "name": "Daten exportieren",
+      "description": "Sichert die gelernten Daten von HSEM und die geschwärzte Konfiguration in einer JSON-Datei im Ordner hsem_backups. Zertifikate und Schlüssel werden nie aufgenommen."
+    },
+    "import_data": {
+      "name": "Daten importieren",
+      "description": "Ersetzt die gelernten Daten von HSEM durch eine Sicherung aus dem Ordner hsem_backups. Die aktuellen Daten werden zuerst gesichert und HSEM wird neu geladen. Eine Sicherung aus einer neueren HSEM-Version wird abgelehnt.",
+      "fields": {
+        "filename": {
+          "name": "Dateiname",
+          "description": "Name der Sicherungsdatei im Ordner hsem_backups, ohne Pfad."
+        },
+        "restore_configuration": {
+          "name": "Konfiguration wiederherstellen",
+          "description": "Stellt auch die Konfiguration aus der Sicherung wieder her, einschließlich der Entitäts-IDs. Geschwärzte Werte wie Geheimnisse und Zertifikatspfade behalten ihren aktuellen Wert."
+        }
+      }
     },
     "create_dashboard": {
       "name": "Dashboard erstellen",

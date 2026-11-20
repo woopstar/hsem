@@ -834,6 +834,7 @@ If you've checked everything and HSEM still doesn't work:
 
 6. **Check for known issues:** Review open issues at
    [github.com/woopstar/hsem/issues](https://github.com/woopstar/hsem/issues).
+   To report a new one, see [Reporting a bug](#reporting-a-bug).
 
 7. **Reset the house-consumption history:** wiping the recorder database
    does **not** reset HSEM's hour-block sensors. The integral totals,
@@ -861,8 +862,57 @@ If you've checked everything and HSEM still doesn't work:
       `data_quality.load_forecast_estimated_hours`).
 
    HSEM's own tracker files (`.storage/hsem_*_history.json`: prediction,
-   financial, savings, daily) are separate. Delete them only to reset those
-   statistics as well.
+   financial, savings, daily, performance) are separate. Delete them only to
+   reset those statistics as well. Call `hsem.export_data` first to keep a
+   copy.
+
+---
+
+## Reporting a bug
+
+1. Call `hsem.export_diagnostics` with `write_file: true` in **Developer Tools
+   → Actions**.
+2. Open the notification _HSEM debug export_. It shows the path of the file,
+   `<config>/hsem_debug/hsem_debug_<date>_<time>.json`, and a link to a new
+   GitHub issue.
+3. Follow the link. The issue is prefilled with your HSEM and Home Assistant
+   versions only.
+4. Describe what happened and attach the debug file.
+
+The file is redacted: entity IDs and secrets are replaced with
+`**REDACTED**`. It still holds your prices, forecasts and battery numbers, so
+read it before you share it.
+
+---
+
+## Backing up and moving learned data
+
+HSEM learns over weeks. The history lives in `.storage/hsem_*_history.json`
+and in the restore state of the solar confidence sensor, the forecast accuracy
+sensor and the hourly average sensors. A backup holds all of them.
+
+- **Back up:** call `hsem.export_data`. The file lands in
+  `<config>/hsem_backups/`.
+- **Move to another Home Assistant:** set HSEM up there, copy the backup file
+  into `<config>/hsem_backups/` and call `hsem.import_data` with its
+  `filename`.
+- **Undo an import:** every import first writes
+  `hsem_backup_<date>_<time>_before_import.json`. Import that file.
+- **Deleted the integration:** HSEM wrote
+  `hsem_backup_<date>_<time>_deleted.json` on the way out. It holds the
+  learned sensor state only when HSEM ran since Home Assistant started.
+
+| Symptom                               | Cause                                                                               |
+| ------------------------------------- | ----------------------------------------------------------------------------------- |
+| `The file is not an HSEM backup`      | The file is not a backup, or it was edited                                          |
+| `... is newer than the installed ...` | The backup comes from a newer HSEM. Update HSEM, then import                        |
+| `... is not a backup file name`       | `filename` held a path. Give the file name only                                     |
+| `HSEM is in the state '...'`          | HSEM is retrying or failed its setup. Fix that, then import                         |
+| `Another import is running`           | Wait for the first import to finish, then call the service again                    |
+| `... has config entry version ...`    | The options come from another HSEM generation. Import without restore_configuration |
+| Entities are missing after a restore  | The entity IDs from the backup do not exist on this Home Assistant. Fix the options |
+
+See [Services Reference](services-reference.md) for the file layout.
 
 ---
 
