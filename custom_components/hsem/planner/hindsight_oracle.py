@@ -258,6 +258,7 @@ def solve_hindsight_oracle(
     max_grid_import_kwh: Sequence[float] | None = None,
     max_grid_export_kwh: Sequence[float] | None = None,
     shiftable: Sequence[ShiftableLoad] = (),
+    throughput_cost_per_kwh: float = 0.0,
     time_limit_s: float = ORACLE_TIME_LIMIT_S,
 ) -> HindsightRun | None:
     """Return the cheapest way the battery could have been run, in hindsight.
@@ -294,6 +295,11 @@ def solve_hindsight_oracle(
             ``None``.
         shiftable: Loads whose energy the oracle places itself, on top of
             the slots' net load (issue #1271).
+        throughput_cost_per_kwh: Battery wear charged per kWh of AC charge
+            and per kWh of AC discharge, on top of the grid cost the solve
+            minimises (issue #1432).  The returned ``cost`` stays the grid
+            cost alone.  0 for the plain oracle, which is what every score
+            uses.
         time_limit_s: Wall-clock limit for the solve.
 
     Returns:
@@ -393,6 +399,7 @@ def solve_hindsight_oracle(
     objective = np.zeros(width)
     objective[grid_in] = [slot.import_price for slot in slots]
     objective[grid_out] = [-slot.export_price for slot in slots]
+    objective[charge] = objective[discharge] = max(throughput_cost_per_kwh, 0.0)
 
     lower = np.zeros(width)
     if min_charge_kwh is not None:

@@ -9,6 +9,8 @@ This module implements the HSEM services:
   optionally written to ``<config>/hsem_debug/`` with a notification (issue #1436).
 - ``export_data`` / ``import_data`` — Back up and restore the learned data
   (issue #1436, see ``services_backup.py``).
+- ``what_if`` — Replay the recorded days with another battery and return the
+  difference as service response (issue #1432).
 - ``create_dashboard`` — Log the path to the bundled dashboard YAML.
 - ``ocpp_debug_start_charging`` — Manually send RemoteStartTransaction +
   SetChargingProfile, bypassing the anti-flap state machine (issue #920).
@@ -71,6 +73,11 @@ from custom_components.hsem.services_ocpp_tls import (
     SCHEMA_OCPP_GENERATE_CLIENT_CERTIFICATE,
     SERVICE_OCPP_GENERATE_CLIENT_CERTIFICATE,
     async_handle_ocpp_generate_client_certificate,
+)
+from custom_components.hsem.services_what_if import (
+    SCHEMA_WHAT_IF,
+    SERVICE_WHAT_IF,
+    async_handle_what_if,
 )
 from custom_components.hsem.utils.dashboard import async_ensure_hsem_dashboard
 from custom_components.hsem.utils.diagnostics import build_diagnostics_dump
@@ -463,6 +470,11 @@ SERVICE_HANDLER_MAP: dict[str, tuple[vol.Schema, Any, SupportsResponse]] = {
         SCHEMA_SET_TEMPORARY_OVERRIDE,
         async_handle_set_temporary_override,
         SupportsResponse.NONE,
+    ),
+    SERVICE_WHAT_IF: (
+        SCHEMA_WHAT_IF,
+        async_handle_what_if,
+        SupportsResponse.ONLY,
     ),
 }
 

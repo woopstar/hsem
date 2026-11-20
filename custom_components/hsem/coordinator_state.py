@@ -53,6 +53,7 @@ from custom_components.hsem.models.price_history_tracker import PriceHistoryTrac
 from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
+from custom_components.hsem.models.what_if_history import WhatIfHistory
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.planner.ev_soc_economics import EVSoCEconomicsResult
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
@@ -182,6 +183,7 @@ class CoordinatorSharedState(_Base):
     _tracked_entities: set[str]
     _update_generation: int
     _update_lock: asyncio.Lock
+    _what_if_history: WhatIfHistory
     _pool_jobs: PoolJobGuard
     _window_hys_held: bool
     _window_hys_previous_rec: str | None

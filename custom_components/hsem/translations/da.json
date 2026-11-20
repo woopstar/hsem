@@ -1476,6 +1476,56 @@
         }
       }
     },
+      "what_if": {
+        "name": "Hvad nu hvis",
+        "description": "Afspil de registrerede dage med et andet batteri og returnér, hvad ændringen ville have været værd. Begge omkostninger er grænser med perfekt forudsigelse. Skriver intet.",
+        "fields": {
+          "history_days": {
+            "name": "Historikdage",
+            "description": "Afsluttede dage før i dag, der skal afspilles. Højst 90."
+          },
+          "usable_capacity_kwh": {
+            "name": "Brugbar kapacitet",
+            "description": "Brugbar kapacitet for scenariets batteri. Lad feltet stå tomt for at beholde den konfigurerede kapacitet."
+          },
+          "max_charge_power_w": {
+            "name": "Maks. ladeeffekt",
+            "description": "Maksimal ladeeffekt for scenariets batteri. Lad feltet stå tomt for at beholde den konfigurerede effekt."
+          },
+          "max_discharge_power_w": {
+            "name": "Maks. afladeeffekt",
+            "description": "Maksimal afladeeffekt for scenariets batteri. Lad feltet stå tomt for at beholde den konfigurerede effekt."
+          },
+          "charge_efficiency_pct": {
+            "name": "Ladeeffektivitet",
+            "description": "Ladeeffektivitet for scenariets batteri. Lad feltet stå tomt for at beholde den konfigurerede effektivitet."
+          },
+          "discharge_efficiency_pct": {
+            "name": "Afladeeffektivitet",
+            "description": "Afladeeffektivitet for scenariets batteri. Lad feltet stå tomt for at beholde den konfigurerede effektivitet."
+          },
+          "cycle_cost_per_kwh": {
+            "name": "Cyklusomkostning pr. kWh",
+            "description": "Batterislid pr. kWh gennemløb i scenariet. Lad feltet stå tomt for at beholde den cyklusomkostning, planlæggeren bruger."
+          },
+          "capacity_start_kwh": {
+            "name": "Kapacitetsinterval start",
+            "description": "Første brugbare kapacitet i et interval. Angiv start, slut og trin sammen for at få én række pr. størrelse."
+          },
+          "capacity_end_kwh": {
+            "name": "Kapacitetsinterval slut",
+            "description": "Sidste brugbare kapacitet i intervallet."
+          },
+          "capacity_step_kwh": {
+            "name": "Kapacitetsinterval trin",
+            "description": "Afstand mellem to kapaciteter i intervallet."
+          },
+          "capacity_price_per_kwh": {
+            "name": "Pris pr. kWh kapacitet",
+            "description": "Pris for én kWh brugbar kapacitet. Når den er angivet, indeholder hver række tilbagebetalingstiden i år."
+          }
+        }
+      },
     "create_dashboard": {
       "name": "Opret dashboard",
       "description": "Opret eller opdater HSEM Lovelace-dashboardet. Sæt force til true for at overskrive."

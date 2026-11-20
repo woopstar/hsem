@@ -24,6 +24,7 @@ from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.models.price_history_tracker import PriceHistoryTracker
 from custom_components.hsem.models.savings_tracker import SavingsTracker
+from custom_components.hsem.models.what_if_history import WhatIfHistory
 from custom_components.hsem.utils.efficiency_learner import EfficiencyLearner
 from custom_components.hsem.utils.prediction_tracker import PredictionTracker
 
@@ -59,6 +60,9 @@ def _coordinator(
     coordinator._efficiency_learner = EfficiencyLearner(
         history_file=str(tmp_path / "efficiency.json")
     )
+    coordinator._what_if_history = WhatIfHistory(
+        history_file=str(tmp_path / "what_if.json")
+    )
     return cast(CoordinatorSharedState, coordinator)
 
 
@@ -81,6 +85,7 @@ class TestPersistAllTrackers:
             "prediction.json",
             "performance.json",
             "efficiency.json",
+            "what_if.json",
         ):
             assert (tmp_path / name).exists(), name
 
@@ -159,6 +164,7 @@ class TestPersistAllTrackers:
             "_prediction_tracker",
             "_price_history_tracker",
             "_efficiency_learner",
+            "_what_if_history",
         }
 
     @pytest.mark.asyncio

@@ -56,6 +56,7 @@
 - **Export income / import cost / net balance sensors** — monetary, cumulative, HA Energy dashboard compatible
 - **Savings tracker** — actual vs missed savings with 90-day rolling log
 - **Performance sensors** — how much of the achievable savings the last 24 hours captured, the actual benefit and the missed opportunity, scored against perfect hindsight, whether it was lost in battery dispatch or in PV surplus handling, and how well EV charging was timed (plus 7- and 30-day figures)
+- **What-if service** — `hsem.what_if` replays the recorded days with another battery size, power, efficiency or cycle cost and returns the difference and the payback time. Read-only
 - **Prediction accuracy scorecard** — 7-day and 30-day SoC MAE, solar MAPE, action mix
 - **Daily plan-vs-actual tracking** — compares planned and actual energy flows
 

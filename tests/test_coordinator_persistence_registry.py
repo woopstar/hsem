@@ -103,4 +103,5 @@ def test_known_persistable_trackers_are_registered() -> None:
         "_prediction_tracker",
         "_price_history_tracker",
         "_efficiency_learner",
+        "_what_if_history",
     }

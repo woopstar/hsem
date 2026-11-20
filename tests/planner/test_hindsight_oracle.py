@@ -471,3 +471,49 @@ class TestOracleWithoutAnAnswer:
     def test_without_scipy_there_is_no_oracle(self) -> None:
         with patch.object(hindsight_oracle, "is_scipy_available", return_value=False):
             assert solve_hindsight_oracle([_slot(0.0, 1.0)], _BATTERY, 5.0, 5.0) is None
+
+
+@needs_scipy
+class TestThroughputCost:
+    """Wear per kWh through the battery holds back arbitrage (issue #1432)."""
+
+    #: Two cheap hours, then two dear ones with load.  Nothing is earned on export.
+    _DAY = [
+        _slot(0.0, 1.0, 0.0),
+        _slot(0.0, 1.0, 0.0),
+        _slot(2.0, 1.5, 0.0),
+        _slot(2.0, 1.5, 0.0),
+    ]
+
+    def test_arbitrage_worth_less_than_the_wear_is_left_alone(self) -> None:
+        free = solve_hindsight_oracle(self._DAY, _LOSSLESS, 0.0, 0.0)
+        worn = solve_hindsight_oracle(
+            self._DAY, _LOSSLESS, 0.0, 0.0, throughput_cost_per_kwh=0.3
+        )
+
+        assert free is not None and worn is not None
+        # 0.5 per kWh shifted, against 0.6 of wear on the way in and out.
+        assert sum(free.discharged_kwh) == pytest.approx(4.0)
+        assert sum(worn.charged_kwh) == pytest.approx(0.0)
+        assert sum(worn.discharged_kwh) == pytest.approx(0.0)
+
+    def test_the_cost_stays_the_grid_cost(self) -> None:
+        worn = solve_hindsight_oracle(
+            self._DAY, _LOSSLESS, 0.0, 0.0, throughput_cost_per_kwh=0.1
+        )
+
+        assert worn is not None
+        assert sum(worn.discharged_kwh) == pytest.approx(4.0)
+        assert worn.cost == pytest.approx(4.0)
+        assert worn.cost == pytest.approx(
+            grid_cost(self._DAY, worn.grid_import_kwh, worn.grid_export_kwh)
+        )
+
+    def test_a_negative_wear_is_no_wear(self) -> None:
+        free = solve_hindsight_oracle(self._DAY, _LOSSLESS, 0.0, 0.0)
+        paid = solve_hindsight_oracle(
+            self._DAY, _LOSSLESS, 0.0, 0.0, throughput_cost_per_kwh=-1.0
+        )
+
+        assert free is not None and paid is not None
+        assert paid.cost == pytest.approx(free.cost)

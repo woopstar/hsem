@@ -99,6 +99,7 @@ from custom_components.hsem.models.price_history_tracker import PriceHistoryTrac
 from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
+from custom_components.hsem.models.what_if_history import WhatIfHistory
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.planner.ev_soc_economics import EVSoCEconomicsResult
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
@@ -356,6 +357,8 @@ class HSEMDataUpdateCoordinator(
         # (issue #1182). Its evaluation runs as a background executor task.
         self._performance_tracker: PerformanceTracker = PerformanceTracker()
         self._performance_task: asyncio.Task | None = None
+        # Recorded days for the what_if service (issue #1432).
+        self._what_if_history: WhatIfHistory = WhatIfHistory()
         # Last slot end time accumulated from planner output (prevents double-counting).
         self._daily_plan_last_accumulated: datetime | None = None
         # Timestamp of the last actual-energy accumulation cycle.
