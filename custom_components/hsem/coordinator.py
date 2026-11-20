@@ -86,6 +86,7 @@ from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
     DailyPlanVsActualTracker,
 )
 from custom_components.hsem.models.data_quality import DataQuality
+from custom_components.hsem.models.energy_tracker import EnergyTracker
 from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.forecast_coverage import ForecastCoverage
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
@@ -344,6 +345,9 @@ class HSEMDataUpdateCoordinator(
         # Financial tracker — cumulative import cost and export income (never reset).
         # The history file path is set in async_setup() once hass.config is available.
         self._financial_tracker: FinancialTracker = FinancialTracker()
+        # Energy tracker — daily energy totals behind the monthly energy
+        # sensors (issue #1435). Its history file is loaded on the first cycle.
+        self._energy_tracker: EnergyTracker = EnergyTracker()
         # Performance tracker — per-slot actuals scored against hindsight
         # (issue #1182). Its evaluation runs as a background executor task.
         self._performance_tracker: PerformanceTracker = PerformanceTracker()

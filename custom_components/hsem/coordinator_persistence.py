@@ -48,6 +48,16 @@ def _get_financial_tracker(
     return coordinator._financial_tracker
 
 
+def _get_energy_tracker(
+    coordinator: CoordinatorSharedState,
+) -> Persistable | None:
+    """Return the energy tracker only once its history file is set."""
+    tracker = coordinator._energy_tracker
+    if not tracker.history_file:
+        return None
+    return tracker
+
+
 def _get_performance_tracker(
     coordinator: CoordinatorSharedState,
 ) -> Persistable | None:
@@ -80,6 +90,7 @@ def _get_prediction_tracker(
 TRACKER_REGISTRY: dict[str, Callable[[CoordinatorSharedState], Persistable | None]] = {
     "_savings_tracker": _get_savings_tracker,
     "_financial_tracker": _get_financial_tracker,
+    "_energy_tracker": _get_energy_tracker,
     "_performance_tracker": _get_performance_tracker,
     "_prediction_tracker": _get_prediction_tracker,
 }

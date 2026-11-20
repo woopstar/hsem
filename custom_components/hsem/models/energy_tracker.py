@@ -1,0 +1,611 @@
+"""Energy tracker: daily energy totals and the monthly KPIs built from them.
+
+One record per local day holds what the house used, what crossed the grid
+meter, what the PV produced and what went into and out of the battery.  The
+monthly figures (self-sufficiency, full equivalent cycles, wear cost and the
+measured round-trip loss) are always ratios of sums over those daily records,
+never averages of daily ratios (issue #1435).
+
+The tracker is a sibling of
+:class:`~custom_components.hsem.models.financial_tracker.FinancialTracker`
+with a history file of its own, so the financial history keeps its format.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+from custom_components.hsem.utils.metering import mean_power_kwh, meter_delta
+from custom_components.hsem.utils.misc import round_or_none
+from custom_components.hsem.utils.persistence import (
+    aware_datetime_from_iso,
+    finite_float,
+    read_json_history_file,
+    write_json_history_file,
+)
+
+#: Version of the history file.  A file of another version is not read.
+SCHEMA_VERSION = 1
+
+#: Days of daily records kept.  One full year (plus a leap day) covers the
+#: current month and the eleven before it.
+MAX_DAILY_LOG_DAYS = 366
+
+#: Months published in the sensors' ``monthly`` attribute, the current one
+#: included.
+MONTHLY_ATTRIBUTE_MONTHS = 12
+
+#: House consumption below which a self-sufficiency share is not given.
+MIN_CONSUMPTION_KWH = 1.0
+
+#: Measured battery charge below which the round-trip loss is not given.  The
+#: SoC is read in whole percent and the capacity is a nameplate figure, so the
+#: correction for the SoC difference is only small against enough throughput.
+MIN_ROUND_TRIP_CHARGED_KWH = 20.0
+
+#: The same minimum as a multiple of the rated capacity; the larger applies.
+MIN_ROUND_TRIP_CAPACITY_MULTIPLE = 2.0
+
+#: Highest measured round-trip efficiency still taken for a measurement.
+MAX_ROUND_TRIP_EFFICIENCY = 1.02
+
+#: Why a monthly figure is unknown.
+REASON_NO_DATA = "no_data"
+REASON_CONSUMPTION_BELOW_MINIMUM = "consumption_below_minimum"
+REASON_GRID_IMPORT_NOT_MEASURED = "grid_import_not_measured"
+REASON_CAPACITY_UNKNOWN = "capacity_unknown"
+REASON_BATTERY_POWER_NOT_MEASURED = "battery_power_not_measured"
+REASON_THROUGHPUT_BELOW_MINIMUM = "throughput_below_minimum"
+REASON_IMPLAUSIBLE_RATIO = "implausible_ratio"
+
+#: The additive quantities of a day.  A period sums every one of them before
+#: any ratio is taken.
+SUMMED_FIELDS: tuple[str, ...] = (
+    "observed_hours",
+    "house_consumption_kwh",
+    "grid_import_kwh",
+    "grid_export_kwh",
+    "pv_kwh",
+    "battery_charged_kwh",
+    "battery_discharged_kwh",
+    "wear_cost",
+    "paired_consumption_kwh",
+    "paired_import_kwh",
+    "measured_charged_kwh",
+    "measured_discharged_kwh",
+    "measured_stored_delta_kwh",
+)
+
+#: The summed quantities a month publishes as they are.
+_PUBLISHED_TOTALS: tuple[str, ...] = (
+    "house_consumption_kwh",
+    "grid_import_kwh",
+    "grid_export_kwh",
+    "pv_kwh",
+    "battery_charged_kwh",
+    "battery_discharged_kwh",
+)
+
+#: The readings of a sample, in the order they are persisted.
+_SAMPLE_READINGS: tuple[str, ...] = (
+    "grid_import_energy_kwh",
+    "grid_export_energy_kwh",
+    "pv_energy_kwh",
+    "pv_power_w",
+    "house_power_w",
+    "battery_power_w",
+    "soc_pct",
+)
+
+
+@dataclass(frozen=True)
+class EnergySample:
+    """One coordinator cycle's readings.  A missing reading is ``None``.
+
+    Attributes:
+        at: When the readings were taken (timezone-aware).
+        grid_import_energy_kwh: Cumulative grid import meter.
+        grid_export_energy_kwh: Cumulative grid export meter.
+        pv_energy_kwh: Cumulative PV production meter.
+        pv_power_w: PV power, used when the PV meter is not available.
+        house_power_w: House consumption power.
+        battery_power_w: Signed battery power, positive while charging.
+        soc_pct: Battery state of charge.
+    """
+
+    at: datetime
+    grid_import_energy_kwh: float | None = None
+    grid_export_energy_kwh: float | None = None
+    pv_energy_kwh: float | None = None
+    pv_power_w: float | None = None
+    house_power_w: float | None = None
+    battery_power_w: float | None = None
+    soc_pct: float | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the sample as a plain dict for JSON serialisation."""
+        data: dict[str, Any] = {"at": self.at.isoformat()}
+        for name in _SAMPLE_READINGS:
+            data[name] = getattr(self, name)
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Any) -> EnergySample | None:
+        """Create a sample from a deserialised dict, or ``None`` if invalid."""
+        if not isinstance(data, dict):
+            return None
+        at = aware_datetime_from_iso(data.get("at"))
+        if at is None:
+            return None
+        return cls(
+            at=at, **{name: finite_float(data.get(name)) for name in _SAMPLE_READINGS}
+        )
+
+
+@dataclass(frozen=True)
+class BatterySite:
+    """What turns a cycle's battery readings into energy, wear and cycles.
+
+    Attributes:
+        rated_capacity_kwh: Nameplate capacity, the base of the SoC.
+        usable_capacity_kwh: Capacity between the SoC limits, the base of a
+            full equivalent cycle.
+        charge_efficiency: Charge efficiency as a fraction.
+        discharge_efficiency: Discharge efficiency as a fraction.
+        cycle_cost_per_kwh: The planner's cycle cost per kWh of throughput.
+    """
+
+    rated_capacity_kwh: float = 0.0
+    usable_capacity_kwh: float = 0.0
+    charge_efficiency: float = 1.0
+    discharge_efficiency: float = 1.0
+    cycle_cost_per_kwh: float = 0.0
+
+
+@dataclass
+class EnergyDayEntry:
+    """One local day's energy totals.
+
+    Attributes:
+        date: ISO date of the day.
+        observed_hours: Hours covered by consecutive samples.
+        house_consumption_kwh: House consumption.
+        grid_import_kwh: Grid import.
+        grid_export_kwh: Grid export.
+        pv_kwh: PV production.
+        battery_charged_kwh: Energy into the battery.
+        battery_discharged_kwh: Energy out of the battery.
+        wear_cost: Cycle cost of that battery throughput.
+        paired_consumption_kwh: House consumption of the intervals in which
+            the grid import was measured too.
+        paired_import_kwh: Grid import of those same intervals.
+        measured_charged_kwh: Battery charge taken from the battery power
+            reading, in intervals whose SoC change is known.
+        measured_discharged_kwh: Battery discharge of those intervals.
+        measured_stored_delta_kwh: Change in stored energy over them.
+        usable_capacity_kwh: Usable capacity as last seen that day.
+        rated_capacity_kwh: Rated capacity as last seen that day.
+    """
+
+    date: str
+    observed_hours: float = 0.0
+    house_consumption_kwh: float = 0.0
+    grid_import_kwh: float = 0.0
+    grid_export_kwh: float = 0.0
+    pv_kwh: float = 0.0
+    battery_charged_kwh: float = 0.0
+    battery_discharged_kwh: float = 0.0
+    wear_cost: float = 0.0
+    paired_consumption_kwh: float = 0.0
+    paired_import_kwh: float = 0.0
+    measured_charged_kwh: float = 0.0
+    measured_discharged_kwh: float = 0.0
+    measured_stored_delta_kwh: float = 0.0
+    usable_capacity_kwh: float = 0.0
+    rated_capacity_kwh: float = 0.0
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the entry as a plain dict for JSON serialisation."""
+        data: dict[str, Any] = {"date": self.date}
+        for name in (*SUMMED_FIELDS, "usable_capacity_kwh", "rated_capacity_kwh"):
+            data[name] = round(getattr(self, name), 4)
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Any) -> EnergyDayEntry | None:
+        """Create an entry from a deserialised dict, or ``None`` if invalid.
+
+        A quantity the file lacks (written by an older version) or that does
+        not parse is zero: the day then contributes nothing to it.
+        """
+        if not isinstance(data, dict):
+            return None
+        try:
+            day = date.fromisoformat(str(data.get("date"))).isoformat()
+        except ValueError:
+            return None
+        entry = cls(date=day)
+        for name in (*SUMMED_FIELDS, "usable_capacity_kwh", "rated_capacity_kwh"):
+            setattr(entry, name, finite_float(data.get(name)) or 0.0)
+        return entry
+
+
+def previous_month(month: str) -> str:
+    """Return the ``YYYY-MM`` key of the month before *month*."""
+    first = date.fromisoformat(f"{month}-01")
+    return (first - timedelta(days=1)).strftime("%Y-%m")
+
+
+@dataclass
+class EnergyTracker:
+    """Accumulates daily energy totals and rolls them up per calendar month.
+
+    Attributes:
+        daily_log: Daily records by ISO date, today's included, bounded to
+            :data:`MAX_DAILY_LOG_DAYS` days.
+        history_file: Path of the JSON history file.
+    """
+
+    daily_log: dict[str, EnergyDayEntry] = field(default_factory=dict)
+    history_file: str = ""
+    _last_sample: EnergySample | None = field(default=None, repr=False)
+    _saved_at: datetime | None = field(default=None, repr=False)
+
+    # ------------------------------------------------------------------
+    # Accumulation
+    # ------------------------------------------------------------------
+
+    def accumulate(
+        self, sample: EnergySample, site: BatterySite, *, max_gap_seconds: float
+    ) -> bool:
+        """Add the energy between the previous sample and *sample*.
+
+        The interval is booked on the local day of *sample*.  Nothing missing
+        is read as zero: a quantity is only added when both of its readings
+        are there, and an interval longer than *max_gap_seconds* only sets a
+        new baseline.
+
+        Args:
+            sample: This cycle's readings.
+            site: The battery's capacities, efficiencies and cycle cost.
+            max_gap_seconds: Longest gap between two samples still booked.
+
+        Returns:
+            ``True`` when the interval was booked.
+        """
+        previous = self._last_sample
+        self._last_sample = sample
+        if previous is None:
+            return False
+        seconds = (sample.at - previous.at).total_seconds()
+        if seconds <= 0.0 or seconds > max_gap_seconds:
+            return False
+        hours = seconds / 3600.0
+
+        day = sample.at.date()
+        entry = self.daily_log.get(day.isoformat())
+        if entry is None:
+            entry = self.daily_log[day.isoformat()] = EnergyDayEntry(day.isoformat())
+            self._prune(day)
+        entry.observed_hours += hours
+
+        grid_import = meter_delta(
+            previous.grid_import_energy_kwh, sample.grid_import_energy_kwh, hours
+        )
+        grid_export = meter_delta(
+            previous.grid_export_energy_kwh, sample.grid_export_energy_kwh, hours
+        )
+        pv = meter_delta(previous.pv_energy_kwh, sample.pv_energy_kwh, hours)
+        if pv is None:
+            pv = mean_power_kwh(previous.pv_power_w, sample.pv_power_w, hours)
+        house = mean_power_kwh(previous.house_power_w, sample.house_power_w, hours)
+
+        entry.grid_import_kwh += grid_import or 0.0
+        entry.grid_export_kwh += grid_export or 0.0
+        entry.pv_kwh += max(pv or 0.0, 0.0)
+        if house is not None:
+            house = max(house, 0.0)
+            entry.house_consumption_kwh += house
+            if grid_import is not None:
+                entry.paired_consumption_kwh += house
+                entry.paired_import_kwh += grid_import
+
+        self._accumulate_battery(entry, previous, sample, site, hours)
+        return True
+
+    @staticmethod
+    def _accumulate_battery(
+        entry: EnergyDayEntry,
+        previous: EnergySample,
+        sample: EnergySample,
+        site: BatterySite,
+        hours: float,
+    ) -> None:
+        """Add an interval's battery flows, wear and stored-energy change.
+
+        The flows come from the battery power reading.  Without it they are
+        derived from the SoC change and the configured efficiencies, which
+        serves the cycle count and the wear cost but is no measurement of the
+        round-trip loss.
+        """
+        if site.usable_capacity_kwh > 1e-9:
+            entry.usable_capacity_kwh = site.usable_capacity_kwh
+        if site.rated_capacity_kwh > 1e-9:
+            entry.rated_capacity_kwh = site.rated_capacity_kwh
+
+        stored_delta: float | None = None
+        if (
+            previous.soc_pct is not None
+            and sample.soc_pct is not None
+            and site.rated_capacity_kwh > 1e-9
+        ):
+            stored_delta = (
+                site.rated_capacity_kwh * (sample.soc_pct - previous.soc_pct) / 100.0
+            )
+
+        before_w, after_w = previous.battery_power_w, sample.battery_power_w
+        if before_w is not None and after_w is not None:
+            charged = (max(before_w, 0.0) + max(after_w, 0.0)) / 2.0 * hours / 1000.0
+            discharged = (
+                (max(-before_w, 0.0) + max(-after_w, 0.0)) / 2.0 * hours / 1000.0
+            )
+            if stored_delta is not None:
+                entry.measured_charged_kwh += charged
+                entry.measured_discharged_kwh += discharged
+                entry.measured_stored_delta_kwh += stored_delta
+        elif stored_delta is None:
+            return
+        elif stored_delta > 0.0:
+            charged, discharged = stored_delta / site.charge_efficiency, 0.0
+        else:
+            charged, discharged = 0.0, -stored_delta * site.discharge_efficiency
+
+        entry.battery_charged_kwh += charged
+        entry.battery_discharged_kwh += discharged
+        entry.wear_cost += (charged + discharged) * max(site.cycle_cost_per_kwh, 0.0)
+
+    def _prune(self, today: date) -> None:
+        """Drop records older than :data:`MAX_DAILY_LOG_DAYS` days."""
+        oldest_kept = (today - timedelta(days=MAX_DAILY_LOG_DAYS)).isoformat()
+        for key in [key for key in self.daily_log if key < oldest_kept]:
+            del self.daily_log[key]
+
+    # ------------------------------------------------------------------
+    # Monthly rollups
+    # ------------------------------------------------------------------
+
+    def month_summary(self, month: str) -> dict[str, Any]:
+        """Return a calendar month's totals and KPIs.
+
+        Every KPI is computed from the month's summed daily quantities.  A
+        KPI that cannot be given is ``None`` and its ``*_reason`` says why.
+
+        Args:
+            month: The month as ``YYYY-MM``.
+
+        Returns:
+            The month's figures as a flat dict.
+        """
+        days = [
+            entry for key, entry in sorted(self.daily_log.items()) if key[:7] == month
+        ]
+        total: dict[str, float] = {
+            name: float(sum(getattr(entry, name) for entry in days))
+            for name in SUMMED_FIELDS
+        }
+        usable = next(
+            (
+                entry.usable_capacity_kwh
+                for entry in reversed(days)
+                if entry.usable_capacity_kwh > 1e-9
+            ),
+            0.0,
+        )
+        rated = next(
+            (
+                entry.rated_capacity_kwh
+                for entry in reversed(days)
+                if entry.rated_capacity_kwh > 1e-9
+            ),
+            0.0,
+        )
+
+        summary: dict[str, Any] = {
+            "month": month,
+            "days": len(days),
+            "observed_hours": round(total["observed_hours"], 1),
+        }
+        for name in _PUBLISHED_TOTALS:
+            summary[name] = round(total[name], 3)
+
+        share, share_reason = _self_sufficiency(total, bool(days))
+        summary["self_sufficiency"] = round_or_none(
+            None if share is None else share * 100.0, 1
+        )
+        summary["self_sufficiency_reason"] = share_reason
+
+        cycles: float | None = None
+        cycles_reason: str | None = None
+        if not days:
+            cycles_reason = REASON_NO_DATA
+        elif usable <= 1e-9:
+            cycles_reason = REASON_CAPACITY_UNKNOWN
+        else:
+            cycles = total["battery_discharged_kwh"] / usable
+        summary["battery_cycles"] = round_or_none(cycles, 2)
+        summary["battery_cycles_reason"] = cycles_reason
+        summary["usable_capacity_kwh"] = round(usable, 2) if usable > 1e-9 else None
+
+        summary["battery_wear_cost"] = round(total["wear_cost"], 3) if days else None
+        summary["battery_wear_cost_reason"] = None if days else REASON_NO_DATA
+
+        efficiency, loss_reason = _round_trip_efficiency(total, rated, bool(days))
+        summary["round_trip_efficiency"] = round_or_none(
+            None if efficiency is None else efficiency * 100.0, 1
+        )
+        summary["round_trip_loss"] = round_or_none(
+            None if efficiency is None else (1.0 - efficiency) * 100.0, 1
+        )
+        summary["round_trip_loss_reason"] = loss_reason
+        summary["round_trip_charged_kwh"] = round(total["measured_charged_kwh"], 3)
+        summary["round_trip_discharged_kwh"] = round(
+            total["measured_discharged_kwh"], 3
+        )
+        summary["round_trip_stored_delta_kwh"] = round(
+            total["measured_stored_delta_kwh"], 3
+        )
+        return summary
+
+    def as_sensor_attributes(self, today: date) -> dict[str, Any]:
+        """Return what the monthly energy sensors publish.
+
+        Args:
+            today: The current local day.
+
+        Returns:
+            ``month`` (the current month's key), ``this_month``,
+            ``previous_month`` and ``monthly``: the current month and every
+            month with a record among the eleven before it, oldest first.
+        """
+        current = today.strftime("%Y-%m")
+        months = [current]
+        while len(months) < MONTHLY_ATTRIBUTE_MONTHS:
+            months.append(previous_month(months[-1]))
+        recorded = {key[:7] for key in self.daily_log}
+        return {
+            "month": current,
+            "this_month": self.month_summary(current),
+            "previous_month": self.month_summary(previous_month(current)),
+            "monthly": [
+                self.month_summary(month)
+                for month in reversed(months)
+                if month == current or month in recorded
+            ],
+        }
+
+    # ------------------------------------------------------------------
+    # JSON persistence
+    # ------------------------------------------------------------------
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the tracker's state as a plain dict for JSON serialisation."""
+        return {
+            "schema": SCHEMA_VERSION,
+            "last_sample": (
+                None if self._last_sample is None else self._last_sample.as_dict()
+            ),
+            "daily_log": [
+                self.daily_log[day].as_dict() for day in sorted(self.daily_log)
+            ],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EnergyTracker:
+        """Create a tracker from a deserialised history file.
+
+        A file of another schema version, and any entry that does not parse,
+        is left out: the tracker then starts recording afresh.
+        """
+        tracker = cls()
+        if data.get("schema") != SCHEMA_VERSION:
+            return tracker
+        daily_log = data.get("daily_log")
+        for raw in daily_log if isinstance(daily_log, list) else []:
+            entry = EnergyDayEntry.from_dict(raw)
+            if entry is not None:
+                tracker.daily_log[entry.date] = entry
+        tracker._last_sample = EnergySample.from_dict(data.get("last_sample"))
+        return tracker
+
+    def restore_from(self, loaded: EnergyTracker) -> None:
+        """Replace this tracker's state with a reconstructed tracker's."""
+        history_file = self.history_file
+        self.__dict__.update(loaded.__dict__)
+        self.history_file = history_file
+
+    def save_due(self, interval_seconds: float) -> bool:
+        """Return whether the samples since the last save are worth a write.
+
+        Args:
+            interval_seconds: Longest stretch of samples that may be unsaved.
+        """
+        if self._last_sample is None:
+            return False
+        if self._saved_at is None:
+            return True
+        unsaved = (self._last_sample.at - self._saved_at).total_seconds()
+        return unsaved >= interval_seconds
+
+    async def save_history(self) -> bool:
+        """Persist the tracker to disk atomically.
+
+        Returns:
+            ``True`` if the state was written.
+        """
+        if not self.history_file:
+            return False
+        saved_at = None if self._last_sample is None else self._last_sample.at
+        saved = await asyncio.to_thread(
+            write_json_history_file, Path(self.history_file), self.as_dict()
+        )
+        if saved:
+            self._saved_at = saved_at
+        return saved
+
+    async def load_history(self) -> None:
+        """Restore the tracker from its history file, if there is one."""
+        if not self.history_file:
+            return
+        data = await asyncio.to_thread(read_json_history_file, Path(self.history_file))
+        if data is not None:
+            self.restore_from(EnergyTracker.from_dict(data))
+
+
+def _self_sufficiency(
+    total: dict[str, float], has_days: bool
+) -> tuple[float | None, str | None]:
+    """Return the share of the consumption not imported, or why it is unknown.
+
+    ``1 − grid import ÷ house consumption`` over the intervals in which both
+    were measured, limited to 0…1: a month that charged the battery from the
+    grid for use in the next one can import more than the house used.
+    """
+    if not has_days:
+        return None, REASON_NO_DATA
+    if total["house_consumption_kwh"] < MIN_CONSUMPTION_KWH:
+        return None, REASON_CONSUMPTION_BELOW_MINIMUM
+    consumption = total["paired_consumption_kwh"]
+    if consumption < MIN_CONSUMPTION_KWH:
+        return None, REASON_GRID_IMPORT_NOT_MEASURED
+    return min(max(1.0 - total["paired_import_kwh"] / consumption, 0.0), 1.0), None
+
+
+def _round_trip_efficiency(
+    total: dict[str, float], rated_capacity_kwh: float, has_days: bool
+) -> tuple[float | None, str | None]:
+    """Return the measured round-trip efficiency, or why it is unknown.
+
+    ``(discharged + stored-energy change) ÷ charged``: energy still in the
+    battery at the end of the period counts as delivered, and energy that was
+    already there at the start is taken off what was delivered.
+    """
+    if not has_days:
+        return None, REASON_NO_DATA
+    charged = total["measured_charged_kwh"]
+    discharged = total["measured_discharged_kwh"]
+    if charged + discharged <= 1e-9:
+        return None, REASON_BATTERY_POWER_NOT_MEASURED
+    minimum = max(
+        MIN_ROUND_TRIP_CHARGED_KWH,
+        MIN_ROUND_TRIP_CAPACITY_MULTIPLE * rated_capacity_kwh,
+    )
+    if charged < minimum:
+        return None, REASON_THROUGHPUT_BELOW_MINIMUM
+    efficiency = (discharged + total["measured_stored_delta_kwh"]) / charged
+    if efficiency <= 0.0 or efficiency > MAX_ROUND_TRIP_EFFICIENCY:
+        return None, REASON_IMPLAUSIBLE_RATIO
+    return min(efficiency, 1.0), None

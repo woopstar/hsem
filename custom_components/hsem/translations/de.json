@@ -1207,6 +1207,18 @@
       "missing_entities": {
         "name": "Fehlende Eingabeentitäten"
       },
+      "monthly_battery_cycles": {
+        "name": "Monatliche Batteriezyklen"
+      },
+      "monthly_battery_wear_cost": {
+        "name": "Monatliche Batterieverschleißkosten"
+      },
+      "monthly_round_trip_loss": {
+        "name": "Monatlicher Lade-Entlade-Verlust"
+      },
+      "monthly_self_sufficiency": {
+        "name": "Monatlicher Autarkiegrad"
+      },
       "net_consumption": {
         "name": "Nettoverbrauch"
       },

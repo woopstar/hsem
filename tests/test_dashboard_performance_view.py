@@ -125,7 +125,11 @@ class TestTheView:
     def test_the_dashboard_has_a_performance_view(self) -> None:
         dashboard = _dashboard()
 
-        assert [view["title"] for view in dashboard["views"]] == ["HSEM", "Performance"]
+        assert [view["title"] for view in dashboard["views"]] == [
+            "HSEM",
+            "Performance",
+            "Energy",
+        ]
         view = _view()
         assert view["path"] == "performance"
         assert view["type"] == "sections"
