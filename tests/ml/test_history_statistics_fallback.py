@@ -232,17 +232,31 @@ async def test_a_failed_statistics_read_leaves_the_raw_read_unchanged(
     long_term_statistics: AsyncMock, caplog: pytest.LogCaptureFixture
 ) -> None:
     """A recorder error in the fallback must not fail the history read."""
-    recorder = _Recorder(_meter_states(NOW - timedelta(hours=2), NOW))
+    recorder = _Recorder(_meter_states(NOW - timedelta(hours=2), NOW + 2 * HOUR))
     long_term_statistics.side_effect = RuntimeError("database is locked")
+    hass = _hass()
 
     with caplog.at_level("WARNING"):
-        result = await _read(_hass(), recorder, NOW)
+        result = await _read(hass, recorder, NOW)
+        # A broken database is not asked, or warned about, on every refresh.
+        await _read(hass, recorder, NOW + timedelta(minutes=59))
 
     assert result.samples == []
     assert result.partial
     assert result.ready_at is not None
     assert history_cache._energy_history_cache == {}
-    assert "reading long-term statistics of" in caplog.text
+    assert caplog.text.count("reading long-term statistics of") == 1
+    assert "Traceback" in caplog.text
+    long_term_statistics.assert_awaited_once()
+
+    # An hour later the statistics are tried again, and a success is used.
+    long_term_statistics.side_effect = None
+    long_term_statistics.return_value = _hours(NOW - timedelta(days=20), NOW)
+    again = await _read(hass, recorder, NOW + HOUR)
+
+    assert long_term_statistics.await_count == 2
+    assert again.samples
+    assert history_cache._statistics_failed_at == {}
 
 
 @pytest.mark.asyncio

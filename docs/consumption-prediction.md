@@ -492,10 +492,14 @@ fills its free places from statistics on every update:
   are always on the same scale.
 - When `hsem_house_power_includes_ev_charger_power` is on, the hourly mean of
   both EV charger power sensors is subtracted, as in the live path. A charger
-  hour without statistics counts as 0 W, as an unavailable charger does live.
-  A charger sensor without any statistics (for example one without a
-  `state_class`) cannot be subtracted, so nothing is backfilled and an info
-  line is logged.
+  hour without statistics counts as 0 W, as an unavailable charger does live,
+  but only from the charger's first statistics on. An hour before that is
+  left out: the car may have charged before the charger sensor existed, and
+  that energy cannot be told from house load. The first statistics are looked
+  for up to 90 days before the 15-day read window, so a charger that reports
+  nothing while idle is still known. A charger sensor without any statistics
+  (for example one without a `state_class`) cannot be subtracted, so nothing
+  is backfilled and an info line is logged once.
 - An hour is left out when the house sensor has no statistics for it or when
   the result is negative. That hour block stays unavailable: up to four such
   hours are estimated from their neighbours, more are reported in
@@ -504,9 +508,12 @@ fills its free places from statistics on every update:
   window holds its number of days. A day HSEM measured is never replaced and
   never pushed out by a backfilled day.
 - Only days before HSEM started measuring the block are added. That date is
-  fixed the first time the sensor runs: the oldest measured day, or the day
-  of the first run on a new install. It is kept across restarts and shown in
-  the `backfill_before` attribute. A later day without a measurement was
+  fixed the first time the sensor runs: the oldest of the first measured day,
+  the day of that run and the day the HSEM config entry was created. It is
+  kept across restarts and shown in the `backfill_before` attribute. An
+  install that has run for longer than the read window is therefore never
+  backfilled, also when a window is empty because every day was rejected or
+  the restored state was lost. A later day without a measurement was
   rejected by the unobserved-block guard (issues #1101 and #1110) or lost to
   downtime. Its statistics cover only part of the hour, so it stays missing.
   The current day is never backfilled.
@@ -518,14 +525,15 @@ without a `state_class`) nothing changes: the windows fill one day at a time.
 
 The 96 average sensors share one statistics read per config entry, repeated
 at most once an hour and only while a window has a free place. A failed read
-is logged once as a warning and shared the same way: the sensors keep
-updating and the recorder is asked again an hour later.
+is logged once as a warning with its traceback and shared the same way: the
+sensors keep updating and the recorder is asked again an hour later.
 
-On upgrade the forecast shifts for every hour block whose window holds fewer
-measured days than its length. The free places are filled with days from
-before the oldest measured day, so the 3, 7 and 14-day averages of that block
-change on the first update after the upgrade. A window that is already full
-does not change.
+On upgrade the forecast shifts on an install whose config entry is younger
+than the windows: every hour block whose window holds fewer measured days
+than its length gets its free places filled with days from before HSEM was
+installed, so the 3, 7 and 14-day averages of that block change on the first
+update after the upgrade. A window that is already full does not change, and
+neither does an install older than the 15-day read window.
 
 Limits:
 
@@ -535,6 +543,9 @@ Limits:
 - Home Assistant fills statistics for an hour it was down with the last value
   it knew. A backfilled hour from before HSEM was installed can be such a
   value, not a measurement. HSEM cannot tell from the statistics.
+- A charger whose only statistics are more than 90 days older than the read
+  window counts as unknown before its first hour inside the window. Those
+  hours are left out.
 - On the day the clocks go back, both passes of the repeated hour are summed
   into one block. The utility meter resets once a day and does the same.
 
@@ -559,6 +570,8 @@ treatment.
 - With some statistics but not enough, `ml_history_ready_at` moves forward by
   the days they cover.
 - Without statistics the read behaves as before.
+- A failed statistics read is logged as a warning with its traceback. The raw
+  read stands, and the statistics are tried again an hour later.
 
 `ml_statistics_history_days` on `sensor.hsem_plan_explanation_sensor` shows
 how many days of the history came from statistics. The share shrinks as raw

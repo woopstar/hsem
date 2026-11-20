@@ -40,6 +40,12 @@ type _EnergyCacheKey = tuple[int, str, int]
 # window is read again.
 FULL_READ_INTERVAL = timedelta(days=1)
 
+# How long a failed statistics read is remembered before it is tried again.
+STATISTICS_RETRY_INTERVAL = timedelta(hours=1)
+
+# When the statistics read of an entity last failed, per (hass, entity).
+_statistics_failed_at: dict[tuple[int, str], datetime] = {}
+
 
 @dataclass(slots=True)
 class UnitTracker:
@@ -264,20 +270,32 @@ async def _statistics_before(
         entity has no long-term statistics in the window or the read failed.
     """
     until = utc_key(raw[0][0]) if raw else utc_key(now_ts)
+    failure_key = (id(hass), entity_id)
+    failed_at = _statistics_failed_at.get(failure_key)
+    if failed_at is not None and cache_is_fresh(
+        failed_at, now_ts, STATISTICS_RETRY_INTERVAL
+    ):
+        return []
     try:
         hours = await StatisticsReader(hass).read_hourly_energy(
             entity_id, utc_key(now_ts) - timedelta(days=max_days), until, expected_unit
         )
     except Exception as exc:
         # The fallback is optional: a recorder error leaves the raw read as
-        # it is instead of failing the whole history read.
+        # it is instead of failing the whole history read.  The failure is
+        # remembered, so a broken database is not asked on every refresh.
+        _statistics_failed_at[failure_key] = now_ts
         HSEM_LOGGER.warning(
-            "ML history: reading long-term statistics of %s failed: %s: %r",
+            "ML history: reading long-term statistics of %s failed, next try "
+            "in %s: %s: %r",
             entity_id,
+            STATISTICS_RETRY_INTERVAL,
             type(exc).__name__,
             exc,
+            exc_info=True,
         )
         return []
+    _statistics_failed_at.pop(failure_key, None)
     return hourly_energy_to_slots(
         {
             hour_start: energy

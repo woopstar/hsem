@@ -535,14 +535,20 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
 
         Only days before ``backfill_before`` are taken. A later day without
         a measurement was rejected by the observation guard or lost to
-        downtime, and its statistics cover only part of the hour.
+        downtime, and its statistics cover only part of the hour. The limit
+        is the oldest of the first measured day, today and the day the
+        config entry was created, so an install that lost its window is not
+        refilled with days HSEM was running.
         """
         measurements = self._measurements
         if measurements is None:
             return
         if self._backfill_before is None:
             measured = [day for day in measurements if day not in self._backfilled]
-            self._backfill_before = min([*measured, dt_util.now().date().isoformat()])
+            installed = dt_util.as_local(self._config_entry.created_at).date()
+            self._backfill_before = min(
+                [*measured, dt_util.now().date().isoformat(), installed.isoformat()]
+            )
         if len(measurements) >= self._average:
             return
         profile = await async_consumption_profile(self.hass, self._config_entry)

@@ -15,8 +15,11 @@ The profile is built the way the live path measures it
   the live path reads the states.  Measured and backfilled days in one window
   are therefore always on the same scale.
 - A charger hour without statistics counts as 0 W, as an unavailable charger
-  does live.  A charger without any statistics cannot be subtracted, so
-  nothing is backfilled then.
+  does live, but only from the charger's first statistics on.  Before that
+  the charger is unknown: the car may have charged without the sensor
+  existing, so those hours are left out.  The first statistics are looked
+  for up to :data:`CHARGER_LOOKBACK` before the read window.  A charger
+  without any statistics makes every hour unknown, so nothing is backfilled.
 - The source is the configured house sensor, whatever its current state, so
   a sensor that is slow at start-up is not replaced by the derived house
   load.
@@ -57,6 +60,10 @@ BACKFILL_DAYS = 15
 #: Assistant compiles hourly statistics once an hour.
 PROFILE_REFRESH = timedelta(hours=1)
 
+#: How far before the read window a charger's statistics are looked for, to
+#: tell a charger that was idle or unavailable from one that did not exist.
+CHARGER_LOOKBACK = timedelta(days=90)
+
 #: Energy in kWh per ``(ISO date, hour)`` block start in HA local time.
 type ConsumptionProfile = dict[tuple[str, int], float]
 
@@ -75,6 +82,8 @@ class _CachedProfile:
 
 _profile_cache: dict[str, _CachedProfile] = {}
 _profile_locks: dict[str, asyncio.Lock] = {}
+#: ``(house, charger)`` pairs already reported as impossible to backfill.
+_reported_chargers: set[tuple[str, str]] = set()
 
 
 def _sources(config_entry: ConfigEntry) -> _Sources | None:
@@ -135,6 +144,7 @@ async def async_consumption_profile(
                 PROFILE_REFRESH,
                 type(exc).__name__,
                 exc,
+                exc_info=True,
             )
             profile = {}
         _profile_cache[entry_id] = _CachedProfile(now, sources, profile)
@@ -156,28 +166,39 @@ async def _read_profile(
     house = await reader.read_hourly_mean(house_entity, start, now)
     if not house:
         return {}
-    chargers: list[dict[datetime, float]] = []
+    first_house_hour = min(house)
+    chargers: list[tuple[dict[datetime, float], datetime]] = []
     for entity_id in charger_entities:
         series = await reader.read_hourly_mean(entity_id, start, now)
-        if not series:
-            _LOGGER.info(
-                "Consumption backfill: %s has no long-term statistics, so EV "
-                "charging cannot be subtracted from %s. Nothing is backfilled.",
-                entity_id,
-                house_entity,
-            )
+        known_from = await _charger_known_from(
+            reader, entity_id, series, start, first_house_hour
+        )
+        if known_from is None:
+            if (house_entity, entity_id) not in _reported_chargers:
+                _reported_chargers.add((house_entity, entity_id))
+                _LOGGER.info(
+                    "Consumption backfill: %s has no long-term statistics, so "
+                    "EV charging cannot be subtracted from %s. Nothing is "
+                    "backfilled.",
+                    entity_id,
+                    house_entity,
+                )
             return {}
-        chargers.append(series)
+        chargers.append((series, known_from))
 
     profile: ConsumptionProfile = {}
     for hour_start, house_power in house.items():
         local = dt_util.as_local(hour_start)
         if local.minute:
             return {}
+        if any(hour_start < known_from for _series, known_from in chargers):
+            # Before a charger's first statistics its power is unknown, and
+            # the house power may hold EV charging that cannot be subtracted.
+            continue
         block = (local.date().isoformat(), local.hour)
-        # A charger hour without statistics is 0 W, as an unavailable charger
-        # is in the live path.
-        ev_power = sum(series.get(hour_start, 0.0) for series in chargers)
+        # From then on a charger hour without statistics is 0 W, as an
+        # unavailable charger is in the live path.
+        ev_power = sum(series.get(hour_start, 0.0) for series, _from in chargers)
         # A mean of W over one hour is Wh.  Both folds of an autumn repeated
         # hour land in the same block: the utility meter resets once a day,
         # on the first fold, and so holds both as well.
@@ -189,6 +210,36 @@ async def _read_profile(
         for block, energy in profile.items()
         if math.isfinite(energy) and energy >= 0.0
     }
+
+
+async def _charger_known_from(
+    reader: StatisticsReader,
+    entity_id: str,
+    series: dict[datetime, float],
+    start: datetime,
+    first_house_hour: datetime,
+) -> datetime | None:
+    """Return the hour from which a missing charger hour means 0 W.
+
+    Args:
+        reader: The statistics reader.
+        entity_id: The EV charger power entity.
+        series: Its hourly means inside the read window.
+        start: Start of the read window.
+        first_house_hour: The oldest hour the house source has statistics for.
+
+    Returns:
+        The charger's first statistics hour, or *start* when it has
+        statistics from before the window.  ``None`` when it has none at all.
+    """
+    first = min(series, default=None)
+    if first is not None and first <= first_house_hour:
+        return first
+    # The first row in the window is not the first row ever: a charger that
+    # reports nothing while idle may have been silent for days.
+    if await reader.read_hourly_mean(entity_id, start - CHARGER_LOOKBACK, start):
+        return start
+    return first
 
 
 def missing_days(

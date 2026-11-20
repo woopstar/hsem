@@ -1969,8 +1969,11 @@ them (recorder executor) and is used in two places:
 
   - No unit conversion (`unit=None`): the live path reads raw states, so a
     converted backfill would put two scales in one window.
-  - A charger hour without statistics is 0 W. A charger with no statistics at
-    all stops the backfill (info log).
+  - A charger hour without statistics is 0 W, but only from the charger's
+    first statistics on (`_charger_known_from`, looks `CHARGER_LOOKBACK` = 90
+    days before the window). Earlier hours are skipped: the car may have
+    charged before the sensor existed. A charger with no statistics at all
+    stops the backfill (info log, once).
   - The source comes from the config (`configured_house_power_entity`), not
     from `hass.states`, so start-up cannot pick the derived house load.
   - A failed read is caught, logged once and cached for the hour.
@@ -1981,8 +1984,9 @@ them (recorder executor) and is used in two places:
   `HSEMAvgSensor._async_backfill_from_statistics()` fills only free places
   (`len(measurements) < average`), newest day first, never a date that has a
   measurement, and only days before `_backfill_before` (attribute
-  `backfill_before`: the oldest measured day or the day of the first run,
-  fixed once and restored). Later gaps are blocks the #1101/#1110 guard
+  `backfill_before`: the oldest of the first measured day, the day of the
+  first run and `config_entry.created_at`, fixed once and restored; a test
+  entry built from `MagicMock` needs a real `created_at`). Later gaps are blocks the #1101/#1110 guard
   rejected; their statistics cover part of the hour and must stay out.
   Backfilled dates live in `_backfilled` / the `backfilled_days` attribute.
   Tests that build a `MagicMock(spec=HSEMAvgSensor)` must set
@@ -1991,7 +1995,8 @@ them (recorder executor) and is used in two places:
 - `ml/history_cache.py::get_energy_history()`: when a full read is too short,
   `HistoryResult.partial` (the too-short raw samples) is extended with the
   hourly **sum** deltas for whole hours before the oldest raw sample, spread
-  evenly over the slots (`hourly_energy_to_slots`). The share is published
+  evenly over the slots (`hourly_energy_to_slots`). A failed statistics read
+  is remembered for an hour (`_statistics_failed_at`). The share is published
   through `history_status.record_statistics_days()` as
   `ml_statistics_history_days`. The ML path subtracts no EV energy, raw or
   statistics.

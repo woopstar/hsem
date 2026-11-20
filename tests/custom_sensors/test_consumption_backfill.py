@@ -23,6 +23,7 @@ from custom_components.hsem.custom_sensors import consumption_backfill
 from custom_components.hsem.custom_sensors.avg_sensor import HSEMAvgSensor
 from custom_components.hsem.custom_sensors.consumption_backfill import (
     BACKFILL_DAYS,
+    CHARGER_LOOKBACK,
     PROFILE_REFRESH,
     async_consumption_profile,
     missing_days,
@@ -61,16 +62,22 @@ class _Statistics:
         self.calls.append((entity_id, start, end, unit))
         if self.error is not None:
             raise self.error
-        return dict(self.means.get(entity_id, {}))
+        return {
+            hour_start: mean
+            for hour_start, mean in self.means.get(entity_id, {}).items()
+            if start <= hour_start < end
+        }
 
 
 @pytest.fixture(autouse=True)
 def _clear_profile_cache() -> Generator[None]:
     consumption_backfill._profile_cache.clear()
     consumption_backfill._profile_locks.clear()
+    consumption_backfill._reported_chargers.clear()
     yield
     consumption_backfill._profile_cache.clear()
     consumption_backfill._profile_locks.clear()
+    consumption_backfill._reported_chargers.clear()
 
 
 @pytest.fixture
@@ -100,6 +107,7 @@ def _hass(*, recorder: bool = True) -> MagicMock:
 def _entry(**options: Any) -> MagicMock:
     entry = MagicMock()
     entry.entry_id = "test_entry"
+    entry.created_at = NOW
     entry.options = {
         "hsem_house_consumption_power": HOUSE,
         "hsem_ev_charger_power": vol.UNDEFINED,
@@ -199,6 +207,7 @@ async def test_both_folds_of_the_autumn_repeated_hour_share_one_block(
 ) -> None:
     """02:00 happens twice on 25 October; the utility meter counts both."""
     first = datetime(2026, 10, 25, 0, tzinfo=UTC)
+    clock.now = first + timedelta(days=1)
     statistics = _Statistics({HOUSE: {first: 400.0, first + timedelta(hours=1): 600.0}})
 
     profile = await _profile(statistics, _entry())
@@ -210,9 +219,15 @@ async def test_both_folds_of_the_autumn_repeated_hour_share_one_block(
 async def test_a_charger_that_is_unavailable_when_idle_does_not_empty_the_profile(
     clock: SimpleNamespace,
 ) -> None:
-    """Statistics only for the hours it charged; every other hour is kept."""
+    """Statistics only for the hours it charged; every other hour is kept.
+
+    Its first statistics in the read window are from 5 August, but it also
+    charged in July, so it existed for the whole window.
+    """
     house = {_local(day, 14): 800.0 for day in range(1, 12)}
-    statistics = _Statistics({HOUSE: house, EV: {_local(5, 14): 300.0}})
+    statistics = _Statistics(
+        {HOUSE: house, EV: {_local(5, 14): 300.0, _local(10, 14, month=7): 7000.0}}
+    )
     entry = _entry(
         hsem_ev_charger_power=EV, hsem_house_power_includes_ev_charger_power=True
     )
@@ -220,8 +235,65 @@ async def test_a_charger_that_is_unavailable_when_idle_does_not_empty_the_profil
     profile = await _profile(statistics, entry)
 
     assert len(profile) == 11
+    assert profile[("2026-08-01", 14)] == pytest.approx(0.8)
     assert profile[("2026-08-05", 14)] == pytest.approx(0.5)
     assert profile[("2026-08-06", 14)] == pytest.approx(0.8)
+    # The charger was looked for before the window, once.
+    start = NOW - timedelta(days=BACKFILL_DAYS)
+    assert statistics.calls == [
+        (HOUSE, start, NOW, None),
+        (EV, start, NOW, None),
+        (EV, start - CHARGER_LOOKBACK, start, None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_hours_before_a_chargers_first_statistics_are_left_out(
+    clock: SimpleNamespace,
+) -> None:
+    """The charger sensor was added on 7 August; the car charged on the 4th.
+
+    The house power of the 4th holds 7 kW of charging that no statistics can
+    subtract.  Counting the charger as 0 W there would backfill it as house
+    load.
+    """
+    house = {_local(day, 14): 800.0 for day in range(1, 12)}
+    house[_local(4, 14)] = 7800.0
+    statistics = _Statistics({HOUSE: house, EV: {_local(7, 14): 0.0}})
+    entry = _entry(
+        hsem_ev_charger_power=EV, hsem_house_power_includes_ev_charger_power=True
+    )
+
+    profile = await _profile(statistics, entry)
+
+    assert sorted(day for day, _hour in profile) == [
+        f"2026-08-{day:02d}" for day in range(7, 12)
+    ]
+    assert list(profile.values()) == [pytest.approx(0.8)] * 5
+
+
+@pytest.mark.asyncio
+async def test_a_second_charger_added_later_limits_the_first(
+    clock: SimpleNamespace,
+) -> None:
+    """Every charger must be known for an hour to be backfilled."""
+    house = {_local(day, 14): 800.0 for day in range(1, 12)}
+    statistics = _Statistics(
+        {HOUSE: house, EV: {_local(1, 14): 0.0}, EV_2: {_local(9, 14): 300.0}}
+    )
+    entry = _entry(
+        hsem_ev_charger_power=EV,
+        hsem_ev_second_charger_power=EV_2,
+        hsem_house_power_includes_ev_charger_power=True,
+    )
+
+    profile = await _profile(statistics, entry)
+
+    assert profile == {
+        ("2026-08-09", 14): pytest.approx(0.5),
+        ("2026-08-10", 14): pytest.approx(0.8),
+        ("2026-08-11", 14): pytest.approx(0.8),
+    }
 
 
 @pytest.mark.asyncio
@@ -236,8 +308,11 @@ async def test_a_charger_without_any_statistics_stops_the_backfill(
 
     with caplog.at_level("INFO", logger="custom_components.hsem"):
         assert await _profile(statistics, entry) == {}
+        # The next hourly read finds the same and does not log it again.
+        clock.now = NOW + PROFILE_REFRESH
+        assert await _profile(statistics, entry) == {}
 
-    assert f"{EV} has no long-term statistics" in caplog.text
+    assert caplog.text.count(f"{EV} has no long-term statistics") == 1
 
 
 @pytest.mark.asyncio
@@ -342,6 +417,7 @@ async def test_a_failed_read_is_logged_once_and_not_repeated_within_the_hour(
         assert await _profile(statistics, entry) == {}
 
     assert len(statistics.calls) == 1
+    assert "Traceback" in caplog.text
     assert caplog.text.count("reading statistics of sensor.house_power failed") == 1
 
     statistics.error = None
@@ -494,6 +570,41 @@ async def test_the_current_day_is_not_backfilled_on_a_new_install(
 
     assert sensor._measurements == {"2026-08-11": pytest.approx(1.1)}
     assert sensor.extra_state_attributes["backfill_before"] == "2026-08-12"
+
+
+@pytest.mark.asyncio
+async def test_an_old_install_with_an_empty_window_is_not_backfilled(
+    clock: SimpleNamespace,
+) -> None:
+    """HSEM has run since June; the window is empty because state was lost.
+
+    Every day in the statistics is a day HSEM was running, so a missing day
+    is a rejected or unobserved block and none of them is taken.
+    """
+    sensor = _sensor(average=3)
+    sensor._config_entry.created_at = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
+
+    await _update(sensor, _block_14({9: 900.0, 10: 1000.0, 11: 1100.0}))
+
+    assert sensor._measurements == {}
+    assert sensor.extra_state_attributes["backfill_before"] == "2026-06-01"
+
+
+@pytest.mark.asyncio
+async def test_an_install_from_last_week_is_backfilled_up_to_its_first_day(
+    clock: SimpleNamespace,
+) -> None:
+    """Installed on 10 August at 23:30 local time; that day stays out."""
+    sensor = _sensor(average=3)
+    sensor._config_entry.created_at = datetime(2026, 8, 10, 21, 30, tzinfo=UTC)
+
+    await _update(sensor, _block_14({8: 800.0, 9: 900.0, 10: 1000.0, 11: 1100.0}))
+
+    assert sensor._measurements == {
+        "2026-08-08": pytest.approx(0.8),
+        "2026-08-09": pytest.approx(0.9),
+    }
+    assert sensor.extra_state_attributes["backfill_before"] == "2026-08-10"
 
 
 @pytest.mark.asyncio

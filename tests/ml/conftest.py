@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from custom_components.hsem.ml import history_cache
+
 
 @pytest.fixture(autouse=True)
 def long_term_statistics() -> Generator[AsyncMock]:
@@ -18,6 +20,7 @@ def long_term_statistics() -> Generator[AsyncMock]:
     ``return_value``.  A module that tests the real reader overrides this
     fixture by name.
     """
+    history_cache._statistics_failed_at.clear()
     with patch(
         "custom_components.hsem.ml.statistics_reader.StatisticsReader"
         ".read_hourly_energy",
@@ -25,3 +28,4 @@ def long_term_statistics() -> Generator[AsyncMock]:
         return_value={},
     ) as read_hourly_energy:
         yield read_hourly_energy
+    history_cache._statistics_failed_at.clear()
