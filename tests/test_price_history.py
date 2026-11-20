@@ -476,15 +476,23 @@ class TestPriceHistoryTracker:
         # A later cycle publishes the next hour only: 10:00 is still held.
         tracker.hold("import", {ten + timedelta(hours=1): 1.1})
 
-        assert tracker.held_price("import", _MONDAY.replace(hour=10)) == 1.0
-        assert tracker.held_price("import", _MONDAY.replace(hour=11)) == 1.1
-        assert tracker.held_price("export", _MONDAY.replace(hour=11)) == 0.6
+        assert tracker.held_price("import", _MONDAY.replace(hour=10)) == pytest.approx(
+            1.0
+        )
+        assert tracker.held_price("import", _MONDAY.replace(hour=11)) == pytest.approx(
+            1.1
+        )
+        assert tracker.held_price("export", _MONDAY.replace(hour=11)) == pytest.approx(
+            0.6
+        )
         assert tracker.held_price("export", _MONDAY.replace(hour=12)) is None
 
         tracker.prune(_TUESDAY.replace(hour=13))
 
         assert tracker.held_price("import", _MONDAY.replace(hour=10)) is None
-        assert tracker.held_price("import", _MONDAY.replace(hour=11)) == 1.1
+        assert tracker.held_price("import", _MONDAY.replace(hour=11)) == pytest.approx(
+            1.1
+        )
 
     def test_the_outage_clock_starts_runs_and_resets(self) -> None:
         tracker = PriceHistoryTracker()
@@ -562,8 +570,12 @@ class TestPriceHistoryTracker:
         assert restored.sample_count == 1
         assert restored.source == _SOURCE
         assert restored.outage_since == _NOW.astimezone(UTC)
-        assert restored.held_price("import", _MONDAY.replace(hour=11)) == 2.0
-        assert restored.held_price("export", _MONDAY.replace(hour=11)) == 1.5
+        assert restored.held_price("import", _MONDAY.replace(hour=11)) == pytest.approx(
+            2.0
+        )
+        assert restored.held_price("export", _MONDAY.replace(hour=11)) == pytest.approx(
+            1.5
+        )
         assert restored._samples == tracker._samples
 
     @pytest.mark.asyncio
@@ -603,7 +615,7 @@ class TestPriceHistoryTracker:
         assert await tracker.save_history() is True
 
         assert path.read_text() == written
-        assert tracker.held_price("import", _MONDAY) == 1.3
+        assert tracker.held_price("import", _MONDAY) == pytest.approx(1.3)
 
     @pytest.mark.asyncio
     async def test_a_failed_write_is_retried(self, tmp_path: Path) -> None:
@@ -641,7 +653,7 @@ class TestPriceHistoryTracker:
         assert tracker.sample_count == 1
         assert tracker.source == {}
         assert tracker.outage_since is None
-        assert tracker.held_price("import", _MONDAY) == 1.0
+        assert tracker.held_price("import", _MONDAY) == pytest.approx(1.0)
         assert tracker.held_price("import", _TUESDAY) is None
         assert tracker.held_price("export", _MONDAY) is None
 

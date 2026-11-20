@@ -59,8 +59,9 @@ runs and hardware writes stay allowed.
 
 **Price sensor outage (issue #1434).** A price side is in an outage when its
 price sensor publishes no slot of the horizon: the sensor is `unavailable`
-or `unknown`, publishes no forecast attribute, or publishes only days that
-are over. HSEM then plans from what it has kept:
+or `unknown`, publishes neither a forecast attribute nor a numeric state, or
+publishes only days that are over. A sensor with a numeric state and no
+forecast attribute is a flat price that covers every slot, not an outage. HSEM then plans from what it has kept:
 
 1. The failed side gets the price its sensor last published for a slot (the
    _held_ prices). The other side keeps its live prices.
