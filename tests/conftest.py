@@ -60,3 +60,20 @@ def _performance_tracking_off_in_cycle_tests() -> Generator[AsyncMock]:
         new_callable=AsyncMock,
     ) as tracked:
         yield tracked
+
+
+@pytest.fixture(autouse=True)
+def _efficiency_tracking_off_in_cycle_tests() -> Generator[AsyncMock]:
+    """Keep full-cycle tests from feeding the battery efficiency learner.
+
+    The cycle hands each battery reading to the efficiency learner
+    (issue #1431), which persists to ``hass.config.config_dir``.  Cycle tests
+    run against a ``MagicMock`` Home Assistant, so the call is replaced here;
+    ``tests/test_coordinator_efficiency.py`` tests the real function directly
+    and asserts on this mock that the cycle awaited it.
+    """
+    with patch(
+        "custom_components.hsem.coordinator_cycle.async_track_battery_efficiency",
+        new_callable=AsyncMock,
+    ) as tracked:
+        yield tracked

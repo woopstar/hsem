@@ -72,7 +72,7 @@ dashboards, automations, and Areas.
 | Device                         | Identifier suffix     | Entities                                                                                                                                                                                                                                                                                 |
 | ------------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Controller**                 | _(none — legacy)_     | Working mode, degraded mode, read-only, hardware-writes, missing-entities, force-mode, last/next-updated, update-interval, applier-status, plan-explanation, daily-plan-vs-actual, recommendation-interval, force-working-mode selector, extended-attributes/verbose-logging/ML switches |
-| **Battery & Energy**           | `_battery_energy`     | Battery SoC, effective discharge floor, net consumption, PV curtailment, charge/discharge efficiency numbers, dynamic discharge floor switch                                                                                                                                             |
+| **Battery & Energy**           | `_battery_energy`     | Battery SoC, effective discharge floor, battery efficiency, net consumption, PV curtailment, charge/discharge efficiency numbers, dynamic discharge floor switch                                                                                                                         |
 | **Hourly Consumption Profile** | `_hourly_consumption` | All 168 per-hour-block entities (`HSEMHouseConsumptionPowerSensor` + integral + utility-meter + 1/3/7/14-day averages × 24 hour blocks)                                                                                                                                                  |
 | **Financial**                  | `_financial`          | Export income, import cost, net grid balance, savings, performance (savings capture, actual benefit, missed opportunity, battery and solar utilisation, EV charging efficiency)                                                                                                          |
 | **Forecast**                   | `_forecast`           | Forecast accuracy, prediction accuracy, solar confidence, Solcast likelihood selector                                                                                                                                                                                                    |
@@ -857,6 +857,106 @@ While the floor reserves energy, the `constraints` attribute of `sensor.hsem_pla
 
 ---
 
+## Battery efficiency sensor
+
+Measured round-trip efficiency of the battery, with the apparent charge and
+discharge efficiency per 500 W power step (issue #1431). Diagnostic only: the
+planner keeps the configured _Charge efficiency_ and _Discharge efficiency_.
+
+**Entity:** `sensor.hsem_battery_efficiency_sensor`
+
+| State  | Unit | Description                                                                                                        |
+| ------ | ---- | ------------------------------------------------------------------------------------------------------------------ |
+| 50–100 | %    | Measured round trip (charge × discharge). `unknown` until both directions are learned, or when it is `implausible` |
+
+**Trust the round trip, not the two halves:**
+
+- Stored energy is `SoC change × rated capacity`. HSEM has no reading of what
+  the battery really holds.
+- A battery that holds less than its rated capacity therefore reads **high when
+  charging and low when discharging**, by the same factor. At 90 % state of
+  health a 97 % / 97 % battery reads about 108 % and 87 %.
+- The factor cancels in charge × discharge. The round trip is the true one
+  (94 % in that example).
+- This is why the charge and discharge figures are called _apparent_, and why a
+  value above 100 % is reported and not discarded.
+- The curve is still useful for its shape: every step carries the same factor,
+  so a step that reads lower than its neighbours loses more.
+
+**How it measures:**
+
+- Once per update cycle HSEM reads the battery charge/discharge power and the SoC.
+- A measurement starts at a SoC change and ends when the SoC has moved 5 %
+  further. The next one starts at that same reading.
+- The energy at the power sensor is summed, and so is `SoC change × rated capacity`.
+- Apparent charge efficiency is stored ÷ measured. Apparent discharge efficiency
+  is measured ÷ stored. Both are ratios of the sums, never a mean of single results.
+- A measurement is shared between the 500 W steps it ran at, in proportion to
+  the energy measured in each.
+
+**Why sums:** the SoC is reported in whole percent, so a single measurement is
+off by up to one cycle's worth of SoC, in either direction. The errors cancel in
+the sums. They do not cancel if single results are filtered, so no measurement
+is dropped for reading too high or too low.
+
+**A measurement is dropped when:**
+
+- the battery idled (below 100 W) or changed direction
+- the power sensor, the SoC or the rated capacity was unavailable
+- two readings were more than 10 minutes apart (or two update intervals, if longer)
+- the SoC moved against the power
+- stored and measured energy differ by more than a factor of two (a sensor fault)
+
+**When a value is shown:**
+
+| Value                | Needs                 | Plausible band |
+| -------------------- | --------------------- | -------------- |
+| A step of the curve  | 10 samples and 2 kWh  | 50–200 %       |
+| Charge and discharge | 20 samples and 10 kWh | 50–200 %       |
+| Round trip           | both directions       | 50–100 %       |
+
+A value outside its band has the status `implausible` and is not shown. Each
+step and each direction weighs its latest 200 samples.
+
+**Key attributes:**
+
+| Attribute                              | Unit | Description                                                                                                                                                               |
+| -------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `measured_round_trip_efficiency_pct`   | %    | Measured charge × discharge efficiency                                                                                                                                    |
+| `configured_round_trip_efficiency_pct` | %    | Configured charge × discharge efficiency, the value the planner uses                                                                                                      |
+| `round_trip_difference_pct`            | %    | Measured minus configured. Negative: the battery loses more than configured                                                                                               |
+| `round_trip_status`                    | text | `learning`, `ok` or `implausible`                                                                                                                                         |
+| `capacity_basis`                       | text | `rated`: the capacity the stored energy is computed from                                                                                                                  |
+| `apparent_charge_efficiency_pct`       | %    | Charge efficiency over all measurements. Includes the capacity error                                                                                                      |
+| `apparent_discharge_efficiency_pct`    | %    | Discharge efficiency over all measurements. Includes the capacity error                                                                                                   |
+| `charge_status`, `discharge_status`    | text | `learning`, `ok` or `implausible` per direction                                                                                                                           |
+| `charge_samples`, `discharge_samples`  | int  | Measurements held per direction                                                                                                                                           |
+| `charge_curve`, `discharge_curve`      | list | One entry per step: `power_from_w`, `power_to_w`, `apparent_efficiency_pct`, `samples`, `energy_kwh`, `status` (`learning`, `ok`, `implausible`). Not recorded in history |
+| `power_step_w`                         | W    | Step width (500)                                                                                                                                                          |
+| `min_samples_per_step`                 | int  | Samples a step needs (10)                                                                                                                                                 |
+| `min_energy_per_step_kwh`              | kWh  | Energy a step needs (2)                                                                                                                                                   |
+| `min_samples_per_direction`            | int  | Samples a direction needs (20)                                                                                                                                            |
+| `min_energy_per_direction_kwh`         | kWh  | Energy a direction needs (10)                                                                                                                                             |
+
+**Limits:**
+
+- The Huawei charge/discharge power is measured at the battery, not at the AC
+  side of the inverter. Inverter conversion loss is not in the measurement, so
+  the true AC round trip is lower.
+- Early values are noisy. With 20 samples per direction the round trip is within
+  about ±1.5 points, and a true value near 100 % can read `implausible` until
+  more samples arrive.
+- When the power jumps widely from cycle to cycle, single steps can be off by a
+  point or two. The direction totals and the round trip are not affected.
+- Requires the _Huawei Battery Charge/Discharge Power Sensor_
+  (`hsem_huawei_solar_batteries_charge_discharge_power`). Without it the sensor
+  stays `unknown`.
+
+The sums are stored in `.storage/hsem_battery_efficiency.json` and survive a
+restart. A file from another schema version is not read.
+
+---
+
 ## OCPP charger sensors
 
 Sensors providing live status and diagnostics for an OCPP-compliant EV charger connected via the integrated OCPP server. HSEM runs **one OCPP server per EV** (primary EV on port 9000 by default, second EV on port 9001). The primary sensors below are only created when `hsem_ocpp_enabled` is set; the `_second` variants exist only when the second EV is configured and the second OCPP server is enabled (issue #859).
@@ -1389,6 +1489,7 @@ Detects when the inverter is actively curtailing PV production.
 | `sensor.hsem_import_cost`                        | Import Cost                         | Cumulative import cost                                           | Monetary (total)                        |
 | `sensor.hsem_net_grid_balance`                   | Net Grid Balance                    | Export income minus import cost                                  | Monetary (total)                        |
 | `sensor.hsem_effective_discharge_floor_sensor`   | Effective Discharge Floor           | Current effective floor SoC                                      | Percentage                              |
+| `sensor.hsem_battery_efficiency_sensor`          | Battery Efficiency                  | Measured round trip, apparent efficiency per power step          | Percentage                              |
 | `sensor.hsem_ocpp_charger_status_sensor`         | OCPP Charger Status                 | Charger connection/charging state                                | String                                  |
 | `sensor.hsem_ocpp_charger_power_sensor`          | OCPP Charger Power                  | Live charging power                                              | kW                                      |
 | `sensor.hsem_ocpp_charger_info_sensor`           | OCPP Charger Info                   | Vendor, model, firmware, serial                                  | String                                  |

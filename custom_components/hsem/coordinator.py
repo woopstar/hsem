@@ -101,6 +101,7 @@ from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.planner.ev_soc_economics import EVSoCEconomicsResult
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
+from custom_components.hsem.utils.efficiency_learner import EfficiencyLearner
 from custom_components.hsem.utils.ev_delivered_energy import EVDeliveredEnergyTracker
 from custom_components.hsem.utils.forecast_tracker import ForecastTracker
 from custom_components.hsem.utils.live_power import LivePowerEstimate, LivePowerWindow
@@ -367,6 +368,8 @@ class HSEMDataUpdateCoordinator(
 
         # Battery capacity learner (issue #605).
         self._capacity_learner: CapacityLearner = CapacityLearner()
+        # Battery efficiency learner (issue #1431). Diagnostics only.
+        self._efficiency_learner: EfficiencyLearner = EfficiencyLearner()
         # Session-local credit for vehicle APIs whose SoC updates lag behind
         # measured charger power. Never persisted across integration restarts.
         self._ev_delivered_energy_tracker = EVDeliveredEnergyTracker()

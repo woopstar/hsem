@@ -14,6 +14,9 @@ from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.custom_sensors.applier_status_sensor import (
     HSEMApplierStatusSensor,
 )
+from custom_components.hsem.custom_sensors.battery_efficiency_sensor import (
+    HSEMBatteryEfficiencySensor,
+)
 from custom_components.hsem.custom_sensors.battery_soc_sensor import (
     HSEMBatterySoCSensor,
 )
@@ -199,6 +202,9 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
         config_entry, coordinator
     )
 
+    # Battery efficiency sensor — measured efficiency per power step (#1431).
+    battery_efficiency_sensor = HSEMBatteryEfficiencySensor(config_entry, coordinator)
+
     # Financial sensors — export income, import cost, and net grid balance.
     export_income_sensor = HSEMExportIncomeSensor(config_entry, coordinator)
     import_cost_sensor = HSEMImportCostSensor(config_entry, coordinator)
@@ -256,6 +262,7 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             pv_curtailment_sensor,
             daily_plan_vs_actual_sensor,
             effective_discharge_floor_sensor,
+            battery_efficiency_sensor,
             savings_sensor,
             *performance_sensors,
             export_income_sensor,

@@ -100,4 +100,5 @@ def test_known_persistable_trackers_are_registered() -> None:
         "_financial_tracker",
         "_performance_tracker",
         "_prediction_tracker",
+        "_efficiency_learner",
     }

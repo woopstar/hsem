@@ -1214,6 +1214,9 @@
       "effective_discharge_floor": {
         "name": "Effektivt afladningsgulv"
       },
+      "battery_efficiency": {
+        "name": "Batterieffektivitet"
+      },
       "ev_charging": {
         "name": "EV opladning aktiv",
         "state": {

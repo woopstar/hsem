@@ -1247,6 +1247,9 @@
       "effective_discharge_floor": {
         "name": "Effektive Entladeuntergrenze"
       },
+      "battery_efficiency": {
+        "name": "Batteriewirkungsgrad"
+      },
       "ocpp_charger_status": {
         "name": "Ladegerät Status"
       },

@@ -72,6 +72,16 @@ def _get_prediction_tracker(
     return tracker
 
 
+def _get_efficiency_learner(
+    coordinator: CoordinatorSharedState,
+) -> Persistable | None:
+    """Return the efficiency learner only once its history file is set."""
+    learner = coordinator._efficiency_learner
+    if not learner.history_file:
+        return None
+    return learner
+
+
 # Every field declared on ``CoordinatorSharedState`` (coordinator_state.py)
 # whose type exposes an ``async def save_history(self) -> bool`` method MUST
 # have a corresponding entry here, keyed by the exact attribute name.
@@ -82,6 +92,7 @@ TRACKER_REGISTRY: dict[str, Callable[[CoordinatorSharedState], Persistable | Non
     "_financial_tracker": _get_financial_tracker,
     "_performance_tracker": _get_performance_tracker,
     "_prediction_tracker": _get_prediction_tracker,
+    "_efficiency_learner": _get_efficiency_learner,
 }
 
 

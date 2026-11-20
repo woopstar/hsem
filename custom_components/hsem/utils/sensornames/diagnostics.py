@@ -326,6 +326,20 @@ def get_effective_discharge_floor_sensor_entity_id() -> str:
     return f"sensor.{s(f'{DOMAIN}_effective_discharge_floor_sensor')}"
 
 
+def get_battery_efficiency_sensor_unique_id(entry_id: str) -> str:
+    """Return a unique ID for the battery efficiency sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+    """
+    return f"{DOMAIN}_{entry_id}_battery_efficiency_sensor"
+
+
+def get_battery_efficiency_sensor_entity_id() -> str:
+    """Return the entity_id for the battery efficiency sensor."""
+    return f"sensor.{s(f'{DOMAIN}_battery_efficiency_sensor')}"
+
+
 # Solar Confidence Sensor
 
 
