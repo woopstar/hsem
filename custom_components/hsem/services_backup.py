@@ -6,6 +6,9 @@
   the history files and reload the entry.
 - :func:`async_write_removal_backup` — the backup written when the config
   entry is deleted.
+- :func:`async_capture_learned_state` / :func:`async_apply_pending_import` —
+  the hooks ``async_unload_entry`` and ``async_setup_entry`` call, so learner
+  state reaches the removal backup and an import survives a delayed start.
 - :func:`async_write_debug_export` — the file and notification behind the
   ``write_file`` option of ``export_diagnostics``.
 
@@ -15,6 +18,7 @@ All file I/O runs in the executor; the payload logic lives in
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,17 +27,27 @@ from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers.entity_platform import async_get_platforms
 
 from custom_components.hsem.const import DOMAIN
+from custom_components.hsem.custom_sensors.avg_sensor import HSEMAvgSensor
 from custom_components.hsem.utils.backup import (
+    LEARNER_AVERAGE_SENSORS,
+    LEARNER_FORECAST_TRACKER,
+    LEARNER_KEYS,
+    LEARNER_SOLAR_CORRECTOR,
     REASON_BEFORE_IMPORT,
     REASON_DELETED,
     REASON_MANUAL,
     BackupError,
     build_backup_payload,
     build_issue_url,
+    check_configuration_version,
+    learned_state,
     read_backup_file,
     read_history_files,
+    read_pending_import,
+    remove_pending_import,
     restorable_options,
     write_backup_file,
     write_debug_file,
@@ -63,6 +77,20 @@ SCHEMA_IMPORT_DATA = vol.Schema(
 
 _DEBUG_NOTIFICATION_ID = "hsem_debug_export"
 
+#: Forecast slots kept in a backup: the capacity of the coordinator's tracker.
+_FORECAST_BACKUP_RECORDS = 2880
+
+#: ``hass.data`` key: learner state kept from the last unload.
+_CAPTURED_STATE_KEY = f"{DOMAIN}_captured_learned_state"
+
+#: ``hass.data`` key: the learner sections the last setup loaded from an import.
+_APPLIED_IMPORT_KEY = f"{DOMAIN}_applied_import"
+
+#: Entry states an import can start from. In any other state (a setup that
+#: is retrying or failed, a failed unload) the entry cannot be unloaded or
+#: set up again in a defined way.
+_IMPORTABLE_STATES = (ConfigEntryState.LOADED, ConfigEntryState.NOT_LOADED)
+
 
 def _config_dir(hass: HomeAssistant) -> Path:
     """Return the Home Assistant config directory."""
@@ -81,11 +109,129 @@ def _get_entry(hass: HomeAssistant) -> ConfigEntry:
     return entries[0]
 
 
-def _solar_corrector(entry: ConfigEntry) -> Any | None:
-    """Return the running solar corrector, or ``None`` when HSEM is unloaded."""
-    runtime_data = getattr(entry, "runtime_data", None)
-    coordinator = getattr(runtime_data, "coordinator", None)
-    return getattr(coordinator, "_solar_corrector", None)
+def _coordinator(entry: ConfigEntry) -> Any | None:
+    """Return the running coordinator, or ``None`` when HSEM is unloaded."""
+    return getattr(getattr(entry, "runtime_data", None), "coordinator", None)
+
+
+def _average_sensors(hass: HomeAssistant) -> list[HSEMAvgSensor]:
+    """Return every hourly average sensor HSEM has added."""
+    return [
+        entity
+        for platform in async_get_platforms(hass, DOMAIN)
+        for entity in platform.entities.values()
+        if isinstance(entity, HSEMAvgSensor)
+    ]
+
+
+def collect_learned_state(
+    hass: HomeAssistant, entry: ConfigEntry, now: datetime
+) -> dict[str, dict[str, Any] | None]:
+    """Return the learner state that lives in restore state, not in a file.
+
+    Read from the running coordinator and sensors. When HSEM is unloaded the
+    state captured by :func:`async_capture_learned_state` is used.
+    """
+    coordinator = _coordinator(entry)
+    if coordinator is None:
+        captured = hass.data.get(_CAPTURED_STATE_KEY)
+        return dict(captured) if captured else dict.fromkeys(LEARNER_KEYS)
+
+    corrector = getattr(coordinator, "_solar_corrector", None)
+    tracker = getattr(coordinator, "_forecast_tracker", None)
+    averages = {
+        sensor.backup_key: {"measurements": sensor.export_measurements()}
+        for sensor in _average_sensors(hass)
+    }
+    return {
+        LEARNER_SOLAR_CORRECTOR: corrector.to_dict() if corrector is not None else None,
+        LEARNER_FORECAST_TRACKER: (
+            tracker.to_persistence_dict(now=now, max_records=_FORECAST_BACKUP_RECORDS)
+            if tracker is not None
+            else None
+        ),
+        LEARNER_AVERAGE_SENSORS: averages or None,
+    }
+
+
+def async_capture_learned_state(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Keep the learner state of an entry that is about to be unloaded.
+
+    Home Assistant calls ``async_remove_entry`` after the unload, when the
+    coordinator and the sensors are gone. The removal backup reads what is
+    kept here. Never raises: a failure must not block the unload.
+    """
+    try:
+        hass.data[_CAPTURED_STATE_KEY] = collect_learned_state(hass, entry, hsem_now())
+    except Exception:  # noqa: BLE001 — the unload must go through
+        _LOGGER.exception("HSEM could not capture its learned state before unload")
+
+
+async def async_apply_pending_import(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Load the learner state an import left behind, then delete the file.
+
+    Called at the end of ``async_setup_entry``, after the sensors have
+    restored their previous state, so the imported state wins. Because it
+    runs on every successful setup, an import whose first start failed is
+    still applied when Home Assistant retries. Never raises.
+    """
+    storage_dir = _config_dir(hass) / ".storage"
+    pending = await hass.async_add_executor_job(read_pending_import, storage_dir)
+    if pending is None:
+        return
+    coordinator = _coordinator(entry)
+    now = hsem_now()
+    applied: list[str] = []
+    for key, target, load in (
+        (
+            LEARNER_SOLAR_CORRECTOR,
+            getattr(coordinator, "_solar_corrector", None),
+            lambda target, state: target.load_from_dict(state, restored_at=now),
+        ),
+        (
+            LEARNER_FORECAST_TRACKER,
+            getattr(coordinator, "_forecast_tracker", None),
+            lambda target, state: target.load_from_dict(state),
+        ),
+    ):
+        state = pending.get(key)
+        if target is None or not isinstance(state, dict):
+            continue
+        try:
+            load(target, state)
+        except Exception:  # noqa: BLE001 — setup must go through
+            _LOGGER.exception("HSEM could not load the imported %s", key)
+        else:
+            applied.append(key)
+
+    averages = pending.get(LEARNER_AVERAGE_SENSORS)
+    if isinstance(averages, dict):
+        restored = 0
+        for sensor in _average_sensors(hass):
+            state = averages.get(sensor.backup_key)
+            measurements = (
+                state.get("measurements") if isinstance(state, dict) else None
+            )
+            if not isinstance(measurements, dict):
+                continue
+            try:
+                await sensor.async_import_measurements(measurements)
+            except TypeError, ValueError:
+                _LOGGER.exception(
+                    "HSEM could not load the imported samples of %s", sensor.entity_id
+                )
+            else:
+                restored += 1
+        if restored:
+            applied.append(LEARNER_AVERAGE_SENSORS)
+
+    await hass.async_add_executor_job(remove_pending_import, storage_dir)
+    hass.data[_APPLIED_IMPORT_KEY] = applied
+    if coordinator is not None:
+        # The confidence and accuracy sensors write the loaded state to their
+        # restore attributes, so it survives the next restart.
+        coordinator.async_update_listeners()
+    _LOGGER.info("HSEM loaded imported learned state: %s", ", ".join(applied) or "none")
 
 
 async def async_write_backup(
@@ -109,15 +255,17 @@ async def async_write_backup(
     history = await hass.async_add_executor_job(
         read_history_files, config_dir / ".storage"
     )
-    corrector = _solar_corrector(entry)
+    created = hsem_now()
     payload = build_backup_payload(
         hsem_version=str(hsem_version),
-        created=hsem_now(),
+        created=created,
         reason=reason,
         history=history,
-        solar_corrector=corrector.to_dict() if corrector is not None else None,
+        learned=collect_learned_state(hass, entry, created),
         data=entry.data,
         options=entry.options,
+        entry_version=entry.version,
+        entry_minor_version=entry.minor_version,
     )
     return await hass.async_add_executor_job(write_backup_file, config_dir, payload)
 
@@ -147,10 +295,12 @@ async def async_handle_export_data(call: ServiceCall) -> dict[str, Any]:
 async def async_handle_import_data(call: ServiceCall) -> dict[str, Any]:
     """Replace the learned data with the contents of a backup file.
 
-    The file is validated before anything changes. The current data is then
-    saved as ``..._before_import.json``, the entry is unloaded so no cycle
-    writes over the imported files, the history files are replaced and the
-    entry is set up again.
+    The file and the state of the entry are validated before anything
+    changes. Then, with the coordinator's update lock held so no running
+    cycle can write over the import, the current data is saved as
+    ``..._before_import.json`` and the entry is unloaded. The history files
+    are replaced all or nothing and the entry is set up again; the learner
+    state of the backup is loaded at the end of that setup.
 
     Args:
         call: The service call with ``filename`` and optional
@@ -160,36 +310,55 @@ async def async_handle_import_data(call: ServiceCall) -> dict[str, Any]:
         The paths and what was restored.
 
     Raises:
-        ServiceValidationError: When HSEM is not configured or the backup is
-            rejected. Nothing has changed.
+        ServiceValidationError: When HSEM is not configured, the entry is in
+            a state an import cannot start from, or the backup is rejected.
+            Nothing has changed.
         HomeAssistantError: When saving, replacing or reloading fails.
     """
     hass = call.hass
     entry = _get_entry(hass)
     config_dir = _config_dir(hass)
     hsem_version = str(await async_get_hsem_integration_version(hass))
+    restore_configuration: bool = call.data[ATTR_RESTORE_CONFIGURATION]
 
+    if entry.state not in _IMPORTABLE_STATES:
+        raise ServiceValidationError(
+            f"HSEM is in the state '{entry.state.value}', so nothing was "
+            "imported. Wait until HSEM has started, or fix the setup error, "
+            "and try again."
+        )
     try:
         payload = await hass.async_add_executor_job(
             lambda: read_backup_file(
                 config_dir, call.data[ATTR_FILENAME], hsem_version=hsem_version
             )
         )
+        if restore_configuration:
+            check_configuration_version(payload, entry.version)
     except BackupError as err:
         raise ServiceValidationError(str(err)) from err
 
-    try:
-        before_path = await async_write_backup(hass, entry, REASON_BEFORE_IMPORT)
-    except BackupError as err:
-        raise HomeAssistantError(f"{err} Nothing was imported.") from err
+    was_loaded = entry.state is ConfigEntryState.LOADED
+    coordinator = _coordinator(entry)
+    hass.data.pop(_APPLIED_IMPORT_KEY, None)
 
-    if entry.state is ConfigEntryState.LOADED and not (
-        await hass.config_entries.async_unload(entry.entry_id)
-    ):
-        raise HomeAssistantError(
-            "HSEM could not be unloaded, so nothing was imported. Restart Home "
-            "Assistant and try again."
-        )
+    async def _save_and_unload() -> Path:
+        try:
+            path = await async_write_backup(hass, entry, REASON_BEFORE_IMPORT)
+        except BackupError as err:
+            raise HomeAssistantError(f"{err} Nothing was imported.") from err
+        if was_loaded and not await hass.config_entries.async_unload(entry.entry_id):
+            raise HomeAssistantError(
+                "HSEM could not be unloaded, so nothing was imported. Restart "
+                "Home Assistant and try again."
+            )
+        return path
+
+    if coordinator is not None:
+        async with coordinator.async_hold_updates():
+            before_path = await _save_and_unload()
+    else:
+        before_path = await _save_and_unload()
 
     skipped: list[str] = []
     configuration_restored = False
@@ -197,7 +366,7 @@ async def async_handle_import_data(call: ServiceCall) -> dict[str, Any]:
         written = await hass.async_add_executor_job(
             write_history_files, config_dir / ".storage", payload
         )
-        if call.data[ATTR_RESTORE_CONFIGURATION]:
+        if restore_configuration:
             options, skipped = restorable_options(payload)
             hass.config_entries.async_update_entry(
                 entry, options={**entry.options, **options}
@@ -208,33 +377,35 @@ async def async_handle_import_data(call: ServiceCall) -> dict[str, Any]:
             f"{err} The data from before the import is in {before_path}."
         ) from err
     finally:
-        await hass.config_entries.async_setup(entry.entry_id)
+        if was_loaded:
+            await hass.config_entries.async_setup(entry.entry_id)
 
-    if entry.state is not ConfigEntryState.LOADED:
-        raise HomeAssistantError(
-            "The data was imported, but HSEM did not start again. Check the "
-            f"log. The data from before the import is in {before_path}."
-        )
-
-    corrector = _solar_corrector(entry)
-    corrector_state = payload.get("solar_corrector")
-    solar_corrector_restored = corrector is not None and corrector_state is not None
-    if corrector is not None and corrector_state is not None:
-        corrector.load_from_dict(corrector_state, restored_at=hsem_now())
-
+    learned = sorted(learned_state(payload))
+    result = {
+        "imported_from": call.data[ATTR_FILENAME],
+        "before_import_path": str(before_path),
+        "history_files_restored": written,
+        "learned_state_restored": sorted(hass.data.pop(_APPLIED_IMPORT_KEY, [])),
+        "learned_state_pending": [],
+        "configuration_restored": configuration_restored,
+        "configuration_keys_skipped": skipped,
+    }
     _LOGGER.info(
         "HSEM service: import_data restored %s from %s",
         ", ".join(written) or "no history files",
         call.data[ATTR_FILENAME],
     )
-    return {
-        "imported_from": call.data[ATTR_FILENAME],
-        "before_import_path": str(before_path),
-        "history_files_restored": written,
-        "solar_corrector_restored": solar_corrector_restored,
-        "configuration_restored": configuration_restored,
-        "configuration_keys_skipped": skipped,
-    }
+    if not was_loaded:
+        # HSEM is not running: the learner state is loaded when it starts.
+        result["learned_state_pending"] = learned
+        return result
+    if entry.state is not ConfigEntryState.LOADED:
+        raise HomeAssistantError(
+            "The data was imported, but HSEM did not start again. Check the "
+            "log. The learned state is loaded when HSEM starts. The data from "
+            f"before the import is in {before_path}."
+        )
+    return result
 
 
 async def async_write_removal_backup(hass: HomeAssistant, entry: ConfigEntry) -> None:

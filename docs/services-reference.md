@@ -221,6 +221,10 @@ GitHub. The link is prefilled with the HSEM and Home Assistant versions and
 nothing else: no entity IDs, prices or configuration. Attach the file to the
 issue yourself.
 
+The file is redacted once more than the response: fields named like a secret
+(passphrase, credentials, auth, charge point ID) and any PEM block are
+replaced. The certificate facts under `ocpp_tls` stay readable.
+
 ```yaml
 service: hsem.export_diagnostics
 data:
@@ -503,19 +507,30 @@ another Home Assistant or kept before a reinstall.
 
 **File:** `<config>/hsem_backups/hsem_backup_<date>_<time>.json`
 
-| Key               | Description                                                                                                |
-| ----------------- | ---------------------------------------------------------------------------------------------------------- |
-| `schema`          | Always `hsem_backup`                                                                                       |
-| `schema_version`  | Version of the file layout, currently `1`                                                                  |
-| `hsem_version`    | HSEM version that wrote the file                                                                           |
-| `created`         | ISO-8601 timestamp                                                                                         |
-| `reason`          | `manual`, `before_import` or `deleted`                                                                     |
-| `history`         | The five history files from `.storage`: prediction, financial, savings, daily and performance              |
-| `solar_corrector` | The learned solar forecast correction, or `null` when HSEM was not loaded                                  |
-| `configuration`   | The config entry `data` and `options`, redacted: entity IDs, secrets and certificate paths are not written |
+| Key                | Description                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------- |
+| `schema`           | Always `hsem_backup`                                                                          |
+| `schema_version`   | Version of the file layout, currently `1`                                                     |
+| `hsem_version`     | HSEM version that wrote the file                                                              |
+| `created`          | ISO-8601 timestamp                                                                            |
+| `reason`           | `manual`, `before_import` or `deleted`                                                        |
+| `history`          | The five history files from `.storage`: prediction, financial, savings, daily and performance |
+| `solar_corrector`  | The learned solar forecast correction, or `null`                                              |
+| `forecast_tracker` | The forecast accuracy records, or `null`                                                      |
+| `average_sensors`  | The daily samples of the hourly consumption averages, keyed `<hour_start>_<hour_end>_<days>`  |
+| `configuration`    | `entry_version`, `entry_minor_version`, and the config entry `data` and `options`, redacted   |
+
+The last three learners live in the restore state of HSEM's sensors, not in a
+file. They are `null` only when HSEM has not run since Home Assistant started.
 
 A backup never holds OCPP certificates, private keys or tokens. HSEM does not
-read the certificate files for a backup, and the paths to them are redacted.
+read the certificate files for a backup. Redacted in `configuration`: entity
+IDs, secrets, charge point IDs (`hsem_ocpp_cpid`) and certificate paths.
+
+**Not in a backup.** The battery capacity learner keeps no state. Other
+sensors that restore their last value after a restart (EV state of charge,
+PV curtailment, net consumption and similar) are not included: they hold a
+last reading, not learned data, and fill again within a cycle.
 
 **Response:** `backup_path`, the path of the written file.
 
@@ -554,16 +569,30 @@ Replaces the learned data with the contents of a backup file.
    `schema` is not `hsem_backup`, when `schema_version` is newer than this HSEM
    reads, or when the backup was written by a newer HSEM version than the one
    installed.
-2. The current data is saved as `hsem_backup_<date>_<time>_before_import.json`.
-3. HSEM is unloaded, the history files are replaced and HSEM starts again with
-   the imported data. A history file that is `null` in the backup is left as
-   it is.
+2. The import waits for a planning cycle that is still running, so the cycle
+   cannot write its own data over the import.
+3. The current data is saved as `hsem_backup_<date>_<time>_before_import.json`.
+4. HSEM is unloaded and the history files are replaced, all or nothing: if one
+   file cannot be written, the others are put back. A history file that is
+   `null` in the backup is left as it is.
+5. HSEM starts again and loads the solar correction, the forecast accuracy
+   records and the hourly averages from the backup. If the start fails and
+   Home Assistant retries it later, they are loaded then.
+
+The import is rejected when HSEM is retrying or failed its setup, or failed to
+unload. Fix that first. A disabled HSEM can be imported into: it stays
+disabled and loads the learned state when it is enabled.
 
 **Restoring the configuration.** With `restore_configuration: true` the options
 from the backup are merged into the current options. Redacted values cannot be
 restored: every option that holds an entity ID or a certificate path keeps its
 current value. On a new Home Assistant, set HSEM up through the config flow
 first, then import. The skipped keys are listed in the response.
+
+The options are only restored when the backup was written with the same config
+entry version as the installed HSEM. Otherwise the call is rejected and nothing
+changes. Import again without `restore_configuration` to restore the learned
+data only.
 
 **Response:**
 
@@ -572,7 +601,8 @@ first, then import. The skipped keys are listed in the response.
 | `imported_from`              | The file name that was imported             |
 | `before_import_path`         | Path of the backup taken before the import  |
 | `history_files_restored`     | The history files that were replaced        |
-| `solar_corrector_restored`   | Whether the solar correction was restored   |
+| `learned_state_restored`     | Learners loaded after the restart           |
+| `learned_state_pending`      | Learners that load when HSEM next starts    |
 | `configuration_restored`     | Whether the options were restored           |
 | `configuration_keys_skipped` | Options left unchanged because of redaction |
 

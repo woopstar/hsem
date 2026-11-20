@@ -53,6 +53,8 @@ def mock_hass() -> MagicMock:
     hass.services = _FakeServiceRegistry()
     hass.config_entries = MagicMock()
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+    # No import is pending (issue #1436): the pending file reads as missing.
+    hass.async_add_executor_job = AsyncMock(return_value=None)
     return hass
 
 

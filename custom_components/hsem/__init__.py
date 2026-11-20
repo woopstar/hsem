@@ -28,7 +28,11 @@ from custom_components.hsem.services import (
     async_register_services,
     async_unregister_services,
 )
-from custom_components.hsem.services_backup import async_write_removal_backup
+from custom_components.hsem.services_backup import (
+    async_apply_pending_import,
+    async_capture_learned_state,
+    async_write_removal_backup,
+)
 from custom_components.hsem.utils.house_load import cfg_house_load_inputs
 from custom_components.hsem.utils.logger import (
     async_close_hsem_logger,
@@ -277,6 +281,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool
     # Gated internally so a second call is a no-op.
     await async_migrate_devices(hass, entry)
 
+    # Load the learner state an import left behind (issue #1436). Here, after
+    # the sensors restored their own state, so the imported state wins.
+    await async_apply_pending_import(hass, entry)
+
     # Add update listener for options.
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
@@ -287,6 +295,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool
 async def async_unload_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.debug("Unloading HSEM integration for %s", entry.entry_id)
+
+    # Keep the learner state for the backup async_remove_entry writes: the
+    # coordinator and the sensors are gone by then (issue #1436).
+    async_capture_learned_state(hass, entry)
 
     # Tear down the coordinator's timers before unloading platforms.
     coordinator: HSEMDataUpdateCoordinator | None = (

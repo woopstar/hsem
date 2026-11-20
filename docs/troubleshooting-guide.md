@@ -888,7 +888,8 @@ read it before you share it.
 ## Backing up and moving learned data
 
 HSEM learns over weeks. The history lives in `.storage/hsem_*_history.json`
-and in the restore state of the solar confidence sensor.
+and in the restore state of the solar confidence sensor, the forecast accuracy
+sensor and the hourly average sensors. A backup holds all of them.
 
 - **Back up:** call `hsem.export_data`. The file lands in
   `<config>/hsem_backups/`.
@@ -898,13 +899,16 @@ and in the restore state of the solar confidence sensor.
 - **Undo an import:** every import first writes
   `hsem_backup_<date>_<time>_before_import.json`. Import that file.
 - **Deleted the integration:** HSEM wrote
-  `hsem_backup_<date>_<time>_deleted.json` on the way out.
+  `hsem_backup_<date>_<time>_deleted.json` on the way out. It holds the
+  learned sensor state only when HSEM ran since Home Assistant started.
 
 | Symptom                                     | Cause                                                                               |
 | ------------------------------------------- | ----------------------------------------------------------------------------------- |
 | `The file is not an HSEM backup`            | The file is not a backup, or it was edited                                          |
 | `... is newer than the installed ...`       | The backup comes from a newer HSEM. Update HSEM, then import                        |
 | `... is not a backup file name`             | `filename` held a path. Give the file name only                                     |
+| `HSEM is in the state '...'`                | HSEM is retrying or failed its setup. Fix that, then import                         |
+| `... has config entry version ...`          | The options come from another HSEM generation. Import without restore_configuration |
 | Entity settings are unchanged after restore | Entity IDs are redacted in a backup and are never restored. Set them in the options |
 
 See [Services Reference](services-reference.md) for the file layout.

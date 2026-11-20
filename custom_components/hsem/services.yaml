@@ -80,9 +80,10 @@ export_data:
   description: >-
     Back up what HSEM has learned to one JSON file under
     <config>/hsem_backups/: the prediction, financial, savings, daily and
-    performance history, the solar forecast correction and the configuration.
-    Entity IDs, secrets and certificate paths are redacted; certificates and
-    keys are never included. Response key: backup_path.
+    performance history, the solar forecast correction, the forecast accuracy
+    tracker, the hourly consumption averages and the configuration. Entity
+    IDs, secrets, charge point IDs and certificate paths are redacted;
+    certificates and keys are never included. Response key: backup_path.
   fields: {}
 
 import_data:
@@ -93,8 +94,8 @@ import_data:
     rejected and nothing changes. The current data is saved as
     hsem_backup_<time>_before_import.json, then the history is replaced and
     HSEM reloads. Response keys: imported_from, before_import_path,
-    history_files_restored, solar_corrector_restored, configuration_restored,
-    configuration_keys_skipped.
+    history_files_restored, learned_state_restored, learned_state_pending,
+    configuration_restored, configuration_keys_skipped.
   fields:
     filename:
       required: true

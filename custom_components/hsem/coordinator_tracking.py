@@ -605,7 +605,10 @@ async def _init_daily_tracker(
 
         @callback
         def _schedule_midnight(_now: datetime) -> None:
-            hass.async_create_task(_async_handle_midnight(tracker, hass))
+            # Kept on the tracker so an import can wait for the save (#1436).
+            tracker._midnight_task = hass.async_create_task(  # type: ignore[attr-defined]
+                _async_handle_midnight(tracker, hass)
+            )
 
         tracker._midnight_unsub = async_track_time_change(  # type: ignore[attr-defined]
             hass,
