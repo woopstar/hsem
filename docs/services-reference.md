@@ -524,8 +524,12 @@ The last three learners live in the restore state of HSEM's sensors, not in a
 file. They are `null` only when HSEM has not run since Home Assistant started.
 
 A backup never holds OCPP certificates, private keys or tokens. HSEM does not
-read the certificate files for a backup. Redacted in `configuration`: entity
-IDs, secrets, charge point IDs (`hsem_ocpp_cpid`) and certificate paths.
+read the certificate files for a backup. Redacted in `configuration`: secrets,
+charge point IDs (`hsem_ocpp_cpid`) and certificate paths.
+
+Entity IDs are kept, so a backup can restore the full configuration. They show
+which devices you have. Do not post a backup publicly; for a bug report use
+the debug file of `hsem.export_diagnostics`, which redacts them.
 
 **Not in a backup.** The battery capacity learner keeps no state. Other
 sensors that restore their last value after a restart (EV state of charge,
@@ -584,10 +588,12 @@ unload. Fix that first. A disabled HSEM can be imported into: it stays
 disabled and loads the learned state when it is enabled.
 
 **Restoring the configuration.** With `restore_configuration: true` the options
-from the backup are merged into the current options. Redacted values cannot be
-restored: every option that holds an entity ID or a certificate path keeps its
-current value. On a new Home Assistant, set HSEM up through the config flow
-first, then import. The skipped keys are listed in the response.
+from the backup are merged into the current options, entity IDs included.
+Redacted values cannot be restored: secrets, charge point IDs and certificate
+paths keep their current value and are listed in the response. On a new Home
+Assistant, set HSEM up through the config flow first, then import. Entity IDs
+that do not exist there show up as missing entities until you correct them in
+the options.
 
 The options are only restored when the backup was written with the same config
 entry version as the installed HSEM. Otherwise the call is rejected and nothing

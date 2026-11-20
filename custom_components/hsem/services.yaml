@@ -81,9 +81,10 @@ export_data:
     Back up what HSEM has learned to one JSON file under
     <config>/hsem_backups/: the prediction, financial, savings, daily and
     performance history, the solar forecast correction, the forecast accuracy
-    tracker, the hourly consumption averages and the configuration. Entity
-    IDs, secrets, charge point IDs and certificate paths are redacted;
-    certificates and keys are never included. Response key: backup_path.
+    tracker, the hourly consumption averages and the configuration. Secrets,
+    charge point IDs and certificate paths are redacted; certificates and keys
+    are never included. Entity IDs are kept, so do not post the file publicly.
+    Response key: backup_path.
   fields: {}
 
 import_data:
@@ -110,9 +111,9 @@ import_data:
       selector:
         boolean:
       description: >-
-        Also restore the configuration options from the backup. Redacted
-        values (entity IDs, certificate paths) cannot be restored and keep
-        their current value.
+        Also restore the configuration options from the backup, entity IDs
+        included. Redacted values (secrets, charge point IDs, certificate
+        paths) cannot be restored and keep their current value.
 
 ocpp_debug_start_charging:
   name: OCPP debug start charging

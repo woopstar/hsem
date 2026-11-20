@@ -8,9 +8,10 @@ Nothing here touches Home Assistant. The functions that read or write files
 block, so callers run them in the executor.
 
 A backup never holds key material. The config entry holds only *paths* to
-OCPP certificates, and those are redacted together with entity IDs and any
-key that looks like a secret; the certificate files themselves are never
-read.
+OCPP certificates, and those are redacted together with any key that looks
+like a secret; the certificate files themselves are never read. Entity IDs
+are kept, so a backup can restore the full configuration on another Home
+Assistant; the debug export, which is meant to be posted, redacts them.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from urllib.parse import urlencode
 
 from packaging.version import InvalidVersion, Version
 
-from custom_components.hsem.utils.diagnostics import REDACTED, redact_dict
+from custom_components.hsem.utils.diagnostics import REDACTED
 from custom_components.hsem.utils.persistence import (
     read_json_history_file,
     write_json_history_file,
@@ -91,11 +92,18 @@ _SECRET_SUBSTRINGS: tuple[str, ...] = (
     "cpid",
 )
 
-#: Extra key substrings redacted in a backup: the OCPP TLS options are file
-#: paths to certificates and private keys. Not applied to the debug export,
-#: whose ``ocpp_tls`` section holds certificate expiry dates and fingerprints.
+#: Key substrings redacted in a backup. On top of the secrets: tokens and
+#: passwords (the names ``redact_dict`` knows; ``_key`` covers ``api_key`` and
+#: ``access_key``), and the OCPP TLS options, which are file paths to
+#: certificates and private keys. ``redact_dict`` itself is not used, since it
+#: also replaces every entity ID. Not applied to the debug export, whose
+#: ``ocpp_tls`` section holds certificate expiry dates and fingerprints.
 _KEY_MATERIAL_SUBSTRINGS: tuple[str, ...] = (
     *_SECRET_SUBSTRINGS,
+    "token",
+    "password",
+    "secret",
+    "client_id",
     "cert",
     "_key",
     "_ca_",
@@ -139,8 +147,9 @@ def _redact_item(value: Any, substrings: tuple[str, ...]) -> Any:
 def redact_configuration(values: Mapping[str, Any]) -> dict[str, Any]:
     """Return config entry values that are safe to write to a backup file.
 
-    Applies ``redact_dict`` (entity IDs, tokens, passwords) and then redacts
-    certificate and key fields.
+    Redacts tokens, passwords, charge point IDs, certificate and key fields
+    and any PEM block. Entity IDs are kept: without them a backup could not
+    restore the configuration on another Home Assistant.
 
     Args:
         values: ``entry.data`` or ``entry.options``.
@@ -148,7 +157,7 @@ def redact_configuration(values: Mapping[str, Any]) -> dict[str, Any]:
     Returns:
         A redacted copy.
     """
-    return _redact_key_material(redact_dict(dict(values)), _KEY_MATERIAL_SUBSTRINGS)
+    return _redact_key_material(values, _KEY_MATERIAL_SUBSTRINGS)
 
 
 def _contains_redacted(value: Any) -> bool:
@@ -163,7 +172,7 @@ def _contains_redacted(value: Any) -> bool:
 def restorable_options(payload: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
     """Split a backup's options into what can be restored and what cannot.
 
-    A redacted value (an entity ID, a certificate path) cannot be restored;
+    A redacted value (a secret, a certificate path) cannot be restored;
     the entry keeps its current value for that key.
 
     Args:
@@ -338,8 +347,8 @@ def check_configuration_version(payload: Mapping[str, Any], entry_version: int) 
     """Check that the backup's options fit the installed config entry version.
 
     Options from another entry version may use keys a migration has renamed
-    or removed, and a migration cannot run on options whose entity IDs are
-    redacted. Such a backup still restores the learned data.
+    or removed, and the entry migration is not written to run on a partly
+    redacted options dict. Such a backup still restores the learned data.
 
     Raises:
         BackupError: When the backup states no entry version or another one.

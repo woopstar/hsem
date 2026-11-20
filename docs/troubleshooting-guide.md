@@ -902,14 +902,14 @@ sensor and the hourly average sensors. A backup holds all of them.
   `hsem_backup_<date>_<time>_deleted.json` on the way out. It holds the
   learned sensor state only when HSEM ran since Home Assistant started.
 
-| Symptom                                     | Cause                                                                               |
-| ------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `The file is not an HSEM backup`            | The file is not a backup, or it was edited                                          |
-| `... is newer than the installed ...`       | The backup comes from a newer HSEM. Update HSEM, then import                        |
-| `... is not a backup file name`             | `filename` held a path. Give the file name only                                     |
-| `HSEM is in the state '...'`                | HSEM is retrying or failed its setup. Fix that, then import                         |
-| `... has config entry version ...`          | The options come from another HSEM generation. Import without restore_configuration |
-| Entity settings are unchanged after restore | Entity IDs are redacted in a backup and are never restored. Set them in the options |
+| Symptom                               | Cause                                                                               |
+| ------------------------------------- | ----------------------------------------------------------------------------------- |
+| `The file is not an HSEM backup`      | The file is not a backup, or it was edited                                          |
+| `... is newer than the installed ...` | The backup comes from a newer HSEM. Update HSEM, then import                        |
+| `... is not a backup file name`       | `filename` held a path. Give the file name only                                     |
+| `HSEM is in the state '...'`          | HSEM is retrying or failed its setup. Fix that, then import                         |
+| `... has config entry version ...`    | The options come from another HSEM generation. Import without restore_configuration |
+| Entities are missing after a restore  | The entity IDs from the backup do not exist on this Home Assistant. Fix the options |
 
 See [Services Reference](services-reference.md) for the file layout.
 

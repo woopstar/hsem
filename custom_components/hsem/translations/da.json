@@ -1457,7 +1457,7 @@
         },
         "restore_configuration": {
           "name": "Gendan konfiguration",
-          "description": "Gendan også konfigurationen fra backuppen. Redigerede værdier som entitets-id'er beholder deres nuværende værdi."
+          "description": "Gendan også konfigurationen fra backuppen, inklusive entitets-id'er. Redigerede værdier som hemmeligheder og certifikatstier beholder deres nuværende værdi."
         }
       }
     },

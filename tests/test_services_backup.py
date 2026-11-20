@@ -329,7 +329,7 @@ async def test_export_data_writes_one_versioned_file(
         "data": {"device_name": "HSEM"},
         "options": {
             "hsem_read_only": True,
-            "hsem_house_power": REDACTED,
+            "hsem_house_power": "sensor.house_power",
             "hsem_ocpp_tls_server_key_path": REDACTED,
             "api_token": REDACTED,
         },
@@ -654,7 +654,7 @@ async def test_pending_import_skips_sensor_without_samples(
 async def test_import_data_restore_configuration_skips_redacted(
     hass: MagicMock, entry: MagicMock
 ) -> None:
-    """restore_configuration merges plain options and keeps redacted ones."""
+    """restore_configuration restores entity IDs and keeps redacted options."""
     exported = await async_handle_export_data(_call(hass))
     entry.options = {
         "hsem_read_only": False,
@@ -671,12 +671,11 @@ async def test_import_data_restore_configuration_skips_redacted(
     assert result["configuration_restored"] is True
     assert result["configuration_keys_skipped"] == [
         "api_token",
-        "hsem_house_power",
         "hsem_ocpp_tls_server_key_path",
     ]
     assert entry.options == {
         "hsem_read_only": True,
-        "hsem_house_power": "sensor.new_house_power",
+        "hsem_house_power": "sensor.house_power",
         "hsem_ocpp_tls_server_key_path": "/new/server.key",
         "api_token": "tok-456",
         "added_later": 7,

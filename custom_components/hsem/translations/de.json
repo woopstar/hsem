@@ -1450,7 +1450,7 @@
         },
         "restore_configuration": {
           "name": "Konfiguration wiederherstellen",
-          "description": "Stellt auch die Konfiguration aus der Sicherung wieder her. Geschwärzte Werte wie Entitäts-IDs behalten ihren aktuellen Wert."
+          "description": "Stellt auch die Konfiguration aus der Sicherung wieder her, einschließlich der Entitäts-IDs. Geschwärzte Werte wie Geheimnisse und Zertifikatspfade behalten ihren aktuellen Wert."
         }
       }
     },

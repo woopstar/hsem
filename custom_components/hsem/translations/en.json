@@ -1450,7 +1450,7 @@
         },
         "restore_configuration": {
           "name": "Restore configuration",
-          "description": "Also restore the configuration options from the backup. Redacted values such as entity IDs keep their current value."
+          "description": "Also restore the configuration options from the backup, entity IDs included. Redacted values such as secrets and certificate paths keep their current value."
         }
       }
     },

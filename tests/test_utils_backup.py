@@ -85,7 +85,7 @@ def test_payload_carries_schema_version_and_every_history_file() -> None:
 
 
 def test_redact_configuration_removes_secrets_and_key_material() -> None:
-    """Entity IDs, secrets, certificate paths and PEM blocks are redacted."""
+    """Secrets, certificate paths and PEM blocks are redacted; entity IDs stay."""
     redacted = redact_configuration(
         {
             "hsem_read_only": True,
@@ -105,7 +105,7 @@ def test_redact_configuration_removes_secrets_and_key_material() -> None:
 
     assert redacted == {
         "hsem_read_only": True,
-        "hsem_house_power": REDACTED,
+        "hsem_house_power": "sensor.house_power",
         "api_token": REDACTED,
         "hsem_ocpp_tls_server_cert_path": REDACTED,
         "hsem_ocpp_tls_server_key_path": REDACTED,

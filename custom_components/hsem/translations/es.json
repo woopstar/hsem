@@ -1450,7 +1450,7 @@
         },
         "restore_configuration": {
           "name": "Restaurar configuración",
-          "description": "Restaura también la configuración de la copia. Los valores censurados, como los ID de entidad, conservan su valor actual."
+          "description": "Restaura también la configuración de la copia, incluidos los ID de entidad. Los valores censurados, como los secretos y las rutas de certificados, conservan su valor actual."
         }
       }
     },
