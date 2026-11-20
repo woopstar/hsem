@@ -229,8 +229,11 @@ class CoordinatorCycleMixin(CoordinatorSharedState):
             ),
             now,
             live,
-            int(cfg.recommendation_interval_minutes),
+            cfg,
         )
+        # A price outage past its time limit is a missing input: stop planning.
+        if live.missing_entities and live.force_working_mode_state == "auto":
+            state = Recommendations.MissingInputEntities.value
 
         return consumption_ok, state
 

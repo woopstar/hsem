@@ -308,12 +308,20 @@ def build_planner_input(
         # Prices are stored at face value by the populator (no scaling).  A
         # slot no source covered still reads 0.0 there; it is left out, so the
         # planner estimates its price and reports the gap (issue #1196).
-        if forecast_coverage is None or forecast_coverage.has_price(rec.start):
+        # In a price sensor outage a slot with one side only keeps that side
+        # and the planner estimates the other (issue #1434).
+        has_import = has_export = (
+            forecast_coverage is None or forecast_coverage.has_price(rec.start)
+        )
+        if forecast_coverage is not None and forecast_coverage.single_sided_prices:
+            has_import = forecast_coverage.has_import_price(rec.start)
+            has_export = forecast_coverage.has_export_price(rec.start)
+        if has_import or has_export:
             price_points.append(
                 PricePoint(
                     hour=h,
-                    import_price=round(rec.import_price, 5),
-                    export_price=round(rec.export_price, 5),
+                    import_price=round(rec.import_price, 5) if has_import else None,
+                    export_price=round(rec.export_price, 5) if has_export else None,
                     day_offset=day_offset,
                     slot_in_day=slot_in_day,
                 )

@@ -13,9 +13,12 @@ class PricePoint:
         hour:
             0-based calendar hour (0-23).
         import_price:
-            Import price in local currency/kWh (e.g. DKK/kWh).
+            Import price in local currency/kWh (e.g. DKK/kWh).  ``None``
+            when only the export side of the slot is published; the planner
+            then estimates the import side alone (issue #1434).
         export_price:
-            Export price in local currency/kWh.
+            Export price in local currency/kWh.  ``None`` when only the
+            import side of the slot is published.
         day_offset:
             Number of whole calendar days from the planning midnight (0 = today,
             1 = tomorrow, …).  Defaults to 0 for backward compatibility with
@@ -31,7 +34,7 @@ class PricePoint:
     """
 
     hour: int  # 0-23
-    import_price: float = 0.0
-    export_price: float = 0.0
+    import_price: float | None = 0.0
+    export_price: float | None = 0.0
     day_offset: int = 0
     slot_in_day: int | None = None

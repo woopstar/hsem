@@ -67,7 +67,8 @@ class PerformanceSample:
         import_price: Import price in force, or ``None`` when not authoritative.
         export_price: Raw export price in force, before the export fee.
         in_control: Whether HSEM was running the battery itself: force mode
-            ``auto``, not read-only and not degraded.
+            ``auto``, not read-only and no missing entity.  A cycle degraded
+            by a reason only, such as a price outage, still counts.
         pv_energy_kwh: Cumulative PV production meter, when configured.
         pv_power_w: Instantaneous PV production, the fallback for the meter.
         ev_power_w: Charging power of the configured EV chargers together, or

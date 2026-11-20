@@ -30,7 +30,6 @@ from custom_components.hsem.models.performance_record import (
 from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.planner.hindsight_scoring import SiteLimits
-from custom_components.hsem.utils.degraded_mode import DegradedMode
 from custom_components.hsem.utils.logger import async_log
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.performance_scoring import (
@@ -149,10 +148,12 @@ def build_performance_sample(
             if live.export_electricity_price_available
             else None
         ),
+        # HSEM is in control when its own plan runs the battery.  A missing
+        # entity stops the planner, so that cycle is not.  A cycle that is
+        # degraded for a reason only (a price outage planned from held and
+        # stored prices, issue #1434) still plans and writes, so it is.
         in_control=(
-            not live.is_forced_mode
-            and not cfg.read_only
-            and live.degraded_mode is DegradedMode.OK
+            not live.is_forced_mode and not cfg.read_only and not live.missing_entities
         ),
         pv_energy_kwh=live.pv_energy_kwh,
         pv_power_w=live.solar_production_power_w,

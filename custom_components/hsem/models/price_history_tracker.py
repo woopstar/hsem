@@ -7,11 +7,16 @@ keeps two things across cycles and restarts:
   started, for a rolling window.  It feeds the weekday and time-of-day
   :class:`~custom_components.hsem.models.price_profile.PriceProfile` the
   planner uses for slots without a published price.
-* **Held prices** — the prices the sources published on the last cycle they
-  delivered any.  When the price sensors go down, the slots these cover are
-  still planned with their published price.
+* **Held prices** — the prices the price sensors published on the last cycle
+  they delivered any, kept per side.  When a price sensor goes down, the
+  slots these cover are still planned with their published price.
 
-Only prices a source published are ever passed in.  An estimate (profile,
+The store belongs to one price source: the price entities and their units.
+When that changes, the recorded prices are on another scale and everything
+is dropped.
+
+Only prices the price sensors published are ever passed in; a forecast
+sensor's predictions are not.  An estimate (profile,
 nearest-earlier-day or the ``0.0`` fallback) is made inside the planner and
 never reaches this tracker.
 """
@@ -36,9 +41,17 @@ from custom_components.hsem.utils.persistence import (
 #: Rolling window of recorded prices: eight samples per weekday.
 PRICE_HISTORY_RETENTION_DAYS = 56
 
-_SCHEMA_VERSION = 1
+#: Longest a price outage is planned from held and stored prices.  After
+#: that the cycle reports the price data as missing and the planner stops.
+PRICE_OUTAGE_MAX_HOURS = 48
+
+_SCHEMA_VERSION = 2
 _MAX_STEP_MINUTES = 60
+#: A held price is kept this long after its slot started: the slots of a
+#: cycle begin at local midnight, and a DST day has 25 hours.
+_HELD_KEEP_HOURS = 26
 _PRICE_EPSILON = 1e-9
+_SOURCE_KEYS = ("import_entity", "export_entity", "import_unit", "export_unit")
 
 
 def _same_pair(first: PricePair, second: PricePair) -> bool:
@@ -58,6 +71,17 @@ def _parse_pair(import_raw: Any, export_raw: Any) -> PricePair | None:
     return import_price, export_price
 
 
+def _parse_prices(raw: Any) -> dict[datetime, float]:
+    """Return persisted ``{ISO start: price}`` rows that pass validation."""
+    prices: dict[datetime, float] = {}
+    for raw_start, raw_price in (raw if isinstance(raw, dict) else {}).items():
+        start = aware_datetime_from_iso(raw_start)
+        price = finite_float(raw_price)
+        if start is not None and price is not None:
+            prices[start.astimezone(UTC)] = price
+    return prices
+
+
 @dataclass
 class PriceHistoryTracker:
     """Rolling store of real prices plus the last published prices.
@@ -66,14 +90,20 @@ class PriceHistoryTracker:
         history_file: Path of the JSON persistence file; empty until the
             coordinator sets it.
         retention_days: Age in days after which a recorded price is dropped.
+        source: The price source the store belongs to: the import and export
+            price entity and their units.
+        outage_since: When the current price outage began, or ``None``.
     """
 
     history_file: str = ""
     retention_days: int = PRICE_HISTORY_RETENTION_DAYS
+    source: dict[str, str] = field(default_factory=dict)
+    outage_since: datetime | None = None
     _samples: dict[datetime, tuple[int, float, float]] = field(
         default_factory=dict, repr=False
     )
-    _held: dict[datetime, PricePair] = field(default_factory=dict, repr=False)
+    _held_import: dict[datetime, float] = field(default_factory=dict, repr=False)
+    _held_export: dict[datetime, float] = field(default_factory=dict, repr=False)
     _dirty: bool = field(default=False, repr=False)
     _profile_cache: tuple[tzinfo | None, PriceProfile] | None = field(
         default=None, repr=False
@@ -83,6 +113,43 @@ class PriceHistoryTracker:
     def sample_count(self) -> int:
         """Return the number of recorded slots in the history."""
         return len(self._samples)
+
+    def set_source(self, source: Mapping[str, str]) -> bool:
+        """Bind the store to a price source and drop it when that changed.
+
+        A changed entity always counts.  A unit only counts when both the
+        stored and the new unit are known: an unavailable sensor reports no
+        unit, and an outage must not wipe the history it is needed for.
+
+        Args:
+            source: ``import_entity``, ``export_entity``, ``import_unit`` and
+                ``export_unit``; an unknown value is an empty string.
+
+        Returns:
+            ``True`` when the stored prices were dropped.
+        """
+        new = {key: str(source.get(key) or "") for key in _SOURCE_KEYS}
+        changed = any(
+            self.source.get(key, "") != new[key]
+            and (key.endswith("_entity") or (self.source.get(key) and new[key]))
+            for key in _SOURCE_KEYS
+        )
+        had_data = bool(self._samples or self._held_import or self._held_export)
+        merged = {
+            key: new[key] or ("" if changed else self.source.get(key, ""))
+            for key in _SOURCE_KEYS
+        }
+        if merged != {key: self.source.get(key, "") for key in _SOURCE_KEYS}:
+            self._dirty = True
+        self.source = merged
+        if not changed or not had_data:
+            return False
+        self._samples.clear()
+        self._held_import.clear()
+        self._held_export.clear()
+        self.outage_since = None
+        self._profile_cache = None
+        return True
 
     def record(
         self,
@@ -113,33 +180,73 @@ class PriceHistoryTracker:
         self._profile_cache = None
 
     def prune(self, now: datetime) -> None:
-        """Drop recorded prices older than the retention window."""
-        cutoff = utc_key(now) - timedelta(days=self.retention_days)
+        """Drop recorded prices past retention and held prices that are over.
+
+        A held price is kept while its slot can still be part of a cycle's
+        slots, which begin at local midnight.
+        """
+        now_key = utc_key(now)
+        cutoff = now_key - timedelta(days=self.retention_days)
         stale = [key for key in self._samples if key < cutoff]
         for key in stale:
             del self._samples[key]
         if stale:
-            self._dirty = True
             self._profile_cache = None
+        held_cutoff = now_key - timedelta(hours=_HELD_KEEP_HOURS)
+        over = 0
+        for held in (self._held_import, self._held_export):
+            for key in [key for key in held if key < held_cutoff]:
+                del held[key]
+                over += 1
+        if stale or over:
+            self._dirty = True
 
-    def hold(self, prices: Mapping[datetime, PricePair]) -> None:
-        """Replace the held prices with the ones published this cycle.
+    def hold(self, side: str, prices: Mapping[datetime, float]) -> None:
+        """Keep the prices one side published this cycle.
 
-        The file is rewritten only when a slot is new, not when a source
-        revises a value, so a forecast sensor that updates every few minutes
-        does not cause a write per cycle.
+        Published slots replace what was held for them and the rest stays,
+        so a price published earlier survives until its slot is over.  The
+        file is rewritten only when a slot is new, not when a source revises
+        a value.
 
         Args:
-            prices: Published price pair by timezone-aware slot start.
+            side: ``"import"`` or ``"export"``.
+            prices: Published price by UTC slot start.
         """
-        held = {utc_key(start): pair for start, pair in prices.items()}
-        if not held.keys() <= self._held.keys():
+        held = self._held_import if side == "import" else self._held_export
+        if not prices.keys() <= held.keys():
             self._dirty = True
-        self._held = held
+        held.update(prices)
 
-    def held_price(self, start: datetime) -> PricePair | None:
-        """Return the last published price of the slot starting at *start*."""
-        return self._held.get(utc_key(start))
+    def held_price(self, side: str, start: datetime) -> float | None:
+        """Return the last published price of one side for a slot.
+
+        Args:
+            side: ``"import"`` or ``"export"``.
+            start: Timezone-aware slot start.
+        """
+        held = self._held_import if side == "import" else self._held_export
+        return held.get(utc_key(start))
+
+    def mark_outage(self, now: datetime, active: bool) -> float:
+        """Track how long the price sensors have been down.
+
+        Args:
+            now: Current time.
+            active: Whether a price sensor publishes nothing this cycle.
+
+        Returns:
+            Hours the outage has lasted; ``0.0`` without one.
+        """
+        if not active:
+            if self.outage_since is not None:
+                self.outage_since = None
+                self._dirty = True
+            return 0.0
+        if self.outage_since is None:
+            self.outage_since = utc_key(now)
+            self._dirty = True
+        return max((utc_key(now) - self.outage_since).total_seconds() / 3600.0, 0.0)
 
     def profile(self, zone: tzinfo | None) -> PriceProfile:
         """Return the weekday and time-of-day profile of the history.
@@ -167,15 +274,23 @@ class PriceHistoryTracker:
         """Return the JSON-serialisable state."""
         return {
             "version": _SCHEMA_VERSION,
+            "source": dict(self.source),
+            "outage_since": (
+                self.outage_since.isoformat() if self.outage_since else None
+            ),
             "samples": {
                 start.isoformat(): [step, import_price, export_price]
                 for start, (step, import_price, export_price) in sorted(
                     self._samples.items()
                 )
             },
-            "held": {
-                start.isoformat(): [import_price, export_price]
-                for start, (import_price, export_price) in sorted(self._held.items())
+            "held_import": {
+                start.isoformat(): price
+                for start, price in sorted(self._held_import.items())
+            },
+            "held_export": {
+                start.isoformat(): price
+                for start, price in sorted(self._held_export.items())
             },
         }
 
@@ -187,9 +302,20 @@ class PriceHistoryTracker:
             data: Parsed JSON object written by :meth:`as_dict`.
 
         Returns:
-            A tracker holding every entry that passed validation.
+            A tracker holding every entry that passed validation.  A file of
+            another schema version gives an empty tracker: its prices cannot
+            be tied to a price source.
         """
         tracker = cls()
+        if data.get("version") != _SCHEMA_VERSION:
+            return tracker
+        source = data.get("source")
+        if isinstance(source, dict):
+            tracker.source = {key: str(source.get(key) or "") for key in _SOURCE_KEYS}
+        outage_since = data.get("outage_since")
+        if isinstance(outage_since, str):
+            parsed = aware_datetime_from_iso(outage_since)
+            tracker.outage_since = parsed.astimezone(UTC) if parsed else None
         samples = data.get("samples")
         for raw_start, raw in (samples if isinstance(samples, dict) else {}).items():
             start = aware_datetime_from_iso(raw_start)
@@ -205,20 +331,17 @@ class PriceHistoryTracker:
             ):
                 continue
             tracker._samples[start.astimezone(UTC)] = (step, pair[0], pair[1])
-        held = data.get("held")
-        for raw_start, raw in (held if isinstance(held, dict) else {}).items():
-            start = aware_datetime_from_iso(raw_start)
-            if start is None or not isinstance(raw, list) or len(raw) != 2:
-                continue
-            pair = _parse_pair(raw[0], raw[1])
-            if pair is not None:
-                tracker._held[start.astimezone(UTC)] = pair
+        tracker._held_import = _parse_prices(data.get("held_import"))
+        tracker._held_export = _parse_prices(data.get("held_export"))
         return tracker
 
     def restore_from(self, loaded: PriceHistoryTracker) -> None:
-        """Take over the history and held prices of a reconstructed tracker."""
+        """Take over the state of a reconstructed tracker."""
+        self.source = dict(loaded.source)
+        self.outage_since = loaded.outage_since
         self._samples = dict(loaded._samples)
-        self._held = dict(loaded._held)
+        self._held_import = dict(loaded._held_import)
+        self._held_export = dict(loaded._held_export)
         self._dirty = False
         self._profile_cache = None
 

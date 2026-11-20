@@ -1960,8 +1960,10 @@ The planner treats all `price_points` as equally reliable. In practice:
 Missing price data is surfaced in `data_quality`. A full price sensor outage
 also triggers `Degraded` mode (issue #1434).
 The planner fills a price-missing slot from the price history first: the
-mean real price of that weekday and time of day over the last 8 weeks (issue
-#1434). When the history does not know the slot, it uses the same-hour
+median real price of that weekday and time of day over the last 8 weeks,
+shifted to the level of the prices that are published now (issue #1434).
+The history is used once it holds 3 days. When it does not know the slot, or
+too few prices are published to take the level from, it uses the same-hour
 price from the nearest earlier day that has data (with quarter-hourly prices:
 the same quarter of that hour, issue #1219), instead of planning against
 a fictitious `0.0` ("free energy") price; only hours missing on every earlier

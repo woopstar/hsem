@@ -17,7 +17,8 @@ slot (issue #1099).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from custom_components.hsem.utils.datetime_utils import utc_key
@@ -33,12 +34,28 @@ class ForecastCoverage:
         pv: Slots that received a PV forecast.
         pv_source_configured: Whether any PV forecast sensor is configured.
             Without one no slot is ever covered, and that is not a gap.
+        published_import: Import price by slot, as the import price sensor
+            itself published it, before a price forecast sensor overlaid its
+            predictions.  Only these are recorded in the price history
+            (issue #1434).
+        published_export: The same for the export price sensor.
+        single_sided_prices: Whether a slot with one price side only keeps
+            that side.  Set during a price sensor outage, where the healthy
+            side's live prices must survive (issue #1434).  Otherwise a slot
+            is priced as a pair or not at all, as before.
     """
 
     import_price: frozenset[datetime] = frozenset()
     export_price: frozenset[datetime] = frozenset()
     pv: frozenset[datetime] = frozenset()
     pv_source_configured: bool = False
+    published_import: Mapping[datetime, float] = field(
+        default_factory=dict, compare=False
+    )
+    published_export: Mapping[datetime, float] = field(
+        default_factory=dict, compare=False
+    )
+    single_sided_prices: bool = False
 
     def has_price(self, slot_start: datetime) -> bool:
         """Return whether the slot has both an import and an export price.
@@ -48,6 +65,14 @@ class ForecastCoverage:
         """
         key = utc_key(slot_start)
         return key in self.import_price and key in self.export_price
+
+    def has_import_price(self, slot_start: datetime) -> bool:
+        """Return whether the slot has an import price."""
+        return utc_key(slot_start) in self.import_price
+
+    def has_export_price(self, slot_start: datetime) -> bool:
+        """Return whether the slot has an export price."""
+        return utc_key(slot_start) in self.export_price
 
     def has_pv(self, slot_start: datetime) -> bool:
         """Return whether the slot's PV value is data rather than a default.

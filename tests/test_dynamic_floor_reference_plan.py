@@ -927,7 +927,7 @@ def _floor_with_battery_target(
     planner_input.price_points = [
         PricePoint(
             hour=point.hour,
-            import_price=max(point.import_price, spike + 0.02),
+            import_price=max(point.import_price or 0.0, spike + 0.02),
             export_price=spike,
             day_offset=point.day_offset,
         )

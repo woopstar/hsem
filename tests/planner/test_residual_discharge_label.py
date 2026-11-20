@@ -65,7 +65,7 @@ def _near_floor_input(soc_pct: float) -> PlannerInput:
     planner_input.price_points = [
         PricePoint(
             hour=point.hour,
-            import_price=max(point.import_price, 0.47),
+            import_price=max(point.import_price or 0.0, 0.47),
             export_price=0.45,
             day_offset=point.day_offset,
         )

@@ -2752,11 +2752,13 @@ Tests: `tests/test_dynamic_floor_reference_plan.py::TestBuildBridgeSlots::test_u
 
 ## Price History Fills Missing Prices and Outages (issue #1434)
 
-**Rule:** `models/price_history_tracker.py` (`PriceHistoryTracker`, `.storage/hsem_price_history.json`, 56 days) records the real price pair of every covered slot that has **started**, plus the last published prices (_held_). `coordinator_price_history.py::async_apply_price_history` runs right after the populator in `_async_collect_and_populate`. The planner gets `PlannerInput.price_profile` (`models/price_profile.py`, pure, 15-minute grid keyed `(weekday, hour, minute)` in local time) and `populate_prices` reads it **before** `_estimate_missing_price`; the slot stays in `tsi.missing_price_slots`.
+**Rule:** `models/price_history_tracker.py` (`PriceHistoryTracker`, `.storage/hsem_price_history.json`, 56 days) records the real price pair of every slot that has **started**, as the import and export price sensor themselves published it (`ForecastCoverage.published_import` / `published_export`, never a forecast sensor's overlay), plus the last published prices per side (_held_). `coordinator_price_history.py::async_apply_price_history` runs right after the populator in `_async_collect_and_populate`. The planner gets `PlannerInput.price_profile` (`models/price_profile.py`, pure, 15-minute grid in local time, median per bucket, 3 days minimum, every-weekday fallback).
 
-**Outage:** no slot with a price pair. Held prices are written back to the recommendations and added to the coverage; the rest goes to the profile. The cause goes to `LiveState.add_degraded_reason` (not `add_missing_entity`, which would stop the planner), shown as `degraded_reasons` on the degraded mode sensor.
+**Fill order per side** (`planner/slot_price_population.py::_fill_side`): published, profile shifted to the published level (needs 240 minutes of overlap), nearest earlier day, profile as recorded, median level, `0.0`. The slot stays in `tsi.missing_price_slots`. Never use the profile's absolute level while prices are published.
 
-**Gotchas:** never record a future slot (forecast sensors revise them), a held price or an estimate. The tracker only writes when a slot was added or changed (`_dirty`). An empty history must plan exactly as before.
+**Outage:** a side whose price sensor publishes no slot. Its held prices are written to the recommendations; the other side keeps its live prices (`ForecastCoverage.single_sided_prices`, `PricePoint` with `None` on one side). The cause goes to `LiveState.add_degraded_reason` (not `add_missing_entity`, which stops the planner). After `PRICE_OUTAGE_MAX_HOURS` (48) it does become a missing entity. `in_control` in `coordinator_performance.py` is `not missing_entities`, so a reason-only cycle counts.
+
+**Gotchas:** never record a future slot, a held price, a forecast sensor value or an estimate. The store is bound to the price entities and units (`set_source`) and dropped when they change. The tracker only writes when something changed (`_dirty`). An empty history must plan exactly as before.
 
 Tests: `tests/test_price_history.py`.
 

@@ -274,6 +274,9 @@ def populate_price_and_solcast_from_snapshot(
         price_fallback,
         covered=import_covered,
     )
+    # What the price sensor itself published, before a forecast sensor
+    # overlays its predictions: only this enters the price history (#1434).
+    published_import = _covered_values(recommendations, "import_price", import_covered)
     if cfg.import_electricity_price_forecast_sensor:
         import_matched += _populate_from_attributes(
             snapshot.sensor_attributes.get(
@@ -317,6 +320,7 @@ def populate_price_and_solcast_from_snapshot(
         price_fallback,
         covered=export_covered,
     )
+    published_export = _covered_values(recommendations, "export_price", export_covered)
     if cfg.export_electricity_price_forecast_sensor:
         export_matched += _populate_from_attributes(
             snapshot.sensor_attributes.get(
@@ -383,7 +387,22 @@ def populate_price_and_solcast_from_snapshot(
             cfg.solcast_pv_forecast_forecast_today
             or cfg.solcast_pv_forecast_forecast_tomorrow
         ),
+        published_import=published_import,
+        published_export=published_export,
     )
+
+
+def _covered_values(
+    recommendations: list[HourlyRecommendation],
+    field_name: str,
+    covered: set[datetime],
+) -> dict[datetime, float]:
+    """Return the value of *field_name* on every covered slot, by UTC start."""
+    return {
+        key: float(getattr(rec, field_name))
+        for rec in recommendations
+        if (key := utc_key(rec.start)) in covered
+    }
 
 
 def _populate_from_attributes(
