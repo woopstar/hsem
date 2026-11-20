@@ -109,6 +109,7 @@ cycle are durable; stale generations must not publish.
 | `persistence.py`            | Validation helpers for restored JSON, bounded `read_json_history_file`, atomic `write_json_history_file` — use these for any new history file                                                                                                          |
 | `ocpp_tls.py`               | OCPP server TLS (#1341): generated CA/server/client certs in `/ssl/hsem/ocpp/` (or `<config>/ssl/hsem/ocpp/`), `SSLContext`, CN↔CPID check; no `ws://` fallback; `modern_server_context()` wraps the core's ssl helper, which 2026.11 renamed (#1370) |
 | `ev_economics_deadlines.py` | Configured EV SoC economics deadlines (issue #1344): default 08:00/17:00, max 3, `parse_economics_deadlines()` shared by flow validator and config reader; the EV's target deadline is always an extra column                                          |
+| `backup.py`                 | Backup payload of `hsem.export_data` / `hsem.import_data` and the debug export file (#1436). A new `.storage` history file must be added to `HISTORY_FILES`; `redact_configuration()` keeps entity IDs, secrets and certificate paths out              |
 
 ---
 

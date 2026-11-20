@@ -1428,7 +1428,31 @@
     },
     "export_diagnostics": {
       "name": "Export diagnostics",
-      "description": "Export a structured diagnostics dump for the HSEM integration with all entity IDs redacted."
+      "description": "Export a structured diagnostics dump for the HSEM integration with all entity IDs redacted. Can also write it to a file and create a notification with a prefilled issue link.",
+      "fields": {
+        "write_file": {
+          "name": "Write file",
+          "description": "Also write the redacted dump to the hsem_debug folder and create a notification with the file path and a prefilled issue link."
+        }
+      }
+    },
+    "export_data": {
+      "name": "Export data",
+      "description": "Back up HSEM's learned data and redacted configuration to one JSON file in the hsem_backups folder. Certificates and keys are never included."
+    },
+    "import_data": {
+      "name": "Import data",
+      "description": "Replace HSEM's learned data with a backup from the hsem_backups folder. The current data is saved first and HSEM reloads. A backup from a newer HSEM is rejected.",
+      "fields": {
+        "filename": {
+          "name": "File name",
+          "description": "Name of the backup file in the hsem_backups folder, without a path."
+        },
+        "restore_configuration": {
+          "name": "Restore configuration",
+          "description": "Also restore the configuration options from the backup. Redacted values such as entity IDs keep their current value."
+        }
+      }
     },
     "create_dashboard": {
       "name": "Create dashboard",

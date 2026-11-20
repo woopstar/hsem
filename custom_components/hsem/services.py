@@ -5,7 +5,10 @@ This module implements the HSEM services:
 - ``force_recalculation`` — Re-run the full planning pipeline immediately.
 - ``set_temporary_override`` — Force a specific working mode on the select entity.
 - ``clear_override`` — Reset the force-mode select to ``"auto"``.
-- ``export_diagnostics`` — Return a structured diagnostics dump as service response.
+- ``export_diagnostics`` — Return a structured diagnostics dump as service response,
+  optionally written to ``<config>/hsem_debug/`` with a notification (issue #1436).
+- ``export_data`` / ``import_data`` — Back up and restore the learned data
+  (issue #1436, see ``services_backup.py``).
 - ``create_dashboard`` — Log the path to the bundled dashboard YAML.
 - ``ocpp_debug_start_charging`` — Manually send RemoteStartTransaction +
   SetChargingProfile, bypassing the anti-flap state machine (issue #920).
@@ -28,12 +31,22 @@ from __future__ import annotations
 
 from typing import Any
 
+import homeassistant.helpers.config_validation as cv
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
+from custom_components.hsem.services_backup import (
+    SCHEMA_EXPORT_DATA,
+    SCHEMA_IMPORT_DATA,
+    SERVICE_EXPORT_DATA,
+    SERVICE_IMPORT_DATA,
+    async_handle_export_data,
+    async_handle_import_data,
+    async_write_debug_export,
+)
 from custom_components.hsem.services_ocpp import (
     SCHEMA_OCPP_DEBUG_DIAGNOSTICS,
     SCHEMA_OCPP_DEBUG_SET_AVAILABILITY,
@@ -105,7 +118,11 @@ SCHEMA_SET_TEMPORARY_OVERRIDE = vol.Schema(
 
 SCHEMA_CLEAR_OVERRIDE = vol.Schema({})
 
-SCHEMA_EXPORT_DIAGNOSTICS = vol.Schema({})
+ATTR_WRITE_FILE = "write_file"
+
+SCHEMA_EXPORT_DIAGNOSTICS = vol.Schema(
+    {vol.Optional(ATTR_WRITE_FILE, default=False): cv.boolean}
+)
 
 SCHEMA_CREATE_DASHBOARD = vol.Schema(
     {
@@ -282,12 +299,18 @@ async def async_handle_export_diagnostics(
     entity-level identifiers redacted.  Suitable for debugging or attaching
     to GitHub issues.
 
+    With ``write_file`` the same dump is also written to
+    ``<config>/hsem_debug/`` and a persistent notification gives the path and
+    a new-issue link prefilled with the HSEM and Home Assistant versions
+    (issue #1436).
+
     Args:
-        call: The service call (schema is empty). ``call.hass`` provides the
-            Home Assistant instance.
+        call: The service call with optional ``write_file``. ``call.hass``
+            provides the Home Assistant instance.
 
     Returns:
-        A JSON-serialisable diagnostics dump dictionary.
+        A JSON-serialisable diagnostics dump dictionary. With ``write_file``
+        it also holds ``debug_file``, the path of the written file.
 
     Raises:
         ServiceValidationError: When the coordinator is not found.
@@ -318,6 +341,12 @@ async def async_handle_export_diagnostics(
         integration_version=str(integration_version),
         ocpp_tls=getattr(coordinator, "_ocpp_tls_status", None),
     )
+
+    if call.data.get(ATTR_WRITE_FILE):
+        debug_file = await async_write_debug_export(
+            call.hass, dump, str(integration_version)
+        )
+        dump = {**dump, "debug_file": debug_file}
 
     _LOGGER.info("HSEM service: export_diagnostics completed")
     return dump
@@ -375,6 +404,11 @@ SERVICE_HANDLER_MAP: dict[str, tuple[vol.Schema, Any, SupportsResponse]] = {
         async_handle_create_dashboard,
         SupportsResponse.ONLY,
     ),
+    SERVICE_EXPORT_DATA: (
+        SCHEMA_EXPORT_DATA,
+        async_handle_export_data,
+        SupportsResponse.OPTIONAL,
+    ),
     SERVICE_EXPORT_DIAGNOSTICS: (
         SCHEMA_EXPORT_DIAGNOSTICS,
         async_handle_export_diagnostics,
@@ -384,6 +418,11 @@ SERVICE_HANDLER_MAP: dict[str, tuple[vol.Schema, Any, SupportsResponse]] = {
         SCHEMA_FORCE_RECALCULATION,
         async_handle_force_recalculation,
         SupportsResponse.NONE,
+    ),
+    SERVICE_IMPORT_DATA: (
+        SCHEMA_IMPORT_DATA,
+        async_handle_import_data,
+        SupportsResponse.OPTIONAL,
     ),
     SERVICE_OCPP_DEBUG_DIAGNOSTICS: (
         SCHEMA_OCPP_DEBUG_DIAGNOSTICS,

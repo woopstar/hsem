@@ -28,6 +28,7 @@ from custom_components.hsem.services import (
     async_register_services,
     async_unregister_services,
 )
+from custom_components.hsem.services_backup import async_write_removal_backup
 from custom_components.hsem.utils.house_load import cfg_house_load_inputs
 from custom_components.hsem.utils.logger import (
     async_close_hsem_logger,
@@ -232,7 +233,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool
     Creates the shared :class:`HSEMDataUpdateCoordinator`, forwards platform
     setups, runs the first update cycle, runs the one-time device-split
     entity-registry migration, and adds an options update listener.
-    Services are registered once in ``async_setup``.
+    Services are registered in ``async_setup`` and again here, since a reload
+    passes through ``async_unload_entry``, which removes them.
 
     The first update cycle intentionally runs *after* platform setups are
     forwarded: it reads HSEM's own select/number/switch/time entities back
@@ -250,6 +252,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool
 
     # Initialise the HSEM dedicated log file (hsem.log in the config dir).
     await async_init_hsem_logger(hass)
+
+    # async_unload_entry removes the services, and async_setup only runs once
+    # per Home Assistant start, so a reload has to register them again. The
+    # call is a no-op for a service that is already registered.
+    await async_register_services(hass)
 
     # Create the shared DataUpdateCoordinator.
     coordinator = HSEMDataUpdateCoordinator(hass, entry)
@@ -301,6 +308,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> boo
     await async_close_hsem_logger()
 
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> None:
+    """Write a backup of the learned data when the config entry is deleted.
+
+    Home Assistant calls this after the entry is unloaded and removed. The
+    history files under ``.storage`` are left in place; the backup under
+    ``<config>/hsem_backups/`` is the copy that survives a manual clean-up
+    (issue #1436).
+    """
+    await async_write_removal_backup(hass, entry)
 
 
 async def async_update_options(hass: HomeAssistant, entry: HSEMConfigEntry) -> None:
