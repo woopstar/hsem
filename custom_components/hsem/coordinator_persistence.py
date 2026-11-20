@@ -72,6 +72,16 @@ def _get_prediction_tracker(
     return tracker
 
 
+def _get_price_history_tracker(
+    coordinator: CoordinatorSharedState,
+) -> Persistable | None:
+    """Return the price history tracker only once its history file is set."""
+    tracker = coordinator._price_history_tracker
+    if not tracker.history_file:
+        return None
+    return tracker
+
+
 # Every field declared on ``CoordinatorSharedState`` (coordinator_state.py)
 # whose type exposes an ``async def save_history(self) -> bool`` method MUST
 # have a corresponding entry here, keyed by the exact attribute name.
@@ -82,6 +92,7 @@ TRACKER_REGISTRY: dict[str, Callable[[CoordinatorSharedState], Persistable | Non
     "_financial_tracker": _get_financial_tracker,
     "_performance_tracker": _get_performance_tracker,
     "_prediction_tracker": _get_prediction_tracker,
+    "_price_history_tracker": _get_price_history_tracker,
 }
 
 

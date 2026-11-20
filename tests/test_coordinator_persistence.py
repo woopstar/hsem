@@ -21,6 +21,7 @@ from custom_components.hsem.coordinator_persistence import (
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.performance_tracker import PerformanceTracker
+from custom_components.hsem.models.price_history_tracker import PriceHistoryTracker
 from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.utils.prediction_tracker import PredictionTracker
 
@@ -46,6 +47,9 @@ def _coordinator(
     )
     coordinator._performance_tracker = PerformanceTracker(
         history_file=str(tmp_path / "performance.json") if performance_history else ""
+    )
+    coordinator._price_history_tracker = PriceHistoryTracker(
+        history_file=str(tmp_path / "price_history.json")
     )
     return cast(CoordinatorSharedState, coordinator)
 
@@ -130,4 +134,5 @@ class TestPersistAllTrackers:
             "_financial_tracker",
             "_performance_tracker",
             "_prediction_tracker",
+            "_price_history_tracker",
         }

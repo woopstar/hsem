@@ -26,7 +26,7 @@ of three states:
 | Mode       | Writes allowed         | Meaning                                                 |
 | ---------- | ---------------------- | ------------------------------------------------------- |
 | `OK`       | ✅ Yes                 | All required entities are present and readable          |
-| `Degraded` | ✅ Yes (with warnings) | Non-critical data missing (e.g. tomorrow's prices)      |
+| `Degraded` | ✅ Yes (with warnings) | Non-critical data missing (e.g. a price sensor outage)  |
 | `Error`    | ❌ Blocked             | Critical data missing — hardware writes are **blocked** |
 
 ### Critical entities (trigger `Error` mode)
@@ -46,16 +46,56 @@ applied, but warnings are logged and surfaced in `data_quality`.
 
 Examples:
 
-- Tomorrow's price/PV forecast gaps
 - EV charger states
-- Export price sensor
+- A price sensor that no longer exists in Home Assistant
+
+A missing entity also stops the planner for that cycle: the working mode is
+`missing_input_entities` until the entity is readable again.
+
+Gaps in tomorrow's price or PV forecast are not a degraded state. They are
+reported in `data_quality` only.
+
+### Degraded reasons (trigger `Degraded` mode, planner keeps running)
+
+A cycle can also be degraded while every entity is readable. The cause is
+then listed in the `degraded_reasons` attribute of
+`sensor.hsem_degraded_mode_sensor`, not in `missing_entities`. The planner
+runs and hardware writes stay allowed.
+
+**Price sensor outage (issue #1434).** When no slot of the horizon has both
+an import and an export price, the price data is unusable: the sensors are
+`unavailable` or `unknown`, publish no forecast attribute, or publish only
+days that are over. HSEM then plans from what it has kept:
+
+1. Slots covered by the prices of the last good cycle keep that published
+   price (_held_ prices).
+2. The remaining slots use the weekday and time-of-day profile of the price
+   history (real prices of the last 8 weeks, stored in
+   `.storage/hsem_price_history.json`), and are listed as missing in
+   `data_quality`.
+3. A slot the profile does not know is estimated from the nearest earlier
+   day, or priced `0.0` when there is none.
+
+The reason reads, for example:
+
+```text
+Price data unavailable (import and export price): planning 96 of 192 slots
+from held published prices and the rest from the price history (4032 recorded slots)
+```
+
+Before issue #1434 such an outage was planned with every price at `0.0`
+(free import, worthless export) and degraded mode stayed `OK`. With an empty
+price history and no held price the plan is still that, but the degraded
+reason is now shown.
+
+See `docs/planner-spec.md` → _Price history profile_ for the exact rules.
 
 ### Classification logic
 
 ```python
-def classify_degraded_mode(missing_entities, missing_entities_list):
+def classify_degraded_mode(missing_entities, missing_entities_list, degraded_reasons=()):
     if not missing_entities:
-        return DegradedMode.OK
+        return DegradedMode.Degraded if degraded_reasons else DegradedMode.OK
     for label in missing_entities_list:
         if any(kw in label.lower() for kw in _CRITICAL_KEYWORDS):
             return DegradedMode.Error

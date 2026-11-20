@@ -1838,6 +1838,7 @@
         "slot_in_day": 95
       }
     ],
+    "price_profile": null,
     "solar_corrector": null,
     "solcast_slots": [
       {

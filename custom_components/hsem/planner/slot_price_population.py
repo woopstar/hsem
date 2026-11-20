@@ -3,10 +3,11 @@
 Single responsibility: transform raw :class:`PricePoint` inputs into
 per-slot :class:`SlotPrice` values on the planned slots, including the
 missing-price estimation rule (issue #1002): a slot with no source price
-is filled with the price of the same wall-clock time on the nearest earlier
-day that has data (the same quarter of the hour when the source is
-sub-hourly, issue #1219), and the gap is always recorded on the shared
-time-series index.
+is filled from the weekday and time-of-day profile of real prices when one
+is supplied (issue #1434), otherwise with the price of the same wall-clock
+time on the nearest earlier day that has data (the same quarter of the hour
+when the source is sub-hourly, issue #1219), and the gap is always recorded
+on the shared time-series index.
 
 Split out of ``slot_population.py`` to keep both modules under the 30 KB
 file-size limit.  Pure functions — no I/O, no Home Assistant imports.
@@ -20,7 +21,8 @@ from typing import cast
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.price_point import PricePoint
-from custom_components.hsem.models.time_series import TimeSeriesIndex
+from custom_components.hsem.models.price_profile import PriceProfile
+from custom_components.hsem.models.time_series import SlotMeta, TimeSeriesIndex
 from custom_components.hsem.planner.slot_population import index_by_hour
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.prices import SlotPrice
@@ -82,10 +84,33 @@ def _estimate_missing_price(
     return None
 
 
+def _profile_price(
+    profile: PriceProfile | None, meta: SlotMeta, interval_minutes: int
+) -> tuple[float | None, float | None]:
+    """Return the profile's import and export price for a slot (issue #1434).
+
+    Args:
+        profile: Weekday and time-of-day profile of real prices, or ``None``.
+        meta: The slot; its start carries local wall-clock time.
+        interval_minutes: Slot width in minutes.
+
+    Returns:
+        ``(import price, export price)``, or ``(None, None)`` when there is
+        no profile or it has nothing for the slot's weekday and hour.
+    """
+    if profile is None:
+        return None, None
+    pair = profile.lookup(
+        meta.start.weekday(), meta.hour, meta.minute, interval_minutes
+    )
+    return pair if pair is not None else (None, None)
+
+
 def populate_prices(
     slots: list[PlannedSlot],
     price_points: list[PricePoint],
     tsi: TimeSeriesIndex | None = None,
+    price_profile: PriceProfile | None = None,
 ) -> None:
     """Write import/export prices into each slot from ``price_points``.
 
@@ -94,8 +119,10 @@ def populate_prices(
 
     Slots with no source price data (e.g. day+1 before the day-ahead
     auction publishes, or any multi-day horizon beyond the data coverage)
-    are filled with the price of the same wall-clock time on the nearest
-    earlier day that has data — see :func:`_estimate_missing_price`.  With
+    are filled from *price_profile* when it knows the slot's weekday and
+    hour (issue #1434), otherwise with the price of the same wall-clock time
+    on the nearest earlier day that has data — see
+    :func:`_estimate_missing_price`.  With
     sub-hourly price points that is the same quarter of the hour, and the
     hour's mean when that day lacks the quarter (issue #1219).  Only when no
     earlier day has data for that hour at all do they fall back to 0.0 for
@@ -108,6 +135,9 @@ def populate_prices(
         tsi: Optional shared time-series index.  When supplied, alignment is
             delegated to :meth:`TimeSeriesIndex.align_hourly_prices` so that
             missing slots are tracked centrally.
+        price_profile: Optional weekday and time-of-day profile of real
+            prices.  Tried before the nearest-earlier-day estimate for a slot
+            without a price; ``None`` or an empty profile changes nothing.
     """
     log_planner(
         "debug",
@@ -166,6 +196,11 @@ def populate_prices(
                     # this path too (align_hourly_prices is bypassed here).
                     tsi.missing_slots.add(meta.key)
                     tsi.missing_price_slots.add(meta.key)
+                    profile_imp, profile_exp = _profile_price(price_profile, meta, step)
+                    if imp is None:
+                        imp = profile_imp
+                    if exp is None:
+                        exp = profile_exp
                     if imp is None:
                         imp = _estimate_missing_price(
                             imp_by_hour,
@@ -207,6 +242,14 @@ def populate_prices(
         # cyclical and have no earlier day to estimate from.
         can_estimate = bool(imp_prices) and isinstance(next(iter(imp_prices)), tuple)
         for slot, meta, imp, exp in zip(slots, tsi.slots, aligned_imp, aligned_exp):
+            if math.isnan(imp) or math.isnan(exp):
+                profile_imp, profile_exp = _profile_price(
+                    price_profile, meta, tsi.interval_minutes
+                )
+                if math.isnan(imp) and profile_imp is not None:
+                    imp = profile_imp
+                if math.isnan(exp) and profile_exp is not None:
+                    exp = profile_exp
             if can_estimate and (math.isnan(imp) or math.isnan(exp)):
                 day_prices_imp = cast("dict[tuple[int, int], float]", imp_prices)
                 day_prices_exp = cast("dict[tuple[int, int], float]", exp_prices)

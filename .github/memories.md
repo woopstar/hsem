@@ -2750,6 +2750,16 @@ Tests: `tests/planner/test_battery_target_milp.py` (every acceptance scenario, a
 
 Tests: `tests/test_dynamic_floor_reference_plan.py::TestBuildBridgeSlots::test_unplanned_slot_scales_the_hourly_pv_to_the_slot` (real populator, 15/30/60 min), `::test_load_pv_and_charge_come_from_the_plan_slot`, and `TestRealPlanner::test_quarter_hour_bridge_ends_at_the_plans_first_surplus` / `::test_quarter_hour_cheap_night_still_releases_the_floor`.
 
+## Price History Fills Missing Prices and Outages (issue #1434)
+
+**Rule:** `models/price_history_tracker.py` (`PriceHistoryTracker`, `.storage/hsem_price_history.json`, 56 days) records the real price pair of every covered slot that has **started**, plus the last published prices (_held_). `coordinator_price_history.py::async_apply_price_history` runs right after the populator in `_async_collect_and_populate`. The planner gets `PlannerInput.price_profile` (`models/price_profile.py`, pure, 15-minute grid keyed `(weekday, hour, minute)` in local time) and `populate_prices` reads it **before** `_estimate_missing_price`; the slot stays in `tsi.missing_price_slots`.
+
+**Outage:** no slot with a price pair. Held prices are written back to the recommendations and added to the coverage; the rest goes to the profile. The cause goes to `LiveState.add_degraded_reason` (not `add_missing_entity`, which would stop the planner), shown as `degraded_reasons` on the degraded mode sensor.
+
+**Gotchas:** never record a future slot (forecast sensors revise them), a held price or an estimate. The tracker only writes when a slot was added or changed (`_dirty`). An empty history must plan exactly as before.
+
+Tests: `tests/test_price_history.py`.
+
 ## Uncovered Price/PV Slots Are Missing, Not 0.0 (issue #1196)
 
 **Bug:** `generate_recommendation_intervals` creates every slot with price and PV at `0.0`, the populator only writes covered slots, and `build_planner_input` emitted a `PricePoint` / PV entry for **every** slot. No key was ever absent in the planner, so the #1002 missing-price estimate and the `DataQuality` missing-hour fields never ran in production: until the day-ahead prices publish, tomorrow was planned at `0.0` and `is_complete` was true. The #1002 tests built `PricePoint` lists by hand and never went through the builder.

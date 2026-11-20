@@ -22,6 +22,9 @@ from custom_components.hsem.coordinator_helpers import (
     OPTIONS_UPDATE_DEBOUNCE_SECONDS,
     LoadForecastSignature,
 )
+from custom_components.hsem.coordinator_price_history import (
+    init_price_history_tracker,
+)
 from custom_components.hsem.coordinator_state import (
     CoordinatorSharedState,
 )
@@ -79,6 +82,12 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
             await init_financial_tracker(self._financial_tracker, self.hass)
         except Exception as e:
             async_log("error", "Failed to initialise financial tracker: %s", e)
+
+        # Price history: empty on failure, which plans as before (issue #1434).
+        try:
+            await init_price_history_tracker(self._price_history_tracker, self.hass)
+        except Exception as e:
+            async_log("error", "Failed to initialise price history tracker: %s", e)
 
         # Start the embedded OCPP 1.6 server(s) if enabled (issue #603).
         # One server per EV: the primary EV uses the primary server, and the

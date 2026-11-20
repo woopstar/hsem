@@ -3748,10 +3748,18 @@ total_slots = (interval_length_hours * 60) // interval_minutes
 ### Missing-price estimation (issue #1002)
 
 A slot whose hour has no source price data must never be planned as _free_
-energy. `populate_prices` fills such slots with the **same-hour price from
-the nearest earlier day that has data** (day+1 falls back to day+0; day+2
-falls back to day+1, then day+0). Only when no earlier day has data for
-that hour at all does the slot fall back to 0.0.
+energy. `populate_prices` fills such a slot in this order (issue #1434):
+
+1. The **published price**, when a source covers the slot.
+2. The **price history profile** (`PlannerInput.price_profile`), when it
+   knows the slot's weekday and hour. See _Price history profile_ below.
+3. The **same-hour price from the nearest earlier day that has data** (day+1
+   falls back to day+0; day+2 falls back to day+1, then day+0).
+4. `0.0`, only when no earlier day has data for that hour at all.
+
+Steps 2 to 4 are estimates. The slot is recorded as missing whichever of
+them fills it. With no profile, or an empty one, step 2 never matches and the
+result is the same as before issue #1434.
 
 **With a sub-hourly price source the estimate is per quarter (issue #1219).**
 On the `slot_in_day` path the lookup is by wall-clock time:
@@ -3796,6 +3804,77 @@ prices), the legacy hour-only keying applies today's prices cyclically to
 every day of the horizon and nothing is reported missing — this is the
 intended single-day-source behaviour. The coordinator never produces such
 an input: its price points always carry `slot_in_day`.
+
+### Price history profile (issue #1434)
+
+HSEM only sees the prices its price sensors expose right now. The coordinator
+therefore keeps a history of real prices
+(`models/price_history_tracker.py`, wired in `coordinator_price_history.py`)
+and hands the planner a profile of it. The planner layer does no I/O: the
+profile is a plain value in `PlannerInput.price_profile`
+(`models/price_profile.py`).
+
+**What is recorded.** Once per cycle, after the price populator:
+
+- The import and export price of every slot that a source covered with a
+  price pair **and that has started** (`slot.start <= now`). The key is the
+  slot's UTC start, so both passes of the DST fall-back hour are separate
+  samples. The slot width is stored with the sample.
+- A published price for a slot that has not started is not recorded. A
+  day-ahead price is final when published, but a forecast sensor (Amber
+  forecasts, Open Spot Forecast predictions) revises its future values, and
+  the two cannot be told apart.
+- An estimate (profile, earlier day, `0.0`) is produced inside the planner
+  and never reaches the tracker. Held prices used during an outage (below)
+  are not recorded either.
+- Samples older than 56 days are dropped, which leaves up to eight samples
+  per weekday.
+- The file is `.storage/hsem_price_history.json`, written with the shared
+  atomic JSON writer and only when a slot was added or changed. A missing or
+  unreadable file gives an empty history.
+
+**The profile.** Samples are spread on a 15-minute grid of local wall-clock
+time. A sample wider than 15 minutes covers every quarter it spans, so an
+hourly sample and four quarter-hourly samples of the same hour use the same
+keys and a switch between hourly and quarter-hourly prices does not skew the
+profile.
+
+```text
+quarter[weekday, hour, minute] = mean of the samples covering that quarter
+hour[weekday, hour]            = mean of all samples covering that hour
+lookup(slot)                   = mean of quarter[...] over the quarters the slot spans
+                                 within its hour, when at least one is known,
+                                 else hour[weekday, hour] when known,
+                                 else no value (step 3 above runs)
+```
+
+- `weekday`, `hour` and `minute` are read in the local zone of the slot
+  start. Each quarter of a sample is converted on its own, so both passes of
+  the fall-back hour share a key and are averaged, and the hour the
+  spring-forward day skips gets no key.
+- Import and export are stored and looked up as a pair.
+- A key with one sample returns that sample unchanged.
+- There is no fallback across weekdays: a weekday the history has not seen
+  yet uses the nearest-earlier-day estimate.
+
+**Price sensor outage.** A cycle in which no slot has a price pair is a price
+outage: the sensors are unavailable, publish nothing usable, or publish only
+days that are over. The coordinator keeps the prices of the last cycle that
+delivered any (the _held_ prices, persisted in the same file):
+
+- A slot with a held price is planned with it and is a covered slot: it gets
+  a `PricePoint` and is not reported missing.
+- Every other slot gets no `PricePoint`, so the order above applies: profile,
+  earlier day, `0.0`. These slots are reported missing.
+- The cause is added to `LiveState.degraded_reasons`, which puts degraded
+  mode in `Degraded` (see `docs/safety-modes.md`). `missing_entities` stays
+  unset, so the planner runs and hardware writes stay allowed.
+- Held prices are matched by slot start. They are replaced as soon as a
+  source delivers a price pair again.
+
+With an empty history and no held price an outage is planned exactly as
+before: no price point, every price `0.0`, every hour reported missing. The
+only difference is the degraded reason.
 
 **On the production path (issue #1196).** Until issue #1196 the rule above
 never ran in production. `build_planner_input` emitted a `PricePoint` for
@@ -4160,12 +4239,14 @@ These labels are diagnostics only. They are published in
 `PlannerOutput.missing_inputs`, as planner warnings and in the `data_quality`
 attribute (`is_complete` is `false` while any is present). They do not change
 the degraded mode, which is classified from missing Home Assistant
-**entities** (`LiveState.missing_entities`), and they never block a hardware
-write.
+**entities** (`LiveState.missing_entities`) and from
+`LiveState.degraded_reasons` (a price sensor outage, issue #1434), and they
+never block a hardware write.
 
-Price-missing slots are filled with the nearest earlier day's price for the
-same hour, and the same quarter of it when the source is sub-hourly
-(see _Missing-price estimation_ above); PV-missing slots default to
+Price-missing slots are filled from the price history profile, else with the
+nearest earlier day's price for the same hour, and the same quarter of it
+when the source is sub-hourly (see _Missing-price estimation_ above);
+PV-missing slots default to
 `0.0`. The planner **must never** silently treat absent data as real zero
 without surfacing a diagnostic.
 
@@ -4357,8 +4438,26 @@ the fill's original rationale genuinely applies.
   fall-back and spring-forward days the quarter is matched by clock time, not
   by `slot_in_day`. An hourly source feeding sub-hourly slots is unchanged
   (issue #1219).
+- A price-missing slot reads the price history profile before the nearest
+  earlier day, and is recorded in `missing_price_slots` either way. A
+  published price always wins over the profile (issue #1434).
+- With `price_profile` unset or empty, every slot price, recommendation and
+  cost is identical to a run without the price history (issue #1434).
+- The price history holds only source-published prices of slots that have
+  started: no estimate, no held price and no future slot is ever recorded
+  (issue #1434).
+- A profile built from hourly samples prices all four quarters of the hour;
+  one built from quarter-hourly samples prices an hourly slot with their
+  mean. On the fall-back day both passes of the repeated hour are averaged
+  into one key, and the hour skipped on the spring-forward day has no key
+  (issue #1434).
+- In a price sensor outage, slots with a held published price keep it and
+  are not reported missing; the remaining slots come from the profile and
+  are reported missing; degraded mode is `Degraded` and names the cause;
+  the planner still runs (issue #1434).
 - Through the real populator and `build_planner_input`, prices published for
-  today only give tomorrow's slots today's same-hour price, list all of
+  today only give tomorrow's slots today's same-hour price (with an empty
+  price history), list all of
   tomorrow's hours in `tomorrow_price_missing_hours` and make `is_complete`
   false (issue #1196).
 - A published price of `0.0` or below, and a PV forecast of `0.0`, are passed

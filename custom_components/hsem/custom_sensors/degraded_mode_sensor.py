@@ -146,6 +146,7 @@ class HSEMDegradedModeSensor(
         if data is None or data.live is None:
             return {
                 "missing_entities": [],
+                "degraded_reasons": [],
                 "hardware_writes_blocked": False,
                 "read_only_mode": False,
                 "planning_horizon_hours": None,
@@ -171,6 +172,7 @@ class HSEMDegradedModeSensor(
 
         attrs = {
             "missing_entities": list(live.missing_entities_list),
+            "degraded_reasons": list(live.degraded_reasons),
             "hardware_writes_blocked": not hardware_writes_allowed(live.degraded_mode),
             "read_only_mode": bool(cfg.read_only) if cfg is not None else False,
             "forecast_mode": forecast_mode,

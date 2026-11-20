@@ -27,6 +27,7 @@ from custom_components.hsem.models.hourly_recommendation import HourlyRecommenda
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
+from custom_components.hsem.models.price_profile import PriceProfile
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.solcast_slot import SolcastSlot
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
@@ -241,6 +242,7 @@ def build_planner_input(
     ev_second_held_slot_start: datetime | None = None,
     ev_second_held_power_w: float = 0.0,
     forecast_coverage: ForecastCoverage | None = None,
+    price_profile: PriceProfile | None = None,
 ) -> PlannerInput:
     """Assemble a :class:`PlannerInput` from the coordinator's current pipeline state.
 
@@ -258,6 +260,9 @@ def build_planner_input(
             ``PricePoint`` and a slot without PV data no PV entry, so the
             planner estimates the price, plans the PV as zero and reports
             both gaps.  ``None`` treats every slot as covered.
+        price_profile: Weekday and time-of-day profile of real prices from
+            the price history, used by the planner for slots without a
+            published price (issue #1434).
 
     Returns:
         A fully populated :class:`PlannerInput` ready for the planner engine.
@@ -410,6 +415,7 @@ def build_planner_input(
         weight_14d=_w14d if _w14d is not None else 15,
         consumption_averages=consumption_averages,
         price_points=price_points,
+        price_profile=price_profile,
         solcast_slots=solcast_slots,
         excess_export_enabled=bool(cfg.batteries_enable_excess_export),
         excess_export_discharge_buffer_pct=(

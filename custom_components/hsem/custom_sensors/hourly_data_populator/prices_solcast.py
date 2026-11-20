@@ -296,7 +296,8 @@ def populate_price_and_solcast_from_snapshot(
         _LOGGER.warning(
             "No import price data matched from sensor(s) %s — no slot has a "
             "price pair, so the planner reports every hour as missing and "
-            "plans import and export at 0.0. Check that the sensor is "
+            "plans from held and stored prices, or at 0.0 without a price "
+            "history. Check that the sensor is "
             "available and publishes either a supported forecast attribute "
             "or, for a flat price, a numeric state and no forecast attribute.",
             cfg.import_electricity_price_sensor,
@@ -338,7 +339,8 @@ def populate_price_and_solcast_from_snapshot(
         _LOGGER.warning(
             "No export price data matched from sensor(s) %s — no slot has a "
             "price pair, so the planner reports every hour as missing and "
-            "plans import and export at 0.0. Check that the sensor is "
+            "plans from held and stored prices, or at 0.0 without a price "
+            "history. Check that the sensor is "
             "available and publishes either a supported forecast attribute "
             "or, for a flat price, a numeric state and no forecast attribute.",
             cfg.export_electricity_price_sensor,
