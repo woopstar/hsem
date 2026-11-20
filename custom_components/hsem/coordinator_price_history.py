@@ -7,14 +7,17 @@ Runs once per cycle, right after the price populator:
 * A side whose price sensor publishes nothing this cycle is in an outage.
   Its held prices are written to the slots they cover and the cause is
   reported through degraded mode.  The other side keeps its live prices.
-  Slots without a held price stay uncovered on the failed side, so the
-  planner estimates that side and reports the slot as missing.
+  Slots without a held price are uncovered on the failed side, also where a
+  price forecast sensor predicts them, so the planner estimates that side
+  and reports the slot as missing.
 * An outage that lasts longer than
   :data:`~custom_components.hsem.models.price_history_tracker.PRICE_OUTAGE_MAX_HOURS`
   is reported as a missing entity, which stops the planner.
 
-Only prices the price sensors published are recorded or held.  A forecast
-sensor's predictions, held prices and estimates never enter the store.
+Only real prices the price sensors published are recorded or held.
+Predictions (a forecast sensor's values and the price sensor's own
+``forecast``, ``predictions`` and ``forecasts`` attributes), held prices and
+estimates never enter the store.
 """
 
 from __future__ import annotations
@@ -122,7 +125,8 @@ def _restore_held(
 
     The side's price sensor publishes nothing this cycle, so a value on a
     slot can only be a forecast sensor's prediction.  The price that was
-    published for the slot wins over it.
+    published for the slot wins over it, and the caller drops the side's
+    other slots from the coverage.
 
     Args:
         tracker: The price history tracker.
@@ -176,7 +180,17 @@ def update_price_history(
             tracker.record(start, interval_minutes, import_price, export_price)
     tracker.prune(now)
 
-    failed = [side for side, prices in published.items() if not prices]
+    # A sensor that only publishes predictions is alive: it prices its
+    # slots as before and is not an outage.
+    predictions_only = {
+        "import": coverage.import_predictions_only,
+        "export": coverage.export_predictions_only,
+    }
+    failed = [
+        side
+        for side, prices in published.items()
+        if not prices and not predictions_only[side]
+    ]
     outage = bool(recommendations) and bool(failed)
     hours = tracker.mark_outage(now, outage)
     for side, prices in published.items():
@@ -202,8 +216,11 @@ def update_price_history(
     return PriceHistoryResult(
         replace(
             coverage,
-            import_price=coverage.import_price | restored.get("import", frozenset()),
-            export_price=coverage.export_price | restored.get("export", frozenset()),
+            # A failed side keeps its held slots only: a prediction on any
+            # other slot is an estimate, and the planner's own estimate
+            # reports the slot as missing.
+            import_price=restored.get("import", coverage.import_price),
+            export_price=restored.get("export", coverage.export_price),
             single_sided_prices=True,
         ),
         reason,

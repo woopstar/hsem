@@ -2758,6 +2758,8 @@ Tests: `tests/test_dynamic_floor_reference_plan.py::TestBuildBridgeSlots::test_u
 
 **Outage:** a side whose price sensor publishes no slot. Its held prices are written to the recommendations; the other side keeps its live prices (`ForecastCoverage.single_sided_prices`, `PricePoint` with `None` on one side). The cause goes to `LiveState.add_degraded_reason` (not `add_missing_entity`, which stops the planner). After `PRICE_OUTAGE_MAX_HOURS` (48) it does become a missing entity. `in_control` in `coordinator_performance.py` is `not missing_entities`, so a reason-only cycle counts.
 
+**Predictions (`PREDICTION_ATTRIBUTES`):** `forecast` (Energi Data Service, Carnot), `predictions` (Open Spot Forecast) and `forecasts` (Amber) are predictions also on the main price sensor. They price slots as before, never enter `published_*` (so never recorded or held), and a sensor that publishes only them is alive, not an outage (`ForecastCoverage.import_predictions_only`). In an outage a failed side is covered on its held slots only, so a forecast sensor's prediction there is estimated by the planner and reported missing.
+
 **Gotchas:** never record a future slot, a held price, a forecast sensor value or an estimate. The store is bound to the price entities and units (`set_source`) and dropped when they change. The tracker only writes when something changed (`_dirty`). An empty history must plan exactly as before.
 
 Tests: `tests/test_price_history.py`.

@@ -64,13 +64,23 @@ publishes only days that are over. A sensor with a numeric state and no
 forecast attribute is a flat price that covers every slot, not an outage. HSEM then plans from what it has kept:
 
 1. The failed side gets the price its sensor last published for a slot (the
-   _held_ prices). The other side keeps its live prices.
+   _held_ prices). The other side keeps its live prices. Predictions are
+   never held: the `forecast` (Energi Data Service with Carnot),
+   `predictions` (Open Spot Forecast) and `forecasts` (Amber Electric)
+   attributes, and everything a price forecast sensor publishes.
 2. The remaining slots use the price history: the median real price per
    weekday and time of day of the last 8 weeks, stored in
    `.storage/hsem_price_history.json`. They are listed as missing in
    `data_quality`.
 3. A slot the history does not know is estimated from the nearest earlier
    day, or from the level of the other prices.
+
+A prediction does not price the failed side during an outage. A slot that
+only a price forecast sensor covers, or that a prediction attribute priced
+before the outage, is estimated as in step 2 and 3 and listed as missing.
+A price sensor that still publishes a prediction attribute and no real
+price is not in an outage: its predictions price the slots as they do on a
+normal day, and nothing is stored from them.
 
 The reason reads, for example:
 

@@ -3827,11 +3827,21 @@ profile is a plain value in `PlannerInput.price_profile`
   price pair **and that has started** (`slot.start <= now`). The key is the
   slot's UTC start, so both passes of the DST fall-back hour are separate
   samples. The slot width is stored with the sample.
-- Only what the **import and export price sensor themselves** published is
-  recorded. A price forecast sensor is populated after them and overlays its
-  predictions on the slots it covers. The populator keeps the price sensors'
-  own values aside (`ForecastCoverage.published_import` and
-  `published_export`) and only those reach the tracker.
+- Only the **real prices** the **import and export price sensor themselves**
+  published are recorded. A price forecast sensor is populated after them
+  and overlays its predictions on the slots it covers. The populator keeps
+  the price sensors' own values aside (`ForecastCoverage.published_import`
+  and `published_export`) and only those reach the tracker.
+- **Prediction attributes.** `forecast` (Energi Data Service with Carnot),
+  `predictions` (Open Spot Forecast) and `forecasts` (Amber Electric) hold
+  predictions, also when they sit on the price sensor itself
+  (`PREDICTION_ATTRIBUTES` in `hourly_data_populator/prices_solcast.py`).
+  Their values price a slot exactly as before and such a slot is covered.
+  They are left out of `published_import` and `published_export`, so they
+  are never recorded and never held. Every other recognised price attribute
+  (`raw_today`, `raw_tomorrow`, `prices`, `prices_today`, `prices_tomorrow`,
+  `data`) and a flat price count as published. When a slot has both, the
+  recorded and held value is the real price, whichever was read last.
 - A published price for a slot that has not started is not recorded: a
   source that revises its future values would otherwise store a prediction.
 - An estimate (profile, earlier day, `0.0`) is produced inside the planner
@@ -3895,10 +3905,18 @@ the profile as recorded only when there is no earlier day either.
 publishes no slot of the horizon: the sensor is unavailable, publishes
 nothing usable, or publishes only days that are over. The coordinator keeps
 what each price sensor last published for a slot (the _held_ prices, per
-side, persisted in the same file, dropped 26 hours after the slot started):
+side, persisted in the same file, dropped 26 hours after the slot started).
+A price sensor that publishes only prediction attributes this cycle is
+alive: its side is not in an outage and is priced as before, and nothing is
+recorded or held from it.
 
 - A failed side gets its held price on every slot that has one. A held price
   wins over a forecast sensor's prediction for the slot.
+- A failed side is covered on its held slots only. A slot that only a price
+  forecast sensor predicts is uncovered on that side: the planner estimates
+  it in the fill order above and reports it missing. The prediction is not
+  used for it. A prediction is never held, so a slot that was priced by one
+  before the outage is estimated and reported missing as well.
 - The other side keeps its live prices. A held price never replaces a price
   that is published now.
 - During an outage a slot with one side only still gets a `PricePoint`, with
@@ -4500,7 +4518,9 @@ the fill's original rationale genuinely applies.
   side has a price (issue #1434).
 - The price history holds only prices the price sensors themselves published
   for slots that have started: no estimate, no held price, no forecast
-  sensor value and no future slot is ever recorded. It is dropped when the
+  sensor value, no value of a prediction attribute (`forecast`,
+  `predictions`, `forecasts`) and no future slot is ever recorded. A
+  prediction is never held either. It is dropped when the
   price entities or their units change (issue #1434).
 - A profile built from hourly samples prices all four quarters of the hour;
   one built from quarter-hourly samples prices an hourly slot with their
@@ -4509,6 +4529,7 @@ the fill's original rationale genuinely applies.
   sample (issue #1434).
 - In a price sensor outage a live price is never replaced by a held one;
   slots with a held price on the failed side are not reported missing;
+  a slot of the failed side that only a prediction covers is;
   degraded mode is `Degraded` and names the cause; the planner still runs.
   After 48 hours the planner stops with `missing_input_entities` (issue
   #1434).

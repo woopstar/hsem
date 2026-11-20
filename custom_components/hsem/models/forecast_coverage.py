@@ -34,11 +34,17 @@ class ForecastCoverage:
         pv: Slots that received a PV forecast.
         pv_source_configured: Whether any PV forecast sensor is configured.
             Without one no slot is ever covered, and that is not a gap.
-        published_import: Import price by slot, as the import price sensor
-            itself published it, before a price forecast sensor overlaid its
-            predictions.  Only these are recorded in the price history
+        published_import: Real import price by slot, as the import price
+            sensor itself published it.  Predictions are left out: a price
+            forecast sensor's values and the ``forecast``, ``predictions``
+            and ``forecasts`` attributes of the price sensor.  Only these
+            are recorded in the price history and held for an outage
             (issue #1434).
         published_export: The same for the export price sensor.
+        import_predictions_only: Whether the import price sensor wrote
+            slots this cycle and none of them from a real price.  Such a
+            sensor is alive, so the side is not in an outage.
+        export_predictions_only: The same for the export price sensor.
         single_sided_prices: Whether a slot with one price side only keeps
             that side.  Set during a price sensor outage, where the healthy
             side's live prices must survive (issue #1434).  Otherwise a slot
@@ -55,6 +61,8 @@ class ForecastCoverage:
     published_export: Mapping[datetime, float] = field(
         default_factory=dict, compare=False
     )
+    import_predictions_only: bool = field(default=False, compare=False)
+    export_predictions_only: bool = field(default=False, compare=False)
     single_sided_prices: bool = False
 
     def has_price(self, slot_start: datetime) -> bool:

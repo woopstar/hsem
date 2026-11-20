@@ -22,6 +22,13 @@ from custom_components.hsem.utils.datetime_utils import (
 )
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
+#: Attributes that hold predicted prices, not prices the market published:
+#: ``forecast`` (Energi Data Service, Carnot), ``predictions`` (Open Spot
+#: Forecast) and ``forecasts`` (Amber Electric).  Their values price a slot
+#: as before, and never enter the price history or the held prices
+#: (issue #1434).
+PREDICTION_ATTRIBUTES = frozenset({"forecast", "predictions", "forecasts"})
+
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
@@ -266,6 +273,10 @@ def populate_price_and_solcast_from_snapshot(
         "import_price",
         import_covered,
     )
+    # What the price sensor itself published as real prices: a flat price or
+    # an attribute that is not a prediction.  Only this enters the price
+    # history and the held prices (#1434).
+    published_import = _covered_values(recommendations, "import_price", import_covered)
     import_matched = _populate_from_attributes(
         snapshot.sensor_attributes.get(cfg.import_electricity_price_sensor or ""),
         recommendations,
@@ -273,10 +284,9 @@ def populate_price_and_solcast_from_snapshot(
         cfg.solcast_pv_forecast_forecast_likelihood,
         price_fallback,
         covered=import_covered,
+        published=published_import,
     )
-    # What the price sensor itself published, before a forecast sensor
-    # overlays its predictions: only this enters the price history (#1434).
-    published_import = _covered_values(recommendations, "import_price", import_covered)
+    import_predictions_only = import_matched > 0 and not published_import
     if cfg.import_electricity_price_forecast_sensor:
         import_matched += _populate_from_attributes(
             snapshot.sensor_attributes.get(
@@ -312,6 +322,7 @@ def populate_price_and_solcast_from_snapshot(
         "export_price",
         export_covered,
     )
+    published_export = _covered_values(recommendations, "export_price", export_covered)
     export_matched = _populate_from_attributes(
         snapshot.sensor_attributes.get(cfg.export_electricity_price_sensor or ""),
         recommendations,
@@ -319,8 +330,9 @@ def populate_price_and_solcast_from_snapshot(
         cfg.solcast_pv_forecast_forecast_likelihood,
         price_fallback,
         covered=export_covered,
+        published=published_export,
     )
-    published_export = _covered_values(recommendations, "export_price", export_covered)
+    export_predictions_only = export_matched > 0 and not published_export
     if cfg.export_electricity_price_forecast_sensor:
         export_matched += _populate_from_attributes(
             snapshot.sensor_attributes.get(
@@ -389,6 +401,8 @@ def populate_price_and_solcast_from_snapshot(
         ),
         published_import=published_import,
         published_export=published_export,
+        import_predictions_only=import_predictions_only,
+        export_predictions_only=export_predictions_only,
     )
 
 
@@ -414,6 +428,7 @@ def _populate_from_attributes(
     *,
     mean_over_slot: bool = False,
     covered: set[datetime] | None = None,
+    published: dict[datetime, float] | None = None,
 ) -> int:
     """Match pre-read sensor attribute data to recommendation slots.
 
@@ -448,6 +463,10 @@ def _populate_from_attributes(
         covered: When given, receives the UTC start of every slot a value
             was written to (issue #1196).  A slot that is not in it kept the
             default it was created with.
+        published: When given, receives the value of every slot written from
+            an attribute that is not in :data:`PREDICTION_ATTRIBUTES`, by UTC
+            start (issue #1434).  A prediction written to the same slot
+            later does not change it.  Not filled with *mean_over_slot*.
 
     Returns:
         Number of data points successfully matched to at least one slot.
@@ -537,6 +556,8 @@ def _populate_from_attributes(
                         matched += 1
                         if covered is not None:
                             covered.add(obj_start)
+                        if published is not None and attr not in PREDICTION_ATTRIBUTES:
+                            published[obj_start] = round(value, 5)
 
         for index, covering in overlaps.items():
             setattr(

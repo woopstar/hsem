@@ -97,6 +97,7 @@ _TZ = ZoneInfo("Europe/Copenhagen")
 _IMPORT = "sensor.import_price"
 _EXPORT = "sensor.export_price"
 _IMPORT_FORECAST = "sensor.import_price_forecast"
+_CARNOT_OFFSET = 5.0
 #: Local midnights.  1 June 2026 is a Monday.
 _LAST_MONDAY = datetime(2026, 5, 25, tzinfo=_TZ)
 _LAST_TUESDAY = datetime(2026, 5, 26, tzinfo=_TZ)
@@ -290,6 +291,31 @@ def _days(start: datetime, count: int = PROFILE_MIN_DAYS) -> list[datetime]:
         (start.replace(tzinfo=None) - timedelta(weeks=week)).replace(tzinfo=_TZ)
         for week in range(count)
     ]
+
+
+def _energi_data_service(
+    real: list[datetime], carnot: list[datetime]
+) -> dict[str, dict[str, Any]]:
+    """Return an Energi Data Service import sensor with Carnot enabled.
+
+    ``raw_today`` holds the published prices of *real* and ``forecast`` the
+    Carnot predictions of *carnot*, 5.0 above the clock price, hourly.  The
+    export sensor publishes both days.
+    """
+
+    def entries(days: list[datetime], **kwargs: Any) -> list[dict[str, Any]]:
+        return [
+            {"hour": point["start"], "price": point["price"]}
+            for day in days
+            for point in _day_points(day, **kwargs)
+        ]
+
+    attributes = _attributes(*real, *carnot)
+    attributes[_IMPORT] = {
+        "raw_today": entries(real),
+        "forecast": entries(carnot, step=60, offset=_CARNOT_OFFSET),
+    }
+    return attributes
 
 
 # ---------------------------------------------------------------------------
@@ -723,8 +749,34 @@ class TestRecording:
         assert tracker.held_price("import", _MONDAY) is None
         assert result.outage_reason is not None
         assert "(import price)" in result.outage_reason
-        # The forecast sensor still prices the slots, as before.
+        # In the outage its predictions are estimates: the import side is
+        # left to the planner, which reports the slots as missing.
         assert len(planner_input.price_points) == 96
+        assert all(point.import_price is None for point in planner_input.price_points)
+        assert not result.coverage.import_price
+
+    def test_a_prediction_after_a_real_price_keeps_the_real_price(self) -> None:
+        """``predictions`` is read after ``prices`` and overwrites the slot."""
+        tracker = PriceHistoryTracker()
+        attributes = _attributes(_MONDAY)
+        attributes[_IMPORT] = {
+            "prices": _day_points(_MONDAY),
+            "predictions": _day_points(_MONDAY, offset=5.0),
+        }
+
+        planner_input, result = _cycle(tracker, _NOW, attributes)
+
+        assert result.outage_reason is None
+        assert planner_input.price_points[0].import_price == pytest.approx(
+            _clock_price(0, 0) + 5.0
+        )
+        assert tracker.sample_count == 37
+        for start, (_step, import_price, _export) in tracker._samples.items():
+            local = start.astimezone(_TZ)
+            assert import_price == pytest.approx(_clock_price(local.hour, local.minute))
+        assert tracker.held_price("import", _MONDAY.replace(hour=20)) == pytest.approx(
+            _clock_price(20, 0)
+        )
 
     def test_a_stale_source_is_an_outage_and_records_nothing(self) -> None:
         tracker = PriceHistoryTracker()
@@ -1149,6 +1201,87 @@ class TestUnpublishedTomorrow:
             assert slot.price.import_price == pytest.approx(
                 _clock_price(slot.start.hour, slot.start.minute)
             )
+
+
+@_needs_scipy
+class TestPredictionAttributes:
+    """Energi Data Service with Carnot: ``forecast`` on the price sensor."""
+
+    _LATER = _MONDAY.replace(hour=9, minute=10)
+
+    def test_carnot_prices_the_plan_and_is_not_recorded_or_held(self) -> None:
+        tracker = PriceHistoryTracker()
+
+        planner_input, result = _cycle(
+            tracker, _NOW, _energi_data_service([_MONDAY], [_TUESDAY])
+        )
+
+        # The plan uses the Carnot prediction for tomorrow, as before.
+        assert result.outage_reason is None
+        assert len(planner_input.price_points) == 192
+        assert planner_input.price_points[96 + 40].import_price == pytest.approx(
+            _clock_price(10, 0) + _CARNOT_OFFSET
+        )
+        assert tracker.held_price("import", _MONDAY.replace(hour=20)) == pytest.approx(
+            _clock_price(20, 0)
+        )
+        assert tracker.held_price("import", _TUESDAY.replace(hour=10)) is None
+        assert tracker.sample_count == 37
+
+    def test_carnot_on_a_started_slot_is_not_recorded(self) -> None:
+        """Without ``raw_today`` a prediction covers the slots that started."""
+        tracker = PriceHistoryTracker()
+
+        planner_input, result = _cycle(
+            tracker, _NOW, _energi_data_service([], [_MONDAY, _TUESDAY])
+        )
+
+        assert tracker.sample_count == 0
+        assert tracker.held_price("import", _MONDAY.replace(hour=20)) is None
+        # The sensor is alive, so this is not an outage and it plans as before.
+        assert result.outage_reason is None
+        assert result.coverage.import_predictions_only is True
+        assert result.coverage.export_predictions_only is False
+        assert len(planner_input.price_points) == 192
+
+    def test_carnot_is_not_restored_in_an_outage(self) -> None:
+        tracker = PriceHistoryTracker()
+        _cycle(tracker, _NOW, _energi_data_service([_MONDAY], [_TUESDAY]))
+
+        planner_input, result = _cycle(tracker, self._LATER, {})
+        output = run_planner(planner_input)
+
+        assert result.outage_reason is not None
+        assert result.coverage.has_import_price(_MONDAY.replace(hour=20))
+        assert not result.coverage.has_import_price(_TUESDAY.replace(hour=10))
+        assert result.coverage.has_export_price(_TUESDAY.replace(hour=10))
+        for slot in _slots_of(output, _MONDAY):
+            assert slot.price.import_price == pytest.approx(
+                _clock_price(slot.start.hour, slot.start.minute)
+            )
+        quality = output.data_quality
+        assert quality.today_price_missing_hours == []
+        assert quality.tomorrow_price_missing_hours == list(range(24))
+
+    def test_a_forecast_sensors_prediction_is_reported_in_an_outage(self) -> None:
+        """The price sensor is down and only the forecast sensor has tomorrow."""
+        tracker = PriceHistoryTracker()
+        attributes = _attributes(_MONDAY, _TUESDAY)
+        del attributes[_IMPORT]
+        attributes[_IMPORT_FORECAST] = {
+            "predictions": _day_points(_TUESDAY, offset=_CARNOT_OFFSET)
+        }
+        _cycle(tracker, _NOW, _attributes(_MONDAY))
+
+        planner_input, result = _cycle(tracker, self._LATER, attributes)
+        output = run_planner(planner_input)
+
+        assert result.outage_reason is not None
+        assert planner_input.price_points[40].import_price == pytest.approx(
+            _clock_price(10, 0)
+        )
+        assert planner_input.price_points[96 + 40].import_price is None
+        assert output.data_quality.tomorrow_price_missing_hours == list(range(24))
 
 
 @_needs_scipy
