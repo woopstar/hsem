@@ -48,6 +48,7 @@ def _make_sensor(
     sensor._unobserved = None  # observed-block guard is patched in _store
     sensor._tracked_entity = "sensor.daily_kwh"
     sensor._measurements = measurements if measurements is not None else {}
+    sensor._backfilled = set()
     sensor._average = average
     sensor._hour_start = hour_start
     sensor._hour_end = hour_end
@@ -80,6 +81,7 @@ def _avg_sensor(average: int = 1) -> HSEMAvgSensor:
     """Return a real average sensor with its HA dependencies mocked."""
     entry = MagicMock()
     entry.entry_id = "test_entry"
+    entry.created_at = datetime(2026, 1, 1, tzinfo=UTC)
     entry.options = {}
     entry.data = {}
     sensor = HSEMAvgSensor(

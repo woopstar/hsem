@@ -684,6 +684,7 @@ class TestAvgSensorReadFailure:
         sensor.hass = MagicMock()
         sensor._tracked_entity = "sensor.daily_kwh"
         sensor._measurements = {}
+        sensor._backfilled = set()
         sensor._average = 14
         sensor._hour_start = 14
         sensor._hour_end = 15
@@ -724,6 +725,7 @@ class TestAvgSensorReadFailure:
         sensor._unobserved = []
         sensor._tracked_entity = "sensor.daily_kwh"
         sensor._measurements = {}
+        sensor._backfilled = set()
         sensor._average = 14
         sensor._hour_start = 14
         sensor._hour_end = 15

@@ -149,7 +149,9 @@ next check …` once per cycle. A `[ml] ML consumption failed (…)` line is a
   real failure, not a wait.
 - **Fix:** wait for `ml_history_ready_at`, lower the configured days, or make
   sure the recorder keeps the energy entity (`purge_keep_days` ≥ the configured
-  days, see section 8).
+  days, see section 8). An energy entity with long-term statistics does not
+  need this: the purged days are read from its hourly statistics
+  (`ml_statistics_history_days`, issue #1433).
 
 ---
 
@@ -746,7 +748,7 @@ their history graphs:
 
 ```yaml
 recorder:
-  purge_keep_days: 15 # must be >= ML history days (default 14)
+  purge_keep_days: 15 # >= ML history days (default 14), see below
   exclude:
     entity_globs:
       - sensor.hsem_house_consumption_power_*
@@ -759,8 +761,11 @@ recorder:
 
 **Do not exclude** the entities configured as ML energy, grid import
 energy, grid export energy, outdoor temperature or weather forecast. ML
-consumption prediction reads their recorder history (up to 90 days), and
-`purge_keep_days` must be at least `hsem_ml_consumption_history_days`.
+consumption prediction reads their recorder history (up to 90 days).
+`purge_keep_days` should be at least `hsem_ml_consumption_history_days`.
+With a shorter retention the energy entities fall back to their hourly
+long-term statistics for the purged days (issue #1433), which have no
+15-minute shape; temperature and wind history have no such fallback.
 
 To delete existing rows after adding the excludes, call
 `recorder.purge_entities` with the same globs and `keep_days: 0`, then

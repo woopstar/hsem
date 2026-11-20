@@ -239,7 +239,7 @@ def fixed_environment() -> Generator[None]:
 def _average_sensor(hass: MagicMock, measurements: dict[str, float]) -> HSEMAvgSensor:
     """Add a real hourly average sensor to HSEM's sensor platform."""
     sensor = HSEMAvgSensor(
-        config_entry=MagicMock(entry_id="entry-1", options={}, data={}),
+        config_entry=MagicMock(entry_id="entry-1", options={}, data={}, created_at=NOW),
         hour_start=14,
         hour_end=15,
         avg=7,
