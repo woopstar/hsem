@@ -22,6 +22,12 @@ downtime the meter fires its missed daily reset on restart and reads ``0``,
 and a block interrupted by real downtime holds only part of the hour. Neither
 is a measurement, so both are skipped and the previous valid days remain in
 the window. A quick restart or reload keeps the block.
+
+Backfill (issue #1433): days the window has no sample for are taken from the
+hourly long-term statistics of the house power source (see
+:mod:`.consumption_backfill`), so a new install does not start empty. A day
+HSEM measured itself is never replaced, and a backfilled day is listed in the
+``backfilled_days`` attribute until a measurement or the window rolls it out.
 """
 
 from __future__ import annotations
@@ -55,6 +61,10 @@ from custom_components.hsem.custom_sensors.block_observation import (
     prune_unobserved,
     restore_unobserved,
     unobserved_overlap,
+)
+from custom_components.hsem.custom_sensors.consumption_backfill import (
+    async_consumption_profile,
+    missing_days,
 )
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMEntity
@@ -118,6 +128,7 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
             "unique_id",
             "last_updated",
             "measurements",
+            "backfilled_days",
         ]
     )
 
@@ -157,6 +168,9 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         self._config_entry = config_entry
         self._name = name
         self._measurements: dict[str, float] | None = None
+        # Dates in ``_measurements`` that came from long-term statistics
+        # rather than from the utility meter (issue #1433).
+        self._backfilled: set[str] = set()
         self._tracked_entities: set[str] = set()
         # Unsubscribe callbacks registered by async_track_* helpers.
         self._unsub_callbacks: list = []
@@ -192,6 +206,7 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
             "last_updated": self._last_updated,
             "unique_id": self._attr_unique_id,
             "measurements": self._measurements,
+            "backfilled_days": sorted(self._backfilled),
         }
 
     @property  # type: ignore[misc]  # HA stub declares state as @final
@@ -296,6 +311,11 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
                         continue
                     parsed_measurements[self.parse_date(raw_date)] = value
                 self._measurements = parsed_measurements
+                self._backfilled = {
+                    day
+                    for day in old_state.attributes.get("backfilled_days") or []
+                    if day in parsed_measurements
+                }
 
             self._last_updated = old_state.attributes.get("last_updated", None)
 
@@ -352,6 +372,7 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         await self._async_track_entities()
 
         await self._async_store_utility_meter_value()
+        await self._async_backfill_from_statistics()
 
         # Calculate the average value from `self._measurements`
         if self._measurements:
@@ -482,9 +503,31 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
                     )
                 else:
                     self._measurements[measurement_date.isoformat()] = value
+                    self._backfilled.discard(measurement_date.isoformat())
 
         if self._measurements is not None and len(self._measurements) > self._average:
             await self._async_cleanup_old_measurements()
+
+    async def _async_backfill_from_statistics(self) -> None:
+        """Fill free places in the window from long-term statistics.
+
+        Only days without a measurement are added, newest first, and only
+        until the window holds ``average`` days, so a day HSEM measured is
+        neither replaced nor pushed out. Without statistics nothing changes.
+        """
+        measurements = self._measurements
+        if measurements is None or len(measurements) >= self._average:
+            return
+        profile = await async_consumption_profile(self.hass, self._config_entry)
+        backfill = missing_days(
+            profile,
+            self._hour_start,
+            measurements,
+            self._average - len(measurements),
+        )
+        if backfill:
+            measurements.update(backfill)
+            self._backfilled.update(backfill)
 
     async def _async_cleanup_old_measurements(self) -> None:
         """Cleanup old measurements."""
@@ -499,3 +542,4 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
                 # Remove the oldest dates (they come first in the sorted list)
                 for date in sorted_dates[:items_to_remove]:
                     del self._measurements[date]
+                    self._backfilled.discard(date)

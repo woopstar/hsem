@@ -45,7 +45,7 @@ sensor's `_unrecorded_attributes` and never reach the recorder:
 | `sensor.hsem_ocpp_*charger_status`             | all attributes                                                              |
 | `sensor.hsem_ocpp_*charger_sessions`           | `sessions`                                                                  |
 | `sensor.hsem_next_update_sensor`               | `last_updated` (recorded as the state of `sensor.hsem_last_updated_sensor`) |
-| `sensor.hsem_house_consumption_energy_avg_*`   | all except the state (`measurements`, `last_updated`, …)                    |
+| `sensor.hsem_house_consumption_energy_avg_*`   | all except the state (`measurements`, `backfilled_days`, `last_updated`, …) |
 | `sensor.hsem_house_consumption_power_*`        | all except the state                                                        |
 
 State values are always recorded, so history graphs and long-term

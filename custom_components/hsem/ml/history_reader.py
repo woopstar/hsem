@@ -82,11 +82,15 @@ class HistoryResult[SampleT]:
             timestamp back as ``since`` continues the history from there
             without re-reading the whole window (#1355).  ``None`` when the
             read produced no completed slot.
+        partial: Energy reads only: the history that was too short to be
+            returned as ``samples``.  A caller can extend it with older data
+            from long-term statistics (#1433).
     """
 
     samples: list[SampleT] = field(default_factory=list)
     ready_at: datetime | None = None
     anchor: tuple[datetime, float] | None = None
+    partial: list[SampleT] = field(default_factory=list)
 
 
 def insufficient_retry_window(now: datetime, ready_at: datetime | None) -> timedelta:
@@ -304,7 +308,7 @@ class HistoryReader:
                     days,
                     normalize_datetime(ready_at).isoformat(),
                 )
-                return HistoryResult(ready_at=ready_at)
+                return HistoryResult(ready_at=ready_at, anchor=anchor, partial=history)
 
         return HistoryResult(history, anchor=anchor)
 

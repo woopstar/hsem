@@ -82,7 +82,7 @@
 1. **Remove any previous Huawei Solar Battery Optimization Project integrations.**
 2. **Install HSEM** via Home Assistant's custom integrations or manually.
 3. **Configure your sensors** for solar battery, inverter, grid, and EV charger (if present) — do not use the Fusion Solar app for scheduling; HSEM's planner drives charge/discharge decisions automatically.
-4. **Let HSEM run for at least 14 days** to collect historical data for optimal performance.
+4. **Check the load forecast.** HSEM builds it from Home Assistant's long-term statistics of your house power sensor, so it is ready after the first update when that sensor has history. Without statistics it needs about one day for a first forecast and 14 days to fill all averaging windows.
 5. **Monitor the Working Mode Sensor** for system status and recommendations.
 
 **Tip:**

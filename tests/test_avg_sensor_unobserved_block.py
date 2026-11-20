@@ -80,6 +80,7 @@ def _make_sensor(
     sensor._unobserved = unobserved
     sensor._tracked_entity = _METER
     sensor._measurements = measurements if measurements is not None else {}
+    sensor._backfilled = set()
     sensor._average = 14
     sensor._hour_start = hour_start
     sensor._hour_end = hour_end

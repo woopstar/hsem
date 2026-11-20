@@ -23,6 +23,10 @@ HSEM supports two prediction modes, toggled via `hsem_ml_consumption_enabled`:
 - **Legacy** (default): Four-window weighted average using HSEM custom sensors
 - **ML** (new): Ridge regression on recorder history with DOW + seasonality + temperature
 
+Both modes start from Home Assistant's hourly long-term statistics when HSEM
+has no history of its own yet. See
+[Backfill from long-term statistics](#backfill-from-long-term-statistics-issue-1433).
+
 ---
 
 ## ML mode (ridge regression)
@@ -304,12 +308,13 @@ the battery SoC simulation to reality.
 
 `sensor.hsem_plan_explanation_sensor` says whether the ML forecast is in use:
 
-| Attribute                   | Meaning                                                                                                            |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `ml_status`                 | `disabled`, `pending` (no cycle yet), `insufficient_history`, `recorder_empty`, `ready` or `failed`                |
-| `ml_days_of_history`        | The configured minimum (`hsem_ml_consumption_history_days`)                                                        |
-| `ml_available_history_days` | The span the populator measured in the recorder, also while it is still short of the minimum; `null` if unmeasured |
-| `ml_history_ready_at`       | When the span is expected to reach the minimum (`insufficient_history` only)                                       |
+| Attribute                    | Meaning                                                                                                                             |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `ml_status`                  | `disabled`, `pending` (no cycle yet), `insufficient_history`, `recorder_empty`, `ready` or `failed`                                 |
+| `ml_days_of_history`         | The configured minimum (`hsem_ml_consumption_history_days`)                                                                         |
+| `ml_available_history_days`  | The span the populator measured in the recorder, also while it is still short of the minimum; `null` if unmeasured                  |
+| `ml_history_ready_at`        | When the span is expected to reach the minimum (`insufficient_history` only)                                                        |
+| `ml_statistics_history_days` | Days of the history that came from hourly long-term statistics instead of raw states; `0.0` when none, `null` before the first read |
 
 While `ml_status` is `insufficient_history` the legacy weighted averages are
 used by design, and the recorder is not re-read before `ml_history_ready_at`
@@ -464,6 +469,80 @@ Weights are normalised after scaling so they still sum to the original total.
 
 ---
 
+## Backfill from long-term statistics (issue #1433)
+
+Home Assistant purges raw states after the recorder's `purge_keep_days`
+(10 by default). It keeps hourly long-term statistics for every sensor with a
+`state_class`, and most sites have months of them from before HSEM was
+installed. Both prediction modes use them for the days HSEM has no data of
+its own. All reads run in the recorder executor.
+
+### Legacy mode: seeding the hour-block averages
+
+Each `sensor.hsem_house_consumption_energy_avg_*` window (1, 3, 7 or 14 days)
+fills its free places from statistics on every update:
+
+- The source is the configured house power sensor
+  (`hsem_house_consumption_power`). The hourly `mean` in W is the energy of
+  that hour in Wh.
+- When `hsem_house_power_includes_ev_charger_power` is on, the hourly mean of
+  both EV charger power sensors is subtracted, as in the live path.
+- An hour is left out when a required source has no statistics for it or when
+  the result is negative. That hour block stays unavailable: up to four such
+  hours are estimated from their neighbours, more are reported in
+  `missing_hours` and the load forecast is not ready (issue #1110).
+- Only days without a measurement are added, newest first, and only until the
+  window holds its number of days. A day HSEM measured is never replaced and
+  never pushed out by a backfilled day.
+- When HSEM measures a block of a day that was backfilled, the measurement
+  replaces the backfilled value.
+- The backfilled dates are listed in the sensor's `backfilled_days` attribute.
+
+A fresh install with statistics for the house power sensor has a load
+forecast after the first update. Without statistics (a new sensor, or one
+without a `state_class`) nothing changes: the windows fill one day at a time.
+
+The 96 average sensors share one statistics read per config entry, repeated
+at most once an hour and only while a window has a free place.
+
+Limits:
+
+- The Home Assistant time zone must be a whole number of hours from UTC.
+  Statistics hours are UTC hours and would not line up with the hour blocks
+  otherwise, so nothing is backfilled.
+- Home Assistant fills statistics for an hour it was down with the last value
+  it knew. A backfilled hour from such a period is that value, not a
+  measurement.
+
+### ML mode: days with purged raw states
+
+When the raw states of the energy sensor span fewer days than
+`hsem_ml_consumption_history_days`, the time before the oldest raw sample is
+filled from the hourly `sum` statistics of the same sensor, back to the
+90-day window. In net-consumption mode the export sensor gets the same
+treatment.
+
+- The energy of an hour is the difference between two consecutive hourly
+  sums. An hour after a gap in the statistics is skipped, so a gap never
+  becomes one large hour.
+- Each hour is spread evenly over its 15-minute slots. Statistics hold no
+  shape inside the hour, so the model learns the hourly level for those days
+  and the 15-minute shape from the days with raw states.
+- EV charging is not subtracted. The ML mode predicts from one energy
+  accumulator and does not subtract EV energy from raw states either.
+- With enough statistics `ml_status` is `ready` on the first cycle, also when
+  the recorder holds no raw states for the sensor.
+- With some statistics but not enough, `ml_history_ready_at` moves forward by
+  the days they cover.
+- Without statistics the read behaves as before.
+
+`ml_statistics_history_days` on `sensor.hsem_plan_explanation_sensor` shows
+how many days of the history came from statistics. The share shrinks as raw
+states accumulate, and is 0 once `purge_keep_days` covers the configured
+days.
+
+---
+
 ## Assumptions and limitations
 
 ### ML mode limitations
@@ -472,8 +551,11 @@ Weights are normalised after scaling so they still sum to the original total.
    features and consumption. Non-linear effects (e.g. U-shaped heating/cooling
    curve vs temperature) are approximated but not fully captured.
 
-2. **Minimum history**: Requires at least 14 days of recorder history for the
-   energy sensor. Falls back to legacy mode below this threshold. While
+2. **Minimum history**: Requires at least 14 days of history for the energy
+   sensor: raw recorder states, extended with hourly long-term statistics
+   for the days whose raw states are purged (see
+   [Backfill from long-term statistics](#backfill-from-long-term-statistics-issue-1433)).
+   Falls back to legacy mode below this threshold. While
    history is insufficient, the read reports the date on which the recorded
    span reaches the configured days (earliest sample plus the required days),
    and the recorder is not queried again before that date, never sooner than
@@ -504,7 +586,8 @@ Weights are normalised after scaling so they still sum to the original total.
 
 1. **Stationarity**: The model assumes consumption patterns are relatively stable
    over the 14-day window. Major lifestyle changes (new EV, heat pump, home
-   renovation) require 14 days to be fully reflected.
+   renovation) require 14 days to be fully reflected. Days backfilled from
+   statistics describe the house before HSEM was installed.
 
 2. **Weather dependence**: The model has no weather inputs. Weather-driven
    consumption (AC, heating) appears as unexplained variance unless correlated
