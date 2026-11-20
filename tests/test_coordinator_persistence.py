@@ -22,6 +22,7 @@ from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.models.savings_tracker import SavingsTracker
+from custom_components.hsem.models.what_if_history import WhatIfHistory
 from custom_components.hsem.utils.prediction_tracker import PredictionTracker
 
 _MODULE = "custom_components.hsem.coordinator_persistence"
@@ -47,6 +48,9 @@ def _coordinator(
     coordinator._performance_tracker = PerformanceTracker(
         history_file=str(tmp_path / "performance.json") if performance_history else ""
     )
+    coordinator._what_if_history = WhatIfHistory(
+        history_file=str(tmp_path / "what_if.json")
+    )
     return cast(CoordinatorSharedState, coordinator)
 
 
@@ -67,6 +71,7 @@ class TestPersistAllTrackers:
             "financial.json",
             "prediction.json",
             "performance.json",
+            "what_if.json",
         ):
             assert (tmp_path / name).exists(), name
 
@@ -130,4 +135,5 @@ class TestPersistAllTrackers:
             "_financial_tracker",
             "_performance_tracker",
             "_prediction_tracker",
+            "_what_if_history",
         }

@@ -1430,6 +1430,56 @@
       "name": "Export diagnostics",
       "description": "Export a structured diagnostics dump for the HSEM integration with all entity IDs redacted."
     },
+      "what_if": {
+        "name": "What if",
+        "description": "Replay the recorded days with another battery and return what the change would have been worth. Both costs are perfect-foresight bounds. Read-only.",
+        "fields": {
+          "history_days": {
+            "name": "History days",
+            "description": "Completed days before today to replay. At most 90."
+          },
+          "usable_capacity_kwh": {
+            "name": "Usable capacity",
+            "description": "Usable capacity of the scenario battery. Leave empty to keep the configured capacity."
+          },
+          "max_charge_power_w": {
+            "name": "Max charge power",
+            "description": "Maximum charge power of the scenario battery. Leave empty to keep the configured power."
+          },
+          "max_discharge_power_w": {
+            "name": "Max discharge power",
+            "description": "Maximum discharge power of the scenario battery. Leave empty to keep the configured power."
+          },
+          "charge_efficiency_pct": {
+            "name": "Charge efficiency",
+            "description": "Charge efficiency of the scenario battery. Leave empty to keep the configured efficiency."
+          },
+          "discharge_efficiency_pct": {
+            "name": "Discharge efficiency",
+            "description": "Discharge efficiency of the scenario battery. Leave empty to keep the configured efficiency."
+          },
+          "cycle_cost_per_kwh": {
+            "name": "Cycle cost per kWh",
+            "description": "Battery wear per kWh of throughput in the scenario. Leave empty to keep the cycle cost the planner uses."
+          },
+          "capacity_start_kwh": {
+            "name": "Capacity range start",
+            "description": "First usable capacity of a range. Give start, end and step together to get one row per size."
+          },
+          "capacity_end_kwh": {
+            "name": "Capacity range end",
+            "description": "Last usable capacity of the range."
+          },
+          "capacity_step_kwh": {
+            "name": "Capacity range step",
+            "description": "Distance between two capacities of the range."
+          },
+          "capacity_price_per_kwh": {
+            "name": "Price per kWh of capacity",
+            "description": "Price of one kWh of usable capacity. When given, each row carries the payback time in years."
+          }
+        }
+      },
     "create_dashboard": {
       "name": "Create dashboard",
       "description": "Create or update the HSEM Lovelace dashboard. Set force to true to overwrite."

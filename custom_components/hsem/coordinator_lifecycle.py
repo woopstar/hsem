@@ -261,6 +261,11 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
             performance_task.cancel()
             self._performance_task = None
 
+        # A what-if replay in the executor stops before its next day.
+        what_if_cancel = getattr(self, "_what_if_cancel", None)
+        if what_if_cancel is not None:
+            what_if_cancel.set()
+
         # Clear retained live-power state (window, replan budget, source
         # signature) so a stale estimate cannot survive teardown.
         self.reset_live_power_state()

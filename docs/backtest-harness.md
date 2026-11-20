@@ -627,6 +627,12 @@ meters. The definitions and the code are shared
 equals the sensors' `yesterday` figures on the same slots;
 `tests/utils/test_performance_scoring.py` pins that on the recorded day.
 
+The [`hsem.what_if`](services-reference.md#13-hsemwhat_if) service
+(issue #1432) uses the same oracle and the same SoC-derived load to compare
+the configured battery with another one over the recorded days. It solves
+with `throughput_cost_per_kwh`, which adds battery wear to the oracle's
+objective. Every score above leaves that at 0.
+
 ### Which installation's limits
 
 The actuals carry no battery data, so the limits come from a recorded planner

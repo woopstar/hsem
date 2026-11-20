@@ -1430,6 +1430,56 @@
       "name": "Exportar diagnósticos",
       "description": "Exporta un volcado de diagnóstico estructurado de la integración HSEM con todos los ID de entidad ocultos."
     },
+      "what_if": {
+        "name": "Qué pasaría si",
+        "description": "Reproduce los días registrados con otra batería y devuelve lo que habría valido el cambio. Ambos costes son límites con previsión perfecta. No escribe nada.",
+        "fields": {
+          "history_days": {
+            "name": "Días de historial",
+            "description": "Días completos anteriores a hoy que se reproducen. Como máximo 90."
+          },
+          "usable_capacity_kwh": {
+            "name": "Capacidad útil",
+            "description": "Capacidad útil de la batería del escenario. Déjelo vacío para mantener la capacidad configurada."
+          },
+          "max_charge_power_w": {
+            "name": "Potencia máx. de carga",
+            "description": "Potencia máxima de carga de la batería del escenario. Déjelo vacío para mantener la potencia configurada."
+          },
+          "max_discharge_power_w": {
+            "name": "Potencia máx. de descarga",
+            "description": "Potencia máxima de descarga de la batería del escenario. Déjelo vacío para mantener la potencia configurada."
+          },
+          "charge_efficiency_pct": {
+            "name": "Eficiencia de carga",
+            "description": "Eficiencia de carga de la batería del escenario. Déjelo vacío para mantener la eficiencia configurada."
+          },
+          "discharge_efficiency_pct": {
+            "name": "Eficiencia de descarga",
+            "description": "Eficiencia de descarga de la batería del escenario. Déjelo vacío para mantener la eficiencia configurada."
+          },
+          "cycle_cost_per_kwh": {
+            "name": "Coste de ciclo por kWh",
+            "description": "Desgaste de la batería por kWh de energía circulada en el escenario. Déjelo vacío para mantener el coste de ciclo que usa el planificador."
+          },
+          "capacity_start_kwh": {
+            "name": "Inicio del rango de capacidad",
+            "description": "Primera capacidad útil de un rango. Indique inicio, fin y paso juntos para obtener una fila por tamaño."
+          },
+          "capacity_end_kwh": {
+            "name": "Fin del rango de capacidad",
+            "description": "Última capacidad útil del rango."
+          },
+          "capacity_step_kwh": {
+            "name": "Paso del rango de capacidad",
+            "description": "Distancia entre dos capacidades del rango."
+          },
+          "capacity_price_per_kwh": {
+            "name": "Precio por kWh de capacidad",
+            "description": "Precio de un kWh de capacidad útil. Si se indica, cada fila incluye el plazo de amortización en años."
+          }
+        }
+      },
     "create_dashboard": {
       "name": "Crear panel",
       "description": "Crea o actualiza el panel Lovelace de HSEM. Establece force en true para sobrescribirlo."

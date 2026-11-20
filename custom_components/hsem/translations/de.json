@@ -1430,6 +1430,56 @@
       "name": "Diagnose exportieren",
       "description": "Exportiert einen strukturierten Diagnose-Dump für die HSEM-Integration mit allen geschwärzten Entitäts-IDs."
     },
+      "what_if": {
+        "name": "Was wäre wenn",
+        "description": "Spielt die aufgezeichneten Tage mit einer anderen Batterie erneut durch und gibt zurück, was die Änderung wert gewesen wäre. Beide Kosten sind Grenzen bei perfekter Voraussicht. Schreibt nichts.",
+        "fields": {
+          "history_days": {
+            "name": "Verlaufstage",
+            "description": "Abgeschlossene Tage vor heute, die durchgespielt werden. Höchstens 90."
+          },
+          "usable_capacity_kwh": {
+            "name": "Nutzbare Kapazität",
+            "description": "Nutzbare Kapazität der Szenario-Batterie. Leer lassen, um die konfigurierte Kapazität zu behalten."
+          },
+          "max_charge_power_w": {
+            "name": "Max. Ladeleistung",
+            "description": "Maximale Ladeleistung der Szenario-Batterie. Leer lassen, um die konfigurierte Leistung zu behalten."
+          },
+          "max_discharge_power_w": {
+            "name": "Max. Entladeleistung",
+            "description": "Maximale Entladeleistung der Szenario-Batterie. Leer lassen, um die konfigurierte Leistung zu behalten."
+          },
+          "charge_efficiency_pct": {
+            "name": "Ladewirkungsgrad",
+            "description": "Ladewirkungsgrad der Szenario-Batterie. Leer lassen, um den konfigurierten Wirkungsgrad zu behalten."
+          },
+          "discharge_efficiency_pct": {
+            "name": "Entladewirkungsgrad",
+            "description": "Entladewirkungsgrad der Szenario-Batterie. Leer lassen, um den konfigurierten Wirkungsgrad zu behalten."
+          },
+          "cycle_cost_per_kwh": {
+            "name": "Zykluskosten pro kWh",
+            "description": "Batterieverschleiß pro kWh Durchsatz im Szenario. Leer lassen, um die Zykluskosten des Planers zu behalten."
+          },
+          "capacity_start_kwh": {
+            "name": "Kapazitätsbereich Start",
+            "description": "Erste nutzbare Kapazität eines Bereichs. Start, Ende und Schritt zusammen angeben, um eine Zeile pro Größe zu erhalten."
+          },
+          "capacity_end_kwh": {
+            "name": "Kapazitätsbereich Ende",
+            "description": "Letzte nutzbare Kapazität des Bereichs."
+          },
+          "capacity_step_kwh": {
+            "name": "Kapazitätsbereich Schritt",
+            "description": "Abstand zwischen zwei Kapazitäten des Bereichs."
+          },
+          "capacity_price_per_kwh": {
+            "name": "Preis pro kWh Kapazität",
+            "description": "Preis für eine kWh nutzbare Kapazität. Wenn angegeben, enthält jede Zeile die Amortisationszeit in Jahren."
+          }
+        }
+      },
     "create_dashboard": {
       "name": "Dashboard erstellen",
       "description": "Erstellt oder aktualisiert das HSEM-Lovelace-Dashboard. Setze force auf true, um zu überschreiben."

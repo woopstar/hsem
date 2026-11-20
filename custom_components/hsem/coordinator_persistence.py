@@ -58,6 +58,16 @@ def _get_performance_tracker(
     return tracker
 
 
+def _get_what_if_history(
+    coordinator: CoordinatorSharedState,
+) -> Persistable | None:
+    """Return the what-if history only once its history file is set."""
+    history = coordinator._what_if_history
+    if not history.history_file:
+        return None
+    return history
+
+
 def _get_prediction_tracker(
     coordinator: CoordinatorSharedState,
 ) -> Persistable | None:
@@ -82,6 +92,7 @@ TRACKER_REGISTRY: dict[str, Callable[[CoordinatorSharedState], Persistable | Non
     "_financial_tracker": _get_financial_tracker,
     "_performance_tracker": _get_performance_tracker,
     "_prediction_tracker": _get_prediction_tracker,
+    "_what_if_history": _get_what_if_history,
 }
 
 

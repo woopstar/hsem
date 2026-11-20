@@ -159,6 +159,55 @@ def _residual_limit_kwh(window: RealizedWindow, slots: Sequence[RealizedSlot]) -
     )
 
 
+def usable_slots(
+    recorded: Sequence[PerformanceSlot | None], slot_minutes: int
+) -> list[PerformanceSlot]:
+    """Return the recorded slots a score can be built on.
+
+    Args:
+        recorded: The run's slots in order, ``None`` where nothing was recorded.
+        slot_minutes: Slot width the run is expected in.
+
+    Returns:
+        The slots of that width that were observed for at least
+        :data:`MIN_SLOT_COVERAGE` of their length and have both SoC readings.
+        A run is complete when none is left out.
+    """
+    return [
+        slot
+        for slot in recorded
+        if slot is not None
+        and slot.minutes == slot_minutes
+        and slot.coverage >= MIN_SLOT_COVERAGE
+        and slot.soc_start_pct is not None
+        and slot.soc_end_pct is not None
+    ]
+
+
+def meter_contradiction(
+    window: RealizedWindow, slots: Sequence[RealizedSlot], residual: float | None
+) -> str | None:
+    """Return why a run's meters cannot be trusted, or ``None`` when they can.
+
+    Args:
+        window: The prepared run.
+        slots: The run's realized slots.
+        residual: Their unexplained energy, from :func:`unexplained_energy_kwh`.
+
+    Returns:
+        ``REASON_STORED_ENERGY_OUTSIDE_LIMITS`` when the stored energy leaves
+        the configured capacity by more than the tolerated share,
+        ``REASON_ENERGY_BALANCE_RESIDUAL`` when the meters leave too much
+        energy unexplained, else ``None``.
+    """
+    capacity = window.configured.max_stored_kwh - window.configured.min_stored_kwh
+    if window.capacity_drift_kwh > LIMIT_NOTE_SHARE * capacity:
+        return REASON_STORED_ENERGY_OUTSIDE_LIMITS
+    if residual is not None and residual > _residual_limit_kwh(window, slots):
+        return REASON_ENERGY_BALANCE_RESIDUAL
+    return None
+
+
 def _score_ev(
     slots: Sequence[PerformanceSlot],
     window: RealizedWindow,
@@ -216,15 +265,7 @@ def score_slots(
         raise ValueError("a run needs at least one slot")
     step = timedelta(minutes=slot_minutes)
     recorded = [slots.get(key) for key in keys]
-    usable = [
-        slot
-        for slot in recorded
-        if slot is not None
-        and slot.minutes == slot_minutes
-        and slot.coverage >= MIN_SLOT_COVERAGE
-        and slot.soc_start_pct is not None
-        and slot.soc_end_pct is not None
-    ]
+    usable = usable_slots(recorded, slot_minutes)
     observed = sum(
         min(slot.coverage_seconds, step.total_seconds())
         for slot in recorded
@@ -261,11 +302,9 @@ def score_slots(
         residual_kwh=residual,
         notes=window.notes,
     )
-    capacity = window.configured.max_stored_kwh - window.configured.min_stored_kwh
-    if window.capacity_drift_kwh > LIMIT_NOTE_SHARE * capacity:
-        return replace(measured, reason=REASON_STORED_ENERGY_OUTSIDE_LIMITS)
-    if residual is not None and residual > _residual_limit_kwh(window, realized):
-        return replace(measured, reason=REASON_ENERGY_BALANCE_RESIDUAL)
+    contradiction = meter_contradiction(window, realized, residual)
+    if contradiction is not None:
+        return replace(measured, reason=contradiction)
 
     score = score_window(window, time_limit_s=time_limit_s, breakdown=True)
     if score is None:

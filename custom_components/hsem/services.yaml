@@ -63,6 +63,150 @@ export_diagnostics:
     hsem_version, dump_timestamp, planner_input, planner_output, apply_result.
   fields: {}
 
+what_if:
+  name: What if
+  description: >-
+    Replay the recorded days with another battery and return what the change
+    would have been worth. For each day the cheapest possible run is solved
+    once with the configured battery and once with the scenario, over the same
+    load, PV and prices. Both costs are perfect-foresight bounds, so read the
+    difference as an estimate, not a promise. Read-only: nothing is written to
+    the inverter and the active plan is not touched. Response keys:
+    history_days, days_compared, days_skipped, skipped_reasons, current,
+    scenarios, days, note, duration_seconds.
+  fields:
+    history_days:
+      required: false
+      default: 30
+      selector:
+        number:
+          min: 1
+          max: 90
+          step: 1
+          unit_of_measurement: "days"
+          mode: box
+      description: >-
+        Completed days before today to replay. HSEM keeps at most 90
+        recorded days, and only days recorded after this service was
+        added. Default 30.
+    usable_capacity_kwh:
+      required: false
+      selector:
+        number:
+          min: 0.1
+          max: 10000
+          step: 0.1
+          unit_of_measurement: "kWh"
+          mode: box
+      description: >-
+        Usable capacity of the scenario battery, between the end-of-
+        discharge SoC and the charging cut-off SoC. Leave empty to keep
+        the configured capacity.
+    max_charge_power_w:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 1000000
+          step: 1
+          unit_of_measurement: "W"
+          mode: box
+      description: >-
+        Maximum charge power of the scenario battery. Leave empty to
+        keep the configured power.
+    max_discharge_power_w:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 1000000
+          step: 1
+          unit_of_measurement: "W"
+          mode: box
+      description: >-
+        Maximum discharge power of the scenario battery. Leave empty to
+        keep the configured power.
+    charge_efficiency_pct:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 0.1
+          unit_of_measurement: "%"
+          mode: box
+      description: >-
+        Charge efficiency of the scenario battery. Leave empty to keep
+        the configured efficiency.
+    discharge_efficiency_pct:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 0.1
+          unit_of_measurement: "%"
+          mode: box
+      description: >-
+        Discharge efficiency of the scenario battery. Leave empty to
+        keep the configured efficiency.
+    cycle_cost_per_kwh:
+      required: false
+      selector:
+        number:
+          min: 0
+          step: 0.001
+          mode: box
+      description: >-
+        Battery wear per kWh of throughput in the scenario, in the
+        currency of your prices. Leave empty to keep the cycle cost the
+        planner uses.
+    capacity_start_kwh:
+      required: false
+      selector:
+        number:
+          min: 0.1
+          max: 10000
+          step: 0.1
+          unit_of_measurement: "kWh"
+          mode: box
+      description: >-
+        First usable capacity of a range. Give start, end and step
+        together to get one result row per size, at most 10 sizes.
+    capacity_end_kwh:
+      required: false
+      selector:
+        number:
+          min: 0.1
+          max: 10000
+          step: 0.1
+          unit_of_measurement: "kWh"
+          mode: box
+      description: >-
+        Last usable capacity of the range.
+    capacity_step_kwh:
+      required: false
+      selector:
+        number:
+          min: 0.1
+          max: 10000
+          step: 0.1
+          unit_of_measurement: "kWh"
+          mode: box
+      description: >-
+        Distance between two capacities of the range.
+    capacity_price_per_kwh:
+      required: false
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
+      description: >-
+        Price of one kWh of usable capacity, in the currency of your
+        prices. When given, each row carries the investment for the
+        extra capacity and its payback time in years.
+
 ocpp_debug_start_charging:
   name: OCPP debug start charging
   description: >-

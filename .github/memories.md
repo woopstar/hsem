@@ -39,6 +39,7 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | `coordinator_meter_tracking.py`       | Feeds the daily, financial and savings trackers once per cycle, with or without a plan (issue #1267)                                               |
 | `coordinator_daily_plan.py`           | Plan side of the daily plan-vs-actual tracker: each slot's planned energy, once                                                                    |
 | `coordinator_performance.py`          | Performance record: per-cycle sample, hindsight evaluation as a background executor task (issue #1182)                                             |
+| `coordinator_what_if.py`              | `hsem.what_if` (issue #1432): copies completed days into the what-if history, runs the replay in the executor, single flight                       |
 | `entity_availability.py`              | Per-input unavailable/recovery transition tracking and logging                                                                                     |
 | `custom_sensors/block_observation.py` | Avg-sensor downtime tracking: heartbeat, unobserved intervals, `block_observed()` (issues #1101/#1110)                                             |
 
@@ -2913,6 +2914,19 @@ Tests: `tests/planner/test_battery_target_milp.py::TestPreferenceCost` (hand-com
 **Test harness:** `tests/conftest.py` replaces the cycle's `async_track_performance` with an `AsyncMock` for every test. Cycle tests run on a `MagicMock` Home Assistant, where the real function wrote `MagicMock/mock.config.config_dir/.../hsem_performance_history.json` into the working tree. Test the real function through `tests/test_coordinator_performance.py`.
 
 Tests: `tests/planner/test_hindsight_scoring.py`, `tests/models/test_performance_tracker.py`, `tests/utils/test_performance_scoring.py`, `tests/test_coordinator_performance.py`, `tests/custom_sensors/test_performance_sensors.py`.
+
+## `hsem.what_if` Replays Recorded Days With Another Battery (issue #1432)
+
+- The performance tracker keeps slots for 50 hours and only a score per day after that. A replay needs the slots, so `models/what_if_history.py` (`RecordedDay`, `WhatIfHistory`) keeps the meter readings of each complete local day for 90 days in `.storage/hsem_what_if_history.json`. `coordinator_what_if.async_record_days` fills it from the same `PerformanceRequest` that scores the day; it is saved only when a day is added.
+- `utils/what_if.py::run_what_if` is pure and blocking. Per day: `RecordedDay.performance_slots()` → `realized_slots` → `realized_window` → `meter_contradiction`, then `solve_hindsight_oracle` once for the configured battery and once per scenario. Never write a second simulator or a second load reconstruction for this.
+- A scenario is a `SiteLimits` derived from the configured one (`WhatIfScenario.site`). Usable capacity scales `rated_kwh`, the SoC limits stay.
+- Start and end energy are carried over counted from the end-of-discharge floor and capped at the scenario's capacity. Extra capacity starts each day empty.
+- Battery wear enters through `solve_hindsight_oracle(throughput_cost_per_kwh=...)`. `HindsightRun.cost` stays the grid cost; the what-if adds wear itself. Scores never pass a wear.
+- A day counts only when every scenario of the call solved, so all rows cover the same days.
+- Single flight is `coordinator._what_if_cancel` (a `threading.Event`, `None` when idle). Teardown sets it; the run checks it before each day.
+- The service lives in `services_what_if.py` and is read-only: no hardware write, no planner cycle, no tracker write.
+
+Tests: `tests/models/test_what_if_history.py`, `tests/utils/test_what_if.py`, `tests/test_coordinator_what_if.py`, `tests/test_services_what_if.py`.
 
 ## Battery Power Is Read Without the Phase Limiter Too (issue #1266)
 

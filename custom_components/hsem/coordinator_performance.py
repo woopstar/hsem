@@ -21,6 +21,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
+from custom_components.hsem.coordinator_what_if import async_record_days
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.performance_charger import ChargerSample
 from custom_components.hsem.models.performance_record import (
@@ -266,3 +267,7 @@ async def _async_evaluate(
         await persist_all_trackers(coordinator, only=["_performance_tracker"])
     except Exception as exc:
         async_log("error", "Performance tracker persistence failed: %s", exc)
+    try:
+        await async_record_days(coordinator, request)
+    except Exception as exc:
+        async_log("error", "Recording days for what-if failed: %s", exc)
