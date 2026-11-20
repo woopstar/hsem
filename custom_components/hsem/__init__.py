@@ -28,6 +28,12 @@ from custom_components.hsem.services import (
     async_register_services,
     async_unregister_services,
 )
+from custom_components.hsem.services_backup import (
+    async_apply_pending_import,
+    async_capture_learned_state,
+    async_stage_pending_import,
+    async_write_removal_backup,
+)
 from custom_components.hsem.utils.house_load import cfg_house_load_inputs
 from custom_components.hsem.utils.logger import (
     async_close_hsem_logger,
@@ -232,7 +238,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool
     Creates the shared :class:`HSEMDataUpdateCoordinator`, forwards platform
     setups, runs the first update cycle, runs the one-time device-split
     entity-registry migration, and adds an options update listener.
-    Services are registered once in ``async_setup``.
+    Services are registered in ``async_setup`` and again here, since a reload
+    passes through ``async_unload_entry``, which removes them.
 
     The first update cycle intentionally runs *after* platform setups are
     forwarded: it reads HSEM's own select/number/switch/time entities back
@@ -251,6 +258,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool
     # Initialise the HSEM dedicated log file (hsem.log in the config dir).
     await async_init_hsem_logger(hass)
 
+    # async_unload_entry removes the services, and async_setup only runs once
+    # per Home Assistant start, so a reload has to register them again. The
+    # call is a no-op for a service that is already registered.
+    await async_register_services(hass)
+
     # Create the shared DataUpdateCoordinator.
     coordinator = HSEMDataUpdateCoordinator(hass, entry)
 
@@ -261,6 +273,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool
         entity_gating=_entity_gating_snapshot(entry),
     )
 
+    # Read the learner state an import left behind before the sensors are
+    # added: the hourly average sensors take their samples from it (#1436).
+    await async_stage_pending_import(hass)
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Run the first update cycle now that HSEM's own entities exist.
@@ -269,6 +285,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool
     # One-time entity-registry migration for the device split (issue #875).
     # Gated internally so a second call is a no-op.
     await async_migrate_devices(hass, entry)
+
+    # Load the learner state an import left behind (issue #1436). Here, after
+    # the sensors restored their own state, so the imported state wins.
+    await async_apply_pending_import(hass, entry)
 
     # Add update listener for options.
     entry.async_on_unload(entry.add_update_listener(async_update_options))
@@ -280,6 +300,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool
 async def async_unload_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.debug("Unloading HSEM integration for %s", entry.entry_id)
+
+    # Keep the learner state for the backup async_remove_entry writes: the
+    # coordinator and the sensors are gone by then (issue #1436).
+    async_capture_learned_state(hass, entry)
 
     # Tear down the coordinator's timers before unloading platforms.
     coordinator: HSEMDataUpdateCoordinator | None = (
@@ -301,6 +325,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> boo
     await async_close_hsem_logger()
 
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: HSEMConfigEntry) -> None:
+    """Write a backup of the learned data when the config entry is deleted.
+
+    Home Assistant calls this after the entry is unloaded and removed. The
+    history files under ``.storage`` are left in place; the backup under
+    ``<config>/hsem_backups/`` is the copy that survives a manual clean-up
+    (issue #1436).
+    """
+    await async_write_removal_backup(hass, entry)
 
 
 async def async_update_options(hass: HomeAssistant, entry: HSEMConfigEntry) -> None:

@@ -735,3 +735,22 @@ async def test_nothing_is_backfilled_before_the_measurements_exist() -> None:
     assert sensor._measurements is None
     assert sensor._backfill_before is None
     assert statistics.calls == []
+
+
+def test_imported_samples_are_not_marked_as_backfilled() -> None:
+    """An import (issue #1436) replaces the window; the old marks go with it."""
+    sensor = _sensor(average=3)
+    sensor._measurements = {"2026-08-10": 1.0, "2026-08-11": 1.1}
+    sensor._backfilled = {"2026-08-10"}
+    imported = {"measurements": {"2026-08-10": 2.0, "2026-08-09": 1.9}}
+    hass = _hass()
+    hass.data.get.return_value = {sensor.backup_key: imported}
+    sensor.hass = hass
+
+    sensor._take_pending_import()
+
+    assert sensor._measurements == {
+        "2026-08-10": pytest.approx(2.0),
+        "2026-08-09": pytest.approx(1.9),
+    }
+    assert sensor.extra_state_attributes["backfilled_days"] == []

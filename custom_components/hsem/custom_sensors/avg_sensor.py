@@ -40,6 +40,7 @@ current day is never backfilled either.
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from datetime import datetime, time, timedelta
 from typing import Any, override
 
@@ -75,6 +76,7 @@ from custom_components.hsem.custom_sensors.consumption_backfill import (
 )
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMEntity
+from custom_components.hsem.utils.backup import PENDING_AVERAGES_KEY
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.ha_helpers import ha_get_entity_state_and_convert
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
@@ -280,6 +282,70 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
         date_part = date_str.split("T")[0] if "T" in date_str else date_str
         return datetime.strptime(date_part, "%Y-%m-%d").date().isoformat()
 
+    def _parse_measurements(self, raw: Mapping[str, Any]) -> dict[str, float]:
+        """Return the valid daily samples in *raw*, keyed by ISO date.
+
+        A non-finite/negative value persisted by a pre-fix version (e.g. a
+        misconfigured net-consumption utility meter) must not be replayed as
+        a valid sample after an upgrade/restart — see issue #938.
+        """
+        parsed_measurements: dict[str, float] = {}
+        for raw_date, raw_value in raw.items():
+            value = round(float(raw_value), 2)
+            if not math.isfinite(value) or value < 0.0:
+                _LOGGER.warning(
+                    "Discarding restored non-finite/negative measurement "
+                    "for entity_id=%s date=%s value=%s",
+                    self._tracked_entity,
+                    raw_date,
+                    value,
+                )
+                continue
+            parsed_measurements[self.parse_date(raw_date)] = value
+        return parsed_measurements
+
+    @property
+    def backup_key(self) -> str:
+        """Return the key of this sensor in a backup (issue #1436).
+
+        Built from the hour block and the window, not from the unique ID,
+        which holds the config entry ID and differs on another installation.
+        """
+        return f"{self._hour_start}_{self._hour_end}_{self._average}"
+
+    def export_measurements(self) -> dict[str, float]:
+        """Return a copy of the daily samples for a backup (issue #1436)."""
+        return dict(self._measurements or {})
+
+    def _take_pending_import(self) -> None:
+        """Replace the samples with those an import left for this sensor.
+
+        ``async_setup_entry`` puts the samples of a pending import in
+        ``hass.data`` before the platforms are set up (issue #1436). They are
+        taken here, after the restore, so they win over the restored samples
+        whenever this sensor happens to be created.
+        """
+        pending = self.hass.data.get(PENDING_AVERAGES_KEY)
+        if not isinstance(pending, dict):
+            return
+        state = pending.get(self.backup_key)
+        measurements = state.get("measurements") if isinstance(state, dict) else None
+        if not isinstance(measurements, dict):
+            return
+        try:
+            self._measurements = self._parse_measurements(measurements)
+        except TypeError, ValueError:
+            _LOGGER.exception(
+                "Could not load the imported samples of %s; the current ones are kept",
+                self.entity_id,
+            )
+            return
+        # Imported samples count as measured: the marks of the replaced
+        # window (issue #1433) do not describe them.
+        self._backfilled.clear()
+        # Taken: the setup reports the samples that are no longer waiting.
+        del pending[self.backup_key]
+
     @override
     async def async_added_to_hass(self) -> None:
         """Handle when sensor is added to Home Assistant."""
@@ -305,28 +371,11 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
             restored_measurements = old_state.attributes.get("measurements", None)
 
             if restored_measurements is not None:
-                # A non-finite/negative value persisted by a pre-fix version
-                # (e.g. a misconfigured net-consumption utility meter) must
-                # not be replayed as a valid sample after an upgrade/restart
-                # — see issue #938.
-                parsed_measurements: dict[str, float] = {}
-                for raw_date, raw_value in restored_measurements.items():
-                    value = round(float(raw_value), 2)
-                    if not math.isfinite(value) or value < 0.0:
-                        _LOGGER.warning(
-                            "Discarding restored non-finite/negative measurement "
-                            "for entity_id=%s date=%s value=%s",
-                            self._tracked_entity,
-                            raw_date,
-                            value,
-                        )
-                        continue
-                    parsed_measurements[self.parse_date(raw_date)] = value
-                self._measurements = parsed_measurements
+                self._measurements = self._parse_measurements(restored_measurements)
                 self._backfilled = {
                     day
                     for day in old_state.attributes.get("backfilled_days") or []
-                    if day in parsed_measurements
+                    if day in self._measurements
                 }
 
             restored_horizon = dt_util.parse_date(
@@ -336,6 +385,8 @@ class HSEMAvgSensor(RestoreEntity, SensorEntity, HSEMEntity):
                 self._backfill_before = restored_horizon.isoformat()
 
             self._last_updated = old_state.attributes.get("last_updated", None)
+
+        self._take_pending_import()
 
         # Register new timer — store unsub so it is cancelled on removal.
         self._unsub_callbacks.append(

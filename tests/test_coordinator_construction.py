@@ -91,6 +91,7 @@ class TestCoordinatorInit:
             "_solar_corrector",
             "_dynamic_floor",
             "_capacity_learner",
+            "_efficiency_learner",
             "_live_power_window",
             "_ev_delivered_energy_tracker",
             "_ev_second_delivered_energy_tracker",

@@ -61,7 +61,9 @@ def aware_datetime_from_iso(value: Any) -> datetime | None:
     return parsed
 
 
-def read_json_history_file(path: Path) -> dict[str, Any] | None:
+def read_json_history_file(
+    path: Path, *, max_bytes: int = _MAX_HISTORY_FILE_BYTES
+) -> dict[str, Any] | None:
     """Read and parse a bounded JSON history file from disk.
 
     Rejects symlinks and non-regular files via ``lstat`` (so a swapped-in
@@ -71,6 +73,7 @@ def read_json_history_file(path: Path) -> dict[str, Any] | None:
 
     Args:
         path: Path to the JSON history file.
+        max_bytes: Largest file size that is read.
 
     Returns:
         The parsed JSON object as a dict, or ``None`` if the file is
@@ -78,7 +81,7 @@ def read_json_history_file(path: Path) -> dict[str, Any] | None:
     """
     try:
         info = path.lstat()
-        if not stat.S_ISREG(info.st_mode) or info.st_size > _MAX_HISTORY_FILE_BYTES:
+        if not stat.S_ISREG(info.st_mode) or info.st_size > max_bytes:
             return None
         fd = os.open(path, os.O_RDONLY | _O_NOFOLLOW)
     except OSError:

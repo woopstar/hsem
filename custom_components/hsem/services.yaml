@@ -61,7 +61,59 @@ export_diagnostics:
     write status, and integration version — with all entity IDs redacted for
     safe sharing. Useful for debugging and issue reports. Response keys:
     hsem_version, dump_timestamp, planner_input, planner_output, apply_result.
+    With write_file the dump is also written to <config>/hsem_debug/ and a
+    notification gives the path and a link to a new GitHub issue prefilled
+    with the HSEM and Home Assistant versions only.
+  fields:
+    write_file:
+      required: false
+      default: false
+      selector:
+        boolean:
+      description: >-
+        Also write the redacted dump to <config>/hsem_debug/ and create a
+        notification with the file path and a prefilled issue link. The
+        response then also holds debug_file.
+
+export_data:
+  name: Export data
+  description: >-
+    Back up what HSEM has learned to one JSON file under
+    <config>/hsem_backups/: the prediction, financial, savings, daily and
+    performance history, the solar forecast correction, the forecast accuracy
+    tracker, the hourly consumption averages and the configuration. Secrets,
+    charge point IDs and certificate paths are redacted; certificates and keys
+    are never included. Entity IDs are kept, so do not post the file publicly.
+    Response key: backup_path.
   fields: {}
+
+import_data:
+  name: Import data
+  description: >-
+    Replace HSEM's learned data with a backup from <config>/hsem_backups/. The
+    file is validated first: an unknown format or a backup from a newer HSEM is
+    rejected and nothing changes. The current data is saved as
+    hsem_backup_<time>_before_import.json, then the history is replaced and
+    HSEM reloads. Response keys: imported_from, before_import_path,
+    history_files_restored, learned_state_restored, learned_state_pending,
+    configuration_restored, configuration_keys_skipped.
+  fields:
+    filename:
+      required: true
+      example: hsem_backup_20261120_143000.json
+      selector:
+        text:
+      description: >-
+        Name of the backup file in <config>/hsem_backups/, without a path.
+    restore_configuration:
+      required: false
+      default: false
+      selector:
+        boolean:
+      description: >-
+        Also restore the configuration options from the backup, entity IDs
+        included. Redacted values (secrets, charge point IDs, certificate
+        paths) cannot be restored and keep their current value.
 
 ocpp_debug_start_charging:
   name: OCPP debug start charging

@@ -128,6 +128,8 @@ class TestInitDailyTracker:
         midnight_action = track_time_change.call_args.args[1]
         midnight_action(_T0)
         create_task.assert_called_once()
+        # Kept so an import can wait for the save to finish (issue #1436).
+        assert tracker._midnight_task is create_task.return_value  # type: ignore[attr-defined]
         await create_task.call_args.args[0]
 
         saved = json.loads(Path(tracker.history_file).read_text(encoding="utf-8"))

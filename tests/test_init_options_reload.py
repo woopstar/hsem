@@ -224,6 +224,8 @@ async def test_update_without_runtime_data_is_noop(mock_hass: MagicMock) -> None
 async def test_setup_entry_snapshots_gating_flags() -> None:
     """async_setup_entry stores the gating values the platforms are set up with."""
     hass = MagicMock()
+    # No import is pending (issue #1436): the pending file reads as missing.
+    hass.async_add_executor_job = AsyncMock(return_value=None)
     hass.config_entries = MagicMock()
     hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
 
