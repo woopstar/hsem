@@ -9,7 +9,6 @@ Extracted to keep :mod:`coordinator` under the 30 KB / 1000-line limit.
 
 from __future__ import annotations
 
-import asyncio
 import math
 from datetime import date, datetime
 from pathlib import Path
@@ -33,7 +32,6 @@ from custom_components.hsem.utils.forecast_tracker import (
     compute_accumulated_energy,
 )
 from custom_components.hsem.utils.logger import async_log
-from custom_components.hsem.utils.persistence import read_json_history_file
 from custom_components.hsem.utils.prediction_tracker import (
     PredictionTracker,
     _action_label,
@@ -340,7 +338,7 @@ async def init_financial_tracker(
         financial_tracker.history_file = str(
             Path(config_dir) / ".storage" / "hsem_financial_history.json"
         )
-        await _load_financial_tracker(financial_tracker)
+        await financial_tracker.load_history()
         financial_tracker._initialized = True  # type: ignore[attr-defined]
     except Exception:
         async_log(
@@ -349,19 +347,6 @@ async def init_financial_tracker(
             "(financial sensors will be unavailable)",
         )
         financial_tracker._initialized = True  # type: ignore[attr-defined]
-
-
-async def _load_financial_tracker(tracker: FinancialTracker) -> None:
-    """Load financial tracker state from the JSON persistence file."""
-    path = Path(tracker.history_file)
-    if not path.exists():
-        return
-    try:
-        data = await asyncio.to_thread(read_json_history_file, path)
-        if data is not None:
-            tracker.restore_from(FinancialTracker.from_dict(data))
-    except Exception:
-        async_log("error", "Failed to load financial tracker history")
 
 
 async def accumulate_financials(

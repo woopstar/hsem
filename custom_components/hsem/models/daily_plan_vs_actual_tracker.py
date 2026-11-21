@@ -17,7 +17,8 @@ from custom_components.hsem.models.daily_metrics import DailyMetrics
 from custom_components.hsem.models.daily_record import DailyRecord
 from custom_components.hsem.models.day_rollover_result import DayRolloverResult
 from custom_components.hsem.utils.persistence import (
-    read_json_history_file,
+    async_load_history,
+    ensure_history_loaded,
     write_json_history_file,
 )
 
@@ -229,16 +230,14 @@ class DailyPlanVsActualTracker:
     async def load_history(self) -> None:
         """Load history from the JSON file, if it exists.
 
-        Handles corrupted files gracefully by starting with an empty history.
+        A corrupted file is moved aside and the history starts empty.
         """
-        path = Path(self.history_file)
-        if not path.exists():
+        if not self.history_file:
             return
+        await async_load_history(Path(self.history_file), self._restore)
 
-        data = await asyncio.to_thread(read_json_history_file, path)
-        if data is None:
-            return
-
+    def _restore(self, data: dict[str, Any]) -> None:
+        """Take over the days of a loaded history file."""
         days = data.get("days", [])
         if isinstance(days, list):
             self.history = [DailyRecord.from_dict(d) for d in days]
@@ -256,6 +255,9 @@ class DailyPlanVsActualTracker:
         Returns:
             ``True`` if the record was successfully persisted to disk.
         """
+        # A history that failed to load is loaded first, or the record
+        # would be lost when a later load replaces the list (issue #1446).
+        await ensure_history_loaded(self)
         self.history.append(record)
         self._prune_history()
 
