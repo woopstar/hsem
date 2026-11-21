@@ -372,7 +372,7 @@ async def _async_import(call: ServiceCall) -> dict[str, Any]:
             )
         )
         if restore_configuration:
-            check_configuration_version(payload, entry.version)
+            check_configuration_version(payload, entry.version, entry.minor_version)
     except BackupError as err:
         raise ServiceValidationError(str(err)) from err
 

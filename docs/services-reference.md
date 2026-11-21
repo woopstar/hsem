@@ -196,14 +196,19 @@ are redacted for safe sharing in issue reports.
 
 **Response:** A dict with the following structure:
 
-| Key              | Type   | Description                                                                                                                        |
-| ---------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `hsem_version`   | `str`  | HSEM version from `manifest.json`                                                                                                  |
-| `dump_timestamp` | `str`  | ISO-8601 timestamp of the dump                                                                                                     |
-| `planner_input`  | `dict` | Latest `PlannerInput` (redacted)                                                                                                   |
-| `planner_output` | `dict` | Latest `PlannerOutput` summary (redacted)                                                                                          |
-| `apply_result`   | `dict` | Latest hardware write status summary                                                                                               |
-| `ocpp_tls`       | `dict` | OCPP TLS mode, server certificate expiry, SANs, CA fingerprint and the CN-mismatch setting, or the setup error. Never key material |
+| Key                  | Type   | Description                                                                                                                        |
+| -------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `hsem_version`       | `str`  | HSEM version from `manifest.json`                                                                                                  |
+| `dump_timestamp`     | `str`  | ISO-8601 timestamp of the dump                                                                                                     |
+| `planner_input`      | `dict` | Latest `PlannerInput` (redacted)                                                                                                   |
+| `planner_output`     | `dict` | Latest `PlannerOutput` summary (redacted)                                                                                          |
+| `apply_result`       | `dict` | Latest hardware write status summary                                                                                               |
+| `ocpp_tls`           | `dict` | OCPP TLS mode, server certificate expiry, SANs, CA fingerprint and the CN-mismatch setting, or the setup error. Never key material |
+| `efficiency_learner` | `dict` | Battery efficiency learner: round-trip status, and status, sample count and power-step count per direction                         |
+| `energy_tracker`     | `dict` | Energy tracker: number of days held, first and last day                                                                            |
+| `price_history`      | `dict` | Price history: number of recorded slots, retention in days and the start of a running price outage                                 |
+
+The last three hold counts and status only, never the recorded series.
 
 With `write_file: true` the response also holds `debug_file`, the path of the
 written file.
@@ -508,21 +513,38 @@ another Home Assistant or kept before a reinstall.
 
 **File:** `<config>/hsem_backups/hsem_backup_<date>_<time>.json`
 
-| Key                | Description                                                                                   |
-| ------------------ | --------------------------------------------------------------------------------------------- |
-| `schema`           | Always `hsem_backup`                                                                          |
-| `schema_version`   | Version of the file layout, currently `1`                                                     |
-| `hsem_version`     | HSEM version that wrote the file                                                              |
-| `created`          | ISO-8601 timestamp                                                                            |
-| `reason`           | `manual`, `before_import` or `deleted`                                                        |
-| `history`          | The five history files from `.storage`: prediction, financial, savings, daily and performance |
-| `solar_corrector`  | The learned solar forecast correction, or `null`                                              |
-| `forecast_tracker` | The forecast accuracy records, or `null`                                                      |
-| `average_sensors`  | The daily samples of the hourly consumption averages, keyed `<hour_start>_<hour_end>_<days>`  |
-| `configuration`    | `entry_version`, `entry_minor_version`, and the config entry `data` and `options`, redacted   |
+| Key                | Description                                                                                    |
+| ------------------ | ---------------------------------------------------------------------------------------------- |
+| `schema`           | Always `hsem_backup`                                                                           |
+| `schema_version`   | Version of the file layout, currently `2`. Version `1` holds the first five history files only |
+| `hsem_version`     | HSEM version that wrote the file                                                               |
+| `created`          | ISO-8601 timestamp                                                                             |
+| `reason`           | `manual`, `before_import` or `deleted`                                                         |
+| `history`          | The nine history files from `.storage`, listed below                                           |
+| `solar_corrector`  | The learned solar forecast correction, or `null`                                               |
+| `forecast_tracker` | The forecast accuracy records, or `null`                                                       |
+| `average_sensors`  | The daily samples of the hourly consumption averages, keyed `<hour_start>_<hour_end>_<days>`   |
+| `configuration`    | `entry_version`, `entry_minor_version`, and the config entry `data` and `options`, redacted    |
 
-The last three learners live in the restore state of HSEM's sensors, not in a
-file. They are `null` only when HSEM has not run since Home Assistant started.
+The history files, by their key under `history`:
+
+| File                            | Holds                                             |
+| ------------------------------- | ------------------------------------------------- |
+| `hsem_prediction_history.json`  | Consumption prediction accuracy                   |
+| `hsem_financial_history.json`   | Daily cost and revenue                            |
+| `hsem_savings_history.json`     | Savings against the baseline                      |
+| `hsem_daily_history.json`       | Daily plan against actual                         |
+| `hsem_performance_history.json` | Planner performance scores                        |
+| `hsem_battery_efficiency.json`  | Learned battery efficiency (schema version 2)     |
+| `hsem_energy_history.json`      | Daily energy for the monthly KPIs (version 2)     |
+| `hsem_price_history.json`       | Recorded prices for the price profile (version 2) |
+| `hsem_what_if_history.json`     | Recorded days for `hsem.what_if` (version 2)      |
+
+A file is `null` when it does not exist yet.
+
+The solar corrector, the forecast tracker and the average sensors live in the
+restore state of HSEM's sensors, not in a file. They are `null` only when HSEM
+has not run since Home Assistant started.
 
 A backup never holds OCPP certificates, private keys or tokens. HSEM does not
 read the certificate files for a backup. Redacted in `configuration`: secrets,
@@ -579,7 +601,9 @@ Replaces the learned data with the contents of a backup file.
 3. The current data is saved as `hsem_backup_<date>_<time>_before_import.json`.
 4. HSEM is unloaded and the history files are replaced, all or nothing: if one
    file cannot be written, the others are put back. A history file that is
-   `null` in the backup is left as it is.
+   `null` in the backup is left as it is. So is a file the backup does not
+   name: a backup with `schema_version` `1` restores its five files and leaves
+   the battery efficiency, energy, price and what-if history untouched.
 5. HSEM starts again and loads the solar correction, the forecast accuracy
    records and the hourly averages from the backup. If the start fails and
    Home Assistant retries it later, they are loaded then.
@@ -601,9 +625,9 @@ that do not exist there show up as missing entities until you correct them in
 the options.
 
 The options are only restored when the backup was written with the same config
-entry version as the installed HSEM. Otherwise the call is rejected and nothing
-changes. Import again without `restore_configuration` to restore the learned
-data only.
+entry version as the installed HSEM, and a minor version that is not newer.
+Otherwise the call is rejected and nothing changes. Import again without
+`restore_configuration` to restore the learned data only.
 
 **Response:**
 

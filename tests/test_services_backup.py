@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable, Generator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -34,11 +34,24 @@ from custom_components.hsem import (
 )
 from custom_components.hsem.config_flow import HSEMConfigFlow
 from custom_components.hsem.const import DOMAIN
+from custom_components.hsem.coordinator_efficiency import init_efficiency_learner
+from custom_components.hsem.coordinator_energy import init_energy_tracker
 from custom_components.hsem.coordinator_lifecycle import CoordinatorLifecycleMixin
+from custom_components.hsem.coordinator_price_history import (
+    init_price_history_tracker,
+)
+from custom_components.hsem.coordinator_what_if import init_what_if_history
 from custom_components.hsem.custom_sensors.avg_sensor import HSEMAvgSensor
+from custom_components.hsem.models.energy_tracker import (
+    BatterySite,
+    EnergySample,
+    EnergyTracker,
+)
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.models.price_history_tracker import PriceHistoryTracker
 from custom_components.hsem.models.savings_tracker import SavingsTracker
+from custom_components.hsem.models.what_if_history import RecordedDay, WhatIfHistory
 from custom_components.hsem.services import (
     SCHEMA_EXPORT_DIAGNOSTICS,
     SERVICE_HANDLER_MAP,
@@ -52,6 +65,11 @@ from custom_components.hsem.services_backup import (
 )
 from custom_components.hsem.utils.backup import PENDING_IMPORT_FILE, BackupError
 from custom_components.hsem.utils.diagnostics import REDACTED
+from custom_components.hsem.utils.efficiency_learner import (
+    CHARGE,
+    DISCHARGE,
+    EfficiencyLearner,
+)
 from custom_components.hsem.utils.forecast_tracker import ForecastTracker
 from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
 
@@ -344,7 +362,7 @@ async def test_export_data_writes_one_versioned_file(
     assert result == {"backup_path": str(path)}
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["schema"] == "hsem_backup"
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
     assert payload["hsem_version"] == "7.1.0"
     assert payload["reason"] == "manual"
     assert payload["history"]["hsem_savings_history.json"][
@@ -838,6 +856,243 @@ async def test_restore_configuration_rejects_another_entry_version(
     # The same file still restores the learned data.
     result = await async_handle_import_data(_import_call(hass, exported))
     assert result["configuration_restored"] is False
+
+
+@pytest.mark.asyncio
+async def test_restore_configuration_rejects_a_newer_minor_version(
+    hass: MagicMock, home: _Home, entry: MagicMock, tmp_path: Path
+) -> None:
+    """Options written by a newer minor version are rejected; nothing changes."""
+    storage = tmp_path / ".storage"
+    await _save_savings(storage, 42.5)
+    entry.minor_version = 2
+    exported = await async_handle_export_data(_call(hass))
+    await _save_savings(storage, 1.0)
+    entry.minor_version = 1
+    options = dict(entry.options)
+    path = Path(exported["backup_path"])
+
+    with pytest.raises(
+        ServiceValidationError,
+        match=rf"version {entry.version}\.2; this HSEM uses version {entry.version}\.1",
+    ):
+        await async_handle_import_data(
+            _import_call(hass, exported, restore_configuration=True)
+        )
+
+    assert home.events == []
+    assert entry.options == options
+    hass.config_entries.async_update_entry.assert_not_called()
+    assert (await _load_savings(storage)).actual_savings == pytest.approx(1.0)
+    assert [p.name for p in (tmp_path / "hsem_backups").iterdir()] == [path.name]
+
+    # The same file still restores the learned data.
+    result = await async_handle_import_data(_import_call(hass, exported))
+    assert result["configuration_restored"] is False
+    assert (await _load_savings(storage)).actual_savings == pytest.approx(42.5)
+
+
+@pytest.mark.asyncio
+async def test_restore_configuration_accepts_an_older_minor_version(
+    hass: MagicMock, entry: MagicMock
+) -> None:
+    """Options written by an older minor version are restored."""
+    exported = await async_handle_export_data(_call(hass))
+    entry.minor_version = 2
+
+    result = await async_handle_import_data(
+        _import_call(hass, exported, restore_configuration=True)
+    )
+
+    assert result["configuration_restored"] is True
+
+
+NEWER_STORES = (
+    "hsem_battery_efficiency.json",
+    "hsem_energy_history.json",
+    "hsem_price_history.json",
+    "hsem_what_if_history.json",
+)
+
+
+class _NewerStores:
+    """The four stores added after the first backup layout (issue #1447)."""
+
+    def __init__(self) -> None:
+        self._efficiency_learner = EfficiencyLearner()
+        self._energy_tracker = EnergyTracker()
+        self._price_history_tracker = PriceHistoryTracker()
+        self._what_if_history = WhatIfHistory()
+
+    async def load(self, hass: MagicMock) -> _NewerStores:
+        """Load every store from ``.storage`` the way the coordinator does."""
+        await init_efficiency_learner(self._efficiency_learner, hass)
+        await init_energy_tracker(self._energy_tracker, hass)
+        await init_price_history_tracker(self._price_history_tracker, hass)
+        await init_what_if_history(self._what_if_history, hass)
+        return self
+
+    async def record_and_save(self) -> None:
+        """Feed every store real readings and persist it."""
+        learner = self._efficiency_learner
+        for step in range(8):
+            # 2.5 kW into a 10 kWh battery: 2 % SoC per 5 minutes.
+            learner.update(
+                NOW + timedelta(minutes=5 * step), 2500.0, 40.0 + 2.0 * step, 10.0
+            )
+        assert await learner.save_history()
+
+        energy = self._energy_tracker
+        for minutes, meter in ((0, 100.0), (5, 100.5)):
+            energy.accumulate(
+                EnergySample(
+                    at=NOW + timedelta(minutes=minutes),
+                    grid_import_energy_kwh=meter,
+                    house_power_w=6000.0,
+                ),
+                BatterySite(rated_capacity_kwh=10.0, usable_capacity_kwh=9.0),
+                max_gap_seconds=600.0,
+            )
+        assert await energy.save_history()
+
+        prices = self._price_history_tracker
+        for quarter in range(3):
+            prices.record(NOW + timedelta(minutes=15 * quarter), 15, 1.25, 0.5)
+        assert await prices.save_history()
+
+        what_if = self._what_if_history
+        what_if.add(
+            RecordedDay(
+                day="2026-11-19",
+                start=datetime(2026, 11, 19, tzinfo=UTC),
+                slot_minutes=60,
+                rated_kwh=10.0,
+                charge_efficiency=0.95,
+                discharge_efficiency=0.95,
+                soc_pct=(50.0, 60.0),
+                grid_import_kwh=(1.5,),
+                grid_export_kwh=(0.0,),
+                import_price=(1.25,),
+                export_price=(0.5,),
+                pv_kwh=(None,),
+            )
+        )
+        assert await what_if.save_history()
+
+
+@pytest.mark.asyncio
+async def test_backup_round_trips_the_newer_stores(
+    hass: MagicMock, tmp_path: Path
+) -> None:
+    """The efficiency, energy, price and what-if history are backed up and restored."""
+    storage = tmp_path / ".storage"
+    recorded = await _NewerStores().load(hass)
+    await recorded.record_and_save()
+    on_disk = {
+        name: json.loads((storage / name).read_text(encoding="utf-8"))
+        for name in NEWER_STORES
+    }
+
+    exported = await async_handle_export_data(_call(hass))
+
+    payload = json.loads(Path(exported["backup_path"]).read_text(encoding="utf-8"))
+    assert {name: payload["history"][name] for name in NEWER_STORES} == on_disk
+
+    # A reinstall: the files are gone.
+    for name in NEWER_STORES:
+        (storage / name).unlink()
+
+    result = await async_handle_import_data(_import_call(hass, exported))
+
+    assert result["history_files_restored"] == list(NEWER_STORES)
+    restored = await _NewerStores().load(hass)
+    learner = restored._efficiency_learner
+    assert learner.sample_count(CHARGE) == (
+        recorded._efficiency_learner.sample_count(CHARGE)
+    )
+    assert learner.sample_count(CHARGE) >= 1
+    assert learner.charge_efficiency_pct == pytest.approx(
+        recorded._efficiency_learner.charge_efficiency_pct
+    )
+    assert (
+        restored._energy_tracker.as_dict()["daily_log"]
+        == (on_disk["hsem_energy_history.json"]["daily_log"])
+    )
+    assert restored._energy_tracker.daily_log["2026-11-20"].grid_import_kwh == (
+        pytest.approx(0.5)
+    )
+    assert restored._price_history_tracker.sample_count == 3
+    assert (
+        restored._price_history_tracker.as_dict()["samples"]
+        == (on_disk["hsem_price_history.json"]["samples"])
+    )
+    assert restored._what_if_history.days == recorded._what_if_history.days
+
+
+@pytest.mark.asyncio
+async def test_export_diagnostics_summarises_the_learned_stores(
+    hass: MagicMock,
+) -> None:
+    """The dump holds counts and status of the stores, not their series."""
+    await (await _NewerStores().load(hass)).record_and_save()
+    stores = await _NewerStores().load(hass)
+    stores._price_history_tracker.mark_outage(NOW, active=True)
+    coordinator = _diagnostics_coordinator()
+    coordinator._efficiency_learner = stores._efficiency_learner
+    coordinator._energy_tracker = stores._energy_tracker
+    coordinator._price_history_tracker = stores._price_history_tracker
+
+    with patch.object(services_module, "_get_coordinator", return_value=coordinator):
+        result = await services_module.async_handle_export_diagnostics(
+            _call(hass, SCHEMA_EXPORT_DIAGNOSTICS({}))
+        )
+
+    samples = stores._efficiency_learner.sample_count(CHARGE)
+    assert samples >= 1
+    assert result["efficiency_learner"] == {
+        "loaded": True,
+        "round_trip_status": "learning",
+        "unsaved_measurements": False,
+        CHARGE: {"status": "learning", "samples": samples, "power_steps": 1},
+        DISCHARGE: {"status": "learning", "samples": 0, "power_steps": 0},
+    }
+    assert result["energy_tracker"] == {
+        "loaded": True,
+        "days": 1,
+        "first_day": "2026-11-20",
+        "last_day": "2026-11-20",
+    }
+    assert result["price_history"] == {
+        "loaded": True,
+        "samples": 3,
+        "retention_days": stores._price_history_tracker.retention_days,
+        "outage_since": NOW.isoformat(),
+    }
+
+
+@pytest.mark.asyncio
+async def test_export_diagnostics_before_the_stores_have_loaded(
+    hass: MagicMock,
+) -> None:
+    """Empty stores are summarised as such; a missing store is ``None``."""
+    coordinator = _diagnostics_coordinator()
+    coordinator._efficiency_learner = EfficiencyLearner()
+    coordinator._energy_tracker = EnergyTracker()
+
+    with patch.object(services_module, "_get_coordinator", return_value=coordinator):
+        result = await services_module.async_handle_export_diagnostics(
+            _call(hass, SCHEMA_EXPORT_DIAGNOSTICS({}))
+        )
+
+    assert result["efficiency_learner"]["loaded"] is False
+    assert result["efficiency_learner"][CHARGE]["samples"] == 0
+    assert result["energy_tracker"] == {
+        "loaded": False,
+        "days": 0,
+        "first_day": None,
+        "last_day": None,
+    }
+    assert result["price_history"] is None
 
 
 @pytest.mark.asyncio
