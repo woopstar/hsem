@@ -4,6 +4,9 @@ Runs once per cycle, right after the price populator:
 
 * The real price of every started slot the price sensors published is
   recorded, and what each sensor published is kept per side as *held* prices.
+* How far each side's published prices are from the price profile is kept
+  as that side's level shift, for an outage that outlasts the held prices
+  (issue #1452).
 * A side whose price sensor publishes nothing this cycle is in an outage.
   Its held prices are written to the slots they cover and the cause is
   reported through degraded mode.  The other side keeps its live prices.
@@ -196,6 +199,7 @@ def update_price_history(
     for side, prices in published.items():
         if prices:
             tracker.hold(side, prices)
+            tracker.anchor_level(side, prices, interval_minutes, now.tzinfo)
     if not outage:
         return PriceHistoryResult(coverage)
     if hours > PRICE_OUTAGE_MAX_HOURS:
