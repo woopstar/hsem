@@ -22,7 +22,6 @@ estimates never enter the store.
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -43,7 +42,6 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.utils.datetime_utils import utc_key
 from custom_components.hsem.utils.logger import async_log
-from custom_components.hsem.utils.persistence import read_json_history_file
 
 _HISTORY_FILE_NAME = "hsem_price_history.json"
 
@@ -59,7 +57,8 @@ async def init_price_history_tracker(
     """Point the tracker at its ``.storage`` file and load it.
 
     A missing or unreadable file leaves the tracker empty, which plans
-    exactly as a setup without a price history.
+    exactly as a setup without a price history.  An unreadable file is not
+    overwritten: the load is retried before each save (issue #1446).
 
     Args:
         tracker: The coordinator's price history tracker.
@@ -67,9 +66,7 @@ async def init_price_history_tracker(
     """
     path = Path(hass.config.config_dir) / ".storage" / _HISTORY_FILE_NAME
     tracker.history_file = str(path)
-    data = await asyncio.to_thread(read_json_history_file, path)
-    if data is not None:
-        tracker.restore_from(PriceHistoryTracker.from_dict(data))
+    await tracker.load_history()
 
 
 def price_source(cfg: SensorConfig, snapshot: StateSnapshot | None) -> dict[str, str]:

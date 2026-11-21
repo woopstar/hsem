@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from custom_components.hsem.utils.persistence import (
-    read_json_history_file,
+    async_load_history,
     write_json_history_file,
 )
 
@@ -180,7 +180,7 @@ def _parse_energy(raw: object) -> EfficiencyStep | None:
         samples = int(raw["samples"])
         measured_kwh = float(raw["measured_kwh"])
         stored_kwh = float(raw["stored_kwh"])
-    except KeyError, TypeError, ValueError:
+    except KeyError, TypeError, ValueError, OverflowError:
         return None
     if (
         not 0 < samples <= MAX_SAMPLES
@@ -513,9 +513,7 @@ class EfficiencyLearner:
         """Restore the learned steps from disk; a missing file is not an error."""
         if not self.history_file:
             return
-        data = await asyncio.to_thread(read_json_history_file, Path(self.history_file))
-        if data is not None:
-            self.restore(data)
+        await async_load_history(Path(self.history_file), self.restore)
 
     async def save_history(self) -> bool:
         """Persist the learned steps.  Return ``True`` when written."""

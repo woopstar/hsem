@@ -3044,12 +3044,28 @@ Tests: `tests/test_coordinator_meter_tracking.py` (forced periods, missed saving
 
 **Rules:**
 
-- A new history file is written with `write_json_history_file` and read with `read_json_history_file`. Do not add another `mkstemp` to the code base: `grep -rn mkstemp custom_components` must only find `utils/persistence.py`.
+- A new history file is written with `write_json_history_file` and restored with `async_load_history` (see the next section). Do not add another `mkstemp` to the code base: `grep -rn mkstemp custom_components` must only find `utils/persistence.py`.
 - The on-disk format did not change: financial, savings and daily history pass `indent=2`, the prediction and performance history are compact.
 - The directory is created inside the writer, in the thread. A directory that cannot be created is now a `False` from `save_history()` (logged by `persist_all_trackers`), where it used to raise out of the tracker.
 - Tests patch `tempfile.mkstemp` / `json.dump` / `os.replace` globally, so they keep working whichever module does the write.
 
 Tests: `tests/test_tracker_history_writers.py::TestOneSharedWriter`, `tests/utils/test_persistence.py::TestWriteJsonHistoryFile`.
+
+## A History File That Failed to Load Is Never Overwritten (issue #1446)
+
+`read_json_history_file` returned `None` for a missing file and for a failed read alike. A tracker then started empty with its path set, and the next save replaced the file.
+
+**Rules:**
+
+- A tracker restores its own file with `await async_load_history(Path(self.history_file), restore)` from `utils/persistence.py`. `restore` takes the parsed dict. Do not call `read_json_history_file` from a tracker: it is the read-only reader for the backup and the debug export.
+- Missing file: empty tracker, no warning.
+- `OSError` on stat, open or read: the file stays, the path goes into `_PENDING_LOADS`, and `write_json_history_file` returns `False` for it. `ensure_history_loaded(tracker)` retries `tracker.load_history()`; `persist_all_trackers` calls it before every save and skips the tracker silently while the file is still unreadable. `DailyPlanVsActualTracker._save_record_to_history` calls it before it appends.
+- Invalid JSON, not an object, not a regular file, too large, or a `restore` that raises: the file is moved to `<name>.corrupt-<UTC timestamp>` by `set_aside_history_file`, then a new one may be written. If the move fails the path is pending.
+- One warning per file, from `utils/persistence.py` through `HSEM_LOGGER`. The logger does not propagate, so tests patch `persistence._LOGGER.warning` instead of using `caplog`.
+- Every tracker in `TRACKER_REGISTRY` needs `history_file` and `load_history()` (the `Persistable` protocol). Guard `load_history()` with `if not self.history_file: return`: `Path("")` is the working directory.
+- A late successful load replaces the in-memory state with the file (`restore_from`), as a restart would.
+
+Tests: `tests/test_history_load_failure.py`.
 
 ## `utils/dynamic_floor.py` Split Into State and Bridge Arithmetic (issue #1274)
 

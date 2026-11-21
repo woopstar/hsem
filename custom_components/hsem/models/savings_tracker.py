@@ -16,7 +16,7 @@ from typing import Any
 
 from custom_components.hsem.models.savings_day import SavingsDay
 from custom_components.hsem.utils.persistence import (
-    read_json_history_file,
+    async_load_history,
     write_json_history_file,
 )
 
@@ -207,14 +207,12 @@ class SavingsTracker:
 
     async def load_history(self) -> None:
         """Load history from the JSON file, if it exists."""
-        path = Path(self.history_file)
-        if not path.exists():
+        if not self.history_file:
             return
+        await async_load_history(Path(self.history_file), self._restore)
 
-        data = await asyncio.to_thread(read_json_history_file, path)
-        if data is None:
-            return
-
+    def _restore(self, data: dict[str, Any]) -> None:
+        """Take over the totals and days of a loaded history file."""
         # Restore running totals.
         self.actual_savings = float(data.get("actual_savings", 0.0))
         self.missed_savings = float(data.get("missed_savings", 0.0))
