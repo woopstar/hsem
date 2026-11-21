@@ -17,7 +17,7 @@ Assistant; the debug export, which is meant to be posted, redacts them.
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +26,7 @@ from urllib.parse import urlencode
 
 from packaging.version import InvalidVersion, Version
 
+from custom_components.hsem.models.price_history_tracker import PriceHistoryTracker
 from custom_components.hsem.utils.diagnostics import REDACTED
 from custom_components.hsem.utils.persistence import (
     read_json_history_file,
@@ -67,6 +68,10 @@ HISTORY_FILES: tuple[str, ...] = (
     "hsem_price_history.json",
     "hsem_what_if_history.json",
 )
+
+#: The price history. It belongs to one price source, so an import skips it
+#: when the backup was recorded from another one.
+PRICE_HISTORY_FILE = "hsem_price_history.json"
 
 #: Learned state that is not a file: it lives in the restore state of HSEM's
 #: sensors. A backup carries each under its own key.
@@ -457,7 +462,41 @@ def learned_state(payload: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
-def write_history_files(storage_dir: Path, payload: Mapping[str, Any]) -> list[str]:
+def price_history_skip_reason(
+    payload: Mapping[str, Any], source: Mapping[str, str]
+) -> str | None:
+    """Return why the price history of a backup must not be imported.
+
+    The price history is bound to its price source: the first cycle after an
+    import drops a store recorded from other price sensors or units, and
+    saves the empty store. Importing such a file would only delete the local
+    price history, so it is skipped.
+
+    Args:
+        payload: A validated backup payload.
+        source: The price source HSEM runs with after the import:
+            ``import_entity``, ``export_entity``, ``import_unit`` and
+            ``export_unit``; an unknown value is an empty string.
+
+    Returns:
+        The reason, or ``None`` when the file can be imported or the backup
+        does not carry it.
+    """
+    content = payload["history"].get(PRICE_HISTORY_FILE)
+    if content is None:
+        return None
+    if not PriceHistoryTracker.from_dict(content).source_differs(source):
+        return None
+    return (
+        "The price history in the backup was recorded from other price "
+        "sensors or units than HSEM uses now. HSEM would discard it, so the "
+        "current price history was kept."
+    )
+
+
+def write_history_files(
+    storage_dir: Path, payload: Mapping[str, Any], skip: Collection[str] = ()
+) -> list[str]:
     """Replace the history files with those in a validated backup. Blocking.
 
     All or nothing: every file is first written next to its target, and the
@@ -471,6 +510,7 @@ def write_history_files(storage_dir: Path, payload: Mapping[str, Any]) -> list[s
     Args:
         storage_dir: ``<config>/.storage``.
         payload: A validated backup payload.
+        skip: Names of history files to leave as they are.
 
     Returns:
         The names of the history files that were written.
@@ -480,7 +520,9 @@ def write_history_files(storage_dir: Path, payload: Mapping[str, Any]) -> list[s
     """
     history = payload["history"]
     contents: dict[str, Mapping[str, Any]] = {
-        name: history[name] for name in HISTORY_FILES if history.get(name) is not None
+        name: history[name]
+        for name in HISTORY_FILES
+        if history.get(name) is not None and name not in skip
     }
     written = list(contents)
     learned = learned_state(payload)

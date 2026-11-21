@@ -542,6 +542,10 @@ The history files, by their key under `history`:
 
 A file is `null` when it does not exist yet.
 
+A backup reads the files from disk. HSEM saves the energy history at most
+every 120 seconds, so a backup can miss up to two minutes of it. The same
+holds for other stores between two saves.
+
 The solar corrector, the forecast tracker and the average sensors live in the
 restore state of HSEM's sensors, not in a file. They are `null` only when HSEM
 has not run since Home Assistant started.
@@ -608,6 +612,14 @@ Replaces the learned data with the contents of a backup file.
    records and the hourly averages from the backup. If the start fails and
    Home Assistant retries it later, they are loaded then.
 
+**Price history.** The price history belongs to the price sensors it was
+recorded from. When the backup's import or export price sensor, or its unit,
+differs from the one HSEM uses, HSEM would discard the imported prices on its
+next cycle. The import therefore leaves the current price history in place and
+lists the file under `history_files_skipped` with the reason. With
+`restore_configuration` the comparison uses the price sensors from the backup.
+All other files are imported as usual.
+
 Only one import runs at a time. A second call is rejected while one is
 running. If Home Assistant stops while the files are being replaced, HSEM puts
 the history from before the import back on its next start.
@@ -631,15 +643,16 @@ Otherwise the call is rejected and nothing changes. Import again without
 
 **Response:**
 
-| Key                          | Description                                 |
-| ---------------------------- | ------------------------------------------- |
-| `imported_from`              | The file name that was imported             |
-| `before_import_path`         | Path of the backup taken before the import  |
-| `history_files_restored`     | The history files that were replaced        |
-| `learned_state_restored`     | Learners loaded after the restart           |
-| `learned_state_pending`      | Learners that load when HSEM next starts    |
-| `configuration_restored`     | Whether the options were restored           |
-| `configuration_keys_skipped` | Options left unchanged because of redaction |
+| Key                          | Description                                           |
+| ---------------------------- | ----------------------------------------------------- |
+| `imported_from`              | The file name that was imported                       |
+| `before_import_path`         | Path of the backup taken before the import            |
+| `history_files_restored`     | The history files that were replaced                  |
+| `history_files_skipped`      | History files left as they were, each with the reason |
+| `learned_state_restored`     | Learners loaded after the restart                     |
+| `learned_state_pending`      | Learners that load when HSEM next starts              |
+| `configuration_restored`     | Whether the options were restored                     |
+| `configuration_keys_skipped` | Options left unchanged because of redaction           |
 
 **Example:**
 

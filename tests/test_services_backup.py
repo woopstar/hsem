@@ -33,7 +33,7 @@ from custom_components.hsem import (
     services_backup,
 )
 from custom_components.hsem.config_flow import HSEMConfigFlow
-from custom_components.hsem.const import DOMAIN
+from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
 from custom_components.hsem.coordinator_efficiency import init_efficiency_learner
 from custom_components.hsem.coordinator_energy import init_energy_tracker
 from custom_components.hsem.coordinator_lifecycle import CoordinatorLifecycleMixin
@@ -200,6 +200,9 @@ def hass(tmp_path: Path, entry: MagicMock) -> MagicMock:
     hass.config = MagicMock()
     hass.config.config_dir = str(tmp_path)
     (tmp_path / ".storage").mkdir()
+    # No price sensor reports a state, so no unit is known.
+    hass.states = MagicMock()
+    hass.states.get.return_value = None
 
     async def _executor(func: Callable[..., Any], *args: Any) -> Any:
         return func(*args)
@@ -503,6 +506,7 @@ async def test_import_data_replaces_history_and_reloads(
         "imported_from": Path(exported["backup_path"]).name,
         "before_import_path": str(before),
         "history_files_restored": ["hsem_savings_history.json"],
+        "history_files_skipped": {},
         "learned_state_restored": ["forecast_tracker", "solar_corrector"],
         "learned_state_pending": [],
         "configuration_restored": False,
@@ -915,6 +919,18 @@ NEWER_STORES = (
 )
 
 
+IMPORT_PRICE_KEY = "hsem_import_electricity_price_sensor"
+EXPORT_PRICE_KEY = "hsem_export_electricity_price_sensor"
+
+#: The price source of an HSEM that runs with the default price sensors.
+PRICE_SOURCE = {
+    "import_entity": DEFAULT_CONFIG_VALUES[IMPORT_PRICE_KEY],
+    "export_entity": DEFAULT_CONFIG_VALUES[EXPORT_PRICE_KEY],
+    "import_unit": "DKK/kWh",
+    "export_unit": "DKK/kWh",
+}
+
+
 class _NewerStores:
     """The four stores added after the first backup layout (issue #1447)."""
 
@@ -956,6 +972,7 @@ class _NewerStores:
         assert await energy.save_history()
 
         prices = self._price_history_tracker
+        prices.set_source(PRICE_SOURCE)
         for quarter in range(3):
             prices.record(NOW + timedelta(minutes=15 * quarter), 15, 1.25, 0.5)
         assert await prices.save_history()
@@ -1005,6 +1022,7 @@ async def test_backup_round_trips_the_newer_stores(
     result = await async_handle_import_data(_import_call(hass, exported))
 
     assert result["history_files_restored"] == list(NEWER_STORES)
+    assert result["history_files_skipped"] == {}
     restored = await _NewerStores().load(hass)
     learner = restored._efficiency_learner
     assert learner.sample_count(CHARGE) == (
@@ -1027,6 +1045,108 @@ async def test_backup_round_trips_the_newer_stores(
         == (on_disk["hsem_price_history.json"]["samples"])
     )
     assert restored._what_if_history.days == recorded._what_if_history.days
+
+
+async def _export_with_price_source(
+    hass: MagicMock, **source: str
+) -> tuple[dict[str, Any], bytes]:
+    """Export the newer stores, then make the backup's price source *source*.
+
+    Returns the export result and the local price history file as it is on
+    disk, which holds one slot more than the backup.
+    """
+    stores = await _NewerStores().load(hass)
+    await stores.record_and_save()
+    exported = await async_handle_export_data(_call(hass))
+    path = Path(exported["backup_path"])
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["history"]["hsem_price_history.json"]["source"].update(source)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    stores._price_history_tracker.record(NOW + timedelta(hours=1), 15, 2.0, 1.0)
+    assert await stores._price_history_tracker.save_history()
+    local = Path(stores._price_history_tracker.history_file).read_bytes()
+    return exported, local
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "source",
+    [
+        {"import_entity": "sensor.other_import_price"},
+        {"export_entity": "sensor.other_export_price"},
+        {"import_unit": "EUR/kWh"},
+    ],
+)
+async def test_import_skips_a_price_history_from_another_price_source(
+    hass: MagicMock, tmp_path: Path, source: dict[str, str]
+) -> None:
+    """Another price sensor or unit: the local price history is kept."""
+    hass.states.get.return_value = SimpleNamespace(
+        attributes={"unit_of_measurement": " DKK/kWh "}
+    )
+    exported, local = await _export_with_price_source(hass, **source)
+
+    result = await async_handle_import_data(_import_call(hass, exported))
+
+    assert result["history_files_restored"] == [
+        name for name in NEWER_STORES if name != "hsem_price_history.json"
+    ]
+    assert list(result["history_files_skipped"]) == ["hsem_price_history.json"]
+    assert (
+        "other price sensors or units"
+        in (result["history_files_skipped"]["hsem_price_history.json"])
+    )
+    price_file = tmp_path / ".storage" / "hsem_price_history.json"
+    assert price_file.read_bytes() == local
+    # The store HSEM loads still holds the local prices, bound to its source.
+    restored = await _NewerStores().load(hass)
+    assert restored._price_history_tracker.sample_count == 4
+    assert restored._price_history_tracker.set_source(PRICE_SOURCE) is False
+
+
+@pytest.mark.asyncio
+async def test_import_restores_a_price_history_with_the_same_units(
+    hass: MagicMock,
+) -> None:
+    """The same sensors and units: the price history is replaced."""
+    hass.states.get.return_value = SimpleNamespace(
+        attributes={"unit_of_measurement": "DKK/kWh"}
+    )
+    exported, _local = await _export_with_price_source(hass)
+
+    result = await async_handle_import_data(_import_call(hass, exported))
+
+    assert result["history_files_restored"] == list(NEWER_STORES)
+    assert result["history_files_skipped"] == {}
+    restored = await _NewerStores().load(hass)
+    assert restored._price_history_tracker.sample_count == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("restore_configuration", [True, False])
+async def test_price_history_is_compared_with_the_restored_price_sensors(
+    hass: MagicMock, entry: MagicMock, restore_configuration: bool
+) -> None:
+    """With restore_configuration the backup's own price sensors count."""
+    current = dict(entry.options)
+    entry.options = {**current, IMPORT_PRICE_KEY: "sensor.old_home_price"}
+    exported, _local = await _export_with_price_source(
+        hass, import_entity="sensor.old_home_price"
+    )
+    entry.options = current
+
+    result = await async_handle_import_data(
+        _import_call(hass, exported, restore_configuration=restore_configuration)
+    )
+
+    restored = "hsem_price_history.json" in result["history_files_restored"]
+    assert restored is restore_configuration
+    assert bool(result["history_files_skipped"]) is not restore_configuration
+    stores = await _NewerStores().load(hass)
+    assert stores._price_history_tracker.sample_count == (
+        3 if restore_configuration else 4
+    )
 
 
 @pytest.mark.asyncio

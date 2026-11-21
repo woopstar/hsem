@@ -129,11 +129,7 @@ class PriceHistoryTracker:
             ``True`` when the stored prices were dropped.
         """
         new = {key: str(source.get(key) or "") for key in _SOURCE_KEYS}
-        changed = any(
-            self.source.get(key, "") != new[key]
-            and (key.endswith("_entity") or (self.source.get(key) and new[key]))
-            for key in _SOURCE_KEYS
-        )
+        changed = self.source_differs(source)
         had_data = bool(self._samples or self._held_import or self._held_export)
         merged = {
             key: new[key] or ("" if changed else self.source.get(key, ""))
@@ -150,6 +146,23 @@ class PriceHistoryTracker:
         self.outage_since = None
         self._profile_cache = None
         return True
+
+    def source_differs(self, source: Mapping[str, str]) -> bool:
+        """Return whether *source* is another price source than the stored one.
+
+        The rule of :meth:`set_source`: a changed entity always counts, a unit
+        only when both the stored and the new unit are known.
+
+        Args:
+            source: ``import_entity``, ``export_entity``, ``import_unit`` and
+                ``export_unit``; an unknown value is an empty string.
+        """
+        new = {key: str(source.get(key) or "") for key in _SOURCE_KEYS}
+        return any(
+            self.source.get(key, "") != new[key]
+            and (key.endswith("_entity") or bool(self.source.get(key) and new[key]))
+            for key in _SOURCE_KEYS
+        )
 
     def record(
         self,

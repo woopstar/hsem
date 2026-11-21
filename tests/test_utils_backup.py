@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
+from custom_components.hsem.models.price_history_tracker import PriceHistoryTracker
 from custom_components.hsem.utils import backup
 from custom_components.hsem.utils.backup import (
     BACKUP_SCHEMA,
@@ -26,6 +27,7 @@ from custom_components.hsem.utils.backup import (
     build_backup_payload,
     build_issue_url,
     check_configuration_version,
+    price_history_skip_reason,
     read_backup_file,
     read_history_files,
     read_pending_import,
@@ -520,6 +522,43 @@ def test_a_schema_version_1_backup_still_imports(tmp_path: Path) -> None:
     }
     for name in NEW_IN_SCHEMA_2:
         assert json.loads((tmp_path / name).read_text()) == {"kept": True}
+
+
+def test_write_history_files_leaves_a_skipped_file(tmp_path: Path) -> None:
+    """A skipped history file is neither written nor reported."""
+    (tmp_path / "hsem_savings_history.json").write_text('{"kept": 1}', "utf-8")
+    payload = _payload()
+    payload["history"]["hsem_daily_history.json"] = {"days": []}
+
+    written = write_history_files(tmp_path, payload, ("hsem_savings_history.json",))
+
+    assert written == ["hsem_daily_history.json"]
+    assert json.loads((tmp_path / "hsem_savings_history.json").read_text()) == {
+        "kept": 1
+    }
+
+
+def test_price_history_skip_reason() -> None:
+    """Only a price history from another source is skipped."""
+    source = {"import_entity": "sensor.import", "export_entity": "sensor.export"}
+    tracker = PriceHistoryTracker()
+    tracker.set_source(source)
+    tracker.record(CREATED, 15, 1.25, 0.5)
+    payload = _payload()
+
+    assert price_history_skip_reason(payload, source) is None
+
+    payload["history"]["hsem_price_history.json"] = tracker.as_dict()
+    assert price_history_skip_reason(payload, source) is None
+    assert price_history_skip_reason(payload, {**source, "import_unit": "DKK"}) is None
+    reason = price_history_skip_reason(
+        payload, {**source, "import_entity": "sensor.other"}
+    )
+    assert reason is not None and "current price history was kept" in reason
+
+    # A price history of another schema version loads empty: skip it too.
+    payload["history"]["hsem_price_history.json"] = {"version": -1}
+    assert price_history_skip_reason(payload, source) is not None
 
 
 @pytest.mark.parametrize("name", NEW_IN_SCHEMA_2)
