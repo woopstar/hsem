@@ -949,7 +949,10 @@ fills before PV is exported. Real export-price differences still decide.
 `score_plan` mirrors it as `PlanCostBreakdown.charge_timing_bias` (score only)
 through `cost_helpers.charge_timing_rate` / `charge_timing_cost`. Do not move
 the term to `ge` or `m`: a zero export price would leave the cycle-cost
-discount unopposed.
+discount unopposed. The term applies **only in slots with PV above the house
+load** (`cost_helpers.pv_above_house_load_kwh`, issue #1439). On a slot
+without PV surplus it is a plain cost on a grid charge and removed profitable
+winter night charges in 7.1.0. Never apply it to every `ec[t]` again.
 
 **Never reintroduce a per-slot terminal premium (issues #1118, #1138).** The
 old term was `max(0, R − p_imp[t])` on discharge (#638/#655) with a charge

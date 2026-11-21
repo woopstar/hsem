@@ -82,6 +82,7 @@ from custom_components.hsem.planner.cost_helpers import (
     _resolve_cycle_cost,
     charge_timing_cost,
     charge_timing_rate,
+    pv_above_house_load_kwh,
     terminal_soc_value,
 )
 from custom_components.hsem.planner.cost_types import (  # noqa: F401
@@ -354,9 +355,13 @@ def score_plan(
             cycle_cost_total_disc += cycle * discount
 
         # 4b. Charge-timing term (selector-only, issue #1420): zero for an
-        #     undiscounted slot, so it never applies without a discount.
+        #     undiscounted slot, so it never applies without a discount, and
+        #     zero without PV above the house load (issue #1439).
         charge_timing_total += charge_timing_cost(
-            slot.batteries_charged_kwh, timing_rate, discount
+            slot.batteries_charged_kwh,
+            timing_rate,
+            discount,
+            pv_above_house_load_kwh(slot),
         )
 
         # 5. SoC guard penalties (quadratic in the violation magnitude).

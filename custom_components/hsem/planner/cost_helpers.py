@@ -332,19 +332,49 @@ def charge_timing_rate(cycle_cost_per_kwh: float, max_export_price: float) -> fl
     )
 
 
-def charge_timing_cost(charged_kwh: float, rate: float, discount: float) -> float:
+def pv_above_house_load_kwh(slot: PlannedSlot) -> float:
+    """Return the slot's PV forecast above its house load in kWh, never negative.
+
+    The charge-timing term applies only where this is positive (issue #1439).
+    The MILP objective and
+    :func:`~custom_components.hsem.planner.cost_function.score_plan` both read
+    it from the slot's input fields, so they gate the term on the same slots.
+
+    Args:
+        slot: A planner slot with its PV and house-load forecast populated.
+
+    Returns:
+        ``solcast_pv_estimate_kwh − avg_house_consumption_kwh``, floored at 0.
+    """
+    return max(slot.solcast_pv_estimate_kwh - slot.avg_house_consumption_kwh, 0.0)
+
+
+def charge_timing_cost(
+    charged_kwh: float, rate: float, discount: float, pv_surplus_kwh: float
+) -> float:
     """Return the charge-timing term for a DC charge flow (issue #1420).
 
     The MILP builds its ``ec`` objective coefficient from a unit flow and
     :func:`~custom_components.hsem.planner.cost_function.score_plan` sums this
     over each slot's charge, so both apply the same term.
 
+    The term orders PV charges against PV exports, so it applies only in a
+    slot whose PV exceeds the house load.  In any other slot a charge is a
+    grid charge; there the term has nothing to order and would only tax the
+    charge by ``κ × (1 − d^t)``, which removed profitable night charges from
+    the plan (issue #1439).
+
     Args:
         charged_kwh: DC energy stored in the slot (kWh).
         rate: ``κ`` from :func:`charge_timing_rate`.
         discount: The slot's time discount ``d^t``; ``1.0`` disables the term.
+        pv_surplus_kwh: The slot's PV above its house load, from
+            :func:`pv_above_house_load_kwh`.
 
     Returns:
-        The term in currency; ``0.0`` for an undiscounted slot.
+        The term in currency; ``0.0`` for an undiscounted slot and for a slot
+        without PV surplus.
     """
+    if pv_surplus_kwh <= 1e-9:
+        return 0.0
     return charged_kwh * rate * (1.0 - discount)

@@ -13,6 +13,7 @@ import numpy as np
 from custom_components.hsem.planner.cost_helpers import (
     charge_timing_cost,
     charge_timing_rate,
+    pv_above_house_load_kwh,
     terminal_soc_value,
 )
 from custom_components.hsem.utils.units import hours_ahead
@@ -134,17 +135,18 @@ def _build_objective(
     use_discount = time_discount_rate < 1.0 - 1e-9
 
     # Charge-timing term (issue #1420): cancels the discount's preference for
-    # exporting PV now and charging from forecast PV later.  Shared with
-    # score_plan via charge_timing_cost.
+    # exporting PV now and charging from forecast PV later.  Only in slots
+    # with PV above the house load, so a grid charge is not taxed (issue
+    # #1439).  Shared with score_plan via charge_timing_cost.
     timing_rate = charge_timing_rate(
         cycle_cost_per_kwh, float(np.max(p_exp_net)) if m > 0 else 0.0
     )
 
     for t in range(m):
         discount = 1.0
+        slot = slots[future_idx[t]]
         if use_discount:
             # Compute hours from now for this slot's midpoint
-            slot = slots[future_idx[t]]
             slot_mid = slot.start + (slot.end - slot.start) / 2
             ha = hours_ahead(now, slot_mid)
             discount = time_discount_rate**ha
@@ -162,7 +164,9 @@ def _build_objective(
         # curt[t] has zero objective cost (curtailment is free)
 
         c_obj[ec_off + t] += terminal_charge_coef
-        c_obj[ec_off + t] += charge_timing_cost(1.0, timing_rate, discount)
+        c_obj[ec_off + t] += charge_timing_cost(
+            1.0, timing_rate, discount, pv_above_house_load_kwh(slot)
+        )
         c_obj[ed_off + t] += terminal_discharge_coef
 
         # Penalty costs: high enough that penalties are zero when SoC is
