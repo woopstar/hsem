@@ -27,8 +27,15 @@ from typing import Any, cast
 import homeassistant.util.dt as dt_util
 from homeassistant.const import STATE_UNKNOWN
 
+from custom_components.hsem.models.energy_tracker import EnergyTracker
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.models.price_history_tracker import PriceHistoryTracker
+from custom_components.hsem.utils.efficiency_learner import (
+    CHARGE,
+    DISCHARGE,
+    EfficiencyLearner,
+)
 
 # ---------------------------------------------------------------------------
 # Redaction helpers
@@ -357,6 +364,90 @@ def _planner_output_summary(output: PlannerOutput) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Learned store summaries
+# ---------------------------------------------------------------------------
+
+
+def _efficiency_learner_summary(learner: EfficiencyLearner) -> dict[str, Any]:
+    """Summarise the battery efficiency learner: status and sample counts."""
+    return {
+        "loaded": bool(learner.history_file),
+        "round_trip_status": learner.round_trip_status,
+        "unsaved_measurements": learner.dirty,
+        **{
+            direction: {
+                "status": learner.status(direction),
+                "samples": learner.sample_count(direction),
+                "power_steps": len(steps),
+            }
+            for direction, steps in (
+                (CHARGE, learner.charge),
+                (DISCHARGE, learner.discharge),
+            )
+        },
+    }
+
+
+def _energy_tracker_summary(tracker: EnergyTracker) -> dict[str, Any]:
+    """Summarise the energy tracker: how many days it holds and which."""
+    days = sorted(tracker.daily_log)
+    return {
+        "loaded": bool(tracker.history_file),
+        "days": len(days),
+        "first_day": days[0] if days else None,
+        "last_day": days[-1] if days else None,
+    }
+
+
+def _price_history_summary(tracker: PriceHistoryTracker) -> dict[str, Any]:
+    """Summarise the price history: slot count and outage state.
+
+    The price source is left out: it holds entity IDs.
+    """
+    return {
+        "loaded": bool(tracker.history_file),
+        "samples": tracker.sample_count,
+        "retention_days": tracker.retention_days,
+        "outage_since": tracker.outage_since,
+    }
+
+
+def summarise_learned_stores(coordinator: Any) -> dict[str, Any]:
+    """Summarise the learned stores of a coordinator (issue #1447).
+
+    Counts and status only, no raw series, so the result is small and safe
+    to post. A store the coordinator does not hold is ``None``.
+
+    Args:
+        coordinator: The HSEM coordinator.
+
+    Returns:
+        ``efficiency_learner``, ``energy_tracker`` and ``price_history``, for
+        the ``learned_stores`` argument of :func:`build_diagnostics_dump`.
+    """
+    learner = getattr(coordinator, "_efficiency_learner", None)
+    energy = getattr(coordinator, "_energy_tracker", None)
+    prices = getattr(coordinator, "_price_history_tracker", None)
+    return {
+        "efficiency_learner": (
+            _efficiency_learner_summary(learner)
+            if isinstance(learner, EfficiencyLearner)
+            else None
+        ),
+        "energy_tracker": (
+            _energy_tracker_summary(energy)
+            if isinstance(energy, EnergyTracker)
+            else None
+        ),
+        "price_history": (
+            _price_history_summary(prices)
+            if isinstance(prices, PriceHistoryTracker)
+            else None
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -368,6 +459,7 @@ def build_diagnostics_dump(
     *,
     integration_version: str | None = None,
     ocpp_tls: dict[str, Any] | None = None,
+    learned_stores: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a complete, safe diagnostics dump for one HSEM planning cycle.
 
@@ -389,6 +481,9 @@ def build_diagnostics_dump(
         ocpp_tls: Optional OCPP TLS facts (mode, certificate expiry, SANs,
             CA fingerprint, or the setup error) added as ``ocpp_tls``
             (issue #1341). Never holds key material.
+        learned_stores: Optional result of :func:`summarise_learned_stores`,
+            added as ``efficiency_learner``, ``energy_tracker`` and
+            ``price_history`` (issue #1447).
 
     Returns:
         A JSON-safe dictionary with keys ``hsem_version``, ``dump_timestamp``,
@@ -412,6 +507,8 @@ def build_diagnostics_dump(
     # attribute.
     if isinstance(ocpp_tls, dict):
         dump["ocpp_tls"] = ocpp_tls
+    if isinstance(learned_stores, dict):
+        dump.update(learned_stores)
 
     # Serialise the whole dump, not just the input: the planner output and the
     # apply summary carry SciPy scalars too, and a caller that hits one gets a
