@@ -18,15 +18,17 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Hashable, Iterable
+from datetime import datetime
 from statistics import median
 from typing import cast
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.price_profile import (
-    PROFILE_MIN_ANCHOR_MINUTES,
+    LevelShift,
     PricePair,
     PriceProfile,
+    median_shift,
 )
 from custom_components.hsem.models.time_series import SlotMeta, TimeSeriesIndex
 from custom_components.hsem.planner.slot_population import index_by_hour
@@ -94,37 +96,15 @@ def _estimate_missing_price(
 _Estimator = Callable[[SlotMeta], float | None]
 
 
-def _anchor_offset(
-    known: list[float | None],
-    profile_side: list[float | None],
-    interval_minutes: int,
-) -> float | None:
-    """Return the shift that moves the profile to the published price level.
-
-    The profile is a median of up to eight weeks, so its absolute level can
-    be far from today's.  Its shape is still useful.  The shift is the median
-    difference between the published prices and the profile on the slots
-    that have both, so the profile is read relative to the prices that are
-    known now (issue #1434).
+def _in_time(start: datetime, until: datetime) -> bool:
+    """Return whether a slot starts early enough to use a level shift.
 
     Args:
-        known: Published price per slot, ``None`` where it is missing.
-        profile_side: Profile price per slot, ``None`` where it has none.
-        interval_minutes: Slot width in minutes.
-
-    Returns:
-        The shift to add to a profile price, or ``None`` when fewer than
-        :data:`PROFILE_MIN_ANCHOR_MINUTES` of published prices overlap the
-        profile.
+        start: Slot start.  A start without a timezone has no place on the
+            shift's time axis and never qualifies.
+        until: Start of the first slot that is too late for the shift.
     """
-    differences = [
-        price - shape
-        for price, shape in zip(known, profile_side)
-        if price is not None and shape is not None
-    ]
-    if len(differences) * interval_minutes < PROFILE_MIN_ANCHOR_MINUTES:
-        return None
-    return median(differences)
+    return start.tzinfo is not None and start < until
 
 
 def _fill_side(
@@ -133,6 +113,7 @@ def _fill_side(
     estimate: _Estimator,
     profile_side: list[float | None] | None,
     interval_minutes: int,
+    last_level: LevelShift | None = None,
 ) -> list[float]:
     """Return one side's price for every slot, estimating the missing ones.
 
@@ -141,14 +122,16 @@ def _fill_side(
     1. The profile shifted to the published level, when enough published
        prices overlap the profile to derive the shift.
     2. The nearest earlier day in the payload (*estimate*).
-    3. The profile as recorded, when there is no published level to shift it
-       to (a price outage).
-    4. With a profile: the median of the published prices, or of the prices
+    3. The profile shifted by *last_level*, the shift of the last cycle that
+       had published prices, for a slot that starts before that shift is too
+       old (a price outage that outlasted the held prices, issue #1452).
+    4. The profile as recorded.
+    5. With a profile: the median of the published prices, or of the prices
        filled so far, so a slot the profile does not know is not priced
        ``0.0`` next to real prices.
-    5. ``0.0``.
+    6. ``0.0``.
 
-    Without a profile only steps 2 and 5 apply, which is the behaviour
+    Without a profile only steps 2 and 6 apply, which is the behaviour
     before issue #1434.
 
     Args:
@@ -157,6 +140,8 @@ def _fill_side(
         estimate: Nearest-earlier-day estimate for a slot.
         profile_side: Profile price per slot, or ``None`` without a profile.
         interval_minutes: Slot width in minutes.
+        last_level: This side's last known level shift and the start of the
+            first slot that is too late to use it, or ``None``.
 
     Returns:
         The price of every slot.
@@ -165,7 +150,7 @@ def _fill_side(
         return [cast("float", price) for price in known]
     filled: list[float | None] = list(known)
     offset = (
-        _anchor_offset(known, profile_side, interval_minutes)
+        median_shift(known, profile_side, interval_minutes)
         if profile_side is not None
         else None
     )
@@ -177,6 +162,13 @@ def _fill_side(
             filled[index] = shape + offset
             continue
         value = estimate(meta)
+        if (
+            value is None
+            and shape is not None
+            and last_level is not None
+            and _in_time(meta.start, last_level[1])
+        ):
+            shape += last_level[0]
         filled[index] = shape if value is None else value
     if profile_side is not None and any(price is None for price in filled):
         published = [price for price in known if price is not None]
@@ -217,8 +209,22 @@ def _write_prices(
         ]
         import_shape = [None if pair is None else pair[0] for pair in pairs]
         export_shape = [None if pair is None else pair[1] for pair in pairs]
-    import_prices = _fill_side(imports, tsi.slots, estimate_import, import_shape, step)
-    export_prices = _fill_side(exports, tsi.slots, estimate_export, export_shape, step)
+    import_prices = _fill_side(
+        imports,
+        tsi.slots,
+        estimate_import,
+        import_shape,
+        step,
+        profile.import_level if profile is not None else None,
+    )
+    export_prices = _fill_side(
+        exports,
+        tsi.slots,
+        estimate_export,
+        export_shape,
+        step,
+        profile.export_level if profile is not None else None,
+    )
     for slot, import_price, export_price in zip(slots, import_prices, export_prices):
         slot.price = SlotPrice(import_price=import_price, export_price=export_price)
 
