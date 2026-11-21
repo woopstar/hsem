@@ -12,6 +12,8 @@ Coverage
 - Energy balance and SoC bounds hold for the solved plan.
 - ``score_plan`` reports the term, applies it to ``score`` only, and
   disables it without a discount.
+- A slot without PV above the house load carries no term, so a night grid
+  charge is planned as it is without the term (issue #1439).
 """
 
 from __future__ import annotations
@@ -22,10 +24,12 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.planner import cost_helpers
 from custom_components.hsem.planner.cost_function import CostWeights, score_plan
 from custom_components.hsem.planner.cost_helpers import (
     charge_timing_cost,
     charge_timing_rate,
+    pv_above_house_load_kwh,
 )
 from custom_components.hsem.planner.milp_optimizer import solve_milp
 from custom_components.hsem.utils.prices import SlotPrice
@@ -134,11 +138,23 @@ def test_rate_ignores_negative_inputs() -> None:
 
 def test_cost_is_zero_without_discount_and_grows_with_time() -> None:
     """The term is zero for an undiscounted slot and larger for a later one."""
-    assert charge_timing_cost(2.0, 0.06, 1.0) == pytest.approx(0.0)
-    near = charge_timing_cost(2.0, 0.06, 0.995**1)
-    far = charge_timing_cost(2.0, 0.06, 0.995**6)
+    assert charge_timing_cost(2.0, 0.06, 1.0, 0.5) == pytest.approx(0.0)
+    near = charge_timing_cost(2.0, 0.06, 0.995**1, 0.5)
+    far = charge_timing_cost(2.0, 0.06, 0.995**6, 0.5)
     assert 0.0 < near < far
     assert far == pytest.approx(2.0 * 0.06 * (1.0 - 0.995**6))
+
+
+def test_cost_is_zero_without_pv_surplus() -> None:
+    """A charge in a slot without PV surplus is a grid charge: no term (#1439)."""
+    assert charge_timing_cost(2.0, 0.06, 0.995**6, 0.0) == pytest.approx(0.0)
+
+
+def test_pv_above_house_load_is_never_negative() -> None:
+    """The surplus is PV minus house load, floored at zero."""
+    slots = _make_slots()
+    assert pv_above_house_load_kwh(slots[0]) == pytest.approx(0.0)  # 0.2 PV
+    assert pv_above_house_load_kwh(slots[4]) == pytest.approx(1.6 - _LOAD_KWH)
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +240,12 @@ def test_score_reports_the_term_and_keeps_total_cost_money_only() -> None:
     with_term = score_plan(out, _weights(_DISCOUNT), now=_NOW)
     rate = charge_timing_rate(_CYCLE_COST, 0.035)
     expected = sum(
-        charge_timing_cost(s.batteries_charged_kwh, rate, _DISCOUNT ** (i + 0.5))
+        charge_timing_cost(
+            s.batteries_charged_kwh,
+            rate,
+            _DISCOUNT ** (i + 0.5),
+            pv_above_house_load_kwh(s),
+        )
         for i, s in enumerate(out)
     )
     assert expected > 0.0
@@ -261,5 +282,123 @@ def test_score_term_is_disabled_without_a_discount(
     out = _solve(_make_slots())
 
     assert score_plan(out, _weights(discount), now=now).charge_timing_bias == (
+        pytest.approx(0.0)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Grid charge without PV surplus (issue #1439)
+# ---------------------------------------------------------------------------
+
+_WINTER_NOW = datetime(2026, 11, 20, 7, 0, tzinfo=_TZ)
+_WINTER_USABLE_KWH = 9.0
+_WINTER_START_KWH = 1.7
+_WINTER_CYCLE_COST = 0.04
+
+
+def _winter_import_price(hour: int) -> float:
+    """Return a winter day's import price: cheap night, dear evening."""
+    if hour < 6:
+        return 0.156
+    if 17 <= hour < 20:
+        return 0.378
+    if 7 <= hour < 9:
+        return 0.33
+    if 6 <= hour < 17:
+        return 0.26
+    return 0.22
+
+
+def _winter_slots() -> list[PlannedSlot]:
+    """Build 41 hours of 15-minute slots where PV never exceeds the house load."""
+    slots: list[PlannedSlot] = []
+    for i in range(41 * 4):
+        start = _WINTER_NOW + timedelta(minutes=15 * i)
+        import_price = _winter_import_price(start.hour)
+        slot = PlannedSlot(
+            start=start,
+            end=start + timedelta(minutes=15),
+            price=SlotPrice(
+                import_price=import_price, export_price=import_price - 0.15
+            ),
+        )
+        pv_kwh = 0.15 if 11 <= start.hour < 14 else 0.0
+        slot.avg_house_consumption_kwh = 0.23
+        slot.solcast_pv_estimate_kwh = pv_kwh
+        slot.ev_planned_load_kwh = 0.0
+        slot.estimated_net_consumption_kwh = 0.23 - pv_kwh
+        slots.append(slot)
+    return slots
+
+
+def _solve_winter() -> list[PlannedSlot]:
+    """Solve the winter scenario with the production time discount."""
+    result = solve_milp(
+        _winter_slots(),
+        _WINTER_NOW,
+        _WINTER_START_KWH,
+        _WINTER_USABLE_KWH,
+        1.25,
+        1.25,
+        cycle_cost_per_kwh=_WINTER_CYCLE_COST,
+        time_discount_rate=_DISCOUNT,
+        replacement_price_per_kwh=0.156,
+        solver_time_limit_s=30.0,
+    )
+    assert result is not None
+    return result[0]
+
+
+def test_night_grid_charge_is_not_reduced_by_the_term(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without PV surplus the plan is the one solved without the term.
+
+    Before the fix the term taxed the night charge by ``κ × (1 − d^t)`` and
+    the plan bought about half the energy (issue #1439).
+    """
+    with_term = _solve_winter()
+    monkeypatch.setattr(cost_helpers, "_CHARGE_TIMING_MARGIN", 0.0)
+    without_term = _solve_winter()
+
+    charged = sum(s.batteries_charged_kwh for s in with_term)
+    assert charged > 8.0
+    assert charged == pytest.approx(
+        sum(s.batteries_charged_kwh for s in without_term), abs=1e-3
+    )
+    assert sum(s.batteries_discharged_kwh for s in with_term) == pytest.approx(
+        sum(s.batteries_discharged_kwh for s in without_term), abs=1e-3
+    )
+
+
+def test_night_grid_charge_keeps_energy_balance_and_soc_bounds() -> None:
+    """The winter plan keeps each slot's energy balance and the SoC bounds."""
+    stored_kwh = _WINTER_START_KWH
+    for slot in _solve_winter():
+        supply = (
+            slot.solcast_pv_estimate_kwh
+            + slot.grid_import_kwh
+            + slot.batteries_discharged_kwh * _EFFICIENCY
+        )
+        demand = (
+            slot.avg_house_consumption_kwh
+            + slot.grid_export_kwh
+            + slot.batteries_charged_kwh / _EFFICIENCY
+        )
+        assert supply == pytest.approx(demand, abs=1e-3)
+
+        stored_kwh += slot.batteries_charged_kwh - slot.batteries_discharged_kwh
+        assert -1e-3 <= stored_kwh <= _WINTER_USABLE_KWH + 1e-3
+
+
+def test_score_has_no_term_for_a_grid_charge_without_pv_surplus() -> None:
+    """``score_plan`` mirrors the MILP: a night grid charge carries no term."""
+    out = _solve_winter()
+    weights = CostWeights(
+        cycle_cost_per_kwh=_WINTER_CYCLE_COST, time_discount_rate=_DISCOUNT
+    )
+
+    assert sum(s.batteries_charged_kwh for s in out) > 8.0
+    assert score_plan(out, weights, now=_WINTER_NOW).charge_timing_bias == (
         pytest.approx(0.0)
     )

@@ -566,7 +566,7 @@ After the MILP (or baseline) winner is selected, the engine runs a final pass ov
 - **Time discount**: The objective uses exponential discounting with `time_discount_rate^hours_ahead` to match the selector's discounted score.
 - **Export price clamping**: Negative export prices and prices below `min_export_price` are clamped to 0 before solving, reflecting physical inverter behaviour.
 - **Terminal-SoC credit**: Undiscounted in the objective, matching the cost function's `terminal_soc_value`.
-- **Charge timing**: Each stored kWh carries `κ × (1 − d^t)` with `κ = 1.1 × (cycle_cost + max export price)`, matching the cost function's `charge_timing_bias`. It cancels the discount's preference for exporting PV first and charging from forecast PV later (issue #1420).
+- **Charge timing**: Each kWh stored in a slot with PV above the house load carries `κ × (1 − d^t)` with `κ = 1.1 × (cycle_cost + max export price)`, matching the cost function's `charge_timing_bias`. It cancels the discount's preference for exporting PV first and charging from forecast PV later (issue #1420). A slot without PV surplus carries no term, so a grid charge is not taxed (issue #1439).
 
 ---
 

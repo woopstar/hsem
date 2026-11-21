@@ -207,14 +207,18 @@ export price is the same in both slots. The late charge then depends on PV
 that is still a forecast. This term cancels that preference:
 
 $$
-T_{chg} = \kappa \sum_t (1 - d^t) \cdot E_{charged}[t],
+T_{chg} = \kappa \sum_{t \in S} (1 - d^t) \cdot E_{charged}[t],
 \qquad \kappa = 1.1 \cdot \left(\max(c, 0) + \max(\max_t p_{exp}[t],\ 0)\right)
 $$
 
+- $S$ = the slots whose PV forecast exceeds the house load
+  (`cost_helpers.pv_above_house_load_kwh`). A charge in any other slot is a
+  grid charge and carries no term (issue #1439).
 - $E_{charged}[t]$ = `batteries_charged_kwh` (DC energy stored)
 - $c$ = cycle cost per kWh, $p_{exp}$ = net export price (after the export fee)
 
-The MILP objective applies the same value on every charge variable, through
+The MILP objective applies the same value on the charge variable of every
+slot in $S$, through
 the shared helpers `cost_helpers.charge_timing_rate` and
 `cost_helpers.charge_timing_cost`. $T_{chg}$ enters the score only, never the
 total cost. See `docs/planner-spec.md` § Charge timing.
