@@ -411,13 +411,119 @@ roundtrip_loss  = 1 − roundtrip_yield
 
 Example (90 % / 90 %): yield = 0.81, loss = 19 %.
 
-### Measured efficiency is diagnostic only
+### Planning with the measured round trip (issue #1431)
 
 `sensor.hsem_battery_efficiency_sensor` publishes the round-trip efficiency
 HSEM measures, with the apparent charge and discharge efficiency per 500 W
-power step (issue #1431). The planner does not read it. `battery_charge_efficiency_pct` and
-`battery_discharge_efficiency_pct` stay the configured values, so the
-measurement changes no plan, cost or invariant.
+power step.
+
+The planner takes one charge and one discharge efficiency per run:
+`battery_charge_efficiency_pct` and `battery_discharge_efficiency_pct`. The
+coordinator resolves them once, in `utils/planning_efficiency.py`, before the
+planner starts. The MILP, the SoC simulation and the final scoring all read
+those two fields and nothing else, so they cannot disagree.
+
+**Option `hsem_batteries_learned_efficiency_enabled`, default off.** Off: the
+two fields are the configured values, the learner is not read, and plan and
+cost are what they were before the option existed
+(`tests/planner/test_learned_efficiency.py`, recorded from `origin/main`).
+
+On: a measured round trip replaces the configured round trip. Two
+measurements exist. The first in this order that is there is used:
+
+| Order | Measurement                                     | Needs                                                                              | Reason in the basis  |
+| ----- | ----------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------- |
+| 1     | AC side, month (energy tracker, issue #1450)    | an AC-side battery power sensor; this month's figure, else last month's            | `learned_ac`         |
+| 2     | Battery (DC) side, fresh (efficiency learner)   | 40 measurements and 10 kWh per direction, a plausible round trip, newest ≤ 30 days | `learned_round_trip` |
+| 3     | The last figure trusted under 1 or 2            | saved in the learner file with its side and time                                   | `learned_held`       |
+| 4     | Battery (DC) side, sums that are old or undated | 40 measurements and 10 kWh per direction                                           | `learned_held`       |
+
+Without any of them the configured values stay, with reason `learning` (too
+few measurements) or `implausible` (a direction outside 50–200 %, or a round
+trip outside 50–100 %).
+
+A held AC-side figure stays ahead of a fresh battery-side figure that reads
+higher: the battery side is an upper bound of the AC side.
+
+Two bounds apply to the figure picked:
+
+- **Minimum 70 %.** A lower figure is planned as 70 % (`raised_to_minimum`).
+- **Below configured.** At or above the configured round trip the configured
+  values stay (`not_below_configured`).
+
+**No jumps.** The configured round trip is the optimistic one, so falling
+back to it is a step of several points and changes the plan. Rules 3 and 4
+and the minimum exist to prevent that step: samples that pass 30 days, a
+lapsed AC figure, a restart or a restored backup with an undated file, and a
+measurement that wanders around 70 % all keep the planner on a measured
+figure. The value still moves by a little with each new measurement.
+
+```text
+rt_configured = (charge_cfg / 100) × (discharge_cfg / 100)
+scale         = sqrt(rt_measured / rt_configured)
+charge_eff    = charge_cfg × scale
+discharge_eff = discharge_cfg × scale
+```
+
+`charge_eff × discharge_eff` is the measured round trip, and the ratio between
+the two configured values is kept. With equal configured values both become
+`sqrt(rt_measured)`. Since `scale < 1`, neither value can pass 100 %.
+
+Why it is built this way:
+
+- **Only the round trip is used.** The measurement converts SoC to energy with
+  the rated capacity. Its charge figure is `efficiency ÷ state of health` and
+  its discharge figure `efficiency × state of health`. Fed to the planner, a
+  worn battery would charge for free and discharge at a heavy loss. The state
+  of health cancels in the product only. This is why the fallback is for both
+  directions together and not per direction: one direction alone is not an
+  efficiency.
+- **The round trip cannot tell its halves apart.** The split by the configured
+  ratio is a convention. It changes arbitrage cost only through the product.
+  It does change how much AC energy the current SoC is worth
+  (`stored × discharge_eff`), by the share of the loss put on the discharge
+  side.
+- **The per-step curve is not used.** A measurement spans 5 % SoC and gives
+  every power step it touched its overall ratio, so the curve is pulled toward
+  the average and is not an efficiency per power level. The MILP also needs a
+  constant per direction: an efficiency that depends on power makes the energy
+  balance nonlinear. The planner therefore gets one value per direction, from
+  the sums over all measurements. It is the efficiency at the power the
+  battery really ran at, weighted by energy.
+- **Which side.** The planner's efficiency is AC to stored and stored to AC:
+  what the grid meter sees. The AC-side monthly figure measures exactly that,
+  so it goes first. It exists only when the user configured an AC-side
+  battery power sensor.
+- **The battery-side figure is an upper bound.** The battery power sensor
+  reads at the battery. The loss in the inverter's AC/DC conversion is not in
+  it, so the true round trip is lower.
+- **A measurement only lowers the efficiency.** A battery-side round trip at
+  or above the configured one proves nothing about the meter side. The same
+  rule is kept for the AC-side figure, so the option can never make the
+  planner more optimistic than the user configured.
+- **What this means for cost.** With a battery-side figure the plan cost still
+  leaves out the inverter loss, so the real cost of a charge and discharge
+  cycle is at least what the plan says. The error is smaller than with a
+  configured round trip above the measured one, never larger. With an AC-side
+  figure the loss is the measured one.
+
+The basis of the two values is `PlannerInput.battery_efficiency_basis`, copied
+unchanged to `PlannerOutput.battery_efficiency` and to
+`PlanExplanation.battery_efficiency`: `source` (`configured` or `learned`),
+`reason`, the values used, the configured values, the round trip picked,
+`raised_to_minimum`, `measured_side` (`ac` or `battery_dc`), the AC-side
+figure and its month, the battery-side figure, the sample counts, the sample
+age and `held_since`. It is `None` while the option is off. The planner never
+computes with it.
+
+Who uses which efficiency:
+
+| Consumer                                                      | Efficiency                                                                   |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| MILP, SoC simulation, scoring, terminal value                 | planner input (configured or learned)                                        |
+| What-if day record and hindsight score (`SiteLimits`)         | the same planner input, so they match the plan                               |
+| Energy tracker's loss accounting (`build_battery_site`)       | configured: it is the yardstick the measured round trip is published against |
+| Live phase-aware grid-charge limiter (`phase_charge_limiter`) | configured: a safety gate does not follow a learned value                    |
 
 ### Physical conversion-loss accounting
 
@@ -450,6 +556,22 @@ and are always `0.0`.
   remain exactly zero for every efficiency and destination.
 - With 98 % charge/discharge efficiency and zero wear, grid-to-export arbitrage
   breaks even at a price ratio of `1 / (0.98 * 0.98)`.
+- With `hsem_batteries_learned_efficiency_enabled` off, the planner input
+  carries the configured efficiencies and no basis, and plan and cost equal
+  the plan recorded from `origin/main`.
+- With it on, the AC-side monthly round trip goes before the battery-side
+  one, and both only count below the configured round trip.
+- A round trip under 70 % is planned as 70 %, and a sequence of measurements
+  around 70 % does not flip the planner to the configured values.
+- Samples older than 30 days, an undated learner file with enough samples and
+  a measurement that turns implausible keep the last trusted round trip.
+- The learned charge and discharge efficiency multiply to the measured round
+  trip and do not depend on the battery's state of health.
+- With a learned efficiency, every slot satisfies
+  `grid_import − grid_export = net_load + charge / charge_eff − discharge × discharge_eff`,
+  and all other invariants hold.
+- `PlannerOutput.battery_efficiency` and `PlanExplanation.battery_efficiency`
+  equal `PlannerInput.battery_efficiency_basis`.
 
 ## Live data injection (current slot)
 
@@ -3888,6 +4010,10 @@ Add tests for these invariants:
 - The estimated price tail (issue #1453) changes the end value only: it adds
   no slot and prices no slot, and without a price profile the plan is
   unchanged.
+- The measured round trip (issue #1431) reaches the planner only through
+  `battery_charge_efficiency_pct` and `battery_discharge_efficiency_pct`. With
+  the option off the plan is unchanged, and with it on every invariant in
+  this list holds with the learned values.
 - `winner.cost <= no_action.cost` within the implemented candidate set.
 - Current partial slot uses remaining duration only.
 - Missing price/PV data does not become real zero silently.

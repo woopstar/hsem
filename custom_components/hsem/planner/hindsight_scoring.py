@@ -69,9 +69,10 @@ MIN_POTENTIAL = 0.05
 _ENERGY_EPS = 1e-9
 
 #: Share of a configured limit the realized window may exceed before the score
-#: says so.  Measured battery flows run through the *configured* efficiency
-#: drift by a few percent of the capacity on an ordinary day; limits that
-#: describe another battery are off by far more.
+#: says so.  Measured battery flows run through the planner's efficiency
+#: (configured, or the measured round trip of issue #1431) drift by a few
+#: percent of the capacity on an ordinary day; limits that describe another
+#: battery are off by far more.
 LIMIT_NOTE_SHARE = 0.10
 
 

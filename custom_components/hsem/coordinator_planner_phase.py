@@ -138,6 +138,8 @@ class CoordinatorPlannerPhaseMixin(CoordinatorDynamicFloorMixin):
                 price_profile=price_history.profile(now.tzinfo)
                 if price_history is not None
                 else None,
+                efficiency_learner=getattr(self, "_efficiency_learner", None),
+                energy_tracker=getattr(self, "_energy_tracker", None),
             )
             planner_input.solar_corrector = self._solar_corrector
             accepted_planner_input = self._last_planner_input

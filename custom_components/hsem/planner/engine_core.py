@@ -713,6 +713,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     expl.previous_plan_name = hysteresis_result.previous_plan_name
     apply_solver_outcome(expl, candidates, winner.name, inp.planner_solver_time_limit_s)
     flag_terminal_price_tail(expl, tail)
+    expl.battery_efficiency = inp.battery_efficiency_basis  # issue #1431
     pc = score_plan(
         slots,
         cw,
@@ -810,4 +811,5 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         ev_second_held_power_w=ev_second_held_power_w,
         battery_target=summarize_battery_target(cw.battery_target, candidates, slots),
         terminal_price_tail=tail,
+        battery_efficiency=inp.battery_efficiency_basis,
     )

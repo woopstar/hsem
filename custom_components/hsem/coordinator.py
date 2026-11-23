@@ -381,7 +381,8 @@ class HSEMDataUpdateCoordinator(
 
         # Battery capacity learner (issue #605).
         self._capacity_learner: CapacityLearner = CapacityLearner()
-        # Battery efficiency learner (issue #1431). Diagnostics only.
+        # Battery efficiency learner (issue #1431). The planner reads its
+        # round trip only with hsem_batteries_learned_efficiency_enabled on.
         self._efficiency_learner: EfficiencyLearner = EfficiencyLearner()
         # Session-local credit for vehicle APIs whose SoC updates lag behind
         # measured charger power. Never persisted across integration restarts.
