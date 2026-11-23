@@ -3864,8 +3864,9 @@ profile is a plain value in `PlannerInput.price_profile`
   Their values price a slot exactly as before and such a slot is covered.
   They are left out of `published_import` and `published_export`, so they
   are never recorded and never held. A flat price counts as published, and
-  so do `raw_today` and `raw_tomorrow`. When a slot has both, the recorded
-  and held value is the real price, whichever was read last.
+  so do `raw_today` and `raw_tomorrow` (`PUBLISHED_ATTRIBUTES`): always, the
+  sensor state rules below do not apply to them. When a slot has both, the
+  recorded and held value is the real price, whichever was read last.
 - **Attributes that hold either (issue #1452).** `prices`, `prices_today`,
   `prices_tomorrow` and `data` hold published prices in one integration and
   predictions in another (`docs/price-attributes.md`). The populator reads
@@ -4057,7 +4058,9 @@ what each price sensor last published for a slot (the _held_ prices, per
 side, persisted in the same file, dropped 26 hours after the slot started).
 A price sensor that publishes only prediction attributes this cycle is
 alive: its side is not in an outage and is priced as before, and nothing is
-recorded or held from it.
+recorded or held from it. This is logged as a warning once per sensor, and
+the diagnostics dump reports it per side under `price_sensors`
+(`published`, `predictions` or `none`).
 
 - A failed side gets its held price on every slot that has one. A held price
   wins over a forecast sensor's prediction for the slot.

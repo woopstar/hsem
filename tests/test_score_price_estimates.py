@@ -108,7 +108,8 @@ class TestPriceFile:
 
         rows = score.fetch_prices("2026-03-02", "2026-03-03", "DK1")
 
-        assert rows == [(datetime(2026, 3, 1, 23, 0, tzinfo=UTC), 502.5)]
+        assert [start for start, _ in rows] == [datetime(2026, 3, 1, 23, 0, tzinfo=UTC)]
+        assert [price for _, price in rows] == pytest.approx([502.5])
         assert seen[0].startswith(
             "https://api.energidataservice.dk/dataset/DayAheadPrices?"
         )
@@ -161,7 +162,9 @@ class TestEstimates:
 
         estimates = score.estimate_day(target, anchor, PriceProfile())
 
-        assert estimates["nearest"] == [(slot[1], slot[2]) for slot in anchor]
+        assert len(estimates["nearest"]) == len(anchor)
+        for pair, slot in zip(estimates["nearest"], anchor, strict=True):
+            assert pair == pytest.approx((slot[1], slot[2]))
         assert estimates["shifted"] == [None] * 96
         assert estimates["unshifted"] == [None] * 96
 
@@ -172,9 +175,9 @@ class TestEstimates:
         real = [(slot[1], slot[2]) for slot in target]
         estimate = [None, (real[1][0] + 0.5, real[1][1] - 0.25), *([None] * 94)]
 
-        assert score.slot_errors(target, estimate) == [
-            pytest.approx((0.5, 0.25)),
-        ]
+        covered = score.slot_errors(target, estimate)
+        assert len(covered) == 1
+        assert covered[0] == pytest.approx((0.5, 0.25))
         errors = score.slot_errors(target, estimate, real)
         assert len(errors) == 96
         assert errors[0] == pytest.approx((0.0, 0.0))
@@ -188,15 +191,18 @@ class TestEstimates:
         )
 
         assert score.weekday_only(profile).lookup(1, 1, 0, 15) is None
-        assert score.any_day_only(profile).lookup(0, 1, 0, 15) == (2.0, 2.0)
+        assert score.any_day_only(profile).lookup(0, 1, 0, 15) == pytest.approx(
+            (2.0, 2.0)
+        )
 
 
 class TestReport:
     """Scores and the Markdown report."""
 
     def test_scores_compare_day_by_day(self) -> None:
-        better = score.Score("a", [[(0.1, 0.1)], [(0.2, 0.2)], [(0.3, 0.6)]])
-        worse = score.Score("b", [[(0.2, 0.2)], [(0.4, 0.4)], [(0.3, 0.5)]])
+        dates = [date(2026, 3, day) for day in (9, 10, 11)]
+        better = score.Score("a", [[(0.1, 0.1)], [(0.2, 0.2)], [(0.3, 0.6)]], dates)
+        worse = score.Score("b", [[(0.2, 0.2)], [(0.4, 0.4)], [(0.3, 0.5)]], dates)
 
         difference, error, wins = score.compare(better, worse, 1)
 
@@ -207,9 +213,21 @@ class TestReport:
         assert error > 0
         assert wins == pytest.approx(2 / 3)
 
+    def test_days_are_paired_by_date(self) -> None:
+        """A day one estimate has no slot on does not shift the pairing."""
+        dates = [date(2026, 3, day) for day in (9, 10, 11)]
+        full = score.Score("a", [[(0.1, 0.0)], [(0.5, 0.0)], [(0.3, 0.0)]], dates)
+        gap = score.Score("b", [[], [(0.6, 0.0)], [(0.5, 0.0)]], dates)
+
+        difference, _error, wins = score.compare(full, gap, 0)
+
+        # 10 March: 0.5 - 0.6, 11 March: 0.3 - 0.5.  9 March is left out.
+        assert difference == pytest.approx(-0.15)
+        assert wins == pytest.approx(1.0)
+
     def test_too_few_days_cannot_be_compared(self) -> None:
-        one = score.Score("a", [[(0.1, 0.1)]])
-        empty = score.Score("b", [])
+        one = score.Score("a", [[(0.1, 0.1)]], [date(2026, 3, 9)])
+        empty = score.Score("b", [], [])
 
         assert all(math.isnan(value) for value in score.compare(one, one, 0))
         assert math.isnan(empty.mae(0))

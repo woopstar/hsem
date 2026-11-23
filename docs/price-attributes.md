@@ -47,12 +47,15 @@ The first rule that applies decides:
 
 | Rule | Sensor state                                                | Result                                             | Covers                                                       |
 | ---- | ----------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------ |
+| 0    | The attribute is `raw_today` or `raw_tomorrow`              | Every entry is published                           | Energi Data Service, Nord Pool                               |
 | 1    | The attribute is `forecast`, `predictions` or `forecasts`   | Every entry is a prediction                        | Energi Data Service with Carnot, Open Spot Forecast, Amber   |
 | 2    | The sensor has `forecast_data: true`                        | Every entry is a prediction                        | Strømligning tomorrow sensors while tomorrow is a forecast   |
 | 3    | The sensor has `known_until`                                | An entry that starts before that time is published | Open Spot Forecast Predbat rate entities                     |
 | 4    | An entry starts 60 hours or more after local midnight today | Every entry of that attribute is a prediction      | EPEX Spot with Energyforecast, Strømligning forecast sensors |
 | 5    | None of the above                                           | Every entry is published                           | Everything else                                              |
 
+- Rule 0: `raw_today` and `raw_tomorrow` are always published prices. Rules
+  2 to 4 never apply to them.
 - Rule 3 with a `known_until` that cannot be read as a time makes every entry
   a prediction.
 - Rule 4: day-ahead prices are published for today and tomorrow, so a series
@@ -65,6 +68,14 @@ The first rule that applies decides:
   sensor that publishes predictions only is alive, not in an outage.
 - A price forecast sensor (the optional second sensor per side) is never
   recorded or held, whatever its attributes are.
+
+## How to see it
+
+- HSEM logs a warning once when a price sensor publishes predictions only:
+  that side gets no price history and no held prices.
+- The diagnostics dump and the `hsem.export_diagnostics` response hold
+  `price_sensors`, with `published`, `predictions` or `none` for the import
+  and the export sensor, as of the last cycle.
 
 ## What this means for a setup
 

@@ -368,6 +368,7 @@ def build_diagnostics_dump(
     *,
     integration_version: str | None = None,
     ocpp_tls: dict[str, Any] | None = None,
+    price_sensors: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build a complete, safe diagnostics dump for one HSEM planning cycle.
 
@@ -389,6 +390,10 @@ def build_diagnostics_dump(
         ocpp_tls: Optional OCPP TLS facts (mode, certificate expiry, SANs,
             CA fingerprint, or the setup error) added as ``ocpp_tls``
             (issue #1341). Never holds key material.
+        price_sensors: Optional content of each price sensor last cycle,
+            added as ``price_sensors``: ``"published"``, ``"predictions"``
+            or ``"none"`` per side (issue #1452). A side with
+            ``"predictions"`` gets no price history and no held prices.
 
     Returns:
         A JSON-safe dictionary with keys ``hsem_version``, ``dump_timestamp``,
@@ -412,6 +417,8 @@ def build_diagnostics_dump(
     # attribute.
     if isinstance(ocpp_tls, dict):
         dump["ocpp_tls"] = ocpp_tls
+    if isinstance(price_sensors, dict):
+        dump["price_sensors"] = price_sensors
 
     # Serialise the whole dump, not just the input: the planner output and the
     # apply summary carry SciPy scalars too, and a caller that hits one gets a

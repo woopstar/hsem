@@ -347,6 +347,7 @@ async def async_handle_export_diagnostics(
         apply_summary,
         integration_version=str(integration_version),
         ocpp_tls=getattr(coordinator, "_ocpp_tls_status", None),
+        price_sensors=getattr(coordinator, "_price_sensor_content", None),
     )
 
     if call.data.get(ATTR_WRITE_FILE):

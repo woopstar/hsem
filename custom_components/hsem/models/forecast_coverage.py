@@ -65,6 +65,28 @@ class ForecastCoverage:
     export_predictions_only: bool = field(default=False, compare=False)
     single_sided_prices: bool = False
 
+    def price_sensor_content(self) -> dict[str, str]:
+        """Return what each price sensor published this cycle, per side.
+
+        Returns:
+            ``"import"`` and ``"export"`` mapped to ``"published"`` (real
+            prices, recorded and held), ``"predictions"`` (the sensor priced
+            slots with predictions only, so nothing is recorded or held) or
+            ``"none"`` (the sensor priced no slot).
+        """
+        sides = {
+            "import": (self.published_import, self.import_predictions_only),
+            "export": (self.published_export, self.export_predictions_only),
+        }
+        return {
+            side: "published"
+            if published
+            else "predictions"
+            if predictions_only
+            else "none"
+            for side, (published, predictions_only) in sides.items()
+        }
+
     def has_price(self, slot_start: datetime) -> bool:
         """Return whether the slot has both an import and an export price.
 

@@ -204,6 +204,7 @@ are redacted for safe sharing in issue reports.
 | `planner_output` | `dict` | Latest `PlannerOutput` summary (redacted)                                                                                          |
 | `apply_result`   | `dict` | Latest hardware write status summary                                                                                               |
 | `ocpp_tls`       | `dict` | OCPP TLS mode, server certificate expiry, SANs, CA fingerprint and the CN-mismatch setting, or the setup error. Never key material |
+| `price_sensors`  | `dict` | What each price sensor published last cycle, per side: `published`, `predictions` or `none` (`docs/price-attributes.md`)           |
 
 With `write_file: true` the response also holds `debug_file`, the path of the
 written file.

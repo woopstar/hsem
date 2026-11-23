@@ -29,6 +29,11 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 #: (issue #1434).
 PREDICTION_ATTRIBUTES = frozenset({"forecast", "predictions", "forecasts"})
 
+#: Attributes that always hold published prices: the day-ahead prices of
+#: Energi Data Service and Nord Pool.  No sensor state makes them a
+#: prediction (issue #1452).
+PUBLISHED_ATTRIBUTES = frozenset({"raw_today", "raw_tomorrow"})
+
 #: Day-ahead prices are published for today and tomorrow.  A price series
 #: that still has an entry this long after the first slot of the cycle (local
 #: midnight today) reaches past tomorrow and holds predictions (issue #1452).
@@ -200,6 +205,8 @@ def _published_until(
     predictions in another (``docs/price-attributes.md``), so the sensor's
     own state decides:
 
+    * An attribute in :data:`PUBLISHED_ATTRIBUTES` holds published prices,
+      whatever else the sensor says.
     * An attribute in :data:`PREDICTION_ATTRIBUTES` holds predictions.
     * ``forecast_data`` set: Strømligning's tomorrow sensors, while tomorrow
       is a forecast.
@@ -219,6 +226,8 @@ def _published_until(
         ``None`` when every entry is a prediction, otherwise the UTC time an
         entry must start before to count as published.
     """
+    if attr in PUBLISHED_ATTRIBUTES:
+        return _ALWAYS
     if attr in PREDICTION_ATTRIBUTES or attributes.get("forecast_data") is True:
         return None
     known_until = attributes.get("known_until")

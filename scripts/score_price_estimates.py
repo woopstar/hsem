@@ -303,10 +303,12 @@ class Score:
     Attributes:
         label: Row label in the report.
         days: Absolute errors per target day.
+        dates: The target day of each entry of ``days``.
     """
 
     label: str
     days: list[Errors]
+    dates: list[date]
 
     def mae(self, side: int) -> float:
         """Return the mean absolute error over every scored slot."""
@@ -319,9 +321,13 @@ class Score:
             (errors[side] for day in self.days for errors in day), default=float("nan")
         )
 
-    def daily_mae(self, side: int) -> list[float]:
-        """Return the mean absolute error of each target day."""
-        return [fmean(errors[side] for errors in day) for day in self.days if day]
+    def daily_mae(self, side: int) -> dict[date, float]:
+        """Return the mean absolute error of each target day with a scored slot."""
+        return {
+            target: fmean(errors[side] for errors in day)
+            for target, day in zip(self.dates, self.days, strict=True)
+            if day
+        }
 
     def slot_count(self) -> int:
         """Return the number of scored slots."""
@@ -329,7 +335,10 @@ class Score:
 
 
 def compare(score: Score, reference: Score, side: int) -> tuple[float, float, float]:
-    """Compare two estimates day by day.
+    """Compare two estimates day by day, on the days both have scored.
+
+    Days are paired by date: a day one estimate has no scored slot on is
+    left out, and does not shift the days after it against each other.
 
     Args:
         score: The estimate under test.
@@ -341,9 +350,11 @@ def compare(score: Score, reference: Score, side: int) -> tuple[float, float, fl
         days the estimate under test has the lower MAE)``.  A negative
         difference means *score* is better.
     """
+    others = reference.daily_mae(side)
     differences = [
-        own - other
-        for own, other in zip(score.daily_mae(side), reference.daily_mae(side))
+        own - others[target]
+        for target, own in score.daily_mae(side).items()
+        if target in others
     ]
     if len(differences) < 2:
         return float("nan"), float("nan"), float("nan")
@@ -385,7 +396,7 @@ def score_targets(
         shifted profile, and the nearest earlier day where it has no value).
     """
     scores = {
-        name: Score(name, [])
+        name: Score(name, [], [])
         for name in ("nearest", "shifted", "unshifted", "implemented")
     }
     for target_date in targets:
@@ -399,6 +410,8 @@ def score_targets(
             )
         )
         estimates = estimate_day(target, days[anchor_date], profile)
+        for score in scores.values():
+            score.dates.append(target_date)
         for name in ("nearest", "shifted", "unshifted"):
             scores[name].days.append(slot_errors(target, estimates[name]))
         scores["implemented"].days.append(

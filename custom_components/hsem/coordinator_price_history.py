@@ -44,7 +44,7 @@ from custom_components.hsem.models.price_history_tracker import (
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.utils.datetime_utils import utc_key
-from custom_components.hsem.utils.logger import async_log
+from custom_components.hsem.utils.logger import async_log, log_latched_warning
 
 _HISTORY_FILE_NAME = "hsem_price_history.json"
 
@@ -257,6 +257,26 @@ async def async_apply_price_history(
             "warning",
             "The price sensors or their units changed: the price history was "
             "reset and starts recording again.",
+        )
+    content = coverage.price_sensor_content()
+    coordinator._price_sensor_content = content
+    sensors = {
+        "import": cfg.import_electricity_price_sensor,
+        "export": cfg.export_electricity_price_sensor,
+    }
+    for side, entity_id in sensors.items():
+        # Once per sensor, not every cycle: such a sensor prices its slots
+        # as before, and silently gets no price history and no held prices.
+        log_latched_warning(
+            tracker,
+            f"predictions_only:{side}:{entity_id}",
+            content[side] == "predictions",
+            "The %s price sensor %s publishes predictions only: its prices "
+            "are used for planning, and none is recorded in the price "
+            "history or held for a price sensor outage "
+            "(docs/price-attributes.md).",
+            side,
+            entity_id,
         )
     result = update_price_history(
         tracker,

@@ -10,14 +10,18 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from custom_components.hsem.coordinator_builder import (
     generate_recommendation_intervals,
 )
+from custom_components.hsem.coordinator_price_history import (
+    async_apply_price_history,
+)
 from custom_components.hsem.custom_sensors.hourly_data_populator.prices_solcast import (
+    PUBLISHED_ATTRIBUTES,
     _entry_start,
     _published_until,
     populate_price_and_solcast_from_snapshot,
@@ -187,6 +191,27 @@ class TestRules:
     def test_a_prediction_attribute_is_never_published(self) -> None:
         assert _published_until("forecast", {}, [self._FIRST], self._FIRST) is None
 
+    @pytest.mark.parametrize("attr", sorted(PUBLISHED_ATTRIBUTES))
+    @pytest.mark.parametrize(
+        "state",
+        [
+            {"forecast_data": True},
+            {"known_until": "2000-01-01T00:00:00+00:00"},
+            {"known_until": "not a time"},
+            {},
+        ],
+    )
+    def test_raw_today_and_raw_tomorrow_are_always_published(
+        self, attr: str, state: dict[str, Any]
+    ) -> None:
+        """No sensor state makes the day-ahead attributes a prediction."""
+        past_tomorrow = self._FIRST + timedelta(hours=96)
+
+        until = _published_until(attr, state, [self._FIRST, past_tomorrow], self._FIRST)
+
+        assert until is not None
+        assert until.year == 9999
+
     def test_a_plain_series_is_published_without_limit(self) -> None:
         until = _published_until("prices", {}, [self._FIRST], self._FIRST)
 
@@ -248,3 +273,83 @@ class TestNeverRecordedOrHeld:
         assert tracker.held_price("export", _MONDAY) is None
         assert tracker.held_price("export", _TUESDAY) is None
         assert tracker.sample_count == 0
+
+
+class TestRawAttributesArePublished:
+    """``raw_today`` and ``raw_tomorrow`` are recorded whatever the sensor says."""
+
+    def test_raw_today_is_published_on_a_sensor_marked_as_forecast(self) -> None:
+        coverage, _recs = _coverage(
+            {
+                "forecast_data": True,
+                "known_until": "2000-01-01T00:00:00+00:00",
+                "raw_today": _points(_MONDAY, time_key="hour"),
+            }
+        )
+
+        assert len(coverage.published_import) == 96
+        assert coverage.import_predictions_only is False
+        assert coverage.price_sensor_content()["import"] == "published"
+
+    def test_a_prediction_on_the_same_sensor_stays_a_prediction(self) -> None:
+        coverage, _recs = _coverage(
+            {
+                "forecast_data": True,
+                "raw_today": _points(_MONDAY, time_key="hour"),
+                "prices": _points(_TUESDAY),
+            }
+        )
+
+        assert len(coverage.published_import) == 96
+        assert max(coverage.published_import) < _TUESDAY.astimezone(UTC)
+
+
+class TestClassificationIsVisible:
+    """A predictions-only price sensor is logged once and shown in diagnostics."""
+
+    def test_the_content_of_each_side_is_reported(self) -> None:
+        coverage, _recs = _coverage({"forecast": _points(_MONDAY, time_key="hour")})
+
+        assert coverage.price_sensor_content() == {
+            "import": "predictions",
+            "export": "published",
+        }
+        assert ForecastCoverage().price_sensor_content() == {
+            "import": "none",
+            "export": "none",
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_predictions_only_sensor_is_logged_once(self) -> None:
+        coordinator = MagicMock()
+        coordinator._price_history_tracker = PriceHistoryTracker()
+        coordinator._hourly_recommendations = []
+        coordinator._snapshot = None
+        predictions, _recs = _coverage({"forecast": _points(_MONDAY, time_key="hour")})
+        published, _recs = _coverage({"prices": _points(_MONDAY)})
+        module = "custom_components.hsem.coordinator_price_history"
+        logger = "custom_components.hsem.utils.logger.HSEM_LOGGER"
+
+        async def cycle(coverage: ForecastCoverage) -> int:
+            with (
+                patch(f"{module}.persist_all_trackers", AsyncMock()),
+                patch(logger) as log,
+            ):
+                await async_apply_price_history(
+                    coordinator, coverage, _NOW, LiveState(), _cfg()
+                )
+            return sum(
+                "publishes predictions only" in call.args[0]
+                for call in log.warning.call_args_list
+            )
+
+        assert await cycle(predictions) == 1
+        assert coordinator._price_sensor_content == {
+            "import": "predictions",
+            "export": "published",
+        }
+        assert await cycle(predictions) == 0
+        assert await cycle(published) == 0
+        assert coordinator._price_sensor_content["import"] == "published"
+        # The sensor turns to predictions again: a new episode, a new line.
+        assert await cycle(predictions) == 1
