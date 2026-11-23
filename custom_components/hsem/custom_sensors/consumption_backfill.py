@@ -23,6 +23,12 @@ The profile is built the way the live path measures it
 - The source is the configured house sensor, whatever its current state, so
   a sensor that is slow at start-up is not replaced by the derived house
   load.
+- Nothing is read while the house source or a subtracted charger has no
+  state with a unit.  Home Assistant returns statistics in the unit of the
+  current state, and falls back to the unit they are stored in when there is
+  no state.  After a unit change (kW to W) that is another scale, so a read
+  at start-up could be wrong by a factor of 1000 (issue #1451).  The read is
+  tried again on the next update.
 
 An hour is left out when the house source has no statistics for it and when
 the result is negative.  Nothing is backfilled when the Home Assistant time
@@ -45,6 +51,7 @@ from datetime import datetime, timedelta
 
 import homeassistant.util.dt as dt_util
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import ATTR_UNIT_OF_MEASUREMENT
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.ml.statistics_reader import StatisticsReader
@@ -101,6 +108,29 @@ def _sources(config_entry: ConfigEntry) -> _Sources | None:
     return house, chargers
 
 
+def _source_without_unit(hass: HomeAssistant, sources: _Sources) -> str | None:
+    """Return the first source whose statistics unit cannot be trusted yet.
+
+    Home Assistant converts statistics to the unit of the entity's current
+    state.  Without a state, or with a state that carries no unit, it returns
+    the unit the statistics are stored in, which is another scale after a
+    unit change.
+
+    Args:
+        hass: The Home Assistant instance.
+        sources: The house power entity and the subtracted charger entities.
+
+    Returns:
+        The entity ID, or ``None`` when every source has a state with a unit.
+    """
+    house_entity, charger_entities = sources
+    for entity_id in (house_entity, *charger_entities):
+        state = hass.states.get(entity_id)
+        if state is None or not state.attributes.get(ATTR_UNIT_OF_MEASUREMENT):
+            return entity_id
+    return None
+
+
 async def async_consumption_profile(
     hass: HomeAssistant, config_entry: ConfigEntry
 ) -> ConsumptionProfile:
@@ -114,7 +144,8 @@ async def async_consumption_profile(
         Energy in kWh per ``(ISO date, hour)`` for the last
         :data:`BACKFILL_DAYS` days.  Empty when the recorder is not loaded,
         no house power source is configured, it has no statistics or the
-        read failed.
+        read failed.  Also empty, and not cached, while a source has no
+        state with a unit.
     """
     if "recorder" not in hass.config.components:
         return {}
@@ -132,6 +163,15 @@ async def async_consumption_profile(
             and cache_is_fresh(cached.fetched_at, now, PROFILE_REFRESH)
         ):
             return cached.profile
+        if (waiting_for := _source_without_unit(hass, sources)) is not None:
+            # Not cached: the next sensor update tries again.
+            _LOGGER.debug(
+                "Consumption backfill: %s has no state with a unit yet, so "
+                "the unit of its statistics is unknown. Trying again on the "
+                "next update.",
+                waiting_for,
+            )
+            return {}
         try:
             profile = await _read_profile(hass, sources, now)
         except Exception as exc:
@@ -147,6 +187,9 @@ async def async_consumption_profile(
                 exc_info=True,
             )
             profile = {}
+        if _source_without_unit(hass, sources) is not None:
+            # A state went away during the read: the unit is not certain.
+            return {}
         _profile_cache[entry_id] = _CachedProfile(now, sources, profile)
         _LOGGER.debug(
             "Consumption backfill: %d hour blocks from statistics of %s",

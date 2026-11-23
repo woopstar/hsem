@@ -4,7 +4,8 @@ Two jobs, both read-only towards the planner and the hardware:
 
 - after each performance evaluation, copy every completed local day whose
   slots are complete into the what-if history;
-- on a service call, replay those days in the executor, one run at a time.
+- on a service call, replay those days in a worker thread of their own, one
+  run at a time.
 
 Nothing here is awaited by a coordinator cycle except the copy of a day, which
 solves nothing.
@@ -12,17 +13,25 @@ solves nothing.
 One replay runs per process, not per coordinator: a reload makes a new
 coordinator while the old one's replay may still be in its last solve, and the
 slot stays taken until that thread has really returned.
+
+The replay has its own single-worker executor (issue #1454), so a run of
+minutes never holds a worker of Home Assistant's shared pool, which the planner
+jobs use.  It is made on the first call and shut down on unload and when Home
+Assistant stops.
 """
 
 from __future__ import annotations
 
 import asyncio
 import threading
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+from homeassistant.core import Event, HomeAssistant, callback
 
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
@@ -53,11 +62,24 @@ RUN_TIME_LIMIT_S = 600.0
 #: Sleep after each replayed day.
 PAUSE_BETWEEN_DAYS_S = 0.02
 
+#: Name prefix of the replay's worker thread.
+EXECUTOR_THREAD_NAME = "hsem_what_if"
+
 
 class _Flight:
-    """The one replay that may run: its cancel flag, or ``None`` when idle."""
+    """The one replay that may run, and the worker thread it runs in.
 
-    cancel: threading.Event | None = None
+    Attributes:
+        cancel: The running replay's cancel flag, or ``None`` when idle.
+        executor: The replay's own single-worker executor, or ``None`` before
+            the first call and after a shutdown.
+        unsub_stop: What removes the listener that shuts the executor down
+            when Home Assistant stops; empty when there is no listener.
+    """
+
+    cancel: ClassVar[threading.Event | None] = None
+    executor: ClassVar[ThreadPoolExecutor | None] = None
+    unsub_stop: ClassVar[list[Callable[[], None]]] = []
 
 
 def what_if_running() -> bool:
@@ -69,6 +91,47 @@ def cancel_what_if() -> None:
     """Ask the running replay, if any, to stop before its next solve."""
     if _Flight.cancel is not None:
         _Flight.cancel.set()
+
+
+def _executor(hass: HomeAssistant) -> ThreadPoolExecutor:
+    """Return the replay's own executor, made on first use.
+
+    Home Assistant does not unload a config entry when it stops, so the
+    executor is also shut down on the stop event: a replay must not keep the
+    process alive for the rest of its run.
+
+    Args:
+        hass: Home Assistant instance.
+    """
+    if _Flight.executor is None:
+        _Flight.executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix=EXECUTOR_THREAD_NAME
+        )
+
+        @callback
+        def stopping(_event: Event) -> None:
+            """Shut down when Home Assistant stops; the listener is gone."""
+            _Flight.unsub_stop.clear()
+            shutdown_what_if()
+
+        _Flight.unsub_stop.append(
+            hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, stopping)
+        )
+    return _Flight.executor
+
+
+def shutdown_what_if() -> None:
+    """Stop the running replay, if any, and shut its executor down.
+
+    Does not wait: a replay in its last solve finishes that solve, frees the
+    slot and its thread then ends.  The next call makes a new executor.
+    """
+    cancel_what_if()
+    while _Flight.unsub_stop:
+        _Flight.unsub_stop.pop()()
+    executor, _Flight.executor = _Flight.executor, None
+    if executor is not None:
+        executor.shutdown(wait=False)
 
 
 class WhatIfBusyError(Exception):
@@ -101,7 +164,8 @@ async def async_record_days(
     the performance scoring asks before it scores a day, and only once the
     battery's limits are known.  The file is written only when a day is new
     or has changed: an evaluation that asks for the same day again, slot
-    after slot, does not rewrite it.
+    after slot, does not rewrite it.  Neither does the first evaluation after
+    a restart, when the stored day is rounded and the fresh one is not.
 
     Args:
         coordinator: The running coordinator.
@@ -119,7 +183,7 @@ async def async_record_days(
         if len(usable) != len(keys):
             continue
         recorded = RecordedDay.from_slots(day, usable, request.site)
-        if history.days.get(day) != recorded:
+        if not recorded.matches(history.days.get(day)):
             history.add(recorded)
             added = True
     if added:
@@ -190,7 +254,7 @@ async def async_run_what_if(
     scenarios: tuple[WhatIfScenario, ...],
     capacity_price_per_kwh: float | None = None,
 ) -> dict[str, Any] | None:
-    """Replay the recorded days in the executor, one run at a time.
+    """Replay the recorded days in the replay's own executor, one at a time.
 
     Reads a detached copy of the recorded days and the latest planner input.
     It writes nothing: not to the hardware, not to the plan, not to a tracker.
@@ -237,9 +301,14 @@ async def async_run_what_if(
             # Retrieved here too: the caller may have stopped waiting.
             done.exception()
 
-    job = asyncio.ensure_future(
-        coordinator.hass.async_add_executor_job(run_what_if, request, cancel.is_set)
-    )
+    try:
+        job = asyncio.get_running_loop().run_in_executor(
+            _executor(coordinator.hass), run_what_if, request, cancel.is_set
+        )
+    except Exception:
+        # Nothing was submitted, so no done-callback will free the slot.
+        _Flight.cancel = None
+        raise
     job.add_done_callback(release)
     try:
         return await asyncio.shield(job)

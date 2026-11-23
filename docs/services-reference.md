@@ -676,10 +676,13 @@ configured and once with the scenario battery. It returns the difference.
 
 **It is read-only.** It never writes to the inverter, never changes the active
 plan and never starts a planner cycle, in read-only mode or outside it. The
-solves run in a worker thread, one what-if at a time. A second call while one
-is running is refused. Stopping the script or automation that called it stops
-the run before its next solve, and so does unloading the integration. A new
-call is accepted once the worker thread has returned.
+solves run in a worker thread of their own, one what-if at a time. The thread
+is not one of Home Assistant's shared pool, so a long run takes no worker from
+the planner or from other integrations. It is made on the first call and ends
+when the integration is unloaded or Home Assistant stops. A second call while
+one is running is refused. Stopping the script or automation that called it
+stops the run before its next solve, and so does unloading the integration. A
+new call is accepted once the worker thread has returned.
 
 **Read the result as an estimate.** Both costs are perfect-foresight bounds:
 the best any controller could have done with full knowledge of the day. HSEM
@@ -766,7 +769,7 @@ counted under a reason:
 | `energy_balance_residual`      | The meters contradict each other                               |
 | `oracle_unsolved`              | The solver found no run of the day for one of the batteries    |
 | `oracle_timeout`               | A solve did not finish in 10 seconds                           |
-| `run_time_limit`               | The whole run reached 10 minutes before it got to the day      |
+| `run_time_limit`               | The whole run reached 10 minutes before the day was done       |
 | `scipy_unavailable`            | The solver is not installed                                    |
 
 A day counts only when it could be solved for every scenario of the call, so
@@ -803,14 +806,39 @@ configured power as an override therefore saves exactly nothing.
 - An EV is part of the fixed load: it is not rescheduled.
 
 **Run time.** One solve per day for the configured battery plus one per
-scenario. 90 days of 15-minute slots with one scenario take 15 to 20 seconds
-on a desktop CPU. A range of 10 sizes takes about eight times as long. Held to
-a fifth of one desktop core, one scenario over 90 days took 2.5 minutes:
-expect that order on a Raspberry Pi.
+scenario: 180 solves for 90 days with one scenario, 990 with a range of 10
+sizes.
 
-A run stops after 10 minutes. The days it did not reach are counted as
-`run_time_limit`, and the rows cover the days that were reached. On a slow
-device, ask for fewer days or fewer sizes when that happens.
+Measured with `scripts/benchmark_what_if.py` on 90 synthetic days of
+15-minute slots (evening peak, midday PV, cheap night), in a Linux container
+on an Apple M3:
+
+| CPU available       | Scenarios | Per solve, mean | Per solve, max | Whole run |
+| ------------------- | --------- | --------------- | -------------- | --------- |
+| One core            | 1         | 0.09 s          | 0.28 s         | 19 s      |
+| One core            | 10        | 0.09 s          | 0.58 s         | 95 s      |
+| A fifth of one core | 1         | 0.47 s          | 1.49 s         | 86 s      |
+| A fifth of one core | 10        | 1.66 s          | 5.80 s         | 1652 s    |
+
+**These are not measured on a Raspberry Pi.** The slow rows come from the
+same machine held to 20 % of one core with Docker (`--cpus 0.2`), chosen as
+a rough stand-in for the single-core speed of a Raspberry Pi 4. The limit
+works by pausing the process, and that did not slow it evenly: per solve it
+was between 5 and 25 times slower than the unlimited run, and a second full
+run gave 105 s and 1752 s. Read the slow rows as a range, not as a figure for
+your device. Real days can also be easier or harder for the solver than the
+synthetic ones. To measure your own device, run
+`python3 scripts/benchmark_what_if.py` on it.
+
+What the numbers say: one scenario over 90 days fits a slow device with room
+to spare. A range of 10 sizes over 90 days may not. At the slow end it needed
+about 28 minutes, and the service stops after 10.
+
+A run stops after 10 minutes. The limit is checked before every solve, so a
+run passes it by one solve at most, which is 10 seconds. The days it did not
+finish are counted as `run_time_limit`, and the rows cover the days that were
+finished. On a slow device, ask for fewer days or fewer sizes when that
+happens.
 
 The planner keeps running meanwhile. The solver releases Python's interpreter
 lock while it works, so the event loop is not held up: measured next to a

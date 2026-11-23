@@ -27,9 +27,9 @@ from typing import Any
 from custom_components.hsem.models.performance_record import PerformanceSlot
 from custom_components.hsem.planner.hindsight_scoring import SiteLimits
 from custom_components.hsem.utils.persistence import (
+    async_load_history,
     aware_datetime_from_iso,
     finite_float,
-    read_json_history_file,
     write_json_history_file,
 )
 
@@ -54,6 +54,26 @@ _SERIES: tuple[str, ...] = (
     "import_price",
     "export_price",
 )
+
+
+def _close(
+    first: Sequence[float | None], second: Sequence[float | None], digits: int
+) -> bool:
+    """Return whether two series agree at the resolution of the history file.
+
+    Args:
+        first: One series.
+        second: The other series.
+        digits: Decimals the history file keeps of the series.  Rounding moves
+            a value by at most half a unit of the last decimal, so two values
+            closer than one unit are the same reading.
+    """
+    tolerance = 10.0**-digits
+    return len(first) == len(second) and all(
+        (a is None and b is None)
+        or (a is not None and b is not None and abs(a - b) < tolerance)
+        for a, b in zip(first, second, strict=True)
+    )
 
 
 def _floats(raw: Any, count: int) -> tuple[float, ...] | None:
@@ -134,6 +154,43 @@ class RecordedDay:
             import_price=tuple(slot.import_price for slot in slots),
             export_price=tuple(slot.export_price for slot in slots),
             pv_kwh=tuple(slot.pv_kwh for slot in slots),
+        )
+
+    def matches(self, other: RecordedDay | None) -> bool:
+        """Return whether *other* holds the same readings as this day.
+
+        Compared at the resolution of the history file, so a day read back
+        from disk, which is rounded, matches the unrounded day it was written
+        from (issue #1454).
+
+        Args:
+            other: The day to compare with, ``None`` for no day.
+        """
+        return (
+            other is not None
+            and self.day == other.day
+            and self.start == other.start
+            and self.slot_minutes == other.slot_minutes
+            and _close(
+                (self.rated_kwh, *self.soc_pct, *self.pv_kwh),
+                (other.rated_kwh, *other.soc_pct, *other.pv_kwh),
+                _ENERGY_DIGITS,
+            )
+            and _close(
+                (self.charge_efficiency, self.discharge_efficiency),
+                (other.charge_efficiency, other.discharge_efficiency),
+                _EFFICIENCY_DIGITS,
+            )
+            and _close(
+                (*self.grid_import_kwh, *self.grid_export_kwh),
+                (*other.grid_import_kwh, *other.grid_export_kwh),
+                _ENERGY_DIGITS,
+            )
+            and _close(
+                (*self.import_price, *self.export_price),
+                (*other.import_price, *other.export_price),
+                _PRICE_DIGITS,
+            )
         )
 
     def performance_slots(self) -> list[PerformanceSlot]:
@@ -282,7 +339,9 @@ class WhatIfHistory:
         """Restore the history from its file, if there is one."""
         if not self.history_file:
             return
-        data = await asyncio.to_thread(read_json_history_file, Path(self.history_file))
-        if data is not None:
-            # A day added while the file was being read is newer than the file.
-            self.days = {**WhatIfHistory.from_dict(data).days, **self.days}
+        await async_load_history(Path(self.history_file), self._merge_loaded)
+
+    def _merge_loaded(self, data: dict[str, Any]) -> None:
+        """Merge a loaded history file into the days already held."""
+        # A day added while the file was being read is newer than the file.
+        self.days = {**WhatIfHistory.from_dict(data).days, **self.days}

@@ -9,6 +9,7 @@ the history stays bounded.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -133,6 +134,90 @@ class TestRecordedDay:
 
     def test_something_that_is_not_an_entry_is_not_read(self) -> None:
         assert RecordedDay.from_dict(["2026-06-10"]) is None
+
+
+class TestMatches:
+    """Two records of the same readings are the same day (issue #1454)."""
+
+    def test_a_day_read_back_from_disk_matches_the_day_it_was_written_from(
+        self,
+    ) -> None:
+        """The file is rounded, the fresh record is not."""
+        fresh = replace(
+            make_day(FIRST_DAY, minutes=15),
+            rated_kwh=10.0 / 3.0,
+            charge_efficiency=0.97123456789,
+        )
+        stored = RecordedDay.from_dict(json.loads(json.dumps(fresh.as_dict())))
+
+        assert stored is not None
+        # Rounding did move the readings.
+        assert stored.rated_kwh != pytest.approx(fresh.rated_kwh, abs=1e-9)
+        assert stored.matches(fresh)
+        assert fresh.matches(stored)
+        assert fresh.matches(fresh)
+
+    def test_no_day_matches_nothing(self) -> None:
+        assert not make_day(FIRST_DAY).matches(None)
+
+    @pytest.mark.parametrize(
+        "changes",
+        [
+            {"day": "2026-07-01"},
+            {"start": datetime(2026, 6, 1, 1, 0, tzinfo=UTC)},
+            {"slot_minutes": 30},
+            {"rated_kwh": 10.001},
+            {"charge_efficiency": 0.96999},
+            {"discharge_efficiency": 0.97001},
+        ],
+    )
+    def test_a_changed_field_does_not_match(self, changes: dict[str, Any]) -> None:
+        day = make_day(FIRST_DAY)
+
+        assert not day.matches(replace(day, **changes))
+        assert not replace(day, **changes).matches(day)
+
+    @pytest.mark.parametrize(
+        ("series", "change"),
+        [
+            ("soc_pct", 0.001),
+            ("grid_import_kwh", 0.001),
+            ("grid_export_kwh", 0.001),
+            ("import_price", 0.0001),
+            ("export_price", 0.0001),
+            ("pv_kwh", 0.001),
+        ],
+    )
+    def test_one_changed_reading_does_not_match(
+        self, series: str, change: float
+    ) -> None:
+        day = make_day(FIRST_DAY)
+        values = list(getattr(day, series))
+        values[5] += change
+        changes: dict[str, Any] = {series: tuple(values)}
+
+        assert not day.matches(replace(day, **changes))
+
+    def test_a_reading_that_went_missing_does_not_match(self) -> None:
+        day = make_day(FIRST_DAY)
+        without = replace(day, pv_kwh=(None, *day.pv_kwh[1:]))
+
+        assert not day.matches(without)
+        assert not without.matches(day)
+        assert without.matches(without)
+
+    def test_a_day_of_another_length_does_not_match(self) -> None:
+        day = make_day(FIRST_DAY)
+        shorter = replace(day, pv_kwh=day.pv_kwh[:-1])
+
+        assert not day.matches(shorter)
+
+    def test_a_difference_below_what_the_file_keeps_matches(self) -> None:
+        day = make_day(FIRST_DAY)
+        values = list(day.grid_import_kwh)
+        values[5] += 0.00004
+
+        assert day.matches(replace(day, grid_import_kwh=tuple(values)))
 
 
 class TestHistory:
