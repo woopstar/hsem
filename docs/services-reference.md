@@ -780,18 +780,18 @@ fill a year, as far back as HSEM has kept hourly prices.
 **Skipped days.** Every day of the asked-for history is either compared or
 counted under a reason:
 
-| Reason                         | Meaning                                                                         |
-| ------------------------------ | ------------------------------------------------------------------------------- |
-| `not_recorded`                 | HSEM holds no complete record of the day, and the recorder is not loaded        |
-| `price_incomplete`             | No measured record, and no real price for at least one hour of the day          |
-| `statistics_incomplete`        | No measured record, and the statistics lack a house load hour or have a PV gap  |
-| `insufficient_coverage`        | Part of the day was not observed, for example during a restart                  |
-| `stored_energy_outside_limits` | The recorded SoC does not fit the capacity the day is solved with               |
-| `energy_balance_residual`      | The meters contradict each other                                                |
-| `oracle_unsolved`              | The solver found no run of the day for one of the batteries                     |
-| `oracle_timeout`               | A solve did not finish in 10 seconds                                            |
-| `run_time_limit`               | The whole run reached 10 minutes before the day was done                        |
-| `scipy_unavailable`            | The solver is not installed                                                     |
+| Reason                         | Meaning                                                                        |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| `not_recorded`                 | HSEM holds no complete record of the day, and the recorder is not loaded       |
+| `price_incomplete`             | No measured record, and no real price for at least one hour of the day         |
+| `statistics_incomplete`        | No measured record, and the statistics lack a house load hour or have a PV gap |
+| `insufficient_coverage`        | Part of the day was not observed, for example during a restart                 |
+| `stored_energy_outside_limits` | The recorded SoC does not fit the capacity the day is solved with              |
+| `energy_balance_residual`      | The meters contradict each other                                               |
+| `oracle_unsolved`              | The solver found no run of the day for one of the batteries                    |
+| `oracle_timeout`               | A solve did not finish in 10 seconds                                           |
+| `run_time_limit`               | The whole run reached 10 minutes before the day was done                       |
+| `scipy_unavailable`            | The solver is not installed                                                    |
 
 A day counts only when it could be solved for every scenario of the call, so
 all rows of a range cover the same days.
