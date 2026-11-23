@@ -278,6 +278,8 @@ class SensorConfig:
     # Battery economics
     batteries_charge_efficiency: float = 98.0
     batteries_discharge_efficiency: float = 98.0
+    # Plan with the measured round-trip efficiency (issue #1431).
+    batteries_learned_efficiency_enabled: bool = False
     batteries_purchase_price: float = 0.0
     batteries_expected_cycles: int = 6000
     #: User-configured per-kWh cycle cost. When > 0 it is added directly to

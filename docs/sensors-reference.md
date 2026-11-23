@@ -299,6 +299,7 @@ Displays the planner's strategy rationale and per-candidate cost breakdown.
 | `solver_time_s`                               | Wall time of that solve in seconds                                                                                                                                                                                                                                                                     |
 | `solver_gap_pct`                              | Relative MIP gap HiGHS reported, in percent (0 when proven optimal)                                                                                                                                                                                                                                    |
 | `solver_time_limit_s`                         | The solver time limit (`hsem_planner_solver_time_limit_s`)                                                                                                                                                                                                                                             |
+| `battery_efficiency`                          | Where the plan's battery efficiencies came from (issue #1431): `source` (`configured` or `learned`), `reason`, the values used, the configured values, the measured round trip, sample counts and age; `null` while `hsem_batteries_learned_efficiency_enabled` is off                                 |
 | `terminal_price_tail`                         | The estimated prices behind the end-of-horizon value (issue #1453), with `estimated: true`; `null` unless `hsem_terminal_price_tail_enabled` is on and a price history exists                                                                                                                          |
 | `ml_forecast_wind_configured`                 | Whether wind chill is enabled and a weather entity is configured                                                                                                                                                                                                                                       |
 | `ml_forecast_wind_slots_used`                 | Future slots using per-slot forecast wind speed                                                                                                                                                                                                                                                        |
@@ -862,8 +863,25 @@ While the floor reserves energy, the `constraints` attribute of `sensor.hsem_pla
 ## Battery efficiency sensor
 
 Measured round-trip efficiency of the battery, with the apparent charge and
-discharge efficiency per 500 W power step (issue #1431). Diagnostic only: the
-planner keeps the configured _Charge efficiency_ and _Discharge efficiency_.
+discharge efficiency per 500 W power step (issue #1431). The planner keeps the
+configured _Charge efficiency_ and _Discharge efficiency_ unless _Plan with the
+measured battery efficiency_ is on. The `planner_efficiency_*` attributes say
+which values the plan in force used.
+
+**Measured at the battery (DC side).** The inverter's conversion loss is not in
+the figure, so the round trip the grid meter sees is lower than the state of
+this sensor.
+
+**When the planner uses it** (option on):
+
+- 40 measurements in each direction
+- the latest measurement of each direction is at most 30 days old
+- the measured round trip is at least 70 % and below the configured round trip
+
+Then both configured values are scaled by the same factor until their product
+is the measured round trip. The planner uses only the round trip, never the two
+apparent halves and never the curve. A measured round trip above the configured
+one is ignored: the DC figure can lower the planner's efficiency, not raise it.
 
 **Entity:** `sensor.hsem_battery_efficiency_sensor`
 
@@ -922,23 +940,27 @@ step and each direction weighs its latest 200 samples.
 
 **Key attributes:**
 
-| Attribute                              | Unit | Description                                                                                                                                                               |
-| -------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `measured_round_trip_efficiency_pct`   | %    | Measured charge × discharge efficiency                                                                                                                                    |
-| `configured_round_trip_efficiency_pct` | %    | Configured charge × discharge efficiency, the value the planner uses                                                                                                      |
-| `round_trip_difference_pct`            | %    | Measured minus configured. Negative: the battery loses more than configured                                                                                               |
-| `round_trip_status`                    | text | `learning`, `ok` or `implausible`                                                                                                                                         |
-| `capacity_basis`                       | text | `rated`: the capacity the stored energy is computed from                                                                                                                  |
-| `apparent_charge_efficiency_pct`       | %    | Charge efficiency over all measurements. Includes the capacity error                                                                                                      |
-| `apparent_discharge_efficiency_pct`    | %    | Discharge efficiency over all measurements. Includes the capacity error                                                                                                   |
-| `charge_status`, `discharge_status`    | text | `learning`, `ok` or `implausible` per direction                                                                                                                           |
-| `charge_samples`, `discharge_samples`  | int  | Measurements held per direction                                                                                                                                           |
-| `charge_curve`, `discharge_curve`      | list | One entry per step: `power_from_w`, `power_to_w`, `apparent_efficiency_pct`, `samples`, `energy_kwh`, `status` (`learning`, `ok`, `implausible`). Not recorded in history |
-| `power_step_w`                         | W    | Step width (500)                                                                                                                                                          |
-| `min_samples_per_step`                 | int  | Samples a step needs (10)                                                                                                                                                 |
-| `min_energy_per_step_kwh`              | kWh  | Energy a step needs (2)                                                                                                                                                   |
-| `min_samples_per_direction`            | int  | Samples a direction needs (20)                                                                                                                                            |
-| `min_energy_per_direction_kwh`         | kWh  | Energy a direction needs (10)                                                                                                                                             |
+| Attribute                              | Unit | Description                                                                                                                                                                                                                          |
+| -------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `measured_round_trip_efficiency_pct`   | %    | Measured charge × discharge efficiency                                                                                                                                                                                               |
+| `configured_round_trip_efficiency_pct` | %    | Configured charge × discharge efficiency, the value the planner uses                                                                                                                                                                 |
+| `round_trip_difference_pct`            | %    | Measured minus configured. Negative: the battery loses more than configured                                                                                                                                                          |
+| `round_trip_status`                    | text | `learning`, `ok` or `implausible`                                                                                                                                                                                                    |
+| `capacity_basis`                       | text | `rated`: the capacity the stored energy is computed from                                                                                                                                                                             |
+| `planner_efficiency_source`            | text | `configured` or `learned`: what the plan in force planned with                                                                                                                                                                       |
+| `planner_efficiency_reason`            | text | `disabled` (option off), `learned_round_trip`, `learning` (under 40 measurements in a direction), `implausible` (round trip outside 70–100 %), `stale` (latest measurement older than 30 days, or undated) or `not_below_configured` |
+| `planner_charge_efficiency_pct`        | %    | Charge efficiency the plan in force used                                                                                                                                                                                             |
+| `planner_discharge_efficiency_pct`     | %    | Discharge efficiency the plan in force used                                                                                                                                                                                          |
+| `apparent_charge_efficiency_pct`       | %    | Charge efficiency over all measurements. Includes the capacity error                                                                                                                                                                 |
+| `apparent_discharge_efficiency_pct`    | %    | Discharge efficiency over all measurements. Includes the capacity error                                                                                                                                                              |
+| `charge_status`, `discharge_status`    | text | `learning`, `ok` or `implausible` per direction                                                                                                                                                                                      |
+| `charge_samples`, `discharge_samples`  | int  | Measurements held per direction                                                                                                                                                                                                      |
+| `charge_curve`, `discharge_curve`      | list | One entry per step: `power_from_w`, `power_to_w`, `apparent_efficiency_pct`, `samples`, `energy_kwh`, `status` (`learning`, `ok`, `implausible`). Not recorded in history                                                            |
+| `power_step_w`                         | W    | Step width (500)                                                                                                                                                                                                                     |
+| `min_samples_per_step`                 | int  | Samples a step needs (10)                                                                                                                                                                                                            |
+| `min_energy_per_step_kwh`              | kWh  | Energy a step needs (2)                                                                                                                                                                                                              |
+| `min_samples_per_direction`            | int  | Samples a direction needs (20)                                                                                                                                                                                                       |
+| `min_energy_per_direction_kwh`         | kWh  | Energy a direction needs (10)                                                                                                                                                                                                        |
 
 **Limits:**
 

@@ -38,12 +38,16 @@ from custom_components.hsem.utils.datetime_utils import (
     physical_slot_grid,
     slot_position,
 )
+from custom_components.hsem.utils.efficiency_learner import EfficiencyLearner
 from custom_components.hsem.utils.ev_accounting import normalized_baseline_includes_ev
 from custom_components.hsem.utils.live_power import LivePowerEstimate
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
     resolve_max_discharge_power,
     solver_time_limit_s,
+)
+from custom_components.hsem.utils.planning_efficiency import (
+    resolve_planning_efficiency,
 )
 from custom_components.hsem.utils.soc_bounds import finite_or
 
@@ -244,6 +248,7 @@ def build_planner_input(
     ev_second_held_power_w: float = 0.0,
     forecast_coverage: ForecastCoverage | None = None,
     price_profile: PriceProfile | None = None,
+    efficiency_learner: EfficiencyLearner | None = None,
 ) -> PlannerInput:
     """Assemble a :class:`PlannerInput` from the coordinator's current pipeline state.
 
@@ -264,11 +269,14 @@ def build_planner_input(
         price_profile: Weekday and time-of-day profile of real prices from
             the price history, used by the planner for slots without a
             published price (issue #1434).
+        efficiency_learner: Source of the measured round-trip efficiency,
+            read only while the user has turned that on (issue #1431).
 
     Returns:
         A fully populated :class:`PlannerInput` ready for the planner engine.
     """
     now = hsem_now()
+    efficiency = resolve_planning_efficiency(cfg, efficiency_learner, now)
 
     # Dedup key is (day_offset, hour) so that tomorrow's slots are kept
     # separately from today's even when they share the same wall-clock hour.
@@ -408,12 +416,9 @@ def build_planner_input(
         or 100.0,
         battery_max_charge_power_w=_resolve_max_charge_power_w(cfg, live),
         battery_max_discharge_power_w=_resolve_max_discharge_power_w(live),
-        battery_charge_efficiency_pct=convert_to_float(cfg.batteries_charge_efficiency)
-        or 95.0,
-        battery_discharge_efficiency_pct=convert_to_float(
-            cfg.batteries_discharge_efficiency
-        )
-        or 95.0,
+        battery_charge_efficiency_pct=efficiency.charge_pct,
+        battery_discharge_efficiency_pct=efficiency.discharge_pct,
+        battery_efficiency_basis=efficiency.basis,
         battery_purchase_price=convert_to_float(cfg.batteries_purchase_price) or 0.0,
         battery_expected_cycles=_cycles if _cycles is not None else 6000,
         battery_cycle_cost_per_kwh=convert_to_float(cfg.batteries_cycle_cost) or 0.0,

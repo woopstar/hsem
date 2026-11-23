@@ -106,7 +106,8 @@ cycle are durable; stale generations must not publish.
 | `dynamic_floor_bridge.py`   | Stateless bridge arithmetic of the dynamic floor: refill detection, planned-charge credit, cheap window, per-slot reserve profile (split out in #1274)                                                                                                                                                           |
 | `soc_bounds.py`             | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094); `reserve_floor_pct()` — reserve kWh to floor SoC (#1221)                                                                                                                                                      |
 | `capacity_learner.py`       | Battery usable capacity auto-detection from BMS readings                                                                                                                                                                                                                                                         |
-| `efficiency_learner.py`     | Battery round trip and apparent charge/discharge efficiency per 500 W step, as ratios of summed energy against rated capacity; diagnostics only (issue #1431)                                                                                                                                                    |
+| `planning_efficiency.py`    | Picks the planner's charge/discharge efficiency: configured, or scaled to the measured round trip when the option is on and the measurement is trusted (issue #1431)                                                                                                                                             |
+| `efficiency_learner.py`     | Battery round trip and apparent charge/discharge efficiency per 500 W step, as ratios of summed energy against rated capacity; dates its samples (issue #1431)                                                                                                                                                   |
 | `prediction_tracker.py`     | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                                                                                                                                                                                                                                  |
 | `weekday_profile.py`        | Weekday/weekend split house load EWMA profiles                                                                                                                                                                                                                                                                   |
 | `ev_accounting.py`          | Raw CT versus per-EV normalized-baseline accounting helper                                                                                                                                                                                                                                                       |
@@ -941,6 +942,16 @@ for t in range(m):
 day of prices. It stands for the value of energy **after** the horizon; never
 derive it from a price inside the horizon (the old `R`). The 0.9 factor is what
 keeps #638's flat-price case discharging.
+
+**Learned battery efficiency (issue #1431, opt-in, default off).** With
+`hsem_batteries_learned_efficiency_enabled` on, `utils/planning_efficiency.py`
+scales both configured efficiencies by one factor so their product is the
+measured round trip. Resolve it once in `build_planner_input`; the planner
+only reads `battery_charge_efficiency_pct` / `battery_discharge_efficiency_pct`.
+Never feed the learner's per-direction figures (they carry state of health) or
+its per-step curve (smoothed) to the planner. The measurement is DC side, an
+upper bound of the meter-side round trip, so it may lower the efficiency and
+never raise it. `PlannerInput.battery_efficiency_basis` is provenance only.
 
 **Estimated price tail (issue #1453, opt-in, default off).** With
 `hsem_terminal_price_tail_enabled` on, `planner/terminal_tail.py` prices the 24

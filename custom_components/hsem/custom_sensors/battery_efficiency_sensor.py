@@ -2,13 +2,15 @@
 
 State is the measured round-trip efficiency in percent.  The attributes hold
 the apparent charge and discharge curve per 500 W step, the sample count per
-step and the configured round trip the planner uses.
+step, the configured round trip and what the planner planned with.
 
 Only the round trip stands on its own.  The charge and discharge figures are
 measured against the rated capacity, so they carry the battery's capacity
 error and are named *apparent*.
 
-The sensor only reports.  The planner keeps the configured efficiencies.
+The sensor only reports.  The planner keeps the configured efficiencies
+unless ``hsem_batteries_learned_efficiency_enabled`` is on; the
+``planner_efficiency_*`` attributes say which it used for the plan in force.
 """
 
 from __future__ import annotations
@@ -32,6 +34,9 @@ from custom_components.hsem.utils.efficiency_learner import (
     MIN_TOTAL_SAMPLES,
     STEP_W,
     EfficiencyLearner,
+)
+from custom_components.hsem.utils.planning_efficiency import (
+    planner_efficiency_attributes,
 )
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_battery_efficiency_sensor_entity_id,
@@ -99,7 +104,12 @@ class HSEMBatteryEfficiencySensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntit
             return None
         measured = learner.round_trip_efficiency_pct
         configured = self._configured_round_trip_pct()
+        data = self.coordinator.data
         return {
+            **planner_efficiency_attributes(
+                data.plan_explanation.battery_efficiency if data else None,
+                data.cfg if data else None,
+            ),
             "measured_round_trip_efficiency_pct": _rounded(measured),
             "configured_round_trip_efficiency_pct": _rounded(configured),
             "round_trip_difference_pct": (

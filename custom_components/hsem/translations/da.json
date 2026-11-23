@@ -287,7 +287,8 @@
           "hsem_planner_hysteresis_percentage": "Hysterese procenttærskel (%)",
           "hsem_planner_window_hysteresis_minutes": "Hysterese-holdetid for vindue (minutter)",
           "hsem_planner_solver_time_limit_s": "Tidsgrænse for planlæggerens solver (sekunder)",
-          "hsem_terminal_price_tail_enabled": "Estimeret prishale til slutværdien (eksperimentel)"
+          "hsem_terminal_price_tail_enabled": "Estimeret prishale til slutværdien (eksperimentel)",
+          "hsem_batteries_learned_efficiency_enabled": "Planlæg med målt batterieffektivitet (eksperimentel)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Indtast den samlede købspris for dit batterisystem. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
@@ -301,7 +302,8 @@
           "hsem_planner_hysteresis_percentage": "Minimum procentvis score-forbedring, der kræves for at skifte til en ny plan. 0 % deaktiverer procenttærsklen. Standard 5 % forhindrer flapning mellem næsten identiske planer.",
           "hsem_planner_window_hysteresis_minutes": "Minimumstid (minutter), en anbefaling skal fastholdes, før den kan ændres. Forhindrer hurtig veksling som f.eks. ev_smart_charging ↔ batteries_charge_solar. 0 deaktiverer funktionen. Standard 10.",
           "hsem_planner_solver_time_limit_s": "Maksimal tid (sekunder) optimeringen må bruge på én beregning. Når grænsen nås, bruges den bedste plan, der er fundet indtil da, og den kan være langt fra optimal (f.eks. Vent i alle tidsrum). Hæv den kun, når Plan Strategy-sensoren viser solver_status time_limit: en højere grænse gør hver opdateringscyklus længere, og en cyklus kan køre op til tre beregninger. Interval 1–10. Standard 2.",
-          "hsem_terminal_price_tail_enabled": "Eksperimentel. Værdisætter energien, der er tilbage i batteriet ved planlægningshorisontens slutning, med priser fra prishistorikken for de 24 timer efter horisonten, vægtet 50 % mod horisontens sidste dag. Bruges kun, når ingen offentliggjort pris rækker ud over horisonten. De estimerede priser ændrer kun slutværdien: de tilføjer ingen tidsrum til planen, og Plan Strategy-sensoren viser dem som estimerede. Kræver mindst seks dages prishistorik. Slået fra som standard: i backtests sænkede det ikke den realiserede omkostning, og optimeringen tog længere tid."
+          "hsem_terminal_price_tail_enabled": "Eksperimentel. Værdisætter energien, der er tilbage i batteriet ved planlægningshorisontens slutning, med priser fra prishistorikken for de 24 timer efter horisonten, vægtet 50 % mod horisontens sidste dag. Bruges kun, når ingen offentliggjort pris rækker ud over horisonten. De estimerede priser ændrer kun slutværdien: de tilføjer ingen tidsrum til planen, og Plan Strategy-sensoren viser dem som estimerede. Kræver mindst seks dages prishistorik. Slået fra som standard: i backtests sænkede det ikke den realiserede omkostning, og optimeringen tog længere tid.",
+          "hsem_batteries_learned_efficiency_enabled": "Eksperimentel. Lader planlæggeren bruge den round trip-effektivitet, HSEM har målt, i stedet for de to konfigurerede værdier ovenfor. Den bruges kun, når begge retninger har mindst 40 målinger, den nyeste højst er 30 dage gammel, og den målte round trip er mindst 70 % og under den konfigurerede. Ellers bruges de konfigurerede værdier. Målingen sker ved batteriet og indeholder derfor ikke konverteringstabet i inverteren: den kan kun sænke planlæggerens effektivitet, aldrig hæve den. Begge konfigurerede værdier skaleres med samme faktor. Sensorerne Batterieffektivitet og Planstrategi viser, hvilke værdier planen brugte."
         },
         "description": "Konfigurer batteriøkonomiske parametre, der påvirker afskrivningsberegninger og rundturseffektivitet.",
         "title": "Batteriøkonomi"
@@ -948,7 +950,8 @@
           "hsem_planner_hysteresis_percentage": "Hysterese procenttærskel (%)",
           "hsem_planner_window_hysteresis_minutes": "Hysterese-holdetid for vindue (minutter)",
           "hsem_planner_solver_time_limit_s": "Tidsgrænse for planlæggerens solver (sekunder)",
-          "hsem_terminal_price_tail_enabled": "Estimeret prishale til slutværdien (eksperimentel)"
+          "hsem_terminal_price_tail_enabled": "Estimeret prishale til slutværdien (eksperimentel)",
+          "hsem_batteries_learned_efficiency_enabled": "Planlæg med målt batterieffektivitet (eksperimentel)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Samlet købspris for batterisystemet (inkl. installation).",
@@ -962,7 +965,8 @@
           "hsem_planner_hysteresis_percentage": "Minimum procentvis score-forbedring, der kræves for at skifte til en ny plan. 0 % deaktiverer procenttærsklen. Standard 5 % forhindrer flapning mellem næsten identiske planer.",
           "hsem_planner_window_hysteresis_minutes": "Minimumstid (minutter), en anbefaling skal fastholdes, før den kan ændres. Forhindrer hurtig veksling som f.eks. ev_smart_charging ↔ batteries_charge_solar. 0 deaktiverer funktionen. Standard 10.",
           "hsem_planner_solver_time_limit_s": "Maksimal tid (sekunder) optimeringen må bruge på én beregning. Når grænsen nås, bruges den bedste plan, der er fundet indtil da, og den kan være langt fra optimal (f.eks. Vent i alle tidsrum). Hæv den kun, når Plan Strategy-sensoren viser solver_status time_limit: en højere grænse gør hver opdateringscyklus længere, og en cyklus kan køre op til tre beregninger. Interval 1–10. Standard 2.",
-          "hsem_terminal_price_tail_enabled": "Eksperimentel. Værdisætter energien, der er tilbage i batteriet ved planlægningshorisontens slutning, med priser fra prishistorikken for de 24 timer efter horisonten, vægtet 50 % mod horisontens sidste dag. Bruges kun, når ingen offentliggjort pris rækker ud over horisonten. De estimerede priser ændrer kun slutværdien: de tilføjer ingen tidsrum til planen, og Plan Strategy-sensoren viser dem som estimerede. Kræver mindst seks dages prishistorik. Slået fra som standard: i backtests sænkede det ikke den realiserede omkostning, og optimeringen tog længere tid."
+          "hsem_terminal_price_tail_enabled": "Eksperimentel. Værdisætter energien, der er tilbage i batteriet ved planlægningshorisontens slutning, med priser fra prishistorikken for de 24 timer efter horisonten, vægtet 50 % mod horisontens sidste dag. Bruges kun, når ingen offentliggjort pris rækker ud over horisonten. De estimerede priser ændrer kun slutværdien: de tilføjer ingen tidsrum til planen, og Plan Strategy-sensoren viser dem som estimerede. Kræver mindst seks dages prishistorik. Slået fra som standard: i backtests sænkede det ikke den realiserede omkostning, og optimeringen tog længere tid.",
+          "hsem_batteries_learned_efficiency_enabled": "Eksperimentel. Lader planlæggeren bruge den round trip-effektivitet, HSEM har målt, i stedet for de to konfigurerede værdier ovenfor. Den bruges kun, når begge retninger har mindst 40 målinger, den nyeste højst er 30 dage gammel, og den målte round trip er mindst 70 % og under den konfigurerede. Ellers bruges de konfigurerede værdier. Målingen sker ved batteriet og indeholder derfor ikke konverteringstabet i inverteren: den kan kun sænke planlæggerens effektivitet, aldrig hæve den. Begge konfigurerede værdier skaleres med samme faktor. Sensorerne Batterieffektivitet og Planstrategi viser, hvilke værdier planen brugte."
         },
         "description": "Konfigurer batteriøkonomi-parametre til cyklusomkostningsberegning.",
         "title": "Batteriøkonomi"

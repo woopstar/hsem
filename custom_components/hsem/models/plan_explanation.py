@@ -83,6 +83,10 @@ class PlanExplanation:
             The estimated prices behind the terminal end value (issue #1453),
             from ``planner.terminal_tail.TerminalPriceTail.as_dict``, with
             ``estimated: True``.  ``None`` when the end value used no tail.
+        battery_efficiency:
+            Where the battery efficiencies of the plan came from (issue
+            #1431): ``source`` (``configured`` or ``learned``), ``reason``
+            and the numbers.  ``None`` while the option is off.
     """
 
     selected_strategy: str = STATE_UNKNOWN
@@ -110,6 +114,8 @@ class PlanExplanation:
     solver_time_limit_s: float | None = None
     # Estimated price tail behind the terminal end value (issue #1453)
     terminal_price_tail: dict[str, Any] | None = None
+    # Source of the battery efficiencies the plan used (issue #1431)
+    battery_efficiency: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Serialise the explanation to a plain dict for HA attributes.
@@ -138,6 +144,7 @@ class PlanExplanation:
             "solver_gap_pct": round_or_none(self.solver_gap_pct, 2),
             "solver_time_limit_s": round_or_none(self.solver_time_limit_s, 2),
             "terminal_price_tail": self.terminal_price_tail,
+            "battery_efficiency": self.battery_efficiency,
             "constraints": list(self.constraints),
             "rejected_plans": [
                 {

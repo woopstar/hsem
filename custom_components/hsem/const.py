@@ -25,6 +25,9 @@ DEFAULT_CONFIG_VALUES = {
     "device_name": NAME,
     "hsem_batteries_charge_efficiency": 98,
     "hsem_batteries_discharge_efficiency": 98,
+    # Plan with the measured round-trip efficiency when it can be trusted
+    # (issue #1431).  Off: the planner keeps the two configured values.
+    "hsem_batteries_learned_efficiency_enabled": False,
     "hsem_batteries_enable_excess_export": False,
     "hsem_batteries_excess_export_discharge_buffer": 10,
     "hsem_batteries_forecast_reserve_pct": 0.0,

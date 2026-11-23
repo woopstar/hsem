@@ -122,6 +122,15 @@ async def get_battery_economics_step_schema(  # NOSONAR
                     }
                 }
             ),
+            # --- Plan with the measured round trip (issue #1431) ---
+            vol.Required(
+                "hsem_batteries_learned_efficiency_enabled",
+                default=bool(
+                    get_config_value(
+                        config_entry, "hsem_batteries_learned_efficiency_enabled"
+                    )
+                ),
+            ): selector({"boolean": {}}),
             # --- Planner hysteresis (anti-flapping, issues #315 / #372) ---
             vol.Required(
                 "hsem_planner_hysteresis_enabled",
@@ -221,6 +230,7 @@ async def validate_battery_economics_input(
         "hsem_batteries_capacity_loss_pct",
         "hsem_batteries_charge_efficiency",
         "hsem_batteries_discharge_efficiency",
+        "hsem_batteries_learned_efficiency_enabled",
         "hsem_planner_hysteresis_enabled",
         "hsem_planner_hysteresis_absolute",
         "hsem_planner_hysteresis_percentage",

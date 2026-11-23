@@ -219,8 +219,35 @@ $$
 \eta_{rt,measured} = \eta_{chg,apparent} \cdot \eta_{dis,apparent}
 $$
 
-The values are published on `sensor.hsem_battery_efficiency_sensor`. The planner
-keeps the configured $\eta_{chg}$ and $\eta_{dis}$.
+The values are published on `sensor.hsem_battery_efficiency_sensor`.
+
+The sensor reads at the battery, on the DC side of the inverter. The inverter's
+conversion loss is not in $\eta_{rt,measured}$, so the round trip the grid
+meter sees is lower:
+
+$$
+\eta_{rt,meter} \le \eta_{rt,measured}
+$$
+
+The planner keeps the configured $\eta_{chg}$ and $\eta_{dis}$ unless
+`hsem_batteries_learned_efficiency_enabled` is on (default off). Then, when
+the measurement has 40 samples per direction, is at most 30 days old and
+$0.70 \le \eta_{rt,measured} < \eta_{chg} \cdot \eta_{dis}$, both configured
+values are scaled by the same factor:
+
+$$
+s = \sqrt{\frac{\eta_{rt,measured}}{\eta_{chg} \cdot \eta_{dis}}}, \qquad
+\eta_{chg,plan} = s \cdot \eta_{chg}, \qquad
+\eta_{dis,plan} = s \cdot \eta_{dis}
+$$
+
+Only the round trip is used, because the two apparent figures carry the
+capacity factor $k$. A measured round trip can only lower the planner's
+efficiency, because it is an upper bound of the meter-side one. The plan cost
+then still leaves out the inverter loss. See `docs/planner-spec.md` →
+_Planning with the measured round trip_.
+
+The energy accounting above always uses the configured values.
 
 ---
 

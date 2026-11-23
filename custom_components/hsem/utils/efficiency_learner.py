@@ -15,8 +15,13 @@ The capacity is the rated one, so the charge and discharge figures are
 when charging and low when discharging by the same factor.  The factor
 cancels in the round trip, which is the one figure that stands on its own.
 
-The result is published for diagnostics only.  The planner keeps the
-configured efficiencies.
+The power sensor reads at the battery (DC side), so the loss in the
+inverter's AC/DC conversion is not in any of these figures.
+
+The planner reads the round trip only when the user turns that on, through
+``utils/planning_efficiency.py``.  It never reads the per-step curve: every
+step a measurement touched gets that measurement's overall ratio, so the
+curve is pulled toward the average and is not an efficiency per power level.
 """
 
 from __future__ import annotations
@@ -204,6 +209,15 @@ def _parse_step_w(key: object) -> int | None:
     return step_w
 
 
+def _parse_time(raw: object) -> datetime | None:
+    """Return a stored timezone-aware time, or ``None`` when it is not one."""
+    try:
+        parsed = datetime.fromisoformat(str(raw))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
 def _energy_dict(step: EfficiencyStep) -> dict[str, Any]:
     """Return energy sums as a JSON-serialisable dict."""
     return {
@@ -241,6 +255,9 @@ class EfficiencyLearner:
 
     discharge_total: EfficiencyStep = field(default_factory=EfficiencyStep)
     """All discharge measurements, whatever their power."""
+
+    last_sample_at: dict[Direction, datetime] = field(default_factory=dict)
+    """When the latest measurement of each direction was accepted."""
 
     _window: _Window | None = field(default=None, init=False, repr=False)
     _dirty: bool = field(default=False, init=False, repr=False)
@@ -455,6 +472,7 @@ class EfficiencyLearner:
         ):
             return
         self._total(window.direction).add(measured_kwh, stored_kwh)
+        self.last_sample_at[window.direction] = window.last_at
         steps = self._steps(window.direction)
         for step_w, step_kwh in window.energy_kwh.items():
             steps.setdefault(step_w, EfficiencyStep()).add(
@@ -473,6 +491,11 @@ class EfficiencyLearner:
             **{
                 direction: {
                     "total": _energy_dict(self._total(direction)),
+                    "last_sample_at": (
+                        self.last_sample_at[direction].isoformat()
+                        if direction in self.last_sample_at
+                        else None
+                    ),
                     "steps": {
                         str(step_w): _energy_dict(step)
                         for step_w, step in sorted(self._steps(direction).items())
@@ -487,8 +510,11 @@ class EfficiencyLearner:
 
         A file of another schema version is not read, and neither is a
         direction without valid totals: the learner starts empty instead.
+        A direction without a readable ``last_sample_at`` (a file written
+        before the field existed) keeps its sums but has no known age.
         """
         current = data.get("version") == STORAGE_VERSION
+        self.last_sample_at = {}
         for direction in (CHARGE, DISCHARGE):
             raw = data.get(direction) if current else None
             total = _parse_energy(raw.get("total")) if isinstance(raw, dict) else None
@@ -498,7 +524,12 @@ class EfficiencyLearner:
                 self.charge_total = total or EfficiencyStep()
             else:
                 self.discharge_total = total or EfficiencyStep()
-            raw_steps = raw.get("steps") if total and isinstance(raw, dict) else None
+            if not total or not isinstance(raw, dict):
+                continue
+            last_at = _parse_time(raw.get("last_sample_at"))
+            if last_at is not None:
+                self.last_sample_at[direction] = last_at
+            raw_steps = raw.get("steps")
             if not isinstance(raw_steps, dict):
                 continue
             for key, raw_step in raw_steps.items():

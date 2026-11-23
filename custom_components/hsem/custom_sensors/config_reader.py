@@ -398,6 +398,9 @@ def build_sensor_config(
         )
         or 98.0
     )
+    cfg.batteries_learned_efficiency_enabled = convert_to_boolean(
+        get_config_value(config_entry, "hsem_batteries_learned_efficiency_enabled")
+    )
     cfg.batteries_purchase_price = (
         convert_to_float(
             get_config_value(config_entry, "hsem_batteries_purchase_price")

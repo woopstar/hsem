@@ -20,6 +20,7 @@
     "battery_charge_efficiency_pct": 98.0,
     "battery_cycle_cost_per_kwh": 0.0,
     "battery_discharge_efficiency_pct": 98.0,
+    "battery_efficiency_basis": null,
     "battery_end_of_discharge_soc_pct": 5.0,
     "battery_expected_cycles": 6000,
     "battery_export_min_price": 0.0,

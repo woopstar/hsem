@@ -155,6 +155,12 @@ class PlannerInput:
     battery_max_discharge_power_w: float | None = None
     battery_charge_efficiency_pct: float = 97.0
     battery_discharge_efficiency_pct: float = 97.0
+    #: Where the two efficiencies above came from (issue #1431), from
+    #: ``utils.planning_efficiency.resolve_planning_efficiency``: source
+    #: (``configured`` or ``learned``), reason and numbers.  The planner
+    #: copies it to its output and never computes with it.  ``None`` while
+    #: ``hsem_batteries_learned_efficiency_enabled`` is off.
+    battery_efficiency_basis: dict[str, Any] | None = None
 
     # --- battery economics ---
     battery_purchase_price: float = 0.0
