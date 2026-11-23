@@ -1357,6 +1357,7 @@ how that plays out per slot, from cheapest to most expensive action.
       + κ·(1 − d^t)·ec[t] ]              (charge timing, PV-surplus slots only, issues #1420, #1439)
 + Σ_ev [ ev_penalty·ev_pen + tiebreaker·Σ_t ev_c[t] ]
 + P·battery_target_pen            (house-battery target stage 2 only, issue #1109)
++ Σ_W Σ_j price_j·load_reserve_slack_j   (pre-peak load reserve, opt-in, issue #1361)
 ```
 
 #### 1. Serve house load from PV (free)
@@ -2451,6 +2452,312 @@ See `tests/planner/test_battery_target_milp.py`,
 `tests/planner/test_battery_target_spec.py`, and
 `tests/planner/test_battery_target_engine.py`.
 
+### Load-forecast uncertainty reserve (issue #1361)
+
+An **opt-in** option (`hsem_load_reserve_enabled`, default **off**). The MILP
+plans the house load as if the forecast were exact, so it charges just enough
+for the next expensive window. Being short at the end of that window costs
+the peak price; carrying a kWh too much past it costs little. With such an
+asymmetry the cost-minimising stock covers a quantile of the demand, not its
+mean (the newsvendor rule). With the option on, the MILP may hold a reserve
+at the end of an expensive window, sized from how far the load forecast has
+been off over that window on earlier days.
+
+The house load in the energy balance is **never** changed: inflating it would
+create import that does not exist and break the cost identity. The reserve is
+stock the battery holds, asked for by a soft row.
+
+With the option off `resolve_load_reserve` returns `None` before it reads
+anything, no row and no column is added, and the plan is the plan without the
+feature.
+
+#### The spread is measured over the window, not per slot
+
+Evening load errors are correlated. On the collecting installation the
+per-slot RMSE was 0.17 kWh and the spread of the summed error over a 22-slot
+evening window 1.94 kWh; `0.17 × √22` is 0.80 kWh. A per-slot figure
+understates the window by more than half.
+
+- `coordinator_tracking.py` stores, with every finished slot of the
+  prediction history, the load forecast **as it stood before the slot began**
+  (`PredictionRecord.forecast_load_kwh`, from the forecast tracker's frozen
+  baseline). The planner slot of a running slot carries the live measurement
+  instead and is not used. The history is the existing
+  `hsem_prediction_history.json` (30 days of 15-minute slots, in the backup).
+  Records written before this field existed carry none and are left out.
+- `LoadErrorProfile` (`models/load_error_profile.py`) holds
+  `actual − forecast` per slot. It is built for the planner input only while
+  the option is on.
+- For a window `W`, one sample per earlier day is the summed error of the
+  same local hours of that day (up to 30 days back, on the wall clock of the
+  Home Assistant time zone, so a DST change does not move the window). A day
+  counts only when every slot of the window has an error.
+
+```text
+σ(W) = sqrt( mean( sample_d² ) )         RMSE of the summed error, kWh
+```
+
+`σ(W)` changes once a day, when a new day completes the window. It needs
+`LOAD_RESERVE_MIN_SAMPLES = 7` earlier days.
+
+`ForecastTracker.window_rmse_load_kwh(n)` gives the same statistic over every
+contiguous `n`-slot window of the tracker's own finalised records (`0.0` with
+fewer than `n` in a row). The planner does not use it: the tracker holds one
+day, and one day of overlapping windows is too little to size a reserve from.
+
+#### Expensive windows
+
+Prices are the import prices of the future slots. For a charge slot `c`:
+
+```text
+R(c) = (p[c] / η_chg + 2 × cycle_cost) / η_dis      delivered cost of one AC kWh
+```
+
+The window of `c` opens at the first later slot with `p > R(c)` and runs
+while `p > R(c)`. There is none when a slot cheaper than `p[c]` comes first:
+that slot is then the place to charge. A slot without a finite price is
+never a charge slot and ends a window (`load_reserve.window_after`).
+
+Every future slot is tried as `c`, in order. A window that gets a reserve
+covers the slots inside it. A window that gets none is searched for a shorter
+window inside it, so a long window the battery cannot bridge still leaves its
+own peak. Only a window that starts within 24 hours
+(`LOAD_RESERVE_LOOKAHEAD_HOURS`) is used, and at most three reserves
+(`LOAD_RESERVE_MAX_WINDOWS`).
+
+```text
+Cu(W) = mean( p over the last 2 hours of W ) − R(c)      shortfall cost, per AC kWh
+```
+
+The battery runs out at the end of a window, so the tail prices it.
+
+#### When there is no reserve
+
+| `reason`               | Condition                                                      |
+| ---------------------- | -------------------------------------------------------------- |
+| `no_history`           | No load error history                                          |
+| `no_price_asymmetry`   | No window, or `Cu < 0.05 × R` (`LOAD_RESERVE_MIN_ASYMMETRY`)   |
+| `insufficient_history` | Fewer than 7 earlier days with a complete window               |
+| `no_uncertainty`       | `2 × σ < 0.05 kWh`                                             |
+| `capacity_bound`       | `usable − floor − Σ_W base_load / η_dis < 0.05 kWh`            |
+| `surplus_too_costly`   | A reserve was asked for and the selected plan holds none of it |
+| `applied`              | A reserve is asked for and the selected plan holds part of it  |
+
+`base_load` is `max(house load − PV, 0)` per slot and `floor` the dynamic
+discharge floor's reserve at the window's end (`discharge_reserve_kwh`, issue
+#1188). The reserve is held on top of that floor.
+
+#### Tiers: the quantile is chosen by the solver
+
+```text
+cap     = usable − floor − Σ_W base_load / η_dis
+reserve ≤ min(2 × σ, cap)                 LOAD_RESERVE_MAX_Z = 2
+```
+
+A kWh of reserve at `x` kWh above the forecast is used with probability
+`P(error > x)` and left over with `P(error < x)`. With a surplus cost `Co`
+per kWh it is worth holding while
+
+```text
+Co < Cu × (1 − Φ(x / σ)) / Φ(x / σ)
+```
+
+which is the newsvendor quantile `Φ(x / σ) = Cu / (Cu + Co)` solved for `Co`.
+`Co` is not estimated: it is what carrying the kWh costs **in the LP** (the
+price it is bought at, the losses and the wear, minus what it saves or is
+worth later). The reserve is cut into four tiers of `0.5 σ`
+(`LOAD_RESERVE_TIERS`), each priced at that value at its middle, per kWh in
+the battery (`Cu × η_dis`):
+
+| Tier (`z`) | Price per stored kWh |
+| ---------- | -------------------- |
+| 0.0 – 0.5  | `0.670 × Cu × η_dis` |
+| 0.5 – 1.0  | `0.293 × Cu × η_dis` |
+| 1.0 – 1.5  | `0.118 × Cu × η_dis` |
+| 1.5 – 2.0  | `0.042 × Cu × η_dis` |
+
+The cap cuts the reserve from the top. The solver holds the tiers that cost
+less to carry than their price and pays the slack of the others, so the
+safety factor `z` of the plan is a multiple of 0.5 between 0 and 2. A reserve
+that costs nothing to carry is held up to `2 σ`; one that has no use after
+the window is not bought.
+
+#### LP row
+
+Per reserve one soft row, with one `load_reserve_slack` column per tier
+(`planner/milp/_load_reserve_rows.py`). `T` is the LP index of the window's
+last slot:
+
+```text
+−Σ_{k≤T} (ec[k] − ed[k]) − Σ_j slack_j ≤ E_0 − (floor + reserve)
+
+0 ≤ slack_j ≤ width_j        every tier but the dearest
+0 ≤ slack_j                  the dearest tier (z 0.0 – 0.5)
+
+objective += Σ_j price_j × slack_j        undiscounted
+```
+
+The dearest tier is unbounded, so the row can never make the model
+infeasible, whatever the battery holds. The row is the same form as the
+house-battery target row (`_battery_target_rows.add_soft_soc_target_row`).
+The columns are declared only when a reserve is applied: at most 12 columns
+and 3 rows on top of the model.
+
+The row asks for stock **at the end** of the window. It does not say where
+the energy comes from, so the solver funds it the cheapest way: by charging
+more in the valley, or by keeping energy it already has. Energy the plan
+carries past the window for another reason counts towards the level.
+
+#### Score
+
+`PlanCostBreakdown.load_reserve_penalty` is the same slack cost, read from
+the simulated plan (`load_reserve.load_reserve_penalty`):
+
+```text
+shortfall = max(floor + reserve − estimated_battery_capacity_kwh[T], 0)
+penalty   = Σ_j price_j × (part of the shortfall in tier j)     cheapest tier first
+```
+
+A shortfall below `1e-3` kWh is ignored (the slot field has three decimals).
+The term is undiscounted, selector-only, and added to the `score` of **every**
+candidate, never to `total_cost`. `no_action` and `passive` keep their slots
+and their `total_cost`; they carry the penalty in `score` because they hold
+no reserve, which is what lets the selector compare them with a MILP plan
+that paid for one.
+
+#### Diagnostics
+
+`PlannerOutput.load_reserve`, `PlanExplanation.load_reserve` (the
+`load_reserve` attribute of the Plan Strategy sensor) and the diagnostics
+dump carry, for the first reserve the plan holds, else the first one asked
+for, else the first window that got none:
+
+`reason`, `reserve_kwh` (held above the floor at the window's end),
+`max_reserve_kwh`, `sigma_kwh`, `samples`, `safety_factor`
+(`reserve_kwh / sigma_kwh`), `slack_kwh`, `shortfall_cost_per_kwh` (`Cu`),
+`replacement_cost_per_kwh` (`R`), `window_start`, `window_end`,
+`window_slots`, `level_kwh`, `total_reserve_kwh`, and `windows` with the same
+keys for every reserve asked for. `None` when the option is off.
+
+`[load_reserve]` logs every window's decision before the solve and
+`[milp] load_reserve window=… n=… sigma=… z=… reserve=… slack=…` what the
+selected plan holds.
+
+#### Limits
+
+- The spread comes from the forecast as it stood when each slot began. A
+  forecast that is revised during the day (the ML forecast) is better at that
+  point than hours ahead, so the spread is then too small.
+- Only the load is uncertain here. A PV forecast that comes in short is not
+  covered.
+- `R` prices a charge from the grid. Where the plan charges from PV it would
+  otherwise export, the real replacement cost is lower and `Cu` too small.
+- `reserve_kwh` is what the plan holds at the window's end, not what the
+  reserve added: energy the plan already carried past the window counts.
+- Once a window has started no row asks for its reserve any more. Only a
+  dearer stretch still ahead inside it can get one.
+
+#### Measured
+
+`scripts/backtest_load_reserve.py`. No recorded cycle carries a load error
+history, so the spread comes from a model of the forecast error: an AR(1)
+series per 15-minute slot with a slot RMSE of 0.17 kWh and a slot-to-slot
+correlation of 0.75, which reproduces both figures measured on the collecting
+installation (0.17 kWh per slot, 1.94 kWh over 22 slots).
+
+**Closed loop** (`sim`). DK1 day-ahead prices with the grid tariff of the
+collecting installation, a 48-hour horizon of 15-minute slots, a replan every
+hour, and a load that differs from the forecast by the error model. Both
+planners meet the same load. The planner with the reserve gets the errors of
+the slots that have passed, starting with 30 days of them. Realised cost over
+30 days, in DKK:
+
+| Period                  | PV  | Seed | Without  | With     | Difference | Per day |
+| ----------------------- | --- | ---- | -------- | -------- | ---------- | ------- |
+| 2026-10-01 – 2026-10-30 | no  | 1    | 1,904.59 | 1,896.33 | −8.26      | −0.28   |
+| 2026-10-01 – 2026-10-30 | no  | 2    | 1,932.70 | 1,921.70 | −11.00     | −0.37   |
+| 2026-10-01 – 2026-10-30 | no  | 3    | 1,947.72 | 1,943.17 | −4.56      | −0.15   |
+| 2026-10-01 – 2026-10-30 | yes | 1    | 1,633.21 | 1,627.01 | −6.20      | −0.21   |
+| 2026-10-21 – 2026-11-19 | no  | 1    | 2,580.94 | 2,573.84 | −7.10      | −0.24   |
+
+The stored energy at the end is the same with and without the reserve in
+every run. The gain is 0.15 to 0.37 DKK per day, 0.2 to 0.6 % of the cost.
+The estimate in issue #1361 was 0.2 DKK per day. The planner held 2.5 to 3.5
+kWh on average, and a reserve in 96 to 99 % of the runs.
+
+What this does **not** show: the error is a model, and the planner's history
+comes from the same model, so its spread is right by construction. The
+executed recommendation changed between slots 461 to 500 times in 30 days
+without the reserve and 482 to 502 times with it (+2.6 % in total).
+
+**Recorded day** (`day`). The one committed recorded day (2026-09-29, 96
+cycles) replayed slot by slot against the **real** load, the history again
+from the model:
+
+|                 | Realised cost | Stored at the end | Label changes |
+| --------------- | ------------- | ----------------- | ------------- |
+| Without reserve | 11.43         | 0.75 kWh          | 17            |
+| With reserve    | 11.82         | 0.75 kWh          | 17            |
+
+On that day the reserve **cost 0.39 DKK**: it was bought and not needed. One
+day says nothing about the mean. A second recorded day does not exist in
+`tests/backtest/days/`.
+
+**Recorded cycles** (`cycles`). The 29 recorded cycles (48 hours of 15-minute
+slots), each planned once without and once with the reserve, the history from
+the model: a reserve was asked for in all 29, the plan held one in 26 and
+none in 3 (`surplus_too_costly`). The planned cost changed in 18 cycles, by
++0.017 on average.
+
+**Solve time.** The same 29 cycles, solver time limit lifted, Apple M3, the
+median of three passes per cycle:
+
+|                            | Median | 95th percentile | Slowest | All 29 |
+| -------------------------- | ------ | --------------- | ------- | ------ |
+| `run_planner` without      | 0.31 s | 1.37 s          | 2.25 s  | 13.0 s |
+| `run_planner` with reserve | 0.39 s | 1.22 s          | 3.51 s  | 15.0 s |
+
+**The solve time rose with the reserve**: 15 % over the 29 cycles, and the
+slowest cycle (an EV plan with integer charger currents) from 2.25 to 3.51 s.
+Both are above the default solver time limit of 2 s
+(`hsem_planner_solver_time_limit_s`); a solve that reaches the limit uses the
+best plan found so far (issue #1309). In the closed loop, without an EV, the
+median went from 0.25 to 0.27 s and the slowest solve from 0.95 to 1.08 s.
+Resolving the windows and the spread takes about 1.5 ms; the time
+goes to the solver, which gets a different problem. The time was **not
+measured on Home Assistant class hardware** (a Raspberry Pi or a small x86
+box), where every solve is several times slower.
+
+**Not measured:** a real load error history (none exists yet: the history
+starts with this version), a second recorded day, and the reserve together
+with the dynamic discharge floor, the house-battery target or an EV in a
+closed loop.
+
+#### Invariants for tests
+
+- Option off, or on without a load error history: the cost and every slot
+  equal the plan recorded from `origin/main`
+  (`tests/fixtures/load_reserve_off_golden.json`), and
+  `resolve_load_reserve` returns before reading its inputs when off.
+- `σ = 0`, flat prices, or `Cu < 0.05 × R`: no row is added and the plan is
+  the plan without the reserve.
+- `reserve_kwh ≤ max_reserve_kwh ≤ min(2 σ, usable − floor − Σ_W base_load / η_dis)`.
+- On a day with a 3.0–4.0 peak after a 2.6 valley and `σ = 1 kWh`, the plan
+  stores `reserve_kwh = z × σ` more before the peak than the plan without the
+  reserve, and holds it at the window's end.
+- The house load of every slot is unchanged; energy balance, SoC bounds and
+  the terminal-SoC term hold with the rows active.
+- `winner.score == output.plan_cost.score`, and `load_reserve_penalty` enters
+  `score` only.
+- `no_action` and `passive` have the same slots and the same `total_cost`
+  with and without the reserve.
+- Replanning slot by slot through the day adds no charge/discharge reversal,
+  and the reserve bought in the valley is still held when the window starts.
+- The hardware-write gates are untouched: the reserve changes planned
+  energies only.
+
+See `tests/planner/test_load_reserve.py` and `tests/test_load_error_profile.py`.
+
 ### Grid import power limit (main fuse / tariff protection)
 
 When `main_fuse_amps` is provided and > 0, the MILP adds a **soft**
@@ -2770,6 +3077,7 @@ score
 + grid_limit_penalty
 + terminal_soc_value
 + battery_target_penalty
++ load_reserve_penalty
 + charge_timing_bias
 ```
 
@@ -2786,6 +3094,9 @@ Where:
 - `battery_target_penalty` is **selector-only** and zero unless the opt-in
   house-battery target is active (issue #1109). See
   [Battery target penalty](#battery-target-penalty-issue-1109).
+- `load_reserve_penalty` is **selector-only** and zero unless the opt-in
+  pre-peak load reserve is applied (issue #1361). See
+  [Load-forecast uncertainty reserve](#load-forecast-uncertainty-reserve-issue-1361).
 - `charge_timing_bias` is **selector-only**, zero without a time discount
   (issue #1420) and zero for a charge in a slot without PV surplus (issue
   #1439). See _Charge timing_ under _MILP decision priority_.
@@ -3056,6 +3367,22 @@ below the 3-decimal resolution of that field (`1e-3` kWh) is ignored. The term
 is computed for every candidate, and it is zero when the target is disabled.
 See [House-battery target SoC by deadline](#house-battery-target-soc-by-deadline-issue-1109).
 
+### Load reserve penalty (issue #1361)
+
+When the opt-in pre-peak load reserve is applied, `score` gains
+`load_reserve_penalty`: for every expensive window with a reserve, the part
+of the reserve the plan does not hold at the window's end, priced tier by
+tier at the prices the MILP slack columns use, undiscounted.
+
+```text
+load_reserve_penalty = Σ_W slack_cost_W( max(level_W − E[T_W], 0) )
+```
+
+`E[T_W]` is `estimated_battery_capacity_kwh` at the window's last slot. A
+shortfall below `1e-3` kWh is ignored. The term is computed for every
+candidate and is zero when the option is off or no reserve is applied. See
+[Load-forecast uncertainty reserve](#load-forecast-uncertainty-reserve-issue-1361).
+
 ### Invariants for tests
 
 - `total_cost` must equal
@@ -3066,7 +3393,7 @@ See [House-battery target SoC by deadline](#house-battery-target-soc-by-deadline
 - `score` must equal
   `total_cost + soc_penalty + grid_limit_penalty + terminal_soc_value
 
-* battery_target_penalty` exactly.
+* battery_target_penalty + load_reserve_penalty` exactly.
 
 - Recommendation labels such as `batteries_charge_grid` must not incur a
   separate synthetic override cost; their economics are already represented
@@ -4014,6 +4341,10 @@ Add tests for these invariants:
   `battery_charge_efficiency_pct` and `battery_discharge_efficiency_pct`. With
   the option off the plan is unchanged, and with it on every invariant in
   this list holds with the learned values.
+- The pre-peak load reserve (issue #1361) never changes the house load of a
+  slot. With the option off, or on without a load error history, the plan is
+  unchanged; with a reserve applied every invariant in this list holds, and
+  the reserve never exceeds `2 σ` or the room the battery has left.
 - `winner.cost <= no_action.cost` within the implemented candidate set.
 - Current partial slot uses remaining duration only.
 - Missing price/PV data does not become real zero silently.

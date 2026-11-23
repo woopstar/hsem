@@ -41,6 +41,7 @@ from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F40
     build_sensor_config,
 )
 from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.load_error_profile import LoadErrorProfile
 from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.planner import run_planner
@@ -137,6 +138,12 @@ class CoordinatorPlannerPhaseMixin(CoordinatorDynamicFloorMixin):
                 forecast_coverage=getattr(self, "_forecast_coverage", None),
                 price_profile=price_history.profile(now.tzinfo)
                 if price_history is not None
+                else None,
+                # Read only while the pre-peak reserve is on (issue #1361).
+                load_error_profile=LoadErrorProfile.from_records(
+                    self._prediction_tracker.records
+                )
+                if cfg.load_reserve_enabled is True
                 else None,
                 efficiency_learner=getattr(self, "_efficiency_learner", None),
                 energy_tracker=getattr(self, "_energy_tracker", None),

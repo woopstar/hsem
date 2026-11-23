@@ -133,6 +133,26 @@ stage-1 import (fixed for $t \le T$, capped for $t > T$) and raises the
 (issue #1203). See
 [planner-spec.md](planner-spec.md#house-battery-target-soc-by-deadline-issue-1109).
 
+### Load-forecast reserve extension (issue #1361)
+
+With the opt-in `hsem_load_reserve_enabled`, every expensive window that gets
+a reserve adds one soft row and up to four `load_reserve_slack` columns, one
+per tier of the reserve: at most 3 rows and 12 columns. `T` is the last slot
+of the window:
+
+```text
+−Σ_{k≤T} (ec[k] − ed[k]) − Σ_j slack_j ≤ E_0 − (floor + reserve)
+```
+
+Each slack column is bounded by its tier's width and priced, undiscounted, at
+what that part of the reserve is worth, so the solver holds only the tiers
+that cost less to carry. The dearest tier is unbounded, which keeps the row
+feasible. The house load in the energy balance is not changed. There is no
+row, no column and no change to the model when the option is off, when prices
+are flat, when the battery has no room, or with fewer than seven days of load
+forecast history. See
+[planner-spec.md](planner-spec.md#load-forecast-uncertainty-reserve-issue-1361).
+
 The max grid import per slot is converted from amps to kWh/slot:
 
 $$

@@ -88,6 +88,10 @@ class MilpColumnLayout:
         return name in self._blocks
 
 
+#: Slack column of the pre-peak load reserve (issue #1361).
+LOAD_RESERVE_SLACK_BLOCK = "load_reserve_slack"
+
+
 def build_milp_column_layout(
     m: int,
     num_evs: int,
@@ -98,6 +102,7 @@ def build_milp_column_layout(
     ev_amp3_widths: Sequence[int | None] | None = None,
     ev_mode3_widths: Sequence[int | None] | None = None,
     battery_target: bool = False,
+    load_reserve: int = 0,
 ) -> MilpColumnLayout:
     """Return the canonical column layout for one MILP model.
 
@@ -127,6 +132,8 @@ def build_milp_column_layout(
             ``None`` to omit it for that EV.
         battery_target: Whether the house-battery target stage-2 solve adds
             its width-1 ``battery_target_penalty`` slack (issue #1109).
+        load_reserve: Number of ``load_reserve_slack`` columns: one per
+            tier of every pre-peak load reserve (issue #1361).
 
     Returns:
         A validated :class:`MilpColumnLayout`.
@@ -152,6 +159,8 @@ def build_milp_column_layout(
         blocks.append(("grid_import_penalty", m))
     if battery_target:
         blocks.append(("battery_target_penalty", 1))
+    if load_reserve:
+        blocks.append((LOAD_RESERVE_SLACK_BLOCK, load_reserve))
     # Managed-EV amp/on columns are declared last, after every physical
     # block, so intermediate dense-matrix extenders built against the
     # pre-amp-lattice width stay valid for every row that never references

@@ -19,6 +19,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from custom_components.hsem.models.load_error_profile import (
+    slot_records_window_rmse_kwh,
+)
 from custom_components.hsem.utils.forecast_summary import (  # noqa: F401 — re-exported for callers
     ForecastErrorSummary,
 )
@@ -372,6 +375,11 @@ class ForecastTracker:
             mape_pv_pct=mape_pv,
             mape_load_pct=mape_load,
         )
+
+    def window_rmse_load_kwh(self, n_slots: int) -> float:
+        """Return the RMSE of load errors summed over contiguous windows."""
+        done = [r for r in self._records if r.finalised and r.accuracy_eligible]
+        return slot_records_window_rmse_kwh(done, n_slots)
 
     # ------------------------------------------------------------------
     # Record lifecycle

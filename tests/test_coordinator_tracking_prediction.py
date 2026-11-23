@@ -94,6 +94,8 @@ class TestPredictionScorecardFeed:
         # 15 minutes at 2 kW PV / 1 kW load.
         assert kwargs["actual_pv"] == pytest.approx(0.5)
         assert kwargs["actual_load"] == pytest.approx(0.25)
+        # The forecast as it stood before the slot began (issue #1361).
+        assert kwargs["forecast_load"] == pytest.approx(0.3)
 
     def test_missing_live_soc_is_scored_as_zero(self) -> None:
         """An unavailable SoC reading is passed to the scorecard as 0 %."""
@@ -123,6 +125,8 @@ class TestPredictionScorecardFeed:
         kwargs = prediction_tracker.add_record.call_args.kwargs
         assert kwargs["actual_soc"] == pytest.approx(0.0)
         assert kwargs["action"] == "idle"
+        # No forecast was frozen before the slot began: nothing to compare.
+        assert kwargs["forecast_load"] is None
 
 
 def _make_hass(config_dir: Path) -> HomeAssistant:

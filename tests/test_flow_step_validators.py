@@ -55,6 +55,7 @@ _VALID_BATTERY_ECONOMICS_INPUT: dict[str, Any] = {
     "hsem_planner_window_hysteresis_minutes": 15,
     "hsem_planner_solver_time_limit_s": 2.0,
     "hsem_terminal_price_tail_enabled": False,
+    "hsem_load_reserve_enabled": False,
     "hsem_batteries_learned_efficiency_enabled": False,
 }
 

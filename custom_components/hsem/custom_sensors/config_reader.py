@@ -107,6 +107,9 @@ def build_sensor_config(
     cfg.terminal_price_tail_enabled = convert_to_boolean(
         get_config_value(config_entry, "hsem_terminal_price_tail_enabled")
     )
+    cfg.load_reserve_enabled = convert_to_boolean(
+        get_config_value(config_entry, "hsem_load_reserve_enabled")
+    )
     _update_interval = convert_to_int(
         get_config_value(config_entry, "hsem_update_interval")
     )

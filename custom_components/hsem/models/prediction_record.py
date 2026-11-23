@@ -35,6 +35,10 @@ class PredictionRecord:
         action:
             Recommendation action for this slot
             (``"charge"``, ``"discharge"``, or ``"idle"``).
+        forecast_load_kwh:
+            House load forecast as it stood before the slot began (kWh),
+            without the live measurement the planner puts into a running
+            slot (issue #1361).  ``None`` on records without one.
     """
 
     slot_start: datetime
@@ -45,6 +49,7 @@ class PredictionRecord:
     predicted_load_kwh: float
     actual_load_kwh: float
     action: str
+    forecast_load_kwh: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return a JSON-safe representation."""
@@ -57,6 +62,7 @@ class PredictionRecord:
             "predicted_load_kwh": self.predicted_load_kwh,
             "actual_load_kwh": self.actual_load_kwh,
             "action": self.action,
+            "forecast_load_kwh": self.forecast_load_kwh,
         }
 
     @classmethod
@@ -85,4 +91,5 @@ class PredictionRecord:
             predicted_load_kwh=values[4],  # type: ignore[arg-type]
             actual_load_kwh=values[5],  # type: ignore[arg-type]
             action=action,
+            forecast_load_kwh=finite_float(data.get("forecast_load_kwh"), minimum=0.0),
         )

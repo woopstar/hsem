@@ -23,6 +23,11 @@ from custom_components.hsem.planner.milp._layout import (
     MilpColumnLayout,
     build_milp_column_layout,
 )
+from custom_components.hsem.planner.milp._load_reserve_rows import (
+    LoadReserveRows,
+    add_load_reserve_rows,
+    load_reserve_slack_bounds,
+)
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.ev_config import EVConfig
@@ -77,6 +82,7 @@ def _build_constraints(
     ev_amp_plan: EvAmpPlan | None = None,
     battery_target: BatteryTargetRows | None = None,
     soc_floor_per_slot: Sequence[float] | None = None,
+    load_reserve: Sequence[LoadReserveRows] = (),
 ) -> dict:
     """Build all LP constraint matrices and variable bounds.
 
@@ -91,6 +97,9 @@ def _build_constraints(
     soft row, pins ``gi[t]`` from below and keeps stage 1's battery-origin
     export as a floor on ``ge[t]`` (issue #1203); its import cap is already
     folded into ``grid_import_ub_per_slot`` by ``resolve_grid_bounds``.
+
+    ``load_reserve`` (issue #1361) adds one soft row per pre-peak reserve,
+    each with one slack column per tier.
 
     Returns a dict with keys:
         ``A_eq``, ``b_eq``, ``A_ub``, ``b_ub``, ``bounds``,
@@ -431,6 +440,17 @@ def _build_constraints(
             current_kwh=current_kwh,
         )
 
+    # Pre-peak load reserve soft row (issue #1361).
+    A_ub, b_ub = add_load_reserve_rows(
+        A_ub,
+        b_ub,
+        load_reserve,
+        column_layout=column_layout,
+        ec_off=ec_off,
+        ed_off=ed_off,
+        current_kwh=current_kwh,
+    )
+
     # ------------------------------------------------------------------
     # Variable bounds: all ≥ 0, charge/discharge capped by power limits.
     # Penalty variables are unbounded above (can absorb arbitrary
@@ -462,6 +482,7 @@ def _build_constraints(
         grid_export_floor_per_slot=(
             None if battery_target is None else battery_target.grid_export_floor
         ),
+        load_reserve_slack_bounds=load_reserve_slack_bounds(load_reserve),
     )
 
     return {

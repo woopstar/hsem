@@ -415,6 +415,8 @@ class SensorConfig:
     planner_solver_time_limit_s: float = 2.0
     # Estimated price tail behind the terminal end value (issue #1453).
     terminal_price_tail_enabled: bool = False
+    # Pre-peak reserve for load-forecast uncertainty (issue #1361).
+    load_reserve_enabled: bool = False
 
     # Embedded OCPP 1.6 server for EV charger control (issue #603).
     ocpp_enabled: bool = False

@@ -187,6 +187,11 @@ def accumulate_forecast_actuals(
                 actual_load=frec.actual_load_kwh,
                 action=_action_label(planner_slot.recommendation),
                 slot_start=frec.start,
+                # The pre-start forecast; the planner slot of a running
+                # slot carries the live measurement instead (issue #1361).
+                forecast_load=(
+                    frec.forecast_load_kwh if frec.accuracy_eligible else None
+                ),
             )
 
     return new_last_ts, prediction_record_added

@@ -154,6 +154,35 @@ def grid_export_bounds(
     return bounds
 
 
+def add_soft_soc_target_row(
+    a_ub: np.ndarray,  # type: ignore[name-defined]
+    b_ub: np.ndarray,  # type: ignore[name-defined]
+    *,
+    target_index: int,
+    target_kwh: float,
+    ec_off: int,
+    ed_off: int,
+    penalty_off: int,
+    current_kwh: float,
+) -> tuple[np.ndarray, np.ndarray]:  # type: ignore[name-defined]
+    """Append ``−Σ_{k≤T}(ec − ed) − slack ≤ E_0 − E_target`` for one slack column.
+
+    Shared by the house-battery target (issue #1109) and the pre-peak load
+    reserve (issue #1361).
+    """
+    import numpy as np
+
+    row = np.zeros((1, a_ub.shape[1]))
+    for k in range(target_index + 1):
+        row[0, ec_off + k] = -1.0
+        row[0, ed_off + k] = 1.0
+    row[0, penalty_off] = -1.0
+    return (
+        np.vstack([a_ub, row]),
+        np.append(b_ub, float(current_kwh) - float(target_kwh)),
+    )
+
+
 def add_battery_target_row(
     a_ub: np.ndarray,  # type: ignore[name-defined]
     b_ub: np.ndarray,  # type: ignore[name-defined]
@@ -165,14 +194,13 @@ def add_battery_target_row(
     current_kwh: float,
 ) -> tuple[np.ndarray, np.ndarray]:  # type: ignore[name-defined]
     """Append the soft target row ``−Σ_{k≤T}(ec − ed) − pen ≤ E_0 − E_target``."""
-    import numpy as np
-
-    row = np.zeros((1, a_ub.shape[1]))
-    for k in range(rows.target_index + 1):
-        row[0, ec_off + k] = -1.0
-        row[0, ed_off + k] = 1.0
-    row[0, penalty_off] = -1.0
-    return (
-        np.vstack([a_ub, row]),
-        np.append(b_ub, float(current_kwh) - float(rows.target_kwh)),
+    return add_soft_soc_target_row(
+        a_ub,
+        b_ub,
+        target_index=rows.target_index,
+        target_kwh=rows.target_kwh,
+        ec_off=ec_off,
+        ed_off=ed_off,
+        penalty_off=penalty_off,
+        current_kwh=current_kwh,
     )

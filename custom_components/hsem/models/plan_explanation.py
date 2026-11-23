@@ -83,6 +83,10 @@ class PlanExplanation:
             The estimated prices behind the terminal end value (issue #1453),
             from ``planner.terminal_tail.TerminalPriceTail.as_dict``, with
             ``estimated: True``.  ``None`` when the end value used no tail.
+        load_reserve:
+            The pre-peak reserve for load-forecast uncertainty (issue #1361):
+            reserve in kWh, the spread it was sized from and the reason when
+            none is held.  ``None`` when the option is off.
         battery_efficiency:
             Where the battery efficiencies of the plan came from (issue
             #1431): ``source`` (``configured`` or ``learned``), ``reason``
@@ -114,6 +118,8 @@ class PlanExplanation:
     solver_time_limit_s: float | None = None
     # Estimated price tail behind the terminal end value (issue #1453)
     terminal_price_tail: dict[str, Any] | None = None
+    # Pre-peak reserve for load-forecast uncertainty (issue #1361)
+    load_reserve: dict[str, Any] | None = None
     # Source of the battery efficiencies the plan used (issue #1431)
     battery_efficiency: dict[str, Any] | None = None
 
@@ -144,6 +150,7 @@ class PlanExplanation:
             "solver_gap_pct": round_or_none(self.solver_gap_pct, 2),
             "solver_time_limit_s": round_or_none(self.solver_time_limit_s, 2),
             "terminal_price_tail": self.terminal_price_tail,
+            "load_reserve": self.load_reserve,
             "battery_efficiency": self.battery_efficiency,
             "constraints": list(self.constraints),
             "rejected_plans": [

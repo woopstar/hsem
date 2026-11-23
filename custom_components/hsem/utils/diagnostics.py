@@ -203,6 +203,11 @@ def _planner_input_to_dict(inp: PlannerInput) -> dict[str, Any]:
     raw["price_profile"] = (
         inp.price_profile.as_dict() if inp.price_profile is not None else None
     )
+    # The load error history is keyed by integers; one string per run of
+    # slots keeps the dump small (issue #1361).
+    raw["load_error_profile"] = (
+        inp.load_error_profile.as_dict() if inp.load_error_profile is not None else None
+    )
 
     return cast(dict[str, Any], _serialise_value(raw))
 
@@ -356,6 +361,7 @@ def _planner_output_summary(output: PlannerOutput) -> dict[str, Any]:
         # House-battery target record for the next occurrence (issue #1109);
         # None when the target is disabled.
         "battery_target": output.battery_target,
+        "load_reserve": output.load_reserve,
         "candidates": candidates_summary,
         "slots": [_slot_to_dict(s) for s in output.slots],
         "charge_windows": [_window_to_dict(w) for w in output.charge_windows],
