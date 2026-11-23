@@ -28,6 +28,12 @@ from custom_components.hsem.models.what_if_history import (
 from tests.utils.what_if_days import FIRST_DAY, SITE, make_day
 
 _START = datetime(2026, 6, 9, 22, 0, tzinfo=UTC)
+_SOURCE = {
+    "import_entity": "sensor.import_price",
+    "export_entity": "sensor.export_price",
+    "import_unit": "DKK/kWh",
+    "export_unit": "DKK/kWh",
+}
 
 
 def _slots(count: int = 4) -> list[PerformanceSlot]:
@@ -462,17 +468,19 @@ class TestPrices:
     def test_only_hours_before_the_given_instant_are_kept(self) -> None:
         history = WhatIfHistory()
 
-        changed = history.add_prices(self._hours(5), self._HOUR + timedelta(hours=3))
+        changed = history.add_prices(
+            self._hours(5), self._HOUR + timedelta(hours=3), _SOURCE
+        )
 
         assert changed is True
         assert sorted(history.prices) == sorted(self._hours(3))
 
     def test_a_held_hour_is_not_replaced_and_changes_nothing(self) -> None:
         history = WhatIfHistory()
-        history.add_prices(self._hours(3), self._HOUR + timedelta(days=1))
+        history.add_prices(self._hours(3), self._HOUR + timedelta(days=1), _SOURCE)
 
         changed = history.add_prices(
-            {self._HOUR: (9.0, 9.0)}, self._HOUR + timedelta(days=1)
+            {self._HOUR: (9.0, 9.0)}, self._HOUR + timedelta(days=1), _SOURCE
         )
 
         assert changed is False
@@ -480,10 +488,10 @@ class TestPrices:
 
     def test_hours_older_than_the_longest_history_are_dropped(self) -> None:
         history = WhatIfHistory()
-        history.add_prices(self._hours(3), self._HOUR + timedelta(days=1))
+        history.add_prices(self._hours(3), self._HOUR + timedelta(days=1), _SOURCE)
         later = self._HOUR + timedelta(days=MAX_HISTORY_DAYS + 1, hours=2)
 
-        changed = history.add_prices({}, later)
+        changed = history.add_prices({}, later, _SOURCE)
 
         assert changed is True
         assert sorted(history.prices) == [self._HOUR + timedelta(hours=2)]
@@ -493,7 +501,7 @@ class TestPrices:
         path = tmp_path / "what_if.json"
         history = WhatIfHistory(history_file=str(path))
         history.add_prices(
-            {self._HOUR: (1.0 / 3.0, -0.25)}, self._HOUR + timedelta(days=1)
+            {self._HOUR: (1.0 / 3.0, -0.25)}, self._HOUR + timedelta(days=1), _SOURCE
         )
         await history.save_history()
 
@@ -525,3 +533,92 @@ class TestPrices:
         )
 
         assert history.prices == {self._HOUR: pytest.approx((1.5, 0.5))}
+
+
+class TestPriceSource:
+    """Issue #1455: kept prices belong to one price source, as the price history's."""
+
+    _HOUR = datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
+    _LATER = datetime(2026, 6, 3, 0, 0, tzinfo=UTC)
+
+    def _history(self) -> WhatIfHistory:
+        history = WhatIfHistory()
+        history.add_prices({self._HOUR: (1.0, 0.5)}, self._LATER, _SOURCE)
+        return history
+
+    @pytest.mark.parametrize(
+        "change",
+        [{"import_entity": "sensor.other_price"}, {"export_unit": "øre/kWh"}],
+    )
+    def test_another_entity_or_unit_drops_the_kept_prices(
+        self, change: dict[str, str]
+    ) -> None:
+        history = self._history()
+        new_hour = self._HOUR + timedelta(hours=5)
+
+        changed = history.add_prices(
+            {new_hour: (120.0, 50.0)}, self._LATER, {**_SOURCE, **change}
+        )
+
+        assert changed is True
+        assert history.prices == {new_hour: pytest.approx((120.0, 50.0))}
+        assert history.price_source == {**_SOURCE, **change}
+
+    def test_a_source_change_alone_is_a_change_to_save(self) -> None:
+        history = self._history()
+
+        changed = history.add_prices(
+            {}, self._LATER, {**_SOURCE, "import_entity": "sensor.other_price"}
+        )
+
+        assert changed is True
+        assert history.prices == {}
+
+    def test_an_unknown_unit_keeps_the_prices_and_the_known_unit(self) -> None:
+        """A price sensor that is down reports no unit: not another source."""
+        history = self._history()
+
+        changed = history.add_prices(
+            {}, self._LATER, {**_SOURCE, "import_unit": "", "export_unit": ""}
+        )
+
+        assert changed is False
+        assert list(history.prices) == [self._HOUR]
+        assert history.price_source == _SOURCE
+
+    def test_the_kept_prices_are_only_given_to_their_own_source(self) -> None:
+        history = self._history()
+
+        assert list(history.prices_for(_SOURCE)) == [self._HOUR]
+        assert history.prices_for({**_SOURCE, "export_entity": "sensor.x"}) == {}
+
+    @pytest.mark.asyncio
+    async def test_the_source_is_saved_and_restored(self, tmp_path: Path) -> None:
+        path = tmp_path / "what_if.json"
+        history = self._history()
+        history.history_file = str(path)
+        await history.save_history()
+
+        restored = WhatIfHistory(history_file=str(path))
+        await restored.load_history()
+
+        assert restored.price_source == _SOURCE
+        assert list(restored.prices) == [self._HOUR]
+
+    @pytest.mark.asyncio
+    async def test_prices_on_disk_of_another_source_are_not_merged(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "what_if.json"
+        on_disk = self._history()
+        on_disk.history_file = str(path)
+        await on_disk.save_history()
+        history = WhatIfHistory(history_file=str(path))
+        other = {**_SOURCE, "import_entity": "sensor.other_price"}
+        new_hour = self._HOUR + timedelta(hours=1)
+        history.add_prices({new_hour: (2.0, 1.0)}, self._LATER, other)
+
+        await history.load_history()
+
+        assert list(history.prices) == [new_hour]
+        assert history.price_source == other

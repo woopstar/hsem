@@ -93,6 +93,45 @@ def _parse_prices(raw: Any) -> dict[datetime, float]:
     return prices
 
 
+def price_source_differs(stored: Mapping[str, str], source: Mapping[str, str]) -> bool:
+    """Return whether *source* is another price source than *stored*.
+
+    A changed entity always counts.  A unit only counts when both the stored
+    and the new unit are known: an unavailable sensor reports no unit, and an
+    outage must not wipe the prices it is needed for.
+
+    Args:
+        stored: The price source a store belongs to.
+        source: ``import_entity``, ``export_entity``, ``import_unit`` and
+            ``export_unit``; an unknown value is an empty string.
+    """
+    new = {key: str(source.get(key) or "") for key in _SOURCE_KEYS}
+    return any(
+        stored.get(key, "") != new[key]
+        and (key.endswith("_entity") or bool(stored.get(key) and new[key]))
+        for key in _SOURCE_KEYS
+    )
+
+
+def merged_price_source(
+    stored: Mapping[str, str], source: Mapping[str, str]
+) -> dict[str, str]:
+    """Return the price source a store belongs to after seeing *source*.
+
+    A value *source* does not know keeps the stored one, unless the source
+    changed (:func:`price_source_differs`).
+
+    Args:
+        stored: The price source the store belongs to.
+        source: The price source seen now.
+    """
+    changed = price_source_differs(stored, source)
+    return {
+        key: str(source.get(key) or "") or ("" if changed else stored.get(key, ""))
+        for key in _SOURCE_KEYS
+    }
+
+
 @dataclass
 class PriceHistoryTracker:
     """Rolling store of real prices plus the last published prices.
@@ -140,13 +179,9 @@ class PriceHistoryTracker:
         Returns:
             ``True`` when the stored prices were dropped.
         """
-        new = {key: str(source.get(key) or "") for key in _SOURCE_KEYS}
         changed = self.source_differs(source)
         had_data = bool(self._samples or self._held_import or self._held_export)
-        merged = {
-            key: new[key] or ("" if changed else self.source.get(key, ""))
-            for key in _SOURCE_KEYS
-        }
+        merged = merged_price_source(self.source, source)
         if merged != {key: self.source.get(key, "") for key in _SOURCE_KEYS}:
             self._dirty = True
         self.source = merged
@@ -170,12 +205,7 @@ class PriceHistoryTracker:
             source: ``import_entity``, ``export_entity``, ``import_unit`` and
                 ``export_unit``; an unknown value is an empty string.
         """
-        new = {key: str(source.get(key) or "") for key in _SOURCE_KEYS}
-        return any(
-            self.source.get(key, "") != new[key]
-            and (key.endswith("_entity") or bool(self.source.get(key) and new[key]))
-            for key in _SOURCE_KEYS
-        )
+        return price_source_differs(self.source, source)
 
     def record(
         self,

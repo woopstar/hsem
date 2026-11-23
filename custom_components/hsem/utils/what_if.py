@@ -17,8 +17,10 @@ battery in question can hold.  Extra capacity therefore starts the day empty
 and is worth only what it shifts within the day.
 
 The configured side of a day is the battery of that day: the SoC limits and
-the power limits stored with the day (issue #1455).  A scenario changes that
-battery, so a limit the user moved since does not count as a difference.  A
+the power limits stored with the day (issue #1455).  A scenario is sized
+against today's battery and then gets the same SoC window as the configured
+side of the day, so a limit the user moved since does not count as a
+difference (:meth:`WhatIfScenario.site_on`).  A
 day recorded before the limits were stored, and a day rebuilt from hourly
 statistics (``utils/what_if_rebuild.py``), use today's limits and are counted
 as such.  Rebuilt days are coarser, so their totals are also reported apart.
@@ -153,6 +155,25 @@ class WhatIfScenario:
         if self.discharge_efficiency is not None:
             scenario = replace(scenario, discharge_efficiency=self.discharge_efficiency)
         return scenario
+
+    def site_on(self, day: RecordedDay, current: SiteLimits) -> SiteLimits:
+        """Return this scenario's battery as it would have been on *day*.
+
+        The scenario's size is a rated capacity, scaled against today's
+        battery.  On the day it gets the SoC window the day was recorded
+        with, exactly as the configured side does, and the day's power limits
+        where the scenario gives none.  Both sides of a day therefore differ
+        only in what the scenario changes: a SoC limit moved since the day
+        was recorded is neither a gain nor a loss.
+
+        Args:
+            day: The recorded day.
+            current: The installation's hard limits as configured today.
+        """
+        on_day = replace(
+            day.site_limits(current), rated_kwh=self.site(current).rated_kwh
+        )
+        return replace(self, usable_kwh=None).site(on_day)
 
 
 @dataclass(frozen=True)
@@ -313,7 +334,8 @@ def replay_day(
     The day's load is rebuilt with the capacity and efficiencies the day was
     recorded with, so a battery that has been changed since does not distort
     the days before the change.  The sides are solved with the SoC and power
-    limits of the day where it has them (issue #1455), else with today's.
+    limits of the day where it has them (issue #1455), else with today's
+    (:meth:`WhatIfScenario.site_on`).
 
     Args:
         day: The recorded day.
@@ -359,7 +381,7 @@ def replay_day(
         started = time.monotonic()
         cost = _solve(
             window,
-            side.site(baseline).battery(),
+            side.site_on(day, request.site).battery(),
             (
                 request.cycle_cost_per_kwh
                 if side.cycle_cost_per_kwh is None
@@ -505,13 +527,20 @@ def run_what_if(
         """Count a day that is not compared under *reason*."""
         skipped[reason] = skipped.get(reason, 0) + 1
 
+    recorded: list[RecordedDay] = []
     for date in request.days:
+        found = request.recorded.get(date)
+        if found is None:
+            skip(request.reasons.get(date, REASON_NOT_RECORDED))
+        else:
+            recorded.append(found)
+    # Measured days first, the newest first, then the rebuilt ones: a run
+    # that hits its time limit loses the coarsest and oldest days.
+    recorded.sort(key=lambda day: day.day, reverse=True)
+    recorded.sort(key=lambda day: day.from_statistics)
+    for day in recorded:
         if cancelled():
             return None
-        day = request.recorded.get(date)
-        if day is None:
-            skip(request.reasons.get(date, REASON_NOT_RECORDED))
-            continue
         if out_of_time():
             skip(REASON_RUN_TIME_LIMIT)
             continue
@@ -525,6 +554,7 @@ def run_what_if(
         else:
             compared.append((day, outcome))
 
+    compared.sort(key=lambda entry: entry[0].day)
     days = [day for day, _ in compared]
     rebuilt = sum(day.from_statistics for day in days)
     response: dict[str, Any] = {

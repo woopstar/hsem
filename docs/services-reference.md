@@ -683,11 +683,11 @@ totals are listed apart: see _Days rebuilt from statistics_ below.
 **It is read-only.** It never writes to the inverter, never changes the active
 plan and never starts a planner cycle, in read-only mode or outside it.
 Rebuilding a day only reads the recorder's statistics and the kept prices: a
-rebuilt day is not stored. The solves run in a worker thread of their own, one what-if at a time. The thread
-is not one of Home Assistant's shared pool, so a long run takes no worker from
-the planner or from other integrations. It is made on the first call and ends
-when the integration is unloaded or Home Assistant stops. A second call while
-one is running is refused. Stopping the script or automation that called it
+rebuilt day is not stored. The solves run in a worker thread of their own, one
+what-if at a time. The thread is not one of Home Assistant's shared pool, so a
+long run takes no worker from the planner or from other integrations. It is
+made on the first call and ends when the integration is unloaded or Home
+Assistant stops. A second call while one is running is refused. Stopping the script or automation that called it
 stops the run before its next solve, and so does unloading the integration. A
 new call is accepted once the worker thread has returned.
 
@@ -784,7 +784,7 @@ counted under a reason:
 | ------------------------------ | ------------------------------------------------------------------------------- |
 | `not_recorded`                 | HSEM holds no complete record of the day, and the recorder is not loaded        |
 | `price_incomplete`             | No measured record, and no real price for at least one hour of the day          |
-| `statistics_incomplete`        | No measured record, and the statistics lack the house load of at least one hour |
+| `statistics_incomplete`        | No measured record, and the statistics lack the house load or the PV of an hour |
 | `insufficient_coverage`        | Part of the day was not observed, for example during a restart                  |
 | `stored_energy_outside_limits` | The recorded SoC does not fit the capacity the day is solved with               |
 | `energy_balance_residual`      | The meters contradict each other                                                |
@@ -810,11 +810,22 @@ not distort the days before the change.
 
 **Limits of each day.** A day also keeps the end-of-discharge SoC, the
 charging cut-off SoC and the charge and discharge power limits it was
-recorded with. The configured side of that day is solved with them, and the
-scenario changes that battery. A limit you moved since is therefore not
-counted as a gain or a loss, and a day whose SoC lies outside today's limits
-is still compared. A field left out of the call keeps the day's value for
-that day.
+recorded with. Both sides of that day are solved with the SoC window of the
+day. A limit you moved since is therefore not counted as a gain or a loss,
+and a day whose SoC lies outside today's limits is still compared.
+
+The size of a scenario is read against today's battery and carried to the day
+as a ratio. Example: today 5 to 100 % of 10 kWh gives 9.5 kWh usable, and the
+call asks for 14.5 kWh, so `extra_capacity_kwh` is 5. On a day recorded with
+20 to 100 % the configured side has 8 kWh and the scenario 8 × 14.5 ÷ 9.5 =
+12.2 kWh. It does not get the full 14.5 kWh there: that would credit 6.5 kWh
+of extra capacity against 5 kWh paid for.
+
+A power limit left out of the call keeps the day's value for that day.
+
+The limits are stamped when the day is scored, from the planner input of that
+moment. A limit changed during a day applies to the whole day, and to the day
+before it when that day is scored after the change.
 
 Days recorded before HSEM stored the limits have none. They are solved with
 today's limits, as are all days rebuilt from statistics.
@@ -831,8 +842,18 @@ for the run when both of these hold:
   with one hour missing is skipped as `price_incomplete`.
 - The house consumption power sensor has an hourly statistic for every hour
   of the day. Where the house power leaves the EV chargers out, the chargers
-  need one too. Otherwise the day is skipped as `statistics_incomplete`. An
-  hour above 50 kW counts as missing.
+  need one too. When a PV sensor is configured (PV energy or PV power), it
+  needs one for every hour as well. Otherwise the day is skipped as
+  `statistics_incomplete`. An hour above 50 kW counts as missing.
+
+A missing PV hour is never read as zero production. A renamed PV sensor would
+otherwise turn its old days into days of pure grid import. Only a site
+without any PV sensor is replayed without PV. A PV sensor that is unavailable
+at night and leaves no statistics for those hours therefore gets no rebuilt
+days.
+
+Only the house and PV statistics are read. The grid meters and the battery
+power are not: the grid flows of a rebuilt day follow from load and PV.
 
 Hourly prices are kept from the version that added this, and the price
 history HSEM already had (up to 56 days) is used from the first call. The
@@ -841,9 +862,8 @@ day up to 365.
 
 A rebuilt day is the day with an idle battery: the load is the house
 consumption, the PV is the PV meter or the PV power, and the grid flows are
-what the two leave. An hour without PV statistics counts as no production,
-since an inverter that sleeps at night leaves none. Every run of the day
-starts and ends with an empty battery.
+what the two leave. Every run of the day starts and ends with an empty
+battery.
 
 Such a day is coarser than a measured one:
 
@@ -876,17 +896,21 @@ configured power as an override therefore saves exactly nothing.
   scenario keeps it unless `cycle_cost_per_kwh` is given, also when the
   capacity changes.
 - Efficiencies are single numbers per direction, as in the planner.
-- The kept hourly prices are not dropped when the price sensor or its unit
-  changes. Days priced in the old unit then mix with new ones for up to a
-  year, as measured days already do for 90 days.
+- The kept hourly prices belong to one price source. When a price entity or
+  its unit changes they are dropped, by the same rule as the price history,
+  and the rebuilt days start again from that day. Measured days keep the
+  prices they were recorded with for their 90 days.
 - An EV is part of the fixed load: it is not rescheduled.
 
 **Run time.** One solve per day for the configured battery plus one per
 scenario: 180 solves for 90 days with one scenario, 990 with a range of 10
 sizes. A day rebuilt from statistics has 24 slots where a measured day of
 15-minute slots has 96, so its solves are smaller. They were not measured
-separately. Days are replayed oldest first, so when a long history runs into
-the 10-minute limit it is the newest days that are left out.
+separately. Measured days are replayed first, the newest first, then the
+rebuilt days, the newest first. A long history that runs into the 10-minute
+limit therefore loses rebuilt days before measured ones and old days before
+new ones. They are counted as `run_time_limit`, and `days_measured`,
+`days_from_statistics` and `months_compared` say what the figures rest on.
 
 Measured with `scripts/benchmark_what_if.py` on 90 synthetic days of
 15-minute slots (evening peak, midday PV, cheap night), in a Linux container

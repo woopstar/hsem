@@ -32,6 +32,10 @@ from pathlib import Path
 from typing import Any
 
 from custom_components.hsem.models.performance_record import PerformanceSlot
+from custom_components.hsem.models.price_history_tracker import (
+    merged_price_source,
+    price_source_differs,
+)
 from custom_components.hsem.models.price_profile import PricePair
 from custom_components.hsem.planner.hindsight_scoring import SiteLimits
 from custom_components.hsem.utils.persistence import (
@@ -423,11 +427,14 @@ class WhatIfHistory:
         history_file: Path of the JSON history file.
         prices: Real import and export price by UTC hour start, the mean of
             the hour's slots.
+        price_source: The price source the kept prices belong to: the price
+            entities and their units, as the price history names them.
     """
 
     days: dict[str, RecordedDay] = field(default_factory=dict)
     history_file: str = ""
     prices: dict[datetime, PricePair] = field(default_factory=dict)
+    price_source: dict[str, str] = field(default_factory=dict)
 
     def add(self, day: RecordedDay) -> None:
         """Keep *day*, dropping the oldest beyond :data:`MAX_RECORDED_DAYS`."""
@@ -435,8 +442,21 @@ class WhatIfHistory:
         for old in sorted(self.days)[:-MAX_RECORDED_DAYS]:
             del self.days[old]
 
+    def prices_for(self, source: Mapping[str, str]) -> dict[datetime, PricePair]:
+        """Return the kept prices when they belong to *source*, else none.
+
+        Args:
+            source: The price source in use now.
+        """
+        if price_source_differs(self.price_source, source):
+            return {}
+        return dict(self.prices)
+
     def add_prices(
-        self, hourly: Mapping[datetime, PricePair], before: datetime
+        self,
+        hourly: Mapping[datetime, PricePair],
+        before: datetime,
+        source: Mapping[str, str],
     ) -> bool:
         """Keep the hourly prices before *before* that are not held yet.
 
@@ -444,15 +464,26 @@ class WhatIfHistory:
         hour arrives.  Hours more than :data:`MAX_HISTORY_DAYS` days before
         *before* are dropped.
 
+        The kept prices belong to one price source.  When the price entity or
+        its unit changes, they are on another scale and are dropped first, by
+        the rule of the price history
+        (:func:`~custom_components.hsem.models.price_history_tracker.price_source_differs`).
+
         Args:
             hourly: Real import and export price by UTC hour start.
             before: Hours starting at or after this instant are left out.
                 The caller passes the start of the local day, so the file is
                 written once a day and not once an hour.
+            source: The price source *hourly* comes from.
 
         Returns:
-            Whether the held prices changed.
+            Whether the held prices or their source changed.
         """
+        merged = merged_price_source(self.price_source, source)
+        changed = merged != self.price_source
+        if price_source_differs(self.price_source, source):
+            self.prices.clear()
+        self.price_source = merged
         new = {
             hour: pair
             for hour, pair in hourly.items()
@@ -463,13 +494,14 @@ class WhatIfHistory:
         for hour in old:
             del self.prices[hour]
         self.prices.update(new)
-        return bool(new or old)
+        return bool(new or old or changed)
 
     def as_dict(self) -> dict[str, Any]:
         """Return the history as a plain dict for JSON serialisation."""
         return {
             "schema": SCHEMA_VERSION,
             "days": [self.days[day].as_dict() for day in sorted(self.days)],
+            "price_source": dict(self.price_source),
             "prices": [
                 [
                     int(hour.timestamp()),
@@ -490,6 +522,9 @@ class WhatIfHistory:
             day = RecordedDay.from_dict(raw)
             if day is not None:
                 history.add(day)
+        source = data.get("price_source")
+        if isinstance(source, dict):
+            history.price_source = merged_price_source({}, source)
         for row in data.get("prices") or []:
             values = _floats(row, 3)
             if values is not None and 0.0 <= values[0] <= _MAX_TIMESTAMP:
@@ -522,4 +557,6 @@ class WhatIfHistory:
         # A day added while the file was being read is newer than the file.
         loaded = WhatIfHistory.from_dict(data)
         self.days = {**loaded.days, **self.days}
-        self.prices = {**loaded.prices, **self.prices}
+        if not self.price_source:
+            self.price_source = loaded.price_source
+        self.prices = {**loaded.prices_for(self.price_source), **self.prices}

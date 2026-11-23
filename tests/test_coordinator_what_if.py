@@ -1005,6 +1005,7 @@ class TestPriceArchive:
     ) -> None:
         coordinator = _with_recorder(tmp_path)
         tracker = cast(Any, coordinator)._price_history_tracker
+        tracker.source = {"import_entity": "sensor.import_price"}
         # Today starts at 22:00 UTC of June 3rd in Copenhagen.
         yesterday = datetime(2026, 6, 3, 21, 0, tzinfo=UTC)
         today = datetime(2026, 6, 3, 22, 0, tzinfo=UTC)
@@ -1023,6 +1024,10 @@ class TestPriceArchive:
         assert coordinator._what_if_history.prices == {
             yesterday: pytest.approx((1.5, 0.6))
         }
+        # The prices are kept with the price source they came from.
+        assert coordinator._what_if_history.price_source["import_entity"] == (
+            "sensor.import_price"
+        )
         # No day was complete: the file was written for the prices, once.
         assert persist.await_count == 1
 
@@ -1046,7 +1051,7 @@ class TestRebuild:
     async def test_nothing_is_read_when_no_day_is_missing(self, tmp_path: Path) -> None:
         read = AsyncMock()
 
-        with patch.object(coordinator_what_if, "async_read_hourly_energy", read):
+        with patch.object(coordinator_what_if, "async_read_house_and_pv", read):
             result = await async_rebuild_days(_with_recorder(tmp_path), [], SITE, _NOW)
 
         assert result == ({}, {})
@@ -1062,7 +1067,7 @@ class TestRebuild:
         coordinator._what_if_history.prices.update(prices)
         read = AsyncMock()
 
-        with patch.object(coordinator_what_if, "async_read_hourly_energy", read):
+        with patch.object(coordinator_what_if, "async_read_house_and_pv", read):
             rebuilt, reasons = await async_rebuild_days(
                 coordinator, ["2026-06-01", "2026-06-02"], SITE, _NOW
             )
@@ -1086,7 +1091,7 @@ class TestRebuild:
             tracker.record(hour, 60, import_price, export_price)
         read = AsyncMock(return_value=_statistics("2026-06-01"))
 
-        with patch.object(coordinator_what_if, "async_read_hourly_energy", read):
+        with patch.object(coordinator_what_if, "async_read_house_and_pv", read):
             rebuilt, reasons = await async_rebuild_days(
                 coordinator, ["2026-06-01", "2026-06-02", "2026-06-03"], SITE, _NOW
             )
@@ -1115,7 +1120,7 @@ class TestRebuild:
         coordinator._what_if_history.prices.update(_priced("2026-06-01"))
         read = AsyncMock(return_value=_statistics("2026-06-01"))
 
-        with patch.object(coordinator_what_if, "async_read_hourly_energy", read):
+        with patch.object(coordinator_what_if, "async_read_house_and_pv", read):
             rebuilt, reasons = await async_rebuild_days(
                 coordinator, ["2026-06-01"], SITE, _NOW
             )
@@ -1124,13 +1129,53 @@ class TestRebuild:
         assert reasons == {}
 
     @pytest.mark.asyncio
+    async def test_a_configured_pv_source_must_have_statistics(
+        self, tmp_path: Path
+    ) -> None:
+        """The statistics hold the house load only: with PV configured, no day."""
+        coordinator = _with_recorder(tmp_path)
+        cast(Any, coordinator)._cfg.solar_production_power = "sensor.pv_power"
+        coordinator._what_if_history.prices.update(_priced("2026-06-01"))
+        read = AsyncMock(return_value=_statistics("2026-06-01"))
+
+        with patch.object(coordinator_what_if, "async_read_house_and_pv", read):
+            rebuilt, reasons = await async_rebuild_days(
+                coordinator, ["2026-06-01"], SITE, _NOW
+            )
+
+        assert rebuilt == {}
+        assert reasons == {"2026-06-01": REASON_STATISTICS_INCOMPLETE}
+
+    @pytest.mark.asyncio
+    async def test_kept_prices_of_another_price_source_are_not_used(
+        self, tmp_path: Path
+    ) -> None:
+        coordinator = _with_recorder(tmp_path)
+        history = coordinator._what_if_history
+        history.prices.update(_priced("2026-06-01"))
+        history.price_source = {"import_entity": "sensor.old_price"}
+        cast(Any, coordinator)._price_history_tracker.source = {
+            "import_entity": "sensor.new_price"
+        }
+        read = AsyncMock()
+
+        with patch.object(coordinator_what_if, "async_read_house_and_pv", read):
+            rebuilt, reasons = await async_rebuild_days(
+                coordinator, ["2026-06-01"], SITE, _NOW
+            )
+
+        assert rebuilt == {}
+        assert reasons == {"2026-06-01": REASON_PRICE_INCOMPLETE}
+        read.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_a_recorder_error_leaves_the_days_out(self, tmp_path: Path) -> None:
         coordinator = _with_recorder(tmp_path)
         coordinator._what_if_history.prices.update(_priced("2026-06-02"))
         read = AsyncMock(side_effect=RuntimeError("database is locked"))
 
         with (
-            patch.object(coordinator_what_if, "async_read_hourly_energy", read),
+            patch.object(coordinator_what_if, "async_read_house_and_pv", read),
             patch.object(coordinator_what_if, "_LOGGER") as logger,
         ):
             rebuilt, reasons = await async_rebuild_days(
@@ -1161,7 +1206,7 @@ class TestRebuild:
         recorded, prices = dict(history.days), dict(history.prices)
         read = AsyncMock(return_value=_statistics("2026-06-02"))
 
-        with patch.object(coordinator_what_if, "async_read_hourly_energy", read):
+        with patch.object(coordinator_what_if, "async_read_house_and_pv", read):
             response = await async_run_what_if(
                 coordinator, _NOW, history_days=3, scenarios=_BIGGER
             )

@@ -20,8 +20,9 @@ peaks inside an hour are averaged out.  It is rebuilt with today's battery
 limits, since none were stored for it.
 
 A day is rebuilt only when every hour of it has a real price and a house
-load.  An hour without PV statistics counts as no production: an inverter
-that is offline at night leaves no statistics for those hours.
+load.  Where a PV source is configured, every hour needs a PV statistic too:
+a renamed PV sensor or a gap must not turn a sunny day into one of pure grid
+import.  Without a PV source the site has no PV and the production is zero.
 
 Pure functions with no Home Assistant imports.
 """
@@ -44,7 +45,8 @@ from custom_components.hsem.planner.hindsight_scoring import SiteLimits
 REASON_PRICE_INCOMPLETE = "price_incomplete"
 
 #: Why a day has no comparison: it has no measured record and its prices are
-#: complete, but the statistics lack the house load of at least one hour.
+#: complete, but the statistics lack the house load of at least one hour, or
+#: the PV of one where a PV source is configured.
 REASON_STATISTICS_INCOMPLETE = "statistics_incomplete"
 
 _HOUR = timedelta(hours=1)
@@ -95,8 +97,10 @@ def rebuild_day(
     hourly: HourlyEnergy,
     prices: Mapping[datetime, PricePair],
     site: SiteLimits,
+    *,
+    pv_expected: bool,
 ) -> RecordedDay | None:
-    """Return a day rebuilt from hourly statistics, or ``None`` without a load.
+    """Return a day rebuilt from hourly statistics, or ``None`` when it has gaps.
 
     Args:
         day: The local day as an ISO date.
@@ -104,12 +108,17 @@ def rebuild_day(
         hourly: The hourly energy read from the statistics.
         prices: Real import and export price by UTC hour start.
         site: The installation's limits as configured today.
+        pv_expected: Whether a PV source is configured.  An hour without a
+            PV statistic then leaves no day; without a PV source it is an
+            hour without production.
 
     Returns:
         The day, marked as rebuilt from statistics, or ``None`` when an hour
-        of it has no house load.
+        of it has no house load, or no PV where PV is expected.
     """
     if any(hour not in hourly.house_kwh for hour in hours):
+        return None
+    if pv_expected and any(hour not in hourly.pv_kwh for hour in hours):
         return None
     pv = tuple(
         None if hour not in hourly.pv_kwh else max(hourly.pv_kwh[hour], 0.0)
@@ -141,6 +150,8 @@ def rebuild_days(
     hourly: HourlyEnergy,
     prices: Mapping[datetime, PricePair],
     site: SiteLimits,
+    *,
+    pv_expected: bool,
 ) -> tuple[dict[str, RecordedDay], dict[str, str]]:
     """Rebuild every fully priced day the statistics cover.
 
@@ -152,6 +163,7 @@ def rebuild_days(
         hourly: The hourly energy read from the statistics.
         prices: Real import and export price by UTC hour start.
         site: The installation's limits as configured today.
+        pv_expected: Whether a PV source is configured.
 
     Returns:
         The rebuilt days by ISO date, and
@@ -162,7 +174,9 @@ def rebuild_days(
     rebuilt: dict[str, RecordedDay] = {}
     reasons: dict[str, str] = {}
     for day, hours in priced.items():
-        recorded = rebuild_day(day, hours, hourly, prices, site)
+        recorded = rebuild_day(
+            day, hours, hourly, prices, site, pv_expected=pv_expected
+        )
         if recorded is None:
             reasons[day] = REASON_STATISTICS_INCOMPLETE
         else:

@@ -87,7 +87,7 @@ class TestPricedDays:
 
 class TestRebuildDay:
     def test_the_day_is_the_load_and_pv_with_an_idle_battery(self) -> None:
-        day = rebuild_day(_DAY, _HOURS, _hourly(), _prices(), SITE)
+        day = rebuild_day(_DAY, _HOURS, _hourly(), _prices(), SITE, pv_expected=False)
 
         assert day is not None
         assert day.from_statistics
@@ -104,12 +104,12 @@ class TestRebuildDay:
         assert day.grid_export_kwh[10] == pytest.approx(2.0)
         assert day.import_price[18] == pytest.approx(3.0)
         assert day.export_price[18] == pytest.approx(0.2)
-        # No PV statistics is no production, and is kept as not observed.
+        # A site without a PV source: no production, kept as not observed.
         assert day.pv_kwh[0] is None
         assert day.pv_kwh[10] == pytest.approx(3.0)
 
     def test_the_replay_derives_the_load_of_the_statistics(self) -> None:
-        day = rebuild_day(_DAY, _HOURS, _hourly(), _prices(), SITE)
+        day = rebuild_day(_DAY, _HOURS, _hourly(), _prices(), SITE, pv_expected=False)
         assert day is not None
 
         slots = realized_slots(day.performance_slots(), SITE)
@@ -129,7 +129,7 @@ class TestRebuildDay:
             pv_kwh={_HOURS[0]: -0.1},
         )
 
-        day = rebuild_day(_DAY, _HOURS, hourly, _prices(), SITE)
+        day = rebuild_day(_DAY, _HOURS, hourly, _prices(), SITE, pv_expected=False)
 
         assert day is not None
         assert day.grid_import_kwh[0] == pytest.approx(0.0)
@@ -142,9 +142,52 @@ class TestRebuildDay:
         del house[_HOURS[3]]
 
         assert (
-            rebuild_day(_DAY, _HOURS, HourlyEnergy(house_kwh=house), _prices(), SITE)
+            rebuild_day(
+                _DAY,
+                _HOURS,
+                HourlyEnergy(house_kwh=house),
+                _prices(),
+                SITE,
+                pv_expected=False,
+            )
             is None
         )
+
+
+class TestPvExpected:
+    """A configured PV source with a gap must not become a day without sun."""
+
+    def test_an_hour_without_pv_statistics_leaves_no_day(self) -> None:
+        """PV statistics for four midday hours only, as after a renamed sensor."""
+        assert (
+            rebuild_day(_DAY, _HOURS, _hourly(), _prices(), SITE, pv_expected=True)
+            is None
+        )
+
+    def test_a_day_with_pv_for_every_hour_is_rebuilt(self) -> None:
+        hourly = HourlyEnergy(
+            house_kwh=dict.fromkeys(_HOURS, 1.0),
+            pv_kwh={**dict.fromkeys(_HOURS, 0.0), _HOURS[12]: 3.0},
+        )
+
+        day = rebuild_day(_DAY, _HOURS, hourly, _prices(), SITE, pv_expected=True)
+
+        assert day is not None
+        assert day.pv_kwh[0] == pytest.approx(0.0)
+        assert day.grid_export_kwh[12] == pytest.approx(2.0)
+
+    def test_a_pv_hour_dropped_as_a_glitch_is_a_missing_hour(self) -> None:
+        hourly = HourlyEnergy(
+            house_kwh=dict.fromkeys(_HOURS, 1.0),
+            pv_kwh={**dict.fromkeys(_HOURS, 0.0), _HOURS[12]: MAX_HOUR_KWH + 1.0},
+        )
+
+        rebuilt, reasons = rebuild_days(
+            {_DAY: _HOURS}, hourly, _prices(), SITE, pv_expected=True
+        )
+
+        assert rebuilt == {}
+        assert reasons == {_DAY: REASON_STATISTICS_INCOMPLETE}
 
 
 class TestRebuildDays:
@@ -154,7 +197,11 @@ class TestRebuildDays:
         prices = {**_prices(), **_prices(other_hours)}
 
         rebuilt, reasons = rebuild_days(
-            {_DAY: _HOURS, other: other_hours}, _hourly(), prices, SITE
+            {_DAY: _HOURS, other: other_hours},
+            _hourly(),
+            prices,
+            SITE,
+            pv_expected=False,
         )
 
         assert list(rebuilt) == [_DAY]
@@ -165,7 +212,9 @@ class TestRebuildDays:
             house_kwh={**dict.fromkeys(_HOURS, 1.0), _HOURS[5]: MAX_HOUR_KWH + 1.0}
         )
 
-        rebuilt, reasons = rebuild_days({_DAY: _HOURS}, hourly, _prices(), SITE)
+        rebuilt, reasons = rebuild_days(
+            {_DAY: _HOURS}, hourly, _prices(), SITE, pv_expected=False
+        )
 
         assert rebuilt == {}
         assert reasons == {_DAY: REASON_STATISTICS_INCOMPLETE}
@@ -175,7 +224,7 @@ class TestRebuildDays:
 class TestReplay:
     def test_a_rebuilt_day_is_replayed_by_the_same_code(self) -> None:
         """No battery to start with: a larger one shifts more into the evening."""
-        day = rebuild_day(_DAY, _HOURS, _hourly(), _prices(), SITE)
+        day = rebuild_day(_DAY, _HOURS, _hourly(), _prices(), SITE, pv_expected=False)
         assert day is not None
 
         response = run_what_if(

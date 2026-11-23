@@ -38,7 +38,7 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant, callback
 
 from custom_components.hsem.coordinator_energy_backfill import (
-    async_read_hourly_energy,
+    async_read_house_and_pv,
 )
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
@@ -198,7 +198,9 @@ async def async_record_days(
     prices = getattr(coordinator, "_price_history_tracker", None)
     current = hsem_now()
     today = datetime.combine(current.date(), time(0), tzinfo=current.tzinfo)
-    added = prices is not None and history.add_prices(prices.hourly_prices(), today)
+    added = prices is not None and history.add_prices(
+        prices.hourly_prices(), today, prices.source
+    )
     for day, keys in request.days:
         usable = usable_slots(
             [request.slots.get(key) for key in keys], request.slot_minutes
@@ -295,18 +297,22 @@ async def async_rebuild_days(
     hass = coordinator.hass
     if not days or "recorder" not in getattr(hass.config, "components", ()):
         return {}, {}
-    prices = dict(coordinator._what_if_history.prices)
+    history = coordinator._what_if_history
     tracker = getattr(coordinator, "_price_history_tracker", None)
-    if tracker is not None:
-        prices.update(tracker.hourly_prices())
+    if tracker is None:
+        prices = dict(history.prices)
+    else:
+        # Kept prices of another price source are on another scale.
+        prices = {**history.prices_for(tracker.source), **tracker.hourly_prices()}
+    cfg = coordinator._cfg
     priced = priced_days(days, now.tzinfo, prices)
     reasons = {day: REASON_PRICE_INCOMPLETE for day in days if day not in priced}
     if not priced:
         return {}, reasons
     try:
-        hourly = await async_read_hourly_energy(
+        hourly = await async_read_house_and_pv(
             hass,
-            coordinator._cfg,
+            cfg,
             min(hours[0] for hours in priced.values()),
             max(hours[-1] for hours in priced.values()) + timedelta(hours=1),
         )
@@ -319,7 +325,13 @@ async def async_rebuild_days(
             exc,
         )
         return {}, {**reasons, **dict.fromkeys(priced, REASON_STATISTICS_INCOMPLETE)}
-    rebuilt, incomplete = rebuild_days(priced, hourly, prices, site)
+    rebuilt, incomplete = rebuild_days(
+        priced,
+        hourly,
+        prices,
+        site,
+        pv_expected=bool(cfg.pv_energy_entity or cfg.solar_production_power),
+    )
     return rebuilt, {**reasons, **incomplete}
 
 
