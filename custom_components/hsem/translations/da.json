@@ -1482,7 +1482,7 @@
         "fields": {
           "history_days": {
             "name": "Historikdage",
-            "description": "Afsluttede dage før i dag, der skal afspilles. Højst 90."
+            "description": "Afsluttede dage før i dag, der skal afspilles. Højst 365. Dage uden målt registrering genopbygges fra timestatistik."
           },
           "usable_capacity_kwh": {
             "name": "Brugbar kapacitet",

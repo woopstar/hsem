@@ -325,6 +325,31 @@ class PriceHistoryTracker:
             export_level=self._levels.get("export"),
         )
 
+    def hourly_prices(self) -> dict[datetime, PricePair]:
+        """Return the mean real price of every hour recorded in full.
+
+        Hourly long-term statistics can only be priced per hour (issue
+        #1455).  An hour counts when its recorded slots add up to the whole
+        hour, so its price is real for every slot of it.
+
+        Returns:
+            ``(import_price, export_price)`` by UTC hour start.
+        """
+        hours: dict[datetime, tuple[int, float, float]] = {}
+        for start, (step, import_price, export_price) in self._samples.items():
+            hour = start.replace(minute=0, second=0, microsecond=0)
+            minutes, import_sum, export_sum = hours.get(hour, (0, 0.0, 0.0))
+            hours[hour] = (
+                minutes + step,
+                import_sum + step * import_price,
+                export_sum + step * export_price,
+            )
+        return {
+            hour: (import_sum / minutes, export_sum / minutes)
+            for hour, (minutes, import_sum, export_sum) in hours.items()
+            if minutes == _MAX_STEP_MINUTES
+        }
+
     def _bucket_profile(self, zone: tzinfo | None) -> PriceProfile:
         """Return the cached profile of the history, without level shifts."""
         cached = self._profile_cache

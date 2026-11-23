@@ -24,6 +24,7 @@ from custom_components.hsem.models.performance_record import (
     REASON_SCIPY_UNAVAILABLE,
     REASON_STORED_ENERGY_OUTSIDE_LIMITS,
 )
+from custom_components.hsem.models.what_if_history import DayLimits
 from custom_components.hsem.planner.milp_optimizer import is_scipy_available
 from custom_components.hsem.utils import what_if
 from custom_components.hsem.utils.what_if import (
@@ -569,3 +570,157 @@ class TestPause:
             _run(WhatIfScenario(usable_kwh=15.0))
 
         sleep.assert_not_called()
+
+
+@needs_scipy
+class TestDayLimits:
+    """Issue #1455: a day is solved with the limits it was recorded with."""
+
+    def _with_limits(self) -> dict[str, Any]:
+        """Return the three days, each holding the limits of ``SITE``."""
+        return {
+            date: replace(day, limits=DayLimits.from_site(SITE))
+            for date, day in _DAYS.items()
+        }
+
+    def test_the_baseline_uses_the_power_of_the_day(self) -> None:
+        """Today 1 kW is configured; the days were recorded with 5 kW.
+
+        A scenario that asks for 5 kW is then the battery those days already
+        had, and saves nothing.  Without the stored limits the baseline is
+        today's 1 kW battery, and the same scenario looks like a gain.
+        """
+        today = replace(SITE, max_charge_kw=1.0, max_discharge_kw=1.0)
+        scenario = WhatIfScenario(max_charge_kw=5.0, max_discharge_kw=5.0)
+
+        stored = _run(scenario, site=today, recorded=self._with_limits())
+        old = _run(scenario, site=today)
+
+        assert stored["days_compared"] == 3
+        assert stored["scenarios"][0]["grid_savings"] == pytest.approx(
+            0.0, abs=_ROUNDING
+        )
+        assert old["scenarios"][0]["grid_savings"] > 0.1
+
+    def test_a_scenario_changes_the_battery_of_the_day(self) -> None:
+        """What is left out of the scenario keeps the day's value, not today's."""
+        today = replace(SITE, max_charge_kw=1.0, max_discharge_kw=1.0)
+        scenario = WhatIfScenario(usable_kwh=15.0)
+
+        moved = _run(scenario, site=today, recorded=self._with_limits())
+        unmoved = _run(scenario, recorded=self._with_limits())
+
+        for name in ("current_grid_cost", "scenario_grid_cost", "grid_savings"):
+            assert moved["scenarios"][0][name] == pytest.approx(
+                unmoved["scenarios"][0][name], abs=_ROUNDING
+            )
+
+    def test_a_day_outside_today_s_soc_limits_is_still_compared(self) -> None:
+        """The days ran down to 5 % SoC; today the floor is 60 %."""
+        today = replace(SITE, min_soc_pct=60.0)
+        scenario = WhatIfScenario(usable_kwh=15.0)
+
+        stored = _run(scenario, site=today, recorded=self._with_limits())
+        old = _run(scenario, site=today)
+
+        assert stored["days_compared"] == 3
+        assert stored["days_on_todays_limits"] == 0
+        assert old["days_compared"] == 0
+        assert old["skipped_reasons"] == {REASON_STORED_ENERGY_OUTSIDE_LIMITS: 3}
+
+    def test_days_without_stored_limits_are_counted(self) -> None:
+        recorded = self._with_limits()
+        first = next(iter(_DAYS))
+        recorded[first] = _DAYS[first]
+
+        response = _run(WhatIfScenario(usable_kwh=15.0), recorded=recorded)
+
+        assert response["days_compared"] == 3
+        assert response["days_on_todays_limits"] == 1
+        assert [day["limits"] for day in response["days"]] == [
+            "today",
+            "recorded",
+            "recorded",
+        ]
+
+
+@needs_scipy
+class TestMonthsAndSources:
+    """Issue #1455: the months behind a figure, and rebuilt days apart."""
+
+    def test_the_months_of_the_compared_days_are_listed(self) -> None:
+        days = {
+            day.day: day
+            for day in (
+                make_day(FIRST_DAY - timedelta(days=1), seed=7),
+                *_DAYS.values(),
+                make_day(FIRST_DAY + timedelta(days=30), seed=8),
+            )
+        }
+
+        response = _run(
+            WhatIfScenario(usable_kwh=15.0), days=tuple(sorted(days)), recorded=days
+        )
+
+        assert response["months_compared"] == [
+            {"month": "2026-05", "days": 1},
+            {"month": "2026-06", "days": 3},
+            {"month": "2026-07", "days": 1},
+        ]
+
+    def test_a_skipped_day_is_in_no_month(self) -> None:
+        response = _run(
+            WhatIfScenario(usable_kwh=15.0), days=("2026-04-30", *tuple(_DAYS))
+        )
+
+        assert response["months_compared"] == [{"month": "2026-06", "days": 3}]
+        assert (
+            _run(WhatIfScenario(usable_kwh=15.0), recorded={})["months_compared"] == []
+        )
+
+    def test_rebuilt_days_are_marked_and_summed_apart(self) -> None:
+        recorded = dict(_DAYS)
+        last = list(_DAYS)[-1]
+        recorded[last] = replace(_DAYS[last], from_statistics=True)
+
+        response = _run(WhatIfScenario(usable_kwh=15.0), recorded=recorded)
+
+        assert response["days_compared"] == 3
+        assert response["days_measured"] == 2
+        assert response["days_from_statistics"] == 1
+        assert [day["source"] for day in response["days"]] == [
+            "measured",
+            "measured",
+            "statistics",
+        ]
+        row = response["scenarios"][0]
+        assert row["measured"]["days"] == 2
+        assert row["from_statistics"]["days"] == 1
+        for name in (
+            "current_grid_cost",
+            "scenario_grid_cost",
+            "grid_savings",
+            "current_wear_cost",
+            "scenario_wear_cost",
+            "savings_after_wear",
+        ):
+            assert row["measured"][name] + row["from_statistics"][name] == (
+                pytest.approx(row[name], abs=2 * _ROUNDING)
+            )
+        assert row["from_statistics"]["grid_savings"] == pytest.approx(
+            response["days"][2]["grid_savings"], abs=_ROUNDING
+        )
+
+    def test_without_rebuilt_days_their_part_is_empty(self) -> None:
+        row = _run(WhatIfScenario(usable_kwh=15.0))["scenarios"][0]
+
+        assert row["from_statistics"] == {
+            "days": 0,
+            "current_grid_cost": pytest.approx(0.0),
+            "scenario_grid_cost": pytest.approx(0.0),
+            "grid_savings": pytest.approx(0.0),
+            "current_wear_cost": pytest.approx(0.0),
+            "scenario_wear_cost": pytest.approx(0.0),
+            "savings_after_wear": pytest.approx(0.0),
+        }
+        assert row["measured"]["grid_savings"] == pytest.approx(row["grid_savings"])

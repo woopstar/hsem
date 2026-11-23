@@ -125,11 +125,14 @@ what_if:
     would have been worth. For each day the cheapest possible run is solved
     once with the configured battery and once with the scenario, over the same
     load, PV and prices. Both costs are perfect-foresight bounds, so read the
-    difference as an estimate, not a promise. Read-only: nothing is written to
-    the inverter and the active plan is not touched. Response keys:
-    history_days, days_compared, first_day_compared, last_day_compared,
-    days_skipped, days_timed_out, skipped_reasons, current, scenarios, days,
-    note, duration_seconds.
+    difference as an estimate, not a promise. A day without a measured record
+    is rebuilt from hourly long-term statistics when the price history has a
+    real price for every hour of it. Read-only: nothing is written to the
+    inverter and the active plan is not touched. Response keys: history_days,
+    days_compared, days_measured, days_from_statistics, days_on_todays_limits,
+    first_day_compared, last_day_compared, months_compared, days_skipped,
+    days_timed_out, skipped_reasons, current, scenarios, days, note,
+    duration_seconds.
   fields:
     history_days:
       required: false
@@ -137,14 +140,15 @@ what_if:
       selector:
         number:
           min: 1
-          max: 90
+          max: 365
           step: 1
           unit_of_measurement: "days"
           mode: box
       description: >-
-        Completed days before today to replay. HSEM keeps at most 90
-        recorded days, and only days recorded after this service was
-        added. Default 30.
+        Completed days before today to replay, at most 365. HSEM keeps 90
+        measured days. Other days are rebuilt from hourly long-term
+        statistics and the hourly prices HSEM kept, and are reported apart.
+        Default 30.
     usable_capacity_kwh:
       required: false
       selector:

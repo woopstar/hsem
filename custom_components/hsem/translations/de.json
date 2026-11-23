@@ -1475,7 +1475,7 @@
         "fields": {
           "history_days": {
             "name": "Verlaufstage",
-            "description": "Abgeschlossene Tage vor heute, die durchgespielt werden. Höchstens 90."
+            "description": "Abgeschlossene Tage vor heute, die durchgespielt werden. Höchstens 365. Tage ohne gemessene Aufzeichnung werden aus der Stundenstatistik rekonstruiert."
           },
           "usable_capacity_kwh": {
             "name": "Nutzbare Kapazität",

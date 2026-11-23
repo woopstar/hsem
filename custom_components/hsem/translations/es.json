@@ -1475,7 +1475,7 @@
         "fields": {
           "history_days": {
             "name": "Días de historial",
-            "description": "Días completos anteriores a hoy que se reproducen. Como máximo 90."
+            "description": "Días completos anteriores a hoy que se reproducen. Como máximo 365. Los días sin registro medido se reconstruyen a partir de las estadísticas horarias."
           },
           "usable_capacity_kwh": {
             "name": "Capacidad útil",

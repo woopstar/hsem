@@ -99,10 +99,22 @@ def _source_entities(cfg: SensorConfig) -> list[str]:
     return [*_house_entities(cfg), *(entity for entity in optional if entity)]
 
 
-async def _read_hourly(
+async def async_read_hourly_energy(
     hass: HomeAssistant, cfg: SensorConfig, start: datetime, end: datetime
 ) -> HourlyEnergy:
-    """Read the hourly statistics of every configured source."""
+    """Read the hourly statistics of every configured source.
+
+    Also what ``hsem.what_if`` rebuilds a day from (issue #1455).
+
+    Args:
+        hass: Home Assistant instance.
+        cfg: The sensor configuration.
+        start: Start of the first hour wanted.
+        end: End of the window; hours starting at or after it are left out.
+
+    Returns:
+        Energy per UTC hour start; an hour without statistics is absent.
+    """
     reader = StatisticsReader(hass)
 
     async def energy(entity_id: str | None) -> dict[datetime, float]:
@@ -192,7 +204,7 @@ async def async_backfill_energy_history(
     # One day more than is kept, so the oldest kept day is read in full.
     start = now - timedelta(days=MAX_DAILY_LOG_DAYS + 1)
     try:
-        hourly = await _read_hourly(hass, cfg, start, now)
+        hourly = await async_read_hourly_energy(hass, cfg, start, now)
     except Exception as exc:
         # A recorder or database error must not stop the energy tracking.
         attempt.retry_at = stamp + RETRY_INTERVAL_S

@@ -1475,7 +1475,7 @@
         "fields": {
           "history_days": {
             "name": "History days",
-            "description": "Completed days before today to replay. At most 90."
+            "description": "Completed days before today to replay. At most 365. Days without a measured record are rebuilt from hourly statistics."
           },
           "usable_capacity_kwh": {
             "name": "Usable capacity",
