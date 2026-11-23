@@ -43,6 +43,8 @@ def _make_flow() -> HSEMConfigFlow:
     flow = HSEMConfigFlow.__new__(HSEMConfigFlow)
     # Call __init__ explicitly to exercise the real initialiser.
     flow.__init__()  # type: ignore[misc]  # test fixture override
+    # These tests have no backup folder: skip the restore menu (issue #1448).
+    flow._restore_offered = True
 
     hass = MagicMock()
     hass.config_entries.async_entries.return_value = []

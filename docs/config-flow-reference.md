@@ -40,6 +40,90 @@ the old protocol: switching TLS on would keep plain `ws://` running (issue
 State writes by HSEM's own switches, numbers, times and selectors also land in
 the config entry options. They never cause a reload.
 
+### Restore from a backup
+
+When `<config>/hsem_backups/` holds at least one `.json` file, the setup flow
+opens with a menu (`setup_method`) instead of the first form:
+
+- **Set up from scratch** continues with the steps above, unchanged.
+- **Restore from a backup** sets HSEM up from a file written by
+  [`hsem.export_data`](services-reference.md#13-hsemexport_data), or by HSEM when
+  its config entry was deleted.
+
+Without a backup file the menu is not shown and setup is as before. A file
+that cannot be restored still brings up the menu: the `restore` step says why
+it is rejected. On a
+new Home Assistant, install HSEM, copy the backup file into
+`<config>/hsem_backups/` and add the integration.
+
+```
+setup_method → restore → restore_confirm → (entry created)
+```
+
+#### Step: `restore`
+
+| Field       | Key           | Default                | Description                                              |
+| ----------- | ------------- | ---------------------- | -------------------------------------------------------- |
+| Backup file | `backup_file` | Newest restorable file | A `.json` file in `<config>/hsem_backups/`, newest first |
+
+The list holds every `.json` file in the folder. The chosen file gets the
+checks `hsem.import_data` runs with `restore_configuration`. Nothing is
+written in this step. A rejected file shows one of these errors and the form
+stays open:
+
+| Error                   | Cause                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------- |
+| `backup_unreadable`     | The file is missing, too large or not JSON                                                        |
+| `backup_invalid`        | Not an HSEM backup, a malformed backup, or a backup without configuration                         |
+| `backup_too_new`        | Written by a newer HSEM version, or with a newer backup `schema_version`. Update HSEM first       |
+| `backup_config_version` | The configuration has another config entry version, or a newer minor version, than this HSEM uses |
+
+A backup with another config entry version cannot set HSEM up. Set HSEM up
+from scratch and restore the learned data with `hsem.import_data` without
+`restore_configuration`.
+
+#### Step: `restore_confirm`
+
+Shows the file, when and by which HSEM version it was written, and:
+
+- **Not in the backup.** The redacted keys: charge point IDs
+  (`hsem_ocpp_cpid`, `hsem_ocpp_second_cpid`), the OCPP certificate paths and
+  anything named like a secret. They get their default.
+- **Switched off.** Features that were on in the backup and need one of those
+  values: `hsem_ocpp_enabled` and `hsem_ocpp_second_enabled` without their
+  charge point ID, and both when `hsem_ocpp_tls_mode` is not `off`, since the
+  certificate paths are redacted. HSEM does not start them with TLS off
+  instead. Enter the values under **Configure** after the restore and switch
+  the features on again.
+- **Devices that do not exist here.** A `hsem_huawei_solar_device_id_*` option
+  whose device is not in the device registry of this Home Assistant. Device
+  IDs differ between installations, so on a new host this is every device.
+  The option is left empty, as the setup form would reject it. Pick the
+  devices under **Configure** after the restore. HSEM starts without them: a
+  device is only used when HSEM writes to the inverter or the batteries, and
+  those writes fail until it is set.
+- **History files not restored.** The price history, when it was recorded from
+  other price sensors or units than the configuration in the backup names.
+
+Submitting replaces the history files under `.storage`, all or nothing, and
+creates the config entry with the data and options from the backup. HSEM then
+starts and loads the solar correction, the forecast accuracy records and the
+hourly averages. If the files cannot be written, or `hsem.import_data` is
+running, the step shows `backup_write_failed` and no entry is created.
+
+History files survive the removal of HSEM. When one is under `.storage`, the
+restore replaces it and says so in this step. It first saves the existing
+history as `hsem_backup_<date>_<time>_before_import.json`, as
+`hsem.import_data` does, and shows the path when the entry is created. If that
+file cannot be written, the step shows `backup_safety_copy_failed`, nothing is
+replaced and no entry is created. That backup holds history and no
+configuration: `hsem.import_data` can import it, the setup flow cannot.
+
+Entity IDs from the backup that do not exist on this Home Assistant show up as
+missing entities until you correct them under **Configure**. The restore does
+not test the price and battery sensors the way the last step of a normal setup
+does.
+
 ### Step: `quick_setup`
 
 Initial entity auto-detection step. Scans available HA entities and

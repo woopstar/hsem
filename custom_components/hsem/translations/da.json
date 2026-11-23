@@ -2,7 +2,11 @@
   "config": {
     "abort": {
       "already_configured": "HSEM Integration er allerede konfigureret",
-      "reconfigured_successfully": "HSEM Integration genkonfigureret."
+      "reconfigured_successfully": "HSEM Integration genkonfigureret.",
+      "no_backups": "Der blev ikke fundet nogen backupfiler i mappen hsem_backups."
+    },
+    "create_entry": {
+      "history_saved": "HSEM blev gendannet. Historikken, der lå på denne Home Assistant i forvejen, blev gemt i {before_path}."
     },
     "error": {
       "device_not_found": "Den valgte enhed blev ikke fundet.",
@@ -33,7 +37,13 @@
       "tls_file_not_found": "Filen findes ikke eller kan ikke læses.",
       "tls_cert_key_mismatch": "Servercertifikatet og nøglen kunne ikke indlæses sammen. Kontroller, at begge er PEM-filer, og at nøglen hører til certifikatet.",
       "tls_invalid_ca": "Klient-CA-filen er ikke et gyldigt PEM-certifikat.",
-      "invalid_topup_min_power_pct": "Minimumseffekt for opladning fra nettet skal være mellem 0 og 100 %."
+      "invalid_topup_min_power_pct": "Minimumseffekt for opladning fra nettet skal være mellem 0 og 100 %.",
+      "backup_invalid": "Filen er ikke en brugbar HSEM-backup. Intet blev gendannet.",
+      "backup_unreadable": "Backupfilen kunne ikke læses: den mangler, er for stor eller er ikke JSON. Intet blev gendannet.",
+      "backup_too_new": "Backuppen er skrevet af en nyere HSEM-version. Opdater HSEM først. Intet blev gendannet.",
+      "backup_config_version": "Konfigurationen i backuppen hører til en anden version af konfigurationsposten. Sæt HSEM op manuelt, og gendan derefter de lærte data med handlingen hsem.import_data. Intet blev gendannet.",
+      "backup_write_failed": "Historikfilerne kunne ikke skrives. Intet blev gendannet. Se Home Assistant-loggen.",
+      "backup_safety_copy_failed": "Historikken, der allerede ligger på denne Home Assistant, kunne ikke gemmes først, så intet blev gendannet. Se Home Assistant-loggen."
     },
     "step": {
       "batteries_excess_export": {
@@ -537,6 +547,28 @@
         },
         "description": "HSEM har autodetekteret følgende enheder. {warning}Gennemgå de detekterede enheder nedenfor. Du kan bekræfte at bruge dem eller vælge Avanceret Opsætning for at vælge enheder manuelt.",
         "title": "Hurtig Opsætning - Autodetekterede Enheder"
+      },
+      "setup_method": {
+        "title": "Opsæt HSEM",
+        "description": "Der blev fundet en backupfil i mappen hsem_backups. Sæt HSEM op fra bunden, eller gendan konfigurationen og de lærte data fra en backup.",
+        "menu_options": {
+          "user": "Opsæt fra bunden",
+          "restore": "Gendan fra en backup"
+        }
+      },
+      "restore": {
+        "title": "Gendan fra en backup",
+        "description": "Vælg en backupfil fra mappen hsem_backups. Filen kontrolleres først. Intet skrives i dette trin.",
+        "data": {
+          "backup_file": "Backupfil"
+        },
+        "data_description": {
+          "backup_file": "En fil skrevet af handlingen hsem.export_data, eller af HSEM da integrationen blev fjernet."
+        }
+      },
+      "restore_confirm": {
+        "title": "Bekræft gendannelsen",
+        "description": "Backup: {backup_file}\nSkrevet: {created} af HSEM {hsem_version}\n\nIndsend for at gendanne historikfilerne og oprette HSEM med konfigurationen fra backuppen.\n\nIkke i backuppen, sat til standardværdien: {skipped_keys}\n\nSlået fra, fordi de kræver en af de værdier: {disabled_features}\n\nEnheder, der ikke findes på denne Home Assistant, efterladt tomme: {missing_devices}. Vælg dem under Konfigurer efter gendannelsen.\n\nHistorikfiler, der ikke gendannes: {history_files_skipped}\n\nHSEM-historikfiler, der allerede ligger på denne Home Assistant, erstattes. De gemmes først i en before_import-backup i mappen hsem_backups.\n\nEn backup indeholder aldrig ladepunkt-id'er, certifikatstier eller hemmeligheder. Indtast dem under Konfigurer efter gendannelsen, og slå derefter funktionerne til igen."
       }
     }
   },
