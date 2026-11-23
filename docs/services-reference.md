@@ -632,10 +632,16 @@ disabled and loads the learned state when it is enabled.
 **Restoring the configuration.** With `restore_configuration: true` the options
 from the backup are merged into the current options, entity IDs included.
 Redacted values cannot be restored: secrets, charge point IDs and certificate
-paths keep their current value and are listed in the response. On a new Home
-Assistant, set HSEM up through the config flow first, then import. Entity IDs
+paths keep their current value and are listed in the response. Entity IDs
 that do not exist there show up as missing entities until you correct them in
 the options.
+
+**On a new Home Assistant.** Copy the backup file into
+`<config>/hsem_backups/` and add the HSEM integration. The setup flow then
+offers **Restore from a backup**, which creates HSEM with the configuration
+and the learned data from the file. It runs the checks and the file replace of
+this action. See
+[Restore from a backup](config-flow-reference.md#restore-from-a-backup).
 
 The options are only restored when the backup was written with the same config
 entry version as the installed HSEM, and a minor version that is not newer.

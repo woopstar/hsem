@@ -89,6 +89,8 @@ def _make_config_flow() -> HSEMConfigFlow:
     """Return a config flow wired with a mock ``hass`` and flow identity."""
     flow = HSEMConfigFlow()
     flow.hass = MagicMock()
+    # These tests have no backup folder: skip the restore menu (issue #1448).
+    flow._restore_offered = True
     flow.flow_id = "test_flow"
     flow.handler = "hsem"
     flow.async_set_unique_id = AsyncMock(return_value=None)  # type: ignore[method-assign]  # test monkey-patch

@@ -78,6 +78,7 @@ from custom_components.hsem.flows.quick_setup import (
     CRITICAL_DETECTION_KEYS,
     auto_detect_entities,
 )
+from custom_components.hsem.flows.restore import HSEMRestoreFlow
 from custom_components.hsem.flows.solcast import (
     get_solcast_step_schema,
     validate_solcast_step_input,
@@ -97,7 +98,7 @@ _LOGGER = logging.getLogger(__name__)
 # right-hand side is the v2 replacement.
 
 
-class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: ignore[reportGeneralTypeIssues]  # HA ConfigFlow class hierarchy triggers false-positive on MRO
+class HSEMConfigFlow(HSEMRestoreFlow, domain=DOMAIN):  # pyright: ignore[reportGeneralTypeIssues]  # HA ConfigFlow class hierarchy triggers false-positive on MRO
     """Config flow for HSEM."""
 
     VERSION = 4
@@ -201,6 +202,10 @@ class HSEMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # pyright: igno
         # unique id enforces the "only one entry" constraint.
         await self.async_set_unique_id(DOMAIN)
         self._abort_if_unique_id_configured()
+
+        # With a restorable backup on disk, offer to restore it first (#1448).
+        if user_input is None and (menu := await self._async_offer_restore()):
+            return menu
 
         # If user_input is not None, the user has submitted the form.
         if user_input is not None:

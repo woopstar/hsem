@@ -2,7 +2,8 @@
   "config": {
     "abort": {
       "already_configured": "La integración HSEM ya está configurada",
-      "reconfigured_successfully": "Integración HSEM reconfigurada correctamente."
+      "reconfigured_successfully": "Integración HSEM reconfigurada correctamente.",
+      "no_backups": "No se encontraron archivos de copia de seguridad en la carpeta hsem_backups."
     },
     "error": {
       "device_not_found": "No se encontró el dispositivo seleccionado.",
@@ -33,7 +34,12 @@
       "tls_file_not_found": "Archivo no encontrado o no legible.",
       "tls_cert_key_mismatch": "No se pudieron cargar juntos el certificado y la clave del servidor. Comprueba que ambos sean archivos PEM y que la clave corresponda al certificado.",
       "tls_invalid_ca": "El archivo de la CA de clientes no es un certificado PEM válido.",
-      "invalid_topup_min_power_pct": "La potencia mínima de carga desde la red debe estar entre 0 y 100 %."
+      "invalid_topup_min_power_pct": "La potencia mínima de carga desde la red debe estar entre 0 y 100 %.",
+      "backup_invalid": "El archivo no es una copia de seguridad de HSEM utilizable. No se restauró nada.",
+      "backup_unreadable": "No se pudo leer la copia de seguridad: falta, es demasiado grande o no es JSON. No se restauró nada.",
+      "backup_too_new": "La copia de seguridad fue escrita por una versión más reciente de HSEM. Actualiza HSEM primero. No se restauró nada.",
+      "backup_config_version": "La configuración de la copia de seguridad pertenece a otra versión de la entrada de configuración. Configura HSEM a mano y restaura después los datos aprendidos con la acción hsem.import_data. No se restauró nada.",
+      "backup_write_failed": "No se pudieron escribir los archivos de historial. No se restauró nada. Revisa el registro de Home Assistant."
     },
     "step": {
       "batteries_excess_export": {
@@ -537,6 +543,28 @@
         },
         "description": "Configura cómo se comporta la batería durante el modo de espera.",
         "title": "Comportamiento de la batería en modo de espera"
+      },
+      "setup_method": {
+        "title": "Configurar HSEM",
+        "description": "Se encontró una copia de seguridad de HSEM en la carpeta hsem_backups. Configura HSEM desde cero o restaura la configuración y los datos aprendidos desde una copia de seguridad.",
+        "menu_options": {
+          "user": "Configurar desde cero",
+          "restore": "Restaurar desde una copia de seguridad"
+        }
+      },
+      "restore": {
+        "title": "Restaurar desde una copia de seguridad",
+        "description": "Elige un archivo de copia de seguridad de la carpeta hsem_backups. El archivo se comprueba primero. En este paso no se escribe nada.",
+        "data": {
+          "backup_file": "Archivo de copia de seguridad"
+        },
+        "data_description": {
+          "backup_file": "Un archivo escrito por la acción hsem.export_data, o por HSEM al eliminarse."
+        }
+      },
+      "restore_confirm": {
+        "title": "Confirmar la restauración",
+        "description": "Copia de seguridad: {backup_file}\nEscrita: {created} por HSEM {hsem_version}\n\nEnvía para restaurar los archivos de historial y crear HSEM con la configuración de la copia de seguridad.\n\nNo están en la copia, se usa su valor predeterminado: {skipped_keys}\n\nDesactivadas porque necesitan uno de esos valores: {disabled_features}\n\nArchivos de historial no restaurados: {history_files_skipped}\n\nUna copia de seguridad nunca contiene identificadores de punto de carga, rutas de certificados ni secretos. Introdúcelos en Configurar después de la restauración y vuelve a activar las funciones."
       }
     }
   },

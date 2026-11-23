@@ -6,6 +6,9 @@
   the history files and reload the entry.
 - :func:`async_write_removal_backup` — the backup written when the config
   entry is deleted.
+- :func:`async_find_backups`, :func:`async_prepare_restore` and
+  :func:`async_write_restore` — the restore step of the setup flow (issue
+  #1448). They run the checks and the file replace of ``import_data``.
 - :func:`async_capture_learned_state`, :func:`async_stage_pending_import` and
   :func:`async_apply_pending_import` — the hooks ``async_unload_entry`` and
   ``async_setup_entry`` call, so learner state reaches the removal backup and
@@ -20,6 +23,7 @@ All file I/O runs in the executor; the payload logic lives in
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -34,6 +38,7 @@ from homeassistant.helpers.entity_platform import async_get_platforms
 from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.custom_sensors.avg_sensor import HSEMAvgSensor
 from custom_components.hsem.utils.backup import (
+    ERROR_WRITE_FAILED,
     LEARNER_AVERAGE_SENSORS,
     LEARNER_FORECAST_TRACKER,
     LEARNER_KEYS,
@@ -44,10 +49,13 @@ from custom_components.hsem.utils.backup import (
     REASON_DELETED,
     REASON_MANUAL,
     BackupError,
+    NewEntryConfiguration,
     build_backup_payload,
     build_issue_url,
     check_configuration_version,
+    find_backup_files,
     learned_state,
+    new_entry_configuration,
     price_history_skip_reason,
     read_backup_file,
     read_history_files,
@@ -260,13 +268,14 @@ async def async_apply_pending_import(hass: HomeAssistant, entry: ConfigEntry) ->
 
 
 def _price_source(
-    hass: HomeAssistant, entry: ConfigEntry, restored: dict[str, Any]
+    hass: HomeAssistant, entry: ConfigEntry | None, restored: dict[str, Any]
 ) -> dict[str, str]:
     """Return the price source HSEM runs with after an import.
 
     Args:
         hass: The Home Assistant instance, for the units of the sensors.
-        entry: The HSEM config entry.
+        entry: The HSEM config entry; ``None`` while the setup flow restores
+            a backup into an entry that does not exist yet.
         restored: The options the import restores; they win over the entry's.
 
     Returns:
@@ -342,6 +351,152 @@ async def async_handle_export_data(call: ServiceCall) -> dict[str, Any]:
     return {"backup_path": str(path)}
 
 
+async def _async_read_backup(
+    hass: HomeAssistant,
+    filename: str,
+    *,
+    configuration_version: tuple[int, int] | None,
+) -> dict[str, Any]:
+    """Read and validate a backup file. Changes nothing.
+
+    Args:
+        hass: The Home Assistant instance.
+        filename: Name of a file in ``<config>/hsem_backups/``.
+        configuration_version: The config entry version and minor version the
+            configuration of the backup must fit; ``None`` when the
+            configuration is not restored.
+
+    Returns:
+        The validated payload.
+
+    Raises:
+        BackupError: When the file is rejected.
+    """
+    hsem_version = str(await async_get_hsem_integration_version(hass))
+    payload: dict[str, Any] = await hass.async_add_executor_job(
+        lambda: read_backup_file(_config_dir(hass), filename, hsem_version=hsem_version)
+    )
+    if configuration_version is not None:
+        check_configuration_version(payload, *configuration_version)
+    return payload
+
+
+@dataclass(frozen=True, slots=True)
+class RestorePlan:
+    """A validated backup that is ready to set HSEM up. Nothing is written yet.
+
+    Attributes:
+        filename: Name of the backup file.
+        payload: The validated backup payload.
+        configuration: The data and options of the new entry.
+        files_skipped: History file name to the reason it is not restored.
+    """
+
+    filename: str
+    payload: dict[str, Any]
+    configuration: NewEntryConfiguration
+    files_skipped: dict[str, str]
+
+
+async def async_find_backups(
+    hass: HomeAssistant, entry_version: int, entry_minor_version: int
+) -> dict[str, str | None]:
+    """Return the backup files the setup flow can offer.
+
+    Args:
+        hass: The Home Assistant instance.
+        entry_version: The config entry version of the setup flow.
+        entry_minor_version: The config entry minor version of the setup flow.
+
+    Returns:
+        File name to ``None`` for a backup that can set HSEM up, or to the
+        code it is rejected with. Newest first.
+    """
+    hsem_version = str(await async_get_hsem_integration_version(hass))
+    return await hass.async_add_executor_job(
+        lambda: find_backup_files(
+            _config_dir(hass),
+            hsem_version=hsem_version,
+            entry_version=entry_version,
+            entry_minor_version=entry_minor_version,
+        )
+    )
+
+
+async def async_prepare_restore(
+    hass: HomeAssistant, filename: str, entry_version: int, entry_minor_version: int
+) -> RestorePlan:
+    """Validate a backup for the setup flow. Writes nothing.
+
+    Runs the checks of ``import_data`` with ``restore_configuration``.
+
+    Args:
+        hass: The Home Assistant instance.
+        filename: Name of a file in ``<config>/hsem_backups/``.
+        entry_version: The config entry version of the setup flow.
+        entry_minor_version: The config entry minor version of the setup flow.
+
+    Returns:
+        The plan :func:`async_write_restore` carries out.
+
+    Raises:
+        BackupError: When the backup is rejected. ``code`` names the reason.
+    """
+    payload = await _async_read_backup(
+        hass, filename, configuration_version=(entry_version, entry_minor_version)
+    )
+    configuration = new_entry_configuration(payload)
+    files_skipped: dict[str, str] = {}
+    if reason := price_history_skip_reason(
+        payload,
+        _price_source(hass, None, {**configuration.data, **configuration.options}),
+    ):
+        files_skipped[PRICE_HISTORY_FILE] = reason
+    return RestorePlan(filename, payload, configuration, files_skipped)
+
+
+async def async_write_restore(hass: HomeAssistant, plan: RestorePlan) -> list[str]:
+    """Write the history and the learner state of a backup for a new entry.
+
+    The files are replaced all or nothing, as in ``import_data``. The learner
+    state is loaded when the new entry starts. Called by the setup flow right
+    before it creates the entry: HSEM is not running, so there is nothing to
+    unload and no data of a running entry to save first.
+
+    Args:
+        hass: The Home Assistant instance.
+        plan: The plan from :func:`async_prepare_restore`.
+
+    Returns:
+        The names of the history files that were written.
+
+    Raises:
+        BackupError: When a file cannot be written or an import is running.
+            Nothing has changed.
+    """
+    lock: asyncio.Lock = hass.data.setdefault(_IMPORT_LOCK_KEY, asyncio.Lock())
+    if lock.locked():
+        raise BackupError(
+            "An import is running, so nothing was restored.", ERROR_WRITE_FAILED
+        )
+    async with lock:
+        written: list[str] = await hass.async_add_executor_job(
+            write_history_files,
+            _config_dir(hass) / ".storage",
+            plan.payload,
+            tuple(plan.files_skipped),
+        )
+    # Learner state kept from an entry that was removed belongs to the
+    # replaced history.
+    hass.data.pop(_CAPTURED_STATE_KEY, None)
+    _LOGGER.info(
+        "HSEM setup: restored %s from %s",
+        ", ".join(written) or "no history files",
+        plan.filename,
+    )
+    return written
+
+
 async def async_handle_import_data(call: ServiceCall) -> dict[str, Any]:
     """Replace the learned data with the contents of a backup file.
 
@@ -384,7 +539,6 @@ async def _async_import(call: ServiceCall) -> dict[str, Any]:
     hass = call.hass
     entry = _get_entry(hass)
     config_dir = _config_dir(hass)
-    hsem_version = str(await async_get_hsem_integration_version(hass))
     restore_configuration: bool = call.data[ATTR_RESTORE_CONFIGURATION]
 
     if entry.state not in _IMPORTABLE_STATES:
@@ -394,13 +548,13 @@ async def _async_import(call: ServiceCall) -> dict[str, Any]:
             "and try again."
         )
     try:
-        payload = await hass.async_add_executor_job(
-            lambda: read_backup_file(
-                config_dir, call.data[ATTR_FILENAME], hsem_version=hsem_version
-            )
+        payload = await _async_read_backup(
+            hass,
+            call.data[ATTR_FILENAME],
+            configuration_version=(
+                (entry.version, entry.minor_version) if restore_configuration else None
+            ),
         )
-        if restore_configuration:
-            check_configuration_version(payload, entry.version, entry.minor_version)
     except BackupError as err:
         raise ServiceValidationError(str(err)) from err
 
