@@ -7,6 +7,12 @@ runs off the event loop, one at a time, reading only: it leaves the planner's
 input, the plan and the hardware alone.  One at a time means one executor
 thread: a caller that stops waiting, or a reload, does not free the slot
 before the thread has returned.
+
+Issue #1454 adds three more.  The replay has a worker thread of its own, made
+on the first call and shut down on unload and when Home Assistant stops, so it
+never holds a worker of the shared pool.  A day read back from disk is not
+written again because it is rounded.  And a job that cannot be submitted gives
+the slot back.
 """
 
 from __future__ import annotations
@@ -15,24 +21,27 @@ import asyncio
 import copy
 import json
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
 
 import homeassistant.util.dt as dt_util
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 
 from custom_components.hsem import coordinator_performance, coordinator_what_if
 from custom_components.hsem.coordinator_performance import async_track_performance
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.coordinator_what_if import (
+    EXECUTOR_THREAD_NAME,
     HISTORY_FILE,
     ORACLE_TIME_LIMIT_S,
     PAUSE_BETWEEN_DAYS_S,
@@ -44,6 +53,7 @@ from custom_components.hsem.coordinator_what_if import (
     build_what_if_request,
     cancel_what_if,
     init_what_if_history,
+    shutdown_what_if,
     what_if_running,
 )
 from custom_components.hsem.models.performance_record import (
@@ -89,9 +99,42 @@ def _copenhagen() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def _free_slot() -> Iterator[None]:
-    """Leave the process-wide replay slot free after every test."""
+    """Leave the process-wide replay slot free and its executor shut down."""
     yield
+    shutdown_what_if()
     coordinator_what_if._Flight.cancel = None
+
+
+class _Bus:
+    """The slice of Home Assistant's event bus the what-if uses."""
+
+    def __init__(self) -> None:
+        self.listeners: dict[Any, list[Callable[[Any], None]]] = {}
+        self.removed: list[Any] = []
+
+    def async_listen_once(
+        self, event_type: Any, listener: Callable[[Any], None]
+    ) -> Callable[[], None]:
+        self.listeners.setdefault(event_type, []).append(listener)
+
+        def remove() -> None:
+            self.removed.append(event_type)
+            self.listeners[event_type].remove(listener)
+
+        return remove
+
+    def fire_once(self, event_type: Any) -> None:
+        """Call the listeners of *event_type* and forget them."""
+        for listener in self.listeners.pop(event_type, []):
+            listener(SimpleNamespace(event_type=event_type))
+
+
+class _Hass(_FakeHass):
+    """Home Assistant with an event bus, for the replay's stop listener."""
+
+    def __init__(self, config_dir: Path) -> None:
+        super().__init__(config_dir)
+        self.bus = _Bus()
 
 
 async def _until_free() -> None:
@@ -110,7 +153,7 @@ def _coordinator_state(
     return cast(
         CoordinatorSharedState,
         SimpleNamespace(
-            hass=_FakeHass(tmp_path),
+            hass=_Hass(tmp_path),
             _performance_tracker=PerformanceTracker(),
             _performance_task=None,
             _what_if_history=WhatIfHistory(),
@@ -250,6 +293,54 @@ class TestRecordingDays:
                 coordinator, _day_request(complete=True, site=changed)
             )
             assert persist.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_a_restart_does_not_rewrite_an_unchanged_day(
+        self, tmp_path: Path
+    ) -> None:
+        """The day on disk is rounded, the fresh one is not: still the same day."""
+        request = _day_request(
+            complete=True,
+            site=replace(SITE, rated_kwh=10.0 / 3.0, charge_efficiency=0.97123456789),
+        )
+        request = replace(
+            request,
+            slots={
+                key: replace(
+                    slot,
+                    grid_import_kwh=1.0 / 3.0,
+                    soc_start_pct=50.123456789,
+                    soc_end_pct=50.123456789,
+                    import_price=1.23456789,
+                    pv_kwh=2.0 / 3.0,
+                )
+                for key, slot in request.slots.items()
+            },
+        )
+        await async_record_days(_coordinator_state(tmp_path), request)
+        assert _history_file(tmp_path).exists()
+
+        restarted = _coordinator_state(tmp_path)
+        with patch.object(
+            coordinator_what_if, "persist_all_trackers", AsyncMock()
+        ) as persist:
+            await async_record_days(restarted, request)
+            assert persist.await_count == 0
+            # The day it was compared with really is the rounded one.
+            stored = restarted._what_if_history.days["2026-06-10"]
+            assert stored.grid_import_kwh[1] == pytest.approx(0.3333, abs=1e-12)
+
+            # A reading that did change is written.
+            first = next(iter(request.slots))
+            changed = replace(
+                request,
+                slots={
+                    **request.slots,
+                    first: replace(request.slots[first], grid_import_kwh=0.5),
+                },
+            )
+            await async_record_days(restarted, changed)
+            assert persist.await_count == 1
 
     @pytest.mark.asyncio
     async def test_an_evaluation_that_keeps_failing_writes_a_day_once(
@@ -473,7 +564,7 @@ class TestRequest:
 class TestRun:
     @needs_scipy
     @pytest.mark.asyncio
-    async def test_it_solves_in_the_executor_and_only_reads(
+    async def test_it_solves_in_its_own_executor_and_only_reads(
         self, tmp_path: Path
     ) -> None:
         planner_input = PlannerInput(battery_rated_capacity_kwh=10.0)
@@ -482,17 +573,25 @@ class TestRun:
         coordinator._what_if_history.days.update(make_days(2))
         coordinator._what_if_history.history_file = str(_history_file(tmp_path))
         recorded = dict(coordinator._what_if_history.days)
+        run = coordinator_what_if.run_what_if
+        threads: list[str] = []
 
-        response = await async_run_what_if(
-            coordinator, _NOW, history_days=3, scenarios=_BIGGER
-        )
+        def recording(*args: Any) -> Any:
+            threads.append(threading.current_thread().name)
+            return run(*args)
+
+        with patch.object(coordinator_what_if, "run_what_if", recording):
+            response = await async_run_what_if(
+                coordinator, _NOW, history_days=3, scenarios=_BIGGER
+            )
 
         assert response is not None
         assert response["days_compared"] == 2
         assert response["days_skipped"] == 1
-        hass = cast(_FakeHass, coordinator.hass)
-        assert hass.executor_threads
-        assert threading.current_thread().name not in hass.executor_threads
+        # Its own worker thread, not one of Home Assistant's shared pool.
+        assert len(threads) == 1
+        assert threads[0].startswith(EXECUTOR_THREAD_NAME)
+        assert cast(_Hass, coordinator.hass).executor_threads == []
         assert coordinator._last_planner_input == before
         assert coordinator._what_if_history.days == recorded
         assert coordinator._performance_tracker.days == {}
@@ -694,6 +793,33 @@ class TestRun:
 
         assert not what_if_running()
 
+    @pytest.mark.asyncio
+    async def test_a_job_that_cannot_be_submitted_frees_the_slot(
+        self, tmp_path: Path
+    ) -> None:
+        """No job means no done-callback: the slot is given back at once."""
+        coordinator = _coordinator_state(tmp_path, PlannerInput())
+        closed = ThreadPoolExecutor(max_workers=1)
+        closed.shutdown()
+
+        with (
+            patch.object(coordinator_what_if, "_executor", return_value=closed),
+            pytest.raises(RuntimeError, match="after shutdown"),
+        ):
+            await async_run_what_if(
+                coordinator, _NOW, history_days=1, scenarios=_BIGGER
+            )
+
+        assert not what_if_running()
+        with patch.object(coordinator_what_if, "run_what_if", return_value={}):
+            assert (
+                await async_run_what_if(
+                    coordinator, _NOW, history_days=1, scenarios=_BIGGER
+                )
+                == {}
+            )
+        await _until_free()
+
     def test_cancelling_when_nothing_runs_does_nothing(self) -> None:
         cancel_what_if()
 
@@ -717,3 +843,118 @@ class TestRun:
 
         assert coordinator._what_if_history.days == {}
         assert FIRST_DAY.isoformat() not in coordinator._what_if_history.days
+
+
+class TestExecutor:
+    """The replay's own worker thread (issue #1454)."""
+
+    @pytest.mark.asyncio
+    async def test_it_is_made_on_the_first_call_and_kept(self, tmp_path: Path) -> None:
+        coordinator = _coordinator_state(tmp_path, PlannerInput())
+        hass = cast(_Hass, coordinator.hass)
+        assert coordinator_what_if._Flight.executor is None
+
+        with patch.object(coordinator_what_if, "run_what_if", return_value={}):
+            await async_run_what_if(
+                coordinator, _NOW, history_days=1, scenarios=_BIGGER
+            )
+            await _until_free()
+            first = coordinator_what_if._Flight.executor
+            await async_run_what_if(
+                coordinator, _NOW, history_days=1, scenarios=_BIGGER
+            )
+            await _until_free()
+
+        assert first is not None
+        assert first._max_workers == 1
+        assert coordinator_what_if._Flight.executor is first
+        # One stop listener for the one executor.
+        assert len(hass.bus.listeners[EVENT_HOMEASSISTANT_STOP]) == 1
+
+    def test_teardown_shuts_it_down(self) -> None:
+        coordinator, _published = _coordinator()
+        executor = coordinator_what_if._Flight.executor = ThreadPoolExecutor(
+            max_workers=1
+        )
+        unsub = Mock()
+        coordinator_what_if._Flight.unsub_stop.append(unsub)
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(coordinator.async_teardown())
+        finally:
+            loop.close()
+
+        assert coordinator_what_if._Flight.executor is None
+        assert coordinator_what_if._Flight.unsub_stop == []
+        unsub.assert_called_once_with()
+        with pytest.raises(RuntimeError, match="after shutdown"):
+            executor.submit(lambda: None)
+
+    @pytest.mark.asyncio
+    async def test_a_stopping_home_assistant_shuts_it_down(
+        self, tmp_path: Path
+    ) -> None:
+        """A stop does not unload the entry, so the executor listens for it."""
+        coordinator = _coordinator_state(tmp_path, PlannerInput())
+        hass = cast(_Hass, coordinator.hass)
+        with patch.object(coordinator_what_if, "run_what_if", return_value={}):
+            await async_run_what_if(
+                coordinator, _NOW, history_days=1, scenarios=_BIGGER
+            )
+        await _until_free()
+        executor = coordinator_what_if._Flight.executor
+        assert executor is not None
+
+        hass.bus.fire_once(EVENT_HOMEASSISTANT_STOP)
+
+        assert coordinator_what_if._Flight.executor is None
+        # The listener ran once and is gone: it is not removed a second time.
+        assert hass.bus.removed == []
+        with pytest.raises(RuntimeError, match="after shutdown"):
+            executor.submit(lambda: None)
+
+    @pytest.mark.asyncio
+    async def test_a_shutdown_lets_the_running_replay_return(
+        self, tmp_path: Path
+    ) -> None:
+        """Shut down mid-run: the replay is told to stop and frees its slot.
+
+        The next call gets a new executor.
+        """
+        coordinator = _coordinator_state(tmp_path, PlannerInput())
+        hass = cast(_Hass, coordinator.hass)
+        running = threading.Event()
+        finish = threading.Event()
+
+        def slow(request: Any, cancelled: Any) -> dict[str, Any]:
+            running.set()
+            finish.wait(timeout=10.0)
+            return {"cancelled": cancelled()}
+
+        with patch.object(coordinator_what_if, "run_what_if", slow):
+            caller = asyncio.create_task(
+                async_run_what_if(coordinator, _NOW, history_days=1, scenarios=_BIGGER)
+            )
+            await asyncio.to_thread(running.wait, 10.0)
+            old = coordinator_what_if._Flight.executor
+
+            shutdown_what_if()
+
+            assert hass.bus.removed == [EVENT_HOMEASSISTANT_STOP]
+            assert what_if_running()
+            finish.set()
+            assert await caller == {"cancelled": True}
+            await _until_free()
+
+            assert await async_run_what_if(
+                coordinator, _NOW, history_days=1, scenarios=_BIGGER
+            ) == {"cancelled": False}
+            await _until_free()
+
+        assert coordinator_what_if._Flight.executor is not old
+
+    def test_shutting_down_before_the_first_call_does_nothing(self) -> None:
+        shutdown_what_if()
+
+        assert coordinator_what_if._Flight.executor is None
+        assert not what_if_running()
