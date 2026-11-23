@@ -40,9 +40,10 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | `coordinator_daily_plan.py`              | Plan side of the daily plan-vs-actual tracker: each slot's planned energy, once                                                                    |
 | `coordinator_performance.py`             | Performance record: per-cycle sample, hindsight evaluation as a background executor task (issue #1182)                                             |
 | `coordinator_efficiency.py`              | Feeds and persists the battery efficiency learner once per cycle (issue #1431)                                                                     |
-| `coordinator_what_if.py`                 | `hsem.what_if` (issue #1432): copies completed days into the what-if history, runs the replay in the executor, single flight                       |
+| `coordinator_what_if.py`                 | `hsem.what_if` (issue #1432): copies completed days into the what-if history, runs the replay in its own executor, single flight                   |
 | `entity_availability.py`                 | Per-input unavailable/recovery transition tracking and logging                                                                                     |
 | `custom_sensors/block_observation.py`    | Avg-sensor downtime tracking: heartbeat, unobserved intervals, `block_observed()` (issues #1101/#1110)                                             |
+| `coordinator_energy_backfill.py`         | One-time backfill of the energy tracker's daily records from hourly long-term statistics (issue #1450)                                             |
 | `custom_sensors/consumption_backfill.py` | Hour-block consumption profile from long-term statistics, shared per config entry; seeds the avg-sensor windows (issue #1433)                      |
 
 Load-average availability must remain explicit: unknown/non-finite values are
@@ -92,29 +93,30 @@ cycle are durable; stale generations must not publish.
 
 ### Utils layer (`custom_components/hsem/utils/`)
 
-| File                        | Responsibility                                                                                                                                                                                                                                         |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `recommendations.py`        | `Recommendations` enum + canonical `DISCHARGE_RECS`, `CHARGE_RECS`, and `SENTINEL_RECS` frozensets                                                                                                                                                     |
-| `misc.py`                   | Shared math helpers: `clamp_efficiency()`, `calculate_recommended_threshold()`, etc.                                                                                                                                                                   |
-| `sensornames.py`            | All HA entity name constants — never hardcode sensor names elsewhere                                                                                                                                                                                   |
-| `prices.py`                 | Price lookup, grid fee calculation, spot price helpers                                                                                                                                                                                                 |
-| `huawei.py`                 | Huawei Solar inverter API helpers                                                                                                                                                                                                                      |
-| `logger.py`                 | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)                                                                                                                                                        |
-| `solar_corrector.py`        | Per-hour PV forecast accuracy auto-correction (issue #602)                                                                                                                                                                                             |
-| `dynamic_floor.py`          | Dynamic self-learning discharge floor (bridge-to-refill; an affordable refill → reserve 0, #1156; a planned charge ends the bridge at any size, #1214/#1220)                                                                                           |
-| `dynamic_floor_bridge.py`   | Stateless bridge arithmetic of the dynamic floor: refill detection, planned-charge credit, cheap window, per-slot reserve profile (split out in #1274)                                                                                                 |
-| `soc_bounds.py`             | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094); `reserve_floor_pct()` — reserve kWh to floor SoC (#1221)                                                                                            |
-| `capacity_learner.py`       | Battery usable capacity auto-detection from BMS readings                                                                                                                                                                                               |
-| `efficiency_learner.py`     | Battery round trip and apparent charge/discharge efficiency per 500 W step, as ratios of summed energy against rated capacity; diagnostics only (issue #1431)                                                                                          |
-| `prediction_tracker.py`     | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                                                                                                                                                                        |
-| `weekday_profile.py`        | Weekday/weekend split house load EWMA profiles                                                                                                                                                                                                         |
-| `ev_accounting.py`          | Raw CT versus per-EV normalized-baseline accounting helper                                                                                                                                                                                             |
-| `unit_normalize.py`         | Generic sensor unit normalization via HA's `unit_conversion` converters (issues #945, #1119)                                                                                                                                                           |
-| `performance_scoring.py`    | Scores recorded performance slots: coverage/limit/residual guards, SoC-derived battery flows, `evaluate_performance` for the executor (issue #1182)                                                                                                    |
-| `persistence.py`            | Validation helpers for restored JSON, bounded `read_json_history_file`, atomic `write_json_history_file` — use these for any new history file                                                                                                          |
-| `ocpp_tls.py`               | OCPP server TLS (#1341): generated CA/server/client certs in `/ssl/hsem/ocpp/` (or `<config>/ssl/hsem/ocpp/`), `SSLContext`, CN↔CPID check; no `ws://` fallback; `modern_server_context()` wraps the core's ssl helper, which 2026.11 renamed (#1370) |
-| `ev_economics_deadlines.py` | Configured EV SoC economics deadlines (issue #1344): default 08:00/17:00, max 3, `parse_economics_deadlines()` shared by flow validator and config reader; the EV's target deadline is always an extra column                                          |
-| `backup.py`                 | Backup payload of `hsem.export_data` / `hsem.import_data` and the debug export file (#1436). A new `.storage` history file must be added to `HISTORY_FILES`; `redact_configuration()` redacts secrets and certificate paths, not entity IDs            |
+| File                        | Responsibility                                                                                                                                                                                                                                                                                                   |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `recommendations.py`        | `Recommendations` enum + canonical `DISCHARGE_RECS`, `CHARGE_RECS`, and `SENTINEL_RECS` frozensets                                                                                                                                                                                                               |
+| `misc.py`                   | Shared math helpers: `clamp_efficiency()`, `calculate_recommended_threshold()`, etc.                                                                                                                                                                                                                             |
+| `sensornames.py`            | All HA entity name constants — never hardcode sensor names elsewhere                                                                                                                                                                                                                                             |
+| `prices.py`                 | Price lookup, grid fee calculation, spot price helpers                                                                                                                                                                                                                                                           |
+| `huawei.py`                 | Huawei Solar inverter API helpers                                                                                                                                                                                                                                                                                |
+| `logger.py`                 | `HSEM_LOGGER` — rotating file handler, `propagate=False`; `log_latched_warning()` (issue #1114)                                                                                                                                                                                                                  |
+| `solar_corrector.py`        | Per-hour PV forecast accuracy auto-correction (issue #602)                                                                                                                                                                                                                                                       |
+| `dynamic_floor.py`          | Dynamic self-learning discharge floor (bridge-to-refill; an affordable refill → reserve 0, #1156; a planned charge ends the bridge at any size, #1214/#1220)                                                                                                                                                     |
+| `dynamic_floor_bridge.py`   | Stateless bridge arithmetic of the dynamic floor: refill detection, planned-charge credit, cheap window, per-slot reserve profile (split out in #1274)                                                                                                                                                           |
+| `soc_bounds.py`             | `resolve_soc_bounds_pct()` — planner model origin; dynamic floor capped at live SoC (issue #1094); `reserve_floor_pct()` — reserve kWh to floor SoC (#1221)                                                                                                                                                      |
+| `capacity_learner.py`       | Battery usable capacity auto-detection from BMS readings                                                                                                                                                                                                                                                         |
+| `planning_efficiency.py`    | Picks the planner's charge/discharge efficiency: configured, or scaled to the measured round trip when the option is on and the measurement is trusted (issue #1431)                                                                                                                                             |
+| `efficiency_learner.py`     | Battery round trip and apparent charge/discharge efficiency per 500 W step, as ratios of summed energy against rated capacity; dates its samples (issue #1431)                                                                                                                                                   |
+| `prediction_tracker.py`     | Prediction accuracy scorecard (SoC MAE, solar MAPE, action mix)                                                                                                                                                                                                                                                  |
+| `weekday_profile.py`        | Weekday/weekend split house load EWMA profiles                                                                                                                                                                                                                                                                   |
+| `ev_accounting.py`          | Raw CT versus per-EV normalized-baseline accounting helper                                                                                                                                                                                                                                                       |
+| `unit_normalize.py`         | Generic sensor unit normalization via HA's `unit_conversion` converters (issues #945, #1119)                                                                                                                                                                                                                     |
+| `performance_scoring.py`    | Scores recorded performance slots: coverage/limit/residual guards, SoC-derived battery flows, `evaluate_performance` for the executor (issue #1182)                                                                                                                                                              |
+| `persistence.py`            | Validation helpers for restored JSON, bounded `read_json_history_file`, atomic `write_json_history_file` — use these for any new history file                                                                                                                                                                    |
+| `ocpp_tls.py`               | OCPP server TLS (#1341): generated CA/server/client certs in `/ssl/hsem/ocpp/` (or `<config>/ssl/hsem/ocpp/`), `SSLContext`, CN↔CPID check; no `ws://` fallback; `modern_server_context()` wraps the core's ssl helper, which 2026.11 renamed (#1370)                                                           |
+| `ev_economics_deadlines.py` | Configured EV SoC economics deadlines (issue #1344): default 08:00/17:00, max 3, `parse_economics_deadlines()` shared by flow validator and config reader; the EV's target deadline is always an extra column                                                                                                    |
+| `backup.py`                 | Backup payload of `hsem.export_data` / `hsem.import_data` and the debug export file (#1436). A new `.storage` history file must be added to `HISTORY_FILES` (`tests/test_backup_covers_storage_files.py` fails otherwise, #1447); `redact_configuration()` redacts secrets and certificate paths, not entity IDs |
 
 ---
 
@@ -940,6 +942,32 @@ for t in range(m):
 day of prices. It stands for the value of energy **after** the horizon; never
 derive it from a price inside the horizon (the old `R`). The 0.9 factor is what
 keeps #638's flat-price case discharging.
+
+**Learned battery efficiency (issue #1431, opt-in, default off).** With
+`hsem_batteries_learned_efficiency_enabled` on, `utils/planning_efficiency.py`
+scales both configured efficiencies by one factor so their product is a
+measured round trip. Resolve it once in `build_planner_input`; the planner
+only reads `battery_charge_efficiency_pct` / `battery_discharge_efficiency_pct`.
+Order: AC-side month of the energy tracker (the meter-side loss, #1450), fresh
+battery-side learner figure, the held figure (`EfficiencyLearner.held_round_trip`,
+persisted), old or undated learner sums. Never fall back from a measured
+figure to the configured one because trust lapsed: that is a jump to the
+optimistic side. Under 70 % plan with 70 %. Never feed the learner's
+per-direction figures (they carry state of health) or its per-step curve
+(smoothed) to the planner. A measurement may lower the efficiency and never
+raise it. `PlannerInput.battery_efficiency_basis` is provenance only. What-if
+and hindsight read the planner input; the energy tracker and the phase charge
+limiter keep the configured values on purpose.
+
+**Estimated price tail (issue #1453, opt-in, default off).** With
+`hsem_terminal_price_tail_enabled` on, `planner/terminal_tail.py` prices the 24
+hours after the horizon from the price profile and `engine_core.py` blends
+`V = 0.5 × V_last_day + 0.5 × V_tail`. The tail changes `V` only: never add
+tail slots to the plan or to the MILP. It is not used when published prices
+reach past the horizon (`PlannerInput.price_published_until`, from the
+populator), and it carries one level: shifted as a whole or not at all.
+Closed-loop backtests showed no cost gain at 24 h or 48 h and slower solves,
+so do not turn it on by default without a new measurement.
 
 **Charge-timing term (issue #1420).** The time discount alone prefers "export
 PV now, charge later" at one export price, by `(cycle_cost + p_exp) × (d^t1 − d^t2)`
@@ -1983,6 +2011,13 @@ them (recorder executor) and is used in two places:
     stops the backfill (info log, once).
   - The source comes from the config (`configured_house_power_entity`), not
     from `hass.states`, so start-up cannot pick the derived house load.
+  - Nothing is read while the house source or a subtracted charger has no
+    state with a unit (`_source_without_unit`, issue #1451). With no unit
+    requested, `statistics_during_period` converts to the unit of the current
+    state and returns the stored unit when there is no state, so a start-up
+    read after a kW to W change is off by 1000. The empty result is not
+    cached: the next update tries again. A test `hass` must give the sources
+    a state with `unit_of_measurement`.
   - A failed read is caught, logged once and cached for the hour.
     `_async_handle_update` runs before `super().async_added_to_hass()`, so it
     must never raise.
@@ -2006,7 +2041,10 @@ them (recorder executor) and is used in two places:
   is remembered for an hour (`_statistics_failed_at`). The share is published
   through `history_status.record_statistics_days()` as
   `ml_statistics_history_days`. The ML path subtracts no EV energy, raw or
-  statistics.
+  statistics. A statistics-only history has no raw `anchor`; it keeps
+  `statistics_anchor` (end of the newest hour read) and a refresh reads only
+  the hours after it through `_statistics_between()` (issue #1451). The daily
+  full read is unchanged.
 
 `tests/ml/conftest.py` makes `StatisticsReader.read_hourly_energy` return
 nothing for every ML test; set `long_term_statistics.return_value` to give
@@ -2818,13 +2856,15 @@ Tests: `tests/test_dynamic_floor_reference_plan.py::TestBuildBridgeSlots::test_u
 
 ## Price History Fills Missing Prices and Outages (issue #1434)
 
-**Rule:** `models/price_history_tracker.py` (`PriceHistoryTracker`, `.storage/hsem_price_history.json`, 56 days) records the real price pair of every slot that has **started**, as the import and export price sensor themselves published it (`ForecastCoverage.published_import` / `published_export`, never a forecast sensor's overlay), plus the last published prices per side (_held_). `coordinator_price_history.py::async_apply_price_history` runs right after the populator in `_async_collect_and_populate`. The planner gets `PlannerInput.price_profile` (`models/price_profile.py`, pure, 15-minute grid in local time, median per bucket, 3 days minimum, every-weekday fallback).
+**Rule:** `models/price_history_tracker.py` (`PriceHistoryTracker`, `.storage/hsem_price_history.json`, 56 days) records the real price pair of every slot that has **started**, as the import and export price sensor themselves published it (`ForecastCoverage.published_import` / `published_export`, never a forecast sensor's overlay), plus the last published prices per side (_held_). `coordinator_price_history.py::async_apply_price_history` runs right after the populator in `_async_collect_and_populate`. The planner gets `PlannerInput.price_profile` (`models/price_profile.py`, pure, 15-minute grid in local time, median per bucket, 6 days minimum since issue #1452, every-weekday fallback).
 
-**Fill order per side** (`planner/slot_price_population.py::_fill_side`): published, profile shifted to the published level (needs 240 minutes of overlap), nearest earlier day, profile as recorded, median level, `0.0`. The slot stays in `tsi.missing_price_slots`. Never use the profile's absolute level while prices are published.
+**Published or prediction (issue #1452):** `raw_today` / `raw_tomorrow` are always published (`PUBLISHED_ATTRIBUTES`); the sensor-state rules in `_published_until` only apply to the other attributes. A predictions-only price sensor is logged once per sensor (`log_latched_warning` in `async_apply_price_history`) and shown per side in the diagnostics dump as `price_sensors` (`ForecastCoverage.price_sensor_content()`).
+
+**Fill order per side** (`planner/slot_price_population.py::_fill_side`): published, profile shifted to the published level (needs 240 minutes of overlap), nearest earlier day, profile with the last known level shift (`PriceProfile.import_level` / `export_level`, kept by `PriceHistoryTracker.anchor_level`, only for a slot that starts within 24 h of the last published slot, issue #1452), profile as recorded, median level, `0.0`. The order, the 6 days and the 24 h come from `scripts/score_price_estimates.py` on a year of real prices; rerun it before changing any of them. The slot stays in `tsi.missing_price_slots`. Never use the profile's absolute level while prices are published.
 
 **Outage:** a side whose price sensor publishes no slot. Its held prices are written to the recommendations; the other side keeps its live prices (`ForecastCoverage.single_sided_prices`, `PricePoint` with `None` on one side). The cause goes to `LiveState.add_degraded_reason` (not `add_missing_entity`, which stops the planner). After `PRICE_OUTAGE_MAX_HOURS` (48) it does become a missing entity. `in_control` in `coordinator_performance.py` is `not missing_entities`, so a reason-only cycle counts.
 
-**Predictions (`PREDICTION_ATTRIBUTES`):** `forecast` (Energi Data Service, Carnot), `predictions` (Open Spot Forecast) and `forecasts` (Amber) are predictions also on the main price sensor. They price slots as before, never enter `published_*` (so never recorded or held), and a sensor that publishes only them is alive, not an outage (`ForecastCoverage.import_predictions_only`). In an outage a failed side is covered on its held slots only, so a forecast sensor's prediction there is estimated by the planner and reported missing.
+**Predictions (`PREDICTION_ATTRIBUTES`):** `forecast` (Energi Data Service, Carnot), `predictions` (Open Spot Forecast) and `forecasts` (Amber) are predictions also on the main price sensor. They price slots as before, never enter `published_*` (so never recorded or held), and a sensor that publishes only them is alive, not an outage (`ForecastCoverage.import_predictions_only`). `prices`, `prices_today`, `prices_tomorrow` and `data` hold either, depending on the integration (`docs/price-attributes.md`): `_published_until` in `prices_solcast.py` decides per sensor (`forecast_data: true`, `known_until`, or a series that reaches 60 h past the first slot). Do not move one of them to `PREDICTION_ATTRIBUTES`: that stops the history for Strømligning. In an outage a failed side is covered on its held slots only, so a forecast sensor's prediction there is estimated by the planner and reported missing.
 
 **Gotchas:** never record a future slot, a held price, a forecast sensor value or an estimate. The store is bound to the price entities and units (`set_source`) and dropped when they change. The tracker only writes when something changed (`_dirty`). An empty history must plan exactly as before.
 
@@ -3002,14 +3042,21 @@ Tests: `tests/planner/test_hindsight_scoring.py`, `tests/models/test_performance
 - Start and end energy are carried over counted from the end-of-discharge floor and capped at the scenario's capacity. Extra capacity starts each day empty.
 - Battery wear enters through `solve_hindsight_oracle(throughput_cost_per_kwh=...)`. `HindsightRun.cost` stays the grid cost; the what-if adds wear itself. Scores never pass a wear.
 - A day counts only when every scenario of the call solved, so all rows cover the same days.
-- Single flight is process-wide: `coordinator_what_if._Flight.cancel` (a `threading.Event`, `None` when idle), not a coordinator attribute, so a reload cannot start a second replay. `async_run_what_if` shields the executor job, sets the event when the caller is cancelled, and frees the slot in the job's done-callback: only when the thread has returned. Teardown calls `cancel_what_if()`. The run checks the event before each day and before each solve.
+- Single flight is process-wide: `coordinator_what_if._Flight.cancel` (a `threading.Event`, `None` when idle), not a coordinator attribute, so a reload cannot start a second replay. `async_run_what_if` shields the executor job, sets the event when the caller is cancelled, and frees the slot in the job's done-callback: only when the thread has returned. Teardown calls `shutdown_what_if()`. The run checks the event before each day and before each solve.
+- The replay has its own single-worker `ThreadPoolExecutor` (`_Flight.executor`, issue #1454), never `hass.async_add_executor_job`: a run of minutes must not hold a worker of the shared pool the planner jobs use. `_executor(hass)` makes it on first use and listens once for `EVENT_HOMEASSISTANT_STOP`, because a stop does not unload the entry. `shutdown_what_if()` cancels, removes the listener and shuts down without waiting. If the submit raises, `async_run_what_if` frees the slot itself: no job means no done-callback.
+- `async_record_days` compares days with `RecordedDay.matches`, never with the dataclass `==`: a day loaded from disk is rounded, a fresh one is not. `matches` allows one unit of the last stored decimal per reading.
 - Payback is `investment ÷ grid_savings_per_year`. Never divide by a wear-inclusive figure: `resolve_cycle_cost` is the purchase price spread over the battery's life, so that charges the battery twice. `savings_after_wear` is reported next to `grid_savings`. No yearly figure below `MIN_DAYS_FOR_YEARLY` compared days.
 - A scenario's per-slot power cap is its own limit plus what the meter read above the configured limit (`_power_caps`), for both sides. An identical scenario must save exactly nothing.
-- `RecordedDay` stores `rated_kwh` and both efficiencies of its day; `replay_day` rebuilds the load with them and solves both sides with today's limits. A day is not recorded before `PerformanceRequest.site` is known.
-- A run is bounded: `RUN_TIME_LIMIT_S` (days not reached are `run_time_limit`), `oracle_timeout` is told apart from `oracle_unsolved` by the solve's elapsed time, and `PAUSE_BETWEEN_DAYS_S` sleeps between days. scipy's HiGHS releases the GIL during a solve.
+- `RecordedDay` stores `rated_kwh` and both efficiencies of its day; `replay_day` rebuilds the load with them and solves both sides with the day's limits (below). A day is not recorded before `PerformanceRequest.site` is known.
+- Since issue #1455 a `RecordedDay` also holds `limits: DayLimits | None` (end-of-discharge SoC, max SoC, charge and discharge power). `replay_day` solves every side with `WhatIfScenario.site_on(day, request.site)`: the scenario's rated capacity is scaled against today's site, then both sides get the day's SoC window, so a moved SoC limit is never credited as capacity and `extra_capacity_kwh` (today's terms) stays consistent with the solves. Never apply an absolute `usable_kwh` to the day's window. `limits is None` (a version 1 day, or a rebuilt day) means today's limits and is counted in `days_on_todays_limits`. History schema is 2; `READABLE_SCHEMAS` keeps version 1 readable.
+- Days without a measured record are rebuilt per call from hourly statistics (`utils/what_if_rebuild.py`, `coordinator_what_if.async_rebuild_days`), never stored. A rebuilt day is a `RecordedDay` with `from_statistics=True`, flat SoC at the floor and the grid flows the load and PV leave, so the same replay code derives the statistics' load. Do not add a second replay path for it.
+- A day is rebuilt only with a real price for every hour: `WhatIfHistory.prices` (hourly, UTC, kept `MAX_HISTORY_DAYS` = 365 days, filled in `async_record_days` from `PriceHistoryTracker.hourly_prices()` for hours before today so the file is written once a day) plus the live price history. Skips are `price_incomplete` and `statistics_incomplete`. Statistics come from `coordinator_energy_backfill.async_read_house_and_pv` (house and PV only), shared with the energy backfill. With a PV source configured, a day with no PV hour, or a gap between its first and last PV hour, is skipped; only the hours outside them count as zero (Huawei inverters are unavailable at night). The kept prices carry `price_source` and are dropped by `price_history_tracker.price_source_differs`, the one rule shared with `PriceHistoryTracker`.
+- `run_what_if` replays measured days first, newest first, then rebuilt days, and sorts the compared days by date for the response, so the time limit cuts the weakest data.
+- The response splits each row into `measured` and `from_statistics` and lists `months_compared`. The headline figures and the payback cover both groups.
+- A run is bounded: `RUN_TIME_LIMIT_S`, checked before every solve through `replay_day(out_of_time=...)` so a run passes it by one solve at most (days not reached or not finished are `run_time_limit`), `oracle_timeout` is told apart from `oracle_unsolved` by the solve's elapsed time, and `PAUSE_BETWEEN_DAYS_S` sleeps between days. scipy's HiGHS releases the GIL during a solve.
 - The service lives in `services_what_if.py` and is read-only: no hardware write, no planner cycle, no tracker write.
 
-Tests: `tests/models/test_what_if_history.py`, `tests/utils/test_what_if.py`, `tests/test_coordinator_what_if.py`, `tests/test_services_what_if.py`.
+Tests: `tests/models/test_what_if_history.py`, `tests/utils/test_what_if.py`, `tests/test_coordinator_what_if.py`, `tests/test_services_what_if.py`, `tests/utils/test_what_if_rebuild.py`.
 
 ## Battery Power Is Read Without the Phase Limiter Too (issue #1266)
 
@@ -3044,12 +3091,30 @@ Tests: `tests/test_coordinator_meter_tracking.py` (forced periods, missed saving
 
 **Rules:**
 
-- A new history file is written with `write_json_history_file` and read with `read_json_history_file`. Do not add another `mkstemp` to the code base: `grep -rn mkstemp custom_components` must only find `utils/persistence.py`.
+- A new history file is written with `write_json_history_file` and restored with `async_load_history` (see the next section). Do not add another `mkstemp` to the code base: `grep -rn mkstemp custom_components` must only find `utils/persistence.py`.
 - The on-disk format did not change: financial, savings and daily history pass `indent=2`, the prediction and performance history are compact.
 - The directory is created inside the writer, in the thread. A directory that cannot be created is now a `False` from `save_history()` (logged by `persist_all_trackers`), where it used to raise out of the tracker.
 - Tests patch `tempfile.mkstemp` / `json.dump` / `os.replace` globally, so they keep working whichever module does the write.
 
 Tests: `tests/test_tracker_history_writers.py::TestOneSharedWriter`, `tests/utils/test_persistence.py::TestWriteJsonHistoryFile`.
+
+## A History File That Failed to Load Is Never Overwritten (issue #1446)
+
+`read_json_history_file` returned `None` for a missing file and for a failed read alike. A tracker then started empty with its path set, and the next save replaced the file.
+
+**Rules:**
+
+- A tracker restores its own file with `await async_load_history(Path(self.history_file), restore)` from `utils/persistence.py`. `restore` takes the parsed dict. Do not call `read_json_history_file` from a tracker: it is the read-only reader for the backup and the debug export.
+- Missing file: empty tracker, no warning.
+- `OSError` on stat, open or read: the file stays, the path goes into `_PENDING_LOADS`, and `write_json_history_file` returns `False` for it. `ensure_history_loaded(tracker)` retries `tracker.load_history()`; `persist_all_trackers` calls it before every save and skips the tracker silently while the file is still unreadable. `DailyPlanVsActualTracker._save_record_to_history` calls it before it appends.
+- Invalid JSON, not an object, not a regular file, too large, or a `restore` that raises: the file is moved to `<name>.corrupt-<UTC timestamp>` by `set_aside_history_file`, then a new one may be written. If the move fails the path is pending.
+- One warning per file, from `utils/persistence.py` through `HSEM_LOGGER`. The logger does not propagate, so tests patch `persistence._LOGGER.warning` instead of using `caplog`.
+- Every tracker in `TRACKER_REGISTRY` needs `history_file` and `load_history()` (the `Persistable` protocol). Guard `load_history()` with `if not self.history_file: return`: `Path("")` is the working directory.
+- A late successful load: `DailyPlanVsActualTracker` keeps the records added while the file was unreadable (the file wins for a day in both), `SavingsTracker` adds the file's totals and days to what it collected (it counts from zero until loaded, so `_restore` adds), `WhatIfHistory` merges. The `restore_from` trackers and the learner replace the in-memory state with the file, as a restart would.
+- `accumulate_daily_plan_actuals` calls `ensure_history_loaded` every cycle: the daily tracker is not in the registry and saves once a day.
+- The `.corrupt-` stamp has microseconds. HSEM does not delete these files.
+
+Tests: `tests/test_history_load_failure.py`.
 
 ## `utils/dynamic_floor.py` Split Into State and Bridge Arithmetic (issue #1274)
 
@@ -3177,4 +3242,7 @@ Rules now:
 - `as_sensor_attributes()` is memoised per recorded interval and day (`_revision`), since four sensors ask for the same tables.
 - Every `REASON_*` constant needs an entry in the Energy view's Status card; `tests/test_dashboard_energy_view.py` fails otherwise. `docs/dashboard.yaml` and the YAML in `docs/dashboard-setup.md` carry the same view.
 
-Tests: `tests/models/test_energy_tracker.py`, `tests/models/test_energy_tracker_inputs.py`, `tests/test_coordinator_energy.py`, `tests/custom_sensors/test_monthly_energy_sensors.py`, `tests/test_dashboard_energy_view.py`, `tests/utils/test_metering.py`.
+- **Days before the first measured one come from statistics, once (issue #1450).** `coordinator_energy_backfill.async_backfill_energy_history()` runs from `async_track_energy` until `EnergyTracker.backfill_complete` is set (persisted; a file without the key is backfilled on the next start). It reads through `StatisticsReader` with explicit units (W, kWh), `models/energy_backfill.build_backfill_days()` turns the hours into `EnergyDayEntry(backfilled=True)`, and `EnergyTracker.apply_backfill()` is the only way in: it takes a day only when it is before the first non-backfilled day, before today and not in the log. Never write a backfilled day any other way. The backfill never runs, and `backfill_complete` is never set, while a configured source has no numeric state (a day is filled once): checked every cycle for `SOURCE_GRACE_S`, then every `RETRY_INTERVAL_S`, missing sources logged once at info. `build_backfill_days()` drops hourly values above `MAX_HOUR_KWH` (`MAX_METER_KW` × 1 h) through `drop_implausible_hours()`, because a meter that reset to 0 and returned makes the statistics `sum` jump by the whole reading. Backfilled battery flows are hourly nets (a lower bound) and add nothing to `measured_*`, so they never enter the round-trip loss. `models/energy_tracker.py` is close to the 30 KiB limit: new logic goes into `models/energy_backfill.py` or a new module.
+- **No AC-side round-trip loss.** HSEM has no AC-side battery sensor: `hsem_huawei_solar_inverter_active_power` is the whole inverter (PV and battery together), so the battery's AC flow cannot be separated from it. The second figure asked for in issue #1450 was left out for that reason.
+
+Tests: `tests/models/test_energy_tracker.py`, `tests/models/test_energy_tracker_inputs.py`, `tests/test_coordinator_energy.py`, `tests/custom_sensors/test_monthly_energy_sensors.py`, `tests/test_dashboard_energy_view.py`, `tests/utils/test_metering.py`, `tests/models/test_energy_backfill.py`, `tests/test_coordinator_energy_backfill.py`, `tests/test_coordinator_energy_backfill_recorder.py`.

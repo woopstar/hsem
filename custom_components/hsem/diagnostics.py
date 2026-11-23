@@ -24,7 +24,10 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.hsem import HSEMConfigEntry
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
-from custom_components.hsem.utils.diagnostics import build_diagnostics_dump
+from custom_components.hsem.utils.diagnostics import (
+    build_diagnostics_dump,
+    summarise_learned_stores,
+)
 from custom_components.hsem.utils.integration_version import (
     async_get_hsem_integration_version,
 )
@@ -89,4 +92,6 @@ async def async_get_config_entry_diagnostics(  # NOSONAR -- HA diagnostics hook,
         apply_summary,
         integration_version=str(integration_version),
         ocpp_tls=getattr(coordinator, "_ocpp_tls_status", None),
+        learned_stores=summarise_learned_stores(coordinator),
+        price_sensors=getattr(coordinator, "_price_sensor_content", None),
     )

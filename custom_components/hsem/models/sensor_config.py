@@ -278,6 +278,8 @@ class SensorConfig:
     # Battery economics
     batteries_charge_efficiency: float = 98.0
     batteries_discharge_efficiency: float = 98.0
+    # Plan with the measured round-trip efficiency (issue #1431).
+    batteries_learned_efficiency_enabled: bool = False
     batteries_purchase_price: float = 0.0
     batteries_expected_cycles: int = 6000
     #: User-configured per-kWh cycle cost. When > 0 it is added directly to
@@ -373,6 +375,9 @@ class SensorConfig:
     grid_import_energy_entity: str | None = None
     grid_export_energy_entity: str | None = None
     pv_energy_entity: str | None = None
+    # Monthly AC-side round-trip loss (issue #1450) — optional signed battery
+    # power on the AC side of the inverter, positive while charging.
+    battery_ac_power_entity: str | None = None
 
     # ML consumption prediction — toggle and settings
     ml_consumption_enabled: bool = False
@@ -408,6 +413,8 @@ class SensorConfig:
     planner_window_hysteresis_minutes: int = 10
     # MILP solver time limit per solve, in seconds (issue #1309).
     planner_solver_time_limit_s: float = 2.0
+    # Estimated price tail behind the terminal end value (issue #1453).
+    terminal_price_tail_enabled: bool = False
 
     # Embedded OCPP 1.6 server for EV charger control (issue #603).
     ocpp_enabled: bool = False

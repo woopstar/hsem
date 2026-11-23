@@ -10,6 +10,9 @@ keeps two things across cycles and restarts:
 * **Held prices** — the prices the price sensors published on the last cycle
   they delivered any, kept per side.  When a price sensor goes down, the
   slots these cover are still planned with their published price.
+* **Level shifts** — how far each side's published prices were from the
+  profile on the last cycle that had any.  The planner uses it for an outage
+  that outlasts the held prices (issue #1452).
 
 The store belongs to one price source: the price entities and their units.
 When that changes, the recorded prices are on another scale and everything
@@ -25,14 +28,21 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Any
 
-from custom_components.hsem.models.price_profile import PricePair, PriceProfile
+from custom_components.hsem.models.price_profile import (
+    LEVEL_SHIFT_MAX_AGE,
+    LevelShift,
+    PricePair,
+    PriceProfile,
+    level_from_row,
+)
 from custom_components.hsem.utils.datetime_utils import utc_key
 from custom_components.hsem.utils.persistence import (
+    async_load_history,
     aware_datetime_from_iso,
     finite_float,
     write_json_history_file,
@@ -51,6 +61,7 @@ _MAX_STEP_MINUTES = 60
 #: cycle begin at local midnight, and a DST day has 25 hours.
 _HELD_KEEP_HOURS = 26
 _PRICE_EPSILON = 1e-9
+_SIDES = ("import", "export")
 _SOURCE_KEYS = ("import_entity", "export_entity", "import_unit", "export_unit")
 
 
@@ -82,6 +93,45 @@ def _parse_prices(raw: Any) -> dict[datetime, float]:
     return prices
 
 
+def price_source_differs(stored: Mapping[str, str], source: Mapping[str, str]) -> bool:
+    """Return whether *source* is another price source than *stored*.
+
+    A changed entity always counts.  A unit only counts when both the stored
+    and the new unit are known: an unavailable sensor reports no unit, and an
+    outage must not wipe the prices it is needed for.
+
+    Args:
+        stored: The price source a store belongs to.
+        source: ``import_entity``, ``export_entity``, ``import_unit`` and
+            ``export_unit``; an unknown value is an empty string.
+    """
+    new = {key: str(source.get(key) or "") for key in _SOURCE_KEYS}
+    return any(
+        stored.get(key, "") != new[key]
+        and (key.endswith("_entity") or bool(stored.get(key) and new[key]))
+        for key in _SOURCE_KEYS
+    )
+
+
+def merged_price_source(
+    stored: Mapping[str, str], source: Mapping[str, str]
+) -> dict[str, str]:
+    """Return the price source a store belongs to after seeing *source*.
+
+    A value *source* does not know keeps the stored one, unless the source
+    changed (:func:`price_source_differs`).
+
+    Args:
+        stored: The price source the store belongs to.
+        source: The price source seen now.
+    """
+    changed = price_source_differs(stored, source)
+    return {
+        key: str(source.get(key) or "") or ("" if changed else stored.get(key, ""))
+        for key in _SOURCE_KEYS
+    }
+
+
 @dataclass
 class PriceHistoryTracker:
     """Rolling store of real prices plus the last published prices.
@@ -104,6 +154,7 @@ class PriceHistoryTracker:
     )
     _held_import: dict[datetime, float] = field(default_factory=dict, repr=False)
     _held_export: dict[datetime, float] = field(default_factory=dict, repr=False)
+    _levels: dict[str, LevelShift] = field(default_factory=dict, repr=False)
     _dirty: bool = field(default=False, repr=False)
     _profile_cache: tuple[tzinfo | None, PriceProfile] | None = field(
         default=None, repr=False
@@ -128,17 +179,9 @@ class PriceHistoryTracker:
         Returns:
             ``True`` when the stored prices were dropped.
         """
-        new = {key: str(source.get(key) or "") for key in _SOURCE_KEYS}
-        changed = any(
-            self.source.get(key, "") != new[key]
-            and (key.endswith("_entity") or (self.source.get(key) and new[key]))
-            for key in _SOURCE_KEYS
-        )
+        changed = self.source_differs(source)
         had_data = bool(self._samples or self._held_import or self._held_export)
-        merged = {
-            key: new[key] or ("" if changed else self.source.get(key, ""))
-            for key in _SOURCE_KEYS
-        }
+        merged = merged_price_source(self.source, source)
         if merged != {key: self.source.get(key, "") for key in _SOURCE_KEYS}:
             self._dirty = True
         self.source = merged
@@ -147,9 +190,22 @@ class PriceHistoryTracker:
         self._samples.clear()
         self._held_import.clear()
         self._held_export.clear()
+        self._levels.clear()
         self.outage_since = None
         self._profile_cache = None
         return True
+
+    def source_differs(self, source: Mapping[str, str]) -> bool:
+        """Return whether *source* is another price source than the stored one.
+
+        The rule of :meth:`set_source`: a changed entity always counts, a unit
+        only when both the stored and the new unit are known.
+
+        Args:
+            source: ``import_entity``, ``export_entity``, ``import_unit`` and
+                ``export_unit``; an unknown value is an empty string.
+        """
+        return price_source_differs(self.source, source)
 
     def record(
         self,
@@ -218,6 +274,41 @@ class PriceHistoryTracker:
             self._dirty = True
         held.update(prices)
 
+    def anchor_level(
+        self,
+        side: str,
+        prices: Mapping[datetime, float],
+        interval_minutes: int,
+        zone: tzinfo | None,
+    ) -> None:
+        """Keep how far one side's published prices are from the profile.
+
+        The shift is kept until the next cycle that can derive one.  It is
+        valid for slots that start within
+        :data:`~custom_components.hsem.models.price_profile.LEVEL_SHIFT_MAX_AGE`
+        after the last published slot ended.
+
+        Args:
+            side: ``"import"`` or ``"export"``.
+            prices: Published price by UTC slot start; not empty.
+            interval_minutes: Slot width in minutes.
+            zone: Local zone the profile is read in.
+        """
+        shift = self._bucket_profile(zone).level_shift(
+            prices, _SIDES.index(side), interval_minutes, zone
+        )
+        if shift is None:
+            return
+        until = max(prices) + timedelta(minutes=interval_minutes) + LEVEL_SHIFT_MAX_AGE
+        previous = self._levels.get(side)
+        if (
+            previous is None
+            or previous[1] != until
+            or abs(previous[0] - shift) >= _PRICE_EPSILON
+        ):
+            self._levels[side] = (shift, until)
+            self._dirty = True
+
     def held_price(self, side: str, start: datetime) -> float | None:
         """Return the last published price of one side for a slot.
 
@@ -255,8 +346,42 @@ class PriceHistoryTracker:
             zone: Local zone the weekday and time of day are read in.
 
         Returns:
-            The profile, cached until the history or the zone changes.
+            The profile, cached until the history or the zone changes, with
+            the level shifts kept by :meth:`anchor_level`.
         """
+        return replace(
+            self._bucket_profile(zone),
+            import_level=self._levels.get("import"),
+            export_level=self._levels.get("export"),
+        )
+
+    def hourly_prices(self) -> dict[datetime, PricePair]:
+        """Return the mean real price of every hour recorded in full.
+
+        Hourly long-term statistics can only be priced per hour (issue
+        #1455).  An hour counts when its recorded slots add up to the whole
+        hour, so its price is real for every slot of it.
+
+        Returns:
+            ``(import_price, export_price)`` by UTC hour start.
+        """
+        hours: dict[datetime, tuple[int, float, float]] = {}
+        for start, (step, import_price, export_price) in self._samples.items():
+            hour = start.replace(minute=0, second=0, microsecond=0)
+            minutes, import_sum, export_sum = hours.get(hour, (0, 0.0, 0.0))
+            hours[hour] = (
+                minutes + step,
+                import_sum + step * import_price,
+                export_sum + step * export_price,
+            )
+        return {
+            hour: (import_sum / minutes, export_sum / minutes)
+            for hour, (minutes, import_sum, export_sum) in hours.items()
+            if minutes == _MAX_STEP_MINUTES
+        }
+
+    def _bucket_profile(self, zone: tzinfo | None) -> PriceProfile:
+        """Return the cached profile of the history, without level shifts."""
         cached = self._profile_cache
         if cached is not None and cached[0] is zone:
             return cached[1]
@@ -291,6 +416,10 @@ class PriceHistoryTracker:
             "held_export": {
                 start.isoformat(): price
                 for start, price in sorted(self._held_export.items())
+            },
+            "levels": {
+                side: [shift, until.isoformat()]
+                for side, (shift, until) in sorted(self._levels.items())
             },
         }
 
@@ -333,6 +462,13 @@ class PriceHistoryTracker:
             tracker._samples[start.astimezone(UTC)] = (step, pair[0], pair[1])
         tracker._held_import = _parse_prices(data.get("held_import"))
         tracker._held_export = _parse_prices(data.get("held_export"))
+        levels = data.get("levels")
+        for side in _SIDES:
+            level = level_from_row(
+                levels.get(side) if isinstance(levels, dict) else None
+            )
+            if level is not None:
+                tracker._levels[side] = (level[0], level[1].astimezone(UTC))
         return tracker
 
     def restore_from(self, loaded: PriceHistoryTracker) -> None:
@@ -342,8 +478,18 @@ class PriceHistoryTracker:
         self._samples = dict(loaded._samples)
         self._held_import = dict(loaded._held_import)
         self._held_export = dict(loaded._held_export)
+        self._levels = dict(loaded._levels)
         self._dirty = False
         self._profile_cache = None
+
+    async def load_history(self) -> None:
+        """Restore the tracker from its history file, if there is one."""
+        if not self.history_file:
+            return
+        await async_load_history(
+            Path(self.history_file),
+            lambda data: self.restore_from(PriceHistoryTracker.from_dict(data)),
+        )
 
     async def save_history(self) -> bool:
         """Persist the state atomically when it changed since the last write.

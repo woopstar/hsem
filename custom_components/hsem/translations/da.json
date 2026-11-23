@@ -2,7 +2,11 @@
   "config": {
     "abort": {
       "already_configured": "HSEM Integration er allerede konfigureret",
-      "reconfigured_successfully": "HSEM Integration genkonfigureret."
+      "reconfigured_successfully": "HSEM Integration genkonfigureret.",
+      "no_backups": "Der blev ikke fundet nogen backupfiler i mappen hsem_backups."
+    },
+    "create_entry": {
+      "history_saved": "HSEM blev gendannet. Historikken, der lå på denne Home Assistant i forvejen, blev gemt i {before_path}."
     },
     "error": {
       "device_not_found": "Den valgte enhed blev ikke fundet.",
@@ -33,7 +37,13 @@
       "tls_file_not_found": "Filen findes ikke eller kan ikke læses.",
       "tls_cert_key_mismatch": "Servercertifikatet og nøglen kunne ikke indlæses sammen. Kontroller, at begge er PEM-filer, og at nøglen hører til certifikatet.",
       "tls_invalid_ca": "Klient-CA-filen er ikke et gyldigt PEM-certifikat.",
-      "invalid_topup_min_power_pct": "Minimumseffekt for opladning fra nettet skal være mellem 0 og 100 %."
+      "invalid_topup_min_power_pct": "Minimumseffekt for opladning fra nettet skal være mellem 0 og 100 %.",
+      "backup_invalid": "Filen er ikke en brugbar HSEM-backup. Intet blev gendannet.",
+      "backup_unreadable": "Backupfilen kunne ikke læses: den mangler, er for stor eller er ikke JSON. Intet blev gendannet.",
+      "backup_too_new": "Backuppen er skrevet af en nyere HSEM-version. Opdater HSEM først. Intet blev gendannet.",
+      "backup_config_version": "Konfigurationen i backuppen hører til en anden version af konfigurationsposten. Sæt HSEM op manuelt, og gendan derefter de lærte data med handlingen hsem.import_data. Intet blev gendannet.",
+      "backup_write_failed": "Historikfilerne kunne ikke skrives. Intet blev gendannet. Se Home Assistant-loggen.",
+      "backup_safety_copy_failed": "Historikken, der allerede ligger på denne Home Assistant, kunne ikke gemmes først, så intet blev gendannet. Se Home Assistant-loggen."
     },
     "step": {
       "batteries_excess_export": {
@@ -276,7 +286,9 @@
           "hsem_planner_hysteresis_enabled": "Hysterese på plan-niveau",
           "hsem_planner_hysteresis_percentage": "Hysterese procenttærskel (%)",
           "hsem_planner_window_hysteresis_minutes": "Hysterese-holdetid for vindue (minutter)",
-          "hsem_planner_solver_time_limit_s": "Tidsgrænse for planlæggerens solver (sekunder)"
+          "hsem_planner_solver_time_limit_s": "Tidsgrænse for planlæggerens solver (sekunder)",
+          "hsem_terminal_price_tail_enabled": "Estimeret prishale til slutværdien (eksperimentel)",
+          "hsem_batteries_learned_efficiency_enabled": "Planlæg med målt batterieffektivitet (eksperimentel)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Indtast den samlede købspris for dit batterisystem. Bruges sammen med forventede cyklusser og brugbar kapacitet til at beregne afskrivningsomkostning pr. kWh.",
@@ -289,7 +301,9 @@
           "hsem_planner_hysteresis_enabled": "Når dette er aktiveret, beholder planlæggeren den aktive kandidatplan, medmindre en ny plan forbedrer scoren med mere end de konfigurerede tærskler. Forhindrer svingninger mellem ligestillede strategier.",
           "hsem_planner_hysteresis_percentage": "Minimum procentvis score-forbedring, der kræves for at skifte til en ny plan. 0 % deaktiverer procenttærsklen. Standard 5 % forhindrer flapning mellem næsten identiske planer.",
           "hsem_planner_window_hysteresis_minutes": "Minimumstid (minutter), en anbefaling skal fastholdes, før den kan ændres. Forhindrer hurtig veksling som f.eks. ev_smart_charging ↔ batteries_charge_solar. 0 deaktiverer funktionen. Standard 10.",
-          "hsem_planner_solver_time_limit_s": "Maksimal tid (sekunder) optimeringen må bruge på én beregning. Når grænsen nås, bruges den bedste plan, der er fundet indtil da, og den kan være langt fra optimal (f.eks. Vent i alle tidsrum). Hæv den kun, når Plan Strategy-sensoren viser solver_status time_limit: en højere grænse gør hver opdateringscyklus længere, og en cyklus kan køre op til tre beregninger. Interval 1–10. Standard 2."
+          "hsem_planner_solver_time_limit_s": "Maksimal tid (sekunder) optimeringen må bruge på én beregning. Når grænsen nås, bruges den bedste plan, der er fundet indtil da, og den kan være langt fra optimal (f.eks. Vent i alle tidsrum). Hæv den kun, når Plan Strategy-sensoren viser solver_status time_limit: en højere grænse gør hver opdateringscyklus længere, og en cyklus kan køre op til tre beregninger. Interval 1–10. Standard 2.",
+          "hsem_terminal_price_tail_enabled": "Eksperimentel. Værdisætter energien, der er tilbage i batteriet ved planlægningshorisontens slutning, med priser fra prishistorikken for de 24 timer efter horisonten, vægtet 50 % mod horisontens sidste dag. Bruges kun, når ingen offentliggjort pris rækker ud over horisonten. De estimerede priser ændrer kun slutværdien: de tilføjer ingen tidsrum til planen, og Plan Strategy-sensoren viser dem som estimerede. Kræver mindst seks dages prishistorik. Slået fra som standard: i backtests sænkede det ikke den realiserede omkostning, og optimeringen tog længere tid.",
+          "hsem_batteries_learned_efficiency_enabled": "Eksperimentel. Lader planlæggeren bruge en rundturseffektivitet, HSEM har målt, i stedet for de to konfigurerede værdier ovenfor. Er der konfigureret en sensor for batteriets effekt på AC-siden, bruges månedens rundturseffektivitet på AC-siden, som er det tab, elmåleren ser. Ellers bruges rundturseffektiviteten målt ved batteriet, når begge retninger har mindst 40 målinger og 10 kWh. Den indeholder ikke konverteringstabet i inverteren. En målt rundturseffektivitet kan kun sænke planlæggerens effektivitet, aldrig hæve den: er den lig med eller over den konfigurerede, bruges de konfigurerede værdier. Under 70 % regnes den som 70 %. Begge konfigurerede værdier skaleres med samme faktor. Når en måling ikke længere er pålidelig, for eksempel fordi den nyeste er ældre end 30 dage, beholdes den sidste pålidelige værdi. Sensorerne Batterieffektivitet og Planstrategi viser, hvilke værdier planen brugte."
         },
         "description": "Konfigurer batteriøkonomiske parametre, der påvirker afskrivningsberegninger og rundturseffektivitet.",
         "title": "Batteriøkonomi"
@@ -421,6 +435,7 @@
           "hsem_grid_import_energy_entity": "Netimport Energi Sensor",
           "hsem_grid_export_energy_entity": "Neteksport Energi Sensor",
           "hsem_pv_energy_entity": "Solcelleproduktion Energi Sensor",
+          "hsem_battery_ac_power_entity": "Batterieffekt på AC-siden",
           "hsem_ml_consumption_enabled": "Aktiver ML forbrugsprognose",
           "hsem_ml_consumption_energy_entity": "Husforbrug energi sensor (ekskl. batteri og EV)",
           "hsem_ml_consumption_history_days": "ML historik dage",
@@ -435,6 +450,7 @@
           "hsem_grid_import_energy_entity": "Valgfri - akkumuleret netimport energimåler (kWh).",
           "hsem_grid_export_energy_entity": "Valgfri - akkumuleret neteksport energimåler (kWh).",
           "hsem_pv_energy_entity": "Valgfri - akkumuleret solcelleproduktion energimåler (kWh).",
+          "hsem_battery_ac_power_entity": "Valgfri - batteriets effekt med fortegn på AC-siden af inverteren (W eller kW), positiv under opladning. Bruges kun til det månedlige tab på AC-siden. Lad feltet være tomt, hvis ingen sensor måler batteriet alene: en invertereffekt, der også omfatter solcelleproduktion, kan ikke bruges.",
           "hsem_ml_consumption_enabled": "Når aktiveret, bruger ridge regression på optagerhistorik i stedet for rullende gennemsnit. Kræver 14+ dages historik.",
           "hsem_ml_consumption_energy_entity": "Akkumuleret husforbrug energimåler (kWh). Skal ekskludere batteri OG EV-opladning. Falder tilbage til netimport hvis ikke sat.",
           "hsem_ml_consumption_history_days": "Dage med optagerhistorik til ML-træning (7-90).",
@@ -537,6 +553,28 @@
         },
         "description": "HSEM har autodetekteret følgende enheder. {warning}Gennemgå de detekterede enheder nedenfor. Du kan bekræfte at bruge dem eller vælge Avanceret Opsætning for at vælge enheder manuelt.",
         "title": "Hurtig Opsætning - Autodetekterede Enheder"
+      },
+      "setup_method": {
+        "title": "Opsæt HSEM",
+        "description": "Der blev fundet en backupfil i mappen hsem_backups. Sæt HSEM op fra bunden, eller gendan konfigurationen og de lærte data fra en backup.",
+        "menu_options": {
+          "user": "Opsæt fra bunden",
+          "restore": "Gendan fra en backup"
+        }
+      },
+      "restore": {
+        "title": "Gendan fra en backup",
+        "description": "Vælg en backupfil fra mappen hsem_backups. Filen kontrolleres først. Intet skrives i dette trin.",
+        "data": {
+          "backup_file": "Backupfil"
+        },
+        "data_description": {
+          "backup_file": "En fil skrevet af handlingen hsem.export_data, eller af HSEM da integrationen blev fjernet."
+        }
+      },
+      "restore_confirm": {
+        "title": "Bekræft gendannelsen",
+        "description": "Backup: {backup_file}\nSkrevet: {created} af HSEM {hsem_version}\n\nIndsend for at gendanne historikfilerne og oprette HSEM med konfigurationen fra backuppen.\n\nIkke i backuppen, sat til standardværdien: {skipped_keys}\n\nSlået fra, fordi de kræver en af de værdier: {disabled_features}\n\nEnheder, der ikke findes på denne Home Assistant, efterladt tomme: {missing_devices}. Vælg dem under Konfigurer efter gendannelsen.\n\nHistorikfiler, der ikke gendannes: {history_files_skipped}\n\nHSEM-historikfiler, der allerede ligger på denne Home Assistant, erstattes. De gemmes først i en before_import-backup i mappen hsem_backups.\n\nEn backup indeholder aldrig ladepunkt-id'er, certifikatstier eller hemmeligheder. Indtast dem under Konfigurer efter gendannelsen, og slå derefter funktionerne til igen."
       }
     }
   },
@@ -913,7 +951,9 @@
           "hsem_planner_hysteresis_enabled": "Hysterese på plan-niveau",
           "hsem_planner_hysteresis_percentage": "Hysterese procenttærskel (%)",
           "hsem_planner_window_hysteresis_minutes": "Hysterese-holdetid for vindue (minutter)",
-          "hsem_planner_solver_time_limit_s": "Tidsgrænse for planlæggerens solver (sekunder)"
+          "hsem_planner_solver_time_limit_s": "Tidsgrænse for planlæggerens solver (sekunder)",
+          "hsem_terminal_price_tail_enabled": "Estimeret prishale til slutværdien (eksperimentel)",
+          "hsem_batteries_learned_efficiency_enabled": "Planlæg med målt batterieffektivitet (eksperimentel)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Samlet købspris for batterisystemet (inkl. installation).",
@@ -926,7 +966,9 @@
           "hsem_planner_hysteresis_enabled": "Når dette er aktiveret, beholder planlæggeren den aktive kandidatplan, medmindre en ny plan forbedrer scoren med mere end de konfigurerede tærskler. Forhindrer svingninger mellem ligestillede strategier.",
           "hsem_planner_hysteresis_percentage": "Minimum procentvis score-forbedring, der kræves for at skifte til en ny plan. 0 % deaktiverer procenttærsklen. Standard 5 % forhindrer flapning mellem næsten identiske planer.",
           "hsem_planner_window_hysteresis_minutes": "Minimumstid (minutter), en anbefaling skal fastholdes, før den kan ændres. Forhindrer hurtig veksling som f.eks. ev_smart_charging ↔ batteries_charge_solar. 0 deaktiverer funktionen. Standard 10.",
-          "hsem_planner_solver_time_limit_s": "Maksimal tid (sekunder) optimeringen må bruge på én beregning. Når grænsen nås, bruges den bedste plan, der er fundet indtil da, og den kan være langt fra optimal (f.eks. Vent i alle tidsrum). Hæv den kun, når Plan Strategy-sensoren viser solver_status time_limit: en højere grænse gør hver opdateringscyklus længere, og en cyklus kan køre op til tre beregninger. Interval 1–10. Standard 2."
+          "hsem_planner_solver_time_limit_s": "Maksimal tid (sekunder) optimeringen må bruge på én beregning. Når grænsen nås, bruges den bedste plan, der er fundet indtil da, og den kan være langt fra optimal (f.eks. Vent i alle tidsrum). Hæv den kun, når Plan Strategy-sensoren viser solver_status time_limit: en højere grænse gør hver opdateringscyklus længere, og en cyklus kan køre op til tre beregninger. Interval 1–10. Standard 2.",
+          "hsem_terminal_price_tail_enabled": "Eksperimentel. Værdisætter energien, der er tilbage i batteriet ved planlægningshorisontens slutning, med priser fra prishistorikken for de 24 timer efter horisonten, vægtet 50 % mod horisontens sidste dag. Bruges kun, når ingen offentliggjort pris rækker ud over horisonten. De estimerede priser ændrer kun slutværdien: de tilføjer ingen tidsrum til planen, og Plan Strategy-sensoren viser dem som estimerede. Kræver mindst seks dages prishistorik. Slået fra som standard: i backtests sænkede det ikke den realiserede omkostning, og optimeringen tog længere tid.",
+          "hsem_batteries_learned_efficiency_enabled": "Eksperimentel. Lader planlæggeren bruge en rundturseffektivitet, HSEM har målt, i stedet for de to konfigurerede værdier ovenfor. Er der konfigureret en sensor for batteriets effekt på AC-siden, bruges månedens rundturseffektivitet på AC-siden, som er det tab, elmåleren ser. Ellers bruges rundturseffektiviteten målt ved batteriet, når begge retninger har mindst 40 målinger og 10 kWh. Den indeholder ikke konverteringstabet i inverteren. En målt rundturseffektivitet kan kun sænke planlæggerens effektivitet, aldrig hæve den: er den lig med eller over den konfigurerede, bruges de konfigurerede værdier. Under 70 % regnes den som 70 %. Begge konfigurerede værdier skaleres med samme faktor. Når en måling ikke længere er pålidelig, for eksempel fordi den nyeste er ældre end 30 dage, beholdes den sidste pålidelige værdi. Sensorerne Batterieffektivitet og Planstrategi viser, hvilke værdier planen brugte."
         },
         "description": "Konfigurer batteriøkonomi-parametre til cyklusomkostningsberegning.",
         "title": "Batteriøkonomi"
@@ -936,6 +978,7 @@
           "hsem_grid_import_energy_entity": "Netimport Energi Sensor",
           "hsem_grid_export_energy_entity": "Neteksport Energi Sensor",
           "hsem_pv_energy_entity": "Solcelleproduktion Energi Sensor",
+          "hsem_battery_ac_power_entity": "Batterieffekt på AC-siden",
           "hsem_ml_consumption_enabled": "Aktiver ML forbrugsprognose",
           "hsem_ml_consumption_energy_entity": "Husforbrug energi sensor (ekskl. batteri og EV)",
           "hsem_ml_consumption_history_days": "ML historik dage",
@@ -950,6 +993,7 @@
           "hsem_grid_import_energy_entity": "Valgfri - akkumuleret netimport energimåler (kWh).",
           "hsem_grid_export_energy_entity": "Valgfri - akkumuleret neteksport energimåler (kWh).",
           "hsem_pv_energy_entity": "Valgfri - akkumuleret solcelleproduktion energimåler (kWh).",
+          "hsem_battery_ac_power_entity": "Valgfri - batteriets effekt med fortegn på AC-siden af inverteren (W eller kW), positiv under opladning. Bruges kun til det månedlige tab på AC-siden. Lad feltet være tomt, hvis ingen sensor måler batteriet alene: en invertereffekt, der også omfatter solcelleproduktion, kan ikke bruges.",
           "hsem_ml_consumption_enabled": "Når aktiveret, bruger ridge regression på optagerhistorik i stedet for rullende gennemsnit. Kræver 14+ dages historik.",
           "hsem_ml_consumption_energy_entity": "Akkumuleret husforbrug energimåler (kWh). Skal ekskludere batteri OG EV-opladning. Falder tilbage til netimport hvis ikke sat.",
           "hsem_ml_consumption_history_days": "Dage med optagerhistorik til ML-træning (7-90).",
@@ -1300,6 +1344,24 @@
       "missing_entities": {
         "name": "Manglende enheder"
       },
+      "monthly_ac_round_trip_loss": {
+        "name": "Månedligt tab på AC-siden ved op- og afladning",
+        "state_attributes": {
+          "reason": {
+            "name": "Årsag",
+            "state": {
+              "no_data": "Intet registreret i denne måned",
+              "ac_battery_power_not_configured": "Ingen sensor for batterieffekt på AC-siden er valgt",
+              "ac_battery_power_unit_not_power": "AC-sidens sensor har ingen effektenhed",
+              "ac_battery_power_no_readings": "AC-sidens sensor gav ingen brugbare målinger",
+              "ac_soc_or_capacity_missing": "SoC eller nominel kapacitet mangler",
+              "throughput_below_minimum": "For lidt energi op- eller afladet",
+              "soc_change_too_large": "For stor ændring i SoC",
+              "implausible_ratio": "Målingerne modsiger hinanden"
+            }
+          }
+        }
+      },
       "monthly_battery_cycles": {
         "name": "Månedlige battericyklusser"
       },
@@ -1482,7 +1544,7 @@
         "fields": {
           "history_days": {
             "name": "Historikdage",
-            "description": "Afsluttede dage før i dag, der skal afspilles. Højst 90."
+            "description": "Afsluttede dage før i dag, der skal afspilles. Højst 365. Dage uden målt registrering genopbygges fra timestatistik."
           },
           "usable_capacity_kwh": {
             "name": "Brugbar kapacitet",

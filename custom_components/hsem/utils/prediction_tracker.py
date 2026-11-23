@@ -18,7 +18,7 @@ from typing import Any
 
 from custom_components.hsem.models.prediction_record import PredictionRecord
 from custom_components.hsem.utils.persistence import (
-    read_json_history_file,
+    async_load_history,
     write_json_history_file,
 )
 from custom_components.hsem.utils.recommendations import (
@@ -246,12 +246,7 @@ class PredictionTracker:
         """Load prediction history from disk when available."""
         if not self.history_file:
             return
-        path = Path(self.history_file)
-        if not path.exists():
-            return
-        data = await asyncio.to_thread(read_json_history_file, path)
-        if isinstance(data, Mapping):
-            self.load_from_dict(data)
+        await async_load_history(Path(self.history_file), self.load_from_dict)
 
     async def save_history(self) -> bool:
         """Persist prediction history atomically."""

@@ -20,6 +20,7 @@
     "battery_charge_efficiency_pct": 98.0,
     "battery_cycle_cost_per_kwh": 0.0,
     "battery_discharge_efficiency_pct": 98.0,
+    "battery_efficiency_basis": null,
     "battery_end_of_discharge_soc_pct": 5.0,
     "battery_expected_cycles": 6000,
     "battery_export_min_price": 0.0,
@@ -1839,6 +1840,7 @@
       }
     ],
     "price_profile": null,
+    "price_published_until": null,
     "solar_corrector": null,
     "solcast_slots": [
       {
@@ -2082,6 +2084,7 @@
         "pv_estimate": 0.0
       }
     ],
+    "terminal_price_tail_weight": 0.0,
     "time_discount_rate": 0.995,
     "time_zone": "Europe/Copenhagen",
     "weight_14d": 10,

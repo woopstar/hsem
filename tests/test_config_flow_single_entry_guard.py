@@ -53,6 +53,8 @@ def _make_flow(*, already_configured: bool = False) -> HSEMConfigFlow:
     """
     flow = HSEMConfigFlow.__new__(HSEMConfigFlow)
     flow._user_input = {}
+    # These tests have no backup folder: skip the restore menu (issue #1448).
+    flow._restore_offered = True
 
     # Minimal fake hass — no active entries needed for these tests because the
     # guard operates through the unique-id mechanism, not entry enumeration.

@@ -244,14 +244,14 @@ def _record_day(
 
 
 def _record_weeks(tracker: PriceHistoryTracker, last: datetime, **kwargs: Any) -> None:
-    """Record the same weekday on the three weeks ending at *last*."""
-    for weeks in (2, 1, 0):
+    """Record the same weekday on the ``PROFILE_MIN_DAYS`` weeks ending at *last*."""
+    for weeks in reversed(range(PROFILE_MIN_DAYS)):
         day = (last.replace(tzinfo=None) - timedelta(weeks=weeks)).replace(tzinfo=_TZ)
         _record_day(tracker, day, **kwargs)
 
 
 def _history(**kwargs: Any) -> PriceHistoryTracker:
-    """Three dearer Mondays and three dearer Tuesdays with an evening peak."""
+    """Six dearer Mondays and six dearer Tuesdays with an evening peak."""
     tracker = PriceHistoryTracker()
     _record_weeks(tracker, _LAST_MONDAY, offset=_OLD_LEVEL, **kwargs)
     _record_weeks(
@@ -332,26 +332,29 @@ class TestPriceProfile:
         assert profile.is_empty
         assert profile.lookup(_MON, 10, 0, 15) is None
 
-    def test_a_bucket_needs_three_days(self) -> None:
-        """One or two days are not a pattern (review finding 1)."""
+    def test_a_bucket_needs_six_days(self) -> None:
+        """Fewer days were a worse estimate than the earlier day (issue #1452)."""
         ten = _MONDAY.replace(hour=10)
-        two = PriceProfile.from_samples(
-            [(day, 15, 9.0, 8.0) for day in _days(ten, 2)], _TZ
+        five = PriceProfile.from_samples(
+            [(day, 15, 9.0, 8.0) for day in _days(ten, 5)], _TZ
         )
-        three = PriceProfile.from_samples(
-            [(day, 15, 9.0, 8.0) for day in _days(ten, 3)], _TZ
+        six = PriceProfile.from_samples(
+            [(day, 15, 9.0, 8.0) for day in _days(ten, 6)], _TZ
         )
 
-        assert two.is_empty
-        assert not three.is_empty
-        assert three.lookup(_MON, 10, 0, 15) == pytest.approx((9.0, 8.0))
+        assert PROFILE_MIN_DAYS == 6
+        assert five.is_empty
+        assert not six.is_empty
+        assert six.lookup(_MON, 10, 0, 15) == pytest.approx((9.0, 8.0))
 
     def test_a_bucket_is_the_median_of_its_days(self) -> None:
         """One extreme day does not move the bucket."""
         ten = _MONDAY.replace(hour=10)
-        prices = [(1.0, 0.5), (1.2, 0.7), (40.0, 0.6)]
+        prices = [(1.0, 0.5), (1.2, 0.7), (40.0, 0.6), (1.1, 0.5), (1.3, 0.7)]
         profile = PriceProfile.from_samples(
-            [(day, 15, *pair) for day, pair in zip(_days(ten), prices)], _TZ
+            [(day, 15, *pair) for day, pair in zip(_days(ten, 5), prices, strict=True)],
+            _TZ,
+            min_days=5,
         )
 
         assert profile.lookup(_MON, 10, 0, 15) == pytest.approx((1.2, 0.6))
@@ -411,7 +414,7 @@ class TestPriceProfile:
             (ten + timedelta(days=1), 15, 2.0, 1.5),
             (ten + timedelta(days=2), 15, 9.0, 8.5),
         ]
-        profile = PriceProfile.from_samples(samples, _TZ)
+        profile = PriceProfile.from_samples(samples, _TZ, min_days=3)
 
         assert profile.quarters == {}
         assert profile.lookup(_SUN, 10, 0, 15) == pytest.approx((2.0, 1.5))
@@ -485,13 +488,14 @@ class TestPriceHistoryTracker:
         old = _MONDAY - timedelta(days=PRICE_HISTORY_RETENTION_DAYS + 1)
         tracker.record(old, 15, 1.0, 0.5)
         tracker.record(_MONDAY, 15, 2.0, 1.5)
-        before = tracker.profile(_TZ)
-        assert tracker.profile(_TZ) is before
+        before = tracker._bucket_profile(_TZ)
+        assert tracker._bucket_profile(_TZ) is before
+        assert tracker.profile(_TZ) == before
 
         tracker.prune(_NOW)
 
         assert tracker.sample_count == 1
-        assert tracker.profile(_TZ) is not before
+        assert tracker._bucket_profile(_TZ) is not before
 
     def test_held_prices_are_kept_per_side_until_their_day_is_over(self) -> None:
         tracker = PriceHistoryTracker()
@@ -1138,7 +1142,7 @@ class TestUnpublishedTomorrow:
     def test_hourly_history_prices_quarter_hourly_slots(self) -> None:
         """The price source and slots were hourly in the recorded weeks."""
         tracker = _history(interval=60, source_step=60)
-        assert tracker.sample_count == 6 * 24
+        assert tracker.sample_count == 12 * 24
 
         planner_input, _ = _cycle(tracker, _NOW, _attributes(_MONDAY))
         output = run_planner(planner_input)
@@ -1183,7 +1187,7 @@ class TestUnpublishedTomorrow:
             )
 
     def test_the_week_after_the_spring_forward_day(self) -> None:
-        """02:00 has two Sundays only and reads the every-weekday bucket."""
+        """02:00 has five Sundays only, too few, and reads the earlier day."""
         tracker = PriceHistoryTracker()
         _record_weeks(tracker, _SPRING_FORWARD, offset=_OLD_LEVEL)
         saturday = datetime(2026, 4, 4, tzinfo=_TZ)
@@ -1406,7 +1410,12 @@ class TestPriceOutage:
         assert tracker.sample_count == 37
 
     def test_the_outage_continues_into_the_next_day(self) -> None:
-        """Monday's held prices are over; Tuesday comes from the store."""
+        """Monday's held prices are over; Tuesday comes from the store.
+
+        Tuesday starts within a day of the last published slot, so the
+        profile keeps Monday's level shift.  Wednesday is too late for it
+        and reads the profile as recorded (issue #1452).
+        """
         tracker = _history()
         _cycle(tracker, _NOW, _attributes(_MONDAY))
 
@@ -1417,10 +1426,17 @@ class TestPriceOutage:
         assert "for 0.0 h: planning 0 of 192 slots" in result.outage_reason
         assert result.coverage.import_price == frozenset()
         assert planner_input.price_points == []
+        profile = planner_input.price_profile
+        assert profile is not None
+        for level in (profile.import_level, profile.export_level):
+            assert level is not None
+            assert level[0] == pytest.approx(-_OLD_LEVEL)
+            assert level[1] == _WEDNESDAY
         for slot in _slots_of(output, _TUESDAY):
-            expected = _clock_price(slot.start.hour, slot.start.minute) + _OLD_LEVEL
+            expected = _clock_price(slot.start.hour, slot.start.minute)
             expected += _TUESDAY_PEAK.get(slot.start.hour, 0.0)
             assert slot.price.import_price == pytest.approx(expected)
+            assert slot.price.export_price == pytest.approx(expected - _EXPORT_GAP)
         # Wednesday was never recorded: it reads every weekday, never 0.0.
         assert all(
             slot.price.import_price > _OLD_LEVEL
@@ -1791,3 +1807,31 @@ class TestDiagnosticsRoundTrip:
         assert replayed.price_profile == profile
         assert report.is_faithful
         assert _planner_input_to_dict(without)["price_profile"] is None
+
+
+class TestHourlyPrices:
+    """Issue #1455: hourly statistics are priced per hour, real prices only."""
+
+    _HOUR = datetime(2026, 6, 1, 10, 0, tzinfo=UTC)
+
+    def test_an_hour_recorded_in_full_gets_the_mean_of_its_slots(self) -> None:
+        tracker = PriceHistoryTracker()
+        for index, price in enumerate((1.0, 2.0, 3.0, 4.0)):
+            tracker.record(
+                self._HOUR + timedelta(minutes=15 * index), 15, price, price / 2.0
+            )
+        tracker.record(self._HOUR + timedelta(hours=1), 60, 7.0, 0.5)
+
+        hourly = tracker.hourly_prices()
+
+        assert hourly == {
+            self._HOUR: pytest.approx((2.5, 1.25)),
+            self._HOUR + timedelta(hours=1): pytest.approx((7.0, 0.5)),
+        }
+
+    def test_an_hour_with_a_slot_missing_has_no_price(self) -> None:
+        tracker = PriceHistoryTracker()
+        for index in (0, 1, 3):
+            tracker.record(self._HOUR + timedelta(minutes=15 * index), 15, 1.0, 0.5)
+
+        assert tracker.hourly_prices() == {}

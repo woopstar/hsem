@@ -4,7 +4,9 @@ One record per local day holds what the house used, what crossed the grid
 meter, what the PV produced and what went into and out of the battery.  The
 monthly figures (self-sufficiency, full equivalent cycles, wear cost and the
 measured round-trip loss) are always ratios of sums over those daily records,
-never averages of daily ratios (issue #1435).
+never averages of daily ratios (issue #1435).  The round-trip loss is measured
+on the battery side and, with an AC-side battery power sensor, on the AC side
+(:mod:`~custom_components.hsem.models.energy_round_trip`, issue #1450).
 
 The tracker is a sibling of
 :class:`~custom_components.hsem.models.financial_tracker.FinancialTracker`
@@ -14,17 +16,36 @@ with a history file of its own, so the financial history keeps its format.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from custom_components.hsem.utils.metering import mean_power_kwh, meter_delta
+from custom_components.hsem.models.energy_round_trip import (
+    REASON_AC_BATTERY_POWER_NO_READINGS,
+    REASON_AC_BATTERY_POWER_NOT_CONFIGURED,
+    REASON_AC_BATTERY_POWER_UNIT_NOT_POWER,
+    REASON_AC_SOC_OR_CAPACITY_MISSING,
+    REASON_BATTERY_POWER_NOT_MEASURED,
+    REASON_IMPLAUSIBLE_RATIO,
+    REASON_NO_DATA,
+    REASON_SOC_CHANGE_TOO_LARGE,
+    REASON_THROUGHPUT_BELOW_MINIMUM,
+    ac_unknown_reason,
+    battery_unknown_reason,
+    round_trip_summary,
+)
+from custom_components.hsem.utils.metering import (
+    mean_power_kwh,
+    meter_delta,
+    signed_power_kwh,
+)
 from custom_components.hsem.utils.misc import round_or_none
 from custom_components.hsem.utils.persistence import (
+    async_load_history,
     aware_datetime_from_iso,
     finite_float,
-    read_json_history_file,
     write_json_history_file,
 )
 
@@ -42,22 +63,6 @@ MONTHLY_ATTRIBUTE_MONTHS = 12
 #: House consumption below which a self-sufficiency share is not given.
 MIN_CONSUMPTION_KWH = 1.0
 
-#: Measured battery charge below which the round-trip loss is not given.
-MIN_ROUND_TRIP_CHARGED_KWH = 20.0
-
-#: The same minimum as a multiple of the rated capacity; the larger applies.
-MIN_ROUND_TRIP_CAPACITY_MULTIPLE = 5.0
-
-#: How far off the stored-energy change may be, as a share of itself.  It is
-#: the SoC change times the nameplate capacity: an aged battery holds less,
-#: and what it holds comes out with a loss the measurement is yet to find.
-STORED_DELTA_RELATIVE_ERROR = 0.15
-
-#: Largest uncertainty of the round-trip loss still published, as a share of
-#: the charged energy.  It is met while the stored-energy change is at most a
-#: tenth of the charged energy.
-MAX_ROUND_TRIP_UNCERTAINTY = 0.015
-
 #: Share of the battery throughput that must have a known cycle cost before
 #: a wear cost is given.
 MIN_PRICED_THROUGHPUT_SHARE = 0.95
@@ -68,22 +73,27 @@ MIN_PRICED_THROUGHPUT_SHARE = 0.95
 IMPORT_EXCESS_SHARE = 0.05
 IMPORT_EXCESS_KWH = 1.0
 
-#: Highest measured round-trip efficiency still taken for a measurement.
-MAX_ROUND_TRIP_EFFICIENCY = 1.02
-
-#: Why a monthly figure is unknown.
-REASON_NO_DATA = "no_data"
+#: Why a monthly figure is unknown.  The round-trip reasons are in
+#: :mod:`energy_round_trip` and are re-exported here.
 REASON_CONSUMPTION_NOT_MEASURED = "consumption_not_measured"
 REASON_CONSUMPTION_BELOW_MINIMUM = "consumption_below_minimum"
 REASON_IMPORT_EXCEEDS_CONSUMPTION = "import_exceeds_consumption"
 REASON_BATTERY_NOT_MEASURED = "battery_not_measured"
 REASON_CYCLE_COST_UNKNOWN = "cycle_cost_unknown"
-REASON_SOC_CHANGE_TOO_LARGE = "soc_change_too_large"
 REASON_GRID_IMPORT_NOT_MEASURED = "grid_import_not_measured"
 REASON_CAPACITY_UNKNOWN = "capacity_unknown"
-REASON_BATTERY_POWER_NOT_MEASURED = "battery_power_not_measured"
-REASON_THROUGHPUT_BELOW_MINIMUM = "throughput_below_minimum"
-REASON_IMPLAUSIBLE_RATIO = "implausible_ratio"
+
+__all__ = [
+    "REASON_AC_BATTERY_POWER_NOT_CONFIGURED",
+    "REASON_AC_BATTERY_POWER_NO_READINGS",
+    "REASON_AC_BATTERY_POWER_UNIT_NOT_POWER",
+    "REASON_AC_SOC_OR_CAPACITY_MISSING",
+    "REASON_BATTERY_POWER_NOT_MEASURED",
+    "REASON_IMPLAUSIBLE_RATIO",
+    "REASON_NO_DATA",
+    "REASON_SOC_CHANGE_TOO_LARGE",
+    "REASON_THROUGHPUT_BELOW_MINIMUM",
+]
 
 #: The additive quantities of a day.  A period sums every one of them before
 #: any ratio is taken.
@@ -101,6 +111,11 @@ SUMMED_FIELDS: tuple[str, ...] = (
     "measured_charged_kwh",
     "measured_discharged_kwh",
     "measured_stored_delta_kwh",
+    "ac_charged_kwh",
+    "ac_discharged_kwh",
+    "ac_stored_delta_kwh",
+    "ac_power_hours",
+    "ac_hours",
     "house_hours",
     "grid_import_hours",
     "grid_export_hours",
@@ -128,6 +143,7 @@ _SAMPLE_READINGS: tuple[str, ...] = (
     "pv_power_w",
     "house_power_w",
     "battery_power_w",
+    "battery_ac_power_w",
     "soc_pct",
 )
 
@@ -144,6 +160,7 @@ class EnergySample:
         pv_power_w: PV power, used when the PV meter is not available.
         house_power_w: House consumption power, EV charging included.
         battery_power_w: Signed battery power, positive while charging.
+        battery_ac_power_w: The same on the AC side of the inverter.
         soc_pct: Battery state of charge.
     """
 
@@ -154,6 +171,7 @@ class EnergySample:
     pv_power_w: float | None = None
     house_power_w: float | None = None
     battery_power_w: float | None = None
+    battery_ac_power_w: float | None = None
     soc_pct: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -218,6 +236,12 @@ class EnergyDayEntry:
             reading, in intervals whose SoC change is known.
         measured_discharged_kwh: Battery discharge of those intervals.
         measured_stored_delta_kwh: Change in stored energy over them.
+        ac_charged_kwh: Battery charge taken from the AC-side battery power
+            reading, in intervals whose SoC change is known.
+        ac_discharged_kwh: AC-side battery discharge of those intervals.
+        ac_stored_delta_kwh: Change in stored energy over them.
+        ac_power_hours: Hours in which the AC-side sensor gave readings.
+        ac_hours: Hours of those in which the AC-side flows were booked.
         house_hours: Hours in which the house consumption was measured.
         grid_import_hours: Hours in which the grid import was measured.
         grid_export_hours: Hours in which the grid export was measured.
@@ -226,6 +250,7 @@ class EnergyDayEntry:
         priced_throughput_kwh: Battery throughput with a known cycle cost.
         usable_capacity_kwh: Usable capacity as last seen that day.
         rated_capacity_kwh: Rated capacity as last seen that day.
+        backfilled: The day is from long-term statistics, not measured.
     """
 
     date: str
@@ -242,6 +267,11 @@ class EnergyDayEntry:
     measured_charged_kwh: float = 0.0
     measured_discharged_kwh: float = 0.0
     measured_stored_delta_kwh: float = 0.0
+    ac_charged_kwh: float = 0.0
+    ac_discharged_kwh: float = 0.0
+    ac_stored_delta_kwh: float = 0.0
+    ac_power_hours: float = 0.0
+    ac_hours: float = 0.0
     house_hours: float = 0.0
     grid_import_hours: float = 0.0
     grid_export_hours: float = 0.0
@@ -250,12 +280,14 @@ class EnergyDayEntry:
     priced_throughput_kwh: float = 0.0
     usable_capacity_kwh: float = 0.0
     rated_capacity_kwh: float = 0.0
+    backfilled: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         """Return the entry as a plain dict for JSON serialisation."""
         data: dict[str, Any] = {"date": self.date}
         for name in (*SUMMED_FIELDS, "usable_capacity_kwh", "rated_capacity_kwh"):
             data[name] = round(getattr(self, name), 4)
+        data["backfilled"] = self.backfilled
         return data
 
     @classmethod
@@ -274,6 +306,7 @@ class EnergyDayEntry:
         entry = cls(date=day)
         for name in (*SUMMED_FIELDS, "usable_capacity_kwh", "rated_capacity_kwh"):
             setattr(entry, name, finite_float(data.get(name)) or 0.0)
+        entry.backfilled = data.get("backfilled") is True
         return entry
 
 
@@ -291,10 +324,15 @@ class EnergyTracker:
         daily_log: Daily records by ISO date, today's included, bounded to
             :data:`MAX_DAILY_LOG_DAYS` days.
         history_file: Path of the JSON history file.
+        backfill_complete: The statistics backfill has run (issue #1450).
+        ac_sensor_reason: Why the AC-side battery power sensor gives no
+            readings as it is set up now.  Not persisted: set every cycle.
     """
 
     daily_log: dict[str, EnergyDayEntry] = field(default_factory=dict)
     history_file: str = ""
+    backfill_complete: bool = False
+    ac_sensor_reason: str = REASON_AC_BATTERY_POWER_NOT_CONFIGURED
     _last_sample: EnergySample | None = field(default=None, repr=False)
     _saved_at: datetime | None = field(default=None, repr=False)
     _revision: int = field(default=0, repr=False)
@@ -388,7 +426,8 @@ class EnergyTracker:
         The flows come from the battery power reading.  Without it they are
         derived from the SoC change and the configured efficiencies, which
         serves the cycle count and the wear cost but is no measurement of the
-        round-trip loss.
+        round-trip loss.  The AC-side reading only feeds the AC-side round
+        trip.
         """
         if site.usable_capacity_kwh > 1e-9:
             entry.usable_capacity_kwh = site.usable_capacity_kwh
@@ -405,12 +444,22 @@ class EnergyTracker:
                 site.rated_capacity_kwh * (sample.soc_pct - previous.soc_pct) / 100.0
             )
 
-        before_w, after_w = previous.battery_power_w, sample.battery_power_w
-        if before_w is not None and after_w is not None:
-            charged = (max(before_w, 0.0) + max(after_w, 0.0)) / 2.0 * hours / 1000.0
-            discharged = (
-                (max(-before_w, 0.0) + max(-after_w, 0.0)) / 2.0 * hours / 1000.0
-            )
+        ac_flows = signed_power_kwh(
+            previous.battery_ac_power_w, sample.battery_ac_power_w, hours
+        )
+        if ac_flows is not None:
+            entry.ac_power_hours += hours
+            if stored_delta is not None:
+                entry.ac_charged_kwh += ac_flows[0]
+                entry.ac_discharged_kwh += ac_flows[1]
+                entry.ac_stored_delta_kwh += stored_delta
+                entry.ac_hours += hours
+
+        flows = signed_power_kwh(
+            previous.battery_power_w, sample.battery_power_w, hours
+        )
+        if flows is not None:
+            charged, discharged = flows
             if stored_delta is not None:
                 entry.measured_charged_kwh += charged
                 entry.measured_discharged_kwh += discharged
@@ -428,6 +477,35 @@ class EnergyTracker:
         if site.cycle_cost_per_kwh is not None:
             entry.wear_cost += (charged + discharged) * site.cycle_cost_per_kwh
             entry.priced_throughput_kwh += charged + discharged
+
+    def apply_backfill(self, days: Iterable[EnergyDayEntry], today: date) -> int:
+        """Add days from statistics, close the backfill, return the count.
+
+        Only a day before the first measured day and before *today* is taken,
+        and never one with a record: a measured day is not changed.
+        """
+        measured = [
+            key for key, entry in self.daily_log.items() if not entry.backfilled
+        ]
+        before = min([*measured, today.isoformat()])
+        added = 0
+        for entry in days:
+            if entry.date < before and entry.date not in self.daily_log:
+                entry.backfilled = True
+                self.daily_log[entry.date] = entry
+                added += 1
+        self._prune(today)
+        self.backfill_complete = True
+        self._revision += 1
+        return added
+
+    def set_ac_sensor_reason(self, reason: str) -> bool:
+        """Set :attr:`ac_sensor_reason` and return whether it changed."""
+        changed = reason != self.ac_sensor_reason
+        if changed:
+            self.ac_sensor_reason = reason
+            self._revision += 1
+        return changed
 
     def _prune(self, today: date) -> None:
         """Drop records older than :data:`MAX_DAILY_LOG_DAYS` days."""
@@ -478,6 +556,7 @@ class EnergyTracker:
         summary: dict[str, Any] = {
             "month": month,
             "days": len(days),
+            "backfilled_days": sum(1 for entry in days if entry.backfilled),
             "observed_hours": round(total["observed_hours"], 1),
         }
         for name, hours_name in _PUBLISHED_TOTALS:
@@ -508,25 +587,34 @@ class EnergyTracker:
         summary["battery_wear_cost"] = round_or_none(wear, 3)
         summary["battery_wear_cost_reason"] = wear_reason
 
-        efficiency, uncertainty, loss_reason = _round_trip_efficiency(
-            total, rated, bool(days)
+        summary.update(
+            round_trip_summary(
+                "",
+                total["measured_charged_kwh"],
+                total["measured_discharged_kwh"],
+                total["measured_stored_delta_kwh"],
+                rated,
+                unknown_reason=battery_unknown_reason(
+                    total["measured_charged_kwh"],
+                    total["measured_discharged_kwh"],
+                    has_days=bool(days),
+                ),
+            )
         )
-        summary["round_trip_efficiency"] = round_or_none(
-            None if efficiency is None else efficiency * 100.0, 1
-        )
-        summary["round_trip_loss"] = round_or_none(
-            None if efficiency is None else (1.0 - efficiency) * 100.0, 1
-        )
-        summary["round_trip_loss_uncertainty"] = round_or_none(
-            None if uncertainty is None else uncertainty * 100.0, 1
-        )
-        summary["round_trip_loss_reason"] = loss_reason
-        summary["round_trip_charged_kwh"] = round(total["measured_charged_kwh"], 3)
-        summary["round_trip_discharged_kwh"] = round(
-            total["measured_discharged_kwh"], 3
-        )
-        summary["round_trip_stored_delta_kwh"] = round(
-            total["measured_stored_delta_kwh"], 3
+        summary.update(
+            round_trip_summary(
+                "ac_",
+                total["ac_charged_kwh"],
+                total["ac_discharged_kwh"],
+                total["ac_stored_delta_kwh"],
+                rated,
+                unknown_reason=ac_unknown_reason(
+                    total["ac_power_hours"],
+                    total["ac_hours"],
+                    has_days=bool(days),
+                    sensor_reason=self.ac_sensor_reason,
+                ),
+            )
         )
         return summary
 
@@ -540,6 +628,7 @@ class EnergyTracker:
             ``month`` (the current month's key), ``this_month``,
             ``previous_month`` and ``monthly``: the current month and every
             month with a record among the eleven before it, oldest first.
+            ``backfilled_*``: the days taken from statistics.
         """
         published = self._published
         if published is not None and published[:2] == (self._revision, today):
@@ -554,13 +643,17 @@ class EnergyTracker:
             for month in reversed(months)
             if month == current or month in recorded
         ]
+        backfilled = sorted(k for k, e in self.daily_log.items() if e.backfilled)
         attributes: dict[str, Any] = {
             "month": current,
             "this_month": monthly[-1],
             "previous_month": self.month_summary(previous_month(current)),
             "monthly": monthly,
+            "backfilled_days": len(backfilled),
+            "backfilled_from": backfilled[0] if backfilled else None,
+            "backfilled_until": backfilled[-1] if backfilled else None,
         }
-        # Four sensors ask for the same tables on every cycle.
+        # Every monthly sensor asks for the same tables on every cycle.
         self._published = (self._revision, today, attributes)
         return dict(attributes)
 
@@ -572,6 +665,7 @@ class EnergyTracker:
         """Return the tracker's state as a plain dict for JSON serialisation."""
         return {
             "schema": SCHEMA_VERSION,
+            "backfill_complete": self.backfill_complete,
             "last_sample": (
                 None if self._last_sample is None else self._last_sample.as_dict()
             ),
@@ -596,6 +690,7 @@ class EnergyTracker:
             if entry is not None:
                 tracker.daily_log[entry.date] = entry
         tracker._last_sample = EnergySample.from_dict(data.get("last_sample"))
+        tracker.backfill_complete = data.get("backfill_complete") is True
         return tracker
 
     def restore_from(self, loaded: EnergyTracker) -> None:
@@ -639,9 +734,10 @@ class EnergyTracker:
         """Restore the tracker from its history file, if there is one."""
         if not self.history_file:
             return
-        data = await asyncio.to_thread(read_json_history_file, Path(self.history_file))
-        if data is not None:
-            self.restore_from(EnergyTracker.from_dict(data))
+        await async_load_history(
+            Path(self.history_file),
+            lambda data: self.restore_from(EnergyTracker.from_dict(data)),
+        )
 
 
 def _self_sufficiency(
@@ -687,43 +783,3 @@ def _wear_cost(
     if total["priced_throughput_kwh"] < MIN_PRICED_THROUGHPUT_SHARE * throughput:
         return None, REASON_CYCLE_COST_UNKNOWN
     return total["wear_cost"], None
-
-
-def _round_trip_efficiency(
-    total: dict[str, float], rated_capacity_kwh: float, has_days: bool
-) -> tuple[float | None, float | None, str | None]:
-    """Return the measured round-trip efficiency, its uncertainty, or a reason.
-
-    ``(discharged + stored-energy change) ÷ charged``: energy still in the
-    battery at the end of the period counts as delivered, and energy that was
-    already there at the start is taken off what was delivered.
-
-    The stored-energy change is the weak term: the SoC times the nameplate
-    capacity, taken at full value.  Its possible error, as a share of the
-    charged energy, is the uncertainty.  The efficiency is only given once
-    enough has been charged and that uncertainty is small.
-
-    Returns:
-        The efficiency and its uncertainty as fractions, and ``None``; or
-        ``None``, ``None`` and the reason.
-    """
-    if not has_days:
-        return None, None, REASON_NO_DATA
-    charged = total["measured_charged_kwh"]
-    discharged = total["measured_discharged_kwh"]
-    if charged + discharged <= 1e-9:
-        return None, None, REASON_BATTERY_POWER_NOT_MEASURED
-    minimum = max(
-        MIN_ROUND_TRIP_CHARGED_KWH,
-        MIN_ROUND_TRIP_CAPACITY_MULTIPLE * rated_capacity_kwh,
-    )
-    if charged < minimum:
-        return None, None, REASON_THROUGHPUT_BELOW_MINIMUM
-    stored_delta = total["measured_stored_delta_kwh"]
-    uncertainty = abs(stored_delta) * STORED_DELTA_RELATIVE_ERROR / charged
-    if uncertainty > MAX_ROUND_TRIP_UNCERTAINTY:
-        return None, None, REASON_SOC_CHANGE_TOO_LARGE
-    efficiency = (discharged + stored_delta) / charged
-    if efficiency <= 0.0 or efficiency > MAX_ROUND_TRIP_EFFICIENCY:
-        return None, None, REASON_IMPLAUSIBLE_RATIO
-    return min(efficiency, 1.0), uncertainty, None

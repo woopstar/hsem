@@ -41,6 +41,11 @@ class ForecastCoverage:
             are recorded in the price history and held for an outage
             (issue #1434).
         published_export: The same for the export price sensor.
+        import_published_until: End of the last real import price the import
+            price sensor published this cycle, also when that is past the
+            last slot; ``datetime.max`` for a flat price.  ``None`` when it
+            published none.  The estimated price tail never prices a time
+            before it (issue #1453).
         import_predictions_only: Whether the import price sensor wrote
             slots this cycle and none of them from a real price.  Such a
             sensor is alive, so the side is not in an outage.
@@ -61,9 +66,32 @@ class ForecastCoverage:
     published_export: Mapping[datetime, float] = field(
         default_factory=dict, compare=False
     )
+    import_published_until: datetime | None = field(default=None, compare=False)
     import_predictions_only: bool = field(default=False, compare=False)
     export_predictions_only: bool = field(default=False, compare=False)
     single_sided_prices: bool = False
+
+    def price_sensor_content(self) -> dict[str, str]:
+        """Return what each price sensor published this cycle, per side.
+
+        Returns:
+            ``"import"`` and ``"export"`` mapped to ``"published"`` (real
+            prices, recorded and held), ``"predictions"`` (the sensor priced
+            slots with predictions only, so nothing is recorded or held) or
+            ``"none"`` (the sensor priced no slot).
+        """
+        sides = {
+            "import": (self.published_import, self.import_predictions_only),
+            "export": (self.published_export, self.export_predictions_only),
+        }
+        return {
+            side: "published"
+            if published
+            else "predictions"
+            if predictions_only
+            else "none"
+            for side, (published, predictions_only) in sides.items()
+        }
 
     def has_price(self, slot_start: datetime) -> bool:
         """Return whether the slot has both an import and an export price.

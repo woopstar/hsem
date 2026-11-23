@@ -79,9 +79,10 @@ export_data:
   name: Export data
   description: >-
     Back up what HSEM has learned to one JSON file under
-    <config>/hsem_backups/: the prediction, financial, savings, daily and
-    performance history, the solar forecast correction, the forecast accuracy
-    tracker, the hourly consumption averages and the configuration. Secrets,
+    <config>/hsem_backups/: the prediction, financial, savings, daily,
+    performance, battery efficiency, energy, price and what-if history, the
+    solar forecast correction, the forecast accuracy tracker, the hourly
+    consumption averages and the configuration. Secrets,
     charge point IDs and certificate paths are redacted; certificates and keys
     are never included. Entity IDs are kept, so do not post the file publicly.
     Response key: backup_path.
@@ -94,8 +95,10 @@ import_data:
     file is validated first: an unknown format or a backup from a newer HSEM is
     rejected and nothing changes. The current data is saved as
     hsem_backup_<time>_before_import.json, then the history is replaced and
-    HSEM reloads. Response keys: imported_from, before_import_path,
-    history_files_restored, learned_state_restored, learned_state_pending,
+    HSEM reloads. A price history recorded from other price sensors is
+    skipped. Response keys: imported_from, before_import_path,
+    history_files_restored, history_files_skipped, learned_state_restored,
+    learned_state_pending,
     configuration_restored, configuration_keys_skipped.
   fields:
     filename:
@@ -122,11 +125,14 @@ what_if:
     would have been worth. For each day the cheapest possible run is solved
     once with the configured battery and once with the scenario, over the same
     load, PV and prices. Both costs are perfect-foresight bounds, so read the
-    difference as an estimate, not a promise. Read-only: nothing is written to
-    the inverter and the active plan is not touched. Response keys:
-    history_days, days_compared, first_day_compared, last_day_compared,
-    days_skipped, days_timed_out, skipped_reasons, current, scenarios, days,
-    note, duration_seconds.
+    difference as an estimate, not a promise. A day without a measured record
+    is rebuilt from hourly long-term statistics when the price history has a
+    real price for every hour of it. Read-only: nothing is written to the
+    inverter and the active plan is not touched. Response keys: history_days,
+    days_compared, days_measured, days_from_statistics, days_on_todays_limits,
+    first_day_compared, last_day_compared, months_compared, days_skipped,
+    days_timed_out, skipped_reasons, current, scenarios, days, note,
+    duration_seconds.
   fields:
     history_days:
       required: false
@@ -134,14 +140,15 @@ what_if:
       selector:
         number:
           min: 1
-          max: 90
+          max: 365
           step: 1
           unit_of_measurement: "days"
           mode: box
       description: >-
-        Completed days before today to replay. HSEM keeps at most 90
-        recorded days, and only days recorded after this service was
-        added. Default 30.
+        Completed days before today to replay, at most 365. HSEM keeps 90
+        measured days. Other days are rebuilt from hourly long-term
+        statistics and the hourly prices HSEM kept, and are reported apart.
+        Default 30.
     usable_capacity_kwh:
       required: false
       selector:

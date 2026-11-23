@@ -32,6 +32,12 @@
 | Charge/discharge power               | `sensor.batteries_charge_discharge_power`               | W    | ✅ `hsem_huawei_solar_batteries_charge_discharge_power` (issue #831) — signed instantaneous battery power; positive = charging, negative = discharging. Required with phase-aware charging; otherwise optional and used for the savings tracker's discharge savings (issue #1266) |
 | TOU charging and discharging periods | `sensor.batteries_tou_charging_and_discharging_periods` | —    | ✅ `hsem_huawei_solar_batteries_tou_charging_and_discharging_periods`                                                                                                                                                                                                             |
 
+There is no AC-side battery power or energy entity. The LUNA2000 is
+DC-coupled to the inverter, and `sensor.inverter_active_power` is PV and
+battery together. `hsem_battery_ac_power_entity` (monthly AC-side round-trip
+loss, issue #1450) therefore stays empty on this installation; it is meant for
+a sensor that measures the battery alone on the AC side.
+
 ### select entities
 
 | Friendly name               | Entity ID                                      | Used by HSEM                                                 |

@@ -915,9 +915,12 @@ sensor and the hourly average sensors. A backup holds all of them.
 
 - **Back up:** call `hsem.export_data`. The file lands in
   `<config>/hsem_backups/`.
-- **Move to another Home Assistant:** set HSEM up there, copy the backup file
-  into `<config>/hsem_backups/` and call `hsem.import_data` with its
-  `filename`.
+- **Move to another Home Assistant:** install HSEM there, copy the backup file
+  into `<config>/hsem_backups/` and add the integration. Choose **Restore from
+  a backup** in the setup flow. Charge point IDs and certificate paths are not
+  in a backup, so OCPP stays off until you enter them under **Configure**.
+  With HSEM already set up, call `hsem.import_data` with the `filename`
+  instead.
 - **Undo an import:** every import first writes
   `hsem_backup_<date>_<time>_before_import.json`. Import that file.
 - **Deleted the integration:** HSEM wrote
@@ -935,6 +938,21 @@ sensor and the hourly average sensors. A backup holds all of them.
 | Entities are missing after a restore  | The entity IDs from the backup do not exist on this Home Assistant. Fix the options |
 
 See [Services Reference](services-reference.md) for the file layout.
+
+### A history file that cannot be loaded
+
+HSEM never writes over a history file it could not load. `hsem.log` holds one
+warning that names the file.
+
+- **`... could not be read`:** the file is there but the read failed, for
+  example a permission error or a file locked by a backup tool. HSEM leaves
+  the file as it is, runs without that history, and tries again before each
+  save. Nothing is saved to the file until it loads. Fix the cause and the
+  history comes back on its own.
+- **`... cannot be used`:** the file is damaged. HSEM moved it to
+  `<name>.corrupt-<date>T<time>Z` in `.storage` and started a new history. The
+  old file is kept for you to inspect or repair. Delete it when you no longer
+  need it.
 
 ---
 

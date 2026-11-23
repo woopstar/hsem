@@ -2,7 +2,11 @@
   "config": {
     "abort": {
       "already_configured": "HSEM Integration is already configured",
-      "reconfigured_successfully": "HSEM Integration reconfigured successfully."
+      "reconfigured_successfully": "HSEM Integration reconfigured successfully.",
+      "no_backups": "No backup files were found in the hsem_backups folder."
+    },
+    "create_entry": {
+      "history_saved": "HSEM was restored. The history that was on this Home Assistant before was saved to {before_path}."
     },
     "error": {
       "device_not_found": "The selected device was not found.",
@@ -33,7 +37,13 @@
       "tls_file_not_found": "File not found or not readable.",
       "tls_cert_key_mismatch": "The server certificate and key could not be loaded together. Check that both are PEM files and that the key belongs to the certificate.",
       "tls_invalid_ca": "The client CA file is not a valid PEM certificate.",
-      "invalid_topup_min_power_pct": "Top-up charge power floor must be between 0 and 100 %."
+      "invalid_topup_min_power_pct": "Top-up charge power floor must be between 0 and 100 %.",
+      "backup_invalid": "The file is not a usable HSEM backup. Nothing was restored.",
+      "backup_unreadable": "The backup file could not be read: it is missing, too large or not JSON. Nothing was restored.",
+      "backup_too_new": "The backup was written by a newer HSEM version. Update HSEM first. Nothing was restored.",
+      "backup_config_version": "The configuration in the backup belongs to another config entry version. Set HSEM up by hand, then restore the learned data with the hsem.import_data action. Nothing was restored.",
+      "backup_write_failed": "The history files could not be written. Nothing was restored. Check the Home Assistant log.",
+      "backup_safety_copy_failed": "The history already on this Home Assistant could not be saved first, so nothing was restored. Check the Home Assistant log."
     },
     "step": {
       "batteries_excess_export": {
@@ -314,7 +324,9 @@
           "hsem_planner_hysteresis_absolute": "Hysteresis Absolute Threshold",
           "hsem_planner_hysteresis_percentage": "Hysteresis Percentage Threshold (%)",
           "hsem_planner_window_hysteresis_minutes": "Window Hysteresis Hold Time (minutes)",
-          "hsem_planner_solver_time_limit_s": "Planner Solver Time Limit (seconds)"
+          "hsem_planner_solver_time_limit_s": "Planner Solver Time Limit (seconds)",
+          "hsem_terminal_price_tail_enabled": "Estimated Price Tail for the End Value (experimental)",
+          "hsem_batteries_learned_efficiency_enabled": "Plan with the Measured Battery Efficiency (experimental)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in your local currency. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
@@ -327,7 +339,9 @@
           "hsem_planner_hysteresis_absolute": "Minimum absolute score improvement required to switch to a new plan. 0.00 disables the absolute threshold. The score uses the same currency as your electricity prices, so a value of 0.01 requires at least 1 cent/kWh-equivalent improvement before switching.",
           "hsem_planner_hysteresis_percentage": "Minimum percentage score improvement required to switch to a new plan. 0% disables the percentage threshold. Default 5% prevents flapping between nearly-identical plans.",
           "hsem_planner_window_hysteresis_minutes": "Minimum time (minutes) a recommendation must be held before it can change. Prevents rapid toggling such as ev_smart_charging ↔ batteries_charge_solar. 0 disables the feature. Default 10.",
-          "hsem_planner_solver_time_limit_s": "Maximum time (seconds) the optimiser may spend on one solve. When it reaches the limit it uses the best plan found so far, which can be far from optimal (for example Wait in every slot). Only raise it when the Plan Strategy sensor shows solver_status time_limit: a higher limit makes each update cycle longer, and a cycle can run up to three solves. Range 1–10. Default 2."
+          "hsem_planner_solver_time_limit_s": "Maximum time (seconds) the optimiser may spend on one solve. When it reaches the limit it uses the best plan found so far, which can be far from optimal (for example Wait in every slot). Only raise it when the Plan Strategy sensor shows solver_status time_limit: a higher limit makes each update cycle longer, and a cycle can run up to three solves. Range 1–10. Default 2.",
+          "hsem_terminal_price_tail_enabled": "Experimental. Values the energy left in the battery at the end of the planning horizon with price-history prices for the 24 hours after it, weighted 50 % against the last day in the horizon. Only used when no published price reaches past the horizon. The estimated prices only change that end value: they add no slot to the plan, and the Plan Strategy sensor shows them as estimated. Needs at least six days of price history. Off by default: in backtests it did not lower the realised cost, and the optimiser took longer.",
+          "hsem_batteries_learned_efficiency_enabled": "Experimental. Lets the planner use a round-trip efficiency HSEM has measured instead of the two configured values above. If an AC-side battery power sensor is configured, the monthly AC-side round trip is used, which is the loss the grid meter sees. Otherwise the round trip measured at the battery is used, once both directions have at least 40 measurements and 10 kWh. That one does not include the conversion loss in the inverter. A measured round trip can only lower the planner's efficiency, never raise it: at or above the configured round trip the configured values stay. Below 70 % it counts as 70 %. Both configured values are scaled by the same factor. When a measurement stops being trusted, for example because the newest is older than 30 days, the last trusted value is kept. The Battery Efficiency and Plan Strategy sensors show which values the plan used."
         },
         "description": "Configure battery economics parameters and planner hysteresis (anti-flapping).",
         "title": "Battery Economics & Hysteresis"
@@ -499,6 +513,7 @@
           "hsem_grid_import_energy_entity": "Grid Import Energy Sensor",
           "hsem_grid_export_energy_entity": "Grid Export Energy Sensor",
           "hsem_pv_energy_entity": "PV Production Energy Sensor",
+          "hsem_battery_ac_power_entity": "AC-Side Battery Power Sensor",
           "hsem_ml_consumption_enabled": "Enable ML consumption prediction",
           "hsem_ml_consumption_energy_entity": "House consumption energy sensor (excl. battery & EV)",
           "hsem_ml_consumption_history_days": "ML history days",
@@ -513,6 +528,7 @@
           "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh).",
           "hsem_grid_export_energy_entity": "Optional—cumulative grid export energy meter (kWh).",
           "hsem_pv_energy_entity": "Optional—cumulative PV production energy meter (kWh).",
+          "hsem_battery_ac_power_entity": "Optional—signed power of the battery on the AC side of its inverter (W or kW), positive while charging. Only used for the monthly AC-side round-trip loss. Leave empty when no sensor measures the battery alone: an inverter power that also includes the PV production cannot be used.",
           "hsem_ml_consumption_enabled": "When enabled, uses ridge regression on recorder history instead of rolling averages. Requires 14+ days of history.",
           "hsem_ml_consumption_energy_entity": "Cumulative house consumption energy meter (kWh). Must exclude battery AND EV charging - use a sensor upstream of both. Falls back to grid import if not set.",
           "hsem_ml_consumption_history_days": "Days of recorder history for ML training (7–90).",
@@ -537,6 +553,28 @@
         },
         "description": "Configure how the battery behaves during Wait mode.",
         "title": "Battery Wait Mode Behaviour"
+      },
+      "setup_method": {
+        "title": "Set up HSEM",
+        "description": "A backup file was found in the hsem_backups folder. Set HSEM up from scratch, or restore the configuration and the learned data from a backup.",
+        "menu_options": {
+          "user": "Set up from scratch",
+          "restore": "Restore from a backup"
+        }
+      },
+      "restore": {
+        "title": "Restore from a backup",
+        "description": "Choose a backup file from the hsem_backups folder. The file is checked first. Nothing is written in this step.",
+        "data": {
+          "backup_file": "Backup file"
+        },
+        "data_description": {
+          "backup_file": "A file written by the hsem.export_data action, or by HSEM when it was removed."
+        }
+      },
+      "restore_confirm": {
+        "title": "Confirm the restore",
+        "description": "Backup: {backup_file}\nWritten: {created} by HSEM {hsem_version}\n\nSubmit to restore the history files and create HSEM with the configuration from the backup.\n\nNot in the backup, set to their default: {skipped_keys}\n\nSwitched off because they need one of those values: {disabled_features}\n\nDevices that do not exist on this Home Assistant, left empty: {missing_devices}. Pick them under Configure after the restore.\n\nHistory files not restored: {history_files_skipped}\n\nHSEM history files already on this Home Assistant are replaced. They are saved to a before_import backup in the hsem_backups folder first.\n\nA backup never holds charge point IDs, certificate paths or secrets. Enter them under Configure after the restore, then switch the features on again."
       }
     }
   },
@@ -851,7 +889,9 @@
           "hsem_planner_hysteresis_absolute": "Hysteresis Absolute Threshold",
           "hsem_planner_hysteresis_percentage": "Hysteresis Percentage Threshold (%)",
           "hsem_planner_window_hysteresis_minutes": "Window Hysteresis Hold Time (minutes)",
-          "hsem_planner_solver_time_limit_s": "Planner Solver Time Limit (seconds)"
+          "hsem_planner_solver_time_limit_s": "Planner Solver Time Limit (seconds)",
+          "hsem_terminal_price_tail_enabled": "Estimated Price Tail for the End Value (experimental)",
+          "hsem_batteries_learned_efficiency_enabled": "Plan with the Measured Battery Efficiency (experimental)"
         },
         "data_description": {
           "hsem_batteries_purchase_price": "Enter the total purchase price of your battery system in your local currency. Used together with expected cycles and usable capacity to calculate the depreciation cost per kWh and the recommended minimum export price threshold.",
@@ -864,7 +904,9 @@
           "hsem_planner_hysteresis_absolute": "Minimum absolute score improvement required to switch to a new plan. 0.00 disables the absolute threshold. The score uses the same currency as your electricity prices, so a value of 0.01 requires at least 1 cent/kWh-equivalent improvement before switching.",
           "hsem_planner_hysteresis_percentage": "Minimum percentage score improvement required to switch to a new plan. 0% disables the percentage threshold. Default 5% prevents flapping between nearly-identical plans.",
           "hsem_planner_window_hysteresis_minutes": "Minimum time (minutes) a recommendation must be held before it can change. Prevents rapid toggling such as ev_smart_charging ↔ batteries_charge_solar. 0 disables the feature. Default 10.",
-          "hsem_planner_solver_time_limit_s": "Maximum time (seconds) the optimiser may spend on one solve. When it reaches the limit it uses the best plan found so far, which can be far from optimal (for example Wait in every slot). Only raise it when the Plan Strategy sensor shows solver_status time_limit: a higher limit makes each update cycle longer, and a cycle can run up to three solves. Range 1–10. Default 2."
+          "hsem_planner_solver_time_limit_s": "Maximum time (seconds) the optimiser may spend on one solve. When it reaches the limit it uses the best plan found so far, which can be far from optimal (for example Wait in every slot). Only raise it when the Plan Strategy sensor shows solver_status time_limit: a higher limit makes each update cycle longer, and a cycle can run up to three solves. Range 1–10. Default 2.",
+          "hsem_terminal_price_tail_enabled": "Experimental. Values the energy left in the battery at the end of the planning horizon with price-history prices for the 24 hours after it, weighted 50 % against the last day in the horizon. Only used when no published price reaches past the horizon. The estimated prices only change that end value: they add no slot to the plan, and the Plan Strategy sensor shows them as estimated. Needs at least six days of price history. Off by default: in backtests it did not lower the realised cost, and the optimiser took longer.",
+          "hsem_batteries_learned_efficiency_enabled": "Experimental. Lets the planner use a round-trip efficiency HSEM has measured instead of the two configured values above. If an AC-side battery power sensor is configured, the monthly AC-side round trip is used, which is the loss the grid meter sees. Otherwise the round trip measured at the battery is used, once both directions have at least 40 measurements and 10 kWh. That one does not include the conversion loss in the inverter. A measured round trip can only lower the planner's efficiency, never raise it: at or above the configured round trip the configured values stay. Below 70 % it counts as 70 %. Both configured values are scaled by the same factor. When a measurement stops being trusted, for example because the newest is older than 30 days, the last trusted value is kept. The Battery Efficiency and Plan Strategy sensors show which values the plan used."
         },
         "description": "Configure battery economics parameters and planner hysteresis (anti-flapping).",
         "title": "Battery Economics & Hysteresis"
@@ -974,6 +1016,7 @@
           "hsem_grid_import_energy_entity": "Grid Import Energy Sensor",
           "hsem_grid_export_energy_entity": "Grid Export Energy Sensor",
           "hsem_pv_energy_entity": "PV Production Energy Sensor",
+          "hsem_battery_ac_power_entity": "AC-Side Battery Power Sensor",
           "hsem_ml_consumption_enabled": "Enable ML consumption prediction",
           "hsem_ml_consumption_energy_entity": "House consumption energy sensor (excl. battery & EV)",
           "hsem_ml_consumption_history_days": "ML history days",
@@ -988,6 +1031,7 @@
           "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh).",
           "hsem_grid_export_energy_entity": "Optional—cumulative grid export energy meter (kWh).",
           "hsem_pv_energy_entity": "Optional—cumulative PV production energy meter (kWh).",
+          "hsem_battery_ac_power_entity": "Optional—signed power of the battery on the AC side of its inverter (W or kW), positive while charging. Only used for the monthly AC-side round-trip loss. Leave empty when no sensor measures the battery alone: an inverter power that also includes the PV production cannot be used.",
           "hsem_ml_consumption_enabled": "When enabled, uses ridge regression on recorder history instead of rolling averages. Requires 14+ days of history.",
           "hsem_ml_consumption_energy_entity": "Cumulative house consumption energy meter (kWh). Must exclude battery AND EV charging - use a sensor upstream of both. Falls back to grid import if not set.",
           "hsem_ml_consumption_history_days": "Days of recorder history for ML training (7–90).",
@@ -1206,6 +1250,24 @@
       },
       "missing_entities": {
         "name": "Missing Input Entities"
+      },
+      "monthly_ac_round_trip_loss": {
+        "name": "Monthly AC-Side Round-Trip Loss",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "no_data": "Nothing recorded this month",
+              "ac_battery_power_not_configured": "No AC-side battery power sensor configured",
+              "ac_battery_power_unit_not_power": "The AC-side sensor has no power unit",
+              "ac_battery_power_no_readings": "The AC-side sensor gave no usable readings",
+              "ac_soc_or_capacity_missing": "SoC or rated capacity missing",
+              "throughput_below_minimum": "Too little energy charged or discharged",
+              "soc_change_too_large": "SoC change too large",
+              "implausible_ratio": "Readings contradict each other"
+            }
+          }
+        }
       },
       "monthly_battery_cycles": {
         "name": "Monthly Battery Cycles"
@@ -1475,7 +1537,7 @@
         "fields": {
           "history_days": {
             "name": "History days",
-            "description": "Completed days before today to replay. At most 90."
+            "description": "Completed days before today to replay. At most 365. Days without a measured record are rebuilt from hourly statistics."
           },
           "usable_capacity_kwh": {
             "name": "Usable capacity",

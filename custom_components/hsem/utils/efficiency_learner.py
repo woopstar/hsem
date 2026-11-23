@@ -15,8 +15,13 @@ The capacity is the rated one, so the charge and discharge figures are
 when charging and low when discharging by the same factor.  The factor
 cancels in the round trip, which is the one figure that stands on its own.
 
-The result is published for diagnostics only.  The planner keeps the
-configured efficiencies.
+The power sensor reads at the battery (DC side), so the loss in the
+inverter's AC/DC conversion is not in any of these figures.
+
+The planner reads the round trip only when the user turns that on, through
+``utils/planning_efficiency.py``.  It never reads the per-step curve: every
+step a measurement touched gets that measurement's overall ratio, so the
+curve is pulled toward the average and is not an efficiency per power level.
 """
 
 from __future__ import annotations
@@ -29,7 +34,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 from custom_components.hsem.utils.persistence import (
-    read_json_history_file,
+    async_load_history,
+    aware_datetime_from_iso,
+    finite_float,
     write_json_history_file,
 )
 
@@ -72,6 +79,12 @@ MAX_SAMPLES = 200
 #: Schema version of the persisted file.  Version 1 filtered single
 #: measurements in a way that biased the sums, so it is not read back.
 STORAGE_VERSION = 2
+
+#: Sides of the inverter a round trip can be measured on.
+SIDE_DC = "battery_dc"
+SIDE_AC = "ac"
+#: A held round trip is saved again when it moved by this much (% points).
+_HELD_SAVE_STEP_PCT = 0.05
 
 STATUS_LEARNING = "learning"
 STATUS_OK = "ok"
@@ -117,6 +130,32 @@ class EfficiencyStep:
             MIN_SAMPLES,
             MIN_ENERGY_KWH,
         )
+
+
+@dataclass(frozen=True)
+class HeldRoundTrip:
+    """The last round trip the planner trusted, kept for when trust lapses."""
+
+    pct: float
+    """The measured round trip (%)."""
+
+    side: str
+    """:data:`SIDE_DC` or :data:`SIDE_AC`."""
+
+    at: datetime
+    """When it was last trusted."""
+
+
+def _parse_held(raw: object) -> HeldRoundTrip | None:
+    """Return a stored held round trip, or ``None`` when it is not valid."""
+    if not isinstance(raw, dict):
+        return None
+    pct = finite_float(raw.get("pct"), minimum=1.0, maximum=100.0)
+    at = aware_datetime_from_iso(raw.get("at"))
+    side = raw.get("side")
+    if pct is None or at is None or side not in (SIDE_DC, SIDE_AC):
+        return None
+    return HeldRoundTrip(pct, str(side), at)
 
 
 @dataclass
@@ -180,7 +219,7 @@ def _parse_energy(raw: object) -> EfficiencyStep | None:
         samples = int(raw["samples"])
         measured_kwh = float(raw["measured_kwh"])
         stored_kwh = float(raw["stored_kwh"])
-    except KeyError, TypeError, ValueError:
+    except KeyError, TypeError, ValueError, OverflowError:
         return None
     if (
         not 0 < samples <= MAX_SAMPLES
@@ -242,6 +281,12 @@ class EfficiencyLearner:
     discharge_total: EfficiencyStep = field(default_factory=EfficiencyStep)
     """All discharge measurements, whatever their power."""
 
+    last_sample_at: dict[Direction, datetime] = field(default_factory=dict)
+    """When the latest measurement of each direction was accepted."""
+
+    held_round_trip: HeldRoundTrip | None = None
+    """The last round trip the planner trusted (issue #1431)."""
+
     _window: _Window | None = field(default=None, init=False, repr=False)
     _dirty: bool = field(default=False, init=False, repr=False)
 
@@ -285,6 +330,29 @@ class EfficiencyLearner:
         if round_trip is None or self.round_trip_status != STATUS_OK:
             return None
         return round_trip * 100.0
+
+    def hold_round_trip(self, pct: float, side: str, at: datetime) -> None:
+        """Remember the round trip the planner trusted at *at*.
+
+        The planner keeps using it when the measurement stops being
+        trusted, so its efficiency does not jump back to the configured
+        value.  It is saved when the value or the side changed, and once a
+        day otherwise.
+
+        Args:
+            pct: The measured round trip (%).
+            side: :data:`SIDE_DC` or :data:`SIDE_AC`.
+            at: Current time (timezone-aware).
+        """
+        held = self.held_round_trip
+        if (
+            held is None
+            or held.side != side
+            or abs(held.pct - pct) >= _HELD_SAVE_STEP_PCT
+            or (at - held.at).total_seconds() >= 86400.0
+        ):
+            self._dirty = True
+            self.held_round_trip = HeldRoundTrip(pct, side, at)
 
     def status(self, direction: Direction) -> str:
         """Return ``learning``, ``ok`` or ``implausible`` for *direction*."""
@@ -455,6 +523,7 @@ class EfficiencyLearner:
         ):
             return
         self._total(window.direction).add(measured_kwh, stored_kwh)
+        self.last_sample_at[window.direction] = window.last_at
         steps = self._steps(window.direction)
         for step_w, step_kwh in window.energy_kwh.items():
             steps.setdefault(step_w, EfficiencyStep()).add(
@@ -470,9 +539,23 @@ class EfficiencyLearner:
         """Return what was learned as a JSON-serialisable dict."""
         return {
             "version": STORAGE_VERSION,
+            "planner_round_trip": (
+                None
+                if self.held_round_trip is None
+                else {
+                    "pct": self.held_round_trip.pct,
+                    "side": self.held_round_trip.side,
+                    "at": self.held_round_trip.at.isoformat(),
+                }
+            ),
             **{
                 direction: {
                     "total": _energy_dict(self._total(direction)),
+                    "last_sample_at": (
+                        self.last_sample_at[direction].isoformat()
+                        if direction in self.last_sample_at
+                        else None
+                    ),
                     "steps": {
                         str(step_w): _energy_dict(step)
                         for step_w, step in sorted(self._steps(direction).items())
@@ -487,8 +570,15 @@ class EfficiencyLearner:
 
         A file of another schema version is not read, and neither is a
         direction without valid totals: the learner starts empty instead.
+        A direction without a readable ``last_sample_at`` (a file written
+        before the field existed) keeps its sums but has no known age.
+        ``planner_round_trip`` is optional for the same reason.
         """
         current = data.get("version") == STORAGE_VERSION
+        self.last_sample_at = {}
+        self.held_round_trip = (
+            _parse_held(data.get("planner_round_trip")) if current else None
+        )
         for direction in (CHARGE, DISCHARGE):
             raw = data.get(direction) if current else None
             total = _parse_energy(raw.get("total")) if isinstance(raw, dict) else None
@@ -498,7 +588,12 @@ class EfficiencyLearner:
                 self.charge_total = total or EfficiencyStep()
             else:
                 self.discharge_total = total or EfficiencyStep()
-            raw_steps = raw.get("steps") if total and isinstance(raw, dict) else None
+            if not total or not isinstance(raw, dict):
+                continue
+            last_at = aware_datetime_from_iso(raw.get("last_sample_at"))
+            if last_at is not None:
+                self.last_sample_at[direction] = last_at
+            raw_steps = raw.get("steps")
             if not isinstance(raw_steps, dict):
                 continue
             for key, raw_step in raw_steps.items():
@@ -513,9 +608,7 @@ class EfficiencyLearner:
         """Restore the learned steps from disk; a missing file is not an error."""
         if not self.history_file:
             return
-        data = await asyncio.to_thread(read_json_history_file, Path(self.history_file))
-        if data is not None:
-            self.restore(data)
+        await async_load_history(Path(self.history_file), self.restore)
 
     async def save_history(self) -> bool:
         """Persist the learned steps.  Return ``True`` when written."""

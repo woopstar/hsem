@@ -1,8 +1,9 @@
 """The ``what_if`` service (issue #1432).
 
 Replays the recorded days with another battery and returns what the change
-would have been worth.  Read-only: it never writes to the hardware and never
-touches the active plan.
+would have been worth.  Days without a measured record are rebuilt from hourly
+long-term statistics (issue #1455).  Read-only: it never writes to the hardware
+and never touches the active plan.
 
 Split from :mod:`services` to keep that module under the file-size limit.
 """
@@ -20,7 +21,7 @@ from custom_components.hsem.coordinator_what_if import (
     WhatIfUnavailableError,
     async_run_what_if,
 )
-from custom_components.hsem.models.what_if_history import MAX_RECORDED_DAYS
+from custom_components.hsem.models.what_if_history import MAX_HISTORY_DAYS
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.schema import vol
@@ -38,7 +39,7 @@ _PRICE = vol.All(vol.Coerce(float), vol.Range(min=0.0))
 SCHEMA_WHAT_IF = vol.Schema(
     {
         vol.Optional("history_days", default=30): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=MAX_RECORDED_DAYS)
+            vol.Coerce(int), vol.Range(min=1, max=MAX_HISTORY_DAYS)
         ),
         vol.Optional("usable_capacity_kwh"): _CAPACITY,
         vol.Optional("max_charge_power_w"): _POWER,

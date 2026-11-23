@@ -15,8 +15,10 @@ between the two does not skew the profile.
 A bucket holds the median of its days, so one extreme day does not move it,
 and it exists only once :data:`PROFILE_MIN_DAYS` days were recorded for it.
 The profile carries the *shape* of the week; the planner shifts it to the
-level of the prices that are published now before it uses it.  Pure — no
-Home Assistant imports.
+level of the prices that are published now before it uses it.  The shift of
+the last cycle that had published prices travels with the profile, for a
+price outage that outlasts the held prices (issue #1452).  Pure — no Home
+Assistant imports.
 """
 
 from __future__ import annotations
@@ -27,12 +29,19 @@ from datetime import datetime, timedelta, tzinfo
 from statistics import median
 from typing import Any
 
+from custom_components.hsem.utils.persistence import (
+    aware_datetime_from_iso,
+    finite_float,
+)
+
 #: Width of one profile bucket in minutes.
 PROFILE_STEP_MINUTES = 15
 
-#: Days a profile bucket must have seen before it is used.  One or two days
-#: are not a pattern: a single price spike would be planned as the norm.
-PROFILE_MIN_DAYS = 3
+#: Days a profile bucket must have seen before it is used.  On a year of
+#: real prices a bucket of three days was a worse estimate than the nearest
+#: earlier day, and six days was the first size that was not (issue #1452,
+#: ``scripts/score_price_estimates.py``).
+PROFILE_MIN_DAYS = 6
 
 #: Minutes of published prices the profile must overlap before the planner
 #: trusts the level shift it derives from them.
@@ -43,6 +52,79 @@ PricePair = tuple[float, float]
 
 #: One recorded slot: ``(start, slot width in minutes, import, export)``.
 PriceSample = tuple[datetime, int, float, float]
+
+#: How long after the last published slot its level shift is still used.
+#: One day later the shift was a better estimate than the profile as
+#: recorded, two days later it was a worse one (issue #1452).
+LEVEL_SHIFT_MAX_AGE = timedelta(hours=24)
+
+#: The level shift of one price side: ``(shift, start of the first slot that
+#: is too late to use it)``.
+LevelShift = tuple[float, datetime]
+
+
+def level_shift_applies(start: datetime, until: datetime) -> bool:
+    """Return whether a slot starts early enough to use a level shift.
+
+    Args:
+        start: Slot start.  A start without a timezone has no place on the
+            shift's time axis and never qualifies.
+        until: Start of the first slot that is too late for the shift.
+    """
+    return start.tzinfo is not None and start < until
+
+
+def median_shift(
+    known: Iterable[float | None],
+    profile_side: Iterable[float | None],
+    interval_minutes: int,
+) -> float | None:
+    """Return the shift that moves the profile to the published price level.
+
+    The profile is a median of up to eight weeks, so its absolute level can
+    be far from today's.  Its shape is still useful.  The shift is the median
+    difference between the published prices and the profile on the slots
+    that have both, so the profile is read relative to the prices that are
+    known now (issue #1434).
+
+    Args:
+        known: Published price per slot, ``None`` where it is missing.
+        profile_side: Profile price per slot, ``None`` where it has none.
+        interval_minutes: Slot width in minutes.
+
+    Returns:
+        The shift to add to a profile price, or ``None`` when fewer than
+        :data:`PROFILE_MIN_ANCHOR_MINUTES` of published prices overlap the
+        profile.
+    """
+    differences = [
+        price - shape
+        for price, shape in zip(known, profile_side)
+        if price is not None and shape is not None
+    ]
+    if len(differences) * interval_minutes < PROFILE_MIN_ANCHOR_MINUTES:
+        return None
+    return median(differences)
+
+
+def _level_row(level: LevelShift | None) -> list[Any] | None:
+    """Return a level shift as a JSON row, or ``None`` without one."""
+    return None if level is None else [level[0], level[1].isoformat()]
+
+
+def level_from_row(row: Any) -> LevelShift | None:
+    """Rebuild a level shift from :func:`_level_row` output.
+
+    Args:
+        row: ``[shift, ISO time]``; anything else gives ``None``.
+    """
+    if not isinstance(row, list) or len(row) != 2 or not isinstance(row[1], str):
+        return None
+    shift = finite_float(row[0])
+    until = aware_datetime_from_iso(row[1])
+    if shift is None or until is None:
+        return None
+    return shift, until
 
 
 def _median_pair(pairs: Iterable[PricePair]) -> PricePair:
@@ -119,12 +201,17 @@ class PriceProfile:
             enough.
         any_day_hours: Price pair of the whole hour over every weekday,
             keyed by ``hour``.
+        import_level: Level shift of the import price on the last cycle
+            that had published prices, or ``None``.
+        export_level: The same for the export price.
     """
 
     quarters: Mapping[tuple[int, int, int], PricePair] = field(default_factory=dict)
     hours: Mapping[tuple[int, int], PricePair] = field(default_factory=dict)
     any_day_quarters: Mapping[tuple[int, int], PricePair] = field(default_factory=dict)
     any_day_hours: Mapping[int, PricePair] = field(default_factory=dict)
+    import_level: LevelShift | None = None
+    export_level: LevelShift | None = None
 
     @property
     def is_empty(self) -> bool:
@@ -182,17 +269,20 @@ class PriceProfile:
             any_day_hours=_buckets(any_hours, min_days),
         )
 
-    def as_dict(self) -> dict[str, list[list[float]]]:
+    def as_dict(self) -> dict[str, Any]:
         """Return the profile as JSON-safe rows, for the diagnostics dump.
 
         Returns:
-            One list of ``[*key, import, export]`` rows per table.
+            One list of ``[*key, import, export]`` rows per table, and the
+            level shift of each side as ``[shift, ISO time]`` or ``None``.
         """
         return {
             "quarters": _rows(self.quarters),
             "hours": _rows(self.hours),
             "any_day_quarters": _rows(self.any_day_quarters),
             "any_day_hours": _rows(self.any_day_hours),
+            "import_level": _level_row(self.import_level),
+            "export_level": _level_row(self.export_level),
         }
 
     @classmethod
@@ -203,7 +293,37 @@ class PriceProfile:
             hours=_table(data.get("hours"), 2),
             any_day_quarters=_table(data.get("any_day_quarters"), 2),
             any_day_hours=_table(data.get("any_day_hours"), 1),
+            import_level=level_from_row(data.get("import_level")),
+            export_level=level_from_row(data.get("export_level")),
         )
+
+    def level_shift(
+        self,
+        prices: Mapping[datetime, float],
+        side: int,
+        interval_minutes: int,
+        zone: tzinfo | None,
+    ) -> float | None:
+        """Return the shift that moves one side of the profile to *prices*.
+
+        Args:
+            prices: Published price by timezone-aware slot start.
+            side: 0 for the import price, 1 for the export price.
+            interval_minutes: Slot width in minutes.
+            zone: Local zone the weekday and time of day are read in.
+
+        Returns:
+            The median difference between the prices and the profile, see
+            :func:`median_shift`; ``None`` when too few slots overlap.
+        """
+        shapes: list[float | None] = []
+        for start in prices:
+            local = start.astimezone(zone)
+            pair = self.lookup(
+                local.weekday(), local.hour, local.minute, interval_minutes
+            )
+            shapes.append(None if pair is None else pair[side])
+        return median_shift(prices.values(), shapes, interval_minutes)
 
     def lookup(
         self, weekday: int, hour: int, minute: int, interval_minutes: int

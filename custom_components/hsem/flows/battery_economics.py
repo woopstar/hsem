@@ -122,6 +122,15 @@ async def get_battery_economics_step_schema(  # NOSONAR
                     }
                 }
             ),
+            # --- Plan with the measured round trip (issue #1431) ---
+            vol.Required(
+                "hsem_batteries_learned_efficiency_enabled",
+                default=bool(
+                    get_config_value(
+                        config_entry, "hsem_batteries_learned_efficiency_enabled"
+                    )
+                ),
+            ): selector({"boolean": {}}),
             # --- Planner hysteresis (anti-flapping, issues #315 / #372) ---
             vol.Required(
                 "hsem_planner_hysteresis_enabled",
@@ -192,6 +201,13 @@ async def get_battery_economics_step_schema(  # NOSONAR
                     }
                 }
             ),
+            # --- Estimated price tail for the end value (issue #1453) ---
+            vol.Required(
+                "hsem_terminal_price_tail_enabled",
+                default=bool(
+                    get_config_value(config_entry, "hsem_terminal_price_tail_enabled")
+                ),
+            ): selector({"boolean": {}}),
         }
     )
 
@@ -214,11 +230,13 @@ async def validate_battery_economics_input(
         "hsem_batteries_capacity_loss_pct",
         "hsem_batteries_charge_efficiency",
         "hsem_batteries_discharge_efficiency",
+        "hsem_batteries_learned_efficiency_enabled",
         "hsem_planner_hysteresis_enabled",
         "hsem_planner_hysteresis_absolute",
         "hsem_planner_hysteresis_percentage",
         "hsem_planner_window_hysteresis_minutes",
         "hsem_planner_solver_time_limit_s",
+        "hsem_terminal_price_tail_enabled",
     ]
     required_errors: dict[str, str] = {
         f: "required" for f in scalar_required if f not in user_input

@@ -104,6 +104,9 @@ def build_sensor_config(
     cfg.planner_solver_time_limit_s = solver_time_limit_s(
         get_config_value(config_entry, "hsem_planner_solver_time_limit_s")
     )
+    cfg.terminal_price_tail_enabled = convert_to_boolean(
+        get_config_value(config_entry, "hsem_terminal_price_tail_enabled")
+    )
     _update_interval = convert_to_int(
         get_config_value(config_entry, "hsem_update_interval")
     )
@@ -395,6 +398,9 @@ def build_sensor_config(
         )
         or 98.0
     )
+    cfg.batteries_learned_efficiency_enabled = convert_to_boolean(
+        get_config_value(config_entry, "hsem_batteries_learned_efficiency_enabled")
+    )
     cfg.batteries_purchase_price = (
         convert_to_float(
             get_config_value(config_entry, "hsem_batteries_purchase_price")
@@ -597,6 +603,9 @@ def build_sensor_config(
     )
     cfg.pv_energy_entity = optional_entity_id(
         get_config_value(config_entry, "hsem_pv_energy_entity")
+    )
+    cfg.battery_ac_power_entity = optional_entity_id(
+        get_config_value(config_entry, "hsem_battery_ac_power_entity")
     )
 
     # ML consumption prediction — toggle and settings

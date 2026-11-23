@@ -25,6 +25,9 @@ DEFAULT_CONFIG_VALUES = {
     "device_name": NAME,
     "hsem_batteries_charge_efficiency": 98,
     "hsem_batteries_discharge_efficiency": 98,
+    # Plan with the measured round-trip efficiency when it can be trusted
+    # (issue #1431).  Off: the planner keeps the two configured values.
+    "hsem_batteries_learned_efficiency_enabled": False,
     "hsem_batteries_enable_excess_export": False,
     "hsem_batteries_excess_export_discharge_buffer": 10,
     "hsem_batteries_forecast_reserve_pct": 0.0,
@@ -116,6 +119,9 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_planner_window_hysteresis_minutes": 10,
     # MILP solver time limit per solve, in seconds (issue #1309).
     "hsem_planner_solver_time_limit_s": 2.0,
+    # Value the energy left at the horizon end with price-history prices
+    # for the 24 hours after it (issue #1453).  Off: no measured gain yet.
+    "hsem_terminal_price_tail_enabled": False,
     "hsem_house_consumption_energy_weight_14d": 15,
     "hsem_house_consumption_energy_weight_1d": 25,
     "hsem_house_consumption_energy_weight_3d": 30,
@@ -203,6 +209,9 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_grid_import_energy_entity": vol.UNDEFINED,
     "hsem_grid_export_energy_entity": vol.UNDEFINED,
     "hsem_pv_energy_entity": vol.UNDEFINED,
+    # Monthly AC-side round-trip loss (issue #1450) — optional signed power of
+    # the battery on the AC side of its inverter, positive while charging.
+    "hsem_battery_ac_power_entity": vol.UNDEFINED,
     # ML consumption prediction — toggle and settings
     "hsem_ml_consumption_enabled": False,
     "hsem_ml_consumption_energy_entity": vol.UNDEFINED,

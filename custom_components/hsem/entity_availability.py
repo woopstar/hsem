@@ -100,6 +100,7 @@ def configured_entity_references(cfg: SensorConfig) -> tuple[EntityReference, ..
         "grid_import_energy_entity",
         "grid_export_energy_entity",
         "pv_energy_entity",
+        "battery_ac_power_entity",
     )
     for field_name in direct_fields:
         add(f"hsem_{field_name}", getattr(cfg, field_name))

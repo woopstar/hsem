@@ -411,13 +411,119 @@ roundtrip_loss  = 1 − roundtrip_yield
 
 Example (90 % / 90 %): yield = 0.81, loss = 19 %.
 
-### Measured efficiency is diagnostic only
+### Planning with the measured round trip (issue #1431)
 
 `sensor.hsem_battery_efficiency_sensor` publishes the round-trip efficiency
 HSEM measures, with the apparent charge and discharge efficiency per 500 W
-power step (issue #1431). The planner does not read it. `battery_charge_efficiency_pct` and
-`battery_discharge_efficiency_pct` stay the configured values, so the
-measurement changes no plan, cost or invariant.
+power step.
+
+The planner takes one charge and one discharge efficiency per run:
+`battery_charge_efficiency_pct` and `battery_discharge_efficiency_pct`. The
+coordinator resolves them once, in `utils/planning_efficiency.py`, before the
+planner starts. The MILP, the SoC simulation and the final scoring all read
+those two fields and nothing else, so they cannot disagree.
+
+**Option `hsem_batteries_learned_efficiency_enabled`, default off.** Off: the
+two fields are the configured values, the learner is not read, and plan and
+cost are what they were before the option existed
+(`tests/planner/test_learned_efficiency.py`, recorded from `origin/main`).
+
+On: a measured round trip replaces the configured round trip. Two
+measurements exist. The first in this order that is there is used:
+
+| Order | Measurement                                     | Needs                                                                              | Reason in the basis  |
+| ----- | ----------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------- |
+| 1     | AC side, month (energy tracker, issue #1450)    | an AC-side battery power sensor; this month's figure, else last month's            | `learned_ac`         |
+| 2     | Battery (DC) side, fresh (efficiency learner)   | 40 measurements and 10 kWh per direction, a plausible round trip, newest ≤ 30 days | `learned_round_trip` |
+| 3     | The last figure trusted under 1 or 2            | saved in the learner file with its side and time                                   | `learned_held`       |
+| 4     | Battery (DC) side, sums that are old or undated | 40 measurements and 10 kWh per direction                                           | `learned_held`       |
+
+Without any of them the configured values stay, with reason `learning` (too
+few measurements) or `implausible` (a direction outside 50–200 %, or a round
+trip outside 50–100 %).
+
+A held AC-side figure stays ahead of a fresh battery-side figure that reads
+higher: the battery side is an upper bound of the AC side.
+
+Two bounds apply to the figure picked:
+
+- **Minimum 70 %.** A lower figure is planned as 70 % (`raised_to_minimum`).
+- **Below configured.** At or above the configured round trip the configured
+  values stay (`not_below_configured`).
+
+**No jumps.** The configured round trip is the optimistic one, so falling
+back to it is a step of several points and changes the plan. Rules 3 and 4
+and the minimum exist to prevent that step: samples that pass 30 days, a
+lapsed AC figure, a restart or a restored backup with an undated file, and a
+measurement that wanders around 70 % all keep the planner on a measured
+figure. The value still moves by a little with each new measurement.
+
+```text
+rt_configured = (charge_cfg / 100) × (discharge_cfg / 100)
+scale         = sqrt(rt_measured / rt_configured)
+charge_eff    = charge_cfg × scale
+discharge_eff = discharge_cfg × scale
+```
+
+`charge_eff × discharge_eff` is the measured round trip, and the ratio between
+the two configured values is kept. With equal configured values both become
+`sqrt(rt_measured)`. Since `scale < 1`, neither value can pass 100 %.
+
+Why it is built this way:
+
+- **Only the round trip is used.** The measurement converts SoC to energy with
+  the rated capacity. Its charge figure is `efficiency ÷ state of health` and
+  its discharge figure `efficiency × state of health`. Fed to the planner, a
+  worn battery would charge for free and discharge at a heavy loss. The state
+  of health cancels in the product only. This is why the fallback is for both
+  directions together and not per direction: one direction alone is not an
+  efficiency.
+- **The round trip cannot tell its halves apart.** The split by the configured
+  ratio is a convention. It changes arbitrage cost only through the product.
+  It does change how much AC energy the current SoC is worth
+  (`stored × discharge_eff`), by the share of the loss put on the discharge
+  side.
+- **The per-step curve is not used.** A measurement spans 5 % SoC and gives
+  every power step it touched its overall ratio, so the curve is pulled toward
+  the average and is not an efficiency per power level. The MILP also needs a
+  constant per direction: an efficiency that depends on power makes the energy
+  balance nonlinear. The planner therefore gets one value per direction, from
+  the sums over all measurements. It is the efficiency at the power the
+  battery really ran at, weighted by energy.
+- **Which side.** The planner's efficiency is AC to stored and stored to AC:
+  what the grid meter sees. The AC-side monthly figure measures exactly that,
+  so it goes first. It exists only when the user configured an AC-side
+  battery power sensor.
+- **The battery-side figure is an upper bound.** The battery power sensor
+  reads at the battery. The loss in the inverter's AC/DC conversion is not in
+  it, so the true round trip is lower.
+- **A measurement only lowers the efficiency.** A battery-side round trip at
+  or above the configured one proves nothing about the meter side. The same
+  rule is kept for the AC-side figure, so the option can never make the
+  planner more optimistic than the user configured.
+- **What this means for cost.** With a battery-side figure the plan cost still
+  leaves out the inverter loss, so the real cost of a charge and discharge
+  cycle is at least what the plan says. The error is smaller than with a
+  configured round trip above the measured one, never larger. With an AC-side
+  figure the loss is the measured one.
+
+The basis of the two values is `PlannerInput.battery_efficiency_basis`, copied
+unchanged to `PlannerOutput.battery_efficiency` and to
+`PlanExplanation.battery_efficiency`: `source` (`configured` or `learned`),
+`reason`, the values used, the configured values, the round trip picked,
+`raised_to_minimum`, `measured_side` (`ac` or `battery_dc`), the AC-side
+figure and its month, the battery-side figure, the sample counts, the sample
+age and `held_since`. It is `None` while the option is off. The planner never
+computes with it.
+
+Who uses which efficiency:
+
+| Consumer                                                      | Efficiency                                                                   |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| MILP, SoC simulation, scoring, terminal value                 | planner input (configured or learned)                                        |
+| What-if day record and hindsight score (`SiteLimits`)         | the same planner input, so they match the plan                               |
+| Energy tracker's loss accounting (`build_battery_site`)       | configured: it is the yardstick the measured round trip is published against |
+| Live phase-aware grid-charge limiter (`phase_charge_limiter`) | configured: a safety gate does not follow a learned value                    |
 
 ### Physical conversion-loss accounting
 
@@ -450,6 +556,22 @@ and are always `0.0`.
   remain exactly zero for every efficiency and destination.
 - With 98 % charge/discharge efficiency and zero wear, grid-to-export arbitrage
   breaks even at a price ratio of `1 / (0.98 * 0.98)`.
+- With `hsem_batteries_learned_efficiency_enabled` off, the planner input
+  carries the configured efficiencies and no basis, and plan and cost equal
+  the plan recorded from `origin/main`.
+- With it on, the AC-side monthly round trip goes before the battery-side
+  one, and both only count below the configured round trip.
+- A round trip under 70 % is planned as 70 %, and a sequence of measurements
+  around 70 % does not flip the planner to the configured values.
+- Samples older than 30 days, an undated learner file with enough samples and
+  a measurement that turns implausible keep the last trusted round trip.
+- The learned charge and discharge efficiency multiply to the measured round
+  trip and do not depend on the battery's state of health.
+- With a learned efficiency, every slot satisfies
+  `grid_import − grid_export = net_load + charge / charge_eff − discharge × discharge_eff`,
+  and all other invariants hold.
+- `PlannerOutput.battery_efficiency` and `PlanExplanation.battery_efficiency`
+  equal `PlannerInput.battery_efficiency_basis`.
 
 ## Live data injection (current slot)
 
@@ -1667,8 +1789,10 @@ V = max(0, min( 0.9 × (η_dis × peak − cycle_cost),     # use value
   5 kWh at 2.40.
 
 `V` is computed once per run in `engine_core.py` by
-`cost_helpers.terminal_end_value_from_last_day` and passed to both the MILP
-(`replacement_price_per_kwh`) and the selector's `score_plan`. It is active
+`cost_helpers.terminal_end_value_from_last_day`, blended with the estimated
+price tail when that is enabled (see _Estimated price tail_ below), and
+passed to both the MILP (`replacement_price_per_kwh`) and the selector's
+`score_plan`. It is active
 whenever prices exist. `R` was active only when the baseline had a future
 discharge-window slot, so the term was mostly off in winter months, where the
 seasonal fill marks Wait instead.
@@ -1705,6 +1829,204 @@ In the #1125 fixture (0.03 night, full PV tomorrow) the floor releases to the
 hardware minimum, and the final plan costs the same as the floor-free
 reference plan (0.097); before #1156 the floor held 77.5 % and the plan cost
 0.917. See `tests/test_dynamic_floor_reference_plan.py`.
+
+##### Estimated price tail (issue #1453, opt-in)
+
+The last known day stands in for the day after the horizon. Before tomorrow's
+prices are published, that day is itself an estimate, or it is today. With
+`hsem_terminal_price_tail_enabled` on (default **off**), `V` also uses
+prices for the day after the horizon from the price history profile
+(`planner/terminal_tail.py`).
+
+**The tail.** The 24 hours (`TERMINAL_TAIL_HOURS`) after the end of the last
+slot, on the slot grid, stepped in real time (a tail over a DST change is
+still 24 hours). Each tail slot gets an import price:
+
+```text
+shape[k]  = profile.lookup(tail slot k)[import]
+shift     = PriceProfile.level_shift(priced horizon slots)       median(price − shape)
+until     = end of the last published price + 24 h
+price[k]  = shape[k] + shift     when every tail slot starts before until
+            shape[k]             when no tail slot starts before until
+            no tail              otherwise
+```
+
+- **Published prices are never estimated.** The horizon starts at local
+  midnight and `price_points` holds horizon slots only. A 12, 24 or 36 hour
+  horizon can therefore end before prices that are already published: today
+  is published to midnight, and tomorrow from about 13:00. The populator
+  reports the end of the last real import price the price sensor published,
+  also when it is past the horizon (`ForecastCoverage.import_published_until`
+  → `PlannerInput.price_published_until`; `datetime.max` for a flat price).
+  **A horizon that ends before that time gets no tail** and `V` is unchanged.
+  The published prices past the horizon are not passed to the planner: that
+  would be a second price series next to `price_points`, for a term whose
+  measured effect on cost is zero.
+- `price_published_until` is `None` when the price sensor published no real
+  price this cycle (an outage, a sensor with predictions only) or when the
+  input does not carry it. The end of the last priced horizon slot is then
+  used as the end of the last published price.
+- `priced` are the horizon slots a price source covered: every slot that is
+  not in `tsi.missing_price_slots`. A price forecast sensor counts, as it does
+  for the missing-price fill.
+- The shift is the one of the missing-price fill and needs 240 minutes of
+  priced slots (`PROFILE_MIN_ANCHOR_MINUTES`). Without it the last known level
+  shift of the profile (`PriceProfile.import_level`) and its own time limit
+  are used, and without that the profile as recorded (fill steps 2, 4 and 5).
+- The shift is used for 24 hours after the last published price. One day
+  after it the shift lowered the error of the profile, two days after it
+  raised it (issue #1452).
+- **One level for the whole tail.** A tail in which the shift stops applying
+  part of the way would price its evening at one level and its night at
+  another, and `V` is read from both. Such a tail is not used.
+- A profile that has no price for one of the tail slots gives no tail.
+
+What that gives per horizon with day-ahead prices:
+
+| Horizon | Before tomorrow is published                 | After tomorrow is published         |
+| ------- | -------------------------------------------- | ----------------------------------- |
+| 12 h    | No tail: today is published past the horizon | No tail                             |
+| 24 h    | Tail, shifted                                | No tail: the tail would be tomorrow |
+| 36 h    | No tail: the shift would end inside the tail | No tail                             |
+| 48 h    | Tail, profile as recorded                    | Tail, shifted                       |
+
+**The end value.** The tail's own end value uses the formula above, with
+`peak` the mean of the tail's top-N import prices and `night_import` the mean
+of its slots before 06:00. The plan is solved and scored with the blend:
+
+```text
+V = (1 − w) × V_last_day + w × V_tail          w = 0.5 (TERMINAL_TAIL_WEIGHT)
+```
+
+`PlannerInput.terminal_price_tail_weight` carries `w`. It is `0.0` unless the
+option is on. `V_last_day` is the value described above, unchanged.
+
+**Why a terminal value and not a longer horizon.** The tail adds no slot, no
+decision variable and no constraint to the MILP. The alternative was to plan
+72 hours with profile prices in the last 24. That was not chosen:
+
+- The energy left at the horizon end is already valued by one term, `V`.
+  Better prices for the hours after the horizon belong in that term.
+- A slot in the horizon is a decision. The solver would trade real energy in
+  published slots against an estimated slot, per slot, at full weight. One
+  blended `V` bounds what the estimate can do to the plan, and it is
+  cycle-neutral.
+- The MILP stays at 192 slots for 48 hours of 15-minute slots. 72 hours would
+  be 288 slots under the same solver time limit.
+- The slot grid, `DataQuality`, the dynamic discharge floor and the sensors
+  that list the horizon are untouched. The 72-hour option removed in #1002
+  is not brought back.
+
+**What the tail may do.**
+
+- It changes `V` and nothing else. No tail price is written to a slot, and
+  the horizon, the slot prices and `DataQuality` are the same with and without
+  it.
+- A different `V` can change the plan, as any change of `V` does: the plan
+  may hold more or less energy at the horizon end. Every hardware action is
+  still a decision in a slot of the horizon with that slot's own price.
+- Without a profile, with an empty one, or with `w = 0`, there is no tail and
+  the plan is the plan without the feature.
+- **Flagged as estimated.** `PlannerOutput.terminal_price_tail`
+  (`TerminalPriceTail`) holds the tail's start, end, slot count, whether it
+  is shifted, `V_tail`, `V_last_day`, `w` and `V`. The plan explanation
+  carries the same as `terminal_price_tail` with `estimated: true`, and
+  `constraints` holds `terminal_value_from_estimated_price_tail`. Both are
+  `None` and absent when the end value used no tail.
+
+**The weight.** On a year of DK1 prices the shifted profile and the nearest
+earlier day had the same error one day ahead (export MAE 0.249 both, issue
+#1452). Neither earns more than half, so `w = 0.5`. The error of `V` itself,
+on the committed 119 days of DK1 prices with the grid tariff of the corpus
+installation added (DKK/kWh, mean true `V` 2.02):
+
+| Tail starts                                   | Weight of the tail | MAE of `V` | Bias   | Worst day |
+| --------------------------------------------- | ------------------ | ---------- | ------ | --------- |
+| Less than 24 h after the last price (62 days) | 0 (last day only)  | 0.356      | -0.025 | 1.563     |
+|                                               | 0.25               | 0.337      | +0.028 | 1.392     |
+|                                               | 0.5                | 0.332      | +0.081 | 1.221     |
+|                                               | 0.75               | 0.344      | +0.133 | 1.211     |
+|                                               | 1 (tail only)      | 0.367      | +0.186 | 1.498     |
+| 24 h or more after the last price (61 days)   | 0 (last day only)  | 0.493      | +0.155 | 1.792     |
+|                                               | 0.25               | 0.435      | +0.085 | 1.286     |
+|                                               | 0.5                | 0.416      | +0.016 | 1.208     |
+|                                               | 0.75               | 0.427      | -0.053 | 1.191     |
+|                                               | 1 (tail only)      | 0.468      | -0.123 | 1.264     |
+
+The blend at 0.5 has the lowest error in both cases. The gain is 0.025 ±
+0.021 in the first case, which is within the noise, and 0.077 ± 0.036 in the
+second. The tail alone is biased: the level shift is one number for the whole
+day and overstates the night price when prices rise.
+
+**Measured effect on realised cost.** A lower error of `V` did not lower the
+cost. Closed loop: the planner is run every hour, the plan is executed for
+that hour, prices are the real DK1 prices plus the installation's tariff,
+tomorrow's prices are published at 13:00, the profile is built from the 56
+days before each run, load and PV forecasts are perfect. The 24-hour rows end
+on the last day both runs end with the same stored energy. Cost in DKK.
+
+| Run                                             | Horizon | Days | Cost without tail | Cost with tail (0.5) | Difference |
+| ----------------------------------------------- | ------- | ---- | ----------------- | -------------------- | ---------- |
+| Recorded day 2026-09-29 (`tests/backtest/days`) | 48 h    | 1    | 11.43             | 11.43                | 0.00       |
+| DK1 prices, no PV                               | 48 h    | 31   | 1679.95           | 1679.95              | 0.00       |
+| DK1 prices, PV                                  | 48 h    | 31   | 1438.85           | 1438.85              | 0.00       |
+| DK1 prices, no PV                               | 24 h    | 29   | 1558.66           | 1558.60              | -0.06      |
+| DK1 prices, PV                                  | 24 h    | 29   | 1339.74           | 1339.71              | -0.03      |
+
+- **At 48 hours, the default horizon, there is no gain.** The tail changed no
+  executed decision. The plans differ at the far end of the horizon only, and
+  those slots are replanned long before they are reached.
+- At 24 hours the tail applies before tomorrow's prices are published, in 390
+  of 720 runs. The realised cost differed on 2 of 30 days and the difference
+  is below 0.01 %.
+- Before the tail was kept away from published prices it also priced tomorrow
+  after 13:00 at 24 hours, from the profile. That cost 0.6 % more (1261.69
+  against 1269.10 over 25 days).
+- On 29 recorded cycles (single plans at 48 hours, no realised cost) the tail
+  changed 24 plans and never the recommendation of the live slot.
+
+There is no measured gain at any horizon. The option is experimental and off
+by default. `python3 scripts/backtest_price_tail.py` repeats these runs and
+the table of `V` errors above (modes `value`, `cycles`, `day` and `sim`).
+
+**Solve time.** The 29 recorded cycles at 48 hours of 15-minute slots (192
+slots, the longest horizon), solver time limit lifted, Apple M3:
+
+|                               | Median  | 95th percentile | Slowest |
+| ----------------------------- | ------- | --------------- | ------- |
+| `run_planner` without tail    | 0.25 s  | 0.89 s          | 1.64 s  |
+| `run_planner` with tail (0.5) | 0.31 s  | 1.03 s          | 2.27 s  |
+| The tail computation alone    | 0.26 ms |                 | 0.31 ms |
+
+**The solve time rose with the tail**: the median from 0.25 to 0.31 s and
+the slowest cycle from 1.64 to 2.27 s, which is above the default solver time
+limit of 2 s (`hsem_planner_solver_time_limit_s`). The model has the same
+size; a different `V` gives the solver a different problem. A solve that
+reaches the limit uses the best plan found so far (issue #1309). The time was
+**not measured on Home Assistant class hardware** (a Raspberry Pi or a small
+x86 box), where every solve is several times slower.
+
+###### Invariants for tests
+
+- `terminal_price_tail_weight = 0`, no profile or an empty profile: the
+  output equals the output without the feature, slot by slot.
+- With a tail: the same number of slots, the same slot starts and prices, the
+  same `DataQuality`; the tail starts where the last slot ends.
+- `PlanCostBreakdown.terminal_soc_value` equals `(E_0 − E_end) × V` with the
+  blended `V`, and `winner.score == output.plan_cost.score`.
+- `V = (1 − w) × V_last_day + w × V_tail`, with `w` clamped to 0-1.
+- A horizon that ends before `price_published_until` has no tail, for 12, 24
+  and 36 hour horizons as for any other.
+- A tail carries one level: every slot is shifted or none is. A tail in
+  which the shift would stop applying has no tail.
+- With the tail off (`w = 0`, or a weight that is not finite) the cost and
+  every slot of the plan equal the plan recorded from `origin/main`
+  (`tests/fixtures/terminal_tail_off_golden.json`).
+- The explanation carries `terminal_price_tail.estimated == True` and the
+  `terminal_value_from_estimated_price_tail` constraint exactly when a tail
+  was used.
+
+See `tests/planner/test_terminal_price_tail.py`.
 
 #### 5b. Charge timing (issue #1420)
 
@@ -2688,7 +3010,9 @@ terminal_soc_value = Σ_t terminal_soc_value(charged[t], discharged[t], V)
 ```
 
 Both sides call the shared helper `cost_helpers.terminal_soc_value()`, so the
-selector's score always matches what the LP optimised for. The slot's own
+selector's score always matches what the LP optimised for. With the estimated
+price tail enabled (issue #1453) `V` is the blended value, the same on both
+sides. The slot's own
 import and export prices play no part: see
 [Terminal SoC](#5-terminal-soc-horizon-end-valuation) for why the per-slot
 caps (#655, #694, #592) were removed and how `V` is estimated.
@@ -3683,6 +4007,13 @@ Add tests for these invariants:
 - Emptying the battery is not free.
 - The terminal term is cycle-neutral: an in-horizon cycle that leaves the end
   energy unchanged adds zero (issue #1138).
+- The estimated price tail (issue #1453) changes the end value only: it adds
+  no slot and prices no slot, and without a price profile the plan is
+  unchanged.
+- The measured round trip (issue #1431) reaches the planner only through
+  `battery_charge_efficiency_pct` and `battery_discharge_efficiency_pct`. With
+  the option off the plan is unchanged, and with it on every invariant in
+  this list holds with the learned values.
 - `winner.cost <= no_action.cost` within the implemented candidate set.
 - Current partial slot uses remaining duration only.
 - Missing price/PV data does not become real zero silently.
@@ -3740,7 +4071,10 @@ The planner supports configurable planning horizons: 12, 24, 36, and 48
 hours. All four are offered by the config-flow selector. The 72-hour option
 was removed in issue #1002: day-ahead spot prices are only published for
 tomorrow (~13:00 local time), so the final ~24-37 h of a 72 h horizon could
-never be covered by real price data and distorted the plan.
+never be covered by real price data and distorted the plan. The estimated
+price tail of issue #1453 does not bring it back: it prices the 24 hours
+after the horizon for the terminal end value only and adds no slot (see
+[Estimated price tail](#estimated-price-tail-issue-1453-opt-in)).
 
 The horizon is controlled by `interval_length_hours` in `PlannerInput` (and
 `recommendation_interval_length` in `SensorConfig`). The engine itself is
@@ -3774,16 +4108,24 @@ this order (issue #1434):
    published prices overlap the profile. See _Price history profile_ below.
 3. The **same-hour price from the nearest earlier day that has data** (day+1
    falls back to day+0; day+2 falls back to day+1, then day+0).
-4. The profile **as recorded**, when step 2 had no published level to shift
-   it to and step 3 found no earlier day. In practice a price sensor outage.
-5. With a profile only: the **median of the published prices** of that side,
+4. The profile **shifted by the last known level shift** (issue #1452), when
+   step 2 had no published level to shift it to and step 3 found no earlier
+   day. Only for a slot that starts less than 24 hours after the last
+   published slot ended. In practice the first day of a price sensor outage
+   after the held prices are over.
+5. The profile **as recorded**, when step 4 has no shift or the slot is too
+   late for it.
+6. With a profile only: the **median of the published prices** of that side,
    or of the prices filled so far when none is published. A slot the profile
    does not know is never priced `0.0` next to real prices.
-6. `0.0`.
+7. `0.0`.
 
-Steps 2 to 6 are estimates. The slot is recorded as missing whichever of
-them fills it. With no profile, or an empty one, only steps 1, 3 and 6 apply
+Steps 2 to 7 are estimates. The slot is recorded as missing whichever of
+them fills it. With no profile, or an empty one, only steps 1, 3 and 7 apply
 and the result is the same as before issue #1434.
+
+The order of steps 2 and 3, the bucket minimum and step 4 were scored on real
+prices. See _Validation on real prices_ below.
 
 **With a sub-hourly price source the estimate is per quarter (issue #1219).**
 On the `slot_in_day` path the lookup is by wall-clock time:
@@ -3855,10 +4197,21 @@ profile is a plain value in `PlannerInput.price_profile`
   (`PREDICTION_ATTRIBUTES` in `hourly_data_populator/prices_solcast.py`).
   Their values price a slot exactly as before and such a slot is covered.
   They are left out of `published_import` and `published_export`, so they
-  are never recorded and never held. Every other recognised price attribute
-  (`raw_today`, `raw_tomorrow`, `prices`, `prices_today`, `prices_tomorrow`,
-  `data`) and a flat price count as published. When a slot has both, the
+  are never recorded and never held. A flat price counts as published, and
+  so do `raw_today` and `raw_tomorrow` (`PUBLISHED_ATTRIBUTES`): always, the
+  sensor state rules below do not apply to them. When a slot has both, the
   recorded and held value is the real price, whichever was read last.
+- **Attributes that hold either (issue #1452).** `prices`, `prices_today`,
+  `prices_tomorrow` and `data` hold published prices in one integration and
+  predictions in another (`docs/price-attributes.md`). The populator reads
+  the sensor's own state (`_published_until`), first match wins:
+  `forecast_data: true` on the sensor makes every entry a prediction
+  (Strømligning's tomorrow sensors while tomorrow is a forecast); with
+  `known_until` only an entry that starts before that time is published
+  (Open Spot Forecast); an attribute with an entry that starts 60 hours or
+  more after the cycle's first slot is a prediction as a whole, because
+  day-ahead prices end with tomorrow (EPEX Spot with the Energyforecast
+  source). Otherwise every entry is published.
 - A published price for a slot that has not started is not recorded: a
   source that revises its future values would otherwise store a prediction.
 - An estimate (profile, earlier day, `0.0`) is produced inside the planner
@@ -3872,7 +4225,9 @@ profile is a plain value in `PlannerInput.price_profile`
   is dropped. An unavailable sensor reports no unit, which is not a change.
   A change inside the sensor (VAT, tariff, template) cannot be seen.
 - The file is `.storage/hsem_price_history.json`, written with the shared
-  atomic JSON writer and only when something was added or changed. A missing
+  atomic JSON writer and only when something was added or changed. It also
+  holds the held prices and the last known level shifts (`levels`, see
+  below). A missing
   or unreadable file, or one of another schema version, gives an empty
   history.
 
@@ -3884,7 +4239,7 @@ profile.
 
 ```text
 day value                      = mean of a bucket's samples on one local date
-bucket                         = median of its day values, kept only with >= 3 days
+bucket                         = median of its day values, kept only with >= 6 days
 quarter[weekday, hour, minute], hour[weekday, hour]
 any_day_quarter[hour, minute], any_day_hour[hour]    (every weekday together)
 
@@ -3900,9 +4255,11 @@ lookup(slot) = first that exists of:
   start. Each quarter of a sample is converted on its own, so both passes of
   the fall-back hour land on one date of one bucket and count as one day,
   and the hour the spring-forward day skips gets no sample.
-- A bucket needs **3 days**. One or two days are not a pattern. The weekday
-  buckets therefore need three weeks; until then the every-weekday buckets
-  answer, after three days.
+- A bucket needs **6 days** (`PROFILE_MIN_DAYS`). With fewer days the shifted
+  profile was a worse estimate than the nearest earlier day (issue #1452).
+  The weekday buckets therefore need six weeks; until then the every-weekday
+  buckets answer, after six days. Before that the profile is empty and the
+  nearest earlier day is used, as before issue #1434.
 - The **median** keeps one extreme day from moving a bucket.
 
 **Level shift.** The profile holds prices of up to eight weeks ago. Their
@@ -3915,8 +4272,118 @@ estimate[i]  = lookup(slot i)[side] + shift[side]
 ```
 
 The shift needs at least 240 minutes of slots that have both a published
-price and a profile value. Without it the nearest earlier day is used, and
-the profile as recorded only when there is no earlier day either.
+price and a profile value. Without it the nearest earlier day is used.
+
+**Last known level shift (issue #1452).** Every cycle in which a price sensor
+publishes prices, the coordinator derives the same shift for that side from
+what the sensor published and keeps it in the price history file
+(`PriceHistoryTracker.anchor_level`). It travels with the profile as
+`PriceProfile.import_level` and `export_level`:
+
+```text
+level[side] = (shift[side], last published slot end + 24 h)
+estimate[i] = lookup(slot i)[side] + shift[side]     when slot i starts before that time
+              lookup(slot i)[side]                    otherwise
+```
+
+- It is used only when the horizon has no published level and no earlier
+  day, which is a price outage after the held prices are over.
+- A cycle that cannot derive a shift (an outage, a sensor that publishes
+  predictions only, a profile that is too thin) keeps the shift it had.
+- A changed price source drops both shifts with the rest of the store.
+- One day after the last published price the shift lowered the error of the
+  profile. Two days after, it raised it. That is the reason for the 24 hours.
+
+#### Validation on real prices (issue #1452)
+
+`scripts/score_price_estimates.py` hides each day of a series of real
+day-ahead prices in turn, builds the profile from the 56 days before it with
+the production code, and scores every 15-minute slot of the hidden day. The
+import price is the spot price with 25 % VAT and the export price is the spot
+price. A tariff that is fixed, or depends on the time of day only, is the same
+on every day and drops out of all three estimates, so the import error is
+1.25 times the export error.
+
+Mean absolute error (MAE) and the worst single slot, in DKK/kWh. "vs nearest
+day" is the mean difference of the daily MAE and its standard error; negative
+means better than the nearest earlier day.
+
+**Fill order, 56 days of history.**
+
+| Prices                                      | Estimate                       | Import MAE | Import worst | Export MAE | Export worst | Export MAE vs nearest day | Days better |
+| ------------------------------------------- | ------------------------------ | ---------- | ------------ | ---------- | ------------ | ------------------------- | ----------- |
+| DK1, 358 target days (Nov 2025 to Nov 2026) | Nearest earlier day            | 0.311      | 5.078        | 0.249      | 4.062        |                           |             |
+|                                             | Shifted profile, same weekday  | 0.312      | 5.562        | 0.249      | 4.450        | +0.001 ± 0.006            | 51 %        |
+|                                             | Shifted profile, every weekday | 0.317      | 5.419        | 0.254      | 4.336        | +0.005 ± 0.004            | 50 %        |
+|                                             | Unshifted profile              | 0.338      | 5.745        | 0.271      | 4.596        | +0.022 ± 0.011            | 47 %        |
+| DK2, 358 target days                        | Nearest earlier day            | 0.329      | 7.378        | 0.263      | 5.903        |                           |             |
+|                                             | Shifted profile, same weekday  | 0.326      | 7.281        | 0.261      | 5.825        | -0.003 ± 0.006            | 49 %        |
+|                                             | Unshifted profile              | 0.365      | 7.001        | 0.292      | 5.601        | +0.028 ± 0.011            | 45 %        |
+| DK1, 61 target days (committed sample)      | Nearest earlier day            | 0.468      | 4.139        | 0.374      | 3.311        |                           |             |
+|                                             | Shifted profile, same weekday  | 0.499      | 4.949        | 0.399      | 3.959        | +0.025 ± 0.021            | 43 %        |
+|                                             | Unshifted profile              | 0.617      | 4.326        | 0.493      | 3.461        | +0.119 ± 0.046            | 44 %        |
+
+The shifted profile and the nearest earlier day are equal within the
+standard error on a year of prices in both price areas. The data does not
+favour a change, so **the order is unchanged**: the shifted profile first.
+The nearest earlier day has the lower worst slot in DK1 and the higher one in
+DK2. The unshifted profile is worse than both.
+
+**Bucket minimum.** Export MAE of the shifted profile by the number of days
+in its buckets, DK1, 358 target days. Nearest earlier day: 0.249.
+
+| Days in bucket | Same weekday | vs nearest day | Every weekday | vs nearest day |
+| -------------- | ------------ | -------------- | ------------- | -------------- |
+| 1              | 0.325        | +0.076 ± 0.010 | 0.272         | +0.023 ± 0.005 |
+| 2              | 0.276        | +0.028 ± 0.008 | 0.264         | +0.015 ± 0.004 |
+| 3              | 0.267        | +0.018 ± 0.008 | 0.263         | +0.015 ± 0.005 |
+| 4              | 0.254        | +0.005 ± 0.007 | 0.252         | +0.003 ± 0.004 |
+| 5              | 0.253        | +0.004 ± 0.007 | 0.252         | +0.003 ± 0.004 |
+| 6              | 0.248        | -0.001 ± 0.006 | 0.246         | -0.003 ± 0.004 |
+| 7              | 0.251        | +0.002 ± 0.006 | 0.249         | -0.000 ± 0.004 |
+| 8              | 0.249        | +0.001 ± 0.006 | 0.245         | -0.004 ± 0.004 |
+
+The fill order as implemented, while the history grows (export MAE, DK1):
+
+| History days | Minimum 3 | Minimum 4 | Minimum 6 |
+| ------------ | --------- | --------- | --------- |
+| 3            | 0.263     | 0.249     | 0.249     |
+| 4            | 0.252     | 0.252     | 0.249     |
+| 5            | 0.252     | 0.252     | 0.249     |
+| 6            | 0.246     | 0.246     | 0.246     |
+| 14           | 0.243     | 0.243     | 0.243     |
+| 21           | 0.267     | 0.244     | 0.244     |
+| 28           | 0.254     | 0.254     | 0.243     |
+| 35           | 0.253     | 0.253     | 0.246     |
+| 42           | 0.248     | 0.248     | 0.248     |
+| 56           | 0.249     | 0.249     | 0.249     |
+
+A bucket of three days is worse than the nearest earlier day by two to three
+standard errors, for same-weekday and for every-weekday buckets, in DK1 and
+in DK2. Six days is the first size that is not worse. A minimum of 6 is never
+behind a minimum of 3 or 4 in the second table, and ahead of them after 3,
+21, 28 and 35 days of history. **The minimum is 6** (it was 3).
+
+**Outage after the held prices are over.** DK1, 358 target days, export.
+
+| Days since the last price | Estimate                          | Export MAE | Export worst | vs unshifted   | Days better |
+| ------------------------- | --------------------------------- | ---------- | ------------ | -------------- | ----------- |
+| 1                         | Unshifted profile                 | 0.271      | 4.596        |                |             |
+| 1                         | Profile with the last known shift | 0.249      | 4.450        | -0.021 ± 0.009 | 57 %        |
+| 1                         | Last recorded day                 | 0.249      | 4.062        | -0.022 ± 0.011 | 53 %        |
+| 2                         | Unshifted profile                 | 0.271      | 4.596        |                |             |
+| 2                         | Profile with the last known shift | 0.296      | 4.613        | +0.025 ± 0.011 | 47 %        |
+| 2                         | Last recorded day                 | 0.318      | 4.734        | +0.047 ± 0.012 | 41 %        |
+
+DK2 gives the same picture: -0.031 ± 0.009 after one day and +0.015 ± 0.011
+after two. **The last known shift is used for one day** and the profile as
+recorded after that.
+
+To repeat: `python3 scripts/score_price_estimates.py` scores the committed
+sample (`scripts/data/dk1_day_ahead_prices.csv`, 119 days of DK1 prices from
+Energinet, www.energidataservice.dk, CC BY 4.0).
+`--prices <file> --fetch 2025-10-01 2026-11-21 DK1` downloads and scores the
+year the tables above use.
 
 **Price sensor outage.** A price side is in an outage when its price sensor
 publishes no slot of the horizon: the sensor is unavailable, publishes
@@ -3925,7 +4392,9 @@ what each price sensor last published for a slot (the _held_ prices, per
 side, persisted in the same file, dropped 26 hours after the slot started).
 A price sensor that publishes only prediction attributes this cycle is
 alive: its side is not in an outage and is priced as before, and nothing is
-recorded or held from it.
+recorded or held from it. This is logged as a warning once per sensor, and
+the diagnostics dump reports it per side under `price_sensors`
+(`published`, `predictions` or `none`).
 
 - A failed side gets its held price on every slot that has one. A held price
   wins over a forecast sensor's prediction for the slot.

@@ -170,6 +170,7 @@ class CoordinatorSharedState(_Base):
     _options_update_task: asyncio.Task | None
     _override_expiry: datetime | None
     _performance_task: asyncio.Task | None
+    _price_sensor_content: dict[str, str] | None
     _performance_tracker: PerformanceTracker
     _plan_explanation: PlanExplanation
     _prediction_tracker: PredictionTracker

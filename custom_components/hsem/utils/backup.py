@@ -17,8 +17,9 @@ Assistant; the debug export, which is meant to be posted, redacts them.
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from contextlib import suppress
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -26,7 +27,9 @@ from urllib.parse import urlencode
 
 from packaging.version import InvalidVersion, Version
 
+from custom_components.hsem.models.price_history_tracker import PriceHistoryTracker
 from custom_components.hsem.utils.diagnostics import REDACTED
+from custom_components.hsem.utils.ocpp_tls import TLS_MODE_OFF
 from custom_components.hsem.utils.persistence import (
     read_json_history_file,
     write_json_history_file,
@@ -36,8 +39,13 @@ from custom_components.hsem.utils.persistence import (
 BACKUP_SCHEMA = "hsem_backup"
 
 #: Version of the backup layout. Raise it when the layout changes in a way an
-#: older HSEM cannot read.
-BACKUP_SCHEMA_VERSION = 1
+#: older HSEM cannot read. Every version from 1 up to this one is imported.
+#:
+#: - 1: prediction, financial, savings, daily and performance history.
+#: - 2: adds the battery efficiency, energy, price and what-if history
+#:   (issue #1447). A version 1 backup does not carry those four files, so an
+#:   import leaves them as they are.
+BACKUP_SCHEMA_VERSION = 2
 
 #: Folder under the Home Assistant config directory that holds backups.
 BACKUP_DIR_NAME = "hsem_backups"
@@ -48,13 +56,24 @@ DEBUG_DIR_NAME = "hsem_debug"
 #: Every history file HSEM persists under ``<config>/.storage``. The solar
 #: corrector is not a file (it lives in the confidence sensor's restore
 #: state), so a backup carries it under its own key.
+#:
+#: A module that writes a new file under ``.storage`` must add its name here;
+#: ``tests/test_backup_covers_storage_files.py`` fails otherwise.
 HISTORY_FILES: tuple[str, ...] = (
     "hsem_prediction_history.json",
     "hsem_financial_history.json",
     "hsem_savings_history.json",
     "hsem_daily_history.json",
     "hsem_performance_history.json",
+    "hsem_battery_efficiency.json",
+    "hsem_energy_history.json",
+    "hsem_price_history.json",
+    "hsem_what_if_history.json",
 )
+
+#: The price history. It belongs to one price source, so an import skips it
+#: when the backup was recorded from another one.
+PRICE_HISTORY_FILE = "hsem_price_history.json"
 
 #: Learned state that is not a file: it lives in the restore state of HSEM's
 #: sensors. A backup carries each under its own key.
@@ -85,8 +104,9 @@ REASON_MANUAL = "manual"
 REASON_BEFORE_IMPORT = "before_import"
 REASON_DELETED = "deleted"
 
-#: A backup holds up to five history files, each capped at 16 MiB on read.
-_MAX_BACKUP_FILE_BYTES = 96 * 1024 * 1024
+#: A backup holds every history file, each capped at 16 MiB on read, plus the
+#: learner state and the configuration.
+_MAX_BACKUP_FILE_BYTES = (len(HISTORY_FILES) + 1) * 16 * 1024 * 1024
 
 #: Key substrings that mark a secret wherever they appear, on top of
 #: ``redact_dict``. ``cpid`` is the OCPP charge point identity: without TLS it
@@ -123,8 +143,61 @@ _PEM_MARKER = "-----BEGIN"
 ISSUE_URL = "https://github.com/woopstar/hsem/issues/new"
 
 
+#: Why a backup was rejected; also the translation key of the error the setup
+#: flow shows (``config.error.<code>``).
+ERROR_INVALID = "backup_invalid"
+ERROR_UNREADABLE = "backup_unreadable"
+ERROR_TOO_NEW = "backup_too_new"
+ERROR_CONFIG_VERSION = "backup_config_version"
+ERROR_WRITE_FAILED = "backup_write_failed"
+ERROR_SAFETY_COPY_FAILED = "backup_safety_copy_failed"
+
+#: Feature switches and the redacted option each one needs. A backup never
+#: holds these options, so a restore into a new entry leaves the feature off.
+_FEATURE_NEEDS: tuple[tuple[str, str], ...] = (
+    ("hsem_ocpp_enabled", "hsem_ocpp_cpid"),
+    ("hsem_ocpp_second_enabled", "hsem_ocpp_second_cpid"),
+)
+
+#: With TLS on, the OCPP servers also need the certificate paths.
+_OCPP_TLS_MODE = "hsem_ocpp_tls_mode"
+_OCPP_TLS_PATHS: tuple[str, ...] = (
+    "hsem_ocpp_tls_server_cert_path",
+    "hsem_ocpp_tls_server_key_path",
+    "hsem_ocpp_tls_client_ca_path",
+)
+
+
 class BackupError(Exception):
-    """A backup file cannot be used. The message is safe to show the user."""
+    """A backup file cannot be used. The message is safe to show the user.
+
+    Attributes:
+        code: One of the ``ERROR_*`` constants.
+    """
+
+    def __init__(self, message: str, code: str = ERROR_INVALID) -> None:
+        """Keep the message and the reason code."""
+        super().__init__(message)
+        self.code = code
+
+
+@dataclass(frozen=True, slots=True)
+class NewEntryConfiguration:
+    """The configuration a backup gives a new config entry.
+
+    Attributes:
+        data: The entry data, without the redacted keys.
+        options: The entry options, without the redacted keys and with the
+            features in ``disabled_features`` switched off.
+        skipped_keys: The redacted keys, sorted. They get their default.
+        disabled_features: The feature switches that were on in the backup
+            and are off in ``options``, because a value they need is redacted.
+    """
+
+    data: dict[str, Any]
+    options: dict[str, Any]
+    skipped_keys: list[str]
+    disabled_features: list[str]
 
 
 def _redact_key_material(
@@ -177,6 +250,32 @@ def _contains_redacted(value: Any) -> bool:
     return bool(value == REDACTED)
 
 
+def _restorable_section(
+    payload: Mapping[str, Any], section: str
+) -> tuple[dict[str, Any], list[str]]:
+    """Split one section of a backup's configuration by what can be restored.
+
+    Args:
+        payload: A validated backup payload.
+        section: ``"data"`` or ``"options"``.
+
+    Returns:
+        The values to write, and the sorted keys that hold a redacted value.
+    """
+    configuration = payload.get("configuration")
+    values = configuration.get(section) if isinstance(configuration, dict) else None
+    if not isinstance(values, dict):
+        return {}, []
+    restorable: dict[str, Any] = {}
+    skipped: list[str] = []
+    for key, value in values.items():
+        if _contains_redacted(value):
+            skipped.append(key)
+        else:
+            restorable[key] = value
+    return restorable, sorted(skipped)
+
+
 def restorable_options(payload: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
     """Split a backup's options into what can be restored and what cannot.
 
@@ -189,18 +288,49 @@ def restorable_options(payload: Mapping[str, Any]) -> tuple[dict[str, Any], list
     Returns:
         The options to write, and the sorted keys that were skipped.
     """
-    configuration = payload.get("configuration")
-    options = configuration.get("options") if isinstance(configuration, dict) else None
-    if not isinstance(options, dict):
-        return {}, []
-    restorable: dict[str, Any] = {}
-    skipped: list[str] = []
-    for key, value in options.items():
-        if _contains_redacted(value):
-            skipped.append(key)
-        else:
-            restorable[key] = value
-    return restorable, sorted(skipped)
+    return _restorable_section(payload, "options")
+
+
+def new_entry_configuration(payload: Mapping[str, Any]) -> NewEntryConfiguration:
+    """Return the configuration a backup gives a config entry that is new.
+
+    Redacted values (charge point IDs, certificate paths, secrets) are not in
+    a backup, so they are left out and get their default. A feature that
+    needs one of them and was on in the backup is switched off: an OCPP
+    server without its charge point ID, and both OCPP servers when TLS is on
+    and a certificate path is redacted. They are not started with TLS off
+    instead, since that would serve plain ``ws://``.
+
+    Args:
+        payload: A validated backup payload whose configuration version was
+            checked with :func:`check_configuration_version`.
+
+    Returns:
+        The data and options to create the entry with, and what was left out.
+
+    Raises:
+        BackupError: When the backup holds no entry data.
+    """
+    data, skipped_data = _restorable_section(payload, "data")
+    options, skipped_options = _restorable_section(payload, "options")
+    if not data:
+        raise BackupError("The backup holds no configuration to set HSEM up from.")
+    skipped = sorted({*skipped_data, *skipped_options})
+    effective = {**data, **options}
+    tls_paths_missing = effective.get(
+        _OCPP_TLS_MODE, TLS_MODE_OFF
+    ) != TLS_MODE_OFF and any(key in skipped for key in _OCPP_TLS_PATHS)
+    disabled = [
+        feature
+        for feature, needed in _FEATURE_NEEDS
+        if effective.get(feature) and (needed in skipped or tls_paths_missing)
+    ]
+    return NewEntryConfiguration(
+        data=data,
+        options={**options, **dict.fromkeys(disabled, False)},
+        skipped_keys=skipped,
+        disabled_features=disabled,
+    )
 
 
 def read_history_files(storage_dir: Path) -> dict[str, dict[str, Any] | None]:
@@ -286,7 +416,9 @@ def write_backup_file(config_dir: Path, payload: Mapping[str, Any]) -> Path:
         config_dir / BACKUP_DIR_NAME / backup_file_name(created, str(payload["reason"]))
     )
     if not write_json_history_file(path, payload, indent=2):
-        raise BackupError(f"Could not write the HSEM backup file {path}.")
+        raise BackupError(
+            f"Could not write the HSEM backup file {path}.", ERROR_WRITE_FAILED
+        )
     return path
 
 
@@ -324,7 +456,8 @@ def validate_backup_payload(payload: Any, *, hsem_version: str) -> dict[str, Any
         raise BackupError(
             f"Backup schema version {schema_version!r} is not supported; this "
             f"HSEM reads schema versions up to {BACKUP_SCHEMA_VERSION}. "
-            "Update HSEM before importing."
+            "Update HSEM before importing.",
+            ERROR_TOO_NEW,
         )
 
     backup_version = _parse_version(payload.get("hsem_version"))
@@ -334,7 +467,8 @@ def validate_backup_payload(payload: Any, *, hsem_version: str) -> dict[str, Any
     if installed is not None and backup_version > installed:
         raise BackupError(
             f"The backup was written by HSEM {backup_version}, which is newer "
-            f"than the installed {installed}. Update HSEM before importing."
+            f"than the installed {installed}. Update HSEM before importing.",
+            ERROR_TOO_NEW,
         )
 
     history = payload.get("history")
@@ -351,26 +485,44 @@ def validate_backup_payload(payload: Any, *, hsem_version: str) -> dict[str, Any
     return payload
 
 
-def check_configuration_version(payload: Mapping[str, Any], entry_version: int) -> None:
+def check_configuration_version(
+    payload: Mapping[str, Any], entry_version: int, entry_minor_version: int
+) -> None:
     """Check that the backup's options fit the installed config entry version.
 
     Options from another entry version may use keys a migration has renamed
     or removed, and the entry migration is not written to run on a partly
-    redacted options dict. Such a backup still restores the learned data.
+    redacted options dict. A newer minor version may hold keys this HSEM
+    does not know. Such a backup still restores the learned data. An older
+    minor version is accepted: a minor step only adds to the options.
+
+    Args:
+        payload: A validated backup payload.
+        entry_version: The installed config entry version.
+        entry_minor_version: The installed config entry minor version.
 
     Raises:
-        BackupError: When the backup states no entry version or another one.
+        BackupError: When the backup states no entry version, another
+            version, no minor version or a newer minor version.
     """
     configuration = payload.get("configuration")
-    backup_version = (
-        configuration.get("entry_version") if isinstance(configuration, dict) else None
-    )
-    if isinstance(backup_version, bool) or backup_version != entry_version:
+    section = configuration if isinstance(configuration, dict) else {}
+    backup_version = section.get("entry_version")
+    backup_minor = section.get("entry_minor_version")
+    if (
+        isinstance(backup_version, bool)
+        or backup_version != entry_version
+        or isinstance(backup_minor, bool)
+        or not isinstance(backup_minor, int)
+        or backup_minor > entry_minor_version
+    ):
         raise BackupError(
             f"The configuration in the backup has config entry version "
-            f"{backup_version!r}; this HSEM uses version {entry_version}. "
+            f"{backup_version!r}.{backup_minor!r}; this HSEM uses version "
+            f"{entry_version}.{entry_minor_version}. "
             "Import again without restore_configuration to restore the "
-            "learned data only."
+            "learned data only.",
+            ERROR_CONFIG_VERSION,
         )
 
 
@@ -414,8 +566,56 @@ def read_backup_file(config_dir: Path, filename: str, *, hsem_version: str) -> d
     path = resolve_backup_path(config_dir, filename)
     payload = read_json_history_file(path, max_bytes=_MAX_BACKUP_FILE_BYTES)
     if payload is None:
-        raise BackupError(f"Could not read {path}: missing, too large or not JSON.")
+        raise BackupError(
+            f"Could not read {path}: missing, too large or not JSON.",
+            ERROR_UNREADABLE,
+        )
     return validate_backup_payload(payload, hsem_version=hsem_version)
+
+
+def find_backup_files(
+    config_dir: Path,
+    *,
+    hsem_version: str,
+    entry_version: int,
+    entry_minor_version: int,
+) -> dict[str, str | None]:
+    """Check every file in ``<config>/hsem_backups/``. Blocking.
+
+    Each file gets the checks an import with ``restore_configuration`` runs.
+
+    Args:
+        config_dir: The Home Assistant config directory.
+        hsem_version: The installed HSEM version.
+        entry_version: The config entry version of this HSEM.
+        entry_minor_version: The config entry minor version of this HSEM.
+
+    Returns:
+        File name to ``None`` for a backup that can set HSEM up, or to the
+        ``ERROR_*`` code it is rejected with. Newest file name first.
+    """
+    try:
+        names = sorted(
+            (
+                path.name
+                for path in (config_dir / BACKUP_DIR_NAME).iterdir()
+                if path.suffix == ".json" and not path.name.startswith(".")
+            ),
+            reverse=True,
+        )
+    except OSError:
+        return {}
+    found: dict[str, str | None] = {}
+    for name in names:
+        try:
+            payload = read_backup_file(config_dir, name, hsem_version=hsem_version)
+            check_configuration_version(payload, entry_version, entry_minor_version)
+            new_entry_configuration(payload)
+        except BackupError as err:
+            found[name] = err.code
+        else:
+            found[name] = None
+    return found
 
 
 def learned_state(payload: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
@@ -427,7 +627,41 @@ def learned_state(payload: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
-def write_history_files(storage_dir: Path, payload: Mapping[str, Any]) -> list[str]:
+def price_history_skip_reason(
+    payload: Mapping[str, Any], source: Mapping[str, str]
+) -> str | None:
+    """Return why the price history of a backup must not be imported.
+
+    The price history is bound to its price source: the first cycle after an
+    import drops a store recorded from other price sensors or units, and
+    saves the empty store. Importing such a file would only delete the local
+    price history, so it is skipped.
+
+    Args:
+        payload: A validated backup payload.
+        source: The price source HSEM runs with after the import:
+            ``import_entity``, ``export_entity``, ``import_unit`` and
+            ``export_unit``; an unknown value is an empty string.
+
+    Returns:
+        The reason, or ``None`` when the file can be imported or the backup
+        does not carry it.
+    """
+    content = payload["history"].get(PRICE_HISTORY_FILE)
+    if content is None:
+        return None
+    if not PriceHistoryTracker.from_dict(content).source_differs(source):
+        return None
+    return (
+        "The price history in the backup was recorded from other price "
+        "sensors or units than HSEM uses now. HSEM would discard it, so the "
+        "current price history was kept."
+    )
+
+
+def write_history_files(
+    storage_dir: Path, payload: Mapping[str, Any], skip: Collection[str] = ()
+) -> list[str]:
     """Replace the history files with those in a validated backup. Blocking.
 
     All or nothing: every file is first written next to its target, and the
@@ -441,6 +675,7 @@ def write_history_files(storage_dir: Path, payload: Mapping[str, Any]) -> list[s
     Args:
         storage_dir: ``<config>/.storage``.
         payload: A validated backup payload.
+        skip: Names of history files to leave as they are.
 
     Returns:
         The names of the history files that were written.
@@ -450,7 +685,9 @@ def write_history_files(storage_dir: Path, payload: Mapping[str, Any]) -> list[s
     """
     history = payload["history"]
     contents: dict[str, Mapping[str, Any]] = {
-        name: history[name] for name in HISTORY_FILES if history.get(name) is not None
+        name: history[name]
+        for name in HISTORY_FILES
+        if history.get(name) is not None and name not in skip
     }
     written = list(contents)
     learned = learned_state(payload)
@@ -463,7 +700,7 @@ def write_history_files(storage_dir: Path, payload: Mapping[str, Any]) -> list[s
             target = storage_dir / name
             new = storage_dir / f"{name}{_NEW_SUFFIX}"
             if not write_json_history_file(new, content):
-                raise BackupError(f"Could not write {target}.")
+                raise BackupError(f"Could not write {target}.", ERROR_WRITE_FAILED)
             staged.append((target, new, storage_dir / f"{name}{_OLD_SUFFIX}"))
         _swap_in(staged)
     finally:
@@ -496,7 +733,8 @@ def _swap_in(staged: list[tuple[Path, Path, Path]]) -> None:
                 else:
                     target.unlink()
         raise BackupError(
-            f"Could not replace the history files ({err}). Nothing was imported."
+            f"Could not replace the history files ({err}). Nothing was imported.",
+            ERROR_WRITE_FAILED,
         ) from err
 
 

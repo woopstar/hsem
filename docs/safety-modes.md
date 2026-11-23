@@ -67,7 +67,9 @@ forecast attribute is a flat price that covers every slot, not an outage. HSEM t
    _held_ prices). The other side keeps its live prices. Predictions are
    never held: the `forecast` (Energi Data Service with Carnot),
    `predictions` (Open Spot Forecast) and `forecasts` (Amber Electric)
-   attributes, and everything a price forecast sensor publishes.
+   attributes, everything a price forecast sensor publishes, and the
+   entries of another attribute that the sensor marks as a forecast (see
+   [Price Attributes](price-attributes.md)).
 2. The remaining slots use the price history: the median real price per
    weekday and time of day of the last 8 weeks, stored in
    `.storage/hsem_price_history.json`. They are listed as missing in

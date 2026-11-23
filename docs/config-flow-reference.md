@@ -40,6 +40,90 @@ the old protocol: switching TLS on would keep plain `ws://` running (issue
 State writes by HSEM's own switches, numbers, times and selectors also land in
 the config entry options. They never cause a reload.
 
+### Restore from a backup
+
+When `<config>/hsem_backups/` holds at least one `.json` file, the setup flow
+opens with a menu (`setup_method`) instead of the first form:
+
+- **Set up from scratch** continues with the steps above, unchanged.
+- **Restore from a backup** sets HSEM up from a file written by
+  [`hsem.export_data`](services-reference.md#13-hsemexport_data), or by HSEM when
+  its config entry was deleted.
+
+Without a backup file the menu is not shown and setup is as before. A file
+that cannot be restored still brings up the menu: the `restore` step says why
+it is rejected. On a
+new Home Assistant, install HSEM, copy the backup file into
+`<config>/hsem_backups/` and add the integration.
+
+```
+setup_method → restore → restore_confirm → (entry created)
+```
+
+#### Step: `restore`
+
+| Field       | Key           | Default                | Description                                              |
+| ----------- | ------------- | ---------------------- | -------------------------------------------------------- |
+| Backup file | `backup_file` | Newest restorable file | A `.json` file in `<config>/hsem_backups/`, newest first |
+
+The list holds every `.json` file in the folder. The chosen file gets the
+checks `hsem.import_data` runs with `restore_configuration`. Nothing is
+written in this step. A rejected file shows one of these errors and the form
+stays open:
+
+| Error                   | Cause                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------- |
+| `backup_unreadable`     | The file is missing, too large or not JSON                                                        |
+| `backup_invalid`        | Not an HSEM backup, a malformed backup, or a backup without configuration                         |
+| `backup_too_new`        | Written by a newer HSEM version, or with a newer backup `schema_version`. Update HSEM first       |
+| `backup_config_version` | The configuration has another config entry version, or a newer minor version, than this HSEM uses |
+
+A backup with another config entry version cannot set HSEM up. Set HSEM up
+from scratch and restore the learned data with `hsem.import_data` without
+`restore_configuration`.
+
+#### Step: `restore_confirm`
+
+Shows the file, when and by which HSEM version it was written, and:
+
+- **Not in the backup.** The redacted keys: charge point IDs
+  (`hsem_ocpp_cpid`, `hsem_ocpp_second_cpid`), the OCPP certificate paths and
+  anything named like a secret. They get their default.
+- **Switched off.** Features that were on in the backup and need one of those
+  values: `hsem_ocpp_enabled` and `hsem_ocpp_second_enabled` without their
+  charge point ID, and both when `hsem_ocpp_tls_mode` is not `off`, since the
+  certificate paths are redacted. HSEM does not start them with TLS off
+  instead. Enter the values under **Configure** after the restore and switch
+  the features on again.
+- **Devices that do not exist here.** A `hsem_huawei_solar_device_id_*` option
+  whose device is not in the device registry of this Home Assistant. Device
+  IDs differ between installations, so on a new host this is every device.
+  The option is left empty, as the setup form would reject it. Pick the
+  devices under **Configure** after the restore. HSEM starts without them: a
+  device is only used when HSEM writes to the inverter or the batteries, and
+  those writes fail until it is set.
+- **History files not restored.** The price history, when it was recorded from
+  other price sensors or units than the configuration in the backup names.
+
+Submitting replaces the history files under `.storage`, all or nothing, and
+creates the config entry with the data and options from the backup. HSEM then
+starts and loads the solar correction, the forecast accuracy records and the
+hourly averages. If the files cannot be written, or `hsem.import_data` is
+running, the step shows `backup_write_failed` and no entry is created.
+
+History files survive the removal of HSEM. When one is under `.storage`, the
+restore replaces it and says so in this step. It first saves the existing
+history as `hsem_backup_<date>_<time>_before_import.json`, as
+`hsem.import_data` does, and shows the path when the entry is created. If that
+file cannot be written, the step shows `backup_safety_copy_failed`, nothing is
+replaced and no entry is created. That backup holds history and no
+configuration: `hsem.import_data` can import it, the setup flow cannot.
+
+Entity IDs from the backup that do not exist on this Home Assistant show up as
+missing entities until you correct them under **Configure**. The restore does
+not test the price and battery sensors the way the last step of a normal setup
+does.
+
 ### Step: `quick_setup`
 
 Initial entity auto-detection step. Scans available HA entities and
@@ -152,15 +236,17 @@ Huawei Solar inverter and battery entity configuration (device selectors and ent
 
 Battery depreciation and efficiency parameters.
 
-| Field                     | Key                                   | Default | Description                                                                                                                                                                                                                                                                                                          |
-| ------------------------- | ------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Purchase price            | `hsem_batteries_purchase_price`       | 0       | Battery system cost                                                                                                                                                                                                                                                                                                  |
-| Expected cycles           | `hsem_batteries_expected_cycles`      | 6000    | Total expected lifetime cycles                                                                                                                                                                                                                                                                                       |
-| Cycle cost                | `hsem_batteries_cycle_cost`           | 0       | Extra per-kWh wear margin                                                                                                                                                                                                                                                                                            |
-| Capacity loss at EOL      | `hsem_batteries_capacity_loss_pct`    | 30 %    | Expected capacity loss at end-of-life (%)                                                                                                                                                                                                                                                                            |
-| Charge efficiency         | `hsem_batteries_charge_efficiency`    | 98 %    | Charge-side efficiency                                                                                                                                                                                                                                                                                               |
-| Discharge efficiency      | `hsem_batteries_discharge_efficiency` | 98 %    | Discharge-side efficiency                                                                                                                                                                                                                                                                                            |
-| Planner solver time limit | `hsem_planner_solver_time_limit_s`    | 2 s     | Maximum time for one MILP solve, 1–10 s (issue #1309). A solve that reaches it uses the best plan found so far, which can be far from optimal. Raise it only when the Plan Strategy sensor shows `solver_status: time_limit`; a higher limit makes every update cycle longer, and a cycle can run up to three solves |
+| Field                         | Key                                         | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------- | ------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Purchase price                | `hsem_batteries_purchase_price`             | 0       | Battery system cost                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Expected cycles               | `hsem_batteries_expected_cycles`            | 6000    | Total expected lifetime cycles                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Cycle cost                    | `hsem_batteries_cycle_cost`                 | 0       | Extra per-kWh wear margin                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Capacity loss at EOL          | `hsem_batteries_capacity_loss_pct`          | 30 %    | Expected capacity loss at end-of-life (%)                                                                                                                                                                                                                                                                                                                                                                                               |
+| Charge efficiency             | `hsem_batteries_charge_efficiency`          | 98 %    | Charge-side efficiency                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Discharge efficiency          | `hsem_batteries_discharge_efficiency`       | 98 %    | Discharge-side efficiency                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Planner solver time limit     | `hsem_planner_solver_time_limit_s`          | 2 s     | Maximum time for one MILP solve, 1–10 s (issue #1309). A solve that reaches it uses the best plan found so far, which can be far from optimal. Raise it only when the Plan Strategy sensor shows `solver_status: time_limit`; a higher limit makes every update cycle longer, and a cycle can run up to three solves                                                                                                                    |
+| Plan with measured efficiency | `hsem_batteries_learned_efficiency_enabled` | Off     | Experimental (issue #1431). The planner uses a measured round trip: the AC-side monthly one when an AC-side battery power sensor is configured, else the one measured at the battery (40 measurements and 10 kWh per direction; inverter loss not included). Only below the configured round trip, and never under 70 %. Both configured values are scaled by the same factor. The last trusted value is kept when a measurement lapses |
+| Estimated price tail          | `hsem_terminal_price_tail_enabled`          | Off     | Experimental (issue #1453). Values the energy left at the horizon end half with price-history prices for the 24 hours after it. Only when no published price reaches past the horizon. Changes that end value only, never a slot. Off by default: no cost gain in backtests, and slower solves                                                                                                                                          |
 
 ### Step: `power`
 
@@ -327,16 +413,17 @@ counterparts and are kept for backward compatibility during migration.
 
 Energy meter entities and ML consumption prediction (last step, creates entry).
 
-| Field                   | Key                                                    | Default | Description                                                                                                                                                                                                                                          |
-| ----------------------- | ------------------------------------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Grid Import Energy      | `hsem_grid_import_energy_entity`                       | —       | Cumulative grid import meter. **kWh expected** — automatically normalized from a declared `unit_of_measurement` (e.g. Wh), including recorder-history reads used for ML training (issue #946). Also used as ML data source.                          |
-| Grid Export Energy      | `hsem_grid_export_energy_entity`                       | —       | Cumulative grid export meter. **kWh expected** — automatically normalized from a declared `unit_of_measurement` (issue #946). Used for net consumption.                                                                                              |
-| PV Energy               | `hsem_pv_energy_entity`                                | —       | Cumulative PV production meter. **kWh expected** — automatically normalized from a declared `unit_of_measurement` (issue #946).                                                                                                                      |
-| ML enabled              | `hsem_ml_consumption_enabled`                          | `False` | Enable ridge regression predictor instead of rolling averages.                                                                                                                                                                                       |
-| ML history days         | `hsem_ml_consumption_history_days`                     | 14      | Days of recorder history for ML training (7–90).                                                                                                                                                                                                     |
-| Net consumption         | `hsem_ml_consumption_net_consumption`                  | `False` | Subtract export from import for net house consumption.                                                                                                                                                                                               |
-| Sequential prediction   | `hsem_ml_consumption_sequential`                       | `False` | Feed each slot's prediction as lag input to the next (captures intra-day momentum).                                                                                                                                                                  |
-| Temperature sensor      | `hsem_ml_consumption_temperature_entity`               | —       | Outdoor (ambient) temperature in °C for weather-driven predictions.                                                                                                                                                                                  |
-| Weather forecast entity | `hsem_ml_consumption_weather_forecast_entity`          | —       | Optional `weather` entity supplying forecast temperatures for future inference slots (issue #918). Requires the temperature sensor above; falls back to it per-slot when forecast coverage is missing/stale.                                         |
-| Wind chill enabled      | `hsem_ml_consumption_wind_chill_enabled`               | `False` | Adds a wind-chill index (wind × heat loss below the reference temperature) to the ML model (issue #943). Wind history/forecast both derive from the weather forecast entity above — no separate wind sensor. Requires the temperature sensor above.  |
-| Wind chill reference °C | `hsem_ml_consumption_wind_chill_reference_temperature` | 18.0    | Balance-point temperature (°C) above which wind no longer increases heat loss. Only used when wind chill is enabled. See "Choosing the reference temperature" in `docs/consumption-prediction.md` for how to pick and tune this value for your home. |
+| Field                   | Key                                                    | Default | Description                                                                                                                                                                                                                                                                                                                                                                        |
+| ----------------------- | ------------------------------------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Grid Import Energy      | `hsem_grid_import_energy_entity`                       | —       | Cumulative grid import meter. **kWh expected** — automatically normalized from a declared `unit_of_measurement` (e.g. Wh), including recorder-history reads used for ML training (issue #946). Also used as ML data source.                                                                                                                                                        |
+| Grid Export Energy      | `hsem_grid_export_energy_entity`                       | —       | Cumulative grid export meter. **kWh expected** — automatically normalized from a declared `unit_of_measurement` (issue #946). Used for net consumption.                                                                                                                                                                                                                            |
+| AC-Side Battery Power   | `hsem_battery_ac_power_entity`                         | —       | Optional. Signed power of the battery on the AC side of its inverter, positive while charging. **A power unit is required** (W, kW, MW): a sensor with another unit or without one is not read. Only used for `sensor.hsem_monthly_ac_round_trip_loss` (issue #1450). Leave empty when no sensor measures the battery alone, as on a Huawei hybrid inverter. Can be cleared again. |
+| PV Energy               | `hsem_pv_energy_entity`                                | —       | Cumulative PV production meter. **kWh expected** — automatically normalized from a declared `unit_of_measurement` (issue #946).                                                                                                                                                                                                                                                    |
+| ML enabled              | `hsem_ml_consumption_enabled`                          | `False` | Enable ridge regression predictor instead of rolling averages.                                                                                                                                                                                                                                                                                                                     |
+| ML history days         | `hsem_ml_consumption_history_days`                     | 14      | Days of recorder history for ML training (7–90).                                                                                                                                                                                                                                                                                                                                   |
+| Net consumption         | `hsem_ml_consumption_net_consumption`                  | `False` | Subtract export from import for net house consumption.                                                                                                                                                                                                                                                                                                                             |
+| Sequential prediction   | `hsem_ml_consumption_sequential`                       | `False` | Feed each slot's prediction as lag input to the next (captures intra-day momentum).                                                                                                                                                                                                                                                                                                |
+| Temperature sensor      | `hsem_ml_consumption_temperature_entity`               | —       | Outdoor (ambient) temperature in °C for weather-driven predictions.                                                                                                                                                                                                                                                                                                                |
+| Weather forecast entity | `hsem_ml_consumption_weather_forecast_entity`          | —       | Optional `weather` entity supplying forecast temperatures for future inference slots (issue #918). Requires the temperature sensor above; falls back to it per-slot when forecast coverage is missing/stale.                                                                                                                                                                       |
+| Wind chill enabled      | `hsem_ml_consumption_wind_chill_enabled`               | `False` | Adds a wind-chill index (wind × heat loss below the reference temperature) to the ML model (issue #943). Wind history/forecast both derive from the weather forecast entity above — no separate wind sensor. Requires the temperature sensor above.                                                                                                                                |
+| Wind chill reference °C | `hsem_ml_consumption_wind_chill_reference_temperature` | 18.0    | Balance-point temperature (°C) above which wind no longer increases heat loss. Only used when wind chill is enabled. See "Choosing the reference temperature" in `docs/consumption-prediction.md` for how to pick and tune this value for your home.                                                                                                                               |

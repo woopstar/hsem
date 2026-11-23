@@ -28,6 +28,7 @@ from custom_components.hsem.models.financial_tracker import (
     FinancialTracker,
 )
 from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.utils import persistence
 
 _MODULE = "custom_components.hsem.coordinator_tracking"
 _T0 = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
@@ -232,22 +233,22 @@ class TestInitFinancialTracker:
     async def test_invalid_history_values_are_logged_and_ignored(
         self, tmp_path: Path
     ) -> None:
-        """A structurally valid file with bad values logs an error."""
+        """A structurally valid file with bad values is kept aside (#1446)."""
         path = _history_path(tmp_path)
         path.parent.mkdir(parents=True)
-        path.write_text(
-            json.dumps({"import_cost_total": "not a number"}), encoding="utf-8"
-        )
+        content = json.dumps({"import_cost_total": "not a number"})
+        path.write_text(content, encoding="utf-8")
         tracker = FinancialTracker()
-        log = MagicMock()
 
-        with patch(f"{_MODULE}.async_log", log):
+        with patch.object(persistence._LOGGER, "warning") as warning:
             await init_financial_tracker(tracker, _make_hass(tmp_path))
 
         assert tracker.import_cost_total == pytest.approx(0.0)
         assert tracker._initialized is True  # type: ignore[attr-defined]
-        log.assert_called_once()
-        assert log.call_args.args[0] == "error"
+        warning.assert_called_once()
+        (kept,) = path.parent.glob(f"{path.name}.corrupt-*")
+        assert kept.read_text(encoding="utf-8") == content
+        assert not path.exists()
 
     @pytest.mark.asyncio
     async def test_broken_hass_is_logged_and_does_not_raise(self) -> None:

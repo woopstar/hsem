@@ -56,6 +56,8 @@ _EXPECTED_EXPLANATION_KEYS = {
     "solver_time_s",
     "solver_gap_pct",
     "solver_time_limit_s",
+    "terminal_price_tail",
+    "battery_efficiency",
     "constraints",
     "rejected_plans",
 }
