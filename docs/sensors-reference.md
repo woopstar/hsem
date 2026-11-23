@@ -1484,6 +1484,38 @@ The daily records are kept for 366 days in
 file is not changed, and an installation that upgrades starts with an empty
 energy record and fills it from then on.
 
+### Past months from long-term statistics
+
+HSEM only measures while it runs, so a new installation would need a year to
+show 12 months. Home Assistant keeps hourly long-term statistics of the same
+sensors from before HSEM was installed. Once per history file, on the first
+update cycles, HSEM reads up to 366 days of them and builds a daily record for
+every day **before the first day it measured itself** (issue #1450).
+
+- A day HSEM measured is never changed, and neither is the current day.
+- Statistics are read in W and kWh, whatever unit the sensor has today.
+- A quantity whose sensor has no statistics is left out. The month shows it as
+  `null`, as for a month HSEM measured without it.
+- A sensor without a numeric state is not read. HSEM waits up to 15 minutes
+  for every configured source to report, then runs with the ones that do.
+- With **House power includes EV charger power** off, an hour of house
+  consumption counts only when every configured EV charger has statistics for
+  it too.
+- A recorder error is logged as a warning and the read is tried again an hour
+  later. Without the recorder, or without statistics, nothing changes.
+
+Hourly statistics are coarser than the live readings:
+
+| Figure          | In a backfilled day                                                                                                                            |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Battery energy  | The net of each hour. Charging and discharging within one hour cancel out, so charged, discharged, cycles and wear cost are a lower bound      |
+| Wear cost       | Priced with today's cycle cost                                                                                                                 |
+| Cycles          | Counted against today's usable capacity                                                                                                        |
+| Round-trip loss | Not computed. A month's loss uses only the days HSEM measured, and is `battery_power_not_measured` for a month that holds only backfilled days |
+
+Backfilled days are marked: each month has `backfilled_days`, and the sensors
+publish `backfilled_days`, `backfilled_from` and `backfilled_until`.
+
 ### How the figures are computed
 
 Every figure is computed from the month's **summed** energy, never as an
@@ -1590,19 +1622,23 @@ The state is `unknown` and the `reason` attribute says why:
 
 All four sensors publish the same attributes:
 
-| Attribute        | Description                                                                                   |
-| ---------------- | --------------------------------------------------------------------------------------------- |
-| `month`          | The current month, `YYYY-MM`                                                                  |
-| `reason`         | Why this sensor's state is unknown, else `null`                                               |
-| `this_month`     | The current month's figures (not recorded)                                                    |
-| `previous_month` | The previous month's figures (not recorded)                                                   |
-| `monthly`        | The current month and each of the 11 before it that has a record, oldest first (not recorded) |
+| Attribute          | Description                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------- |
+| `month`            | The current month, `YYYY-MM`                                                                  |
+| `reason`           | Why this sensor's state is unknown, else `null`                                               |
+| `this_month`       | The current month's figures (not recorded)                                                    |
+| `previous_month`   | The previous month's figures (not recorded)                                                   |
+| `monthly`          | The current month and each of the 11 before it that has a record, oldest first (not recorded) |
+| `backfilled_days`  | Days in the record that come from long-term statistics, 0 when none                           |
+| `backfilled_from`  | The oldest backfilled day, else `null`                                                        |
+| `backfilled_until` | The newest backfilled day, else `null`                                                        |
 
 Each month is a dict:
 
 | Key                                                                                  | Description                                              |
 | ------------------------------------------------------------------------------------ | -------------------------------------------------------- |
 | `month`, `days`, `observed_hours`                                                    | The month, the days with a record and the hours observed |
+| `backfilled_days`                                                                    | How many of those days come from long-term statistics    |
 | `house_consumption_kwh`, `grid_import_kwh`, `grid_export_kwh`, `pv_kwh`              | Energy totals, `null` when never measured in the month   |
 | `battery_charged_kwh`, `battery_discharged_kwh`                                      | Battery energy totals, `null` when never measured        |
 | `self_sufficiency`, `self_sufficiency_reason`                                        | Self-sufficiency in %, or why it is unknown              |
