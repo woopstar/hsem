@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from datetime import timedelta
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -463,6 +464,42 @@ class TestSkippedDays:
         assert response["days_compared"] == 0
         assert response["skipped_reasons"] == {REASON_RUN_TIME_LIMIT: 3}
         assert response["days_timed_out"] == 3
+
+    def test_the_time_of_a_run_is_checked_before_every_solve(self) -> None:
+        """A run passes its budget by one solve at most (issue #1454).
+
+        Three sides and 10 s per solve, with 35 s to spend.  The first day
+        ends at 30 s.  The second starts inside the budget and its first solve
+        ends at 40 s: the two solves left of that day are not started.
+        """
+        clock = [0.0]
+        solves: list[float] = []
+
+        def ten_seconds(*_args: Any, **_kwargs: Any) -> Any:
+            solves.append(clock[0])
+            clock[0] += 10.0
+            return SimpleNamespace(cost=1.0, charged_kwh=(), discharged_kwh=())
+
+        with (
+            patch.object(what_if, "is_scipy_available", return_value=True),
+            patch.object(what_if, "solve_hindsight_oracle", ten_seconds),
+            patch.object(
+                what_if,
+                "time",
+                SimpleNamespace(monotonic=lambda: clock[0], sleep=lambda _s: None),
+            ),
+        ):
+            response = _run(
+                WhatIfScenario(usable_kwh=15.0),
+                WhatIfScenario(usable_kwh=20.0),
+                budget_s=35.0,
+            )
+
+        assert solves == pytest.approx([0.0, 10.0, 20.0, 30.0])
+        assert clock[0] <= 35.0 + 10.0
+        assert response["days_compared"] == 1
+        assert response["skipped_reasons"] == {REASON_RUN_TIME_LIMIT: 2}
+        assert response["days_timed_out"] == 2
 
     @needs_scipy
     def test_a_run_inside_its_time_compares_every_day(self) -> None:

@@ -42,6 +42,7 @@ from custom_components.hsem.models.price_profile import (
 )
 from custom_components.hsem.utils.datetime_utils import utc_key
 from custom_components.hsem.utils.persistence import (
+    async_load_history,
     aware_datetime_from_iso,
     finite_float,
     write_json_history_file,
@@ -412,6 +413,15 @@ class PriceHistoryTracker:
         self._levels = dict(loaded._levels)
         self._dirty = False
         self._profile_cache = None
+
+    async def load_history(self) -> None:
+        """Restore the tracker from its history file, if there is one."""
+        if not self.history_file:
+            return
+        await async_load_history(
+            Path(self.history_file),
+            lambda data: self.restore_from(PriceHistoryTracker.from_dict(data)),
+        )
 
     async def save_history(self) -> bool:
         """Persist the state atomically when it changed since the last write.

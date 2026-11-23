@@ -174,6 +174,7 @@ async def test_the_consumption_profile_is_built_from_recorder_statistics(
         "power",
         [{"start": first + i * HOUR, "mean": 400.0 + 100.0 * i} for i in range(2)],
     )
+    hass.states.async_set(HOUSE_POWER, "450", {"unit_of_measurement": "W"})
     entry = MagicMock()
     entry.entry_id = "recorder_entry"
     entry.options = {
@@ -195,6 +196,63 @@ async def test_the_consumption_profile_is_built_from_recorder_statistics(
         return local.date().isoformat(), local.hour
 
     assert profile == {
+        block(first): pytest.approx(0.4),
+        block(first + HOUR): pytest.approx(0.5),
+    }
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_backfilled_until_the_sensor_reports_its_unit(
+    hass: HomeAssistant,
+) -> None:
+    """Statistics stored in kW for a sensor that reports W now (issue #1451).
+
+    Without a unit requested, Home Assistant converts to the unit of the
+    current state and returns the stored unit when there is no state.  At
+    start-up that would make the days 1000 times too small.
+    """
+    first = dt_util.utcnow().replace(minute=0, second=0, microsecond=0) - 3 * HOUR
+    await _import(
+        hass,
+        HOUSE_POWER,
+        "kW",
+        "power",
+        [{"start": first + i * HOUR, "mean": 0.4 + 0.1 * i} for i in range(2)],
+    )
+    entry = MagicMock()
+    entry.entry_id = "recorder_entry"
+    entry.options = {
+        "hsem_house_consumption_power": HOUSE_POWER,
+        "hsem_ev_charger_power": vol.UNDEFINED,
+        "hsem_ev_second_charger_power": vol.UNDEFINED,
+        "hsem_house_power_includes_ev_charger_power": False,
+    }
+    entry.data = {}
+    reader = StatisticsReader(hass)
+    end = first + 2 * HOUR
+
+    try:
+        # No state: the recorder answers in the stored unit, kW.
+        assert hass.states.get(HOUSE_POWER) is None
+        stored = await reader.read_hourly_mean(HOUSE_POWER, first, end)
+        before = await async_consumption_profile(hass, entry)
+
+        # With a state in W the same read is converted to W.
+        hass.states.async_set(HOUSE_POWER, "450", {"unit_of_measurement": "W"})
+        current = await reader.read_hourly_mean(HOUSE_POWER, first, end)
+        after = await async_consumption_profile(hass, entry)
+    finally:
+        consumption_backfill._profile_cache.clear()
+        consumption_backfill._profile_locks.clear()
+
+    def block(hour_start: datetime) -> tuple[str, int]:
+        local = dt_util.as_local(hour_start)
+        return local.date().isoformat(), local.hour
+
+    assert stored == {first: pytest.approx(0.4), first + HOUR: pytest.approx(0.5)}
+    assert current == {first: pytest.approx(400.0), first + HOUR: pytest.approx(500.0)}
+    assert before == {}
+    assert after == {
         block(first): pytest.approx(0.4),
         block(first + HOUR): pytest.approx(0.5),
     }

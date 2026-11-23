@@ -104,6 +104,11 @@ def _hass(*, recorder: bool = True) -> MagicMock:
     return hass
 
 
+def _state(unit: str) -> SimpleNamespace:
+    """A sensor state that reports in *unit*."""
+    return SimpleNamespace(attributes={"unit_of_measurement": unit})
+
+
 def _entry(**options: Any) -> MagicMock:
     entry = MagicMock()
     entry.entry_id = "test_entry"
@@ -380,16 +385,21 @@ async def test_a_changed_source_is_read_at_once(clock: SimpleNamespace) -> None:
 async def test_the_source_comes_from_the_config_not_from_current_states(
     clock: SimpleNamespace,
 ) -> None:
-    """At start-up the house sensor has no state yet; it is still the source."""
+    """Start-up never swaps a configured sensor for the derived house load."""
     hass = _hass()
-    hass.states.get.return_value = None
+    states = {HOUSE: None, get_house_load_power_sensor_entity_id(): _state("W")}
+    hass.states.get.side_effect = states.get
     derived_inputs = {
         "hsem_huawei_solar_inverter_active_power": "sensor.inverter_power",
         "hsem_huawei_solar_power_meter_active_power": "sensor.meter_power",
     }
     statistics = _Statistics({HOUSE: {_local(10, 14): 500.0}})
 
-    await _profile(statistics, _entry(**derived_inputs), hass)
+    # The configured sensor has no state yet: nothing is read, the derived
+    # house load that does have one is not used in its place.
+    assert await _profile(statistics, _entry(**derived_inputs), hass) == {}
+    assert statistics.calls == []
+
     # Without a configured sensor the derived house load is the source.
     await _profile(
         statistics,
@@ -398,9 +408,78 @@ async def test_the_source_comes_from_the_config_not_from_current_states(
     )
 
     assert [call[0] for call in statistics.calls] == [
-        HOUSE,
-        get_house_load_power_sensor_entity_id(),
+        get_house_load_power_sensor_entity_id()
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", [None, SimpleNamespace(attributes={})])
+async def test_nothing_is_backfilled_while_the_house_sensor_has_no_unit(
+    clock: SimpleNamespace, state: SimpleNamespace | None
+) -> None:
+    """Without a state the statistics come in their stored unit (issue #1451)."""
+    hass = _hass()
+    hass.states.get.return_value = state
+    statistics = _Statistics({HOUSE: {_local(10, 14): 500.0}})
+    entry = _entry()
+
+    assert await _profile(statistics, entry, hass) == {}
+    assert statistics.calls == []
+
+    # Nothing was cached: the next update reads as soon as the state is there.
+    hass.states.get.return_value = _state("W")
+    assert await _profile(statistics, entry, hass) == {
+        ("2026-08-10", 14): pytest.approx(0.5)
+    }
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_backfilled_while_a_charger_has_no_state(
+    clock: SimpleNamespace,
+) -> None:
+    hass = _hass()
+    states: dict[str, SimpleNamespace | None] = {HOUSE: _state("W"), EV: None}
+    hass.states.get.side_effect = states.get
+    statistics = _Statistics(
+        {HOUSE: {_local(10, 14): 500.0}, EV: {_local(10, 14): 100.0}}
+    )
+    entry = _entry(
+        hsem_ev_charger_power=EV, hsem_house_power_includes_ev_charger_power=True
+    )
+
+    assert await _profile(statistics, entry, hass) == {}
+    assert statistics.calls == []
+
+    states[EV] = _state("W")
+    assert await _profile(statistics, entry, hass) == {
+        ("2026-08-10", 14): pytest.approx(0.4)
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_state_lost_during_the_read_discards_the_profile(
+    clock: SimpleNamespace,
+) -> None:
+    """The recorder may have answered in the stored unit: read again later."""
+    hass = _hass()
+    hass.states.get.return_value = _state("W")
+
+    class _LosesState(_Statistics):
+        async def read_hourly_mean(
+            self,
+            entity_id: str,
+            start: datetime,
+            end: datetime,
+            unit: str | None = None,
+        ) -> dict[datetime, float]:
+            hass.states.get.return_value = None
+            return await super().read_hourly_mean(entity_id, start, end, unit)
+
+    statistics = _LosesState({HOUSE: {_local(10, 14): 500.0}})
+
+    assert await _profile(statistics, _entry(), hass) == {}
+    assert len(statistics.calls) == 1
+    assert consumption_backfill._profile_cache == {}
 
 
 @pytest.mark.asyncio

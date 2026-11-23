@@ -936,6 +936,21 @@ sensor and the hourly average sensors. A backup holds all of them.
 
 See [Services Reference](services-reference.md) for the file layout.
 
+### A history file that cannot be loaded
+
+HSEM never writes over a history file it could not load. `hsem.log` holds one
+warning that names the file.
+
+- **`... could not be read`:** the file is there but the read failed, for
+  example a permission error or a file locked by a backup tool. HSEM leaves
+  the file as it is, runs without that history, and tries again before each
+  save. Nothing is saved to the file until it loads. Fix the cause and the
+  history comes back on its own.
+- **`... cannot be used`:** the file is damaged. HSEM moved it to
+  `<name>.corrupt-<date>T<time>Z` in `.storage` and started a new history. The
+  old file is kept for you to inspect or repair. Delete it when you no longer
+  need it.
+
 ---
 
 ## Key diagnostic entities reference

@@ -162,8 +162,9 @@ class WhatIfRequest:
         capacity_price_per_kwh: Price of one kWh of usable capacity, for the
             payback time; ``None`` for no payback.
         time_limit_s: Wall-clock limit for each oracle solve.
-        budget_s: Wall-clock limit for the whole run; days it does not reach
-            are skipped.  ``None`` for no limit.
+        budget_s: Wall-clock limit for the whole run, checked before every
+            solve; days it does not reach or finish are skipped.  ``None`` for
+            no limit.
         pause_s: Sleep after each replayed day, which hands the processor to
             whatever else is waiting for it.
     """
@@ -292,6 +293,7 @@ def replay_day(
     request: WhatIfRequest,
     sides: tuple[WhatIfScenario, ...],
     cancelled: Callable[[], bool] = lambda: False,
+    out_of_time: Callable[[], bool] = lambda: False,
 ) -> list[_Cost] | str | None:
     """Return what a recorded day costs with each of *sides*.
 
@@ -304,6 +306,9 @@ def replay_day(
         request: The what-if being run.
         sides: The batteries to run the day with.
         cancelled: Asked before each solve.
+        out_of_time: Asked before each solve; the day is skipped as
+            :data:`REASON_RUN_TIME_LIMIT` when it returns ``True``, so a run
+            passes its budget by one solve at most (issue #1454).
 
     Returns:
         One cost per side, the reason the day cannot be compared, or ``None``
@@ -334,6 +339,8 @@ def replay_day(
     for side in sides:
         if cancelled():
             return None
+        if out_of_time():
+            return REASON_RUN_TIME_LIMIT
         started = time.monotonic()
         cost = _solve(
             window,
@@ -435,6 +442,14 @@ def run_what_if(
     compared: list[tuple[str, list[_Cost]]] = []
     skipped: dict[str, int] = {}
     started = time.monotonic()
+
+    def out_of_time() -> bool:
+        """Return whether the run has used its budget."""
+        return (
+            request.budget_s is not None
+            and time.monotonic() - started >= request.budget_s
+        )
+
     for date in request.days:
         if cancelled():
             return None
@@ -442,13 +457,10 @@ def run_what_if(
         outcome: list[_Cost] | str | None
         if day is None:
             outcome = request.reasons.get(date, REASON_NOT_RECORDED)
-        elif (
-            request.budget_s is not None
-            and time.monotonic() - started >= request.budget_s
-        ):
+        elif out_of_time():
             outcome = REASON_RUN_TIME_LIMIT
         else:
-            outcome = replay_day(day, request, sides, cancelled)
+            outcome = replay_day(day, request, sides, cancelled, out_of_time)
             if request.pause_s > 0.0:
                 time.sleep(request.pause_s)
         if outcome is None:
