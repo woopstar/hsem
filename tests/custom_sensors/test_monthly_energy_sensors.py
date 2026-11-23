@@ -20,6 +20,7 @@ from custom_components.hsem.custom_sensors.monthly_energy_sensors import (
 )
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.models.energy_tracker import (
+    REASON_AC_BATTERY_POWER_NOT_CONFIGURED,
     REASON_NO_DATA,
     REASON_THROUGHPUT_BELOW_MINIMUM,
     EnergyDayEntry,
@@ -30,8 +31,11 @@ _MODULE = "custom_components.hsem.custom_sensors.monthly_energy_sensors"
 _NOW = datetime(2026, 6, 10, 12, 0, tzinfo=ZoneInfo("Europe/Copenhagen"))
 
 
-def _day(date: str, *, charged: float = 60.0) -> EnergyDayEntry:
-    """Return a day that is 75 % self-sufficient with a 10 % round-trip loss."""
+def _day(date: str, *, charged: float = 60.0, ac: bool = True) -> EnergyDayEntry:
+    """Return a day that is 75 % self-sufficient with a 10 % round-trip loss.
+
+    On the AC side the loss is 15 %, when *ac* says that side was measured.
+    """
     return EnergyDayEntry(
         date,
         observed_hours=24.0,
@@ -46,6 +50,10 @@ def _day(date: str, *, charged: float = 60.0) -> EnergyDayEntry:
         paired_import_kwh=5.0,
         measured_charged_kwh=charged,
         measured_discharged_kwh=charged * 0.9,
+        ac_charged_kwh=charged if ac else 0.0,
+        ac_discharged_kwh=charged * 0.85 if ac else 0.0,
+        ac_power_hours=24.0 if ac else 0.0,
+        ac_hours=24.0 if ac else 0.0,
         usable_capacity_kwh=9.0,
         rated_capacity_kwh=10.0,
         house_hours=24.0,
@@ -88,8 +96,9 @@ class TestEntities:
             "battery_cycles": "sensor.hsem_monthly_battery_cycles",
             "battery_wear_cost": "sensor.hsem_monthly_battery_wear_cost",
             "round_trip_loss": "sensor.hsem_monthly_round_trip_loss",
+            "ac_round_trip_loss": "sensor.hsem_monthly_ac_round_trip_loss",
         }
-        assert len({sensor.unique_id for sensor in sensors.values()}) == 4
+        assert len({sensor.unique_id for sensor in sensors.values()}) == 5
         for key, sensor in sensors.items():
             assert sensor.unique_id == f"hsem_test_entry_id_monthly_{key}_sensor"
             assert sensor.translation_key == f"monthly_{key}"
@@ -104,6 +113,7 @@ class TestEntities:
 
         assert sensors["self_sufficiency"].native_unit_of_measurement == PERCENTAGE
         assert sensors["round_trip_loss"].native_unit_of_measurement == PERCENTAGE
+        assert sensors["ac_round_trip_loss"].native_unit_of_measurement == PERCENTAGE
         assert sensors["battery_cycles"].native_unit_of_measurement == UNIT_CYCLES
         assert sensors["battery_wear_cost"].native_unit_of_measurement == "DKK"
 
@@ -124,8 +134,27 @@ class TestValues:
             "battery_cycles": pytest.approx(6.0),
             "battery_wear_cost": pytest.approx(1.5),
             "round_trip_loss": pytest.approx(10.0),
+            "ac_round_trip_loss": pytest.approx(15.0),
         }
         assert set(reasons.values()) == {None}
+
+    def test_without_an_ac_reading_the_ac_sensor_is_unknown_with_a_reason(
+        self,
+    ) -> None:
+        """The battery-side sensor keeps its value (issue #1450)."""
+        tracker = EnergyTracker(daily_log={"2026-06-09": _day("2026-06-09", ac=False)})
+        sensors = _sensors(tracker)
+
+        with patch(f"{_MODULE}.hsem_now", return_value=_NOW):
+            ac_value = sensors["ac_round_trip_loss"].native_value
+            ac_attributes = sensors["ac_round_trip_loss"].extra_state_attributes or {}
+            battery_value = sensors["round_trip_loss"].native_value
+            battery_attributes = sensors["round_trip_loss"].extra_state_attributes
+
+        assert ac_value is None
+        assert ac_attributes["reason"] == REASON_AC_BATTERY_POWER_NOT_CONFIGURED
+        assert battery_value == pytest.approx(10.0)
+        assert (battery_attributes or {})["reason"] is None
 
     def test_previous_month_and_the_month_table_are_attributes(self) -> None:
         sensor = _sensors(_recorded())["round_trip_loss"]
@@ -151,9 +180,13 @@ class TestValues:
         sensors = _sensors(EnergyTracker())
 
         with patch(f"{_MODULE}.hsem_now", return_value=_NOW):
-            for sensor in sensors.values():
+            for key, sensor in sensors.items():
                 assert sensor.native_value is None
-                assert (sensor.extra_state_attributes or {})["reason"] == REASON_NO_DATA
+                assert (sensor.extra_state_attributes or {})["reason"] == (
+                    REASON_AC_BATTERY_POWER_NOT_CONFIGURED
+                    if key == "ac_round_trip_loss"
+                    else REASON_NO_DATA
+                )
 
     def test_without_a_tracker_there_is_nothing_to_report(self) -> None:
         sensors = _sensors(None)

@@ -70,15 +70,15 @@ Entities are split across 7 Home Assistant devices instead of one, so each
 subsystem gets its own device page and can be scoped independently in
 dashboards, automations, and Areas.
 
-| Device                         | Identifier suffix     | Entities                                                                                                                                                                                                                                                                                 |
-| ------------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Controller**                 | _(none — legacy)_     | Working mode, degraded mode, read-only, hardware-writes, missing-entities, force-mode, last/next-updated, update-interval, applier-status, plan-explanation, daily-plan-vs-actual, recommendation-interval, force-working-mode selector, extended-attributes/verbose-logging/ML switches |
-| **Battery & Energy**           | `_battery_energy`     | Battery SoC, effective discharge floor, battery efficiency, net consumption, PV curtailment, charge/discharge efficiency numbers, dynamic discharge floor switch                                                                                                                         |
-| **Hourly Consumption Profile** | `_hourly_consumption` | All 168 per-hour-block entities (`HSEMHouseConsumptionPowerSensor` + integral + utility-meter + 1/3/7/14-day averages × 24 hour blocks)                                                                                                                                                  |
-| **Financial**                  | `_financial`          | Export income, import cost, net grid balance, savings, performance (savings capture, actual benefit, missed opportunity, battery and solar utilisation, EV charging efficiency), monthly energy (self-sufficiency, battery cycles, battery wear cost, round-trip loss)                   |
-| **Forecast**                   | `_forecast`           | Forecast accuracy, prediction accuracy, solar confidence, Solcast likelihood selector                                                                                                                                                                                                    |
-| **EV Primary**                 | `_ev_primary`         | EV charging/plan/SoC sensors, calculated power, current limit, target SoC number, deadline time, smart-charging/force-charge-now/force-discharge/auto-full switches, OCPP charger sensors for `charger_index=1`                                                                          |
-| **EV Secondary**               | `_ev_secondary`       | The same set as EV Primary for `charger_index=2` / the second EV (only present when the second EV is configured)                                                                                                                                                                         |
+| Device                         | Identifier suffix     | Entities                                                                                                                                                                                                                                                                                        |
+| ------------------------------ | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Controller**                 | _(none — legacy)_     | Working mode, degraded mode, read-only, hardware-writes, missing-entities, force-mode, last/next-updated, update-interval, applier-status, plan-explanation, daily-plan-vs-actual, recommendation-interval, force-working-mode selector, extended-attributes/verbose-logging/ML switches        |
+| **Battery & Energy**           | `_battery_energy`     | Battery SoC, effective discharge floor, battery efficiency, net consumption, PV curtailment, charge/discharge efficiency numbers, dynamic discharge floor switch                                                                                                                                |
+| **Hourly Consumption Profile** | `_hourly_consumption` | All 168 per-hour-block entities (`HSEMHouseConsumptionPowerSensor` + integral + utility-meter + 1/3/7/14-day averages × 24 hour blocks)                                                                                                                                                         |
+| **Financial**                  | `_financial`          | Export income, import cost, net grid balance, savings, performance (savings capture, actual benefit, missed opportunity, battery and solar utilisation, EV charging efficiency), monthly energy (self-sufficiency, battery cycles, battery wear cost, battery-side and AC-side round-trip loss) |
+| **Forecast**                   | `_forecast`           | Forecast accuracy, prediction accuracy, solar confidence, Solcast likelihood selector                                                                                                                                                                                                           |
+| **EV Primary**                 | `_ev_primary`         | EV charging/plan/SoC sensors, calculated power, current limit, target SoC number, deadline time, smart-charging/force-charge-now/force-discharge/auto-full switches, OCPP charger sensors for `charger_index=1`                                                                                 |
+| **EV Secondary**               | `_ev_secondary`       | The same set as EV Primary for `charger_index=2` / the second EV (only present when the second EV is configured)                                                                                                                                                                                |
 
 The Controller device keeps the original `(DOMAIN, entry_id)` identifier that
 predates the split — no migration is needed for its entities. Every other
@@ -1461,21 +1461,22 @@ Last 30 d: {{ state_attr(s, 'last_30_days').savings_capture }} %
 ## Monthly energy sensors
 
 What the installation did in plain energy figures, per calendar month
-(issue #1435). The [financial sensors](#financial-sensors) report money and
+(issues #1435 and #1450). The [financial sensors](#financial-sensors) report money and
 the [performance sensors](#performance-sensors) report how good the control
 was; these report energy.
 
 **Entities** (on the **HSEM Financial** device, all with the `monthly`
 prefix). The state is the current month so far:
 
-| Entity                                  | State                                                                            | Unit           |
-| --------------------------------------- | -------------------------------------------------------------------------------- | -------------- |
-| `sensor.hsem_monthly_self_sufficiency`  | Share of the house consumption that did not come from the grid                   | %              |
-| `sensor.hsem_monthly_battery_cycles`    | Full equivalent battery cycles                                                   | cycles         |
-| `sensor.hsem_monthly_battery_wear_cost` | Cycle cost of the energy that went through the battery                           | local currency |
-| `sensor.hsem_monthly_round_trip_loss`   | Share of the energy charged that did not come out again, measured at the battery | %              |
+| Entity                                   | State                                                                                                                       | Unit           |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| `sensor.hsem_monthly_self_sufficiency`   | Share of the house consumption that did not come from the grid                                                              | %              |
+| `sensor.hsem_monthly_battery_cycles`     | Full equivalent battery cycles                                                                                              | cycles         |
+| `sensor.hsem_monthly_battery_wear_cost`  | Cycle cost of the energy that went through the battery                                                                      | local currency |
+| `sensor.hsem_monthly_round_trip_loss`    | Share of the energy charged that did not come out again, measured at the battery                                            | %              |
+| `sensor.hsem_monthly_ac_round_trip_loss` | The same share measured on the AC side of the inverter. `unknown` with a reason without an **AC-Side Battery Power Sensor** | %              |
 
-The bundled dashboard has an **Energy** view with the four tiles and a table
+The bundled dashboard has an **Energy** view with the five tiles and a table
 of the last 12 months, see
 [Energy view](dashboard-setup.md#energy-view).
 
@@ -1484,13 +1485,14 @@ of the last 12 months, see
 Once per update cycle HSEM compares the readings with those of the previous
 cycle and adds the difference to the record of the local day:
 
-| Quantity               | Source                                                                                                                                           |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Grid import and export | The grid import and export energy sensors (cumulative meters)                                                                                    |
-| PV production          | The PV energy sensor; the PV power sensor when no energy sensor is configured                                                                    |
-| House consumption      | The house consumption power sensor, averaged over the cycle. The EV charger power is added when **House power includes EV charger power** is off |
-| Battery charged        | The battery charge/discharge power sensor, averaged over the cycle; the SoC change when it gives no reading                                      |
-| Battery discharged     | The same                                                                                                                                         |
+| Quantity               | Source                                                                                                                                              |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Grid import and export | The grid import and export energy sensors (cumulative meters)                                                                                       |
+| PV production          | The PV energy sensor; the PV power sensor when no energy sensor is configured                                                                       |
+| House consumption      | The house consumption power sensor, averaged over the cycle. The EV charger power is added when **House power includes EV charger power** is off    |
+| Battery charged        | The battery charge/discharge power sensor, averaged over the cycle; the SoC change when it gives no reading                                         |
+| Battery discharged     | The same                                                                                                                                            |
+| AC-side battery flows  | The optional **AC-Side Battery Power Sensor** (`hsem_battery_ac_power_entity`), averaged over the cycle. Only the AC-side round-trip loss uses them |
 
 A reading that is missing is not counted as zero: the quantity is left out
 for that cycle, and a quantity that was never read in a month is `null` in
@@ -1535,12 +1537,12 @@ every day **before the first day it measured itself** (issue #1450).
 
 Hourly statistics are coarser than the live readings:
 
-| Figure          | In a backfilled day                                                                                                                            |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Battery energy  | The net of each hour. Charging and discharging within one hour cancel out, so charged, discharged, cycles and wear cost are a lower bound      |
-| Wear cost       | Priced with today's cycle cost                                                                                                                 |
-| Cycles          | Counted against today's usable capacity                                                                                                        |
-| Round-trip loss | Not computed. A month's loss uses only the days HSEM measured, and is `battery_power_not_measured` for a month that holds only backfilled days |
+| Figure          | In a backfilled day                                                                                                                                                                                                                           |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Battery energy  | The net of each hour. Charging and discharging within one hour cancel out, so charged, discharged, cycles and wear cost are a lower bound                                                                                                     |
+| Wear cost       | Priced with today's cycle cost                                                                                                                                                                                                                |
+| Cycles          | Counted against today's usable capacity                                                                                                                                                                                                       |
+| Round-trip loss | Not computed, on either side. A month's loss uses only the days HSEM measured, and is `battery_power_not_measured` (AC side: `ac_battery_power_not_configured` or `ac_battery_power_no_readings`) for a month that holds only backfilled days |
 
 Backfilled days are marked: each month has `backfilled_days`, and the sensors
 publish `backfilled_days`, `backfilled_from` and `backfilled_until`.
@@ -1607,10 +1609,10 @@ discharge efficiencies.
 
 It is measured **at the battery**. The Huawei battery power is the power at
 the battery terminals, so the loss in the inverter between the battery and
-the AC side is not in it. HSEM has no AC-side battery energy meter to measure
-that with. The configured charge and discharge efficiencies cover the whole
-path, so expect `100 % − charge efficiency × discharge efficiency` to be
-larger than this figure. The difference is the inverter.
+the AC side is not in it. The configured charge and discharge efficiencies
+cover the whole path, so expect `100 % − charge efficiency × discharge
+efficiency` to be larger than this figure. The difference is the inverter,
+and the AC-side figure below measures it when a sensor for it exists.
 
 `Δstored` is the weak term: it values the SoC change at the rated capacity,
 while an aged battery holds less, and what it holds comes out with a loss.
@@ -1628,28 +1630,81 @@ The battery power is sampled once per update cycle. A single day is therefore
 noisy; over a month the errors cancel. That sampling error is not part of the
 published uncertainty.
 
+**Round-trip loss (AC side)**
+
+The same formula, with `charged` and `discharged` taken from the
+**AC-Side Battery Power Sensor** (`hsem_battery_ac_power_entity`, step
+_Energy & ML_) instead of the battery power sensor (issue #1450). That sensor
+measures the battery's flow on the AC side of its inverter, so the conversion
+loss in both directions is in the figure: it is the loss the meter sees, and
+it is larger than the battery-side one. `Δstored`, the two conditions and the
+uncertainty (`ac_round_trip_loss_uncertainty`) are the same.
+
+The sensor is one you pick, so the AC side has two conditions more. The
+battery side does not have them and gives the same values as before:
+
+- The 20 kWh, and five times the rated capacity, must also have been
+  **discharged**. Otherwise the reason is `throughput_below_minimum`.
+- An efficiency of 50 % or less is not published. The reason is
+  `implausible_ratio`.
+
+A sensor that reports the power **without a sign** books everything as charge
+and nothing as discharge. Without these two conditions it would show a loss
+near 100 %.
+
+- The sensor is signed like the battery power sensor: positive while the
+  battery charges, negative while it discharges.
+- It must have a power unit. W, kW and MW are converted. A sensor with
+  another unit (`kVA`, `A`, `kWh`, `%`) or without a unit is not read: its
+  number is not a number of watts. HSEM logs one warning and the reason is
+  `ac_battery_power_unit_not_power`.
+- A state last reported more than 10 minutes ago (or two update intervals, if
+  that is longer) is not read: the sensor stopped, and its last value is not
+  a constant power. A sensor that only reports when its value changes is
+  therefore left out while the battery holds one power for that long.
+- It must measure the battery **alone**. An AC-coupled battery inverter, or a
+  meter on the battery inverter's AC output, gives that.
+- A Huawei hybrid inverter (SUN2000 with a LUNA2000) is DC-coupled: PV
+  charges the battery without passing the AC side, and
+  `sensor.inverter_active_power` is PV and battery together. There is no
+  entity to pick on such an installation. Leave the field empty.
+- Without the sensor the state is `unknown` with the reason
+  `ac_battery_power_not_configured`. With a sensor that gave no usable
+  readings in the month it is `ac_battery_power_no_readings`, and with
+  readings but no SoC or rated capacity `ac_soc_or_capacity_missing`. The
+  battery-side sensor is not affected.
+- Only cycles with a reading of the AC-side sensor and a SoC count. The two
+  sensors are measured independently, so a month can have one figure and not
+  the other.
+- The figure starts when the sensor is configured. Earlier days are not
+  filled in.
+
 ### When a value is unknown
 
 The state is `unknown` and the `reason` attribute says why:
 
-| `reason`                     | Applies to                | Meaning                                                                                                     |
-| ---------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `no_data`                    | all                       | Nothing has been recorded in the month                                                                      |
-| `consumption_not_measured`   | Self-sufficiency          | The house consumption power sensor gave no readings                                                         |
-| `consumption_below_minimum`  | Self-sufficiency          | Less than 1 kWh of house consumption recorded                                                               |
-| `import_exceeds_consumption` | Self-sufficiency          | More was imported than the house consumption and the battery charge explain                                 |
-| `battery_not_measured`       | Battery cycles, wear cost | Neither the battery power nor the SoC gave readings                                                         |
-| `cycle_cost_unknown`         | Battery wear cost         | No cycle cost could be worked out for the battery throughput                                                |
-| `grid_import_not_measured`   | Self-sufficiency          | No grid import energy sensor is configured, or it gave no readings                                          |
-| `capacity_unknown`           | Battery cycles            | The usable battery capacity has not been read                                                               |
-| `battery_power_not_measured` | Round-trip loss           | The battery power sensor gave no readings. Cycles and wear cost are then derived from the SoC               |
-| `throughput_below_minimum`   | Round-trip loss           | Less than 20 kWh, or less than five times the rated capacity, was charged                                   |
-| `soc_change_too_large`       | Round-trip loss           | The SoC change is more than a tenth of the energy charged, so its error would dominate                      |
-| `implausible_ratio`          | Round-trip loss           | More came out than went in, or nothing at all: the battery power readings and the SoC contradict each other |
+| `reason`                          | Applies to                  | Meaning                                                                                                                                               |
+| --------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `no_data`                         | all                         | Nothing has been recorded in the month                                                                                                                |
+| `consumption_not_measured`        | Self-sufficiency            | The house consumption power sensor gave no readings                                                                                                   |
+| `consumption_below_minimum`       | Self-sufficiency            | Less than 1 kWh of house consumption recorded                                                                                                         |
+| `import_exceeds_consumption`      | Self-sufficiency            | More was imported than the house consumption and the battery charge explain                                                                           |
+| `battery_not_measured`            | Battery cycles, wear cost   | Neither the battery power nor the SoC gave readings                                                                                                   |
+| `cycle_cost_unknown`              | Battery wear cost           | No cycle cost could be worked out for the battery throughput                                                                                          |
+| `grid_import_not_measured`        | Self-sufficiency            | No grid import energy sensor is configured, or it gave no readings                                                                                    |
+| `capacity_unknown`                | Battery cycles              | The usable battery capacity has not been read                                                                                                         |
+| `battery_power_not_measured`      | Round-trip loss             | The battery power sensor gave no readings. Cycles and wear cost are then derived from the SoC                                                         |
+| `ac_battery_power_not_configured` | AC-side round-trip loss     | No AC-side battery power sensor is configured                                                                                                         |
+| `ac_battery_power_unit_not_power` | AC-side round-trip loss     | The configured sensor has no power unit, and gave no usable readings in the month                                                                     |
+| `ac_battery_power_no_readings`    | AC-side round-trip loss     | The configured sensor gave no usable readings in the month: missing, not numeric or not reported for too long                                         |
+| `ac_soc_or_capacity_missing`      | AC-side round-trip loss     | The sensor gave readings, but never together with a SoC and a rated capacity                                                                          |
+| `throughput_below_minimum`        | Round-trip loss, both sides | Less than 20 kWh, or less than five times the rated capacity, was charged. AC side: or discharged                                                     |
+| `soc_change_too_large`            | Round-trip loss, both sides | The SoC change is more than a tenth of the energy charged, so its error would dominate                                                                |
+| `implausible_ratio`               | Round-trip loss, both sides | More came out than went in, or nothing at all: the battery power readings and the SoC contradict each other. AC side: also when half or less came out |
 
 ### Attributes
 
-All four sensors publish the same attributes:
+All five sensors publish the same attributes:
 
 | Attribute          | Description                                                                                   |
 | ------------------ | --------------------------------------------------------------------------------------------- |
@@ -1664,18 +1719,21 @@ All four sensors publish the same attributes:
 
 Each month is a dict:
 
-| Key                                                                                  | Description                                              |
-| ------------------------------------------------------------------------------------ | -------------------------------------------------------- |
-| `month`, `days`, `observed_hours`                                                    | The month, the days with a record and the hours observed |
-| `backfilled_days`                                                                    | How many of those days come from long-term statistics    |
-| `house_consumption_kwh`, `grid_import_kwh`, `grid_export_kwh`, `pv_kwh`              | Energy totals, `null` when never measured in the month   |
-| `battery_charged_kwh`, `battery_discharged_kwh`                                      | Battery energy totals, `null` when never measured        |
-| `self_sufficiency`, `self_sufficiency_reason`                                        | Self-sufficiency in %, or why it is unknown              |
-| `battery_cycles`, `battery_cycles_reason`, `usable_capacity_kwh`                     | Full equivalent cycles and the capacity they refer to    |
-| `battery_wear_cost`, `battery_wear_cost_reason`                                      | Wear cost in the local currency                          |
-| `round_trip_loss`, `round_trip_efficiency`, `round_trip_loss_reason`                 | Battery-side loss and efficiency in %                    |
-| `round_trip_loss_uncertainty`                                                        | How far off the loss may be, in percentage points        |
-| `round_trip_charged_kwh`, `round_trip_discharged_kwh`, `round_trip_stored_delta_kwh` | The measured sums behind the round-trip loss             |
+| Key                                                                                           | Description                                               |
+| --------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `month`, `days`, `observed_hours`                                                             | The month, the days with a record and the hours observed  |
+| `backfilled_days`                                                                             | How many of those days come from long-term statistics     |
+| `house_consumption_kwh`, `grid_import_kwh`, `grid_export_kwh`, `pv_kwh`                       | Energy totals, `null` when never measured in the month    |
+| `battery_charged_kwh`, `battery_discharged_kwh`                                               | Battery energy totals, `null` when never measured         |
+| `self_sufficiency`, `self_sufficiency_reason`                                                 | Self-sufficiency in %, or why it is unknown               |
+| `battery_cycles`, `battery_cycles_reason`, `usable_capacity_kwh`                              | Full equivalent cycles and the capacity they refer to     |
+| `battery_wear_cost`, `battery_wear_cost_reason`                                               | Wear cost in the local currency                           |
+| `round_trip_loss`, `round_trip_efficiency`, `round_trip_loss_reason`                          | Battery-side loss and efficiency in %                     |
+| `round_trip_loss_uncertainty`                                                                 | How far off the loss may be, in percentage points         |
+| `round_trip_charged_kwh`, `round_trip_discharged_kwh`, `round_trip_stored_delta_kwh`          | The measured sums behind the round-trip loss              |
+| `ac_round_trip_loss`, `ac_round_trip_efficiency`, `ac_round_trip_loss_reason`                 | AC-side loss and efficiency in %                          |
+| `ac_round_trip_loss_uncertainty`                                                              | How far off the AC-side loss may be, in percentage points |
+| `ac_round_trip_charged_kwh`, `ac_round_trip_discharged_kwh`, `ac_round_trip_stored_delta_kwh` | The measured sums behind the AC-side loss                 |
 
 **Template example:**
 
@@ -1711,54 +1769,55 @@ Detects when the inverter is actively curtailing PV production.
 
 ## Diagnostic sensors
 
-| Entity                                           | Display Name                        | Purpose                                                          | State / Value                           |
-| ------------------------------------------------ | ----------------------------------- | ---------------------------------------------------------------- | --------------------------------------- |
-| `sensor.hsem_applier_status_sensor`              | Inverter Apply Status               | Hardware write success/failure                                   | `ok`, `unverified`, `failed`, `skipped` |
-| `sensor.hsem_battery_soc_sensor`                 | Battery State of Charge             | Battery SoC snapshot                                             | Percentage (0–100)                      |
-| `sensor.daily_plan_vs_actual`                    | Daily Plan vs Actual                | Daily energy plan-vs-actual tracking                             | Dict with cumulative metrics            |
-| `sensor.hsem_degraded_mode_sensor`               | System Health                       | Overall system health                                            | `ok`, `degraded`, `error`               |
-| `sensor.hsem_ev_charger_calculated_power`        | EV Charger Calculated Power         | Planner target power for primary EV charger                      | Watts (W)                               |
-| `sensor.hsem_ev_second_charger_calculated_power` | EV 2 Charger Calculated Power       | Planner target power for second EV charger                       | Watts (W)                               |
-| `sensor.hsem_ev_charger_current_limit`           | EV Charger Current Limit            | Planner charging ceiling for primary EV charger                  | Amps (A)                                |
-| `sensor.hsem_ev_second_charger_current_limit`    | EV 2 Charger Current Limit          | Planner charging ceiling for second EV charger                   | Amps (A)                                |
-| `sensor.hsem_ev_charging_sensor`                 | EV Charging Active                  | Any EV actively charging                                         | `on`, `off`                             |
-| `sensor.hsem_ev_optimal_charging_plan`           | EV Optimal Charging Plan            | Primary EV plan state                                            | `charging`, `waiting`, etc.             |
-| `sensor.hsem_ev_second_optimal_charging_plan`    | EV Second Optimal Charging Plan     | Second EV plan state                                             | `charging`, `waiting`, etc.             |
-| `sensor.hsem_force_mode_sensor`                  | Force Working Mode                  | Override active indicator                                        | `auto` or override mode name            |
-| `sensor.hsem_solar_confidence_sensor`            | Solar Forecast Confidence           | Per-hour PV forecast accuracy factors                            | Mean factor (ratio)                     |
-| `sensor.hsem_hardware_writes_sensor`             | Hardware Writes                     | Writes allowed/blocked by safety gate                            | `allowed`, `blocked`                    |
-| `sensor.hsem_read_only_sensor`                   | Read-Only Mode                      | Read-only mode indicator                                         | `on`, `off`                             |
-| `sensor.hsem_net_consumption_sensor`             | Net Consumption                     | Net load (house minus solar)                                     | Watts (W)                               |
-| `sensor.hsem_last_updated_sensor`                | Last Updated                        | Last coordinator cycle timestamp                                 | ISO-8601 timestamp                      |
-| `sensor.hsem_next_update_sensor`                 | Next Update                         | Next scheduled coordinator cycle                                 | ISO-8601 timestamp                      |
-| `sensor.hsem_missing_entities_sensor`            | Missing Input Entities              | Count of missing input entities                                  | Integer                                 |
-| `sensor.hsem_plan_explanation_sensor`            | Plan Explanation                    | Planner strategy and cost breakdown                              | Winning candidate name                  |
-| `sensor.hsem_prediction_accuracy_sensor`         | Prediction Accuracy                 | Multi-horizon forecast accuracy                                  | `soc_mae_7d`                            |
-| `sensor.hsem_forecast_accuracy_sensor`           | Forecast Accuracy                   | PV and load forecast MAE                                         | kWh                                     |
-| `sensor.hsem_recommendation_interval_sensor`     | Recommendation Interval             | Slot width and horizon info                                      | Minutes                                 |
-| `sensor.hsem_update_interval_sensor`             | Update Interval                     | Current polling interval                                         | Minutes                                 |
-| `sensor.hsem_workingmode_sensor`                 | Working Mode                        | Active battery recommendation                                    | Working mode state                      |
-| `sensor.hsem_export_income`                      | Export Income                       | Cumulative export revenue                                        | Monetary (total)                        |
-| `sensor.hsem_import_cost`                        | Import Cost                         | Cumulative import cost                                           | Monetary (total)                        |
-| `sensor.hsem_net_grid_balance`                   | Net Grid Balance                    | Export income minus import cost                                  | Monetary (total)                        |
-| `sensor.hsem_effective_discharge_floor_sensor`   | Effective Discharge Floor           | Current effective floor SoC                                      | Percentage                              |
-| `sensor.hsem_battery_efficiency_sensor`          | Battery Efficiency                  | Measured round trip, apparent efficiency per power step          | Percentage                              |
-| `sensor.hsem_ocpp_charger_status_sensor`         | OCPP Charger Status                 | Charger connection/charging state                                | String                                  |
-| `sensor.hsem_ocpp_charger_power_sensor`          | OCPP Charger Power                  | Live charging power                                              | kW                                      |
-| `sensor.hsem_ocpp_charger_info_sensor`           | OCPP Charger Info                   | Vendor, model, firmware, serial                                  | String                                  |
-| `sensor.hsem_ocpp_charger_sessions_sensor`       | OCPP Charger Sessions               | Completed session log                                            | Integer                                 |
-| `sensor.hsem_savings_tracker_sensor`             | Savings Tracker                     | Actual vs missed savings (90-day)                                | Monetary                                |
-| `sensor.hsem_performance_savings_capture`        | Performance: Savings Capture        | Share of the achievable savings achieved (24 h)                  | Percentage                              |
-| `sensor.hsem_performance_actual_benefit`         | Performance: Actual Benefit         | Benefit over plain self-consumption (24 h)                       | Local currency                          |
-| `sensor.hsem_performance_missed_opportunity`     | Performance: Missed Opportunity     | What perfect hindsight would have added (24 h)                   | Local currency                          |
-| `sensor.hsem_performance_battery_utilisation`    | Performance: Battery Utilisation    | Potential not lost through battery dispatch                      | Percentage                              |
-| `sensor.hsem_performance_solar_utilisation`      | Performance: Solar Utilisation      | Potential not lost through PV surplus handling                   | Percentage                              |
-| `sensor.hsem_performance_ev_charging_efficiency` | Performance: EV Charging Efficiency | Realized share of the best EV charging timing (EV planning only) | Percentage                              |
-| `sensor.hsem_monthly_self_sufficiency`           | Monthly Self-Sufficiency            | Share of the house consumption not imported, this month          | Percentage                              |
-| `sensor.hsem_monthly_battery_cycles`             | Monthly Battery Cycles              | Full equivalent battery cycles, this month                       | Cycles                                  |
-| `sensor.hsem_monthly_battery_wear_cost`          | Monthly Battery Wear Cost           | Cycle cost of the battery throughput, this month                 | Local currency                          |
-| `sensor.hsem_monthly_round_trip_loss`            | Monthly Round-Trip Loss             | Measured battery round-trip loss, this month                     | Percentage                              |
-| `sensor.hsem_pv_curtailment_sensor`              | PV Curtailment                      | PV curtailment detection                                         | `curtailed` / `normal`                  |
+| Entity                                           | Display Name                         | Purpose                                                                                     | State / Value                           |
+| ------------------------------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `sensor.hsem_applier_status_sensor`              | Inverter Apply Status                | Hardware write success/failure                                                              | `ok`, `unverified`, `failed`, `skipped` |
+| `sensor.hsem_battery_soc_sensor`                 | Battery State of Charge              | Battery SoC snapshot                                                                        | Percentage (0–100)                      |
+| `sensor.daily_plan_vs_actual`                    | Daily Plan vs Actual                 | Daily energy plan-vs-actual tracking                                                        | Dict with cumulative metrics            |
+| `sensor.hsem_degraded_mode_sensor`               | System Health                        | Overall system health                                                                       | `ok`, `degraded`, `error`               |
+| `sensor.hsem_ev_charger_calculated_power`        | EV Charger Calculated Power          | Planner target power for primary EV charger                                                 | Watts (W)                               |
+| `sensor.hsem_ev_second_charger_calculated_power` | EV 2 Charger Calculated Power        | Planner target power for second EV charger                                                  | Watts (W)                               |
+| `sensor.hsem_ev_charger_current_limit`           | EV Charger Current Limit             | Planner charging ceiling for primary EV charger                                             | Amps (A)                                |
+| `sensor.hsem_ev_second_charger_current_limit`    | EV 2 Charger Current Limit           | Planner charging ceiling for second EV charger                                              | Amps (A)                                |
+| `sensor.hsem_ev_charging_sensor`                 | EV Charging Active                   | Any EV actively charging                                                                    | `on`, `off`                             |
+| `sensor.hsem_ev_optimal_charging_plan`           | EV Optimal Charging Plan             | Primary EV plan state                                                                       | `charging`, `waiting`, etc.             |
+| `sensor.hsem_ev_second_optimal_charging_plan`    | EV Second Optimal Charging Plan      | Second EV plan state                                                                        | `charging`, `waiting`, etc.             |
+| `sensor.hsem_force_mode_sensor`                  | Force Working Mode                   | Override active indicator                                                                   | `auto` or override mode name            |
+| `sensor.hsem_solar_confidence_sensor`            | Solar Forecast Confidence            | Per-hour PV forecast accuracy factors                                                       | Mean factor (ratio)                     |
+| `sensor.hsem_hardware_writes_sensor`             | Hardware Writes                      | Writes allowed/blocked by safety gate                                                       | `allowed`, `blocked`                    |
+| `sensor.hsem_read_only_sensor`                   | Read-Only Mode                       | Read-only mode indicator                                                                    | `on`, `off`                             |
+| `sensor.hsem_net_consumption_sensor`             | Net Consumption                      | Net load (house minus solar)                                                                | Watts (W)                               |
+| `sensor.hsem_last_updated_sensor`                | Last Updated                         | Last coordinator cycle timestamp                                                            | ISO-8601 timestamp                      |
+| `sensor.hsem_next_update_sensor`                 | Next Update                          | Next scheduled coordinator cycle                                                            | ISO-8601 timestamp                      |
+| `sensor.hsem_missing_entities_sensor`            | Missing Input Entities               | Count of missing input entities                                                             | Integer                                 |
+| `sensor.hsem_plan_explanation_sensor`            | Plan Explanation                     | Planner strategy and cost breakdown                                                         | Winning candidate name                  |
+| `sensor.hsem_prediction_accuracy_sensor`         | Prediction Accuracy                  | Multi-horizon forecast accuracy                                                             | `soc_mae_7d`                            |
+| `sensor.hsem_forecast_accuracy_sensor`           | Forecast Accuracy                    | PV and load forecast MAE                                                                    | kWh                                     |
+| `sensor.hsem_recommendation_interval_sensor`     | Recommendation Interval              | Slot width and horizon info                                                                 | Minutes                                 |
+| `sensor.hsem_update_interval_sensor`             | Update Interval                      | Current polling interval                                                                    | Minutes                                 |
+| `sensor.hsem_workingmode_sensor`                 | Working Mode                         | Active battery recommendation                                                               | Working mode state                      |
+| `sensor.hsem_export_income`                      | Export Income                        | Cumulative export revenue                                                                   | Monetary (total)                        |
+| `sensor.hsem_import_cost`                        | Import Cost                          | Cumulative import cost                                                                      | Monetary (total)                        |
+| `sensor.hsem_net_grid_balance`                   | Net Grid Balance                     | Export income minus import cost                                                             | Monetary (total)                        |
+| `sensor.hsem_effective_discharge_floor_sensor`   | Effective Discharge Floor            | Current effective floor SoC                                                                 | Percentage                              |
+| `sensor.hsem_battery_efficiency_sensor`          | Battery Efficiency                   | Measured round trip, apparent efficiency per power step                                     | Percentage                              |
+| `sensor.hsem_ocpp_charger_status_sensor`         | OCPP Charger Status                  | Charger connection/charging state                                                           | String                                  |
+| `sensor.hsem_ocpp_charger_power_sensor`          | OCPP Charger Power                   | Live charging power                                                                         | kW                                      |
+| `sensor.hsem_ocpp_charger_info_sensor`           | OCPP Charger Info                    | Vendor, model, firmware, serial                                                             | String                                  |
+| `sensor.hsem_ocpp_charger_sessions_sensor`       | OCPP Charger Sessions                | Completed session log                                                                       | Integer                                 |
+| `sensor.hsem_savings_tracker_sensor`             | Savings Tracker                      | Actual vs missed savings (90-day)                                                           | Monetary                                |
+| `sensor.hsem_performance_savings_capture`        | Performance: Savings Capture         | Share of the achievable savings achieved (24 h)                                             | Percentage                              |
+| `sensor.hsem_performance_actual_benefit`         | Performance: Actual Benefit          | Benefit over plain self-consumption (24 h)                                                  | Local currency                          |
+| `sensor.hsem_performance_missed_opportunity`     | Performance: Missed Opportunity      | What perfect hindsight would have added (24 h)                                              | Local currency                          |
+| `sensor.hsem_performance_battery_utilisation`    | Performance: Battery Utilisation     | Potential not lost through battery dispatch                                                 | Percentage                              |
+| `sensor.hsem_performance_solar_utilisation`      | Performance: Solar Utilisation       | Potential not lost through PV surplus handling                                              | Percentage                              |
+| `sensor.hsem_performance_ev_charging_efficiency` | Performance: EV Charging Efficiency  | Realized share of the best EV charging timing (EV planning only)                            | Percentage                              |
+| `sensor.hsem_monthly_self_sufficiency`           | Monthly Self-Sufficiency             | Share of the house consumption not imported, this month                                     | Percentage                              |
+| `sensor.hsem_monthly_battery_cycles`             | Monthly Battery Cycles               | Full equivalent battery cycles, this month                                                  | Cycles                                  |
+| `sensor.hsem_monthly_battery_wear_cost`          | Monthly Battery Wear Cost            | Cycle cost of the battery throughput, this month                                            | Local currency                          |
+| `sensor.hsem_monthly_round_trip_loss`            | Monthly Battery-Side Round-Trip Loss | Round-trip loss measured at the battery, this month                                         | Percentage                              |
+| `sensor.hsem_monthly_ac_round_trip_loss`         | Monthly AC-Side Round-Trip Loss      | Round-trip loss measured on the AC side, this month (needs an AC-side battery power sensor) | Percentage                              |
+| `sensor.hsem_pv_curtailment_sensor`              | PV Curtailment                       | PV curtailment detection                                                                    | `curtailed` / `normal`                  |
 
 ---
 

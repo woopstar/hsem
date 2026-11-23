@@ -157,3 +157,13 @@ def test_each_tracked_entity_is_reported_under_its_config_key() -> None:
 
     assert keys[_ENTITY_ID] == _CONFIG_KEY
     assert keys["sensor.ml_energy"] == "hsem_ml_consumption_energy_entity"
+
+
+def test_the_ac_side_battery_power_sensor_is_tracked_when_configured() -> None:
+    """Its outages are logged like those of the energy meters (issue #1450)."""
+    cfg = SensorConfig(battery_ac_power_entity="sensor.battery_ac_power")
+
+    keys = {ref.entity_id: ref.config_key for ref in configured_entity_references(cfg)}
+
+    assert keys == {"sensor.battery_ac_power": "hsem_battery_ac_power_entity"}
+    assert configured_entity_references(SensorConfig()) == ()

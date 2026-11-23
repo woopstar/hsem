@@ -604,6 +604,9 @@ def build_sensor_config(
     cfg.pv_energy_entity = optional_entity_id(
         get_config_value(config_entry, "hsem_pv_energy_entity")
     )
+    cfg.battery_ac_power_entity = optional_entity_id(
+        get_config_value(config_entry, "hsem_battery_ac_power_entity")
+    )
 
     # ML consumption prediction — toggle and settings
     cfg.ml_consumption_enabled = bool(

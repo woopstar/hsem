@@ -9,6 +9,7 @@ from custom_components.hsem.utils.metering import (
     METER_STEP_KWH,
     mean_power_kwh,
     meter_delta,
+    signed_power_kwh,
 )
 
 
@@ -44,3 +45,22 @@ class TestMeanPowerKwh:
         self, before: float | None, after: float | None
     ) -> None:
         assert mean_power_kwh(before, after, 0.5) is None
+
+
+class TestSignedPowerKwh:
+    def test_each_direction_is_averaged_on_its_own(self) -> None:
+        flows = signed_power_kwh(2000.0, -3000.0, 0.1)
+
+        assert flows == (pytest.approx(0.1), pytest.approx(0.15))
+
+    def test_one_direction_leaves_the_other_at_zero(self) -> None:
+        assert signed_power_kwh(1000.0, 3000.0, 0.5) == (
+            pytest.approx(1.0),
+            pytest.approx(0.0),
+        )
+
+    @pytest.mark.parametrize(("before", "after"), [(None, 1.0), (1.0, None)])
+    def test_a_missing_reading_is_unknown(
+        self, before: float | None, after: float | None
+    ) -> None:
+        assert signed_power_kwh(before, after, 0.5) is None

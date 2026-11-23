@@ -2,8 +2,8 @@
 
 Display names for these sensors come from Home Assistant's translation
 system (``_attr_translation_key`` + ``translations/*.json``), not from
-functions in this module.  Every sensor shares the ``monthly`` prefix so the
-four sort next to each other.
+functions in this module.  Every sensor shares the ``monthly`` prefix so they
+sort next to each other.
 """
 
 from homeassistant.util import slugify as s
@@ -101,3 +101,26 @@ def get_monthly_round_trip_loss_entity_id() -> str:
 
     """
     return f"sensor.{s(f'{DOMAIN}_monthly_round_trip_loss')}"
+
+
+def get_monthly_ac_round_trip_loss_unique_id(entry_id: str) -> str:
+    """Generate a unique ID for the monthly AC-side round-trip-loss sensor.
+
+    Args:
+        entry_id (str): The config entry ID for uniqueness across entries.
+
+    Returns:
+        str: Unique ID of the monthly AC-side round-trip-loss sensor.
+
+    """
+    return f"{DOMAIN}_{entry_id}_monthly_ac_round_trip_loss_sensor"
+
+
+def get_monthly_ac_round_trip_loss_entity_id() -> str:
+    """Generate an Entity ID for the monthly AC-side round-trip-loss sensor.
+
+    Returns:
+        str: Entity ID of the monthly AC-side round-trip-loss sensor.
+
+    """
+    return f"sensor.{s(f'{DOMAIN}_monthly_ac_round_trip_loss')}"
