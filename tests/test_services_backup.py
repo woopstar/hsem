@@ -923,9 +923,9 @@ IMPORT_PRICE_KEY = "hsem_import_electricity_price_sensor"
 EXPORT_PRICE_KEY = "hsem_export_electricity_price_sensor"
 
 #: The price source of an HSEM that runs with the default price sensors.
-PRICE_SOURCE = {
-    "import_entity": DEFAULT_CONFIG_VALUES[IMPORT_PRICE_KEY],
-    "export_entity": DEFAULT_CONFIG_VALUES[EXPORT_PRICE_KEY],
+PRICE_SOURCE: dict[str, str] = {
+    "import_entity": str(DEFAULT_CONFIG_VALUES[IMPORT_PRICE_KEY]),
+    "export_entity": str(DEFAULT_CONFIG_VALUES[EXPORT_PRICE_KEY]),
     "import_unit": "DKK/kWh",
     "export_unit": "DKK/kWh",
 }
