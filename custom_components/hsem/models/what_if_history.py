@@ -56,6 +56,26 @@ _SERIES: tuple[str, ...] = (
 )
 
 
+def _close(
+    first: Sequence[float | None], second: Sequence[float | None], digits: int
+) -> bool:
+    """Return whether two series agree at the resolution of the history file.
+
+    Args:
+        first: One series.
+        second: The other series.
+        digits: Decimals the history file keeps of the series.  Rounding moves
+            a value by at most half a unit of the last decimal, so two values
+            closer than one unit are the same reading.
+    """
+    tolerance = 10.0**-digits
+    return len(first) == len(second) and all(
+        (a is None and b is None)
+        or (a is not None and b is not None and abs(a - b) < tolerance)
+        for a, b in zip(first, second, strict=True)
+    )
+
+
 def _floats(raw: Any, count: int) -> tuple[float, ...] | None:
     """Return *raw* as *count* finite floats, or ``None`` when it is not that."""
     if not isinstance(raw, list) or len(raw) != count:
@@ -134,6 +154,43 @@ class RecordedDay:
             import_price=tuple(slot.import_price for slot in slots),
             export_price=tuple(slot.export_price for slot in slots),
             pv_kwh=tuple(slot.pv_kwh for slot in slots),
+        )
+
+    def matches(self, other: RecordedDay | None) -> bool:
+        """Return whether *other* holds the same readings as this day.
+
+        Compared at the resolution of the history file, so a day read back
+        from disk, which is rounded, matches the unrounded day it was written
+        from (issue #1454).
+
+        Args:
+            other: The day to compare with, ``None`` for no day.
+        """
+        return (
+            other is not None
+            and self.day == other.day
+            and self.start == other.start
+            and self.slot_minutes == other.slot_minutes
+            and _close(
+                (self.rated_kwh, *self.soc_pct, *self.pv_kwh),
+                (other.rated_kwh, *other.soc_pct, *other.pv_kwh),
+                _ENERGY_DIGITS,
+            )
+            and _close(
+                (self.charge_efficiency, self.discharge_efficiency),
+                (other.charge_efficiency, other.discharge_efficiency),
+                _EFFICIENCY_DIGITS,
+            )
+            and _close(
+                (*self.grid_import_kwh, *self.grid_export_kwh),
+                (*other.grid_import_kwh, *other.grid_export_kwh),
+                _ENERGY_DIGITS,
+            )
+            and _close(
+                (*self.import_price, *self.export_price),
+                (*other.import_price, *other.export_price),
+                _PRICE_DIGITS,
+            )
         )
 
     def performance_slots(self) -> list[PerformanceSlot]:
