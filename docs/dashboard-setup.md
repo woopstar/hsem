@@ -1757,7 +1757,7 @@ views:
               {%- set s = 'sensor.hsem_monthly_self_sufficiency' -%}
               {%- set why = {
                 'no_data': 'nothing has been recorded this month yet.',
-                'consumption_not_measured': 'the house consumption power sensor gave no readings.',
+                'consumption_not_measured': 'the house consumption power sensor gave no readings, or its unit is not a power unit.',
                 'consumption_below_minimum': 'the house consumption recorded so far is too small for a share.',
                 'import_exceeds_consumption': 'more was imported than the house consumption and the battery charging can explain. Check whether the house power sensor leaves out a load, such as an EV charger.',
                 'battery_not_measured': 'neither the battery power nor the SoC gave readings.',
