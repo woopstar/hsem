@@ -1496,8 +1496,14 @@ every day **before the first day it measured itself** (issue #1450).
 - Statistics are read in W and kWh, whatever unit the sensor has today.
 - A quantity whose sensor has no statistics is left out. The month shows it as
   `null`, as for a month HSEM measured without it.
-- A sensor without a numeric state is not read. HSEM waits up to 15 minutes
-  for every configured source to report, then runs with the ones that do.
+- The backfill runs only when every configured sensor has a numeric state. A
+  day is filled once, so a sensor read later could not be added. HSEM looks
+  every cycle for 15 minutes, then once per hour, and names the missing
+  sensors once in the log at info level. A sensor that is not configured does
+  not hold the backfill back.
+- An hour above 50 kWh (50 kW, the limit of the live readings) is dropped as a
+  meter glitch: a meter that reported 0 and came back makes the statistics
+  jump by the whole meter reading. The number of dropped values is logged.
 - With **House power includes EV charger power** off, an hour of house
   consumption counts only when every configured EV charger has statistics for
   it too.

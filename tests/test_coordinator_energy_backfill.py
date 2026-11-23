@@ -294,29 +294,124 @@ class TestSourcesWithoutAState:
         assert tracker.daily_log["2026-06-08"].house_hours == pytest.approx(2.0)
 
     @pytest.mark.asyncio
-    async def test_after_the_wait_a_source_without_a_state_is_skipped(
+    async def test_after_the_wait_a_missing_source_keeps_the_backfill_open(
         self, statistics: _Statistics, caplog: pytest.LogCaptureFixture
     ) -> None:
         tracker = _tracker()
         hass = _hass(sensor__house_power="unavailable", sensor__grid_import=None)
         await async_backfill_energy_history(hass, tracker, _NOW, _cfg(), _SITE)
+        after_wait = _NOW + timedelta(seconds=SOURCE_GRACE_S)
 
         with caplog.at_level(logging.INFO, logger="custom_components.hsem"):
             ran = await async_backfill_energy_history(
-                hass, tracker, _NOW + timedelta(seconds=SOURCE_GRACE_S), _cfg(), _SITE
+                hass, tracker, after_wait, _cfg(), _SITE
+            )
+
+        assert ran is False
+        assert tracker.backfill_complete is False
+        assert tracker.daily_log == {}
+        assert statistics.calls == []
+        assert f"waiting for a state from {_HOUSE}, {_IMPORT}" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_after_the_wait_it_looks_once_per_hour_and_logs_once(
+        self, statistics: _Statistics, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        tracker = _tracker()
+        missing = _hass(sensor__house_power=None)
+        await async_backfill_energy_history(missing, tracker, _NOW, _cfg(), _SITE)
+        after_wait = _NOW + timedelta(seconds=SOURCE_GRACE_S)
+
+        with caplog.at_level(logging.INFO, logger="custom_components.hsem"):
+            await async_backfill_energy_history(
+                missing, tracker, after_wait, _cfg(), _SITE
+            )
+            # The source is back, but the next look is an hour away.
+            too_soon = await async_backfill_energy_history(
+                _hass(),
+                tracker,
+                after_wait + timedelta(seconds=RETRY_INTERVAL_S - 1),
+                _cfg(),
+                _SITE,
+            )
+            still_missing = await async_backfill_energy_history(
+                missing,
+                tracker,
+                after_wait + timedelta(seconds=RETRY_INTERVAL_S),
+                _cfg(),
+                _SITE,
+            )
+
+        assert (too_soon, still_missing) == (False, False)
+        assert tracker.backfill_complete is False
+        assert statistics.calls == []
+        assert caplog.text.count("waiting for a state from") == 1
+
+        ran = await async_backfill_energy_history(
+            _hass(),
+            tracker,
+            after_wait + timedelta(seconds=2 * RETRY_INTERVAL_S),
+            _cfg(),
+            _SITE,
+        )
+
+        assert ran is True
+        assert tracker.backfill_complete is True
+        assert tracker.daily_log["2026-06-08"].house_hours == pytest.approx(2.0)
+        assert backfill._attempts == {}
+
+    @pytest.mark.asyncio
+    async def test_a_source_that_is_not_configured_does_not_hold_it_back(
+        self, statistics: _Statistics
+    ) -> None:
+        tracker = _tracker()
+        cfg = _cfg(grid_import_energy_entity=None)
+
+        ran = await async_backfill_energy_history(
+            _hass(sensor__grid_import=None), tracker, _NOW, cfg, _SITE
+        )
+
+        assert ran is True
+        assert tracker.backfill_complete is True
+        assert tracker.daily_log["2026-06-08"].grid_import_hours == pytest.approx(0.0)
+        assert _IMPORT not in {entity_id for _kind, entity_id, *_ in statistics.calls}
+
+    @pytest.mark.asyncio
+    async def test_overlapping_cycles_close_the_backfill_once(
+        self, statistics: _Statistics
+    ) -> None:
+        tracker = _tracker()
+
+        async def overlapping(*_args: Any, **_kwargs: Any) -> dict[datetime, float]:
+            # Another cycle finished this backfill while the read was awaited.
+            backfill._attempts.pop(tracker.history_file, None)
+            return {}
+
+        with patch(f"{_READER}.read_hourly_mean", overlapping):
+            ran = await async_backfill_energy_history(
+                _hass(), tracker, _NOW, _cfg(), _SITE
             )
 
         assert ran is True
+        assert backfill._attempts == {}
+
+
+class TestMeterGlitches:
+    @pytest.mark.asyncio
+    async def test_a_meter_that_reset_and_came_back_adds_no_energy(
+        self, statistics: _Statistics, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # The meter reported 0 and returned: the sum jumps by its reading.
+        statistics.energy[_IMPORT] = {_H0: 0.5, _H0 + _HOUR: 48123.4}
+        tracker = _tracker()
+
+        with caplog.at_level(logging.INFO, logger="custom_components.hsem"):
+            await async_backfill_energy_history(_hass(), tracker, _NOW, _cfg(), _SITE)
+
         day = tracker.daily_log["2026-06-08"]
-        assert day.house_hours == pytest.approx(0.0)
-        assert day.grid_import_hours == pytest.approx(0.0)
-        assert day.pv_hours == pytest.approx(2.0)
-        read = {entity_id for _kind, entity_id, *_ in statistics.calls}
-        assert read == {_PV_POWER, _PV_ENERGY, _EXPORT, _BATTERY}
-        assert f"{_HOUSE}, {_IMPORT}" in caplog.text
-        summary = tracker.month_summary("2026-06")
-        assert summary["house_consumption_kwh"] is None
-        assert summary["grid_import_kwh"] is None
+        assert day.grid_import_kwh == pytest.approx(0.5)
+        assert day.grid_import_hours == pytest.approx(1.0)
+        assert "1 hourly values above 50 kWh dropped" in caplog.text
 
 
 class TestEvChargers:
@@ -352,7 +447,7 @@ class TestEvChargers:
         assert _EV not in {entity_id for _kind, entity_id, *_ in statistics.calls}
 
     @pytest.mark.asyncio
-    async def test_a_charger_without_a_state_leaves_the_consumption_out(
+    async def test_a_charger_without_a_state_keeps_the_backfill_open(
         self, statistics: _Statistics
     ) -> None:
         tracker = _tracker()
@@ -363,12 +458,13 @@ class TestEvChargers:
         hass = _hass()
         await async_backfill_energy_history(hass, tracker, _NOW, cfg, _SITE)
 
-        await async_backfill_energy_history(
+        ran = await async_backfill_energy_history(
             hass, tracker, _NOW + timedelta(seconds=SOURCE_GRACE_S), cfg, _SITE
         )
 
-        assert tracker.daily_log["2026-06-08"].house_hours == pytest.approx(0.0)
-        assert _HOUSE not in {entity_id for _kind, entity_id, *_ in statistics.calls}
+        assert ran is False
+        assert tracker.backfill_complete is False
+        assert statistics.calls == []
 
 
 class TestRecorderErrors:

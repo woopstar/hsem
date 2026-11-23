@@ -33,8 +33,10 @@ from tests.ml.test_statistics_reader_recorder import (
 
 _HOUSE = "sensor.house_power"
 _IMPORT = "sensor.grid_import_energy"
+_EXPORT = "sensor.grid_export_energy"
 _BATTERY = "sensor.battery_power"
 _HOUR = timedelta(hours=1)
+_MINUTE = timedelta(minutes=1)
 _SENSORS = "custom_components.hsem.custom_sensors.monthly_energy_sensors"
 
 
@@ -66,12 +68,25 @@ async def test_recorder_statistics_reach_the_monthly_sensors(
             for i, total in enumerate([1000.0, 1500.0, 2500.0])
         ],
     )
+    # The export meter reported 0 and came back: the sum jumps by its reading.
+    await _import(
+        hass,
+        _EXPORT,
+        "kWh",
+        "energy",
+        [
+            {"start": first + (i - 1) * _HOUR, "state": total, "sum": total}
+            for i, total in enumerate([100.0, 100.25, 48100.25])
+        ],
+    )
     hass.states.async_set(_HOUSE, "1200", {"unit_of_measurement": "W"})
+    hass.states.async_set(_EXPORT, "48000.5", {"unit_of_measurement": "kWh"})
     hass.states.async_set(_IMPORT, "5000", {"unit_of_measurement": "kWh"})
-    # Configured, but without a state and without statistics.
+    # The battery power sensor has no statistics, and no state at first.
     cfg = SensorConfig(
         house_consumption_power=_HOUSE,
         grid_import_energy_entity=_IMPORT,
+        grid_export_energy_entity=_EXPORT,
         huawei_solar_batteries_charge_discharge_power=_BATTERY,
         house_power_includes_ev_charger_power=True,
         update_interval=5,
@@ -85,12 +100,9 @@ async def test_recorder_statistics_reach_the_monthly_sensors(
         await async_track_energy(coordinator, now, LiveState(), cfg)
         # The battery power sensor has no state: the backfill waits for it.
         assert tracker.daily_log == {}
-        await async_track_energy(
-            coordinator,
-            now + timedelta(seconds=backfill.SOURCE_GRACE_S),
-            LiveState(),
-            cfg,
-        )
+        assert tracker.backfill_complete is False
+        hass.states.async_set(_BATTERY, "0", {"unit_of_measurement": "W"})
+        await async_track_energy(coordinator, now + 5 * _MINUTE, LiveState(), cfg)
     finally:
         backfill._attempts.clear()
 
@@ -98,6 +110,9 @@ async def test_recorder_statistics_reach_the_monthly_sensors(
     assert entry.backfilled is True
     assert entry.house_consumption_kwh == pytest.approx(5.0)
     assert entry.grid_import_kwh == pytest.approx(1.5)
+    # The hour of the jump is unknown, not 48 000 kWh.
+    assert entry.grid_export_kwh == pytest.approx(0.25)
+    assert entry.grid_export_hours == pytest.approx(1.0)
     assert entry.battery_hours == pytest.approx(0.0)
 
     sensor_coordinator = MagicMock()

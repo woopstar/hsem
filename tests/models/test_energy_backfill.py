@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from custom_components.hsem.models.energy_backfill import (
+    MAX_HOUR_KWH,
     HourlyEnergy,
     build_backfill_days,
+    drop_implausible_hours,
 )
 from custom_components.hsem.models.energy_tracker import (
     REASON_BATTERY_POWER_NOT_MEASURED,
@@ -123,6 +126,61 @@ class TestBuildDays:
 
     def test_no_statistics_give_no_days(self) -> None:
         assert build_backfill_days(HourlyEnergy(), _CPH, _SITE) == []
+
+
+class TestMeterGlitches:
+    def test_a_meter_that_reset_and_came_back_is_not_booked(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # The meter reported 0 and returned: the statistics sum jumps by the
+        # whole meter reading in the hour it came back.
+        hourly = HourlyEnergy(
+            house_kwh={_NOON: 2.0, _NOON + _HOUR: 1.0},
+            grid_import_kwh={_NOON: 0.5, _NOON + _HOUR: 48123.4},
+        )
+
+        with caplog.at_level(logging.INFO, logger="custom_components.hsem"):
+            (day,) = build_backfill_days(hourly, _CPH, _SITE)
+
+        assert day.grid_import_kwh == pytest.approx(0.5)
+        assert day.grid_import_hours == pytest.approx(1.0)
+        # The other quantity keeps the hour, without an import to pair with.
+        assert day.house_hours == pytest.approx(2.0)
+        assert day.paired_consumption_kwh == pytest.approx(2.0)
+        assert day.paired_import_kwh == pytest.approx(0.5)
+        assert "1 hourly values above 50 kWh dropped" in caplog.text
+
+    def test_every_quantity_is_capped_in_both_directions(self) -> None:
+        over = MAX_HOUR_KWH + 0.1
+        hourly = HourlyEnergy(
+            house_kwh={_NOON: over},
+            grid_import_kwh={_NOON: over},
+            grid_export_kwh={_NOON: over},
+            pv_kwh={_NOON: over},
+            battery_net_kwh={_NOON: over, _NOON + _HOUR: -over},
+        )
+
+        plausible, dropped = drop_implausible_hours(hourly)
+
+        assert dropped == 6
+        assert plausible.hours() == []
+        assert build_backfill_days(hourly, _CPH, _SITE) == []
+
+    def test_an_hour_at_the_limit_is_kept_without_a_log(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        hourly = HourlyEnergy(
+            grid_import_kwh={_NOON: MAX_HOUR_KWH},
+            battery_net_kwh={_NOON: -MAX_HOUR_KWH},
+        )
+
+        with caplog.at_level(logging.INFO, logger="custom_components.hsem"):
+            (day,) = build_backfill_days(hourly, _CPH, _SITE)
+
+        assert drop_implausible_hours(hourly) == (hourly, 0)
+        assert day.grid_import_kwh == pytest.approx(MAX_HOUR_KWH)
+        assert day.battery_discharged_kwh == pytest.approx(MAX_HOUR_KWH)
+        assert "dropped" not in caplog.text
 
 
 class TestApply:

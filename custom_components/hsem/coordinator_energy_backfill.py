@@ -10,9 +10,13 @@ turned into daily records for the days before the first measured one.
   (:meth:`~custom_components.hsem.models.energy_tracker.EnergyTracker.apply_backfill`).
 - Statistics are asked for in W and kWh, the units the live path normalises
   to, so the result does not depend on a sensor's current unit.
-- A source without a numeric state is not read.  The backfill waits up to
-  :data:`SOURCE_GRACE_S` for every configured source to report, then runs
-  with the ones that do; the others are skipped.
+- The backfill runs only when every configured source has a numeric state:
+  a day is filled once, so a source that is read later could not be added.
+  It looks every cycle for :data:`SOURCE_GRACE_S`, then once per
+  :data:`RETRY_INTERVAL_S`, and names the missing sources once at info
+  level.  A sensor that is not configured does not hold it back.
+- An hour above 50 kW is dropped as a meter glitch
+  (:func:`~custom_components.hsem.models.energy_backfill.drop_implausible_hours`).
 - A quantity without statistics is skipped: its hours are not counted, and
   the month shows it as unknown, as for a day HSEM measured without it.
 - The house consumption covers what the grid import covers.  When the house
@@ -44,10 +48,11 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 
-#: How long the backfill waits for every configured source to have a state.
+#: How long the backfill looks every cycle for the configured sources' states.
 SOURCE_GRACE_S = 900.0
 
-#: How long after a failed read the statistics are asked again.
+#: How long after a failed read, or a source still without a state after
+#: :data:`SOURCE_GRACE_S`, the backfill is tried again.
 RETRY_INTERVAL_S = 3600.0
 
 
@@ -57,6 +62,7 @@ class _Attempt:
 
     first_at: float
     retry_at: float
+    missing_logged: bool = False
 
 
 #: Open backfills by history file.
@@ -96,11 +102,11 @@ def _source_entities(cfg: SensorConfig) -> list[str]:
 async def _read_hourly(
     hass: HomeAssistant, cfg: SensorConfig, start: datetime, end: datetime
 ) -> HourlyEnergy:
-    """Read the hourly statistics of every source that has a state."""
+    """Read the hourly statistics of every configured source."""
     reader = StatisticsReader(hass)
 
     async def energy(entity_id: str | None) -> dict[datetime, float]:
-        if not entity_id or not _has_state(hass, entity_id):
+        if not entity_id:
             return {}
         return await reader.read_hourly_energy(
             entity_id, start, end, UnitOfEnergy.KILO_WATT_HOUR
@@ -108,14 +114,14 @@ async def _read_hourly(
 
     async def power(entity_id: str | None) -> dict[datetime, float]:
         """Return the hourly mean in W as kWh: a mean of W over an hour is Wh."""
-        if not entity_id or not _has_state(hass, entity_id):
+        if not entity_id:
             return {}
         means = await reader.read_hourly_mean(entity_id, start, end, UnitOfPower.WATT)
         return {hour: watts / 1000.0 for hour, watts in means.items()}
 
     house: dict[datetime, float] = {}
     house_entities = _house_entities(cfg)
-    if house_entities and all(_has_state(hass, entity) for entity in house_entities):
+    if house_entities:
         house = await power(house_entities[0])
         for charger in house_entities[1:]:
             charged = await power(charger)
@@ -169,7 +175,18 @@ async def async_backfill_energy_history(
         return False
     sources = _source_entities(cfg)
     waiting = [entity for entity in sources if not _has_state(hass, entity)]
-    if waiting and stamp - attempt.first_at < SOURCE_GRACE_S:
+    if waiting:
+        # A day is filled once: a source read later could not be added.
+        if stamp - attempt.first_at >= SOURCE_GRACE_S:
+            attempt.retry_at = stamp + RETRY_INTERVAL_S
+            if not attempt.missing_logged:
+                attempt.missing_logged = True
+                _LOGGER.info(
+                    "Energy history backfill: waiting for a state from %s, "
+                    "next try every %d minutes",
+                    ", ".join(waiting),
+                    RETRY_INTERVAL_S // 60,
+                )
         return False
 
     # One day more than is kept, so the oldest kept day is read in full.
@@ -191,12 +208,11 @@ async def async_backfill_energy_history(
     added = tracker.apply_backfill(
         build_backfill_days(hourly, now.tzinfo, site), now.date()
     )
-    del _attempts[tracker.history_file]
+    _attempts.pop(tracker.history_file, None)
     _LOGGER.info(
         "Energy history backfill: %d days added from long-term statistics "
-        "(%d sources read, skipped without a state: %s)",
+        "(%d sources read)",
         added,
-        len(sources) - len(waiting),
-        ", ".join(waiting) or "none",
+        len(sources),
     )
     return True

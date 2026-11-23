@@ -17,15 +17,25 @@ battery figures:
   an hour would bias it, and there is no SoC to correct with.
 - The wear cost uses today's cycle cost, which follows from the configured
   purchase price and expected cycles.
+
+An hour that implies more than
+:data:`~custom_components.hsem.utils.metering.MAX_METER_KW` is dropped, as the
+live path does.  A meter that reported 0 and came back makes the statistics
+sum jump by the whole meter reading; that hour is unknown, not energy.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import datetime, tzinfo
 
 from custom_components.hsem.models.energy_tracker import BatterySite, EnergyDayEntry
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+from custom_components.hsem.utils.metering import MAX_METER_KW
+
+#: Most energy one hour may hold (kWh) before it is taken for a meter glitch.
+MAX_HOUR_KWH = MAX_METER_KW * 1.0
 
 
 @dataclass(frozen=True)
@@ -60,10 +70,36 @@ class HourlyEnergy:
         )
 
 
+def drop_implausible_hours(hourly: HourlyEnergy) -> tuple[HourlyEnergy, int]:
+    """Return *hourly* without the hours above :data:`MAX_HOUR_KWH`.
+
+    Args:
+        hourly: The hourly energy read from the statistics.
+
+    Returns:
+        The plausible hours and how many values were dropped.  A dropped
+        value is unknown for its quantity; the other quantities keep the hour.
+    """
+    kept: dict[str, dict[datetime, float]] = {}
+    dropped = 0
+    for quantity in fields(hourly):
+        series: Mapping[datetime, float] = getattr(hourly, quantity.name)
+        kept[quantity.name] = {
+            hour: energy
+            for hour, energy in series.items()
+            if abs(energy) <= MAX_HOUR_KWH
+        }
+        dropped += len(series) - len(kept[quantity.name])
+    return HourlyEnergy(**kept), dropped
+
+
 def build_backfill_days(
     hourly: HourlyEnergy, time_zone: tzinfo | None, site: BatterySite
 ) -> list[EnergyDayEntry]:
     """Return one daily record per local day the statistics cover.
+
+    Hours above :data:`MAX_HOUR_KWH` are dropped first
+    (:func:`drop_implausible_hours`).
 
     Args:
         hourly: The hourly energy read from the statistics.
@@ -75,6 +111,14 @@ def build_backfill_days(
     Returns:
         The days, oldest first, each marked as backfilled.
     """
+    hourly, dropped = drop_implausible_hours(hourly)
+    if dropped:
+        _LOGGER.info(
+            "Energy history backfill: %d hourly values above %.0f kWh dropped "
+            "as meter glitches",
+            dropped,
+            MAX_HOUR_KWH,
+        )
     days: dict[str, EnergyDayEntry] = {}
     for hour in hourly.hours():
         key = hour.astimezone(time_zone).date().isoformat()
