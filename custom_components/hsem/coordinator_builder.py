@@ -30,6 +30,7 @@ from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.price_profile import PriceProfile
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.solcast_slot import SolcastSlot
+from custom_components.hsem.planner.terminal_tail import TERMINAL_TAIL_WEIGHT
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.conversion import convert_to_float, convert_to_int
 from custom_components.hsem.utils.datetime_utils import (
@@ -581,6 +582,9 @@ def build_planner_input(
         ),
         planner_solver_time_limit_s=solver_time_limit_s(
             cfg.planner_solver_time_limit_s
+        ),
+        terminal_price_tail_weight=(
+            TERMINAL_TAIL_WEIGHT if cfg.terminal_price_tail_enabled is True else 0.0
         ),
         previous_winner_name=previous_winner_name,
         previous_winner_score=previous_winner_score,

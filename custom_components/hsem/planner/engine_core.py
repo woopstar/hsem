@@ -77,6 +77,10 @@ from custom_components.hsem.planner.slot_population import (
     populate_net_consumption,
     usable_capacity,
 )
+from custom_components.hsem.planner.terminal_tail import (
+    flag_terminal_price_tail,
+    resolve_terminal_price_tail,
+)
 from custom_components.hsem.utils.datetime_utils import (
     slot_contains,
     slot_is_future,
@@ -559,6 +563,12 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         discharge_eff=clamp_efficiency(inp.battery_discharge_efficiency_pct),
         cycle_cost_per_kwh=effective_cycle_cost,
     )
+    # Estimated price tail past the horizon (issue #1453): changes V only.
+    tail = resolve_terminal_price_tail(
+        slots, tsi, inp, now.tzinfo, rppk, top_n, effective_cycle_cost
+    )
+    if tail is not None:
+        rppk = tail.value_per_kwh
     log_planner(
         "debug",
         "[core] run_planner  step=4_candidate_selection START  top_n=%d  rppk=%s",
@@ -702,6 +712,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     expl.hysteresis_reason = hysteresis_result.reason
     expl.previous_plan_name = hysteresis_result.previous_plan_name
     apply_solver_outcome(expl, candidates, winner.name, inp.planner_solver_time_limit_s)
+    flag_terminal_price_tail(expl, tail)
     pc = score_plan(
         slots,
         cw,
@@ -798,4 +809,5 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         ev_second_held_slot_start=ev_second_held_slot_start,
         ev_second_held_power_w=ev_second_held_power_w,
         battery_target=summarize_battery_target(cw.battery_target, candidates, slots),
+        terminal_price_tail=tail,
     )

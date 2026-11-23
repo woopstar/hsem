@@ -79,6 +79,10 @@ class PlanExplanation:
             Relative MIP gap the solver reported, in percent, or ``None``.
         solver_time_limit_s:
             The solver time limit in seconds, or ``None`` when no MILP ran.
+        terminal_price_tail:
+            The estimated prices behind the terminal end value (issue #1453),
+            from ``planner.terminal_tail.TerminalPriceTail.as_dict``, with
+            ``estimated: True``.  ``None`` when the end value used no tail.
     """
 
     selected_strategy: str = STATE_UNKNOWN
@@ -104,6 +108,8 @@ class PlanExplanation:
     solver_time_s: float | None = None
     solver_gap_pct: float | None = None
     solver_time_limit_s: float | None = None
+    # Estimated price tail behind the terminal end value (issue #1453)
+    terminal_price_tail: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Serialise the explanation to a plain dict for HA attributes.
@@ -131,6 +137,7 @@ class PlanExplanation:
             "solver_time_s": round_or_none(self.solver_time_s, 2),
             "solver_gap_pct": round_or_none(self.solver_gap_pct, 2),
             "solver_time_limit_s": round_or_none(self.solver_time_limit_s, 2),
+            "terminal_price_tail": self.terminal_price_tail,
             "constraints": list(self.constraints),
             "rejected_plans": [
                 {

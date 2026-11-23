@@ -72,6 +72,7 @@ flowchart LR
 | `scripts/backtest_corpus.py`      | Replay every cycle of a corpus and report                              |
 | `scripts/backtest_score.py`       | Score every complete day of an actuals file                            |
 | `scripts/backtest_attribute.py`   | Replay a day on forecasts and on realized values; attribute its regret |
+| `scripts/backtest_price_tail.py`  | Measure the estimated price tail of the end value (issue #1453)        |
 | `scripts/collect_actuals.sh`      | One command: fetch a week of history, convert, verify                  |
 | `scripts/build_actuals.py`        | Turn an HA history export into an actuals file                         |
 

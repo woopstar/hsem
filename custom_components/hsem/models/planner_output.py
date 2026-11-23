@@ -15,6 +15,7 @@ from custom_components.hsem.models.planned_slot import PlannedSlot
 if TYPE_CHECKING:
     from custom_components.hsem.planner.cost_function import PlanCostBreakdown
     from custom_components.hsem.planner.ev_planner import EVChargingPlan
+    from custom_components.hsem.planner.terminal_tail import TerminalPriceTail
 
 
 @dataclass
@@ -120,3 +121,7 @@ class PlannerOutput:
     #: from ``planner.battery_target.summarize_battery_target``.  ``None``
     #: when the target is disabled or has no occurrence in the horizon.
     battery_target: dict[str, Any] | None = None
+    #: Estimated prices past the horizon that the terminal end value used
+    #: (issue #1453).  They price no slot of the plan.  ``None`` when the end
+    #: value came from the horizon's last day alone.
+    terminal_price_tail: TerminalPriceTail | None = None

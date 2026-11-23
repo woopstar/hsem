@@ -942,6 +942,14 @@ day of prices. It stands for the value of energy **after** the horizon; never
 derive it from a price inside the horizon (the old `R`). The 0.9 factor is what
 keeps #638's flat-price case discharging.
 
+**Estimated price tail (issue #1453, opt-in, default off).** With
+`hsem_terminal_price_tail_enabled` on, `planner/terminal_tail.py` prices the 24
+hours after the horizon from the price profile and `engine_core.py` blends
+`V = 0.5 × V_last_day + 0.5 × V_tail`. The tail changes `V` only: never add
+tail slots to the plan or to the MILP. Closed-loop backtests showed no cost
+gain (no change at a 48 h horizon, 0.6 % worse at 24 h), so do not turn it on
+by default without a new measurement.
+
 **Charge-timing term (issue #1420).** The time discount alone prefers "export
 PV now, charge later" at one export price, by `(cycle_cost + p_exp) × (d^t1 − d^t2)`
 per kWh. The late charge then rests on forecast PV. `c_obj[ec[t]] += κ × (1 − d^t)`

@@ -116,6 +116,9 @@ DEFAULT_CONFIG_VALUES = {
     "hsem_planner_window_hysteresis_minutes": 10,
     # MILP solver time limit per solve, in seconds (issue #1309).
     "hsem_planner_solver_time_limit_s": 2.0,
+    # Value the energy left at the horizon end with price-history prices
+    # for the 24 hours after it (issue #1453).  Off: no measured gain yet.
+    "hsem_terminal_price_tail_enabled": False,
     "hsem_house_consumption_energy_weight_14d": 15,
     "hsem_house_consumption_energy_weight_1d": 25,
     "hsem_house_consumption_energy_weight_3d": 30,

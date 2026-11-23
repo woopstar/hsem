@@ -1667,8 +1667,10 @@ V = max(0, min( 0.9 × (η_dis × peak − cycle_cost),     # use value
   5 kWh at 2.40.
 
 `V` is computed once per run in `engine_core.py` by
-`cost_helpers.terminal_end_value_from_last_day` and passed to both the MILP
-(`replacement_price_per_kwh`) and the selector's `score_plan`. It is active
+`cost_helpers.terminal_end_value_from_last_day`, blended with the estimated
+price tail when that is enabled (see _Estimated price tail_ below), and
+passed to both the MILP (`replacement_price_per_kwh`) and the selector's
+`score_plan`. It is active
 whenever prices exist. `R` was active only when the baseline had a future
 discharge-window slot, so the term was mostly off in winter months, where the
 seasonal fill marks Wait instead.
@@ -1705,6 +1707,166 @@ In the #1125 fixture (0.03 night, full PV tomorrow) the floor releases to the
 hardware minimum, and the final plan costs the same as the floor-free
 reference plan (0.097); before #1156 the floor held 77.5 % and the plan cost
 0.917. See `tests/test_dynamic_floor_reference_plan.py`.
+
+##### Estimated price tail (issue #1453, opt-in)
+
+The last known day stands in for the day after the horizon. Before tomorrow's
+prices are published, that day is itself an estimate, or it is today. With
+`hsem_terminal_price_tail_enabled` on (default **off**), `V` also uses
+prices for the day after the horizon from the price history profile
+(`planner/terminal_tail.py`).
+
+**The tail.** The 24 hours (`TERMINAL_TAIL_HOURS`) after the end of the last
+slot, on the slot grid. Each tail slot gets an import price:
+
+```text
+shape[k]  = profile.lookup(tail slot k)[import]
+shift     = median(priced[i] − profile.lookup(slot i)[import])   over horizon slots with both
+until     = end of the last priced horizon slot + 24 h
+price[k]  = shape[k] + shift     when tail slot k starts before until
+            shape[k]             otherwise
+```
+
+- `priced` are the horizon slots a price source covered: every slot that is
+  not in `tsi.missing_price_slots`. A price forecast sensor counts, as it does
+  for the missing-price fill.
+- The shift needs 240 minutes of such slots (`PROFILE_MIN_ANCHOR_MINUTES`).
+  Without it the last known level shift of the profile
+  (`PriceProfile.import_level`) and its own time limit are used, and without
+  that the profile as recorded. This is the rule of the missing-price fill
+  (steps 2, 4 and 5).
+- The 24-hour limit applies to the shift from the horizon as well. Inside the
+  horizon no missing slot is that far from the last price, so the fill never
+  needed it. A tail can be: a 48-hour horizon before tomorrow's prices are
+  published has a tail that starts 24 hours after the last price. Two days
+  after the last price the shift raised the error of the profile (issue
+  #1452), so that tail takes the profile as recorded.
+- A profile that has no price for one of the tail slots gives no tail. A tail
+  is never priced in part.
+
+**The end value.** The tail's own end value uses the formula above, with
+`peak` the mean of the tail's top-N import prices and `night_import` the mean
+of its slots before 06:00. The plan is solved and scored with the blend:
+
+```text
+V = (1 − w) × V_last_day + w × V_tail          w = 0.5 (TERMINAL_TAIL_WEIGHT)
+```
+
+`PlannerInput.terminal_price_tail_weight` carries `w`. It is `0.0` unless the
+option is on. `V_last_day` is the value described above, unchanged.
+
+**Why a terminal value and not a longer horizon.** The tail adds no slot, no
+decision variable and no constraint to the MILP. The alternative was to plan
+72 hours with profile prices in the last 24. That was not chosen:
+
+- The energy left at the horizon end is already valued by one term, `V`.
+  Better prices for the hours after the horizon belong in that term.
+- A slot in the horizon is a decision. The solver would trade real energy in
+  published slots against an estimated slot, per slot, at full weight. One
+  blended `V` bounds what the estimate can do to the plan, and it is
+  cycle-neutral.
+- The MILP stays at 192 slots for 48 hours of 15-minute slots. 72 hours would
+  be 288 slots under the same solver time limit.
+- The slot grid, `DataQuality`, the dynamic discharge floor and the sensors
+  that list the horizon are untouched. The 72-hour option removed in #1002
+  is not brought back.
+
+**What the tail may do.**
+
+- It changes `V` and nothing else. No tail price is written to a slot, and
+  the horizon, the slot prices and `DataQuality` are the same with and without
+  it.
+- A different `V` can change the plan, as any change of `V` does: the plan
+  may hold more or less energy at the horizon end. Every hardware action is
+  still a decision in a slot of the horizon with that slot's own price.
+- Without a profile, with an empty one, or with `w = 0`, there is no tail and
+  the plan is the plan without the feature.
+- **Flagged as estimated.** `PlannerOutput.terminal_price_tail`
+  (`TerminalPriceTail`) holds the tail's start, end, slot count, the number
+  of shifted slots, `V_tail`, `V_last_day`, `w` and `V`. The plan explanation
+  carries the same as `terminal_price_tail` with `estimated: true`, and
+  `constraints` holds `terminal_value_from_estimated_price_tail`. Both are
+  `None` and absent when the end value used no tail.
+
+**The weight.** On a year of DK1 prices the shifted profile and the nearest
+earlier day had the same error one day ahead (export MAE 0.249 both, issue
+#1452). Neither earns more than half, so `w = 0.5`. The error of `V` itself,
+on the committed 119 days of DK1 prices with the grid tariff of the corpus
+installation added (DKK/kWh, mean true `V` 2.02):
+
+| Tail starts                                   | Weight of the tail | MAE of `V` | Bias   | Worst day |
+| --------------------------------------------- | ------------------ | ---------- | ------ | --------- |
+| Less than 24 h after the last price (62 days) | 0 (last day only)  | 0.356      | -0.025 | 1.563     |
+|                                               | 0.25               | 0.337      | +0.028 | 1.392     |
+|                                               | 0.5                | 0.332      | +0.081 | 1.221     |
+|                                               | 0.75               | 0.344      | +0.133 | 1.211     |
+|                                               | 1 (tail only)      | 0.367      | +0.186 | 1.498     |
+| 24 h or more after the last price (61 days)   | 0 (last day only)  | 0.493      | +0.155 | 1.792     |
+|                                               | 0.25               | 0.435      | +0.085 | 1.286     |
+|                                               | 0.5                | 0.416      | +0.016 | 1.208     |
+|                                               | 0.75               | 0.427      | -0.053 | 1.191     |
+|                                               | 1 (tail only)      | 0.468      | -0.123 | 1.264     |
+
+The blend at 0.5 has the lowest error in both cases. The gain is 0.025 ±
+0.021 in the first case, which is within the noise, and 0.077 ± 0.036 in the
+second. The tail alone is biased: the level shift is one number for the whole
+day and overstates the night price when prices rise.
+
+**Measured effect on realised cost.** A lower error of `V` did not lower the
+cost. Closed loop: the planner is run every hour, the plan is executed for
+that hour, prices are the real DK1 prices plus the installation's tariff,
+tomorrow's prices are published at 13:00, the profile is built from the 56
+days before each run, load and PV forecasts are perfect. The 24-hour rows end
+on the last day both runs end with the same stored energy. Cost in DKK.
+
+| Run                                             | Horizon | Days | Cost without tail | Cost with tail (0.5) | Difference     | Stored at the end, without / with |
+| ----------------------------------------------- | ------- | ---- | ----------------- | -------------------- | -------------- | --------------------------------- |
+| Recorded day 2026-09-29 (`tests/backtest/days`) | 48 h    | 1    | 11.43             | 11.43                | 0.00           | 0.75 / 0.75 kWh                   |
+| DK1 prices, no PV                               | 48 h    | 31   | 1679.95           | 1679.95              | 0.00           | 0.75 / 0.75 kWh                   |
+| DK1 prices, PV                                  | 48 h    | 31   | 1438.85           | 1438.85              | 0.00           | 0.75 / 0.75 kWh                   |
+| DK1 prices, no PV                               | 24 h    | 25   | 1261.69           | 1269.10              | +7.41 (+0.6 %) | 0.75 / 0.75 kWh                   |
+| DK1 prices, PV                                  | 24 h    | 25   | 1083.45           | 1091.07              | +7.62 (+0.7 %) | 0.75 / 0.75 kWh                   |
+
+- At 48 hours the tail changed no executed decision. The plans differ at the
+  far end of the horizon only, and those slots are replanned long before they
+  are reached.
+- At 24 hours the realised cost differed on 23 of 30 days and the tail cost
+  0.6 % more.
+- On 29 recorded cycles (single plans, no realised cost) the tail changed 24
+  plans and never the recommendation of the live slot.
+
+There is no measured gain. That is why the option is off by default.
+`python3 scripts/backtest_price_tail.py` repeats these runs and the table of
+`V` errors above (modes `value`, `cycles`, `day` and `sim`).
+
+**Solve time.** The 29 recorded cycles at 48 hours of 15-minute slots (192
+slots, the longest horizon), solver time limit lifted, Apple M3:
+
+|                               | Median  | 95th percentile | Slowest |
+| ----------------------------- | ------- | --------------- | ------- |
+| `run_planner` without tail    | 0.25 s  | 0.89 s          | 1.64 s  |
+| `run_planner` with tail (0.5) | 0.31 s  | 1.03 s          | 2.27 s  |
+| The tail computation alone    | 0.26 ms |                 | 0.31 ms |
+
+The model has the same size. The time differs because a different `V` gives
+a different problem to the solver. It was not measured on a slow device.
+
+###### Invariants for tests
+
+- `terminal_price_tail_weight = 0`, no profile or an empty profile: the
+  output equals the output without the feature, slot by slot.
+- With a tail: the same number of slots, the same slot starts and prices, the
+  same `DataQuality`; the tail starts where the last slot ends.
+- `PlanCostBreakdown.terminal_soc_value` equals `(E_0 − E_end) × V` with the
+  blended `V`, and `winner.score == output.plan_cost.score`.
+- `V = (1 − w) × V_last_day + w × V_tail`, with `w` clamped to 0-1.
+- A tail slot that starts 24 hours or more after the last priced slot ended
+  is not shifted.
+- The explanation carries `terminal_price_tail.estimated == True` and the
+  `terminal_value_from_estimated_price_tail` constraint exactly when a tail
+  was used.
+
+See `tests/planner/test_terminal_price_tail.py`.
 
 #### 5b. Charge timing (issue #1420)
 
@@ -2688,7 +2850,9 @@ terminal_soc_value = Σ_t terminal_soc_value(charged[t], discharged[t], V)
 ```
 
 Both sides call the shared helper `cost_helpers.terminal_soc_value()`, so the
-selector's score always matches what the LP optimised for. The slot's own
+selector's score always matches what the LP optimised for. With the estimated
+price tail enabled (issue #1453) `V` is the blended value, the same on both
+sides. The slot's own
 import and export prices play no part: see
 [Terminal SoC](#5-terminal-soc-horizon-end-valuation) for why the per-slot
 caps (#655, #694, #592) were removed and how `V` is estimated.
@@ -3683,6 +3847,9 @@ Add tests for these invariants:
 - Emptying the battery is not free.
 - The terminal term is cycle-neutral: an in-horizon cycle that leaves the end
   energy unchanged adds zero (issue #1138).
+- The estimated price tail (issue #1453) changes the end value only: it adds
+  no slot and prices no slot, and without a price profile the plan is
+  unchanged.
 - `winner.cost <= no_action.cost` within the implemented candidate set.
 - Current partial slot uses remaining duration only.
 - Missing price/PV data does not become real zero silently.
@@ -3740,7 +3907,10 @@ The planner supports configurable planning horizons: 12, 24, 36, and 48
 hours. All four are offered by the config-flow selector. The 72-hour option
 was removed in issue #1002: day-ahead spot prices are only published for
 tomorrow (~13:00 local time), so the final ~24-37 h of a 72 h horizon could
-never be covered by real price data and distorted the plan.
+never be covered by real price data and distorted the plan. The estimated
+price tail of issue #1453 does not bring it back: it prices the 24 hours
+after the horizon for the terminal end value only and adds no slot (see
+[Estimated price tail](#estimated-price-tail-issue-1453-opt-in)).
 
 The horizon is controlled by `interval_length_hours` in `PlannerInput` (and
 `recommendation_interval_length` in `SensorConfig`). The engine itself is

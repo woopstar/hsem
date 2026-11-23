@@ -20,9 +20,9 @@ from custom_components.hsem.models.price_profile import (
     PROFILE_MIN_ANCHOR_MINUTES,
     PriceProfile,
     level_from_row,
+    level_shift_applies,
     median_shift,
 )
-from custom_components.hsem.planner.slot_price_population import _in_time
 from tests.test_price_history import (
     _MON,
     _MONDAY,
@@ -177,9 +177,9 @@ class TestFillWithTheLastLevel:
     def test_a_slot_without_a_timezone_never_uses_the_level(self) -> None:
         naive = _TUESDAY.replace(tzinfo=None)
 
-        assert _in_time(_TUESDAY, _UNTIL) is True
-        assert _in_time(_UNTIL, _UNTIL) is False
-        assert _in_time(naive, _UNTIL) is False
+        assert level_shift_applies(_TUESDAY, _UNTIL) is True
+        assert level_shift_applies(_UNTIL, _UNTIL) is False
+        assert level_shift_applies(naive, _UNTIL) is False
 
 
 class TestTrackerLevel:
