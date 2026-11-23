@@ -18,6 +18,7 @@ import json
 import os
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -32,15 +33,21 @@ from custom_components.hsem.coordinator_price_history import (
     init_price_history_tracker,
 )
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
-from custom_components.hsem.coordinator_tracking import init_financial_tracker
+from custom_components.hsem.coordinator_tracking import (
+    accumulate_daily_plan_actuals,
+    init_financial_tracker,
+)
+from custom_components.hsem.models.daily_metrics import DailyMetrics
 from custom_components.hsem.models.daily_plan_vs_actual_tracker import (
     DailyPlanVsActualTracker,
 )
 from custom_components.hsem.models.daily_record import DailyRecord
 from custom_components.hsem.models.energy_tracker import EnergyTracker
 from custom_components.hsem.models.financial_tracker import FinancialTracker
+from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.models.price_history_tracker import PriceHistoryTracker
+from custom_components.hsem.models.savings_day import SavingsDay
 from custom_components.hsem.models.savings_tracker import SavingsTracker
 from custom_components.hsem.models.what_if_history import WhatIfHistory
 from custom_components.hsem.utils import persistence
@@ -382,6 +389,43 @@ class TestAsyncLoadHistory:
         assert kept.read_text(encoding="utf-8") == '{"value": "wrong"}'
         warnings.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_rejected_content_that_cannot_be_moved_warns_once(
+        self, tmp_path: Path, warnings: MagicMock
+    ) -> None:
+        """Retries of a file that is rejected and cannot be moved stay silent."""
+        path = tmp_path / "history.json"
+        path.write_text('{"value": "wrong"}', encoding="utf-8")
+        restore = MagicMock(side_effect=ValueError("bad value"))
+
+        with patch(f"{_PERSISTENCE}.os.replace", side_effect=OSError(30, "read-only")):
+            for _ in range(3):
+                await async_load_history(path, restore)
+                assert history_load_pending(path)
+                assert write_json_history_file(path, {"value": 2}) is False
+
+        warnings.assert_called_once()
+        assert path.read_text(encoding="utf-8") == '{"value": "wrong"}'
+
+        # The move works again: the file is kept aside and a save may follow.
+        await async_load_history(path, restore)
+        assert not history_load_pending(path)
+        assert len(_corrupt_copies(path)) == 1
+
+    def test_two_files_set_aside_in_the_same_second_are_both_kept(
+        self, tmp_path: Path
+    ) -> None:
+        """The stamp has microseconds, so a second copy does not replace one."""
+        path = tmp_path / "history.json"
+        for content in ("first", "second"):
+            path.write_text(content, encoding="utf-8")
+            assert set_aside_history_file(path, "a test") is True
+
+        assert sorted(kept.read_text() for kept in _corrupt_copies(path)) == [
+            "first",
+            "second",
+        ]
+
 
 class TestEnsureHistoryLoaded:
     """The retry that runs before a save."""
@@ -517,8 +561,9 @@ class TestTrackerRestores:
         content = '{"actual_savings": "a lot", "days": []}'
         path.write_text(content, encoding="utf-8")
 
-        tracker = SavingsTracker(history_file=str(path))
+        tracker = SavingsTracker(history_file=str(path), baseline_cost=3.0)
         await tracker.load_history()
+        assert tracker.baseline_cost == pytest.approx(3.0)
         assert await tracker.save_history() is True
 
         (kept,) = _corrupt_copies(path)
@@ -577,7 +622,7 @@ class TestTrackerRestores:
     async def test_daily_record_is_added_to_a_history_loaded_late(
         self, tmp_path: Path
     ) -> None:
-        """The midnight save loads a pending history before it appends."""
+        """A day closed while the file was unreadable is not lost."""
         path = tmp_path / "daily.json"
         saved = DailyPlanVsActualTracker(history_file=str(path))
         assert await saved._save_record_to_history(DailyRecord(date="2026-11-19"))
@@ -592,13 +637,95 @@ class TestTrackerRestores:
             "2026-11-19"
         ]
 
-        tracker.history.clear()
+        # Readable again at the next rollover: the file's day, the day that
+        # only lived in memory, and the new day are all written.
         assert await tracker._save_record_to_history(DailyRecord(date="2026-11-21"))
 
         assert [day["date"] for day in json.loads(path.read_text())["days"]] == [
             "2026-11-19",
+            "2026-11-20",
             "2026-11-21",
         ]
+
+    @pytest.mark.asyncio
+    async def test_daily_file_wins_for_a_day_that_is_in_both(
+        self, tmp_path: Path
+    ) -> None:
+        """A late load keeps the file's record of a day over the pending one."""
+        path = tmp_path / "daily.json"
+        saved = DailyPlanVsActualTracker(history_file=str(path))
+        on_disk = DailyRecord(
+            date="2026-11-20", actual=DailyMetrics(grid_import_kwh=7.0)
+        )
+        assert await saved._save_record_to_history(on_disk)
+
+        tracker = DailyPlanVsActualTracker(history_file=str(path))
+        tracker.history = [
+            DailyRecord(date="2026-11-20", actual=DailyMetrics(grid_import_kwh=1.0)),
+            DailyRecord(date="2026-11-21"),
+        ]
+        await tracker.load_history()
+
+        assert [record.date for record in tracker.history] == [
+            "2026-11-20",
+            "2026-11-21",
+        ]
+        assert tracker.history[0].actual.grid_import_kwh == pytest.approx(7.0)
+
+    @pytest.mark.asyncio
+    async def test_daily_history_is_retried_every_cycle(self, tmp_path: Path) -> None:
+        """The daily tracker saves once a day, so the cycle retries the load."""
+        path = tmp_path / "daily.json"
+        saved = DailyPlanVsActualTracker(history_file=str(path))
+        assert await saved._save_record_to_history(DailyRecord(date="2026-11-19"))
+
+        now = datetime(2026, 11, 21, 10, 0, tzinfo=UTC)
+        tracker = DailyPlanVsActualTracker(
+            history_file=str(path), today=now.date().isoformat()
+        )
+        tracker._initialized = True  # type: ignore[attr-defined]  # skip lazy init
+        with _unreadable(path):
+            await tracker.load_history()
+        assert tracker.history == []
+
+        await accumulate_daily_plan_actuals(
+            now=now,
+            live=LiveState(),
+            output=None,
+            daily_tracker=tracker,
+            daily_plan_last_accumulated=None,
+            hass=_make_hass(tmp_path),
+        )
+
+        assert [record.date for record in tracker.history] == ["2026-11-19"]
+
+    @pytest.mark.asyncio
+    async def test_savings_collected_during_a_failed_load_are_added(
+        self, tmp_path: Path
+    ) -> None:
+        """A late load adds the file to what was collected; totals match days."""
+        path = tmp_path / "savings.json"
+        saved = SavingsTracker(history_file=str(path), actual_savings=12.5)
+        today = saved._today
+        saved.daily[today].actual_savings = 2.5
+        saved.daily["2026-01-01"] = SavingsDay(date="2026-01-01", actual_savings=10.0)
+        assert await saved.save_history() is True
+
+        tracker = SavingsTracker(history_file=str(path))
+        with _unreadable(path):
+            await tracker.load_history()
+            tracker.actual_savings += 1.0
+            tracker.daily[today].actual_savings += 1.0
+            assert await ensure_history_loaded(tracker) is False
+
+        assert await ensure_history_loaded(tracker) is True
+
+        assert tracker.actual_savings == pytest.approx(13.5)
+        assert tracker.daily[today].actual_savings == pytest.approx(3.5)
+        assert tracker.daily["2026-01-01"].actual_savings == pytest.approx(10.0)
+        assert sum(
+            day.actual_savings for day in tracker.daily.values()
+        ) == pytest.approx(tracker.actual_savings)
 
 
 class TestEfficiencyLearnerInfinity:

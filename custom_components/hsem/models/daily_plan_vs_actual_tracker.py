@@ -237,10 +237,17 @@ class DailyPlanVsActualTracker:
         await async_load_history(Path(self.history_file), self._restore)
 
     def _restore(self, data: dict[str, Any]) -> None:
-        """Take over the days of a loaded history file."""
+        """Take over the days of a loaded history file.
+
+        A record that was added while the file could not be read is kept
+        (issue #1446). For a day that is in both, the file wins.
+        """
         days = data.get("days", [])
         if isinstance(days, list):
-            self.history = [DailyRecord.from_dict(d) for d in days]
+            loaded = [DailyRecord.from_dict(d) for d in days]
+            loaded_dates = {record.date for record in loaded}
+            pending = [r for r in self.history if r.date not in loaded_dates]
+            self.history = loaded + pending
             self._prune_history()
 
     async def _save_record_to_history(self, record: DailyRecord) -> bool:
@@ -255,8 +262,9 @@ class DailyPlanVsActualTracker:
         Returns:
             ``True`` if the record was successfully persisted to disk.
         """
-        # A history that failed to load is loaded first, or the record
-        # would be lost when a later load replaces the list (issue #1446).
+        # A history that failed to load is tried again first, so the file
+        # gets the whole history. If it still fails, the record stays in
+        # memory and a later load merges it in (issue #1446).
         await ensure_history_loaded(self)
         self.history.append(record)
         self._prune_history()

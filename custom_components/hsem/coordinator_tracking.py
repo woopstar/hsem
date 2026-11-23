@@ -32,6 +32,7 @@ from custom_components.hsem.utils.forecast_tracker import (
     compute_accumulated_energy,
 )
 from custom_components.hsem.utils.logger import async_log
+from custom_components.hsem.utils.persistence import ensure_history_loaded
 from custom_components.hsem.utils.prediction_tracker import (
     PredictionTracker,
     _action_label,
@@ -280,6 +281,9 @@ async def accumulate_daily_plan_actuals(
         The new ``daily_plan_last_accumulated`` marker.
     """
     await _init_daily_tracker(daily_tracker, hass)
+    # The daily tracker saves once a day, so a history file that could not
+    # be read is tried again here, every cycle (issue #1446).
+    await ensure_history_loaded(daily_tracker)
     tracker = daily_tracker
 
     # Check and handle day rollover first.

@@ -176,7 +176,8 @@ def set_aside_history_file(path: Path, reason: str) -> bool:
     Returns:
         ``True`` if the file was moved.
     """
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    # Microseconds, so two files set aside in the same second do not collide.
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     kept = path.with_name(f"{path.name}.corrupt-{stamp}")
     try:
         os.replace(path, kept)
@@ -252,12 +253,17 @@ async def async_load_history(
         path: Path to the JSON history file.
         restore: Applies the parsed JSON object to the tracker.
     """
+    was_pending = path in _PENDING_LOADS
     data = await asyncio.to_thread(load_json_history_file, path)
     if data is None:
         return
     try:
         restore(data)
     except Exception as err:
+        if was_pending:
+            # The warning for this file is out already: if the move fails
+            # again, the retry stays silent.
+            _PENDING_LOADS.add(path)
         await asyncio.to_thread(
             set_aside_history_file, path, f"its content could not be restored ({err!r})"
         )

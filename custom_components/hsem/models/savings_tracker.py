@@ -212,18 +212,36 @@ class SavingsTracker:
         await async_load_history(Path(self.history_file), self._restore)
 
     def _restore(self, data: dict[str, Any]) -> None:
-        """Take over the totals and days of a loaded history file."""
-        # Restore running totals.
-        self.actual_savings = float(data.get("actual_savings", 0.0))
-        self.missed_savings = float(data.get("missed_savings", 0.0))
-        self.baseline_cost = float(data.get("baseline_cost", 0.0))
+        """Add the totals and days of a loaded history file to the tracker.
 
-        # Restore daily entries.
+        The tracker counts from zero until its file is loaded, so what it
+        holds is what was collected since the start. On a normal load that
+        is nothing. After a load that first failed (issue #1446) it is the
+        savings of the time in between, and they are added to the totals
+        and to the days of the file, which keeps totals and days in step.
+
+        Everything is parsed before anything changes, so content that
+        cannot be used leaves the tracker as it was.
+        """
+        actual_savings = float(data.get("actual_savings", 0.0))
+        missed_savings = float(data.get("missed_savings", 0.0))
+        baseline_cost = float(data.get("baseline_cost", 0.0))
         days = data.get("days", [])
-        if isinstance(days, list):
-            for d in days:
-                entry = SavingsDay.from_dict(d)
-                self.daily[entry.date] = entry
+        loaded = (
+            [SavingsDay.from_dict(d) for d in days] if isinstance(days, list) else []
+        )
+
+        self.actual_savings += actual_savings
+        self.missed_savings += missed_savings
+        self.baseline_cost += baseline_cost
+        collected = dict(self.daily)
+        for entry in loaded:
+            since_start = collected.get(entry.date)
+            if since_start is not None:
+                entry.actual_savings += since_start.actual_savings
+                entry.missed_savings += since_start.missed_savings
+                entry.baseline_cost += since_start.baseline_cost
+            self.daily[entry.date] = entry
 
         self._prune_history()
 

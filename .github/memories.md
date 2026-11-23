@@ -3063,7 +3063,9 @@ Tests: `tests/test_tracker_history_writers.py::TestOneSharedWriter`, `tests/util
 - Invalid JSON, not an object, not a regular file, too large, or a `restore` that raises: the file is moved to `<name>.corrupt-<UTC timestamp>` by `set_aside_history_file`, then a new one may be written. If the move fails the path is pending.
 - One warning per file, from `utils/persistence.py` through `HSEM_LOGGER`. The logger does not propagate, so tests patch `persistence._LOGGER.warning` instead of using `caplog`.
 - Every tracker in `TRACKER_REGISTRY` needs `history_file` and `load_history()` (the `Persistable` protocol). Guard `load_history()` with `if not self.history_file: return`: `Path("")` is the working directory.
-- A late successful load replaces the in-memory state with the file (`restore_from`), as a restart would.
+- A late successful load: `DailyPlanVsActualTracker` keeps the records added while the file was unreadable (the file wins for a day in both), `SavingsTracker` adds the file's totals and days to what it collected (it counts from zero until loaded, so `_restore` adds), `WhatIfHistory` merges. The `restore_from` trackers and the learner replace the in-memory state with the file, as a restart would.
+- `accumulate_daily_plan_actuals` calls `ensure_history_loaded` every cycle: the daily tracker is not in the registry and saves once a day.
+- The `.corrupt-` stamp has microseconds. HSEM does not delete these files.
 
 Tests: `tests/test_history_load_failure.py`.
 
