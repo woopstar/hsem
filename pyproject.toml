@@ -26,11 +26,11 @@ dev = [
     "diff-cover==11.0.4",
     "pyright==1.1.414",
     "vulture==2.16",
-    "ruff==0.17.5",
+    "ruff==0.17.6",
     "skylos==5.7.0",
 ]
 lint = [
-    "ruff==0.17.5",
+    "ruff==0.17.6",
     "skylos==5.7.0",
 ]
 typing = [
