@@ -29,6 +29,8 @@ def _make_flow() -> HSEMConfigFlow:
     """Return a minimally wired ``HSEMConfigFlow`` for user journey tests."""
     flow = HSEMConfigFlow.__new__(HSEMConfigFlow)
     flow._user_input = {}
+    # These tests have no backup folder: skip the restore menu (issue #1448).
+    flow._restore_offered = True
 
     hass = MagicMock()
     hass.config_entries.async_entries.return_value = []

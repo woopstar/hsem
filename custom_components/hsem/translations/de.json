@@ -2,7 +2,11 @@
   "config": {
     "abort": {
       "already_configured": "HSEM Integration ist bereits konfiguriert",
-      "reconfigured_successfully": "HSEM Integration erfolgreich neu konfiguriert."
+      "reconfigured_successfully": "HSEM Integration erfolgreich neu konfiguriert.",
+      "no_backups": "Im Ordner hsem_backups wurden keine Sicherungsdateien gefunden."
+    },
+    "create_entry": {
+      "history_saved": "HSEM wurde wiederhergestellt. Der Verlauf, der zuvor auf diesem Home Assistant lag, wurde in {before_path} gesichert."
     },
     "error": {
       "device_not_found": "Das ausgewählte Gerät wurde nicht gefunden.",
@@ -33,7 +37,13 @@
       "tls_file_not_found": "Datei nicht gefunden oder nicht lesbar.",
       "tls_cert_key_mismatch": "Serverzertifikat und Schlüssel konnten nicht zusammen geladen werden. Prüfe, dass beide PEM-Dateien sind und der Schlüssel zum Zertifikat gehört.",
       "tls_invalid_ca": "Die Client-CA-Datei ist kein gültiges PEM-Zertifikat.",
-      "invalid_topup_min_power_pct": "Die Untergrenze der Netzladeleistung muss zwischen 0 und 100 % liegen."
+      "invalid_topup_min_power_pct": "Die Untergrenze der Netzladeleistung muss zwischen 0 und 100 % liegen.",
+      "backup_invalid": "Die Datei ist keine verwendbare HSEM-Sicherung. Es wurde nichts wiederhergestellt.",
+      "backup_unreadable": "Die Sicherungsdatei konnte nicht gelesen werden: Sie fehlt, ist zu groß oder kein JSON. Es wurde nichts wiederhergestellt.",
+      "backup_too_new": "Die Sicherung wurde von einer neueren HSEM-Version geschrieben. Aktualisiere zuerst HSEM. Es wurde nichts wiederhergestellt.",
+      "backup_config_version": "Die Konfiguration in der Sicherung gehört zu einer anderen Version des Konfigurationseintrags. Richte HSEM von Hand ein und stelle dann die gelernten Daten mit der Aktion hsem.import_data wieder her. Es wurde nichts wiederhergestellt.",
+      "backup_write_failed": "Die Verlaufsdateien konnten nicht geschrieben werden. Es wurde nichts wiederhergestellt. Prüfe das Home-Assistant-Protokoll.",
+      "backup_safety_copy_failed": "Der bereits auf diesem Home Assistant vorhandene Verlauf konnte nicht zuerst gesichert werden, daher wurde nichts wiederhergestellt. Prüfe das Home-Assistant-Protokoll."
     },
     "step": {
       "batteries_excess_export": {
@@ -539,6 +549,28 @@
         },
         "description": "Konfiguriere, wie sich die Batterie im Wartemodus verhält.",
         "title": "Batterie-Wartemodus-Verhalten"
+      },
+      "setup_method": {
+        "title": "HSEM einrichten",
+        "description": "Im Ordner hsem_backups wurde eine Sicherungsdatei gefunden. Richte HSEM neu ein oder stelle die Konfiguration und die gelernten Daten aus einer Sicherung wieder her.",
+        "menu_options": {
+          "user": "Neu einrichten",
+          "restore": "Aus einer Sicherung wiederherstellen"
+        }
+      },
+      "restore": {
+        "title": "Aus einer Sicherung wiederherstellen",
+        "description": "Wähle eine Sicherungsdatei aus dem Ordner hsem_backups. Die Datei wird zuerst geprüft. In diesem Schritt wird nichts geschrieben.",
+        "data": {
+          "backup_file": "Sicherungsdatei"
+        },
+        "data_description": {
+          "backup_file": "Eine Datei, die von der Aktion hsem.export_data geschrieben wurde, oder von HSEM beim Entfernen."
+        }
+      },
+      "restore_confirm": {
+        "title": "Wiederherstellung bestätigen",
+        "description": "Sicherung: {backup_file}\nGeschrieben: {created} von HSEM {hsem_version}\n\nSende ab, um die Verlaufsdateien wiederherzustellen und HSEM mit der Konfiguration aus der Sicherung anzulegen.\n\nNicht in der Sicherung, auf den Standardwert gesetzt: {skipped_keys}\n\nAusgeschaltet, weil sie einen dieser Werte brauchen: {disabled_features}\n\nGeräte, die es auf diesem Home Assistant nicht gibt, leer gelassen: {missing_devices}. Wähle sie nach der Wiederherstellung unter Konfigurieren aus.\n\nNicht wiederhergestellte Verlaufsdateien: {history_files_skipped}\n\nHSEM-Verlaufsdateien, die bereits auf diesem Home Assistant liegen, werden ersetzt. Sie werden zuerst in einer before_import-Sicherung im Ordner hsem_backups gesichert.\n\nEine Sicherung enthält nie Ladepunkt-IDs, Zertifikatspfade oder Geheimnisse. Trage sie nach der Wiederherstellung unter Konfigurieren ein und schalte die Funktionen dann wieder ein."
       }
     }
   },
@@ -1479,7 +1511,7 @@
         "fields": {
           "history_days": {
             "name": "Verlaufstage",
-            "description": "Abgeschlossene Tage vor heute, die durchgespielt werden. Höchstens 90."
+            "description": "Abgeschlossene Tage vor heute, die durchgespielt werden. Höchstens 365. Tage ohne gemessene Aufzeichnung werden aus der Stundenstatistik rekonstruiert."
           },
           "usable_capacity_kwh": {
             "name": "Nutzbare Kapazität",

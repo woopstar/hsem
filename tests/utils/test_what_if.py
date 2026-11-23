@@ -24,6 +24,7 @@ from custom_components.hsem.models.performance_record import (
     REASON_SCIPY_UNAVAILABLE,
     REASON_STORED_ENERGY_OUTSIDE_LIMITS,
 )
+from custom_components.hsem.models.what_if_history import DayLimits
 from custom_components.hsem.planner.milp_optimizer import is_scipy_available
 from custom_components.hsem.utils import what_if
 from custom_components.hsem.utils.what_if import (
@@ -569,3 +570,294 @@ class TestPause:
             _run(WhatIfScenario(usable_kwh=15.0))
 
         sleep.assert_not_called()
+
+
+@needs_scipy
+class TestDayLimits:
+    """Issue #1455: a day is solved with the limits it was recorded with."""
+
+    def _with_limits(self) -> dict[str, Any]:
+        """Return the three days, each holding the limits of ``SITE``."""
+        return {
+            date: replace(day, limits=DayLimits.from_site(SITE))
+            for date, day in _DAYS.items()
+        }
+
+    def test_the_baseline_uses_the_power_of_the_day(self) -> None:
+        """Today 1 kW is configured; the days were recorded with 5 kW.
+
+        A scenario that asks for 5 kW is then the battery those days already
+        had, and saves nothing.  Without the stored limits the baseline is
+        today's 1 kW battery, and the same scenario looks like a gain.
+        """
+        today = replace(SITE, max_charge_kw=1.0, max_discharge_kw=1.0)
+        scenario = WhatIfScenario(max_charge_kw=5.0, max_discharge_kw=5.0)
+
+        stored = _run(scenario, site=today, recorded=self._with_limits())
+        old = _run(scenario, site=today)
+
+        assert stored["days_compared"] == 3
+        assert stored["scenarios"][0]["grid_savings"] == pytest.approx(
+            0.0, abs=_ROUNDING
+        )
+        assert old["scenarios"][0]["grid_savings"] > 0.1
+
+    def test_a_scenario_changes_the_battery_of_the_day(self) -> None:
+        """What is left out of the scenario keeps the day's value, not today's."""
+        today = replace(SITE, max_charge_kw=1.0, max_discharge_kw=1.0)
+        scenario = WhatIfScenario(usable_kwh=15.0)
+
+        moved = _run(scenario, site=today, recorded=self._with_limits())
+        unmoved = _run(scenario, recorded=self._with_limits())
+
+        for name in ("current_grid_cost", "scenario_grid_cost", "grid_savings"):
+            assert moved["scenarios"][0][name] == pytest.approx(
+                unmoved["scenarios"][0][name], abs=_ROUNDING
+            )
+
+    def test_a_day_outside_today_s_soc_limits_is_still_compared(self) -> None:
+        """The days ran down to 5 % SoC; today the floor is 60 %."""
+        today = replace(SITE, min_soc_pct=60.0)
+        scenario = WhatIfScenario(usable_kwh=15.0)
+
+        stored = _run(scenario, site=today, recorded=self._with_limits())
+        old = _run(scenario, site=today)
+
+        assert stored["days_compared"] == 3
+        assert stored["days_on_todays_limits"] == 0
+        assert old["days_compared"] == 0
+        assert old["skipped_reasons"] == {REASON_STORED_ENERGY_OUTSIDE_LIMITS: 3}
+
+    def test_days_without_stored_limits_are_counted(self) -> None:
+        recorded = self._with_limits()
+        first = next(iter(_DAYS))
+        recorded[first] = _DAYS[first]
+
+        response = _run(WhatIfScenario(usable_kwh=15.0), recorded=recorded)
+
+        assert response["days_compared"] == 3
+        assert response["days_on_todays_limits"] == 1
+        assert [day["limits"] for day in response["days"]] == [
+            "today",
+            "recorded",
+            "recorded",
+        ]
+
+
+@needs_scipy
+class TestMonthsAndSources:
+    """Issue #1455: the months behind a figure, and rebuilt days apart."""
+
+    def test_the_months_of_the_compared_days_are_listed(self) -> None:
+        days = {
+            day.day: day
+            for day in (
+                make_day(FIRST_DAY - timedelta(days=1), seed=7),
+                *_DAYS.values(),
+                make_day(FIRST_DAY + timedelta(days=30), seed=8),
+            )
+        }
+
+        response = _run(
+            WhatIfScenario(usable_kwh=15.0), days=tuple(sorted(days)), recorded=days
+        )
+
+        assert response["months_compared"] == [
+            {"month": "2026-05", "days": 1},
+            {"month": "2026-06", "days": 3},
+            {"month": "2026-07", "days": 1},
+        ]
+
+    def test_a_skipped_day_is_in_no_month(self) -> None:
+        response = _run(
+            WhatIfScenario(usable_kwh=15.0), days=("2026-04-30", *tuple(_DAYS))
+        )
+
+        assert response["months_compared"] == [{"month": "2026-06", "days": 3}]
+        assert (
+            _run(WhatIfScenario(usable_kwh=15.0), recorded={})["months_compared"] == []
+        )
+
+    def test_rebuilt_days_are_marked_and_summed_apart(self) -> None:
+        recorded = dict(_DAYS)
+        last = list(_DAYS)[-1]
+        recorded[last] = replace(_DAYS[last], from_statistics=True)
+
+        response = _run(WhatIfScenario(usable_kwh=15.0), recorded=recorded)
+
+        assert response["days_compared"] == 3
+        assert response["days_measured"] == 2
+        assert response["days_from_statistics"] == 1
+        assert [day["source"] for day in response["days"]] == [
+            "measured",
+            "measured",
+            "statistics",
+        ]
+        row = response["scenarios"][0]
+        assert row["measured"]["days"] == 2
+        assert row["from_statistics"]["days"] == 1
+        for name in (
+            "current_grid_cost",
+            "scenario_grid_cost",
+            "grid_savings",
+            "current_wear_cost",
+            "scenario_wear_cost",
+            "savings_after_wear",
+        ):
+            assert row["measured"][name] + row["from_statistics"][name] == (
+                pytest.approx(row[name], abs=2 * _ROUNDING)
+            )
+        assert row["from_statistics"]["grid_savings"] == pytest.approx(
+            response["days"][2]["grid_savings"], abs=_ROUNDING
+        )
+
+    def test_without_rebuilt_days_their_part_is_empty(self) -> None:
+        row = _run(WhatIfScenario(usable_kwh=15.0))["scenarios"][0]
+
+        assert row["from_statistics"] == {
+            "days": 0,
+            "current_grid_cost": pytest.approx(0.0),
+            "scenario_grid_cost": pytest.approx(0.0),
+            "grid_savings": pytest.approx(0.0),
+            "current_wear_cost": pytest.approx(0.0),
+            "scenario_wear_cost": pytest.approx(0.0),
+            "savings_after_wear": pytest.approx(0.0),
+        }
+        assert row["measured"]["grid_savings"] == pytest.approx(row["grid_savings"])
+
+
+class TestSameSocWindow:
+    """Review of #1455: a moved SoC limit is neither a gain nor a loss."""
+
+    #: The days were recorded with 20-100 % of 10 kWh: 8 kWh usable.
+    _THEN = replace(SITE, min_soc_pct=20.0)
+
+    def _old_days(self) -> dict[str, Any]:
+        days = {}
+        for offset in range(MIN_DAYS_FOR_YEARLY):
+            day = make_day(
+                FIRST_DAY + timedelta(days=offset), seed=offset, site=self._THEN
+            )
+            days[day.day] = replace(day, limits=DayLimits.from_site(self._THEN))
+        return days
+
+    @needs_scipy
+    def test_both_sides_of_an_old_day_get_the_window_of_that_day(self) -> None:
+        """Today 5-100 % (9.5 kWh usable); the call asks for 14.5 kWh.
+
+        The row reports 5 kWh extra.  On a day recorded with 20-100 % the
+        configured side has 8 kWh, so the scenario may not get its full
+        14.5 kWh there: that would credit 6.5 kWh and shorten the payback.
+        It gets the same window as the configured side: 14.5 / 9.5 of 8 kWh.
+        """
+        batteries: list[Any] = []
+        solve = what_if.solve_hindsight_oracle
+
+        def recording(slots: Any, battery: Any, *args: Any, **kwargs: Any) -> Any:
+            batteries.append(battery)
+            return solve(slots, battery, *args, **kwargs)
+
+        days = self._old_days()
+        with patch.object(what_if, "solve_hindsight_oracle", recording):
+            response = _run(
+                WhatIfScenario(usable_kwh=14.5),
+                days=tuple(days),
+                recorded=days,
+                capacity_price_per_kwh=100.0,
+            )
+
+        assert response["days_compared"] == MIN_DAYS_FOR_YEARLY
+        assert response["scenarios"][0]["extra_capacity_kwh"] == pytest.approx(5.0)
+        assert response["scenarios"][0]["investment"] == pytest.approx(500.0)
+        configured, scenario = batteries[0], batteries[1]
+        assert configured.max_stored_kwh - configured.min_stored_kwh == (
+            pytest.approx(8.0)
+        )
+        usable = scenario.max_stored_kwh - scenario.min_stored_kwh
+        assert usable == pytest.approx(8.0 * 14.5 / 9.5)
+        # Never the 6.5 kWh the full size would add to the day's 8 kWh.
+        assert usable - 8.0 < 5.0
+
+    def test_the_scenario_keeps_the_ratio_it_has_today(self) -> None:
+        day = next(iter(self._old_days().values()))
+        scenario = WhatIfScenario(usable_kwh=14.5)
+
+        then = scenario.site_on(day, SITE)
+        baseline = WhatIfScenario().site_on(day, SITE)
+
+        assert (then.min_soc_pct, then.max_soc_pct) == pytest.approx((20.0, 100.0))
+        assert baseline == day.site_limits(SITE)
+        assert usable_capacity_kwh(then) / usable_capacity_kwh(baseline) == (
+            pytest.approx(14.5 / usable_capacity_kwh(SITE))
+        )
+
+    def test_a_day_without_limits_gets_the_scenario_in_full(self) -> None:
+        day = make_day(FIRST_DAY)
+
+        assert usable_capacity_kwh(
+            WhatIfScenario(usable_kwh=14.5).site_on(day, SITE)
+        ) == pytest.approx(14.5)
+
+    def test_a_power_the_scenario_gives_wins_over_the_day_s(self) -> None:
+        day = replace(make_day(FIRST_DAY), limits=DayLimits(5.0, 100.0, 2.0, 3.0))
+
+        site = WhatIfScenario(max_charge_kw=7.0).site_on(day, SITE)
+
+        assert site.max_charge_kw == pytest.approx(7.0)
+        assert site.max_discharge_kw == pytest.approx(3.0)
+
+
+class TestOrder:
+    """Review of #1455: a time limit cuts the weakest data, not the newest."""
+
+    def _mixed(self) -> dict[str, Any]:
+        """Three measured days, and a rebuilt day newer than all of them."""
+        rebuilt = replace(
+            make_day(FIRST_DAY + timedelta(days=3), seed=9), from_statistics=True
+        )
+        return {**_DAYS, rebuilt.day: rebuilt}
+
+    def test_measured_days_run_first_newest_first_then_rebuilt_ones(self) -> None:
+        order: list[str] = []
+
+        def recording(day: Any, *_args: Any) -> str:
+            order.append(day.day)
+            return REASON_ORACLE_UNSOLVED
+
+        days = self._mixed()
+        with patch.object(what_if, "replay_day", recording):
+            _run(WhatIfScenario(usable_kwh=15.0), days=tuple(days), recorded=days)
+
+        assert order == ["2026-06-03", "2026-06-02", "2026-06-01", "2026-06-04"]
+
+    def test_a_time_limit_keeps_the_newest_measured_day(self) -> None:
+        clock = [0.0]
+
+        def one_minute(day: Any, *_args: Any) -> list[Any]:
+            clock[0] += 60.0
+            return [what_if._Cost(2.0, 0.0), what_if._Cost(1.5, 0.0)]
+
+        days = self._mixed()
+        with (
+            patch.object(what_if, "replay_day", one_minute),
+            patch.object(
+                what_if,
+                "time",
+                SimpleNamespace(monotonic=lambda: clock[0], sleep=lambda _s: None),
+            ),
+        ):
+            response = _run(
+                WhatIfScenario(usable_kwh=15.0),
+                days=tuple(days),
+                recorded=days,
+                budget_s=90.0,
+            )
+
+        # What was cut is still reported.
+        assert response["days_compared"] == 2
+        assert response["skipped_reasons"] == {REASON_RUN_TIME_LIMIT: 2}
+        assert response["days_timed_out"] == 2
+        # The two newest measured days, listed oldest first.
+        assert [day["date"] for day in response["days"]] == ["2026-06-02", "2026-06-03"]
+        assert response["first_day_compared"] == "2026-06-02"
+        assert response["days_from_statistics"] == 0

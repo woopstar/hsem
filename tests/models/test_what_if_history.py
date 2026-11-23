@@ -18,14 +18,22 @@ import pytest
 
 from custom_components.hsem.models.performance_record import PerformanceSlot
 from custom_components.hsem.models.what_if_history import (
+    MAX_HISTORY_DAYS,
     MAX_RECORDED_DAYS,
     SCHEMA_VERSION,
+    DayLimits,
     RecordedDay,
     WhatIfHistory,
 )
 from tests.utils.what_if_days import FIRST_DAY, SITE, make_day
 
 _START = datetime(2026, 6, 9, 22, 0, tzinfo=UTC)
+_SOURCE = {
+    "import_entity": "sensor.import_price",
+    "export_entity": "sensor.export_price",
+    "import_unit": "DKK/kWh",
+    "export_unit": "DKK/kWh",
+}
 
 
 def _slots(count: int = 4) -> list[PerformanceSlot]:
@@ -308,3 +316,309 @@ class TestHistory:
 
         assert sorted(history.days) == ["2026-06-01", "2026-06-02"]
         assert history.days["2026-06-02"] is newer
+
+
+class TestDayLimits:
+    """Issue #1455: a day keeps the SoC and power limits it was recorded with."""
+
+    def test_a_new_day_holds_the_limits_of_its_site(self) -> None:
+        site = replace(SITE, min_soc_pct=12.0, max_soc_pct=95.0, max_charge_kw=3.5)
+
+        day = RecordedDay.from_slots("2026-06-10", _slots(), site)
+
+        assert day.limits is not None
+        assert day.limits.as_tuple() == pytest.approx((12.0, 95.0, 3.5, 5.0))
+        assert not day.from_statistics
+
+    def test_a_site_without_capacity_gives_no_limits(self) -> None:
+        site = replace(SITE, min_soc_pct=50.0, max_soc_pct=50.0)
+
+        assert RecordedDay.from_slots("2026-06-10", _slots(), site).limits is None
+
+    def test_the_limits_survive_json(self) -> None:
+        day = RecordedDay.from_slots(
+            "2026-06-10", _slots(), replace(SITE, min_soc_pct=100.0 / 3.0)
+        )
+
+        restored = RecordedDay.from_dict(json.loads(json.dumps(day.as_dict())))
+
+        assert restored is not None
+        assert restored.limits is not None
+        assert restored.limits.min_soc_pct == pytest.approx(33.3333)
+        assert restored.matches(day)
+
+    def test_a_day_replaces_today_s_limits_with_its_own(self) -> None:
+        recorded = replace(SITE, min_soc_pct=20.0, max_soc_pct=90.0, max_charge_kw=2.0)
+        day = RecordedDay.from_slots("2026-06-10", _slots(), recorded)
+        today = replace(SITE, rated_kwh=20.0, export_fee_per_kwh=0.1)
+
+        site = day.site_limits(today)
+
+        assert site.min_soc_pct == pytest.approx(20.0)
+        assert site.max_soc_pct == pytest.approx(90.0)
+        assert site.max_charge_kw == pytest.approx(2.0)
+        assert site.max_discharge_kw == pytest.approx(SITE.max_discharge_kw)
+        # Everything that is not a stored limit stays as it is today.
+        assert site.rated_kwh == pytest.approx(20.0)
+        assert site.export_fee_per_kwh == pytest.approx(0.1)
+
+    def test_a_day_without_limits_keeps_today_s(self) -> None:
+        day = make_day(FIRST_DAY)
+
+        assert day.limits is None
+        assert day.site_limits(SITE) is SITE
+
+    def test_a_changed_limit_is_a_changed_day(self) -> None:
+        day = RecordedDay.from_slots("2026-06-10", _slots(), SITE)
+        moved = RecordedDay.from_slots(
+            "2026-06-10", _slots(), replace(SITE, min_soc_pct=10.0)
+        )
+
+        assert not day.matches(moved)
+        # A day that gained limits is rewritten with them.
+        assert not day.matches(replace(day, limits=None))
+        assert not replace(day, limits=None).matches(day)
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            {"min_soc_pct": None},
+            {"max_soc_pct": "high"},
+            {"max_charge_kw": -1.0},
+            {"max_discharge_kw": float("nan")},
+            {"min_soc_pct": 90.0, "max_soc_pct": 10.0},
+        ],
+    )
+    def test_unusable_limits_are_dropped_and_the_day_is_kept(
+        self, change: dict[str, Any]
+    ) -> None:
+        data = RecordedDay.from_slots("2026-06-10", _slots(), SITE).as_dict()
+        data.update(change)
+
+        restored = RecordedDay.from_dict(json.loads(json.dumps(data)))
+
+        assert restored is not None
+        assert restored.limits is None
+
+    def test_from_dict_reads_complete_limits(self) -> None:
+        limits = DayLimits.from_dict(
+            {
+                "min_soc_pct": 5,
+                "max_soc_pct": 100,
+                "max_charge_kw": 5,
+                "max_discharge_kw": 4,
+            }
+        )
+
+        assert limits is not None
+        assert limits.as_tuple() == pytest.approx((5.0, 100.0, 5.0, 4.0))
+
+
+class TestOldFile:
+    """Issue #1455: a version 1 file has days without limits and no prices."""
+
+    def _version_one(self) -> dict[str, Any]:
+        days = []
+        for offset in range(2):
+            day = RecordedDay.from_slots(
+                (FIRST_DAY + timedelta(days=offset)).isoformat(), _slots(), SITE
+            ).as_dict()
+            for name in DayLimits(0.0, 1.0, 0.0, 0.0).as_dict():
+                del day[name]
+            days.append(day)
+        return {"schema": 1, "days": days}
+
+    def test_its_days_load_without_limits(self) -> None:
+        history = WhatIfHistory.from_dict(self._version_one())
+
+        assert sorted(history.days) == ["2026-06-01", "2026-06-02"]
+        assert all(day.limits is None for day in history.days.values())
+        assert history.prices == {}
+
+    @pytest.mark.asyncio
+    async def test_it_is_read_from_disk_and_written_as_the_new_version(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "what_if.json"
+        path.write_text(json.dumps(self._version_one()), encoding="utf-8")
+        history = WhatIfHistory(history_file=str(path))
+
+        await history.load_history()
+        assert len(history.days) == 2
+        history.add(RecordedDay.from_slots("2026-06-10", _slots(), SITE))
+        await history.save_history()
+
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        assert saved["schema"] == SCHEMA_VERSION == 2
+        assert "min_soc_pct" not in saved["days"][0]
+        assert saved["days"][2]["min_soc_pct"] == pytest.approx(SITE.min_soc_pct)
+
+
+class TestPrices:
+    """Issue #1455: the hourly prices a day rebuilt from statistics needs."""
+
+    _HOUR = datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
+
+    def _hours(self, count: int) -> dict[datetime, tuple[float, float]]:
+        return {
+            self._HOUR + timedelta(hours=index): (1.0 + index, 0.5 + index)
+            for index in range(count)
+        }
+
+    def test_only_hours_before_the_given_instant_are_kept(self) -> None:
+        history = WhatIfHistory()
+
+        changed = history.add_prices(
+            self._hours(5), self._HOUR + timedelta(hours=3), _SOURCE
+        )
+
+        assert changed is True
+        assert sorted(history.prices) == sorted(self._hours(3))
+
+    def test_a_held_hour_is_not_replaced_and_changes_nothing(self) -> None:
+        history = WhatIfHistory()
+        history.add_prices(self._hours(3), self._HOUR + timedelta(days=1), _SOURCE)
+
+        changed = history.add_prices(
+            {self._HOUR: (9.0, 9.0)}, self._HOUR + timedelta(days=1), _SOURCE
+        )
+
+        assert changed is False
+        assert history.prices[self._HOUR] == pytest.approx((1.0, 0.5))
+
+    def test_hours_older_than_the_longest_history_are_dropped(self) -> None:
+        history = WhatIfHistory()
+        history.add_prices(self._hours(3), self._HOUR + timedelta(days=1), _SOURCE)
+        later = self._HOUR + timedelta(days=MAX_HISTORY_DAYS + 1, hours=2)
+
+        changed = history.add_prices({}, later, _SOURCE)
+
+        assert changed is True
+        assert sorted(history.prices) == [self._HOUR + timedelta(hours=2)]
+
+    @pytest.mark.asyncio
+    async def test_they_are_saved_and_restored(self, tmp_path: Path) -> None:
+        path = tmp_path / "what_if.json"
+        history = WhatIfHistory(history_file=str(path))
+        history.add_prices(
+            {self._HOUR: (1.0 / 3.0, -0.25)}, self._HOUR + timedelta(days=1), _SOURCE
+        )
+        await history.save_history()
+
+        restored = WhatIfHistory(history_file=str(path))
+        restored.prices[self._HOUR + timedelta(hours=1)] = (2.0, 1.0)
+        await restored.load_history()
+
+        assert restored.prices[self._HOUR] == pytest.approx((0.33333, -0.25))
+        # An hour added while the file was being read is kept.
+        assert restored.prices[self._HOUR + timedelta(hours=1)] == pytest.approx(
+            (2.0, 1.0)
+        )
+
+    def test_a_damaged_price_row_costs_only_itself(self) -> None:
+        stamp = int(self._HOUR.timestamp())
+
+        history = WhatIfHistory.from_dict(
+            {
+                "schema": SCHEMA_VERSION,
+                "prices": [
+                    [stamp, 1.5],
+                    "broken",
+                    [stamp, "a", 1.0],
+                    [-5, 1.0, 1.0],
+                    [1e300, 1.0, 1.0],
+                    [stamp, 1.5, 0.5],
+                ],
+            }
+        )
+
+        assert history.prices == {self._HOUR: pytest.approx((1.5, 0.5))}
+
+
+class TestPriceSource:
+    """Issue #1455: kept prices belong to one price source, as the price history's."""
+
+    _HOUR = datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
+    _LATER = datetime(2026, 6, 3, 0, 0, tzinfo=UTC)
+
+    def _history(self) -> WhatIfHistory:
+        history = WhatIfHistory()
+        history.add_prices({self._HOUR: (1.0, 0.5)}, self._LATER, _SOURCE)
+        return history
+
+    @pytest.mark.parametrize(
+        "change",
+        [{"import_entity": "sensor.other_price"}, {"export_unit": "øre/kWh"}],
+    )
+    def test_another_entity_or_unit_drops_the_kept_prices(
+        self, change: dict[str, str]
+    ) -> None:
+        history = self._history()
+        new_hour = self._HOUR + timedelta(hours=5)
+
+        changed = history.add_prices(
+            {new_hour: (120.0, 50.0)}, self._LATER, {**_SOURCE, **change}
+        )
+
+        assert changed is True
+        assert history.prices == {new_hour: pytest.approx((120.0, 50.0))}
+        assert history.price_source == {**_SOURCE, **change}
+
+    def test_a_source_change_alone_is_a_change_to_save(self) -> None:
+        history = self._history()
+
+        changed = history.add_prices(
+            {}, self._LATER, {**_SOURCE, "import_entity": "sensor.other_price"}
+        )
+
+        assert changed is True
+        assert history.prices == {}
+
+    def test_an_unknown_unit_keeps_the_prices_and_the_known_unit(self) -> None:
+        """A price sensor that is down reports no unit: not another source."""
+        history = self._history()
+
+        changed = history.add_prices(
+            {}, self._LATER, {**_SOURCE, "import_unit": "", "export_unit": ""}
+        )
+
+        assert changed is False
+        assert list(history.prices) == [self._HOUR]
+        assert history.price_source == _SOURCE
+
+    def test_the_kept_prices_are_only_given_to_their_own_source(self) -> None:
+        history = self._history()
+
+        assert list(history.prices_for(_SOURCE)) == [self._HOUR]
+        assert history.prices_for({**_SOURCE, "export_entity": "sensor.x"}) == {}
+
+    @pytest.mark.asyncio
+    async def test_the_source_is_saved_and_restored(self, tmp_path: Path) -> None:
+        path = tmp_path / "what_if.json"
+        history = self._history()
+        history.history_file = str(path)
+        await history.save_history()
+
+        restored = WhatIfHistory(history_file=str(path))
+        await restored.load_history()
+
+        assert restored.price_source == _SOURCE
+        assert list(restored.prices) == [self._HOUR]
+
+    @pytest.mark.asyncio
+    async def test_prices_on_disk_of_another_source_are_not_merged(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "what_if.json"
+        on_disk = self._history()
+        on_disk.history_file = str(path)
+        await on_disk.save_history()
+        history = WhatIfHistory(history_file=str(path))
+        other = {**_SOURCE, "import_entity": "sensor.other_price"}
+        new_hour = self._HOUR + timedelta(hours=1)
+        history.add_prices({new_hour: (2.0, 1.0)}, self._LATER, other)
+
+        await history.load_history()
+
+        assert list(history.prices) == [new_hour]
+        assert history.price_source == other

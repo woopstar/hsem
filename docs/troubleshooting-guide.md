@@ -915,9 +915,12 @@ sensor and the hourly average sensors. A backup holds all of them.
 
 - **Back up:** call `hsem.export_data`. The file lands in
   `<config>/hsem_backups/`.
-- **Move to another Home Assistant:** set HSEM up there, copy the backup file
-  into `<config>/hsem_backups/` and call `hsem.import_data` with its
-  `filename`.
+- **Move to another Home Assistant:** install HSEM there, copy the backup file
+  into `<config>/hsem_backups/` and add the integration. Choose **Restore from
+  a backup** in the setup flow. Charge point IDs and certificate paths are not
+  in a backup, so OCPP stays off until you enter them under **Configure**.
+  With HSEM already set up, call `hsem.import_data` with the `filename`
+  instead.
 - **Undo an import:** every import first writes
   `hsem_backup_<date>_<time>_before_import.json`. Import that file.
 - **Deleted the integration:** HSEM wrote

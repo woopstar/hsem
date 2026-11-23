@@ -2,7 +2,11 @@
   "config": {
     "abort": {
       "already_configured": "HSEM Integration is already configured",
-      "reconfigured_successfully": "HSEM Integration reconfigured successfully."
+      "reconfigured_successfully": "HSEM Integration reconfigured successfully.",
+      "no_backups": "No backup files were found in the hsem_backups folder."
+    },
+    "create_entry": {
+      "history_saved": "HSEM was restored. The history that was on this Home Assistant before was saved to {before_path}."
     },
     "error": {
       "device_not_found": "The selected device was not found.",
@@ -33,7 +37,13 @@
       "tls_file_not_found": "File not found or not readable.",
       "tls_cert_key_mismatch": "The server certificate and key could not be loaded together. Check that both are PEM files and that the key belongs to the certificate.",
       "tls_invalid_ca": "The client CA file is not a valid PEM certificate.",
-      "invalid_topup_min_power_pct": "Top-up charge power floor must be between 0 and 100 %."
+      "invalid_topup_min_power_pct": "Top-up charge power floor must be between 0 and 100 %.",
+      "backup_invalid": "The file is not a usable HSEM backup. Nothing was restored.",
+      "backup_unreadable": "The backup file could not be read: it is missing, too large or not JSON. Nothing was restored.",
+      "backup_too_new": "The backup was written by a newer HSEM version. Update HSEM first. Nothing was restored.",
+      "backup_config_version": "The configuration in the backup belongs to another config entry version. Set HSEM up by hand, then restore the learned data with the hsem.import_data action. Nothing was restored.",
+      "backup_write_failed": "The history files could not be written. Nothing was restored. Check the Home Assistant log.",
+      "backup_safety_copy_failed": "The history already on this Home Assistant could not be saved first, so nothing was restored. Check the Home Assistant log."
     },
     "step": {
       "batteries_excess_export": {
@@ -539,6 +549,28 @@
         },
         "description": "Configure how the battery behaves during Wait mode.",
         "title": "Battery Wait Mode Behaviour"
+      },
+      "setup_method": {
+        "title": "Set up HSEM",
+        "description": "A backup file was found in the hsem_backups folder. Set HSEM up from scratch, or restore the configuration and the learned data from a backup.",
+        "menu_options": {
+          "user": "Set up from scratch",
+          "restore": "Restore from a backup"
+        }
+      },
+      "restore": {
+        "title": "Restore from a backup",
+        "description": "Choose a backup file from the hsem_backups folder. The file is checked first. Nothing is written in this step.",
+        "data": {
+          "backup_file": "Backup file"
+        },
+        "data_description": {
+          "backup_file": "A file written by the hsem.export_data action, or by HSEM when it was removed."
+        }
+      },
+      "restore_confirm": {
+        "title": "Confirm the restore",
+        "description": "Backup: {backup_file}\nWritten: {created} by HSEM {hsem_version}\n\nSubmit to restore the history files and create HSEM with the configuration from the backup.\n\nNot in the backup, set to their default: {skipped_keys}\n\nSwitched off because they need one of those values: {disabled_features}\n\nDevices that do not exist on this Home Assistant, left empty: {missing_devices}. Pick them under Configure after the restore.\n\nHistory files not restored: {history_files_skipped}\n\nHSEM history files already on this Home Assistant are replaced. They are saved to a before_import backup in the hsem_backups folder first.\n\nA backup never holds charge point IDs, certificate paths or secrets. Enter them under Configure after the restore, then switch the features on again."
       }
     }
   },
@@ -1479,7 +1511,7 @@
         "fields": {
           "history_days": {
             "name": "History days",
-            "description": "Completed days before today to replay. At most 90."
+            "description": "Completed days before today to replay. At most 365. Days without a measured record are rebuilt from hourly statistics."
           },
           "usable_capacity_kwh": {
             "name": "Usable capacity",

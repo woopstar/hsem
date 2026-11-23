@@ -3,9 +3,12 @@
 Two jobs, both read-only towards the planner and the hardware:
 
 - after each performance evaluation, copy every completed local day whose
-  slots are complete into the what-if history;
+  slots are complete into the what-if history, and the real hourly prices of
+  the completed days with them;
 - on a service call, replay those days in a worker thread of their own, one
-  run at a time.
+  run at a time.  A day of the asked-for history without a measured record is
+  rebuilt for that run from hourly long-term statistics and the kept prices
+  (issue #1455).
 
 Nothing here is awaited by a coordinator cycle except the copy of a day, which
 solves nothing.
@@ -24,19 +27,25 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from dataclasses import replace
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any, ClassVar
 
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant, callback
 
+from custom_components.hsem.coordinator_energy_backfill import (
+    async_read_house_and_pv,
+)
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.models.what_if_history import RecordedDay, WhatIfHistory
 from custom_components.hsem.planner.hindsight_scoring import SiteLimits
+from custom_components.hsem.utils.datetime_utils import now as hsem_now
+from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 from custom_components.hsem.utils.misc import resolve_cycle_cost
 from custom_components.hsem.utils.performance_scoring import (
     PerformanceRequest,
@@ -47,6 +56,12 @@ from custom_components.hsem.utils.what_if import (
     WhatIfScenario,
     run_what_if,
     usable_capacity_kwh,
+)
+from custom_components.hsem.utils.what_if_rebuild import (
+    REASON_PRICE_INCOMPLETE,
+    REASON_STATISTICS_INCOMPLETE,
+    priced_days,
+    rebuild_days,
 )
 
 #: Name of the history file under ``.storage``.
@@ -167,6 +182,11 @@ async def async_record_days(
     after slot, does not rewrite it.  Neither does the first evaluation after
     a restart, when the stored day is rounded and the fresh one is not.
 
+    The real hourly prices of the completed local days are kept with them
+    (issue #1455): they are what a day rebuilt from statistics is priced
+    with.  Only hours before today are taken, so they change the file once a
+    day.
+
     Args:
         coordinator: The running coordinator.
         request: The evaluation request, whose slots are already detached.
@@ -175,7 +195,12 @@ async def async_record_days(
     if history is None or request.site is None:
         return
     await init_what_if_history(history, coordinator.hass)
-    added = False
+    prices = getattr(coordinator, "_price_history_tracker", None)
+    current = hsem_now()
+    today = datetime.combine(current.date(), time(0), tzinfo=current.tzinfo)
+    added = prices is not None and history.add_prices(
+        prices.hourly_prices(), today, prices.source
+    )
     for day, keys in request.days:
         usable = usable_slots(
             [request.slots.get(key) for key in keys], request.slot_minutes
@@ -246,6 +271,70 @@ def build_what_if_request(
     )
 
 
+async def async_rebuild_days(
+    coordinator: CoordinatorSharedState,
+    days: Sequence[str],
+    site: SiteLimits,
+    now: datetime,
+) -> tuple[dict[str, RecordedDay], dict[str, str]]:
+    """Rebuild days without a measured record from hourly statistics.
+
+    Only reads: the kept hourly prices, the price history and the recorder's
+    long-term statistics.  Statistics are asked for only when a day has a
+    real price for every hour, and only from the first such day on.
+
+    Args:
+        coordinator: The running coordinator.
+        days: The local days to rebuild, as ISO dates.
+        site: The installation's limits as configured today.
+        now: Current time in the site's zone.
+
+    Returns:
+        The rebuilt days by ISO date, and why each of the others could not be
+        rebuilt.  Both are empty without the recorder: the days then keep the
+        reason they had.
+    """
+    hass = coordinator.hass
+    if not days or "recorder" not in getattr(hass.config, "components", ()):
+        return {}, {}
+    history = coordinator._what_if_history
+    tracker = getattr(coordinator, "_price_history_tracker", None)
+    if tracker is None:
+        prices = dict(history.prices)
+    else:
+        # Kept prices of another price source are on another scale.
+        prices = {**history.prices_for(tracker.source), **tracker.hourly_prices()}
+    cfg = coordinator._cfg
+    priced = priced_days(days, now.tzinfo, prices)
+    reasons = {day: REASON_PRICE_INCOMPLETE for day in days if day not in priced}
+    if not priced:
+        return {}, reasons
+    try:
+        hourly = await async_read_house_and_pv(
+            hass,
+            cfg,
+            min(hours[0] for hours in priced.values()),
+            max(hours[-1] for hours in priced.values()) + timedelta(hours=1),
+        )
+    except Exception as exc:
+        # A recorder or database error leaves the measured days to replay.
+        _LOGGER.warning(
+            "What-if: reading statistics failed, %d day(s) not rebuilt: %s: %r",
+            len(priced),
+            type(exc).__name__,
+            exc,
+        )
+        return {}, {**reasons, **dict.fromkeys(priced, REASON_STATISTICS_INCOMPLETE)}
+    rebuilt, incomplete = rebuild_days(
+        priced,
+        hourly,
+        prices,
+        site,
+        pv_expected=bool(cfg.pv_energy_entity or cfg.solar_production_power),
+    )
+    return rebuilt, {**reasons, **incomplete}
+
+
 async def async_run_what_if(
     coordinator: CoordinatorSharedState,
     now: datetime,
@@ -256,8 +345,9 @@ async def async_run_what_if(
 ) -> dict[str, Any] | None:
     """Replay the recorded days in the replay's own executor, one at a time.
 
-    Reads a detached copy of the recorded days and the latest planner input.
-    It writes nothing: not to the hardware, not to the plan, not to a tracker.
+    Reads a detached copy of the recorded days and the latest planner input,
+    and rebuilds the days without a record from long-term statistics.  It
+    writes nothing: not to the hardware, not to the plan, not to a tracker.
 
     Args:
         coordinator: The running coordinator.
@@ -287,6 +377,17 @@ async def async_run_what_if(
         history_days=history_days,
         scenarios=scenarios,
         capacity_price_per_kwh=capacity_price_per_kwh,
+    )
+    rebuilt, reasons = await async_rebuild_days(
+        coordinator,
+        [day for day in request.days if day not in request.recorded],
+        request.site,
+        now,
+    )
+    request = replace(
+        request,
+        recorded={**request.recorded, **rebuilt},
+        reasons={**request.reasons, **reasons},
     )
     if what_if_running():
         # Another call took the slot while the history was being read.
