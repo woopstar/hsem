@@ -27,9 +27,9 @@ from typing import Any
 from custom_components.hsem.models.performance_record import PerformanceSlot
 from custom_components.hsem.planner.hindsight_scoring import SiteLimits
 from custom_components.hsem.utils.persistence import (
+    async_load_history,
     aware_datetime_from_iso,
     finite_float,
-    read_json_history_file,
     write_json_history_file,
 )
 
@@ -282,7 +282,9 @@ class WhatIfHistory:
         """Restore the history from its file, if there is one."""
         if not self.history_file:
             return
-        data = await asyncio.to_thread(read_json_history_file, Path(self.history_file))
-        if data is not None:
-            # A day added while the file was being read is newer than the file.
-            self.days = {**WhatIfHistory.from_dict(data).days, **self.days}
+        await async_load_history(Path(self.history_file), self._merge_loaded)
+
+    def _merge_loaded(self, data: dict[str, Any]) -> None:
+        """Merge a loaded history file into the days already held."""
+        # A day added while the file was being read is newer than the file.
+        self.days = {**WhatIfHistory.from_dict(data).days, **self.days}

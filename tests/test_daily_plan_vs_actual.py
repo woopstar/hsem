@@ -390,8 +390,11 @@ class TestDailyPlanVsActualTracker:
             await tracker.load_history()
             # Should have loaded empty history despite corruption.
             assert tracker.history == []
+            # The corrupted file is kept under another name (issue #1446).
+            assert not Path(tmp_path).exists()
         finally:
-            os.unlink(tmp_path)
+            for kept in Path(tmp_path).parent.glob(f"{Path(tmp_path).name}.corrupt-*"):
+                kept.unlink()
 
     @pytest.mark.asyncio
     async def test_load_missing_file(self) -> None:
