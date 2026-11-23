@@ -20,7 +20,7 @@ from custom_components.hsem.custom_sensors.monthly_energy_sensors import (
 )
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.models.energy_tracker import (
-    REASON_AC_BATTERY_POWER_NOT_MEASURED,
+    REASON_AC_BATTERY_POWER_NOT_CONFIGURED,
     REASON_NO_DATA,
     REASON_THROUGHPUT_BELOW_MINIMUM,
     EnergyDayEntry,
@@ -34,7 +34,7 @@ _NOW = datetime(2026, 6, 10, 12, 0, tzinfo=ZoneInfo("Europe/Copenhagen"))
 def _day(date: str, *, charged: float = 60.0, ac: bool = True) -> EnergyDayEntry:
     """Return a day that is 75 % self-sufficient with a 10 % round-trip loss.
 
-    On the AC side the loss is 20 %, when *ac* says that side was measured.
+    On the AC side the loss is 15 %, when *ac* says that side was measured.
     """
     return EnergyDayEntry(
         date,
@@ -51,7 +51,9 @@ def _day(date: str, *, charged: float = 60.0, ac: bool = True) -> EnergyDayEntry
         measured_charged_kwh=charged,
         measured_discharged_kwh=charged * 0.9,
         ac_charged_kwh=charged if ac else 0.0,
-        ac_discharged_kwh=charged * 0.8 if ac else 0.0,
+        ac_discharged_kwh=charged * 0.85 if ac else 0.0,
+        ac_power_hours=24.0 if ac else 0.0,
+        ac_hours=24.0 if ac else 0.0,
         usable_capacity_kwh=9.0,
         rated_capacity_kwh=10.0,
         house_hours=24.0,
@@ -132,7 +134,7 @@ class TestValues:
             "battery_cycles": pytest.approx(6.0),
             "battery_wear_cost": pytest.approx(1.5),
             "round_trip_loss": pytest.approx(10.0),
-            "ac_round_trip_loss": pytest.approx(20.0),
+            "ac_round_trip_loss": pytest.approx(15.0),
         }
         assert set(reasons.values()) == {None}
 
@@ -150,7 +152,7 @@ class TestValues:
             battery_attributes = sensors["round_trip_loss"].extra_state_attributes
 
         assert ac_value is None
-        assert ac_attributes["reason"] == REASON_AC_BATTERY_POWER_NOT_MEASURED
+        assert ac_attributes["reason"] == REASON_AC_BATTERY_POWER_NOT_CONFIGURED
         assert battery_value == pytest.approx(10.0)
         assert (battery_attributes or {})["reason"] is None
 
@@ -178,9 +180,13 @@ class TestValues:
         sensors = _sensors(EnergyTracker())
 
         with patch(f"{_MODULE}.hsem_now", return_value=_NOW):
-            for sensor in sensors.values():
+            for key, sensor in sensors.items():
                 assert sensor.native_value is None
-                assert (sensor.extra_state_attributes or {})["reason"] == REASON_NO_DATA
+                assert (sensor.extra_state_attributes or {})["reason"] == (
+                    REASON_AC_BATTERY_POWER_NOT_CONFIGURED
+                    if key == "ac_round_trip_loss"
+                    else REASON_NO_DATA
+                )
 
     def test_without_a_tracker_there_is_nothing_to_report(self) -> None:
         sensors = _sensors(None)

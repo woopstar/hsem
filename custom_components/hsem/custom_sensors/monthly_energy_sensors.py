@@ -11,7 +11,7 @@ Five sensors, each the current calendar month so far (issues #1435, #1450):
   the battery that did not come out again, measured at the battery (%).
 - ``sensor.hsem_monthly_ac_round_trip_loss`` — the same share measured on the
   AC side of the inverter, so with its conversion loss (%).  Unknown, with
-  the reason ``ac_battery_power_not_measured``, without an AC-side battery
+  the reason ``ac_battery_power_not_configured``, without an AC-side battery
   power sensor.
 
 All five publish the same attributes: ``this_month`` and ``previous_month``

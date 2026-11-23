@@ -18,6 +18,7 @@ explicitly below.
 
 from __future__ import annotations
 
+import json
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,9 +27,12 @@ import voluptuous as vol
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers.json import json_bytes
+from homeassistant.helpers.selector import Selector
 
 from custom_components.hsem.config_flow import HSEMConfigFlow
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, NAME
+from custom_components.hsem.flows.energy_and_ml import get_energy_and_ml_step_schema
 from custom_components.hsem.flows.huawei_solar import get_huawei_solar_step_schema
 from custom_components.hsem.flows.quick_setup import (
     _DETECTION_TO_CONFIG,
@@ -127,6 +131,28 @@ def _schema(result: Any) -> vol.Schema:
     schema = result["data_schema"]
     assert isinstance(schema, vol.Schema)
     return schema
+
+
+def _serialized_fields(schema: Any) -> list[dict[str, Any]]:
+    """Return *schema* as the field list Home Assistant sends to the frontend.
+
+    The same conversion as ``voluptuous_serialize.convert`` with Home
+    Assistant's custom serializer, which the test environment does not
+    install: per field its name, whether it is required, its description and
+    default when it has them, and the selector's own serialisation.
+    """
+    fields: list[dict[str, Any]] = []
+    for marker, value in schema.schema.items():
+        field: dict[str, Any] = {"name": str(marker)}
+        field["required" if isinstance(marker, vol.Required) else "optional"] = True
+        if marker.description is not None:
+            field["description"] = marker.description
+        if callable(marker.default):
+            field["default"] = marker.default()
+        if isinstance(value, Selector):
+            field.update(value.serialize())
+        fields.append(field)
+    return fields
 
 
 def _field_names(result: Any) -> set[str]:
@@ -900,6 +926,51 @@ class TestOptionsFlowFinalStep:
         markers = {str(marker): marker for marker in _schema(result).schema}
         marker = markers["hsem_battery_ac_power_entity"]
         assert marker.description == {"suggested_value": "sensor.old"}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            # A fresh installation.
+            None,
+            # An upgrade: the entry was saved before the option existed.
+            _make_entry(options={"device_name": "HSEM"}),
+            # The sensor was cleared.
+            _make_entry(options={"hsem_battery_ac_power_entity": ""}),
+            _make_entry(options={"hsem_battery_ac_power_entity": "sensor.old"}),
+        ],
+    )
+    async def test_the_energy_form_can_be_sent_to_the_frontend(
+        self, entry: MagicMock | None
+    ) -> None:
+        """An unset option is ``vol.UNDEFINED``, which is not JSON (#1450).
+
+        Home Assistant sends the form as JSON.  A suggested value of
+        ``vol.UNDEFINED`` made that fail, so the last step never showed.
+        """
+        schema = await get_energy_and_ml_step_schema(entry)
+
+        fields = _serialized_fields(schema)
+
+        assert json.loads(json_bytes(fields))
+        field = next(f for f in fields if f["name"] == "hsem_battery_ac_power_entity")
+        configured = bool(entry and entry.options.get("hsem_battery_ac_power_entity"))
+        assert ("description" in field) is configured
+        assert "default" not in field
+        if configured:
+            assert field["description"] == {"suggested_value": "sensor.old"}
+
+    @pytest.mark.asyncio
+    async def test_the_serialisation_check_catches_an_undefined_suggestion(
+        self,
+    ) -> None:
+        """The check above fails for the schema that had the bug."""
+        schema = vol.Schema(
+            {vol.Optional("field", description={"suggested_value": vol.UNDEFINED}): str}
+        )
+
+        with pytest.raises(TypeError):
+            json_bytes(_serialized_fields(schema))
 
     @pytest.mark.asyncio
     async def test_title_falls_back_to_integration_name(self) -> None:

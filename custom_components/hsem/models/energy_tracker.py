@@ -23,12 +23,17 @@ from pathlib import Path
 from typing import Any
 
 from custom_components.hsem.models.energy_round_trip import (
-    REASON_AC_BATTERY_POWER_NOT_MEASURED,
+    REASON_AC_BATTERY_POWER_NO_READINGS,
+    REASON_AC_BATTERY_POWER_NOT_CONFIGURED,
+    REASON_AC_BATTERY_POWER_UNIT_NOT_POWER,
+    REASON_AC_SOC_OR_CAPACITY_MISSING,
     REASON_BATTERY_POWER_NOT_MEASURED,
     REASON_IMPLAUSIBLE_RATIO,
     REASON_NO_DATA,
     REASON_SOC_CHANGE_TOO_LARGE,
     REASON_THROUGHPUT_BELOW_MINIMUM,
+    ac_unknown_reason,
+    battery_unknown_reason,
     round_trip_summary,
 )
 from custom_components.hsem.utils.metering import (
@@ -79,7 +84,10 @@ REASON_GRID_IMPORT_NOT_MEASURED = "grid_import_not_measured"
 REASON_CAPACITY_UNKNOWN = "capacity_unknown"
 
 __all__ = [
-    "REASON_AC_BATTERY_POWER_NOT_MEASURED",
+    "REASON_AC_BATTERY_POWER_NOT_CONFIGURED",
+    "REASON_AC_BATTERY_POWER_NO_READINGS",
+    "REASON_AC_BATTERY_POWER_UNIT_NOT_POWER",
+    "REASON_AC_SOC_OR_CAPACITY_MISSING",
     "REASON_BATTERY_POWER_NOT_MEASURED",
     "REASON_IMPLAUSIBLE_RATIO",
     "REASON_NO_DATA",
@@ -106,6 +114,8 @@ SUMMED_FIELDS: tuple[str, ...] = (
     "ac_charged_kwh",
     "ac_discharged_kwh",
     "ac_stored_delta_kwh",
+    "ac_power_hours",
+    "ac_hours",
     "house_hours",
     "grid_import_hours",
     "grid_export_hours",
@@ -230,6 +240,8 @@ class EnergyDayEntry:
             reading, in intervals whose SoC change is known.
         ac_discharged_kwh: AC-side battery discharge of those intervals.
         ac_stored_delta_kwh: Change in stored energy over them.
+        ac_power_hours: Hours in which the AC-side sensor gave readings.
+        ac_hours: Hours of those in which the AC-side flows were booked.
         house_hours: Hours in which the house consumption was measured.
         grid_import_hours: Hours in which the grid import was measured.
         grid_export_hours: Hours in which the grid export was measured.
@@ -258,6 +270,8 @@ class EnergyDayEntry:
     ac_charged_kwh: float = 0.0
     ac_discharged_kwh: float = 0.0
     ac_stored_delta_kwh: float = 0.0
+    ac_power_hours: float = 0.0
+    ac_hours: float = 0.0
     house_hours: float = 0.0
     grid_import_hours: float = 0.0
     grid_export_hours: float = 0.0
@@ -311,11 +325,14 @@ class EnergyTracker:
             :data:`MAX_DAILY_LOG_DAYS` days.
         history_file: Path of the JSON history file.
         backfill_complete: The statistics backfill has run (issue #1450).
+        ac_sensor_reason: Why the AC-side battery power sensor gives no
+            readings as it is set up now.  Not persisted: set every cycle.
     """
 
     daily_log: dict[str, EnergyDayEntry] = field(default_factory=dict)
     history_file: str = ""
     backfill_complete: bool = False
+    ac_sensor_reason: str = REASON_AC_BATTERY_POWER_NOT_CONFIGURED
     _last_sample: EnergySample | None = field(default=None, repr=False)
     _saved_at: datetime | None = field(default=None, repr=False)
     _revision: int = field(default=0, repr=False)
@@ -430,10 +447,13 @@ class EnergyTracker:
         ac_flows = signed_power_kwh(
             previous.battery_ac_power_w, sample.battery_ac_power_w, hours
         )
-        if ac_flows is not None and stored_delta is not None:
-            entry.ac_charged_kwh += ac_flows[0]
-            entry.ac_discharged_kwh += ac_flows[1]
-            entry.ac_stored_delta_kwh += stored_delta
+        if ac_flows is not None:
+            entry.ac_power_hours += hours
+            if stored_delta is not None:
+                entry.ac_charged_kwh += ac_flows[0]
+                entry.ac_discharged_kwh += ac_flows[1]
+                entry.ac_stored_delta_kwh += stored_delta
+                entry.ac_hours += hours
 
         flows = signed_power_kwh(
             previous.battery_power_w, sample.battery_power_w, hours
@@ -478,6 +498,14 @@ class EnergyTracker:
         self.backfill_complete = True
         self._revision += 1
         return added
+
+    def set_ac_sensor_reason(self, reason: str) -> bool:
+        """Set :attr:`ac_sensor_reason` and return whether it changed."""
+        changed = reason != self.ac_sensor_reason
+        if changed:
+            self.ac_sensor_reason = reason
+            self._revision += 1
+        return changed
 
     def _prune(self, today: date) -> None:
         """Drop records older than :data:`MAX_DAILY_LOG_DAYS` days."""
@@ -566,8 +594,11 @@ class EnergyTracker:
                 total["measured_discharged_kwh"],
                 total["measured_stored_delta_kwh"],
                 rated,
-                has_days=bool(days),
-                not_measured_reason=REASON_BATTERY_POWER_NOT_MEASURED,
+                unknown_reason=battery_unknown_reason(
+                    total["measured_charged_kwh"],
+                    total["measured_discharged_kwh"],
+                    has_days=bool(days),
+                ),
             )
         )
         summary.update(
@@ -577,8 +608,12 @@ class EnergyTracker:
                 total["ac_discharged_kwh"],
                 total["ac_stored_delta_kwh"],
                 rated,
-                has_days=bool(days),
-                not_measured_reason=REASON_AC_BATTERY_POWER_NOT_MEASURED,
+                unknown_reason=ac_unknown_reason(
+                    total["ac_power_hours"],
+                    total["ac_hours"],
+                    has_days=bool(days),
+                    sensor_reason=self.ac_sensor_reason,
+                ),
             )
         )
         return summary

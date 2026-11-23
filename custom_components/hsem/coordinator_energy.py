@@ -30,6 +30,11 @@ from custom_components.hsem.coordinator_energy_backfill import (
 )
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
+from custom_components.hsem.models.energy_round_trip import (
+    REASON_AC_BATTERY_POWER_NO_READINGS,
+    REASON_AC_BATTERY_POWER_NOT_CONFIGURED,
+    REASON_AC_BATTERY_POWER_UNIT_NOT_POWER,
+)
 from custom_components.hsem.models.energy_tracker import (
     BatterySite,
     EnergySample,
@@ -40,7 +45,7 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.logger import async_log
 from custom_components.hsem.utils.misc import clamp_efficiency, resolve_cycle_cost
-from custom_components.hsem.utils.unit_normalize import normalize_to_unit
+from custom_components.hsem.utils.unit_normalize import normalize_to_unit_family
 
 #: Name of the history file under ``.storage``.
 HISTORY_FILE = "hsem_energy_history.json"
@@ -106,37 +111,58 @@ def consumption_power_w(
     return power
 
 
-def battery_ac_power_w(hass: HomeAssistant, cfg: SensorConfig) -> float | None:
-    """Return the battery's power on the AC side of the inverter, or ``None``.
+def read_battery_ac_power(
+    hass: HomeAssistant, cfg: SensorConfig, now: datetime, max_age_seconds: float
+) -> tuple[float | None, str]:
+    """Return the battery's power on the AC side of the inverter, and a reason.
 
     Read from the optional ``hsem_battery_ac_power_entity`` and converted to
     W.  The sign is the battery power sensor's: positive while charging.
 
+    The sensor is one the user picked, so nothing is taken on trust:
+
+    - Only a power unit is read.  A reading in another unit (``kVA``, ``A``,
+      ``kWh``, ``%``) or without a unit is not a number of watts.
+    - A state last reported more than *max_age_seconds* ago is a sensor that
+      stopped, not a constant power.
+
     Args:
         hass: Home Assistant instance.
         cfg: The sensor configuration.
+        now: Current time (timezone-aware).
+        max_age_seconds: Oldest report still taken for a reading.
 
     Returns:
-        The power in W, or ``None`` when no sensor is configured or it has no
-        finite numeric state.
+        The power in W, or ``None``; and why the sensor gives no readings as
+        it is set up: not configured, a unit that is not power, or, as the
+        reason for every other missing reading, no readings.
     """
     entity_id = cfg.battery_ac_power_entity
-    state = hass.states.get(entity_id) if entity_id else None
-    if entity_id is None or state is None:
-        return None
-    return _finite(
-        normalize_to_unit(
-            convert_to_float(state.state),
-            state.attributes.get(ATTR_UNIT_OF_MEASUREMENT),
-            UnitOfPower.WATT,
-            entity_id=entity_id,
-            label="battery_ac_power",
-        )
+    if not entity_id:
+        return None, REASON_AC_BATTERY_POWER_NOT_CONFIGURED
+    state = hass.states.get(entity_id)
+    value = None if state is None else convert_to_float(state.state)
+    if state is None or value is None:
+        return None, REASON_AC_BATTERY_POWER_NO_READINGS
+    watts = normalize_to_unit_family(
+        value, state.attributes.get(ATTR_UNIT_OF_MEASUREMENT), (UnitOfPower.WATT,)
     )
+    if watts is None:
+        return None, REASON_AC_BATTERY_POWER_UNIT_NOT_POWER
+    # A state object without the time of its last report is taken as fresh.
+    reported: datetime | None = getattr(state, "last_reported", None)
+    if reported is not None and (now - reported).total_seconds() > max_age_seconds:
+        return None, REASON_AC_BATTERY_POWER_NO_READINGS
+    return _finite(watts[0]), REASON_AC_BATTERY_POWER_NO_READINGS
 
 
 def build_energy_sample(
-    hass: HomeAssistant, now: datetime, live: LiveState, cfg: SensorConfig
+    hass: HomeAssistant,
+    now: datetime,
+    live: LiveState,
+    cfg: SensorConfig,
+    *,
+    battery_ac_power_w: float | None = None,
 ) -> EnergySample:
     """Return this cycle's readings as an energy sample.
 
@@ -145,6 +171,8 @@ def build_energy_sample(
         now: Current time (timezone-aware).
         live: The live HA entity state snapshot.
         cfg: The sensor configuration.
+        battery_ac_power_w: The AC-side battery power from
+            :func:`read_battery_ac_power`, or ``None``.
 
     Returns:
         The sample.  A reading that is missing or not finite is ``None``.
@@ -159,7 +187,7 @@ def build_energy_sample(
         ),
         house_power_w=consumption_power_w(hass, live, cfg),
         battery_power_w=_finite(live.huawei_batteries_charge_discharge_power_w),
-        battery_ac_power_w=battery_ac_power_w(hass, cfg),
+        battery_ac_power_w=battery_ac_power_w,
         soc_pct=_finite(live.huawei_batteries_soc_pct),
     )
 
@@ -233,10 +261,27 @@ async def async_track_energy(
             return
         await init_energy_tracker(tracker, coordinator.hass)
         site = build_battery_site(live, cfg)
+        max_gap_s = max(MAX_GAP_S, 2.0 * cfg.update_interval * 60.0)
+        ac_power_w, ac_reason = read_battery_ac_power(
+            coordinator.hass, cfg, now, max_gap_s
+        )
+        # Logged when the reason changes, so once per wrong unit.
+        if (
+            tracker.set_ac_sensor_reason(ac_reason)
+            and ac_reason == REASON_AC_BATTERY_POWER_UNIT_NOT_POWER
+        ):
+            async_log(
+                "warning",
+                "AC-side battery power sensor %s has no power unit (W, kW). "
+                "Its readings are not used for the AC-side round-trip loss.",
+                cfg.battery_ac_power_entity,
+            )
         tracker.accumulate(
-            build_energy_sample(coordinator.hass, now, live, cfg),
+            build_energy_sample(
+                coordinator.hass, now, live, cfg, battery_ac_power_w=ac_power_w
+            ),
             site,
-            max_gap_seconds=max(MAX_GAP_S, 2.0 * cfg.update_interval * 60.0),
+            max_gap_seconds=max_gap_s,
         )
         backfilled = await async_backfill_energy_history(
             coordinator.hass, tracker, now, cfg, site

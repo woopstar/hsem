@@ -524,7 +524,7 @@
           "hsem_grid_import_energy_entity": "Opcional: medidor acumulado de energía de importación de la red (kWh).",
           "hsem_grid_export_energy_entity": "Opcional: medidor acumulado de energía de exportación a la red (kWh).",
           "hsem_pv_energy_entity": "Opcional: medidor acumulado de energía de producción PV (kWh).",
-          "hsem_battery_ac_power_entity": "Opcional: potencia con signo de la batería en el lado de CA de su inversor (W o kW), positiva durante la carga. Solo se usa para la pérdida mensual de ida y vuelta en el lado de CA. Déjalo vacío si ningún sensor mide solo la batería: una potencia del inversor que incluye la PV no sirve.",
+          "hsem_battery_ac_power_entity": "Opcional: potencia con signo de la batería en el lado de CA de su inversor (W o kW), positiva durante la carga. Solo se usa para la pérdida mensual de ida y vuelta en el lado de CA. Déjalo vacío si ningún sensor mide solo la batería: una potencia del inversor que también incluye la producción fotovoltaica no se puede usar.",
           "hsem_ml_consumption_enabled": "Cuando está activado, usa regresión ridge sobre el historial del recorder en lugar de medias móviles. Requiere 14 días o más de historial.",
           "hsem_ml_consumption_energy_entity": "Medidor acumulado de energía de consumo de la vivienda (kWh). Debe excluir la batería Y la carga del VE; usa un sensor situado antes de ambos. Si no se configura, se recurre a la importación de red.",
           "hsem_ml_consumption_history_days": "Días de historial del recorder para el entrenamiento de ML (7-90).",
@@ -1023,7 +1023,7 @@
           "hsem_grid_import_energy_entity": "Opcional: medidor acumulado de energía de importación de la red (kWh).",
           "hsem_grid_export_energy_entity": "Opcional: medidor acumulado de energía de exportación a la red (kWh).",
           "hsem_pv_energy_entity": "Opcional: medidor acumulado de energía de producción PV (kWh).",
-          "hsem_battery_ac_power_entity": "Opcional: potencia con signo de la batería en el lado de CA de su inversor (W o kW), positiva durante la carga. Solo se usa para la pérdida mensual de ida y vuelta en el lado de CA. Déjalo vacío si ningún sensor mide solo la batería: una potencia del inversor que incluye la PV no sirve.",
+          "hsem_battery_ac_power_entity": "Opcional: potencia con signo de la batería en el lado de CA de su inversor (W o kW), positiva durante la carga. Solo se usa para la pérdida mensual de ida y vuelta en el lado de CA. Déjalo vacío si ningún sensor mide solo la batería: una potencia del inversor que también incluye la producción fotovoltaica no se puede usar.",
           "hsem_ml_consumption_enabled": "Cuando está activado, usa regresión ridge sobre el historial del recorder en lugar de medias móviles. Requiere 14 días o más de historial.",
           "hsem_ml_consumption_energy_entity": "Medidor acumulado de energía de consumo de la vivienda (kWh). Debe excluir la batería Y la carga del VE; usa un sensor situado antes de ambos. Si no se configura, se recurre a la importación de red.",
           "hsem_ml_consumption_history_days": "Días de historial del recorder para el entrenamiento de ML (7-90).",
@@ -1244,7 +1244,22 @@
         "name": "Entidades de entrada faltantes"
       },
       "monthly_ac_round_trip_loss": {
-        "name": "Pérdida mensual de ida y vuelta en el lado de CA"
+        "name": "Pérdida mensual de ida y vuelta en el lado de CA",
+        "state_attributes": {
+          "reason": {
+            "name": "Motivo",
+            "state": {
+              "no_data": "Nada registrado este mes",
+              "ac_battery_power_not_configured": "No hay sensor de potencia de la batería en el lado de CA",
+              "ac_battery_power_unit_not_power": "El sensor del lado de CA no tiene unidad de potencia",
+              "ac_battery_power_no_readings": "El sensor del lado de CA no dio lecturas válidas",
+              "ac_soc_or_capacity_missing": "Falta el SoC o la capacidad nominal",
+              "throughput_below_minimum": "Muy poca energía cargada o descargada",
+              "soc_change_too_large": "Cambio de SoC demasiado grande",
+              "implausible_ratio": "Las lecturas se contradicen"
+            }
+          }
+        }
       },
       "monthly_battery_cycles": {
         "name": "Ciclos de batería mensuales"

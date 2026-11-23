@@ -15,11 +15,11 @@ from custom_components.hsem import coordinator_energy
 from custom_components.hsem.coordinator_energy import (
     HISTORY_FILE,
     async_track_energy,
-    battery_ac_power_w,
     build_battery_site,
     build_energy_sample,
     consumption_power_w,
     init_energy_tracker,
+    read_battery_ac_power,
 )
 from custom_components.hsem.coordinator_meter_tracking import (
     async_accumulate_meter_trackers,
@@ -30,7 +30,9 @@ from custom_components.hsem.custom_sensors.monthly_energy_sensors import (
     build_monthly_energy_sensors,
 )
 from custom_components.hsem.models.energy_tracker import (
-    REASON_AC_BATTERY_POWER_NOT_MEASURED,
+    REASON_AC_BATTERY_POWER_NO_READINGS,
+    REASON_AC_BATTERY_POWER_NOT_CONFIGURED,
+    REASON_AC_BATTERY_POWER_UNIT_NOT_POWER,
     REASON_NO_DATA,
     REASON_THROUGHPUT_BELOW_MINIMUM,
     EnergyTracker,
@@ -121,52 +123,213 @@ class TestBuildSample:
         assert sample.soc_pct is None
 
 
+def _ac_hass(state: str, unit: str | None = "W") -> Any:
+    """Return a hass whose AC-side battery power sensor has *state* and *unit*."""
+    attributes = {} if unit is None else {"unit_of_measurement": unit}
+    return make_fake_hass({_AC: {"state": state, "attributes": attributes}})
+
+
 class TestAcSideBatteryPower:
     """The optional AC-side battery power sensor (issue #1450)."""
 
     _AC_CFG = SensorConfig(battery_ac_power_entity=_AC)
 
+    def _read(self, hass: Any, cfg: SensorConfig | None = None) -> Any:
+        return read_battery_ac_power(hass, cfg or self._AC_CFG, _T0, 600.0)
+
     def test_without_a_configured_sensor_there_is_no_reading(self) -> None:
-        assert battery_ac_power_w(_hass(**{_AC: "2500"}), SensorConfig()) is None
-        assert (
-            build_energy_sample(_hass(), _T0, _live(), _CFG).battery_ac_power_w is None
+        assert self._read(_ac_hass("2500"), SensorConfig()) == (
+            None,
+            REASON_AC_BATTERY_POWER_NOT_CONFIGURED,
         )
 
     def test_a_sensor_that_does_not_exist_gives_no_reading(self) -> None:
-        assert battery_ac_power_w(_hass(), self._AC_CFG) is None
+        assert self._read(_hass()) == (None, REASON_AC_BATTERY_POWER_NO_READINGS)
 
     @pytest.mark.parametrize("state", ["unavailable", "unknown", "", "nan", "inf"])
     def test_a_state_that_is_no_finite_number_gives_no_reading(
         self, state: str
     ) -> None:
-        assert battery_ac_power_w(_hass(**{_AC: state}), self._AC_CFG) is None
+        assert self._read(_ac_hass(state)) == (
+            None,
+            REASON_AC_BATTERY_POWER_NO_READINGS,
+        )
 
     def test_the_sign_is_kept_and_zero_is_a_reading(self) -> None:
-        assert battery_ac_power_w(
-            _hass(**{_AC: "-1800"}), self._AC_CFG
-        ) == pytest.approx(-1800.0)
-        assert battery_ac_power_w(_hass(**{_AC: "0"}), self._AC_CFG) == pytest.approx(
-            0.0
+        value, _reason = self._read(_ac_hass("-1800"))
+        assert value == pytest.approx(-1800.0)
+        value, _reason = self._read(_ac_hass("0"))
+        assert value == pytest.approx(0.0)
+
+    @pytest.mark.parametrize(
+        ("state", "unit", "watts"),
+        [("2500", "W", 2500.0), ("2.5", "kW", 2500.0), ("0.0025", "MW", 2500.0)],
+    )
+    def test_a_power_unit_is_converted_to_watt(
+        self, state: str, unit: str, watts: float
+    ) -> None:
+        value, reason = self._read(_ac_hass(state, unit))
+
+        assert value == pytest.approx(watts)
+        # The reason a month without readings would get.
+        assert reason == REASON_AC_BATTERY_POWER_NO_READINGS
+
+    @pytest.mark.parametrize(
+        "unit", ["kVA", "VA", "A", "kWh", "Wh", "%", "foo", "", None]
+    )
+    def test_a_unit_that_is_not_power_is_not_read_as_watt(
+        self, unit: str | None
+    ) -> None:
+        assert self._read(_ac_hass("2500", unit)) == (
+            None,
+            REASON_AC_BATTERY_POWER_UNIT_NOT_POWER,
         )
 
-    def test_a_reading_in_kilowatt_is_converted_to_watt(self) -> None:
-        hass = make_fake_hass(
-            {_AC: {"state": "2.5", "attributes": {"unit_of_measurement": "kW"}}}
+    @pytest.mark.parametrize(
+        ("age_s", "watts"), [(0.0, 2000.0), (600.0, 2000.0), (601.0, None)]
+    )
+    def test_a_state_that_was_not_reported_for_too_long_is_not_a_reading(
+        self, age_s: float, watts: float | None
+    ) -> None:
+        """A sensor that stopped keeps its last state in Home Assistant."""
+        hass = _ac_hass("2000")
+        hass.states._states[_AC] = SimpleNamespace(
+            state="2000",
+            attributes={"unit_of_measurement": "W"},
+            last_reported=_T0 - timedelta(seconds=age_s),
         )
 
-        assert battery_ac_power_w(hass, self._AC_CFG) == pytest.approx(2500.0)
+        value, reason = self._read(hass)
 
-    def test_the_sample_carries_the_reading(self) -> None:
-        cfg = SensorConfig(
-            house_consumption_power=_HOUSE,
-            solar_production_power=_PV,
-            battery_ac_power_entity=_AC,
+        assert value == (None if watts is None else pytest.approx(watts))
+        assert reason == REASON_AC_BATTERY_POWER_NO_READINGS
+
+    def test_the_sample_carries_the_reading_it_is_given(self) -> None:
+        sample = build_energy_sample(
+            _hass(), _T0, _live(), _CFG, battery_ac_power_w=3100.0
         )
-
-        sample = build_energy_sample(_hass(**{_AC: "3100"}), _T0, _live(), cfg)
 
         assert sample.battery_ac_power_w == pytest.approx(3100.0)
         assert sample.battery_power_w == pytest.approx(3000.0)
+        assert (
+            build_energy_sample(_hass(), _T0, _live(), _CFG).battery_ac_power_w is None
+        )
+
+
+class TestAcSideTracking:
+    """What a cycle books from the AC-side sensor, and what it says (#1450)."""
+
+    _CFG = SensorConfig(
+        house_consumption_power=_HOUSE,
+        solar_production_power=_PV,
+        update_interval=5,
+        battery_ac_power_entity=_AC,
+    )
+
+    async def _cycles(
+        self, coordinator: CoordinatorSharedState, start: int, count: int
+    ) -> None:
+        for step in range(start, start + count):
+            await async_track_energy(
+                coordinator, _T0 + timedelta(minutes=5 * step), _live(), self._CFG
+            )
+
+    @staticmethod
+    def _set(coordinator: CoordinatorSharedState, state: Any) -> None:
+        states: Any = coordinator.hass.states
+        states._states[_AC] = state
+
+    @pytest.mark.asyncio
+    async def test_a_reading_in_watt_is_booked(self, tmp_path: Path) -> None:
+        coordinator = _state(tmp_path)
+        self._set(coordinator, FakeState(_AC, "2400", {"unit_of_measurement": "W"}))
+
+        await self._cycles(coordinator, 0, 3)
+
+        entry = coordinator._energy_tracker.daily_log["2026-06-10"]
+        assert entry.ac_charged_kwh == pytest.approx(0.4)
+        assert entry.ac_hours == pytest.approx(10.0 / 60.0)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("unit", ["kVA", "A", "kWh", "%", None])
+    async def test_a_wrong_unit_is_not_booked_and_warned_about_once(
+        self, tmp_path: Path, unit: str | None
+    ) -> None:
+        coordinator = _state(tmp_path)
+        attributes = {} if unit is None else {"unit_of_measurement": unit}
+        self._set(coordinator, FakeState(_AC, "2400", attributes))
+
+        with patch.object(coordinator_energy, "async_log") as log:
+            await self._cycles(coordinator, 0, 4)
+
+        tracker = coordinator._energy_tracker
+        entry = tracker.daily_log["2026-06-10"]
+        assert entry.ac_charged_kwh == pytest.approx(0.0)
+        assert entry.ac_power_hours == pytest.approx(0.0)
+        assert tracker.ac_sensor_reason == REASON_AC_BATTERY_POWER_UNIT_NOT_POWER
+        assert (
+            tracker.month_summary("2026-06")["ac_round_trip_loss_reason"]
+            == REASON_AC_BATTERY_POWER_UNIT_NOT_POWER
+        )
+        warnings = [call for call in log.call_args_list if call.args[0] == "warning"]
+        assert len(warnings) == 1
+        assert warnings[0].args[2] == _AC
+
+    @pytest.mark.asyncio
+    async def test_the_warning_comes_back_when_the_unit_breaks_again(
+        self, tmp_path: Path
+    ) -> None:
+        coordinator = _state(tmp_path)
+        wrong = FakeState(_AC, "2400", {"unit_of_measurement": "kVA"})
+        right = FakeState(_AC, "2400", {"unit_of_measurement": "W"})
+
+        with patch.object(coordinator_energy, "async_log") as log:
+            for step, state in enumerate((wrong, wrong, right, right, wrong, wrong)):
+                self._set(coordinator, state)
+                await self._cycles(coordinator, step, 1)
+
+        assert [call.args[0] for call in log.call_args_list] == ["warning", "warning"]
+        # Only the interval between the two good readings is booked.
+        entry = coordinator._energy_tracker.daily_log["2026-06-10"]
+        assert entry.ac_charged_kwh == pytest.approx(0.2)
+
+    @pytest.mark.asyncio
+    async def test_a_sensor_that_is_not_configured_is_no_warning(
+        self, tmp_path: Path
+    ) -> None:
+        coordinator = _state(tmp_path)
+
+        with patch.object(coordinator_energy, "async_log") as log:
+            await async_track_energy(coordinator, _T0, _live(), _CFG)
+
+        log.assert_not_called()
+        assert (
+            coordinator._energy_tracker.ac_sensor_reason
+            == REASON_AC_BATTERY_POWER_NOT_CONFIGURED
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_frozen_sensor_stops_being_booked(self, tmp_path: Path) -> None:
+        """The sensor reported 2.4 kW at 12:00 and never again."""
+        coordinator = _state(tmp_path)
+        self._set(
+            coordinator,
+            SimpleNamespace(
+                state="2400",
+                attributes={"unit_of_measurement": "W"},
+                last_reported=_T0,
+            ),
+        )
+
+        await self._cycles(coordinator, 0, 7)
+
+        tracker = coordinator._energy_tracker
+        entry = tracker.daily_log["2026-06-10"]
+        # Booked while the report is at most 10 minutes old: two intervals.
+        assert entry.observed_hours == pytest.approx(0.5)
+        assert entry.ac_power_hours == pytest.approx(10.0 / 60.0)
+        assert entry.ac_charged_kwh == pytest.approx(0.4)
+        assert tracker.ac_sensor_reason == REASON_AC_BATTERY_POWER_NO_READINGS
 
 
 class TestBuildSite:
@@ -588,7 +751,34 @@ class TestThroughTheRealCycle:
             value = sensor.native_value
         assert value is None
         assert attributes is not None
-        assert attributes["reason"] == REASON_AC_BATTERY_POWER_NOT_MEASURED
+        assert attributes["reason"] == REASON_AC_BATTERY_POWER_NOT_CONFIGURED
+
+    @pytest.mark.asyncio
+    async def test_a_sensor_in_another_kind_of_unit_says_so(self) -> None:
+        """2400 kVA is not 2400 W: nothing is booked, and the reason names it."""
+        coordinator, _published = _coordinator({"hsem_battery_ac_power_entity": _AC})
+        states: Any = coordinator.hass.states._states
+        states[_AC] = FakeState(_AC, "2400", {"unit_of_measurement": "kVA"})
+
+        for minutes in (0, 5):
+            with (
+                patch(
+                    f"{_CYCLE}.hsem_now", return_value=_T0 + timedelta(minutes=minutes)
+                ),
+                patch(f"{_TRACKING}.async_track_time_change"),
+            ):
+                await _run_cycle(coordinator)
+
+        entry = coordinator._energy_tracker.daily_log["2026-06-10"]
+        assert entry.ac_charged_kwh == pytest.approx(0.0)
+        sensors = build_monthly_energy_sensors(coordinator._config_entry, coordinator)
+        sensor = next(s for s in sensors if s._description.key == "ac_round_trip_loss")
+        with patch(f"{_SENSORS}.hsem_now", return_value=_T0):
+            attributes = sensor.extra_state_attributes
+            value = sensor.native_value
+        assert value is None
+        assert attributes is not None
+        assert attributes["reason"] == REASON_AC_BATTERY_POWER_UNIT_NOT_POWER
 
     @pytest.mark.asyncio
     async def test_an_unavailable_house_sensor_is_missing_not_zero(self) -> None:

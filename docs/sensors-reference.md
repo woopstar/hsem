@@ -1445,13 +1445,13 @@ was; these report energy.
 **Entities** (on the **HSEM Financial** device, all with the `monthly`
 prefix). The state is the current month so far:
 
-| Entity                                   | State                                                                                                         | Unit           |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------- |
-| `sensor.hsem_monthly_self_sufficiency`   | Share of the house consumption that did not come from the grid                                                | %              |
-| `sensor.hsem_monthly_battery_cycles`     | Full equivalent battery cycles                                                                                | cycles         |
-| `sensor.hsem_monthly_battery_wear_cost`  | Cycle cost of the energy that went through the battery                                                        | local currency |
-| `sensor.hsem_monthly_round_trip_loss`    | Share of the energy charged that did not come out again, measured at the battery                              | %              |
-| `sensor.hsem_monthly_ac_round_trip_loss` | The same share measured on the AC side of the inverter. `unknown` without an **AC-Side Battery Power Sensor** | %              |
+| Entity                                   | State                                                                                                                       | Unit           |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| `sensor.hsem_monthly_self_sufficiency`   | Share of the house consumption that did not come from the grid                                                              | %              |
+| `sensor.hsem_monthly_battery_cycles`     | Full equivalent battery cycles                                                                                              | cycles         |
+| `sensor.hsem_monthly_battery_wear_cost`  | Cycle cost of the energy that went through the battery                                                                      | local currency |
+| `sensor.hsem_monthly_round_trip_loss`    | Share of the energy charged that did not come out again, measured at the battery                                            | %              |
+| `sensor.hsem_monthly_ac_round_trip_loss` | The same share measured on the AC side of the inverter. `unknown` with a reason without an **AC-Side Battery Power Sensor** | %              |
 
 The bundled dashboard has an **Energy** view with the five tiles and a table
 of the last 12 months, see
@@ -1514,12 +1514,12 @@ every day **before the first day it measured itself** (issue #1450).
 
 Hourly statistics are coarser than the live readings:
 
-| Figure          | In a backfilled day                                                                                                                                                                                       |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Battery energy  | The net of each hour. Charging and discharging within one hour cancel out, so charged, discharged, cycles and wear cost are a lower bound                                                                 |
-| Wear cost       | Priced with today's cycle cost                                                                                                                                                                            |
-| Cycles          | Counted against today's usable capacity                                                                                                                                                                   |
-| Round-trip loss | Not computed, on either side. A month's loss uses only the days HSEM measured, and is `battery_power_not_measured` (AC side: `ac_battery_power_not_measured`) for a month that holds only backfilled days |
+| Figure          | In a backfilled day                                                                                                                                                                                                                           |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Battery energy  | The net of each hour. Charging and discharging within one hour cancel out, so charged, discharged, cycles and wear cost are a lower bound                                                                                                     |
+| Wear cost       | Priced with today's cycle cost                                                                                                                                                                                                                |
+| Cycles          | Counted against today's usable capacity                                                                                                                                                                                                       |
+| Round-trip loss | Not computed, on either side. A month's loss uses only the days HSEM measured, and is `battery_power_not_measured` (AC side: `ac_battery_power_not_configured` or `ac_battery_power_no_readings`) for a month that holds only backfilled days |
 
 Backfilled days are marked: each month has `backfilled_days`, and the sensors
 publish `backfilled_days`, `backfilled_from` and `backfilled_until`.
@@ -1617,16 +1617,38 @@ loss in both directions is in the figure: it is the loss the meter sees, and
 it is larger than the battery-side one. `Δstored`, the two conditions and the
 uncertainty (`ac_round_trip_loss_uncertainty`) are the same.
 
+The sensor is one you pick, so the AC side has two conditions more. The
+battery side does not have them and gives the same values as before:
+
+- The 20 kWh, and five times the rated capacity, must also have been
+  **discharged**. Otherwise the reason is `throughput_below_minimum`.
+- An efficiency of 50 % or less is not published. The reason is
+  `implausible_ratio`.
+
+A sensor that reports the power **without a sign** books everything as charge
+and nothing as discharge. Without these two conditions it would show a loss
+near 100 %.
+
 - The sensor is signed like the battery power sensor: positive while the
-  battery charges, negative while it discharges. W and kW are both read.
+  battery charges, negative while it discharges.
+- It must have a power unit. W, kW and MW are converted. A sensor with
+  another unit (`kVA`, `A`, `kWh`, `%`) or without a unit is not read: its
+  number is not a number of watts. HSEM logs one warning and the reason is
+  `ac_battery_power_unit_not_power`.
+- A state last reported more than 10 minutes ago (or two update intervals, if
+  that is longer) is not read: the sensor stopped, and its last value is not
+  a constant power. A sensor that only reports when its value changes is
+  therefore left out while the battery holds one power for that long.
 - It must measure the battery **alone**. An AC-coupled battery inverter, or a
   meter on the battery inverter's AC output, gives that.
 - A Huawei hybrid inverter (SUN2000 with a LUNA2000) is DC-coupled: PV
   charges the battery without passing the AC side, and
   `sensor.inverter_active_power` is PV and battery together. There is no
   entity to pick on such an installation. Leave the field empty.
-- Without the sensor, and in a month in which it gave no readings, the state
-  is `unknown` with the reason `ac_battery_power_not_measured`. The
+- Without the sensor the state is `unknown` with the reason
+  `ac_battery_power_not_configured`. With a sensor that gave no usable
+  readings in the month it is `ac_battery_power_no_readings`, and with
+  readings but no SoC or rated capacity `ac_soc_or_capacity_missing`. The
   battery-side sensor is not affected.
 - Only cycles with a reading of the AC-side sensor and a SoC count. The two
   sensors are measured independently, so a month can have one figure and not
@@ -1638,21 +1660,24 @@ uncertainty (`ac_round_trip_loss_uncertainty`) are the same.
 
 The state is `unknown` and the `reason` attribute says why:
 
-| `reason`                        | Applies to                  | Meaning                                                                                                     |
-| ------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `no_data`                       | all                         | Nothing has been recorded in the month                                                                      |
-| `consumption_not_measured`      | Self-sufficiency            | The house consumption power sensor gave no readings                                                         |
-| `consumption_below_minimum`     | Self-sufficiency            | Less than 1 kWh of house consumption recorded                                                               |
-| `import_exceeds_consumption`    | Self-sufficiency            | More was imported than the house consumption and the battery charge explain                                 |
-| `battery_not_measured`          | Battery cycles, wear cost   | Neither the battery power nor the SoC gave readings                                                         |
-| `cycle_cost_unknown`            | Battery wear cost           | No cycle cost could be worked out for the battery throughput                                                |
-| `grid_import_not_measured`      | Self-sufficiency            | No grid import energy sensor is configured, or it gave no readings                                          |
-| `capacity_unknown`              | Battery cycles              | The usable battery capacity has not been read                                                               |
-| `battery_power_not_measured`    | Round-trip loss             | The battery power sensor gave no readings. Cycles and wear cost are then derived from the SoC               |
-| `ac_battery_power_not_measured` | AC-side round-trip loss     | No AC-side battery power sensor is configured, or it gave no readings                                       |
-| `throughput_below_minimum`      | Round-trip loss, both sides | Less than 20 kWh, or less than five times the rated capacity, was charged                                   |
-| `soc_change_too_large`          | Round-trip loss, both sides | The SoC change is more than a tenth of the energy charged, so its error would dominate                      |
-| `implausible_ratio`             | Round-trip loss, both sides | More came out than went in, or nothing at all: the battery power readings and the SoC contradict each other |
+| `reason`                          | Applies to                  | Meaning                                                                                                                                               |
+| --------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `no_data`                         | all                         | Nothing has been recorded in the month                                                                                                                |
+| `consumption_not_measured`        | Self-sufficiency            | The house consumption power sensor gave no readings                                                                                                   |
+| `consumption_below_minimum`       | Self-sufficiency            | Less than 1 kWh of house consumption recorded                                                                                                         |
+| `import_exceeds_consumption`      | Self-sufficiency            | More was imported than the house consumption and the battery charge explain                                                                           |
+| `battery_not_measured`            | Battery cycles, wear cost   | Neither the battery power nor the SoC gave readings                                                                                                   |
+| `cycle_cost_unknown`              | Battery wear cost           | No cycle cost could be worked out for the battery throughput                                                                                          |
+| `grid_import_not_measured`        | Self-sufficiency            | No grid import energy sensor is configured, or it gave no readings                                                                                    |
+| `capacity_unknown`                | Battery cycles              | The usable battery capacity has not been read                                                                                                         |
+| `battery_power_not_measured`      | Round-trip loss             | The battery power sensor gave no readings. Cycles and wear cost are then derived from the SoC                                                         |
+| `ac_battery_power_not_configured` | AC-side round-trip loss     | No AC-side battery power sensor is configured                                                                                                         |
+| `ac_battery_power_unit_not_power` | AC-side round-trip loss     | The configured sensor has no power unit, and gave no usable readings in the month                                                                     |
+| `ac_battery_power_no_readings`    | AC-side round-trip loss     | The configured sensor gave no usable readings in the month: missing, not numeric or not reported for too long                                         |
+| `ac_soc_or_capacity_missing`      | AC-side round-trip loss     | The sensor gave readings, but never together with a SoC and a rated capacity                                                                          |
+| `throughput_below_minimum`        | Round-trip loss, both sides | Less than 20 kWh, or less than five times the rated capacity, was charged. AC side: or discharged                                                     |
+| `soc_change_too_large`            | Round-trip loss, both sides | The SoC change is more than a tenth of the energy charged, so its error would dominate                                                                |
+| `implausible_ratio`               | Round-trip loss, both sides | More came out than went in, or nothing at all: the battery power readings and the SoC contradict each other. AC side: also when half or less came out |
 
 ### Attributes
 

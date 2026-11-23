@@ -2262,6 +2262,13 @@ views:
             color: state
             grid_options:
               columns: 3
+            visibility:
+              - condition: state
+                entity: sensor.hsem_monthly_ac_round_trip_loss
+                state_not: unknown
+              - condition: state
+                entity: sensor.hsem_monthly_ac_round_trip_loss
+                state_not: unavailable
           - type: markdown
             title: Status
             grid_options:
@@ -2279,9 +2286,12 @@ views:
                 'grid_import_not_measured': 'no grid import energy sensor is configured, or it gave no readings.',
                 'capacity_unknown': 'the usable battery capacity is not known yet.',
                 'battery_power_not_measured': 'the battery power sensor gave no readings, so there is nothing to measure the loss with.',
-                'ac_battery_power_not_measured': 'no AC-side battery power sensor is configured, or it gave no readings.',
-                'throughput_below_minimum': 'too little energy has been charged so far (20 kWh, and five times the rated capacity).',
-                'implausible_ratio': 'the battery power readings and the SoC contradict each other.'
+                'ac_battery_power_not_configured': 'no AC-side battery power sensor is configured.',
+                'ac_battery_power_unit_not_power': 'the AC-side battery power sensor has no power unit (W or kW), so its readings are not used.',
+                'ac_battery_power_no_readings': 'the AC-side battery power sensor gave no usable readings.',
+                'ac_soc_or_capacity_missing': 'the AC-side battery power sensor gave readings, but the SoC or the rated capacity was missing.',
+                'throughput_below_minimum': 'too little energy has been charged so far (20 kWh, and five times the rated capacity). On the AC side the same holds for the energy discharged.',
+                'implausible_ratio': 'the battery power readings and the SoC contradict each other. On the AC side also: less than half came out again, as with a sensor that reports the power without a sign.'
               } -%}
               {%- set names = {
                 'self_sufficiency': 'Self-sufficiency',
@@ -2296,9 +2306,7 @@ views:
 
               {% for key, name in names.items() -%}
               {%- set reason = m.get(key ~ '_reason', 'no_data') -%}
-              {%- if reason == 'ac_battery_power_not_measured' %}*{{ name }} not measured:* {{ why.get(reason) }}
-
-              {% elif reason %}{% set known.all = false %}**{{ name }} unknown:** {{ why.get(reason, reason) }}
+              {%- if reason and reason != 'ac_battery_power_not_configured' %}{% set known.all = false %}**{{ name }} unknown:** {{ why.get(reason, reason) }}
 
               {% endif -%}
               {%- endfor -%}
@@ -2317,11 +2325,13 @@ views:
             content: |
               {%- set s = 'sensor.hsem_monthly_self_sufficiency' -%}
               {%- set months = state_attr(s, 'monthly') or [] -%}
+              {%- set ac = namespace(show=(state_attr(s, 'this_month') or {}).get('ac_round_trip_loss_reason') != 'ac_battery_power_not_configured') -%}
+              {%- for m in months %}{% if m.get('ac_round_trip_loss') is not none %}{% set ac.show = true %}{% endif %}{% endfor -%}
               {%- macro num(value, pattern) -%}{{ '–' if value is none else pattern | format(value) }}{%- endmacro -%}
-              | Month | Used | Import | Export | PV | Charged | Discharged | Self-sufficiency | Cycles | Wear cost | Loss (battery) | Loss (AC) |
-              |:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+              | Month | Used | Import | Export | PV | Charged | Discharged | Self-sufficiency | Cycles | Wear cost | Loss (battery) |{% if ac.show %} Loss (AC) |{% endif %}
+              |:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|{% if ac.show %}--:|{% endif %}
               {%- for m in months | reverse %}
-              | {{ m.get('month') }} | {{ num(m.get('house_consumption_kwh'), '%.0f') }} | {{ num(m.get('grid_import_kwh'), '%.0f') }} | {{ num(m.get('grid_export_kwh'), '%.0f') }} | {{ num(m.get('pv_kwh'), '%.0f') }} | {{ num(m.get('battery_charged_kwh'), '%.0f') }} | {{ num(m.get('battery_discharged_kwh'), '%.0f') }} | {{ num(m.get('self_sufficiency'), '%.0f %%') }} | {{ num(m.get('battery_cycles'), '%.1f') }} | {{ num(m.get('battery_wear_cost'), '%.2f') }} | {{ num(m.get('round_trip_loss'), '%.1f %%') }} | {{ num(m.get('ac_round_trip_loss'), '%.1f %%') }} |
+              | {{ m.get('month') }} | {{ num(m.get('house_consumption_kwh'), '%.0f') }} | {{ num(m.get('grid_import_kwh'), '%.0f') }} | {{ num(m.get('grid_export_kwh'), '%.0f') }} | {{ num(m.get('pv_kwh'), '%.0f') }} | {{ num(m.get('battery_charged_kwh'), '%.0f') }} | {{ num(m.get('battery_discharged_kwh'), '%.0f') }} | {{ num(m.get('self_sufficiency'), '%.0f %%') }} | {{ num(m.get('battery_cycles'), '%.1f') }} | {{ num(m.get('battery_wear_cost'), '%.2f') }} | {{ num(m.get('round_trip_loss'), '%.1f %%') }} |{% if ac.show %} {{ num(m.get('ac_round_trip_loss'), '%.1f %%') }} |{% endif %}
               {%- endfor %}
 
-              Energy in kWh, newest month first. Every figure is computed from the month's summed energy, not from daily percentages. A dash means the figure is unknown for that month; the Status card says why for the current one. The two loss columns are the round-trip loss: measured at the battery, which leaves out the inverter, and on the AC side, which includes it and needs an AC-side battery power sensor.
+              Energy in kWh, newest month first. Every figure is computed from the month's summed energy, not from daily percentages. A dash means the figure is unknown for that month; the Status card says why for the current one. Loss (battery) is the round-trip loss measured at the battery, so it leaves out the inverter.{% if ac.show %} Loss (AC) is measured on the AC side and includes it.{% endif %}

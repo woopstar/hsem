@@ -14,7 +14,10 @@ import pytest
 from custom_components.hsem.models import energy_tracker as module
 from custom_components.hsem.models.energy_tracker import (
     MAX_DAILY_LOG_DAYS,
-    REASON_AC_BATTERY_POWER_NOT_MEASURED,
+    REASON_AC_BATTERY_POWER_NO_READINGS,
+    REASON_AC_BATTERY_POWER_NOT_CONFIGURED,
+    REASON_AC_BATTERY_POWER_UNIT_NOT_POWER,
+    REASON_AC_SOC_OR_CAPACITY_MISSING,
     REASON_BATTERY_POWER_NOT_MEASURED,
     REASON_CAPACITY_UNKNOWN,
     REASON_CONSUMPTION_BELOW_MINIMUM,
@@ -82,6 +85,9 @@ def _day(day: str, **fields: float) -> EnergyDayEntry:
         fields.get("battery_charged_kwh", 0.0)
         + fields.get("battery_discharged_kwh", 0.0),
     )
+    if "ac_charged_kwh" in fields:
+        fields.setdefault("ac_power_hours", 1.0)
+        fields.setdefault("ac_hours", 1.0)
     entry = EnergyDayEntry(day)
     for name, value in fields.items():
         setattr(entry, name, value)
@@ -325,6 +331,8 @@ class TestAcSideBattery:
         assert entry.ac_charged_kwh == pytest.approx(0.3)
         assert entry.ac_discharged_kwh == pytest.approx(0.14)
         assert entry.ac_stored_delta_kwh == pytest.approx(0.1)
+        assert entry.ac_power_hours == pytest.approx(0.2)
+        assert entry.ac_hours == pytest.approx(0.2)
         # The battery-side figures are those of the battery power sensor.
         assert entry.measured_charged_kwh == pytest.approx(0.285)
         assert entry.measured_discharged_kwh == pytest.approx(0.15)
@@ -347,18 +355,36 @@ class TestAcSideBattery:
         # 0.1 kWh stored takes 0.1 / 0.8 on the way in.
         assert entry.battery_charged_kwh == pytest.approx(0.125)
 
-    def test_ac_power_without_soc_is_not_booked(self) -> None:
+    @pytest.mark.parametrize(
+        ("readings", "site"),
+        [
+            # No SoC.
+            ({}, _SITE),
+            # A SoC, but no rated capacity to turn it into energy.
+            ({"soc_pct": 50.0}, BatterySite()),
+        ],
+    )
+    def test_ac_power_without_a_stored_energy_change_is_not_booked(
+        self, readings: dict[str, float], site: BatterySite
+    ) -> None:
         tracker = EnergyTracker()
+        tracker.set_ac_sensor_reason(REASON_AC_BATTERY_POWER_NO_READINGS)
 
         _feed(
             tracker,
-            _sample(0, battery_ac_power_w=2000.0),
-            _sample(6, battery_ac_power_w=2000.0),
+            _sample(0, battery_ac_power_w=2000.0, **readings),
+            _sample(6, battery_ac_power_w=2000.0, **readings),
+            site=site,
         )
 
         entry = tracker.daily_log[_DAY]
         assert entry.ac_charged_kwh == pytest.approx(0.0)
         assert entry.ac_stored_delta_kwh == pytest.approx(0.0)
+        assert entry.ac_power_hours == pytest.approx(0.1)
+        assert entry.ac_hours == pytest.approx(0.0)
+        summary = tracker.month_summary("2026-06")
+        assert summary["ac_round_trip_loss"] is None
+        assert summary["ac_round_trip_loss_reason"] == REASON_AC_SOC_OR_CAPACITY_MISSING
 
     def test_a_missing_ac_reading_is_not_a_zero_flow(self) -> None:
         tracker = EnergyTracker()
@@ -375,6 +401,7 @@ class TestAcSideBattery:
         entry = tracker.daily_log[_DAY]
         assert entry.ac_charged_kwh == pytest.approx(0.0)
         assert entry.ac_stored_delta_kwh == pytest.approx(0.0)
+        assert entry.ac_power_hours == pytest.approx(0.0)
         assert entry.measured_charged_kwh == pytest.approx(0.4)
 
     def test_both_sides_are_published_side_by_side(self) -> None:
@@ -404,17 +431,18 @@ class TestAcSideBattery:
         assert summary["ac_round_trip_discharged_kwh"] == pytest.approx(78.0)
         assert summary["ac_round_trip_stored_delta_kwh"] == pytest.approx(2.0)
 
-    def test_without_an_ac_reading_the_ac_figure_is_unknown_with_a_reason(
-        self,
-    ) -> None:
-        tracker = _tracker(
-            _day(
-                "2026-06-01",
-                measured_charged_kwh=100.0,
-                measured_discharged_kwh=90.0,
-                rated_capacity_kwh=10.0,
-            )
-        )
+
+class TestAcSideReasons:
+    """Why the AC-side figure is unknown (issue #1450)."""
+
+    _BATTERY_ONLY = {
+        "measured_charged_kwh": 100.0,
+        "measured_discharged_kwh": 90.0,
+        "rated_capacity_kwh": 10.0,
+    }
+
+    def test_without_a_sensor_the_reason_is_not_configured(self) -> None:
+        tracker = _tracker(_day("2026-06-01", **self._BATTERY_ONLY))
 
         summary = tracker.month_summary("2026-06")
 
@@ -423,13 +451,86 @@ class TestAcSideBattery:
         assert summary["ac_round_trip_efficiency"] is None
         assert summary["ac_round_trip_loss_uncertainty"] is None
         assert (
-            summary["ac_round_trip_loss_reason"] == REASON_AC_BATTERY_POWER_NOT_MEASURED
+            summary["ac_round_trip_loss_reason"]
+            == REASON_AC_BATTERY_POWER_NOT_CONFIGURED
         )
+        # A month without a record says the same: there is nothing to wait for.
+        assert (
+            tracker.month_summary("2026-05")["ac_round_trip_loss_reason"]
+            == REASON_AC_BATTERY_POWER_NOT_CONFIGURED
+        )
+
+    def test_a_sensor_without_readings_is_told_apart_from_no_sensor(self) -> None:
+        tracker = _tracker(_day("2026-06-01", **self._BATTERY_ONLY))
+
+        assert tracker.set_ac_sensor_reason(REASON_AC_BATTERY_POWER_NO_READINGS)
+
+        assert (
+            tracker.month_summary("2026-06")["ac_round_trip_loss_reason"]
+            == REASON_AC_BATTERY_POWER_NO_READINGS
+        )
+        # A month without any record has nothing recorded at all.
+        assert (
+            tracker.month_summary("2026-05")["ac_round_trip_loss_reason"]
+            == REASON_NO_DATA
+        )
+
+    def test_a_unit_that_is_not_power_is_named(self) -> None:
+        tracker = _tracker(_day("2026-06-01", **self._BATTERY_ONLY))
+
+        tracker.set_ac_sensor_reason(REASON_AC_BATTERY_POWER_UNIT_NOT_POWER)
+
+        for month in ("2026-05", "2026-06"):
+            assert (
+                tracker.month_summary(month)["ac_round_trip_loss_reason"]
+                == REASON_AC_BATTERY_POWER_UNIT_NOT_POWER
+            )
+
+    def test_a_month_that_was_measured_does_not_carry_the_sensors_reason(self) -> None:
+        """The sensor was removed after a month it measured."""
+        tracker = _tracker(
+            _day(
+                "2026-06-01",
+                ac_charged_kwh=100.0,
+                ac_discharged_kwh=80.0,
+                rated_capacity_kwh=10.0,
+            )
+        )
+
+        summary = tracker.month_summary("2026-06")
+
+        assert tracker.ac_sensor_reason == REASON_AC_BATTERY_POWER_NOT_CONFIGURED
+        assert summary["ac_round_trip_loss"] == pytest.approx(20.0)
+        assert summary["ac_round_trip_loss_reason"] is None
+
+    def test_setting_the_reason_refreshes_what_the_sensors_publish(self) -> None:
+        tracker = _tracker(_day("2026-06-01", **self._BATTERY_ONLY))
+        today = date(2026, 6, 10)
+        before = tracker.as_sensor_attributes(today)
+
+        assert tracker.set_ac_sensor_reason(REASON_AC_BATTERY_POWER_NO_READINGS)
+        assert not tracker.set_ac_sensor_reason(REASON_AC_BATTERY_POWER_NO_READINGS)
+
+        after = tracker.as_sensor_attributes(today)
+        assert (
+            before["this_month"]["ac_round_trip_loss_reason"]
+            == REASON_AC_BATTERY_POWER_NOT_CONFIGURED
+        )
+        assert (
+            after["this_month"]["ac_round_trip_loss_reason"]
+            == REASON_AC_BATTERY_POWER_NO_READINGS
+        )
+
+
+class TestAcSideGates:
+    """The AC-side sensor is the user's pick, so its figure is checked more."""
 
     @pytest.mark.parametrize(
         ("fields", "reason"),
         [
             ({"ac_charged_kwh": 19.0, "ac_discharged_kwh": 15.0}, "below_minimum"),
+            # Enough charged, too little discharged.
+            ({"ac_charged_kwh": 100.0, "ac_discharged_kwh": 19.0}, "below_minimum"),
             (
                 {
                     "ac_charged_kwh": 100.0,
@@ -439,9 +540,12 @@ class TestAcSideBattery:
                 "soc",
             ),
             ({"ac_charged_kwh": 100.0, "ac_discharged_kwh": 120.0}, "implausible"),
+            # Half or less came out again.
+            ({"ac_charged_kwh": 100.0, "ac_discharged_kwh": 50.0}, "implausible"),
+            ({"ac_charged_kwh": 100.0, "ac_discharged_kwh": 30.0}, "implausible"),
         ],
     )
-    def test_the_ac_figure_passes_the_same_gates(
+    def test_a_figure_that_fails_a_gate_is_unknown(
         self, fields: dict[str, float], reason: str
     ) -> None:
         expected = {
@@ -454,14 +558,60 @@ class TestAcSideBattery:
         summary = tracker.month_summary("2026-06")
 
         assert summary["ac_round_trip_loss"] is None
+        assert summary["ac_round_trip_efficiency"] is None
         assert summary["ac_round_trip_loss_reason"] == expected
 
-    def test_a_month_without_records_has_no_ac_figure(self) -> None:
-        summary = EnergyTracker().month_summary("2026-06")
+    def test_just_above_half_is_a_measurement(self) -> None:
+        tracker = _tracker(
+            _day("2026-06-01", ac_charged_kwh=100.0, ac_discharged_kwh=51.0)
+        )
 
-        assert summary["ac_round_trip_loss"] is None
-        assert summary["ac_round_trip_loss_reason"] == REASON_NO_DATA
+        summary = tracker.month_summary("2026-06")
 
+        assert summary["ac_round_trip_efficiency"] == pytest.approx(51.0)
+        assert summary["ac_round_trip_loss_reason"] is None
+
+    def test_a_sensor_without_a_sign_gives_no_loss_near_one_hundred(self) -> None:
+        """The absolute power books every interval as charge."""
+        tracker = EnergyTracker()
+        samples = [
+            _sample(6 * step, battery_ac_power_w=abs(power), soc_pct=soc)
+            for step, (power, soc) in enumerate(
+                [(5000.0, 20.0), (5000.0, 25.0), (-5000.0, 22.0), (-5000.0, 17.0)] * 150
+            )
+        ]
+
+        _feed(tracker, *samples)
+
+        days = list(tracker.daily_log.values())
+        assert sum(day.ac_charged_kwh for day in days) > 200.0
+        assert sum(day.ac_discharged_kwh for day in days) == pytest.approx(0.0)
+        for month in {day.date[:7] for day in days}:
+            summary = tracker.month_summary(month)
+            assert summary["ac_round_trip_loss"] is None
+            assert summary["ac_round_trip_loss_reason"] in (
+                REASON_THROUGHPUT_BELOW_MINIMUM,
+                REASON_SOC_CHANGE_TOO_LARGE,
+            )
+
+    @pytest.mark.parametrize("discharged", [19.0, 30.0, 50.0])
+    def test_the_battery_side_keeps_the_gates_it_had(self, discharged: float) -> None:
+        """What the AC side rejects is still published at the battery."""
+        tracker = _tracker(
+            _day(
+                "2026-06-01",
+                measured_charged_kwh=100.0,
+                measured_discharged_kwh=discharged,
+            )
+        )
+
+        summary = tracker.month_summary("2026-06")
+
+        assert summary["round_trip_efficiency"] == pytest.approx(discharged)
+        assert summary["round_trip_loss_reason"] is None
+
+
+class TestAcSidePersistence:
     def test_the_ac_record_survives_a_round_trip_through_json(self) -> None:
         tracker = EnergyTracker()
         _feed(
@@ -472,8 +622,11 @@ class TestAcSideBattery:
 
         restored = EnergyTracker.from_dict(json.loads(json.dumps(tracker.as_dict())))
 
-        assert restored.daily_log[_DAY].ac_charged_kwh == pytest.approx(0.2)
-        assert restored.daily_log[_DAY].ac_stored_delta_kwh == pytest.approx(0.1)
+        entry = restored.daily_log[_DAY]
+        assert entry.ac_charged_kwh == pytest.approx(0.2)
+        assert entry.ac_stored_delta_kwh == pytest.approx(0.1)
+        assert entry.ac_hours == pytest.approx(0.1)
+        assert entry.ac_power_hours == pytest.approx(0.1)
         assert restored._last_sample is not None
         assert restored._last_sample.battery_ac_power_w == pytest.approx(2000.0)
 
@@ -487,7 +640,7 @@ class TestAcSideBattery:
         data = json.loads(json.dumps(tracker.as_dict()))
         del data["last_sample"]["battery_ac_power_w"]
         for day in data["daily_log"]:
-            for name in ("ac_charged_kwh", "ac_discharged_kwh", "ac_stored_delta_kwh"):
+            for name in [name for name in day if name.startswith("ac_")]:
                 del day[name]
 
         restored = EnergyTracker.from_dict(data)
@@ -495,11 +648,12 @@ class TestAcSideBattery:
         entry = restored.daily_log[_DAY]
         assert entry.measured_charged_kwh == pytest.approx(0.2)
         assert entry.ac_charged_kwh == pytest.approx(0.0)
+        assert entry.ac_hours == pytest.approx(0.0)
         assert restored._last_sample is not None
         assert restored._last_sample.battery_ac_power_w is None
         assert (
             restored.month_summary("2026-06")["ac_round_trip_loss_reason"]
-            == REASON_AC_BATTERY_POWER_NOT_MEASURED
+            == REASON_AC_BATTERY_POWER_NOT_CONFIGURED
         )
 
 

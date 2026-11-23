@@ -20,6 +20,9 @@ from custom_components.hsem.custom_sensors.monthly_energy_sensors import (
     MONTHLY_ENERGY_SENSORS,
 )
 from custom_components.hsem.models import energy_tracker
+from custom_components.hsem.models.energy_round_trip import (
+    REASON_AC_BATTERY_POWER_NO_READINGS,
+)
 from custom_components.hsem.models.energy_tracker import EnergyDayEntry, EnergyTracker
 from custom_components.hsem.utils.dashboard import _bundled_dashboard_path
 
@@ -66,7 +69,7 @@ def _render(tracker: EnergyTracker) -> tuple[str, str]:
 def _day(
     day: str, *, charged: float = 60.0, wear_cost: float = 1.5, ac: bool = False
 ) -> EnergyDayEntry:
-    """Return a recorded day; *ac* adds an AC side with a 20 % loss."""
+    """Return a recorded day; *ac* adds an AC side with a 15 % loss."""
     return EnergyDayEntry(
         day,
         observed_hours=24.0,
@@ -82,7 +85,9 @@ def _day(
         measured_charged_kwh=charged,
         measured_discharged_kwh=charged * 0.9,
         ac_charged_kwh=charged if ac else 0.0,
-        ac_discharged_kwh=charged * 0.8 if ac else 0.0,
+        ac_discharged_kwh=charged * 0.85 if ac else 0.0,
+        ac_power_hours=24.0 if ac else 0.0,
+        ac_hours=24.0 if ac else 0.0,
         usable_capacity_kwh=9.0,
         rated_capacity_kwh=10.0,
         house_hours=24.0,
@@ -131,8 +136,8 @@ class TestStatusCard:
             "**Self-sufficiency unknown:** nothing has been recorded this month yet."
             in status
         )
-        assert status.count("unknown:") == 5
-        assert "not measured" not in status
+        assert status.count("unknown:") == 4
+        assert "AC" not in status
         assert "All figures" not in status
 
     def test_a_recorded_month(self) -> None:
@@ -144,11 +149,26 @@ class TestStatusCard:
         )
         assert "All figures of this month are available." in status
         assert "unknown" not in status
-        # No AC-side sensor is a choice, not a figure that went missing.
-        assert (
-            "*Round-trip loss (AC) not measured:* no AC-side battery power sensor"
-            in status
-        )
+
+    def test_without_an_ac_side_sensor_the_view_is_as_before(self) -> None:
+        """A standard Huawei installation has no such sensor (issue #1450)."""
+        status, table = _render(_recorded())
+
+        assert "AC" not in status
+        assert "AC" not in table
+        header, separator = table.splitlines()[:2]
+        assert header.endswith("| Wear cost | Loss (battery) |")
+        assert header.count("|") == separator.count("|") == 12
+
+    def test_the_ac_tile_is_only_shown_with_a_value(self) -> None:
+        tile = _cards("tile")[-1]
+
+        assert tile["entity"] == "sensor.hsem_monthly_ac_round_trip_loss"
+        assert tile["visibility"] == [
+            {"condition": "state", "entity": tile["entity"], "state_not": state}
+            for state in ("unknown", "unavailable")
+        ]
+        assert all("visibility" not in card for card in _cards("tile")[:-1])
 
     def test_a_month_with_the_ac_side_measured(self) -> None:
         tracker = EnergyTracker(daily_log={"2026-06-09": _day("2026-06-09", ac=True)})
@@ -156,9 +176,43 @@ class TestStatusCard:
         status, table = _render(tracker)
 
         assert "All figures of this month are available." in status
-        assert "not measured" not in status
         assert "unknown" not in status
-        assert "| 10.0 % | 20.0 % |" in table
+        header, separator, row = table.splitlines()[:3]
+        assert header.endswith("| Loss (battery) | Loss (AC) |")
+        assert header.count("|") == separator.count("|") == row.count("|") == 13
+        assert row.endswith("| 10.0 % | 15.0 % |")
+        assert "Loss (AC) is measured on the AC side" in table
+
+    def test_a_configured_sensor_without_readings_is_explained(self) -> None:
+        tracker = _recorded()
+        tracker.set_ac_sensor_reason(REASON_AC_BATTERY_POWER_NO_READINGS)
+
+        status, table = _render(tracker)
+
+        assert status.count("unknown:") == 1
+        assert (
+            "**Round-trip loss (AC) unknown:** the AC-side battery power sensor "
+            "gave no usable readings." in status
+        )
+        rows = [line for line in table.splitlines() if line.startswith("| 20")]
+        assert [row.endswith("| – |") for row in rows] == [True, True]
+        assert rows[0].count("|") == 13
+
+    def test_an_earlier_month_with_an_ac_figure_keeps_the_column(self) -> None:
+        """The sensor was removed after a month it measured."""
+        tracker = EnergyTracker(
+            daily_log={
+                entry.date: entry
+                for entry in (_day("2026-05-30", ac=True), _day("2026-06-09"))
+            }
+        )
+
+        status, table = _render(tracker)
+
+        assert "AC" not in status
+        rows = [line for line in table.splitlines() if line.startswith("| 20")]
+        assert rows[0].endswith("| 10.0 % | – |")
+        assert rows[1].endswith("| 10.0 % | 15.0 % |")
 
     def test_too_little_ac_energy_is_an_unknown_figure(self) -> None:
         tracker = EnergyTracker(
@@ -199,8 +253,8 @@ class TestMonthTable:
 
         rows = [line for line in table.splitlines() if line.startswith("| 20")]
         assert rows == [
-            "| 2026-06 | 20 | 5 | 3 | 18 | 60 | 54 | 75 % | 6.0 | 1.50 | 10.0 % | – |",
-            "| 2026-05 | 20 | 5 | 3 | 18 | 10 | 9 | 75 % | 1.0 | 1.50 | – | – |",
+            "| 2026-06 | 20 | 5 | 3 | 18 | 60 | 54 | 75 % | 6.0 | 1.50 | 10.0 % |",
+            "| 2026-05 | 20 | 5 | 3 | 18 | 10 | 9 | 75 % | 1.0 | 1.50 | – |",
         ]
         header = table.splitlines()[0]
         assert header.count("|") == rows[0].count("|")
@@ -209,7 +263,7 @@ class TestMonthTable:
         _status, table = _render(EnergyTracker())
 
         rows = [line for line in table.splitlines() if line.startswith("| 20")]
-        assert rows == ["| 2026-06 | – | – | – | – | – | – | – | – | – | – | – |"]
+        assert rows == ["| 2026-06 | – | – | – | – | – | – | – | – | – | – |"]
 
     def test_every_field_the_templates_read_is_published(self) -> None:
         published = set(EnergyTracker().month_summary("2026-06"))
