@@ -19,6 +19,7 @@ from __future__ import annotations
 import math
 from datetime import datetime
 
+from custom_components.hsem.models.energy_tracker import EnergyTracker
 from custom_components.hsem.models.forecast_coverage import ForecastCoverage
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
@@ -249,6 +250,7 @@ def build_planner_input(
     forecast_coverage: ForecastCoverage | None = None,
     price_profile: PriceProfile | None = None,
     efficiency_learner: EfficiencyLearner | None = None,
+    energy_tracker: EnergyTracker | None = None,
 ) -> PlannerInput:
     """Assemble a :class:`PlannerInput` from the coordinator's current pipeline state.
 
@@ -271,12 +273,16 @@ def build_planner_input(
             published price (issue #1434).
         efficiency_learner: Source of the measured round-trip efficiency,
             read only while the user has turned that on (issue #1431).
+        energy_tracker: Source of the AC-side monthly round trip, which
+            goes before the learner's battery-side one.
 
     Returns:
         A fully populated :class:`PlannerInput` ready for the planner engine.
     """
     now = hsem_now()
-    efficiency = resolve_planning_efficiency(cfg, efficiency_learner, now)
+    efficiency = resolve_planning_efficiency(
+        cfg, efficiency_learner, now, energy_tracker
+    )
 
     # Dedup key is (day_offset, hour) so that tomorrow's slots are kept
     # separately from today's even when they share the same wall-clock hour.

@@ -945,13 +945,19 @@ keeps #638's flat-price case discharging.
 
 **Learned battery efficiency (issue #1431, opt-in, default off).** With
 `hsem_batteries_learned_efficiency_enabled` on, `utils/planning_efficiency.py`
-scales both configured efficiencies by one factor so their product is the
+scales both configured efficiencies by one factor so their product is a
 measured round trip. Resolve it once in `build_planner_input`; the planner
 only reads `battery_charge_efficiency_pct` / `battery_discharge_efficiency_pct`.
-Never feed the learner's per-direction figures (they carry state of health) or
-its per-step curve (smoothed) to the planner. The measurement is DC side, an
-upper bound of the meter-side round trip, so it may lower the efficiency and
-never raise it. `PlannerInput.battery_efficiency_basis` is provenance only.
+Order: AC-side month of the energy tracker (the meter-side loss, #1450), fresh
+battery-side learner figure, the held figure (`EfficiencyLearner.held_round_trip`,
+persisted), old or undated learner sums. Never fall back from a measured
+figure to the configured one because trust lapsed: that is a jump to the
+optimistic side. Under 70 % plan with 70 %. Never feed the learner's
+per-direction figures (they carry state of health) or its per-step curve
+(smoothed) to the planner. A measurement may lower the efficiency and never
+raise it. `PlannerInput.battery_efficiency_basis` is provenance only. What-if
+and hindsight read the planner input; the energy tracker and the phase charge
+limiter keep the configured values on purpose.
 
 **Estimated price tail (issue #1453, opt-in, default off).** With
 `hsem_terminal_price_tail_enabled` on, `planner/terminal_tail.py` prices the 24

@@ -37,6 +37,10 @@ from custom_components.hsem.flows.battery_economics import (
     get_battery_economics_step_schema,
     validate_battery_economics_input,
 )
+from custom_components.hsem.models.energy_tracker import (
+    EnergyDayEntry,
+    EnergyTracker,
+)
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
@@ -48,6 +52,7 @@ from custom_components.hsem.utils.planning_efficiency import (
     MIN_SAMPLES,
     REASON_DISABLED,
     REASON_LEARNED,
+    REASON_LEARNED_AC,
     REASON_LEARNING,
     SOURCE_CONFIGURED,
     SOURCE_LEARNED,
@@ -279,6 +284,38 @@ class TestOption:
             _ROUND_TRIP * 100.0, abs=0.02
         )
         assert basis["sample_age_days"] == pytest.approx(0.5, abs=0.1)
+
+    def test_on_prefers_the_ac_side_month_of_the_energy_tracker(self) -> None:
+        """The builder hands the energy tracker's AC-side round trip on."""
+        tracker = EnergyTracker()
+        tracker.daily_log["2026-11-10"] = EnergyDayEntry(
+            date="2026-11-10",
+            ac_charged_kwh=100.0,
+            ac_discharged_kwh=88.0,
+            ac_power_hours=24.0,
+            ac_hours=24.0,
+            rated_capacity_kwh=10.0,
+        )
+        with patch("homeassistant.util.dt.now", return_value=_NOW):
+            planner_input = build_planner_input(
+                cfg=_enabled(),
+                live=LiveState(),
+                hourly_recommendations=[],
+                previous_winner_name=None,
+                previous_winner_score=0.0,
+                efficiency_learner=EfficiencyLearner(),
+                energy_tracker=tracker,
+            )
+
+        basis = planner_input.battery_efficiency_basis
+        assert basis is not None
+        assert basis["reason"] == REASON_LEARNED_AC
+        assert basis["measured_side"] == "ac"
+        assert (
+            planner_input.battery_charge_efficiency_pct
+            * planner_input.battery_discharge_efficiency_pct
+            / 100.0
+        ) == pytest.approx(88.0, abs=0.02)
 
     @pytest.mark.asyncio
     async def test_too_few_measurements_keep_the_configured_values(

@@ -230,24 +230,32 @@ $$
 $$
 
 The planner keeps the configured $\eta_{chg}$ and $\eta_{dis}$ unless
-`hsem_batteries_learned_efficiency_enabled` is on (default off). Then, when
-the measurement has 40 samples per direction, is at most 30 days old and
-$0.70 \le \eta_{rt,measured} < \eta_{chg} \cdot \eta_{dis}$, both configured
-values are scaled by the same factor:
+`hsem_batteries_learned_efficiency_enabled` is on (default off). Then it picks
+one measured round trip $\eta_{rt}$:
+
+1. the AC-side monthly round trip of the energy tracker, which is
+   $\eta_{rt,meter}$ itself, when an AC-side battery power sensor is configured
+2. else $\eta_{rt,measured}$, with 40 samples and 10 kWh per direction
+3. else the last one it trusted
+
+It is raised to $0.70$ when lower, and used only when
+$\eta_{rt} < \eta_{chg} \cdot \eta_{dis}$. Both configured values are scaled by
+the same factor:
 
 $$
-s = \sqrt{\frac{\eta_{rt,measured}}{\eta_{chg} \cdot \eta_{dis}}}, \qquad
+s = \sqrt{\frac{\eta_{rt}}{\eta_{chg} \cdot \eta_{dis}}}, \qquad
 \eta_{chg,plan} = s \cdot \eta_{chg}, \qquad
 \eta_{dis,plan} = s \cdot \eta_{dis}
 $$
 
-Only the round trip is used, because the two apparent figures carry the
-capacity factor $k$. A measured round trip can only lower the planner's
-efficiency, because it is an upper bound of the meter-side one. The plan cost
-then still leaves out the inverter loss. See `docs/planner-spec.md` →
-_Planning with the measured round trip_.
+Only a round trip is used, because the two apparent figures carry the
+capacity factor $k$. With the battery-side figure the plan cost still leaves
+out the inverter loss. See `docs/planner-spec.md` → _Planning with the measured
+round trip_.
 
-The energy accounting above always uses the configured values.
+The energy accounting above always uses the configured values: it is what
+the measured round trip is compared against. The what-if day record and the
+hindsight score use the planner's values.
 
 ---
 
