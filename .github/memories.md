@@ -1983,6 +1983,13 @@ them (recorder executor) and is used in two places:
     stops the backfill (info log, once).
   - The source comes from the config (`configured_house_power_entity`), not
     from `hass.states`, so start-up cannot pick the derived house load.
+  - Nothing is read while the house source or a subtracted charger has no
+    state with a unit (`_source_without_unit`, issue #1451). With no unit
+    requested, `statistics_during_period` converts to the unit of the current
+    state and returns the stored unit when there is no state, so a start-up
+    read after a kW to W change is off by 1000. The empty result is not
+    cached: the next update tries again. A test `hass` must give the sources
+    a state with `unit_of_measurement`.
   - A failed read is caught, logged once and cached for the hour.
     `_async_handle_update` runs before `super().async_added_to_hass()`, so it
     must never raise.
@@ -2006,7 +2013,10 @@ them (recorder executor) and is used in two places:
   is remembered for an hour (`_statistics_failed_at`). The share is published
   through `history_status.record_statistics_days()` as
   `ml_statistics_history_days`. The ML path subtracts no EV energy, raw or
-  statistics.
+  statistics. A statistics-only history has no raw `anchor`; it keeps
+  `statistics_anchor` (end of the newest hour read) and a refresh reads only
+  the hours after it through `_statistics_between()` (issue #1451). The daily
+  full read is unchanged.
 
 `tests/ml/conftest.py` makes `StatisticsReader.read_hourly_energy` return
 nothing for every ML test; set `long_term_statistics.return_value` to give

@@ -15,6 +15,10 @@ When a full read finds fewer days than required, the days before the oldest
 raw sample are filled from hourly long-term statistics (#1433).  A default
 recorder purges raw states after 10 days, so without this a 14-day minimum
 is never reached.
+
+An entity with statistics and no raw states has no reading to continue
+from.  It keeps the end of the newest statistics hour instead, and a refresh
+reads only the hours after it (#1451).
 """
 
 from __future__ import annotations
@@ -102,6 +106,9 @@ class _CachedEnergyHistory:
     units: UnitTracker
     # Samples before this instant came from long-term statistics (#1433).
     statistics_until: datetime | None = None
+    # Statistics-only history (no ``anchor``): the end of the newest hour
+    # read, where the next refresh continues (#1451).
+    statistics_anchor: datetime | None = None
 
 
 _energy_history_cache: dict[_EnergyCacheKey, _CachedEnergyHistory] = {}
@@ -138,8 +145,10 @@ async def get_energy_history(
 
     The first call and the first call of every day read the whole
     ``max_days`` window; calls in between read only the states after the
-    cached anchor and append the new slots.  A unit change forces a full
-    read with state attributes (see :class:`UnitTracker`).
+    cached anchor and append the new slots.  A history built from statistics
+    alone continues with the statistics hours after the newest one it holds.
+    A unit change forces a full read with state attributes (see
+    :class:`UnitTracker`).
 
     Args:
         hass: The Home Assistant instance.
@@ -191,6 +200,38 @@ async def get_energy_history(
         _record_statistics_share(hass, entity_id, entry, slot_minutes)
         return _usable_or_ready(entity_id, entry.samples, min_days, now_ts)
 
+    if (
+        entry is not None
+        and entry.anchor is None
+        and entry.statistics_anchor is not None
+        and unit == entry.units.unit
+        and cache_is_fresh(entry.full_read_at, now_ts, FULL_READ_INTERVAL)
+    ):
+        newer, read_until = await _statistics_between(
+            hass,
+            entity_id,
+            entry.statistics_anchor,
+            utc_key(now_ts),
+            slot_minutes=slot_minutes,
+            expected_unit=expected_unit,
+            now_ts=now_ts,
+        )
+        cutoff = utc_key(now_ts) - timedelta(days=max_days)
+        entry.samples = [
+            sample for sample in entry.samples if utc_key(sample[0]) >= cutoff
+        ] + newer
+        if read_until is not None:
+            entry.statistics_anchor = read_until
+            entry.statistics_until = read_until
+        HSEM_LOGGER.debug(
+            "ML history: %s extended by %d slots from statistics (%d cached).",
+            entity_id,
+            len(newer),
+            len(entry.samples),
+        )
+        _record_statistics_share(hass, entity_id, entry, slot_minutes)
+        return _usable_or_ready(entity_id, entry.samples, min_days, now_ts)
+
     with_attributes = (
         entry.units.needs_attributes(unit, now_ts, max_days)
         if entry is not None
@@ -207,12 +248,15 @@ async def get_energy_history(
     )
     samples = result.samples
     statistics_until: datetime | None = None
+    statistics_anchor: datetime | None = None
     if not samples:
-        older = await _statistics_before(
+        raw = result.partial
+        older, read_until = await _statistics_between(
             hass,
             entity_id,
-            result.partial,
-            max_days=max_days,
+            utc_key(now_ts) - timedelta(days=max_days),
+            # Whole hours before the oldest raw sample, or before now.
+            utc_key(raw[0][0]) if raw else utc_key(now_ts),
             slot_minutes=slot_minutes,
             expected_unit=expected_unit,
             now_ts=now_ts,
@@ -230,6 +274,9 @@ async def get_energy_history(
             return outcome
         samples = outcome.samples
         statistics_until = utc_key(older[-1][0]) + timedelta(minutes=slot_minutes)
+        if result.anchor is None:
+            # No raw reading to continue from: continue from the statistics.
+            statistics_anchor = read_until
 
     cached = _CachedEnergyHistory(
         full_read_at=now_ts,
@@ -237,48 +284,49 @@ async def get_energy_history(
         anchor=result.anchor,
         units=entry.units if entry is not None else UnitTracker(unit),
         statistics_until=statistics_until,
+        statistics_anchor=statistics_anchor,
     )
     _energy_history_cache[key] = cached
     _record_statistics_share(hass, entity_id, cached, slot_minutes)
     return HistoryResult(samples)
 
 
-async def _statistics_before(
+async def _statistics_between(
     hass: HomeAssistant,
     entity_id: str,
-    raw: list[EnergySample],
+    start: datetime,
+    until: datetime,
     *,
-    max_days: int,
     slot_minutes: int,
     expected_unit: str | None,
     now_ts: datetime,
-) -> list[EnergySample]:
-    """Return per-slot samples from statistics for the time before *raw*.
+) -> tuple[list[EnergySample], datetime | None]:
+    """Return per-slot samples from statistics for *start* up to *until*.
 
     Args:
         hass: The Home Assistant instance.
         entity_id: The energy accumulator entity.
-        raw: The too-short history from raw states, oldest first; may be empty.
-        max_days: Width of the history window.
+        start: Start of the first hour wanted, in UTC.
+        until: Only whole hours that end no later than this are used, in UTC.
         slot_minutes: Slot width in minutes.
         expected_unit: The unit to convert the statistics to, or ``None``.
         now_ts: The current time.
 
     Returns:
-        Samples for whole hours that end no later than the oldest raw sample
-        (or than now, without raw samples), oldest first.  Empty when the
-        entity has no long-term statistics in the window or the read failed.
+        The samples, oldest first, and the end of the newest hour read.  The
+        samples are empty and the end is ``None`` when the entity has no
+        long-term statistics in the window or the read failed.  An hour
+        without energy gives no samples but still moves the end.
     """
-    until = utc_key(raw[0][0]) if raw else utc_key(now_ts)
     failure_key = (id(hass), entity_id)
     failed_at = _statistics_failed_at.get(failure_key)
     if failed_at is not None and cache_is_fresh(
         failed_at, now_ts, STATISTICS_RETRY_INTERVAL
     ):
-        return []
+        return [], None
     try:
         hours = await StatisticsReader(hass).read_hourly_energy(
-            entity_id, utc_key(now_ts) - timedelta(days=max_days), until, expected_unit
+            entity_id, start, until, expected_unit
         )
     except Exception as exc:
         # The fallback is optional: a recorder error leaves the raw read as
@@ -294,16 +342,15 @@ async def _statistics_before(
             exc,
             exc_info=True,
         )
-        return []
+        return [], None
     _statistics_failed_at.pop(failure_key, None)
-    return hourly_energy_to_slots(
-        {
-            hour_start: energy
-            for hour_start, energy in hours.items()
-            if hour_start + timedelta(hours=1) <= until
-        },
-        slot_minutes,
-    )
+    whole_hours = {
+        hour_start: energy
+        for hour_start, energy in hours.items()
+        if hour_start + timedelta(hours=1) <= until
+    }
+    read_until = max(whole_hours) + timedelta(hours=1) if whole_hours else None
+    return hourly_energy_to_slots(whole_hours, slot_minutes), read_until
 
 
 def _record_statistics_share(
