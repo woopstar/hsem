@@ -1730,8 +1730,15 @@ views:
               columns: 3
           - type: tile
             entity: sensor.hsem_monthly_round_trip_loss
-            name: Round-Trip Loss
+            name: Round-Trip Loss (Battery)
             icon: mdi:battery-arrow-down
+            color: state
+            grid_options:
+              columns: 3
+          - type: tile
+            entity: sensor.hsem_monthly_ac_round_trip_loss
+            name: Round-Trip Loss (AC)
+            icon: mdi:transmission-tower-export
             color: state
             grid_options:
               columns: 3
@@ -1752,6 +1759,7 @@ views:
                 'grid_import_not_measured': 'no grid import energy sensor is configured, or it gave no readings.',
                 'capacity_unknown': 'the usable battery capacity is not known yet.',
                 'battery_power_not_measured': 'the battery power sensor gave no readings, so there is nothing to measure the loss with.',
+                'ac_battery_power_not_measured': 'no AC-side battery power sensor is configured, or it gave no readings.',
                 'throughput_below_minimum': 'too little energy has been charged so far (20 kWh, and five times the rated capacity).',
                 'implausible_ratio': 'the battery power readings and the SoC contradict each other.'
               } -%}
@@ -1759,7 +1767,8 @@ views:
                 'self_sufficiency': 'Self-sufficiency',
                 'battery_cycles': 'Battery cycles',
                 'battery_wear_cost': 'Battery wear cost',
-                'round_trip_loss': 'Round-trip loss'
+                'round_trip_loss': 'Round-trip loss (battery)',
+                'ac_round_trip_loss': 'Round-trip loss (AC)'
               } -%}
               {%- set m = state_attr(s, 'this_month') or {} -%}
               {%- set known = namespace(all=true) -%}
@@ -1767,7 +1776,9 @@ views:
 
               {% for key, name in names.items() -%}
               {%- set reason = m.get(key ~ '_reason', 'no_data') -%}
-              {%- if reason %}{% set known.all = false %}**{{ name }} unknown:** {{ why.get(reason, reason) }}
+              {%- if reason == 'ac_battery_power_not_measured' %}*{{ name }} not measured:* {{ why.get(reason) }}
+
+              {% elif reason %}{% set known.all = false %}**{{ name }} unknown:** {{ why.get(reason, reason) }}
 
               {% endif -%}
               {%- endfor -%}
@@ -1787,13 +1798,13 @@ views:
               {%- set s = 'sensor.hsem_monthly_self_sufficiency' -%}
               {%- set months = state_attr(s, 'monthly') or [] -%}
               {%- macro num(value, pattern) -%}{{ '–' if value is none else pattern | format(value) }}{%- endmacro -%}
-              | Month | Used | Import | Export | PV | Charged | Discharged | Self-sufficiency | Cycles | Wear cost | Round-trip loss |
-              |:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+              | Month | Used | Import | Export | PV | Charged | Discharged | Self-sufficiency | Cycles | Wear cost | Loss (battery) | Loss (AC) |
+              |:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
               {%- for m in months | reverse %}
-              | {{ m.get('month') }} | {{ num(m.get('house_consumption_kwh'), '%.0f') }} | {{ num(m.get('grid_import_kwh'), '%.0f') }} | {{ num(m.get('grid_export_kwh'), '%.0f') }} | {{ num(m.get('pv_kwh'), '%.0f') }} | {{ num(m.get('battery_charged_kwh'), '%.0f') }} | {{ num(m.get('battery_discharged_kwh'), '%.0f') }} | {{ num(m.get('self_sufficiency'), '%.0f %%') }} | {{ num(m.get('battery_cycles'), '%.1f') }} | {{ num(m.get('battery_wear_cost'), '%.2f') }} | {{ num(m.get('round_trip_loss'), '%.1f %%') }} |
+              | {{ m.get('month') }} | {{ num(m.get('house_consumption_kwh'), '%.0f') }} | {{ num(m.get('grid_import_kwh'), '%.0f') }} | {{ num(m.get('grid_export_kwh'), '%.0f') }} | {{ num(m.get('pv_kwh'), '%.0f') }} | {{ num(m.get('battery_charged_kwh'), '%.0f') }} | {{ num(m.get('battery_discharged_kwh'), '%.0f') }} | {{ num(m.get('self_sufficiency'), '%.0f %%') }} | {{ num(m.get('battery_cycles'), '%.1f') }} | {{ num(m.get('battery_wear_cost'), '%.2f') }} | {{ num(m.get('round_trip_loss'), '%.1f %%') }} | {{ num(m.get('ac_round_trip_loss'), '%.1f %%') }} |
               {%- endfor %}
 
-              Energy in kWh, newest month first. Every figure is computed from the month's summed energy, not from daily percentages. A dash means the figure is unknown for that month; the Status card says why for the current one. The round-trip loss is measured at the battery, so it leaves out the inverter.
+              Energy in kWh, newest month first. Every figure is computed from the month's summed energy, not from daily percentages. A dash means the figure is unknown for that month; the Status card says why for the current one. The two loss columns are the round-trip loss: measured at the battery, which leaves out the inverter, and on the AC side, which includes it and needs an AC-side battery power sensor.
 ```
 
 ---
@@ -1825,10 +1836,10 @@ control turned out to be, scored against perfect hindsight:
 
 The **Energy** view (`/hsem/energy`) shows the month in energy figures:
 
-| Section            | Column span | Cards | Description                                                                            |
-| ------------------ | ----------- | ----- | -------------------------------------------------------------------------------------- |
-| **This Month**     | 1 column    | 6     | Self-sufficiency, battery cycles, battery wear cost, round-trip loss and a status card |
-| **Last 12 Months** | 1 column    | 2     | One row per month: energy totals and the four figures                                  |
+| Section            | Column span | Cards | Description                                                                                      |
+| ------------------ | ----------- | ----- | ------------------------------------------------------------------------------------------------ |
+| **This Month**     | 1 column    | 7     | Self-sufficiency, battery cycles, battery wear cost, the two round-trip losses and a status card |
+| **Last 12 Months** | 1 column    | 2     | One row per month: energy totals and the five figures                                            |
 
 ---
 
@@ -1936,11 +1947,11 @@ A third tab of the dashboard, with the energy figures of the calendar month.
 The figures are defined in
 [Monthly energy sensors](sensors-reference.md#monthly-energy-sensors).
 
-| Card           | Type     | What it shows                                                                                               |
-| -------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
-| Tiles          | Tile     | Self-sufficiency, battery cycles, battery wear cost and round-trip loss for the current month so far        |
-| Status         | Markdown | The month, the days and hours recorded, and why a figure is unknown                                         |
-| Last 12 Months | Markdown | One row per month, newest first: house consumption, import, export, PV, charged, discharged and the figures |
+| Card           | Type     | What it shows                                                                                                                             |
+| -------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Tiles          | Tile     | Self-sufficiency, battery cycles, battery wear cost and the two round-trip losses (battery side and AC side) for the current month so far |
+| Status         | Markdown | The month, the days and hours recorded, and why a figure is unknown                                                                       |
+| Last 12 Months | Markdown | One row per month, newest first: house consumption, import, export, PV, charged, discharged and the figures                               |
 
 **Already have the HSEM dashboard?** Add the view the same way as the
 Performance view above: copy the block that starts with `- title: Energy`
@@ -1957,6 +1968,10 @@ Reading it:
   (20 kWh, and five times the rated capacity) and the SoC is close enough to
   where the month started. In a winter month with an idle battery it can stay
   unknown.
+- The **AC-side round-trip loss** needs an AC-side battery power sensor
+  (step _Energy & ML_). Without one its tile is unknown, its column shows a
+  dash and the Status card says it is not measured. A Huawei hybrid inverter
+  has no such sensor.
 - The months **before the upgrade** are not filled in. The existing financial
   history holds money only, so there is no energy to build them from.
 - A dash in an older row means the figure was unknown for that month.

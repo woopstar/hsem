@@ -1,4 +1,4 @@
-"""Tests for the per-cycle feeding of the energy tracker (issue #1435)."""
+"""Tests for the per-cycle feeding of the energy tracker (issues #1435, #1450)."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from custom_components.hsem import coordinator_energy
 from custom_components.hsem.coordinator_energy import (
     HISTORY_FILE,
     async_track_energy,
+    battery_ac_power_w,
     build_battery_site,
     build_energy_sample,
     consumption_power_w,
@@ -28,7 +29,12 @@ from custom_components.hsem.coordinator_tracking import init_financial_tracker
 from custom_components.hsem.custom_sensors.monthly_energy_sensors import (
     build_monthly_energy_sensors,
 )
-from custom_components.hsem.models.energy_tracker import REASON_NO_DATA, EnergyTracker
+from custom_components.hsem.models.energy_tracker import (
+    REASON_AC_BATTERY_POWER_NOT_MEASURED,
+    REASON_NO_DATA,
+    REASON_THROUGHPUT_BELOW_MINIMUM,
+    EnergyTracker,
+)
 from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.live_state import EVLiveState, LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
@@ -39,6 +45,7 @@ _T0 = datetime(2026, 6, 10, 12, 0, tzinfo=UTC)
 _HOUSE = "sensor.power_house_load"
 _PV = "sensor.power_inverter_input_total"
 _EV = "sensor.ev_charger_power"
+_AC = "sensor.battery_ac_power"
 _CFG = SensorConfig(
     house_consumption_power=_HOUSE,
     solar_production_power=_PV,
@@ -112,6 +119,54 @@ class TestBuildSample:
         assert sample.grid_import_energy_kwh is None
         assert sample.pv_energy_kwh is None
         assert sample.soc_pct is None
+
+
+class TestAcSideBatteryPower:
+    """The optional AC-side battery power sensor (issue #1450)."""
+
+    _AC_CFG = SensorConfig(battery_ac_power_entity=_AC)
+
+    def test_without_a_configured_sensor_there_is_no_reading(self) -> None:
+        assert battery_ac_power_w(_hass(**{_AC: "2500"}), SensorConfig()) is None
+        assert (
+            build_energy_sample(_hass(), _T0, _live(), _CFG).battery_ac_power_w is None
+        )
+
+    def test_a_sensor_that_does_not_exist_gives_no_reading(self) -> None:
+        assert battery_ac_power_w(_hass(), self._AC_CFG) is None
+
+    @pytest.mark.parametrize("state", ["unavailable", "unknown", "", "nan", "inf"])
+    def test_a_state_that_is_no_finite_number_gives_no_reading(
+        self, state: str
+    ) -> None:
+        assert battery_ac_power_w(_hass(**{_AC: state}), self._AC_CFG) is None
+
+    def test_the_sign_is_kept_and_zero_is_a_reading(self) -> None:
+        assert battery_ac_power_w(
+            _hass(**{_AC: "-1800"}), self._AC_CFG
+        ) == pytest.approx(-1800.0)
+        assert battery_ac_power_w(_hass(**{_AC: "0"}), self._AC_CFG) == pytest.approx(
+            0.0
+        )
+
+    def test_a_reading_in_kilowatt_is_converted_to_watt(self) -> None:
+        hass = make_fake_hass(
+            {_AC: {"state": "2.5", "attributes": {"unit_of_measurement": "kW"}}}
+        )
+
+        assert battery_ac_power_w(hass, self._AC_CFG) == pytest.approx(2500.0)
+
+    def test_the_sample_carries_the_reading(self) -> None:
+        cfg = SensorConfig(
+            house_consumption_power=_HOUSE,
+            solar_production_power=_PV,
+            battery_ac_power_entity=_AC,
+        )
+
+        sample = build_energy_sample(_hass(**{_AC: "3100"}), _T0, _live(), cfg)
+
+        assert sample.battery_ac_power_w == pytest.approx(3100.0)
+        assert sample.battery_power_w == pytest.approx(3000.0)
 
 
 class TestBuildSite:
@@ -465,6 +520,75 @@ class TestThroughTheRealCycle:
         assert attributes is not None
         assert attributes["this_month"]["days"] == 1
         assert attributes["this_month"]["grid_import_kwh"] == pytest.approx(0.5)
+
+    @pytest.mark.asyncio
+    async def test_the_ac_side_sensor_is_read_by_the_cycle(self) -> None:
+        """3 kW into the battery on the AC side for five minutes (issue #1450).
+
+        The option goes through the config reader and the real update cycle
+        to the AC-side sensor's attributes (issue #1398).
+        """
+        coordinator, _published = _coordinator({"hsem_battery_ac_power_entity": _AC})
+        states: Any = coordinator.hass.states._states
+        states[_AC] = FakeState(_AC, "3", {"unit_of_measurement": "kW"})
+
+        for minutes in (0, 5):
+            with (
+                patch(
+                    f"{_CYCLE}.hsem_now", return_value=_T0 + timedelta(minutes=minutes)
+                ),
+                patch(f"{_TRACKING}.async_track_time_change"),
+            ):
+                await _run_cycle(coordinator)
+
+        assert coordinator._cfg is not None
+        assert coordinator._cfg.battery_ac_power_entity == _AC
+        entry = coordinator._energy_tracker.daily_log["2026-06-10"]
+        assert entry.ac_charged_kwh == pytest.approx(0.25)
+        assert entry.ac_discharged_kwh == pytest.approx(0.0)
+
+        sensors = {
+            sensor._description.key: sensor
+            for sensor in build_monthly_energy_sensors(
+                coordinator._config_entry, coordinator
+            )
+        }
+        with patch(f"{_SENSORS}.hsem_now", return_value=_T0):
+            attributes = sensors["ac_round_trip_loss"].extra_state_attributes
+            value = sensors["ac_round_trip_loss"].native_value
+        assert attributes is not None
+        assert attributes["this_month"]["ac_round_trip_charged_kwh"] == pytest.approx(
+            0.25
+        )
+        # Measured, but a quarter of a kWh is too little to give a loss.
+        assert value is None
+        assert attributes["reason"] == REASON_THROUGHPUT_BELOW_MINIMUM
+
+    @pytest.mark.asyncio
+    async def test_without_the_ac_side_sensor_the_figure_is_unknown(self) -> None:
+        """The reason says the AC side was not measured (issue #1450)."""
+        coordinator, _published = _coordinator()
+
+        for minutes in (0, 5):
+            with (
+                patch(
+                    f"{_CYCLE}.hsem_now", return_value=_T0 + timedelta(minutes=minutes)
+                ),
+                patch(f"{_TRACKING}.async_track_time_change"),
+            ):
+                await _run_cycle(coordinator)
+
+        assert coordinator._cfg is not None
+        assert coordinator._cfg.battery_ac_power_entity is None
+        assert "2026-06-10" in coordinator._energy_tracker.daily_log
+        sensors = build_monthly_energy_sensors(coordinator._config_entry, coordinator)
+        sensor = next(s for s in sensors if s._description.key == "ac_round_trip_loss")
+        with patch(f"{_SENSORS}.hsem_now", return_value=_T0):
+            attributes = sensor.extra_state_attributes
+            value = sensor.native_value
+        assert value is None
+        assert attributes is not None
+        assert attributes["reason"] == REASON_AC_BATTERY_POWER_NOT_MEASURED
 
     @pytest.mark.asyncio
     async def test_an_unavailable_house_sensor_is_missing_not_zero(self) -> None:

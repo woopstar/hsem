@@ -509,6 +509,7 @@
           "hsem_grid_import_energy_entity": "Grid Import Energy Sensor",
           "hsem_grid_export_energy_entity": "Grid Export Energy Sensor",
           "hsem_pv_energy_entity": "PV Production Energy Sensor",
+          "hsem_battery_ac_power_entity": "AC-Side Battery Power Sensor",
           "hsem_ml_consumption_enabled": "Enable ML consumption prediction",
           "hsem_ml_consumption_energy_entity": "House consumption energy sensor (excl. battery & EV)",
           "hsem_ml_consumption_history_days": "ML history days",
@@ -523,6 +524,7 @@
           "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh).",
           "hsem_grid_export_energy_entity": "Optional—cumulative grid export energy meter (kWh).",
           "hsem_pv_energy_entity": "Optional—cumulative PV production energy meter (kWh).",
+          "hsem_battery_ac_power_entity": "Optional—signed power of the battery on the AC side of its inverter (W or kW), positive while charging. Only used for the monthly AC-side round-trip loss. Leave empty when no sensor measures the battery alone: an inverter power that includes PV does not work.",
           "hsem_ml_consumption_enabled": "When enabled, uses ridge regression on recorder history instead of rolling averages. Requires 14+ days of history.",
           "hsem_ml_consumption_energy_entity": "Cumulative house consumption energy meter (kWh). Must exclude battery AND EV charging - use a sensor upstream of both. Falls back to grid import if not set.",
           "hsem_ml_consumption_history_days": "Days of recorder history for ML training (7–90).",
@@ -1006,6 +1008,7 @@
           "hsem_grid_import_energy_entity": "Grid Import Energy Sensor",
           "hsem_grid_export_energy_entity": "Grid Export Energy Sensor",
           "hsem_pv_energy_entity": "PV Production Energy Sensor",
+          "hsem_battery_ac_power_entity": "AC-Side Battery Power Sensor",
           "hsem_ml_consumption_enabled": "Enable ML consumption prediction",
           "hsem_ml_consumption_energy_entity": "House consumption energy sensor (excl. battery & EV)",
           "hsem_ml_consumption_history_days": "ML history days",
@@ -1020,6 +1023,7 @@
           "hsem_grid_import_energy_entity": "Optional—cumulative grid import energy meter (kWh).",
           "hsem_grid_export_energy_entity": "Optional—cumulative grid export energy meter (kWh).",
           "hsem_pv_energy_entity": "Optional—cumulative PV production energy meter (kWh).",
+          "hsem_battery_ac_power_entity": "Optional—signed power of the battery on the AC side of its inverter (W or kW), positive while charging. Only used for the monthly AC-side round-trip loss. Leave empty when no sensor measures the battery alone: an inverter power that includes PV does not work.",
           "hsem_ml_consumption_enabled": "When enabled, uses ridge regression on recorder history instead of rolling averages. Requires 14+ days of history.",
           "hsem_ml_consumption_energy_entity": "Cumulative house consumption energy meter (kWh). Must exclude battery AND EV charging - use a sensor upstream of both. Falls back to grid import if not set.",
           "hsem_ml_consumption_history_days": "Days of recorder history for ML training (7–90).",
@@ -1238,6 +1242,9 @@
       },
       "missing_entities": {
         "name": "Missing Input Entities"
+      },
+      "monthly_ac_round_trip_loss": {
+        "name": "Monthly AC-Side Round-Trip Loss"
       },
       "monthly_battery_cycles": {
         "name": "Monthly Battery Cycles"

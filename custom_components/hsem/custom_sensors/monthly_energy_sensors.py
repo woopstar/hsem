@@ -1,6 +1,6 @@
 """Monthly energy sensors: what the installation did, in plain energy figures.
 
-Four sensors, each the current calendar month so far (issue #1435):
+Five sensors, each the current calendar month so far (issues #1435, #1450):
 
 - ``sensor.hsem_monthly_self_sufficiency`` — share of the house consumption
   that did not come from the grid (%).
@@ -9,8 +9,12 @@ Four sensors, each the current calendar month so far (issue #1435):
   throughput (currency).
 - ``sensor.hsem_monthly_round_trip_loss`` — share of the energy charged into
   the battery that did not come out again, measured at the battery (%).
+- ``sensor.hsem_monthly_ac_round_trip_loss`` — the same share measured on the
+  AC side of the inverter, so with its conversion loss (%).  Unknown, with
+  the reason ``ac_battery_power_not_measured``, without an AC-side battery
+  power sensor.
 
-All four publish the same attributes: ``this_month`` and ``previous_month``
+All five publish the same attributes: ``this_month`` and ``previous_month``
 with every figure and the energy totals behind it, and ``monthly`` with the
 last 12 months.  ``reason`` says why this sensor's value is unknown.
 
@@ -38,6 +42,8 @@ from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.energy_tracker import EnergyTracker
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.sensornames.monthly_energy import (
+    get_monthly_ac_round_trip_loss_entity_id,
+    get_monthly_ac_round_trip_loss_unique_id,
     get_monthly_battery_cycles_entity_id,
     get_monthly_battery_cycles_unique_id,
     get_monthly_battery_wear_cost_entity_id,
@@ -106,6 +112,14 @@ MONTHLY_ENERGY_SENSORS: tuple[MonthlyEnergySensorDescription, ...] = (
         precision=1,
         entity_id=get_monthly_round_trip_loss_entity_id,
         unique_id=get_monthly_round_trip_loss_unique_id,
+    ),
+    MonthlyEnergySensorDescription(
+        key="ac_round_trip_loss",
+        icon="mdi:transmission-tower-export",
+        unit=PERCENTAGE,
+        precision=1,
+        entity_id=get_monthly_ac_round_trip_loss_entity_id,
+        unique_id=get_monthly_ac_round_trip_loss_unique_id,
     ),
 )
 

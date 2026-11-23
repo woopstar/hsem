@@ -49,6 +49,16 @@ async def get_energy_and_ml_step_schema(  # NOSONAR
                 "hsem_pv_energy_entity",
                 default=get_config_value(config_entry, "hsem_pv_energy_entity"),
             ): selector({"entity": {"domain": "sensor"}}),
+            # Optional and clearable (suggested value, not default): only the
+            # monthly AC-side round-trip loss uses it (issue #1450).
+            vol.Optional(
+                "hsem_battery_ac_power_entity",
+                description={
+                    "suggested_value": get_config_value(
+                        config_entry, "hsem_battery_ac_power_entity"
+                    )
+                },
+            ): selector({"entity": {"domain": "sensor"}}),
             # --- ML consumption prediction ---
             vol.Required(
                 "hsem_ml_consumption_enabled",

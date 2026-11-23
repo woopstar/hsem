@@ -431,6 +431,7 @@
           "hsem_grid_import_energy_entity": "Netimport Energi Sensor",
           "hsem_grid_export_energy_entity": "Neteksport Energi Sensor",
           "hsem_pv_energy_entity": "Solcelleproduktion Energi Sensor",
+          "hsem_battery_ac_power_entity": "Batterieffekt på AC-siden",
           "hsem_ml_consumption_enabled": "Aktiver ML forbrugsprognose",
           "hsem_ml_consumption_energy_entity": "Husforbrug energi sensor (ekskl. batteri og EV)",
           "hsem_ml_consumption_history_days": "ML historik dage",
@@ -445,6 +446,7 @@
           "hsem_grid_import_energy_entity": "Valgfri - akkumuleret netimport energimåler (kWh).",
           "hsem_grid_export_energy_entity": "Valgfri - akkumuleret neteksport energimåler (kWh).",
           "hsem_pv_energy_entity": "Valgfri - akkumuleret solcelleproduktion energimåler (kWh).",
+          "hsem_battery_ac_power_entity": "Valgfri - batteriets effekt med fortegn på AC-siden af inverteren (W eller kW), positiv under opladning. Bruges kun til det månedlige tab på AC-siden. Lad feltet være tomt, hvis ingen sensor måler batteriet alene: en invertereffekt, der indeholder solceller, kan ikke bruges.",
           "hsem_ml_consumption_enabled": "Når aktiveret, bruger ridge regression på optagerhistorik i stedet for rullende gennemsnit. Kræver 14+ dages historik.",
           "hsem_ml_consumption_energy_entity": "Akkumuleret husforbrug energimåler (kWh). Skal ekskludere batteri OG EV-opladning. Falder tilbage til netimport hvis ikke sat.",
           "hsem_ml_consumption_history_days": "Dage med optagerhistorik til ML-træning (7-90).",
@@ -968,6 +970,7 @@
           "hsem_grid_import_energy_entity": "Netimport Energi Sensor",
           "hsem_grid_export_energy_entity": "Neteksport Energi Sensor",
           "hsem_pv_energy_entity": "Solcelleproduktion Energi Sensor",
+          "hsem_battery_ac_power_entity": "Batterieffekt på AC-siden",
           "hsem_ml_consumption_enabled": "Aktiver ML forbrugsprognose",
           "hsem_ml_consumption_energy_entity": "Husforbrug energi sensor (ekskl. batteri og EV)",
           "hsem_ml_consumption_history_days": "ML historik dage",
@@ -982,6 +985,7 @@
           "hsem_grid_import_energy_entity": "Valgfri - akkumuleret netimport energimåler (kWh).",
           "hsem_grid_export_energy_entity": "Valgfri - akkumuleret neteksport energimåler (kWh).",
           "hsem_pv_energy_entity": "Valgfri - akkumuleret solcelleproduktion energimåler (kWh).",
+          "hsem_battery_ac_power_entity": "Valgfri - batteriets effekt med fortegn på AC-siden af inverteren (W eller kW), positiv under opladning. Bruges kun til det månedlige tab på AC-siden. Lad feltet være tomt, hvis ingen sensor måler batteriet alene: en invertereffekt, der indeholder solceller, kan ikke bruges.",
           "hsem_ml_consumption_enabled": "Når aktiveret, bruger ridge regression på optagerhistorik i stedet for rullende gennemsnit. Kræver 14+ dages historik.",
           "hsem_ml_consumption_energy_entity": "Akkumuleret husforbrug energimåler (kWh). Skal ekskludere batteri OG EV-opladning. Falder tilbage til netimport hvis ikke sat.",
           "hsem_ml_consumption_history_days": "Dage med optagerhistorik til ML-træning (7-90).",
@@ -1331,6 +1335,9 @@
       },
       "missing_entities": {
         "name": "Manglende enheder"
+      },
+      "monthly_ac_round_trip_loss": {
+        "name": "Månedligt tab på AC-siden ved op- og afladning"
       },
       "monthly_battery_cycles": {
         "name": "Månedlige battericyklusser"

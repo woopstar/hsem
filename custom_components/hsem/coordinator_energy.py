@@ -2,9 +2,10 @@
 
 Each cycle hands the tracker one sample of the meters the coordinator already
 reads: the grid and PV energy meters, the house and battery power, and the
-SoC.  The tracker turns consecutive samples into daily energy totals, from
-which the monthly energy sensors are built.  The days before the first
-measured one are taken from long-term statistics, once
+SoC.  The optional AC-side battery power is read here, since only the tracker
+uses it (issue #1450).  The tracker turns consecutive samples into daily
+energy totals, from which the monthly energy sensors are built.  The days
+before the first measured one are taken from long-term statistics, once
 (:mod:`coordinator_energy_backfill`, issue #1450).
 
 The planner gets ``0 W`` for a house or PV power sensor that gives no reading.
@@ -21,6 +22,7 @@ import math
 from datetime import datetime
 from pathlib import Path
 
+from homeassistant.const import ATTR_UNIT_OF_MEASUREMENT, UnitOfPower
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.coordinator_energy_backfill import (
@@ -38,6 +40,7 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.logger import async_log
 from custom_components.hsem.utils.misc import clamp_efficiency, resolve_cycle_cost
+from custom_components.hsem.utils.unit_normalize import normalize_to_unit
 
 #: Name of the history file under ``.storage``.
 HISTORY_FILE = "hsem_energy_history.json"
@@ -103,6 +106,35 @@ def consumption_power_w(
     return power
 
 
+def battery_ac_power_w(hass: HomeAssistant, cfg: SensorConfig) -> float | None:
+    """Return the battery's power on the AC side of the inverter, or ``None``.
+
+    Read from the optional ``hsem_battery_ac_power_entity`` and converted to
+    W.  The sign is the battery power sensor's: positive while charging.
+
+    Args:
+        hass: Home Assistant instance.
+        cfg: The sensor configuration.
+
+    Returns:
+        The power in W, or ``None`` when no sensor is configured or it has no
+        finite numeric state.
+    """
+    entity_id = cfg.battery_ac_power_entity
+    state = hass.states.get(entity_id) if entity_id else None
+    if entity_id is None or state is None:
+        return None
+    return _finite(
+        normalize_to_unit(
+            convert_to_float(state.state),
+            state.attributes.get(ATTR_UNIT_OF_MEASUREMENT),
+            UnitOfPower.WATT,
+            entity_id=entity_id,
+            label="battery_ac_power",
+        )
+    )
+
+
 def build_energy_sample(
     hass: HomeAssistant, now: datetime, live: LiveState, cfg: SensorConfig
 ) -> EnergySample:
@@ -127,6 +159,7 @@ def build_energy_sample(
         ),
         house_power_w=consumption_power_w(hass, live, cfg),
         battery_power_w=_finite(live.huawei_batteries_charge_discharge_power_w),
+        battery_ac_power_w=battery_ac_power_w(hass, cfg),
         soc_pct=_finite(live.huawei_batteries_soc_pct),
     )
 

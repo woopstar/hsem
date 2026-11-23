@@ -509,6 +509,7 @@
           "hsem_grid_import_energy_entity": "Sensor de energía de importación de la red",
           "hsem_grid_export_energy_entity": "Sensor de energía de exportación a la red",
           "hsem_pv_energy_entity": "Sensor de energía de producción PV",
+          "hsem_battery_ac_power_entity": "Sensor de potencia de la batería en el lado de CA",
           "hsem_ml_consumption_enabled": "Activar predicción de consumo mediante ML",
           "hsem_ml_consumption_energy_entity": "Sensor de energía de consumo de la vivienda (excl. batería y VE)",
           "hsem_ml_consumption_history_days": "Días de historial para ML",
@@ -523,6 +524,7 @@
           "hsem_grid_import_energy_entity": "Opcional: medidor acumulado de energía de importación de la red (kWh).",
           "hsem_grid_export_energy_entity": "Opcional: medidor acumulado de energía de exportación a la red (kWh).",
           "hsem_pv_energy_entity": "Opcional: medidor acumulado de energía de producción PV (kWh).",
+          "hsem_battery_ac_power_entity": "Opcional: potencia con signo de la batería en el lado de CA de su inversor (W o kW), positiva durante la carga. Solo se usa para la pérdida mensual de ida y vuelta en el lado de CA. Déjalo vacío si ningún sensor mide solo la batería: una potencia del inversor que incluye la PV no sirve.",
           "hsem_ml_consumption_enabled": "Cuando está activado, usa regresión ridge sobre el historial del recorder en lugar de medias móviles. Requiere 14 días o más de historial.",
           "hsem_ml_consumption_energy_entity": "Medidor acumulado de energía de consumo de la vivienda (kWh). Debe excluir la batería Y la carga del VE; usa un sensor situado antes de ambos. Si no se configura, se recurre a la importación de red.",
           "hsem_ml_consumption_history_days": "Días de historial del recorder para el entrenamiento de ML (7-90).",
@@ -1006,6 +1008,7 @@
           "hsem_grid_import_energy_entity": "Sensor de energía de importación de la red",
           "hsem_grid_export_energy_entity": "Sensor de energía de exportación a la red",
           "hsem_pv_energy_entity": "Sensor de energía de producción PV",
+          "hsem_battery_ac_power_entity": "Sensor de potencia de la batería en el lado de CA",
           "hsem_ml_consumption_enabled": "Activar predicción de consumo mediante ML",
           "hsem_ml_consumption_energy_entity": "Sensor de energía de consumo de la vivienda (excl. batería y VE)",
           "hsem_ml_consumption_history_days": "Días de historial para ML",
@@ -1020,6 +1023,7 @@
           "hsem_grid_import_energy_entity": "Opcional: medidor acumulado de energía de importación de la red (kWh).",
           "hsem_grid_export_energy_entity": "Opcional: medidor acumulado de energía de exportación a la red (kWh).",
           "hsem_pv_energy_entity": "Opcional: medidor acumulado de energía de producción PV (kWh).",
+          "hsem_battery_ac_power_entity": "Opcional: potencia con signo de la batería en el lado de CA de su inversor (W o kW), positiva durante la carga. Solo se usa para la pérdida mensual de ida y vuelta en el lado de CA. Déjalo vacío si ningún sensor mide solo la batería: una potencia del inversor que incluye la PV no sirve.",
           "hsem_ml_consumption_enabled": "Cuando está activado, usa regresión ridge sobre el historial del recorder en lugar de medias móviles. Requiere 14 días o más de historial.",
           "hsem_ml_consumption_energy_entity": "Medidor acumulado de energía de consumo de la vivienda (kWh). Debe excluir la batería Y la carga del VE; usa un sensor situado antes de ambos. Si no se configura, se recurre a la importación de red.",
           "hsem_ml_consumption_history_days": "Días de historial del recorder para el entrenamiento de ML (7-90).",
@@ -1238,6 +1242,9 @@
       },
       "missing_entities": {
         "name": "Entidades de entrada faltantes"
+      },
+      "monthly_ac_round_trip_loss": {
+        "name": "Pérdida mensual de ida y vuelta en el lado de CA"
       },
       "monthly_battery_cycles": {
         "name": "Ciclos de batería mensuales"

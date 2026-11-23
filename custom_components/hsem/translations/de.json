@@ -509,6 +509,7 @@
           "hsem_grid_import_energy_entity": "Netzimport-Energiesensor",
           "hsem_grid_export_energy_entity": "Netzeinspeisung-Energiesensor",
           "hsem_pv_energy_entity": "PV-Produktions-Energiesensor",
+          "hsem_battery_ac_power_entity": "AC-seitiger Batterieleistungssensor",
           "hsem_ml_consumption_enabled": "ML-Verbrauchsprognose aktivieren",
           "hsem_ml_consumption_energy_entity": "Hausverbrauchs-Energiesensor (ohne Batterie & EV)",
           "hsem_ml_consumption_history_days": "ML-Verlaufstage",
@@ -523,6 +524,7 @@
           "hsem_grid_import_energy_entity": "Optional — kumulativer Netzimport-Energiezähler (kWh).",
           "hsem_grid_export_energy_entity": "Optional — kumulativer Netzeinspeisung-Energiezähler (kWh).",
           "hsem_pv_energy_entity": "Optional — kumulativer PV-Produktions-Energiezähler (kWh).",
+          "hsem_battery_ac_power_entity": "Optional — vorzeichenbehaftete Leistung der Batterie auf der AC-Seite des Wechselrichters (W oder kW), positiv beim Laden. Wird nur für den monatlichen AC-seitigen Lade-Entlade-Verlust verwendet. Leer lassen, wenn kein Sensor die Batterie allein misst: eine Wechselrichterleistung mit PV-Anteil funktioniert nicht.",
           "hsem_ml_consumption_enabled": "Wenn aktiviert, wird Ridge-Regression auf Basis der Recorder-Historie anstelle gleitender Durchschnitte verwendet. Erfordert mindestens 14 Tage Historie.",
           "hsem_ml_consumption_energy_entity": "Kumulativer Hausverbrauchs-Energiezähler (kWh). Muss Batterie UND EV-Ladung ausschließen — verwende einen Sensor vor beiden. Fällt auf Netzimport zurück, falls nicht gesetzt.",
           "hsem_ml_consumption_history_days": "Tage der Recorder-Historie für das ML-Training (7–90).",
@@ -1006,6 +1008,7 @@
           "hsem_grid_import_energy_entity": "Netzimport-Energiesensor",
           "hsem_grid_export_energy_entity": "Netzeinspeisung-Energiesensor",
           "hsem_pv_energy_entity": "PV-Produktions-Energiesensor",
+          "hsem_battery_ac_power_entity": "AC-seitiger Batterieleistungssensor",
           "hsem_ml_consumption_enabled": "ML-Verbrauchsprognose aktivieren",
           "hsem_ml_consumption_energy_entity": "Hausverbrauchs-Energiesensor (ohne Batterie & EV)",
           "hsem_ml_consumption_history_days": "ML-Verlaufstage",
@@ -1020,6 +1023,7 @@
           "hsem_grid_import_energy_entity": "Optional — kumulativer Netzimport-Energiezähler (kWh).",
           "hsem_grid_export_energy_entity": "Optional — kumulativer Netzeinspeisung-Energiezähler (kWh).",
           "hsem_pv_energy_entity": "Optional — kumulativer PV-Produktions-Energiezähler (kWh).",
+          "hsem_battery_ac_power_entity": "Optional — vorzeichenbehaftete Leistung der Batterie auf der AC-Seite des Wechselrichters (W oder kW), positiv beim Laden. Wird nur für den monatlichen AC-seitigen Lade-Entlade-Verlust verwendet. Leer lassen, wenn kein Sensor die Batterie allein misst: eine Wechselrichterleistung mit PV-Anteil funktioniert nicht.",
           "hsem_ml_consumption_enabled": "Wenn aktiviert, wird Ridge-Regression auf Basis der Recorder-Historie anstelle gleitender Durchschnitte verwendet. Erfordert mindestens 14 Tage Historie.",
           "hsem_ml_consumption_energy_entity": "Kumulativer Hausverbrauchs-Energiezähler (kWh). Muss Batterie UND EV-Ladung ausschließen — verwende einen Sensor vor beiden. Fällt auf Netzimport zurück, falls nicht gesetzt.",
           "hsem_ml_consumption_history_days": "Tage der Recorder-Historie für das ML-Training (7–90).",
@@ -1238,6 +1242,9 @@
       },
       "missing_entities": {
         "name": "Fehlende Eingabeentitäten"
+      },
+      "monthly_ac_round_trip_loss": {
+        "name": "Monatlicher AC-seitiger Lade-Entlade-Verlust"
       },
       "monthly_battery_cycles": {
         "name": "Monatliche Batteriezyklen"

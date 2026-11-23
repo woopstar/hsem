@@ -853,6 +853,7 @@ class TestOptionsFlowFinalStep:
             "hsem_force_charge_now": True,
             "device_name": "New",
             "hsem_ml_enabled": False,
+            "hsem_battery_ac_power_entity": "",
         }
         _mock_hass(flow).config_entries.async_update_entry.assert_called_once_with(
             entry,
@@ -862,6 +863,43 @@ class TestOptionsFlowFinalStep:
                 "device_name": "Old",
             },
         )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("user_input", "stored"),
+        [
+            # The form leaves a cleared field out of its data.
+            ({}, ""),
+            ({"hsem_battery_ac_power_entity": "sensor.new"}, "sensor.new"),
+        ],
+    )
+    async def test_the_ac_side_battery_sensor_can_be_cleared_and_changed(
+        self, user_input: dict[str, Any], stored: str
+    ) -> None:
+        """A cleared sensor must not come back from the old options (#1450)."""
+        entry = _make_entry(options={"hsem_battery_ac_power_entity": "sensor.old"})
+        flow = _make_options_flow(entry)
+
+        with patch(
+            f"{_OPTIONS_FLOW_MODULE}.validate_energy_and_ml_input",
+            AsyncMock(return_value={}),
+        ):
+            result = await flow.async_step_energy_and_ml(user_input)
+
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert result["data"]["hsem_battery_ac_power_entity"] == stored
+
+    @pytest.mark.asyncio
+    async def test_the_energy_step_offers_the_ac_side_battery_sensor(self) -> None:
+        """The saved sensor is suggested, so the field can be emptied (#1450)."""
+        entry = _make_entry(options={"hsem_battery_ac_power_entity": "sensor.old"})
+        flow = _make_options_flow(entry)
+
+        result = await flow.async_step_energy_and_ml()
+
+        markers = {str(marker): marker for marker in _schema(result).schema}
+        marker = markers["hsem_battery_ac_power_entity"]
+        assert marker.description == {"suggested_value": "sensor.old"}
 
     @pytest.mark.asyncio
     async def test_title_falls_back_to_integration_name(self) -> None:

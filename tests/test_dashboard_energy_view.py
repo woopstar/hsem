@@ -1,4 +1,4 @@
-"""Tests for the Energy view of the bundled dashboard (issue #1435).
+"""Tests for the Energy view of the bundled dashboard (issues #1435, #1450).
 
 The view cannot be rendered in the test environment, so its Markdown
 templates are rendered here against the attributes a real
@@ -63,7 +63,10 @@ def _render(tracker: EnergyTracker) -> tuple[str, str]:
     return status, table
 
 
-def _day(day: str, *, charged: float = 60.0, wear_cost: float = 1.5) -> EnergyDayEntry:
+def _day(
+    day: str, *, charged: float = 60.0, wear_cost: float = 1.5, ac: bool = False
+) -> EnergyDayEntry:
+    """Return a recorded day; *ac* adds an AC side with a 20 % loss."""
     return EnergyDayEntry(
         day,
         observed_hours=24.0,
@@ -78,6 +81,8 @@ def _day(day: str, *, charged: float = 60.0, wear_cost: float = 1.5) -> EnergyDa
         paired_import_kwh=5.0,
         measured_charged_kwh=charged,
         measured_discharged_kwh=charged * 0.9,
+        ac_charged_kwh=charged if ac else 0.0,
+        ac_discharged_kwh=charged * 0.8 if ac else 0.0,
         usable_capacity_kwh=9.0,
         rated_capacity_kwh=10.0,
         house_hours=24.0,
@@ -126,7 +131,8 @@ class TestStatusCard:
             "**Self-sufficiency unknown:** nothing has been recorded this month yet."
             in status
         )
-        assert status.count("unknown:") == 4
+        assert status.count("unknown:") == 5
+        assert "not measured" not in status
         assert "All figures" not in status
 
     def test_a_recorded_month(self) -> None:
@@ -138,6 +144,31 @@ class TestStatusCard:
         )
         assert "All figures of this month are available." in status
         assert "unknown" not in status
+        # No AC-side sensor is a choice, not a figure that went missing.
+        assert (
+            "*Round-trip loss (AC) not measured:* no AC-side battery power sensor"
+            in status
+        )
+
+    def test_a_month_with_the_ac_side_measured(self) -> None:
+        tracker = EnergyTracker(daily_log={"2026-06-09": _day("2026-06-09", ac=True)})
+
+        status, table = _render(tracker)
+
+        assert "All figures of this month are available." in status
+        assert "not measured" not in status
+        assert "unknown" not in status
+        assert "| 10.0 % | 20.0 % |" in table
+
+    def test_too_little_ac_energy_is_an_unknown_figure(self) -> None:
+        tracker = EnergyTracker(
+            daily_log={"2026-06-09": _day("2026-06-09", charged=10.0, ac=True)}
+        )
+
+        status, _table = _render(tracker)
+
+        assert status.count("unknown:") == 2
+        assert "**Round-trip loss (AC) unknown:** too little energy" in status
 
     def test_only_the_unknown_figure_is_explained(self) -> None:
         tracker = EnergyTracker(
@@ -147,7 +178,7 @@ class TestStatusCard:
         status, _table = _render(tracker)
 
         assert status.count("unknown:") == 1
-        assert "**Round-trip loss unknown:** too little energy" in status
+        assert "**Round-trip loss (battery) unknown:** too little energy" in status
 
     def test_every_reason_the_sensors_publish_is_put_in_words(self) -> None:
         reasons = {
@@ -168,8 +199,8 @@ class TestMonthTable:
 
         rows = [line for line in table.splitlines() if line.startswith("| 20")]
         assert rows == [
-            "| 2026-06 | 20 | 5 | 3 | 18 | 60 | 54 | 75 % | 6.0 | 1.50 | 10.0 % |",
-            "| 2026-05 | 20 | 5 | 3 | 18 | 10 | 9 | 75 % | 1.0 | 1.50 | – |",
+            "| 2026-06 | 20 | 5 | 3 | 18 | 60 | 54 | 75 % | 6.0 | 1.50 | 10.0 % | – |",
+            "| 2026-05 | 20 | 5 | 3 | 18 | 10 | 9 | 75 % | 1.0 | 1.50 | – | – |",
         ]
         header = table.splitlines()[0]
         assert header.count("|") == rows[0].count("|")
@@ -178,7 +209,7 @@ class TestMonthTable:
         _status, table = _render(EnergyTracker())
 
         rows = [line for line in table.splitlines() if line.startswith("| 20")]
-        assert rows == ["| 2026-06 | – | – | – | – | – | – | – | – | – | – |"]
+        assert rows == ["| 2026-06 | – | – | – | – | – | – | – | – | – | – | – |"]
 
     def test_every_field_the_templates_read_is_published(self) -> None:
         published = set(EnergyTracker().month_summary("2026-06"))

@@ -54,3 +54,28 @@ def mean_power_kwh(
     if before_w is None or after_w is None:
         return None
     return (before_w + after_w) / 2.0 * hours / 1000.0
+
+
+def signed_power_kwh(
+    before_w: float | None, after_w: float | None, hours: float
+) -> tuple[float, float] | None:
+    """Return the energy of each direction of a signed power reading.
+
+    Each direction is averaged on its own, so an interval in which the power
+    changes sign books energy in both.
+
+    Args:
+        before_w: Signed power at the start of the interval (W).
+        after_w: Signed power at the end of the interval (W).
+        hours: Length of the interval in hours.
+
+    Returns:
+        The energy of the positive direction and that of the negative
+        direction in kWh, both positive, or ``None`` when a reading is
+        missing.
+    """
+    if before_w is None or after_w is None:
+        return None
+    positive = (max(before_w, 0.0) + max(after_w, 0.0)) / 2.0 * hours / 1000.0
+    negative = (max(-before_w, 0.0) + max(-after_w, 0.0)) / 2.0 * hours / 1000.0
+    return positive, negative
