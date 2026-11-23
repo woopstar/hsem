@@ -104,6 +104,9 @@ def build_sensor_config(
     cfg.planner_solver_time_limit_s = solver_time_limit_s(
         get_config_value(config_entry, "hsem_planner_solver_time_limit_s")
     )
+    cfg.terminal_price_tail_enabled = convert_to_boolean(
+        get_config_value(config_entry, "hsem_terminal_price_tail_enabled")
+    )
     _update_interval = convert_to_int(
         get_config_value(config_entry, "hsem_update_interval")
     )

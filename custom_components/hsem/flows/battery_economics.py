@@ -192,6 +192,13 @@ async def get_battery_economics_step_schema(  # NOSONAR
                     }
                 }
             ),
+            # --- Estimated price tail for the end value (issue #1453) ---
+            vol.Required(
+                "hsem_terminal_price_tail_enabled",
+                default=bool(
+                    get_config_value(config_entry, "hsem_terminal_price_tail_enabled")
+                ),
+            ): selector({"boolean": {}}),
         }
     )
 
@@ -219,6 +226,7 @@ async def validate_battery_economics_input(
         "hsem_planner_hysteresis_percentage",
         "hsem_planner_window_hysteresis_minutes",
         "hsem_planner_solver_time_limit_s",
+        "hsem_terminal_price_tail_enabled",
     ]
     required_errors: dict[str, str] = {
         f: "required" for f in scalar_required if f not in user_input

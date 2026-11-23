@@ -58,6 +58,7 @@ def _rich_input() -> PlannerInput:
         ev_second_planned_load_deadline=_DEADLINE + timedelta(hours=3),
         ev_held_slot_start=_DEADLINE - timedelta(minutes=15),
         ev_second_held_slot_start=_DEADLINE - timedelta(minutes=30),
+        price_published_until=_DEADLINE + timedelta(hours=8),
         max_grid_export_power_kw=None,
         main_fuse_amps=25.0,
     )

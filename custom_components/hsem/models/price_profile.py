@@ -63,6 +63,17 @@ LEVEL_SHIFT_MAX_AGE = timedelta(hours=24)
 LevelShift = tuple[float, datetime]
 
 
+def level_shift_applies(start: datetime, until: datetime) -> bool:
+    """Return whether a slot starts early enough to use a level shift.
+
+    Args:
+        start: Slot start.  A start without a timezone has no place on the
+            shift's time axis and never qualifies.
+        until: Start of the first slot that is too late for the shift.
+    """
+    return start.tzinfo is not None and start < until
+
+
 def median_shift(
     known: Iterable[float | None],
     profile_side: Iterable[float | None],

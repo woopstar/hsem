@@ -63,6 +63,7 @@ _EXPECTED_ATTR_KEYS = {
     "solver_time_s",
     "solver_gap_pct",
     "solver_time_limit_s",
+    "terminal_price_tail",
     "constraints",
     "rejected_plans",
 }

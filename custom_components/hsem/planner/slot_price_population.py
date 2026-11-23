@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Hashable, Iterable
-from datetime import datetime
 from statistics import median
 from typing import cast
 
@@ -28,6 +27,7 @@ from custom_components.hsem.models.price_profile import (
     LevelShift,
     PricePair,
     PriceProfile,
+    level_shift_applies,
     median_shift,
 )
 from custom_components.hsem.models.time_series import SlotMeta, TimeSeriesIndex
@@ -96,17 +96,6 @@ def _estimate_missing_price(
 _Estimator = Callable[[SlotMeta], float | None]
 
 
-def _in_time(start: datetime, until: datetime) -> bool:
-    """Return whether a slot starts early enough to use a level shift.
-
-    Args:
-        start: Slot start.  A start without a timezone has no place on the
-            shift's time axis and never qualifies.
-        until: Start of the first slot that is too late for the shift.
-    """
-    return start.tzinfo is not None and start < until
-
-
 def _fill_side(
     known: list[float | None],
     metas: list[SlotMeta],
@@ -166,7 +155,7 @@ def _fill_side(
             value is None
             and shape is not None
             and last_level is not None
-            and _in_time(meta.start, last_level[1])
+            and level_shift_applies(meta.start, last_level[1])
         ):
             shape += last_level[0]
         filled[index] = shape if value is None else value

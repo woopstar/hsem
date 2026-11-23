@@ -275,6 +275,17 @@ class PlannerInput:
     #: saving right now in the selector's eyes.
     time_discount_rate: float = 0.995
 
+    # --- estimated price tail for the terminal end value (issue #1453) ---
+    #: Share (0-1) of the terminal end value ``V`` that comes from profile
+    #: prices for the 24 hours after the horizon.  ``0.0`` disables the tail
+    #: and keeps ``V`` as it was.  Needs ``price_profile``.
+    terminal_price_tail_weight: float = 0.0
+    #: End of the last real import price the price sensor has published,
+    #: also when that is past the horizon.  The tail is only used when the
+    #: horizon ends at or after it, so it never estimates a published price.
+    #: ``None`` when unknown or nothing is published.
+    price_published_until: datetime | None = None
+
     # --- EV planned load integration — primary EV (optional, disabled by default) ---
     #: When True, the primary EV planned load feature is active.
     ev_planned_load_enabled: bool = False

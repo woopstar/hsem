@@ -1839,6 +1839,7 @@
       }
     ],
     "price_profile": null,
+    "price_published_until": null,
     "solar_corrector": null,
     "solcast_slots": [
       {
@@ -2082,6 +2083,7 @@
         "pv_estimate": 0.0
       }
     ],
+    "terminal_price_tail_weight": 0.0,
     "time_discount_rate": 0.995,
     "time_zone": "Europe/Copenhagen",
     "weight_14d": 10,

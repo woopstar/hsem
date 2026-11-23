@@ -365,6 +365,7 @@ def populate_price_and_solcast_from_snapshot(
     # an attribute that is not a prediction.  Only this enters the price
     # history and the held prices (#1434).
     published_import = _covered_values(recommendations, "import_price", import_covered)
+    import_ends: list[datetime] = [] if import_flat is None else [_ALWAYS]
     import_matched = _populate_from_attributes(
         snapshot.sensor_attributes.get(cfg.import_electricity_price_sensor or ""),
         recommendations,
@@ -373,6 +374,7 @@ def populate_price_and_solcast_from_snapshot(
         price_fallback,
         covered=import_covered,
         published=published_import,
+        published_ends=import_ends,
     )
     import_predictions_only = import_matched > 0 and not published_import
     if cfg.import_electricity_price_forecast_sensor:
@@ -489,6 +491,7 @@ def populate_price_and_solcast_from_snapshot(
         ),
         published_import=published_import,
         published_export=published_export,
+        import_published_until=max(import_ends, default=None),
         import_predictions_only=import_predictions_only,
         export_predictions_only=export_predictions_only,
     )
@@ -517,6 +520,7 @@ def _populate_from_attributes(
     mean_over_slot: bool = False,
     covered: set[datetime] | None = None,
     published: dict[datetime, float] | None = None,
+    published_ends: list[datetime] | None = None,
 ) -> int:
     """Match pre-read sensor attribute data to recommendation slots.
 
@@ -557,6 +561,9 @@ def _populate_from_attributes(
             :func:`_published_until` counts as published (issue #1452).  A
             prediction written to the same slot later does not change it.
             Not filled with *mean_over_slot*.
+        published_ends: When given with *published*, receives the UTC end of
+            every published entry, also of one past the last slot, so the
+            caller knows how far the published prices reach (issue #1453).
 
     Returns:
         Number of data points successfully matched to at least one slot.
@@ -614,6 +621,10 @@ def _populate_from_attributes(
             if published is not None and recommendations
             else None
         )
+        if published_ends is not None and published_until is not None:
+            published_ends.extend(
+                start + source_window for start, _ in entries if start < published_until
+            )
         # Per slot index: (value, overlap seconds) of each covering data point.
         overlaps: dict[int, list[tuple[float, float]]] = {}
 
