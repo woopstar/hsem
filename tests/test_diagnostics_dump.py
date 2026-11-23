@@ -133,6 +133,22 @@ class TestBuildDiagnosticsDump:
         assert "planner_output" in dump
         assert "apply_result" in dump
 
+    def test_price_sensor_content_is_included(self) -> None:
+        """What each price sensor published is in the dump (issue #1452)."""
+        inp = make_summer_day_input()
+        out = run_planner(inp)
+        content = {"import": "predictions", "export": "published"}
+
+        dump = build_diagnostics_dump(inp, out, price_sensors=content)
+
+        assert dump["price_sensors"] == content
+        assert "price_sensors" not in build_diagnostics_dump(inp, out)
+        assert "price_sensors" not in build_diagnostics_dump(
+            inp,
+            out,
+            price_sensors="published",  # type: ignore[arg-type]
+        )
+
     def test_version_is_embedded(self) -> None:
         inp = _make_minimal_input()
         out = run_planner(inp)

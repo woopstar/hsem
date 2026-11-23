@@ -350,6 +350,9 @@ class HSEMDataUpdateCoordinator(
         self._financial_tracker: FinancialTracker = FinancialTracker()
         # Real prices per slot, for missing prices and outages (issue #1434).
         self._price_history_tracker: PriceHistoryTracker = PriceHistoryTracker()
+        # What each price sensor published last cycle: "published",
+        # "predictions" or "none" per side, for diagnostics (issue #1452).
+        self._price_sensor_content: dict[str, str] | None = None
         # Energy tracker — daily energy totals behind the monthly energy
         # sensors (issue #1435). Its history file is loaded on the first cycle.
         self._energy_tracker: EnergyTracker = EnergyTracker()

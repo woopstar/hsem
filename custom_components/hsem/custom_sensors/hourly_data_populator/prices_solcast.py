@@ -29,6 +29,19 @@ from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
 #: (issue #1434).
 PREDICTION_ATTRIBUTES = frozenset({"forecast", "predictions", "forecasts"})
 
+#: Attributes that always hold published prices: the day-ahead prices of
+#: Energi Data Service and Nord Pool.  No sensor state makes them a
+#: prediction (issue #1452).
+PUBLISHED_ATTRIBUTES = frozenset({"raw_today", "raw_tomorrow"})
+
+#: Day-ahead prices are published for today and tomorrow.  A price series
+#: that still has an entry this long after the first slot of the cycle (local
+#: midnight today) reaches past tomorrow and holds predictions (issue #1452).
+#: The 12 hours on top of the two days allow for a market day in another
+#: time zone than the local one.
+_PUBLISHED_HORIZON = timedelta(hours=60)
+_ALWAYS = datetime.max.replace(tzinfo=UTC)
+
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
@@ -148,6 +161,81 @@ def _attribute_formats(solcast_likelihood_key: str) -> dict[str, list[dict[str, 
         # Amber Electric forecast sensor format
         "forecasts": [{"k": "start_time", "v": "per_kwh"}],
     }
+
+
+def _entry_start(raw_time: Any, interval_minutes: int) -> datetime | None:
+    """Return the UTC start of a data point's source interval.
+
+    Args:
+        raw_time: The entry's time value: a datetime or an ISO string.
+        interval_minutes: Cadence of the source, to floor the time to.
+
+    Returns:
+        The start of the source interval the time falls in, or ``None`` when
+        the value is missing or cannot be read as a time.
+    """
+    if not raw_time:
+        return None
+    if isinstance(raw_time, datetime):
+        dt_key = raw_time
+    else:
+        try:
+            dt_key = datetime.fromisoformat(str(raw_time))
+        except ValueError, TypeError:
+            return None
+    try:
+        # Floor to the start of the detected source interval so that each
+        # data point is anchored at its slot boundary.  Match by physical
+        # instant: two HA-local datetimes compare by wall clock, which cannot
+        # tell the DST fall-back hour's two occurrences apart (issue #1160).
+        return utc_key(normalize_slot_start(dt_key, interval_minutes))
+    except ValueError, OSError:
+        return None
+
+
+def _published_until(
+    attr: str,
+    attributes: dict[str, Any],
+    starts: list[datetime],
+    first_slot: datetime,
+) -> datetime | None:
+    """Return the time before which an attribute's entries are real prices.
+
+    The same attribute name holds published prices in one integration and
+    predictions in another (``docs/price-attributes.md``), so the sensor's
+    own state decides:
+
+    * An attribute in :data:`PUBLISHED_ATTRIBUTES` holds published prices,
+      whatever else the sensor says.
+    * An attribute in :data:`PREDICTION_ATTRIBUTES` holds predictions.
+    * ``forecast_data`` set: Strømligning's tomorrow sensors, while tomorrow
+      is a forecast.
+    * ``known_until``: Open Spot Forecast marks where its confirmed prices
+      end and its forecast begins.
+    * A series that reaches past tomorrow cannot be day-ahead prices alone,
+      and nothing in it tells the two apart: EPEX Spot with the
+      Energyforecast source, Strømligning's forecast sensors.
+
+    Args:
+        attr: The attribute name.
+        attributes: The sensor's attributes.
+        starts: UTC start of every entry of the attribute.
+        first_slot: UTC start of the cycle's first slot.
+
+    Returns:
+        ``None`` when every entry is a prediction, otherwise the UTC time an
+        entry must start before to count as published.
+    """
+    if attr in PUBLISHED_ATTRIBUTES:
+        return _ALWAYS
+    if attr in PREDICTION_ATTRIBUTES or attributes.get("forecast_data") is True:
+        return None
+    known_until = attributes.get("known_until")
+    if known_until is not None:
+        return _entry_start(known_until, 1)
+    if any(start >= first_slot + _PUBLISHED_HORIZON for start in starts):
+        return None
+    return _ALWAYS
 
 
 def _attribute_entries(value: Any) -> list[dict[str, Any]]:
@@ -465,8 +553,10 @@ def _populate_from_attributes(
             default it was created with.
         published: When given, receives the value of every slot written from
             an attribute that is not in :data:`PREDICTION_ATTRIBUTES`, by UTC
-            start (issue #1434).  A prediction written to the same slot
-            later does not change it.  Not filled with *mean_over_slot*.
+            start (issue #1434), and only from entries that
+            :func:`_published_until` counts as published (issue #1452).  A
+            prediction written to the same slot later does not change it.
+            Not filled with *mean_over_slot*.
 
     Returns:
         Number of data points successfully matched to at least one slot.
@@ -506,58 +596,49 @@ def _populate_from_attributes(
         # round-trip is gone; with per-attribute auto-detection the raw
         # value is the only value that remains correct across mixed cadences.
         source_window = timedelta(minutes=detected_interval)
+        entries = [
+            (window_start, value)
+            for data in sensor_data
+            for kv in kv_list
+            if (window_start := _entry_start(data.get(kv["k"]), detected_interval))
+            is not None
+            and (value := convert_to_float(data.get(kv["v"]))) is not None
+        ]
+        published_until = (
+            _published_until(
+                attr,
+                attributes,
+                [start for start, _ in entries],
+                utc_key(recommendations[0].start),
+            )
+            if published is not None and recommendations
+            else None
+        )
         # Per slot index: (value, overlap seconds) of each covering data point.
         overlaps: dict[int, list[tuple[float, float]]] = {}
 
-        for data in sensor_data:
-            for kv in kv_list:
-                raw_time = data.get(kv["k"])
-                if not raw_time:
-                    continue
-
-                if isinstance(raw_time, datetime):
-                    dt_key = raw_time
-                else:
-                    try:
-                        dt_key = datetime.fromisoformat(str(raw_time))
-                    except ValueError, TypeError:
-                        continue
-
-                try:
-                    # Floor to the start of the detected source interval so
-                    # that each data point is anchored at its slot boundary.
-                    dt_key = normalize_slot_start(dt_key, detected_interval)
-                except ValueError, OSError:
-                    continue
-
-                value = convert_to_float(data.get(kv["v"]))
-                if value is None:
-                    continue
-
-                # Match by physical instant: two HA-local datetimes compare by
-                # wall clock, which cannot tell the DST fall-back hour's two
-                # occurrences apart (issue #1160).
-                window_start = utc_key(dt_key)
-                window_end = window_start + source_window
-                for index, obj in enumerate(recommendations):
-                    obj_start = utc_key(obj.start)
-                    if mean_over_slot:
-                        overlap_seconds = (
-                            min(window_end, utc_key(obj.end))
-                            - max(window_start, obj_start)
-                        ).total_seconds()
-                        if overlap_seconds > 0:
-                            overlaps.setdefault(index, []).append(
-                                (value, overlap_seconds)
-                            )
-                            matched += 1
-                    elif window_start <= obj_start < window_end:
-                        setattr(obj, field_name, round(value, 5))
+        for window_start, value in entries:
+            window_end = window_start + source_window
+            for index, obj in enumerate(recommendations):
+                obj_start = utc_key(obj.start)
+                if mean_over_slot:
+                    overlap_seconds = (
+                        min(window_end, utc_key(obj.end)) - max(window_start, obj_start)
+                    ).total_seconds()
+                    if overlap_seconds > 0:
+                        overlaps.setdefault(index, []).append((value, overlap_seconds))
                         matched += 1
-                        if covered is not None:
-                            covered.add(obj_start)
-                        if published is not None and attr not in PREDICTION_ATTRIBUTES:
-                            published[obj_start] = round(value, 5)
+                elif window_start <= obj_start < window_end:
+                    setattr(obj, field_name, round(value, 5))
+                    matched += 1
+                    if covered is not None:
+                        covered.add(obj_start)
+                    if (
+                        published is not None
+                        and published_until is not None
+                        and window_start < published_until
+                    ):
+                        published[obj_start] = round(value, 5)
 
         for index, covering in overlaps.items():
             setattr(
