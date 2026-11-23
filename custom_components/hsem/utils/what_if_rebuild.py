@@ -20,9 +20,12 @@ peaks inside an hour are averaged out.  It is rebuilt with today's battery
 limits, since none were stored for it.
 
 A day is rebuilt only when every hour of it has a real price and a house
-load.  Where a PV source is configured, every hour needs a PV statistic too:
-a renamed PV sensor or a gap must not turn a sunny day into one of pure grid
-import.  Without a PV source the site has no PV and the production is zero.
+load.  Where a PV source is configured, the day also needs PV statistics
+without a gap between its first and its last PV hour: a renamed PV sensor or
+a gap must not turn a sunny day into one of pure grid import.  The hours
+before the first and after the last PV hour count as no production, since an
+inverter that is unavailable at night leaves no statistics for them.  Without
+a PV source the site has no PV and the production is zero.
 
 Pure functions with no Home Assistant imports.
 """
@@ -45,8 +48,9 @@ from custom_components.hsem.planner.hindsight_scoring import SiteLimits
 REASON_PRICE_INCOMPLETE = "price_incomplete"
 
 #: Why a day has no comparison: it has no measured record and its prices are
-#: complete, but the statistics lack the house load of at least one hour, or
-#: the PV of one where a PV source is configured.
+#: complete, but the statistics lack the house load of at least one hour, or,
+#: where a PV source is configured, have no PV hour or a gap between the
+#: day's first and last PV hour.
 REASON_STATISTICS_INCOMPLETE = "statistics_incomplete"
 
 _HOUR = timedelta(hours=1)
@@ -108,17 +112,22 @@ def rebuild_day(
         hourly: The hourly energy read from the statistics.
         prices: Real import and export price by UTC hour start.
         site: The installation's limits as configured today.
-        pv_expected: Whether a PV source is configured.  An hour without a
-            PV statistic then leaves no day; without a PV source it is an
-            hour without production.
+        pv_expected: Whether a PV source is configured.  The day then needs
+            at least one PV hour and none missing between its first and last
+            one; the hours outside them are hours without production.
+            Without a PV source every hour is.
 
     Returns:
         The day, marked as rebuilt from statistics, or ``None`` when an hour
-        of it has no house load, or no PV where PV is expected.
+        of it has no house load, or its PV statistics are absent or have a
+        gap where PV is expected.
     """
     if any(hour not in hourly.house_kwh for hour in hours):
         return None
-    if pv_expected and any(hour not in hourly.pv_kwh for hour in hours):
+    observed = [index for index, hour in enumerate(hours) if hour in hourly.pv_kwh]
+    if pv_expected and (
+        not observed or len(observed) != observed[-1] - observed[0] + 1
+    ):
         return None
     pv = tuple(
         None if hour not in hourly.pv_kwh else max(hourly.pv_kwh[hour], 0.0)

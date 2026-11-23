@@ -784,7 +784,7 @@ counted under a reason:
 | ------------------------------ | ------------------------------------------------------------------------------- |
 | `not_recorded`                 | HSEM holds no complete record of the day, and the recorder is not loaded        |
 | `price_incomplete`             | No measured record, and no real price for at least one hour of the day          |
-| `statistics_incomplete`        | No measured record, and the statistics lack the house load or the PV of an hour |
+| `statistics_incomplete`        | No measured record, and the statistics lack a house load hour or have a PV gap  |
 | `insufficient_coverage`        | Part of the day was not observed, for example during a restart                  |
 | `stored_energy_outside_limits` | The recorded SoC does not fit the capacity the day is solved with               |
 | `energy_balance_residual`      | The meters contradict each other                                                |
@@ -842,15 +842,16 @@ for the run when both of these hold:
   with one hour missing is skipped as `price_incomplete`.
 - The house consumption power sensor has an hourly statistic for every hour
   of the day. Where the house power leaves the EV chargers out, the chargers
-  need one too. When a PV sensor is configured (PV energy or PV power), it
-  needs one for every hour as well. Otherwise the day is skipped as
-  `statistics_incomplete`. An hour above 50 kW counts as missing.
+  need one too. Otherwise the day is skipped as `statistics_incomplete`. An
+  hour above 50 kW counts as missing.
 
-A missing PV hour is never read as zero production. A renamed PV sensor would
-otherwise turn its old days into days of pure grid import. Only a site
-without any PV sensor is replayed without PV. A PV sensor that is unavailable
-at night and leaves no statistics for those hours therefore gets no rebuilt
-days.
+When a PV sensor is configured (PV energy or PV power), the day also needs PV
+statistics. It is skipped as `statistics_incomplete` when it has no PV hour
+at all, or when an hour is missing between its first and its last PV hour. A
+renamed PV sensor would otherwise turn its old days into days of pure grid
+import. The hours before the first and after the last PV hour of the day
+count as no production: an inverter that is unavailable at night leaves no
+statistics for them. A site without any PV sensor is replayed without PV.
 
 Only the house and PV statistics are read. The grid meters and the battery
 power are not: the grid flows of a rebuilt day follow from load and PV.

@@ -157,33 +157,62 @@ class TestRebuildDay:
 class TestPvExpected:
     """A configured PV source with a gap must not become a day without sun."""
 
-    def test_an_hour_without_pv_statistics_leaves_no_day(self) -> None:
-        """PV statistics for four midday hours only, as after a renamed sensor."""
+    def _daylight(self, **changes: float | None) -> HourlyEnergy:
+        """Return PV statistics for 06:00 to 18:00 only, as a Huawei inverter.
+
+        Args:
+            changes: Hour index (``h12``) to its energy, ``None`` to drop it.
+        """
+        pv = {hour: 0.5 for hour in _HOURS[6:18]}
+        for name, energy in changes.items():
+            hour = _HOURS[int(name[1:])]
+            if energy is None:
+                del pv[hour]
+            else:
+                pv[hour] = energy
+        return HourlyEnergy(house_kwh=dict.fromkeys(_HOURS, 1.0), pv_kwh=pv)
+
+    def test_night_gaps_only_leave_the_day_usable(self) -> None:
+        day = rebuild_day(
+            _DAY, _HOURS, self._daylight(h12=3.0), _prices(), SITE, pv_expected=True
+        )
+
+        assert day is not None
+        # Before the first and after the last PV hour: no production.
+        assert day.pv_kwh[0] is None
+        assert day.pv_kwh[23] is None
+        assert day.grid_import_kwh[0] == pytest.approx(1.0)
+        assert day.grid_import_kwh[6] == pytest.approx(0.5)
+        assert day.grid_export_kwh[12] == pytest.approx(2.0)
+
+    def test_a_gap_in_the_middle_leaves_no_day(self) -> None:
         assert (
-            rebuild_day(_DAY, _HOURS, _hourly(), _prices(), SITE, pv_expected=True)
+            rebuild_day(
+                _DAY,
+                _HOURS,
+                self._daylight(h12=None),
+                _prices(),
+                SITE,
+                pv_expected=True,
+            )
             is None
         )
 
-    def test_a_day_with_pv_for_every_hour_is_rebuilt(self) -> None:
-        hourly = HourlyEnergy(
-            house_kwh=dict.fromkeys(_HOURS, 1.0),
-            pv_kwh={**dict.fromkeys(_HOURS, 0.0), _HOURS[12]: 3.0},
+    def test_no_pv_hours_at_all_leave_no_day(self) -> None:
+        """As after a renamed PV sensor: the old days have no statistics."""
+        hourly = HourlyEnergy(house_kwh=dict.fromkeys(_HOURS, 1.0))
+
+        assert (
+            rebuild_day(_DAY, _HOURS, hourly, _prices(), SITE, pv_expected=True) is None
         )
 
-        day = rebuild_day(_DAY, _HOURS, hourly, _prices(), SITE, pv_expected=True)
-
-        assert day is not None
-        assert day.pv_kwh[0] == pytest.approx(0.0)
-        assert day.grid_export_kwh[12] == pytest.approx(2.0)
-
-    def test_a_pv_hour_dropped_as_a_glitch_is_a_missing_hour(self) -> None:
-        hourly = HourlyEnergy(
-            house_kwh=dict.fromkeys(_HOURS, 1.0),
-            pv_kwh={**dict.fromkeys(_HOURS, 0.0), _HOURS[12]: MAX_HOUR_KWH + 1.0},
-        )
-
+    def test_a_capped_hour_in_the_middle_leaves_no_day(self) -> None:
         rebuilt, reasons = rebuild_days(
-            {_DAY: _HOURS}, hourly, _prices(), SITE, pv_expected=True
+            {_DAY: _HOURS},
+            self._daylight(h12=MAX_HOUR_KWH + 1.0),
+            _prices(),
+            SITE,
+            pv_expected=True,
         )
 
         assert rebuilt == {}
