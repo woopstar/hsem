@@ -80,7 +80,10 @@ from custom_components.hsem.services_what_if import (
     async_handle_what_if,
 )
 from custom_components.hsem.utils.dashboard import async_ensure_hsem_dashboard
-from custom_components.hsem.utils.diagnostics import build_diagnostics_dump
+from custom_components.hsem.utils.diagnostics import (
+    build_diagnostics_dump,
+    summarise_learned_stores,
+)
 from custom_components.hsem.utils.integration_version import (
     async_get_hsem_integration_version,
 )
@@ -347,6 +350,7 @@ async def async_handle_export_diagnostics(
         apply_summary,
         integration_version=str(integration_version),
         ocpp_tls=getattr(coordinator, "_ocpp_tls_status", None),
+        learned_stores=summarise_learned_stores(coordinator),
         price_sensors=getattr(coordinator, "_price_sensor_content", None),
     )
 

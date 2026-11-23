@@ -17,7 +17,7 @@ Assistant; the debug export, which is meant to be posted, redacts them.
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +26,7 @@ from urllib.parse import urlencode
 
 from packaging.version import InvalidVersion, Version
 
+from custom_components.hsem.models.price_history_tracker import PriceHistoryTracker
 from custom_components.hsem.utils.diagnostics import REDACTED
 from custom_components.hsem.utils.persistence import (
     read_json_history_file,
@@ -36,8 +37,13 @@ from custom_components.hsem.utils.persistence import (
 BACKUP_SCHEMA = "hsem_backup"
 
 #: Version of the backup layout. Raise it when the layout changes in a way an
-#: older HSEM cannot read.
-BACKUP_SCHEMA_VERSION = 1
+#: older HSEM cannot read. Every version from 1 up to this one is imported.
+#:
+#: - 1: prediction, financial, savings, daily and performance history.
+#: - 2: adds the battery efficiency, energy, price and what-if history
+#:   (issue #1447). A version 1 backup does not carry those four files, so an
+#:   import leaves them as they are.
+BACKUP_SCHEMA_VERSION = 2
 
 #: Folder under the Home Assistant config directory that holds backups.
 BACKUP_DIR_NAME = "hsem_backups"
@@ -48,13 +54,24 @@ DEBUG_DIR_NAME = "hsem_debug"
 #: Every history file HSEM persists under ``<config>/.storage``. The solar
 #: corrector is not a file (it lives in the confidence sensor's restore
 #: state), so a backup carries it under its own key.
+#:
+#: A module that writes a new file under ``.storage`` must add its name here;
+#: ``tests/test_backup_covers_storage_files.py`` fails otherwise.
 HISTORY_FILES: tuple[str, ...] = (
     "hsem_prediction_history.json",
     "hsem_financial_history.json",
     "hsem_savings_history.json",
     "hsem_daily_history.json",
     "hsem_performance_history.json",
+    "hsem_battery_efficiency.json",
+    "hsem_energy_history.json",
+    "hsem_price_history.json",
+    "hsem_what_if_history.json",
 )
+
+#: The price history. It belongs to one price source, so an import skips it
+#: when the backup was recorded from another one.
+PRICE_HISTORY_FILE = "hsem_price_history.json"
 
 #: Learned state that is not a file: it lives in the restore state of HSEM's
 #: sensors. A backup carries each under its own key.
@@ -85,8 +102,9 @@ REASON_MANUAL = "manual"
 REASON_BEFORE_IMPORT = "before_import"
 REASON_DELETED = "deleted"
 
-#: A backup holds up to five history files, each capped at 16 MiB on read.
-_MAX_BACKUP_FILE_BYTES = 96 * 1024 * 1024
+#: A backup holds every history file, each capped at 16 MiB on read, plus the
+#: learner state and the configuration.
+_MAX_BACKUP_FILE_BYTES = (len(HISTORY_FILES) + 1) * 16 * 1024 * 1024
 
 #: Key substrings that mark a secret wherever they appear, on top of
 #: ``redact_dict``. ``cpid`` is the OCPP charge point identity: without TLS it
@@ -351,24 +369,41 @@ def validate_backup_payload(payload: Any, *, hsem_version: str) -> dict[str, Any
     return payload
 
 
-def check_configuration_version(payload: Mapping[str, Any], entry_version: int) -> None:
+def check_configuration_version(
+    payload: Mapping[str, Any], entry_version: int, entry_minor_version: int
+) -> None:
     """Check that the backup's options fit the installed config entry version.
 
     Options from another entry version may use keys a migration has renamed
     or removed, and the entry migration is not written to run on a partly
-    redacted options dict. Such a backup still restores the learned data.
+    redacted options dict. A newer minor version may hold keys this HSEM
+    does not know. Such a backup still restores the learned data. An older
+    minor version is accepted: a minor step only adds to the options.
+
+    Args:
+        payload: A validated backup payload.
+        entry_version: The installed config entry version.
+        entry_minor_version: The installed config entry minor version.
 
     Raises:
-        BackupError: When the backup states no entry version or another one.
+        BackupError: When the backup states no entry version, another
+            version, no minor version or a newer minor version.
     """
     configuration = payload.get("configuration")
-    backup_version = (
-        configuration.get("entry_version") if isinstance(configuration, dict) else None
-    )
-    if isinstance(backup_version, bool) or backup_version != entry_version:
+    section = configuration if isinstance(configuration, dict) else {}
+    backup_version = section.get("entry_version")
+    backup_minor = section.get("entry_minor_version")
+    if (
+        isinstance(backup_version, bool)
+        or backup_version != entry_version
+        or isinstance(backup_minor, bool)
+        or not isinstance(backup_minor, int)
+        or backup_minor > entry_minor_version
+    ):
         raise BackupError(
             f"The configuration in the backup has config entry version "
-            f"{backup_version!r}; this HSEM uses version {entry_version}. "
+            f"{backup_version!r}.{backup_minor!r}; this HSEM uses version "
+            f"{entry_version}.{entry_minor_version}. "
             "Import again without restore_configuration to restore the "
             "learned data only."
         )
@@ -427,7 +462,41 @@ def learned_state(payload: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
-def write_history_files(storage_dir: Path, payload: Mapping[str, Any]) -> list[str]:
+def price_history_skip_reason(
+    payload: Mapping[str, Any], source: Mapping[str, str]
+) -> str | None:
+    """Return why the price history of a backup must not be imported.
+
+    The price history is bound to its price source: the first cycle after an
+    import drops a store recorded from other price sensors or units, and
+    saves the empty store. Importing such a file would only delete the local
+    price history, so it is skipped.
+
+    Args:
+        payload: A validated backup payload.
+        source: The price source HSEM runs with after the import:
+            ``import_entity``, ``export_entity``, ``import_unit`` and
+            ``export_unit``; an unknown value is an empty string.
+
+    Returns:
+        The reason, or ``None`` when the file can be imported or the backup
+        does not carry it.
+    """
+    content = payload["history"].get(PRICE_HISTORY_FILE)
+    if content is None:
+        return None
+    if not PriceHistoryTracker.from_dict(content).source_differs(source):
+        return None
+    return (
+        "The price history in the backup was recorded from other price "
+        "sensors or units than HSEM uses now. HSEM would discard it, so the "
+        "current price history was kept."
+    )
+
+
+def write_history_files(
+    storage_dir: Path, payload: Mapping[str, Any], skip: Collection[str] = ()
+) -> list[str]:
     """Replace the history files with those in a validated backup. Blocking.
 
     All or nothing: every file is first written next to its target, and the
@@ -441,6 +510,7 @@ def write_history_files(storage_dir: Path, payload: Mapping[str, Any]) -> list[s
     Args:
         storage_dir: ``<config>/.storage``.
         payload: A validated backup payload.
+        skip: Names of history files to leave as they are.
 
     Returns:
         The names of the history files that were written.
@@ -450,7 +520,9 @@ def write_history_files(storage_dir: Path, payload: Mapping[str, Any]) -> list[s
     """
     history = payload["history"]
     contents: dict[str, Mapping[str, Any]] = {
-        name: history[name] for name in HISTORY_FILES if history.get(name) is not None
+        name: history[name]
+        for name in HISTORY_FILES
+        if history.get(name) is not None and name not in skip
     }
     written = list(contents)
     learned = learned_state(payload)

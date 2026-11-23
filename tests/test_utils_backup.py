@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
+from custom_components.hsem.models.price_history_tracker import PriceHistoryTracker
 from custom_components.hsem.utils import backup
 from custom_components.hsem.utils.backup import (
     BACKUP_SCHEMA,
@@ -26,6 +27,7 @@ from custom_components.hsem.utils.backup import (
     build_backup_payload,
     build_issue_url,
     check_configuration_version,
+    price_history_skip_reason,
     read_backup_file,
     read_history_files,
     read_pending_import,
@@ -436,14 +438,142 @@ def test_check_configuration_version_rejects(version: Any) -> None:
     payload = _payload()
     payload["configuration"]["entry_version"] = version
     with pytest.raises(BackupError, match="config entry version"):
-        check_configuration_version(payload, 4)
+        check_configuration_version(payload, 4, 1)
+
+
+@pytest.mark.parametrize("minor", [3, None, True, "2"])
+def test_check_configuration_version_rejects_minor(minor: Any) -> None:
+    """A newer minor version, or none, is rejected with both versions named."""
+    payload = _payload()
+    payload["configuration"]["entry_minor_version"] = minor
+    with pytest.raises(BackupError, match=r"this HSEM uses version 4\.2"):
+        check_configuration_version(payload, 4, 2)
 
 
 def test_check_configuration_version() -> None:
-    """The same entry version passes; a payload without configuration does not."""
-    check_configuration_version(_payload(), 4)
+    """The same version passes, an older minor too; no configuration does not."""
+    check_configuration_version(_payload(), 4, 1)
+    check_configuration_version(_payload(), 4, 2)
     with pytest.raises(BackupError, match="config entry version"):
-        check_configuration_version(_payload(configuration=None), 4)
+        check_configuration_version(_payload(configuration=None), 4, 1)
+
+
+NEW_IN_SCHEMA_2 = (
+    "hsem_battery_efficiency.json",
+    "hsem_energy_history.json",
+    "hsem_price_history.json",
+    "hsem_what_if_history.json",
+)
+
+
+def test_backup_list_holds_the_stores_added_in_schema_version_2() -> None:
+    """The four newer stores follow the five of schema version 1."""
+    assert BACKUP_SCHEMA_VERSION == 2
+    assert HISTORY_FILES[5:] == NEW_IN_SCHEMA_2
+
+
+def test_history_round_trip_covers_every_file(tmp_path: Path) -> None:
+    """Every history file is read into a backup and written back by an import."""
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    for index, name in enumerate(HISTORY_FILES):
+        (source / name).write_text(json.dumps({"n": index}), encoding="utf-8")
+        (target / name).write_text(json.dumps({"n": -1}), encoding="utf-8")
+
+    history = read_history_files(source)
+    payload = validate_backup_payload(
+        build_backup_payload(
+            hsem_version="7.1.0",
+            created=CREATED,
+            reason=REASON_MANUAL,
+            history=history,
+            learned={},
+            data={},
+            options={},
+            entry_version=4,
+            entry_minor_version=1,
+        ),
+        hsem_version="7.1.0",
+    )
+
+    assert write_history_files(target, payload) == list(HISTORY_FILES)
+    assert sorted(path.name for path in target.iterdir()) == sorted(HISTORY_FILES)
+    for index, name in enumerate(HISTORY_FILES):
+        assert json.loads((target / name).read_text(encoding="utf-8")) == {"n": index}
+
+
+def test_a_schema_version_1_backup_still_imports(tmp_path: Path) -> None:
+    """A backup of the previous layout restores its files and leaves the rest."""
+    payload = _payload(schema_version=1)
+    payload["history"] = {
+        name: ({"actual_savings": 12.5} if "savings" in name else None)
+        for name in HISTORY_FILES[:5]
+    }
+    for name in NEW_IN_SCHEMA_2:
+        (tmp_path / name).write_text('{"kept": true}', encoding="utf-8")
+
+    validated = validate_backup_payload(payload, hsem_version="7.1.0")
+
+    assert write_history_files(tmp_path, validated) == ["hsem_savings_history.json"]
+    assert json.loads((tmp_path / "hsem_savings_history.json").read_text()) == {
+        "actual_savings": 12.5
+    }
+    for name in NEW_IN_SCHEMA_2:
+        assert json.loads((tmp_path / name).read_text()) == {"kept": True}
+
+
+def test_write_history_files_leaves_a_skipped_file(tmp_path: Path) -> None:
+    """A skipped history file is neither written nor reported."""
+    (tmp_path / "hsem_savings_history.json").write_text('{"kept": 1}', "utf-8")
+    payload = _payload()
+    payload["history"]["hsem_daily_history.json"] = {"days": []}
+
+    written = write_history_files(tmp_path, payload, ("hsem_savings_history.json",))
+
+    assert written == ["hsem_daily_history.json"]
+    assert json.loads((tmp_path / "hsem_savings_history.json").read_text()) == {
+        "kept": 1
+    }
+
+
+def test_price_history_skip_reason() -> None:
+    """Only a price history from another source is skipped."""
+    source = {"import_entity": "sensor.import", "export_entity": "sensor.export"}
+    tracker = PriceHistoryTracker()
+    tracker.set_source(source)
+    tracker.record(CREATED, 15, 1.25, 0.5)
+    payload = _payload()
+
+    assert price_history_skip_reason(payload, source) is None
+
+    payload["history"]["hsem_price_history.json"] = tracker.as_dict()
+    assert price_history_skip_reason(payload, source) is None
+    assert price_history_skip_reason(payload, {**source, "import_unit": "DKK"}) is None
+    reason = price_history_skip_reason(
+        payload, {**source, "import_entity": "sensor.other"}
+    )
+    assert reason is not None and "current price history was kept" in reason
+
+    # A price history of another schema version loads empty: skip it too.
+    payload["history"]["hsem_price_history.json"] = {"version": -1}
+    assert price_history_skip_reason(payload, source) is not None
+
+
+@pytest.mark.parametrize("name", NEW_IN_SCHEMA_2)
+def test_recover_covers_the_stores_added_in_schema_version_2(
+    tmp_path: Path, name: str
+) -> None:
+    """A cut-off import puts the newer stores back like the older ones."""
+    (tmp_path / name).write_text("new", encoding="utf-8")
+    (tmp_path / f"{name}.import_old").write_text("old", encoding="utf-8")
+    (tmp_path / "hsem_savings_history.json.import_new").write_text("new", "utf-8")
+
+    assert recover_interrupted_import(tmp_path) is True
+
+    assert [path.name for path in tmp_path.iterdir()] == [name]
+    assert (tmp_path / name).read_text() == "old"
 
 
 def test_debug_dump_redaction_keeps_certificate_facts() -> None:

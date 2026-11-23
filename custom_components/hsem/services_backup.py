@@ -39,6 +39,7 @@ from custom_components.hsem.utils.backup import (
     LEARNER_KEYS,
     LEARNER_SOLAR_CORRECTOR,
     PENDING_AVERAGES_KEY,
+    PRICE_HISTORY_FILE,
     REASON_BEFORE_IMPORT,
     REASON_DELETED,
     REASON_MANUAL,
@@ -47,6 +48,7 @@ from custom_components.hsem.utils.backup import (
     build_issue_url,
     check_configuration_version,
     learned_state,
+    price_history_skip_reason,
     read_backup_file,
     read_history_files,
     read_pending_import,
@@ -61,6 +63,7 @@ from custom_components.hsem.utils.integration_version import (
     async_get_hsem_integration_version,
 )
 from custom_components.hsem.utils.logger import HSEM_LOGGER as _LOGGER
+from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.schema import vol
 
 SERVICE_EXPORT_DATA = "export_data"
@@ -256,6 +259,31 @@ async def async_apply_pending_import(hass: HomeAssistant, entry: ConfigEntry) ->
     _LOGGER.info("HSEM loaded imported learned state: %s", ", ".join(applied) or "none")
 
 
+def _price_source(
+    hass: HomeAssistant, entry: ConfigEntry, restored: dict[str, Any]
+) -> dict[str, str]:
+    """Return the price source HSEM runs with after an import.
+
+    Args:
+        hass: The Home Assistant instance, for the units of the sensors.
+        entry: The HSEM config entry.
+        restored: The options the import restores; they win over the entry's.
+
+    Returns:
+        ``import_entity``, ``export_entity``, ``import_unit`` and
+        ``export_unit``. A unit is empty while its sensor reports none.
+    """
+    source: dict[str, str] = {}
+    for side in ("import", "export"):
+        key = f"hsem_{side}_electricity_price_sensor"
+        entity = str(restored.get(key) or get_config_value(entry, key) or "")
+        state = hass.states.get(entity) if entity else None
+        unit = state.attributes.get("unit_of_measurement") if state else None
+        source[f"{side}_entity"] = entity
+        source[f"{side}_unit"] = unit.strip() if isinstance(unit, str) else ""
+    return source
+
+
 async def async_write_backup(
     hass: HomeAssistant, entry: ConfigEntry, reason: str
 ) -> Path:
@@ -372,9 +400,16 @@ async def _async_import(call: ServiceCall) -> dict[str, Any]:
             )
         )
         if restore_configuration:
-            check_configuration_version(payload, entry.version)
+            check_configuration_version(payload, entry.version, entry.minor_version)
     except BackupError as err:
         raise ServiceValidationError(str(err)) from err
+
+    restored_options = restorable_options(payload)[0] if restore_configuration else {}
+    files_skipped: dict[str, str] = {}
+    if reason := price_history_skip_reason(
+        payload, _price_source(hass, entry, restored_options)
+    ):
+        files_skipped[PRICE_HISTORY_FILE] = reason
 
     was_loaded = entry.state is ConfigEntryState.LOADED
     coordinator = _coordinator(entry)
@@ -402,7 +437,7 @@ async def _async_import(call: ServiceCall) -> dict[str, Any]:
     configuration_restored = False
     try:
         written = await hass.async_add_executor_job(
-            write_history_files, config_dir / ".storage", payload
+            write_history_files, config_dir / ".storage", payload, tuple(files_skipped)
         )
         # What was kept from the unload belongs to the replaced history.
         hass.data.pop(_CAPTURED_STATE_KEY, None)
@@ -425,6 +460,7 @@ async def _async_import(call: ServiceCall) -> dict[str, Any]:
         "imported_from": call.data[ATTR_FILENAME],
         "before_import_path": str(before_path),
         "history_files_restored": written,
+        "history_files_skipped": files_skipped,
         "learned_state_restored": sorted(hass.data.pop(_APPLIED_IMPORT_KEY, [])),
         "learned_state_pending": [],
         "configuration_restored": configuration_restored,
