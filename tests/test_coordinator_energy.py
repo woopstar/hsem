@@ -19,6 +19,7 @@ from custom_components.hsem.coordinator_energy import (
     build_energy_sample,
     consumption_power_w,
     init_energy_tracker,
+    power_sensors_in_another_unit,
     read_battery_ac_power,
 )
 from custom_components.hsem.coordinator_meter_tracking import (
@@ -33,6 +34,7 @@ from custom_components.hsem.models.energy_tracker import (
     REASON_AC_BATTERY_POWER_NO_READINGS,
     REASON_AC_BATTERY_POWER_NOT_CONFIGURED,
     REASON_AC_BATTERY_POWER_UNIT_NOT_POWER,
+    REASON_CONSUMPTION_NOT_MEASURED,
     REASON_NO_DATA,
     REASON_THROUGHPUT_BELOW_MINIMUM,
     EnergyTracker,
@@ -398,6 +400,159 @@ class TestAvailability:
         sample = build_energy_sample(_hass(**{_HOUSE: "0"}), _T0, live, _CFG)
 
         assert sample.house_power_w == pytest.approx(0.0)
+
+
+class TestUnit:
+    """The live state holds the raw number of a sensor in another kind of unit."""
+
+    @staticmethod
+    def _hass(unit: str | None) -> Any:
+        attributes = {} if unit is None else {"unit_of_measurement": unit}
+        return make_fake_hass(
+            {
+                _HOUSE: {"state": "1200", "attributes": attributes},
+                _PV: {"state": "2400", "attributes": attributes},
+            }
+        )
+
+    @pytest.mark.parametrize("unit", ["kVA", "kWh", "%", "foo"])
+    def test_a_reading_in_a_unit_that_is_not_power_is_missing(self, unit: str) -> None:
+        sample = build_energy_sample(self._hass(unit), _T0, _live(), _CFG)
+
+        assert sample.house_power_w is None
+        assert sample.pv_power_w is None
+
+    @pytest.mark.parametrize("unit", [None, "", "W", "kW"])
+    def test_a_reading_in_a_power_unit_or_without_a_unit_is_taken(
+        self, unit: str | None
+    ) -> None:
+        sample = build_energy_sample(self._hass(unit), _T0, _live(), _CFG)
+
+        assert sample.house_power_w == pytest.approx(1200.0)
+        assert sample.pv_power_w == pytest.approx(2400.0)
+
+    def test_a_unit_that_is_not_a_string_is_no_unit(self) -> None:
+        hass = make_fake_hass(
+            {_HOUSE: {"state": "1200", "attributes": {"unit_of_measurement": 5}}}
+        )
+
+        sample = build_energy_sample(hass, _T0, _live(), _CFG)
+
+        assert sample.house_power_w == pytest.approx(1200.0)
+        assert power_sensors_in_another_unit(hass, _CFG) == ()
+
+    def test_the_sensors_left_out_are_named(self) -> None:
+        assert power_sensors_in_another_unit(self._hass("kVA"), _CFG) == (_HOUSE, _PV)
+        assert power_sensors_in_another_unit(self._hass("kW"), _CFG) == ()
+        assert power_sensors_in_another_unit(self._hass(None), _CFG) == ()
+        assert power_sensors_in_another_unit(self._hass("kVA"), SensorConfig()) == ()
+
+    def test_one_sensor_set_up_as_both_is_named_once(self) -> None:
+        cfg = SensorConfig(house_consumption_power=_PV, solar_production_power=_PV)
+
+        assert power_sensors_in_another_unit(self._hass("kVA"), cfg) == (_PV,)
+
+    def test_a_sensor_without_a_reading_keeps_its_verdict(self) -> None:
+        """An unavailable state has often dropped its unit."""
+        hass = make_fake_hass({_HOUSE: "unavailable"})
+
+        assert power_sensors_in_another_unit(hass, _CFG) == ()
+        assert power_sensors_in_another_unit(hass, _CFG, (_HOUSE, _PV)) == (
+            _HOUSE,
+            _PV,
+        )
+
+
+class TestUnitWarning:
+    """A cycle names the sensors it leaves out, and warns once (issue #1449)."""
+
+    @staticmethod
+    def _set(coordinator: CoordinatorSharedState, state: str, unit: str | None) -> None:
+        attributes = {} if unit is None else {"unit_of_measurement": unit}
+        states: Any = coordinator.hass.states
+        states._states[_HOUSE] = FakeState(_HOUSE, state, attributes)
+
+    @staticmethod
+    async def _cycle(coordinator: CoordinatorSharedState, step: int) -> None:
+        await async_track_energy(
+            coordinator, _T0 + timedelta(minutes=5 * step), _live(), _CFG
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_wrong_unit_is_warned_about_once(self, tmp_path: Path) -> None:
+        coordinator = _state(tmp_path)
+        self._set(coordinator, "1200", "kVA")
+
+        with patch.object(coordinator_energy, "async_log") as log:
+            for step in range(4):
+                await self._cycle(coordinator, step)
+
+        tracker = coordinator._energy_tracker
+        assert tracker.unit_not_power == (_HOUSE,)
+        assert len(log.call_args_list) == 1
+        assert log.call_args.args[0] == "warning"
+        assert log.call_args.args[2] == _HOUSE
+        entry = tracker.daily_log["2026-06-10"]
+        assert entry.house_hours == pytest.approx(0.0)
+        # The PV sensor has a good unit and is booked all along.
+        assert entry.pv_hours == pytest.approx(15.0 / 60.0)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("unit", [None, "", "W", "kW"])
+    async def test_a_power_unit_or_no_unit_is_no_warning(
+        self, tmp_path: Path, unit: str | None
+    ) -> None:
+        coordinator = _state(tmp_path)
+        self._set(coordinator, "1200", unit)
+
+        with patch.object(coordinator_energy, "async_log") as log:
+            for step in range(3):
+                await self._cycle(coordinator, step)
+
+        log.assert_not_called()
+        tracker = coordinator._energy_tracker
+        assert tracker.unit_not_power == ()
+        entry = tracker.daily_log["2026-06-10"]
+        assert entry.house_hours == pytest.approx(10.0 / 60.0)
+        assert entry.house_consumption_kwh == pytest.approx(0.2)
+
+    @pytest.mark.asyncio
+    async def test_an_outage_of_the_sensor_is_no_second_warning(
+        self, tmp_path: Path
+    ) -> None:
+        coordinator = _state(tmp_path)
+        steps = (
+            ("1200", "kVA"),
+            ("unavailable", None),
+            ("unavailable", None),
+            ("1200", "kVA"),
+        )
+
+        with patch.object(coordinator_energy, "async_log") as log:
+            for step, (state, unit) in enumerate(steps):
+                self._set(coordinator, state, unit)
+                await self._cycle(coordinator, step)
+                assert coordinator._energy_tracker.unit_not_power == (_HOUSE,)
+
+        assert len(log.call_args_list) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_corrected_unit_clears_it_and_is_booked(
+        self, tmp_path: Path
+    ) -> None:
+        coordinator = _state(tmp_path)
+        tracker = coordinator._energy_tracker
+
+        with patch.object(coordinator_energy, "async_log") as log:
+            for step, unit in enumerate(("kVA", "kVA", "W", "W", "kVA")):
+                self._set(coordinator, "1200", unit)
+                await self._cycle(coordinator, step)
+                assert tracker.unit_not_power == (() if unit == "W" else (_HOUSE,))
+
+        # Once for each time the unit broke; correcting it is not a warning.
+        assert [call.args[0] for call in log.call_args_list] == ["warning", "warning"]
+        # Only the interval between the two good readings is booked.
+        assert tracker.daily_log["2026-06-10"].house_hours == pytest.approx(5.0 / 60.0)
 
 
 class TestEvConsumption:
@@ -819,3 +974,52 @@ class TestThroughTheRealCycle:
         # Of the import, only what fell in the measured minutes is paired.
         assert entry.paired_consumption_kwh == pytest.approx(2.0 / 6.0)
         assert entry.paired_import_kwh == pytest.approx(0.18)
+
+    @pytest.mark.asyncio
+    async def test_a_house_sensor_in_another_kind_of_unit_is_not_booked(self) -> None:
+        """A house sensor that reports 2000 kVA, 0.09 kWh imported per cycle.
+
+        The state collector hands the planner the raw 2000 as watts.  The
+        energy record must hold no house consumption, and say why (issue
+        #1449).
+        """
+        coordinator, _published = _coordinator(
+            {"hsem_grid_import_energy_entity": "sensor.grid_import_energy"},
+        )
+        states: Any = coordinator.hass.states._states
+        states[_HOUSE] = FakeState(_HOUSE, "2000", {"unit_of_measurement": "kVA"})
+
+        for step in range(3):
+            states["sensor.grid_import_energy"] = FakeState(
+                "sensor.grid_import_energy",
+                str(round(100.0 + 0.09 * step, 2)),
+                {"unit_of_measurement": "kWh"},
+            )
+            with (
+                patch(
+                    f"{_CYCLE}.hsem_now", return_value=_T0 + timedelta(minutes=5 * step)
+                ),
+                patch(f"{_TRACKING}.async_track_time_change"),
+            ):
+                await _run_cycle(coordinator)
+
+        # The planner's input is unchanged: the raw number, as watts.
+        assert coordinator._live is not None
+        assert coordinator._live.house_consumption_power_w == pytest.approx(2000.0)
+        tracker = coordinator._energy_tracker
+        entry = tracker.daily_log["2026-06-10"]
+        assert entry.observed_hours == pytest.approx(10.0 / 60.0)
+        assert entry.house_hours == pytest.approx(0.0)
+        assert entry.house_consumption_kwh == pytest.approx(0.0)
+        assert entry.grid_import_kwh == pytest.approx(0.18)
+        summary = tracker.month_summary("2026-06")
+        assert summary["house_consumption_kwh"] is None
+        assert summary["self_sufficiency"] is None
+        assert summary["self_sufficiency_reason"] == REASON_CONSUMPTION_NOT_MEASURED
+        # The sensor is named for the user, on every monthly sensor.
+        assert tracker.unit_not_power == (_HOUSE,)
+        sensors = build_monthly_energy_sensors(coordinator._config_entry, coordinator)
+        with patch(f"{_SENSORS}.hsem_now", return_value=_T0):
+            attributes = sensors[0].extra_state_attributes
+        assert attributes is not None
+        assert attributes["unit_not_power"] == _HOUSE

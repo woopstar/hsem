@@ -186,6 +186,8 @@ class HSEMMonthlyEnergySensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         attributes["reason"] = attributes["this_month"][
             f"{self._description.key}_reason"
         ]
+        # A scalar, as it is recorded: the entity IDs, or None.
+        attributes["unit_not_power"] = ", ".join(tracker.unit_not_power) or None
         return attributes
 
     @property

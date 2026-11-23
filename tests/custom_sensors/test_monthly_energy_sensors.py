@@ -215,7 +215,9 @@ class TestRecorderFootprint:
             "backfilled_days",
             "backfilled_from",
             "backfilled_until",
+            "unit_not_power",
         }
+        assert recorded["unit_not_power"] is None
         assert not any(isinstance(value, (list, dict)) for value in recorded.values())
         assert len(json.dumps(recorded)) < 2048
         assert {"this_month", "previous_month", "monthly"} <= set(attributes)
