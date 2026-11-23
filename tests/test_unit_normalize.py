@@ -260,7 +260,9 @@ class TestElectricPotentialNormalization:
 class TestUnitIsConvertible:
     """A reading in a unit of another kind can be told apart (issue #1449)."""
 
-    @pytest.mark.parametrize("unit", [None, "", UnitOfPower.WATT, UnitOfPower.KILO_WATT])
+    @pytest.mark.parametrize(
+        "unit", [None, "", UnitOfPower.WATT, UnitOfPower.KILO_WATT]
+    )
     def test_no_unit_the_same_unit_or_a_power_unit_is_convertible(
         self, unit: str | None
     ) -> None:
