@@ -18,7 +18,7 @@ from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import selector
 
-from custom_components.hsem.utils.misc import get_config_value
+from custom_components.hsem.utils.misc import get_config_value, optional_entity_id
 from custom_components.hsem.utils.schema import vol
 
 
@@ -30,6 +30,11 @@ async def get_energy_and_ml_step_schema(  # NOSONAR
     Includes energy meter entities for plan-vs-actual tracking AND
     the ML consumption prediction settings.
     """
+    # Unset, the option is ``vol.UNDEFINED``, which Home Assistant cannot
+    # send to the frontend: the suggestion is left out then.
+    battery_ac_power = optional_entity_id(
+        get_config_value(config_entry, "hsem_battery_ac_power_entity")
+    )
     return vol.Schema(
         {
             # --- Energy meter entities (daily plan-vs-actual + ML data source) ---
@@ -48,6 +53,14 @@ async def get_energy_and_ml_step_schema(  # NOSONAR
             vol.Optional(
                 "hsem_pv_energy_entity",
                 default=get_config_value(config_entry, "hsem_pv_energy_entity"),
+            ): selector({"entity": {"domain": "sensor"}}),
+            # Optional and clearable (suggested value, not default): only the
+            # monthly AC-side round-trip loss uses it (issue #1450).
+            vol.Optional(
+                "hsem_battery_ac_power_entity",
+                description=(
+                    {"suggested_value": battery_ac_power} if battery_ac_power else None
+                ),
             ): selector({"entity": {"domain": "sensor"}}),
             # --- ML consumption prediction ---
             vol.Required(

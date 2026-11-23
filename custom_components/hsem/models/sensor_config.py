@@ -373,6 +373,9 @@ class SensorConfig:
     grid_import_energy_entity: str | None = None
     grid_export_energy_entity: str | None = None
     pv_energy_entity: str | None = None
+    # Monthly AC-side round-trip loss (issue #1450) — optional signed battery
+    # power on the AC side of the inverter, positive while charging.
+    battery_ac_power_entity: str | None = None
 
     # ML consumption prediction — toggle and settings
     ml_consumption_enabled: bool = False

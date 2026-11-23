@@ -492,6 +492,9 @@ class HSEMOptionsFlow(config_entries.OptionsFlow):
             errors = await validate_energy_and_ml_input(self.hass, user_input)
             if not errors:
                 self._user_input.update(user_input)
+                # A cleared AC-side battery power sensor is omitted from the
+                # form data; store "" so the old entity is not kept (#1450).
+                self._user_input.setdefault("hsem_battery_ac_power_entity", "")
 
                 # Preserve entity-managed options that the options-flow schemas
                 # do not collect — switches (force-charge-now, smart charging,
