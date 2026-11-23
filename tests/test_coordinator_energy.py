@@ -28,7 +28,11 @@ from custom_components.hsem.coordinator_tracking import init_financial_tracker
 from custom_components.hsem.custom_sensors.monthly_energy_sensors import (
     build_monthly_energy_sensors,
 )
-from custom_components.hsem.models.energy_tracker import REASON_NO_DATA, EnergyTracker
+from custom_components.hsem.models.energy_tracker import (
+    REASON_CONSUMPTION_NOT_MEASURED,
+    REASON_NO_DATA,
+    EnergyTracker,
+)
 from custom_components.hsem.models.financial_tracker import FinancialTracker
 from custom_components.hsem.models.live_state import EVLiveState, LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
@@ -180,6 +184,45 @@ class TestAvailability:
         sample = build_energy_sample(_hass(**{_HOUSE: "0"}), _T0, live, _CFG)
 
         assert sample.house_power_w == pytest.approx(0.0)
+
+
+class TestUnit:
+    """The live state holds the raw number of a sensor in another kind of unit."""
+
+    @staticmethod
+    def _hass(unit: str | None) -> Any:
+        attributes = {} if unit is None else {"unit_of_measurement": unit}
+        return make_fake_hass(
+            {
+                _HOUSE: {"state": "1200", "attributes": attributes},
+                _PV: {"state": "2400", "attributes": attributes},
+            }
+        )
+
+    @pytest.mark.parametrize("unit", ["kVA", "kWh", "%", "foo"])
+    def test_a_reading_in_a_unit_that_is_not_power_is_missing(self, unit: str) -> None:
+        sample = build_energy_sample(self._hass(unit), _T0, _live(), _CFG)
+
+        assert sample.house_power_w is None
+        assert sample.pv_power_w is None
+
+    @pytest.mark.parametrize("unit", [None, "", "W", "kW"])
+    def test_a_reading_in_a_power_unit_or_without_a_unit_is_taken(
+        self, unit: str | None
+    ) -> None:
+        sample = build_energy_sample(self._hass(unit), _T0, _live(), _CFG)
+
+        assert sample.house_power_w == pytest.approx(1200.0)
+        assert sample.pv_power_w == pytest.approx(2400.0)
+
+    def test_a_unit_that_is_not_a_string_is_no_unit(self) -> None:
+        hass = make_fake_hass(
+            {_HOUSE: {"state": "1200", "attributes": {"unit_of_measurement": 5}}}
+        )
+
+        sample = build_energy_sample(hass, _T0, _live(), _CFG)
+
+        assert sample.house_power_w == pytest.approx(1200.0)
 
 
 class TestEvConsumption:
@@ -505,3 +548,45 @@ class TestThroughTheRealCycle:
         # Of the import, only what fell in the measured minutes is paired.
         assert entry.paired_consumption_kwh == pytest.approx(2.0 / 6.0)
         assert entry.paired_import_kwh == pytest.approx(0.18)
+
+    @pytest.mark.asyncio
+    async def test_a_house_sensor_in_another_kind_of_unit_is_not_booked(self) -> None:
+        """A house sensor that reports 2000 kVA, 0.09 kWh imported per cycle.
+
+        The state collector hands the planner the raw 2000 as watts.  The
+        energy record must hold no house consumption, and say why (issue
+        #1449).
+        """
+        coordinator, _published = _coordinator(
+            {"hsem_grid_import_energy_entity": "sensor.grid_import_energy"},
+        )
+        states: Any = coordinator.hass.states._states
+        states[_HOUSE] = FakeState(_HOUSE, "2000", {"unit_of_measurement": "kVA"})
+
+        for step in range(3):
+            states["sensor.grid_import_energy"] = FakeState(
+                "sensor.grid_import_energy",
+                str(round(100.0 + 0.09 * step, 2)),
+                {"unit_of_measurement": "kWh"},
+            )
+            with (
+                patch(
+                    f"{_CYCLE}.hsem_now", return_value=_T0 + timedelta(minutes=5 * step)
+                ),
+                patch(f"{_TRACKING}.async_track_time_change"),
+            ):
+                await _run_cycle(coordinator)
+
+        # The planner's input is unchanged: the raw number, as watts.
+        assert coordinator._live is not None
+        assert coordinator._live.house_consumption_power_w == pytest.approx(2000.0)
+        tracker = coordinator._energy_tracker
+        entry = tracker.daily_log["2026-06-10"]
+        assert entry.observed_hours == pytest.approx(10.0 / 60.0)
+        assert entry.house_hours == pytest.approx(0.0)
+        assert entry.house_consumption_kwh == pytest.approx(0.0)
+        assert entry.grid_import_kwh == pytest.approx(0.18)
+        summary = tracker.month_summary("2026-06")
+        assert summary["house_consumption_kwh"] is None
+        assert summary["self_sufficiency"] is None
+        assert summary["self_sufficiency_reason"] == REASON_CONSUMPTION_NOT_MEASURED

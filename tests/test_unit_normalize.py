@@ -28,6 +28,7 @@ from homeassistant.util.unit_conversion import (
 from custom_components.hsem.utils.unit_normalize import (
     normalize_to_unit,
     normalize_to_unit_family,
+    unit_is_convertible,
 )
 
 # ---------------------------------------------------------------------------
@@ -254,3 +255,20 @@ class TestElectricPotentialNormalization:
             0.231, UnitOfElectricPotential.KILOVOLT, UnitOfElectricPotential.VOLT
         )
         assert result == pytest.approx(231.0)
+
+
+class TestUnitIsConvertible:
+    """A reading in a unit of another kind can be told apart (issue #1449)."""
+
+    @pytest.mark.parametrize("unit", [None, "", UnitOfPower.WATT, UnitOfPower.KILO_WATT])
+    def test_no_unit_the_same_unit_or_a_power_unit_is_convertible(
+        self, unit: str | None
+    ) -> None:
+        assert unit_is_convertible(unit, UnitOfPower.WATT) is True
+
+    @pytest.mark.parametrize("unit", ["kVA", "kWh", "%", "foo"])
+    def test_a_unit_of_another_kind_is_not_convertible(self, unit: str) -> None:
+        assert unit_is_convertible(unit, UnitOfPower.WATT) is False
+
+    def test_an_unknown_canonical_unit_is_not_convertible(self) -> None:
+        assert unit_is_convertible(UnitOfPower.WATT, "furlongs") is False

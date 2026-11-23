@@ -1574,7 +1574,7 @@ The state is `unknown` and the `reason` attribute says why:
 | `reason`                     | Applies to                | Meaning                                                                                                     |
 | ---------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `no_data`                    | all                       | Nothing has been recorded in the month                                                                      |
-| `consumption_not_measured`   | Self-sufficiency          | The house consumption power sensor gave no readings                                                         |
+| `consumption_not_measured`   | Self-sufficiency          | The house consumption power sensor gave no readings, or its unit is not a power unit                        |
 | `consumption_below_minimum`  | Self-sufficiency          | Less than 1 kWh of house consumption recorded                                                               |
 | `import_exceeds_consumption` | Self-sufficiency          | More was imported than the house consumption and the battery charge explain                                 |
 | `battery_not_measured`       | Battery cycles, wear cost | Neither the battery power nor the SoC gave readings                                                         |

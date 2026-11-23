@@ -7,7 +7,9 @@ which the monthly energy sensors are built.
 
 The planner gets ``0 W`` for a house or PV power sensor that gives no reading.
 The tracker must not: a sample takes those two readings only while their
-entity has a numeric state, and they are missing otherwise.
+entity has a numeric state, and they are missing otherwise.  The planner also
+gets the raw number of a sensor whose unit is not a power unit (``kVA``,
+``kWh``).  The tracker takes that as missing too (issue #1449).
 
 Extracted into its own module to keep :mod:`coordinator_tracking` under the
 30 KB / 1000-line limit.
@@ -19,6 +21,7 @@ import math
 from datetime import datetime
 from pathlib import Path
 
+from homeassistant.const import UnitOfPower
 from homeassistant.core import HomeAssistant
 
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
@@ -33,6 +36,7 @@ from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.utils.conversion import convert_to_float
 from custom_components.hsem.utils.logger import async_log
 from custom_components.hsem.utils.misc import clamp_efficiency, resolve_cycle_cost
+from custom_components.hsem.utils.unit_normalize import unit_is_convertible
 
 #: Name of the history file under ``.storage``.
 HISTORY_FILE = "hsem_energy_history.json"
@@ -55,17 +59,25 @@ def _finite(value: float | None) -> float | None:
 def _measured(
     hass: HomeAssistant, entity_id: str | None, value: float | None
 ) -> float | None:
-    """Return *value* while the entity it was read from has a numeric state.
+    """Return *value* while the entity it was read from gives a power reading.
+
+    That takes a numeric state and a unit that is a power unit, or no unit
+    at all.
 
     Args:
         hass: Home Assistant instance.
         entity_id: The entity the live state read *value* from.
-        value: The value in the live state, where a failed read may be zero.
+        value: The value in the live state, in watts.  A failed read may be
+            zero there, and a reading in a unit of another kind is the raw
+            number.
     """
     if not entity_id:
         return None
     state = hass.states.get(entity_id)
     if state is None or convert_to_float(state.state) is None:
+        return None
+    unit = state.attributes.get("unit_of_measurement")
+    if isinstance(unit, str) and not unit_is_convertible(unit, UnitOfPower.WATT):
         return None
     return _finite(value)
 

@@ -154,6 +154,28 @@ def normalize_to_unit(
     return converted
 
 
+def unit_is_convertible(source_unit: str | None, canonical_unit: str) -> bool:
+    """Return whether a reading in *source_unit* can be read as *canonical_unit*.
+
+    :func:`normalize_to_unit` passes a reading through unchanged when its
+    unit is of another kind (``kVA`` or ``kWh`` where watts are expected).
+    A caller that must not book such a reading asks here first.
+
+    Args:
+        source_unit: The entity's declared ``unit_of_measurement``, or
+            ``None``/empty when it declares none.
+        canonical_unit: HSEM's expected unit for the field.
+
+    Returns:
+        ``True`` when no unit is declared (the reading is assumed to be in
+        *canonical_unit*), the units match, or a conversion exists.
+    """
+    if not source_unit or source_unit == canonical_unit:
+        return True
+    converter = _CONVERTER_BY_UNIT.get(canonical_unit)
+    return converter is not None and source_unit in converter.VALID_UNITS
+
+
 def normalize_to_unit_family(
     value: float | None,
     source_unit: str | None,
