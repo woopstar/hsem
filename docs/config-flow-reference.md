@@ -42,15 +42,17 @@ the config entry options. They never cause a reload.
 
 ### Restore from a backup
 
-When `<config>/hsem_backups/` holds at least one backup this HSEM can restore,
-the setup flow opens with a menu (`setup_method`) instead of the first form:
+When `<config>/hsem_backups/` holds at least one `.json` file, the setup flow
+opens with a menu (`setup_method`) instead of the first form:
 
 - **Set up from scratch** continues with the steps above, unchanged.
 - **Restore from a backup** sets HSEM up from a file written by
   [`hsem.export_data`](services-reference.md#13-hsemexport_data), or by HSEM when
   its config entry was deleted.
 
-Without a restorable backup the menu is not shown and setup is as before. On a
+Without a backup file the menu is not shown and setup is as before. A file
+that cannot be restored still brings up the menu: the `restore` step says why
+it is rejected. On a
 new Home Assistant, install HSEM, copy the backup file into
 `<config>/hsem_backups/` and add the integration.
 
@@ -93,6 +95,13 @@ Shows the file, when and by which HSEM version it was written, and:
   certificate paths are redacted. HSEM does not start them with TLS off
   instead. Enter the values under **Configure** after the restore and switch
   the features on again.
+- **Devices that do not exist here.** A `hsem_huawei_solar_device_id_*` option
+  whose device is not in the device registry of this Home Assistant. Device
+  IDs differ between installations, so on a new host this is every device.
+  The option is left empty, as the setup form would reject it. Pick the
+  devices under **Configure** after the restore. HSEM starts without them: a
+  device is only used when HSEM writes to the inverter or the batteries, and
+  those writes fail until it is set.
 - **History files not restored.** The price history, when it was recorded from
   other price sensors or units than the configuration in the backup names.
 
@@ -102,9 +111,13 @@ starts and loads the solar correction, the forecast accuracy records and the
 hourly averages. If the files cannot be written, or `hsem.import_data` is
 running, the step shows `backup_write_failed` and no entry is created.
 
-History files left under `.storage` by an HSEM that was removed earlier are
-replaced. HSEM wrote them to `hsem_backup_<date>_<time>_deleted.json` when it
-was removed.
+History files survive the removal of HSEM. When one is under `.storage`, the
+restore replaces it and says so in this step. It first saves the existing
+history as `hsem_backup_<date>_<time>_before_import.json`, as
+`hsem.import_data` does, and shows the path when the entry is created. If that
+file cannot be written, the step shows `backup_safety_copy_failed`, nothing is
+replaced and no entry is created. That backup holds history and no
+configuration: `hsem.import_data` can import it, the setup flow cannot.
 
 Entity IDs from the backup that do not exist on this Home Assistant show up as
 missing entities until you correct them under **Configure**. The restore does

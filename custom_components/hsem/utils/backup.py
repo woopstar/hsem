@@ -150,6 +150,7 @@ ERROR_UNREADABLE = "backup_unreadable"
 ERROR_TOO_NEW = "backup_too_new"
 ERROR_CONFIG_VERSION = "backup_config_version"
 ERROR_WRITE_FAILED = "backup_write_failed"
+ERROR_SAFETY_COPY_FAILED = "backup_safety_copy_failed"
 
 #: Feature switches and the redacted option each one needs. A backup never
 #: holds these options, so a restore into a new entry leaves the feature off.

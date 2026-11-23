@@ -1,6 +1,6 @@
 """Config flow steps that set HSEM up from a backup file (issue #1448).
 
-When ``<config>/hsem_backups/`` holds a backup this HSEM can restore, the
+When ``<config>/hsem_backups/`` holds a backup file, the
 setup flow opens with a menu: set HSEM up from scratch, or restore.
 
 - ``restore`` — pick a backup file. The file gets the checks
@@ -57,17 +57,20 @@ class HSEMRestoreFlow(config_entries.ConfigFlow):
     _restore_plan: RestorePlan | None = None
 
     async def _async_offer_restore(self) -> ConfigFlowResult | None:
-        """Return the setup-or-restore menu when a valid backup exists.
+        """Return the setup-or-restore menu when a backup file exists.
+
+        A file that cannot be restored counts too: the restore step shows why
+        it is rejected.
 
         Returns:
             The menu, or ``None`` when the normal setup form is to be shown:
-            no backup can be restored, or the menu was shown already.
+            there is no backup file, or the menu was shown already.
         """
         if self._restore_offered:
             return None
         self._restore_offered = True
         backups = await async_find_backups(self.hass, self.VERSION, self.MINOR_VERSION)
-        if None not in backups.values():
+        if not backups:
             return None
         return await self.async_step_setup_method()
 
@@ -134,7 +137,7 @@ class HSEMRestoreFlow(config_entries.ConfigFlow):
 
         if user_input is not None:
             try:
-                await async_write_restore(self.hass, plan)
+                before_path = await async_write_restore(self.hass, plan)
             except BackupError as err:
                 _LOGGER.warning("Backup %s was not restored: %s", plan.filename, err)
                 errors["base"] = err.code
@@ -143,6 +146,8 @@ class HSEMRestoreFlow(config_entries.ConfigFlow):
                     title=str(configuration.data.get("device_name") or NAME),
                     data=configuration.data,
                     options=configuration.options,
+                    description="history_saved" if before_path else None,
+                    description_placeholders={"before_path": str(before_path)},
                 )
 
         return self.async_show_form(
@@ -155,6 +160,7 @@ class HSEMRestoreFlow(config_entries.ConfigFlow):
                 "hsem_version": str(plan.payload.get("hsem_version") or _NONE),
                 "skipped_keys": _listed(configuration.skipped_keys),
                 "disabled_features": _listed(configuration.disabled_features),
+                "missing_devices": _listed(plan.missing_devices),
                 "history_files_skipped": _listed(sorted(plan.files_skipped)),
             },
             last_step=True,

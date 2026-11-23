@@ -569,7 +569,8 @@ last reading, not learned data, and fill again within a cycle.
 **Automatic backups.** HSEM writes the same file on its own in two cases:
 
 - `hsem_backup_<date>_<time>_before_import.json` before `hsem.import_data`
-  replaces anything.
+  replaces anything, and before a restore in the setup flow replaces history
+  files that are already on disk.
 - `hsem_backup_<date>_<time>_deleted.json` when the HSEM config entry is
   deleted.
 

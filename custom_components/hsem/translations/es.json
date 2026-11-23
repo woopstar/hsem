@@ -5,6 +5,9 @@
       "reconfigured_successfully": "Integración HSEM reconfigurada correctamente.",
       "no_backups": "No se encontraron archivos de copia de seguridad en la carpeta hsem_backups."
     },
+    "create_entry": {
+      "history_saved": "HSEM se restauró. El historial que había antes en este Home Assistant se guardó en {before_path}."
+    },
     "error": {
       "device_not_found": "No se encontró el dispositivo seleccionado.",
       "discharge_power_required_when_forced": "Establece una potencia máxima de descarga superior a 0 W. Con la opción de forzar activada, un límite de 0 W bloquea silenciosamente toda descarga de la batería mientras el VE se carga.",
@@ -39,7 +42,8 @@
       "backup_unreadable": "No se pudo leer la copia de seguridad: falta, es demasiado grande o no es JSON. No se restauró nada.",
       "backup_too_new": "La copia de seguridad fue escrita por una versión más reciente de HSEM. Actualiza HSEM primero. No se restauró nada.",
       "backup_config_version": "La configuración de la copia de seguridad pertenece a otra versión de la entrada de configuración. Configura HSEM a mano y restaura después los datos aprendidos con la acción hsem.import_data. No se restauró nada.",
-      "backup_write_failed": "No se pudieron escribir los archivos de historial. No se restauró nada. Revisa el registro de Home Assistant."
+      "backup_write_failed": "No se pudieron escribir los archivos de historial. No se restauró nada. Revisa el registro de Home Assistant.",
+      "backup_safety_copy_failed": "No se pudo guardar primero el historial que ya había en este Home Assistant, así que no se restauró nada. Revisa el registro de Home Assistant."
     },
     "step": {
       "batteries_excess_export": {
@@ -546,7 +550,7 @@
       },
       "setup_method": {
         "title": "Configurar HSEM",
-        "description": "Se encontró una copia de seguridad de HSEM en la carpeta hsem_backups. Configura HSEM desde cero o restaura la configuración y los datos aprendidos desde una copia de seguridad.",
+        "description": "Se encontró un archivo de copia de seguridad en la carpeta hsem_backups. Configura HSEM desde cero o restaura la configuración y los datos aprendidos desde una copia de seguridad.",
         "menu_options": {
           "user": "Configurar desde cero",
           "restore": "Restaurar desde una copia de seguridad"
@@ -564,7 +568,7 @@
       },
       "restore_confirm": {
         "title": "Confirmar la restauración",
-        "description": "Copia de seguridad: {backup_file}\nEscrita: {created} por HSEM {hsem_version}\n\nEnvía para restaurar los archivos de historial y crear HSEM con la configuración de la copia de seguridad.\n\nNo están en la copia, se usa su valor predeterminado: {skipped_keys}\n\nDesactivadas porque necesitan uno de esos valores: {disabled_features}\n\nArchivos de historial no restaurados: {history_files_skipped}\n\nUna copia de seguridad nunca contiene identificadores de punto de carga, rutas de certificados ni secretos. Introdúcelos en Configurar después de la restauración y vuelve a activar las funciones."
+        "description": "Copia de seguridad: {backup_file}\nEscrita: {created} por HSEM {hsem_version}\n\nEnvía para restaurar los archivos de historial y crear HSEM con la configuración de la copia de seguridad.\n\nNo están en la copia, se usa su valor predeterminado: {skipped_keys}\n\nDesactivadas porque necesitan uno de esos valores: {disabled_features}\n\nDispositivos que no existen en este Home Assistant, dejados vacíos: {missing_devices}. Elígelos en Configurar después de la restauración.\n\nArchivos de historial no restaurados: {history_files_skipped}\n\nLos archivos de historial de HSEM que ya hay en este Home Assistant se reemplazan. Antes se guardan en una copia before_import en la carpeta hsem_backups.\n\nUna copia de seguridad nunca contiene identificadores de punto de carga, rutas de certificados ni secretos. Introdúcelos en Configurar después de la restauración y vuelve a activar las funciones."
       }
     }
   },

@@ -37,8 +37,10 @@ from homeassistant.config_entries import (
 )
 from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import device_registry as dr
 
 import custom_components.hsem as hsem_init
+from custom_components.hsem import services_backup
 from custom_components.hsem.config_flow import HSEMConfigFlow
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES, DOMAIN
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
@@ -64,6 +66,13 @@ SLOT = datetime.now(UTC).replace(minute=0, second=0, microsecond=0) + timedelta(
 SLOT_END = SLOT + timedelta(minutes=15)
 CREATED = datetime(2026, 11, 20, 14, 30, tzinfo=UTC)
 VALID = "hsem_backup_20261120_143000.json"
+
+#: Options a user changed after setup; they win over the entry data.
+OPTIONS = {
+    "hsem_update_interval": 9,
+    "hsem_verbose_logging": True,
+    "hsem_batteries_topup_min_power_pct": 25,
+}
 
 VERSION = HSEMConfigFlow.VERSION
 MINOR_VERSION = HSEMConfigFlow.MINOR_VERSION
@@ -189,6 +198,7 @@ def _write_backup(
     hsem_version: str = "1.0.0",
     entry_version: int = VERSION,
     data: dict[str, Any] | None = None,
+    options: dict[str, Any] | None = None,
     history: dict[str, dict[str, Any] | None] | None = None,
 ) -> str:
     """Write a backup file by hand and return its name."""
@@ -199,7 +209,7 @@ def _write_backup(
         history=history or {},
         learned={},
         data=_entry_data() if data is None else data,
-        options={},
+        options=options or {},
         entry_version=entry_version,
         entry_minor_version=MINOR_VERSION,
     )
@@ -242,6 +252,8 @@ async def test_export_remove_and_restore_through_the_setup_flow(
 ) -> None:
     """A removed HSEM comes back from its backup with its data and options."""
     entry = await _add_entry(hass, hsem_update_interval=7)
+    hass.config_entries.async_update_entry(entry, options=dict(OPTIONS))
+    await hass.async_block_till_done()
     await _learn(entry)
     backup = await _export(hass)
     assert await hass.config_entries.async_remove(entry.entry_id)
@@ -266,6 +278,7 @@ async def test_export_remove_and_restore_through_the_setup_flow(
     assert placeholders["backup_file"] == backup
     assert "hsem_ocpp_cpid" in placeholders["skipped_keys"]
     assert placeholders["disabled_features"] == "-"
+    assert placeholders["missing_devices"] == "-"
     assert placeholders["history_files_skipped"] == "-"
     # Validating wrote nothing.
     assert _history_on_disk(hass) == []
@@ -279,6 +292,8 @@ async def test_export_remove_and_restore_through_the_setup_flow(
     (restored,) = hass.config_entries.async_entries(DOMAIN)
     assert restored.state is ConfigEntryState.LOADED
     assert restored.data["hsem_update_interval"] == 7
+    assert restored.options == OPTIONS
+    assert result["description"] is None
     assert REDACTED not in restored.data.values()
     assert "hsem_ocpp_cpid" not in restored.data
     _assert_learned(restored)
@@ -331,16 +346,17 @@ async def test_setup_without_a_backup_starts_with_the_first_form(
 
 
 @pytest.mark.asyncio
-async def test_a_backup_that_cannot_be_restored_does_not_offer_the_menu(
+async def test_a_backup_that_cannot_be_restored_still_offers_the_menu(
     hass: HomeAssistant,
 ) -> None:
-    """Only a backup from a newer HSEM is there: normal setup."""
-    _write_backup(hass, hsem_version="999.0.0")
+    """Only a backup from a newer HSEM is there: the restore step says why."""
+    too_new = _write_backup(hass, hsem_version="999.0.0")
 
-    result = await _start_flow(hass)
+    result = await _open_restore(hass)
+    assert result["step_id"] == "restore"
+    result = await _configure(hass, result, {CONF_BACKUP_FILE: too_new})
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    assert result["errors"] == {"base": "backup_too_new"}
 
 
 @pytest.mark.asyncio
@@ -508,6 +524,111 @@ async def test_feature_that_needs_a_redacted_value_stays_off(
     (restored,) = hass.config_entries.async_entries(DOMAIN)
     assert restored.options == {"hsem_ocpp_enabled": False}
     assert "CP-1" not in json.dumps(dict(restored.data))
+
+
+@pytest.mark.asyncio
+async def test_device_that_does_not_exist_here_is_left_empty(
+    hass: HomeAssistant,
+) -> None:
+    """Device registry IDs of another Home Assistant are not restored."""
+    other = ConfigEntry(
+        domain="another_integration",
+        title="Other",
+        data={},
+        options={},
+        version=1,
+        minor_version=1,
+        unique_id="other",
+        source=SOURCE_USER,
+        discovery_keys={},  # type: ignore[arg-type]  # an empty mapping is what HA passes
+        subentries_data=None,
+    )
+    hass.config_entries._entries[other.entry_id] = other
+    known = dr.async_get(hass).async_get_or_create(
+        config_entry_id=other.entry_id, identifiers={("another_integration", "1")}
+    )
+    backup = _write_backup(
+        hass,
+        data=_entry_data(
+            hsem_huawei_solar_device_id_inverter_1="id-from-the-old-host",
+            hsem_huawei_solar_device_id_inverter_2="",
+            hsem_huawei_solar_device_id_batteries=known.id,
+        ),
+        options={"hsem_huawei_solar_device_id_batteries_2": "also-from-the-old-host"},
+    )
+    result = await _open_restore(hass)
+
+    result = await _configure(hass, result, {CONF_BACKUP_FILE: backup})
+
+    assert result["description_placeholders"]["missing_devices"] == (
+        "hsem_huawei_solar_device_id_batteries_2, "
+        "hsem_huawei_solar_device_id_inverter_1"
+    )
+
+    result = await _configure(hass, result, {})
+    await hass.async_block_till_done()
+
+    (restored,) = hass.config_entries.async_entries(DOMAIN)
+    # The entry starts: a device is only needed when HSEM writes to it.
+    assert restored.state is ConfigEntryState.LOADED
+    assert restored.options == {
+        "hsem_huawei_solar_device_id_batteries_2": "",
+        "hsem_huawei_solar_device_id_inverter_1": "",
+    }
+    assert restored.data["hsem_huawei_solar_device_id_batteries"] == known.id
+
+
+@pytest.mark.asyncio
+async def test_history_on_disk_is_saved_before_it_is_replaced(
+    hass: HomeAssistant,
+) -> None:
+    """History files survive a removal; a restore keeps a copy of them."""
+    name = "hsem_savings_history.json"
+    _storage(hass).mkdir(exist_ok=True)
+    (_storage(hass) / name).write_text(json.dumps({"local": 1.0}), encoding="utf-8")
+    backup = _write_backup(hass, history={name: {"actual_savings": 3.0}})
+    result = await _open_restore(hass)
+    result = await _configure(hass, result, {CONF_BACKUP_FILE: backup})
+
+    result = await _configure(hass, result, {})
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["description"] == "history_saved"
+    before = Path(result["description_placeholders"]["before_path"])
+    assert before.name.endswith("_before_import.json")
+    saved = json.loads(before.read_text(encoding="utf-8"))
+    assert saved["history"][name] == {"local": 1.0}
+    assert saved["configuration"]["data"] == {}
+
+
+@pytest.mark.asyncio
+async def test_restore_stops_when_the_history_on_disk_cannot_be_saved(
+    hass: HomeAssistant,
+) -> None:
+    """No safety copy, no restore: the local history is left as it is."""
+    name = "hsem_savings_history.json"
+    _storage(hass).mkdir(exist_ok=True)
+    (_storage(hass) / name).write_text(json.dumps({"local": 1.0}), encoding="utf-8")
+    backup = _write_backup(hass, history={name: {"actual_savings": 3.0}})
+    result = await _open_restore(hass)
+    result = await _configure(hass, result, {CONF_BACKUP_FILE: backup})
+    # A folder sits where the safety copy would be written.
+    moment = datetime(2026, 11, 22, 8, 0, 0, tzinfo=UTC)
+    blocker = (
+        Path(hass.config.config_dir)
+        / BACKUP_DIR_NAME
+        / "hsem_backup_20261122_080000_before_import.json"
+    )
+    (blocker / "in_the_way").mkdir(parents=True)
+
+    with patch.object(services_backup, "hsem_now", return_value=moment):
+        result = await _configure(hass, result, {})
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "backup_safety_copy_failed"}
+    assert json.loads((_storage(hass) / name).read_text()) == {"local": 1.0}
+    assert hass.config_entries.async_entries(DOMAIN) == []
 
 
 @pytest.mark.asyncio

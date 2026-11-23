@@ -5,6 +5,9 @@
       "reconfigured_successfully": "HSEM Integration erfolgreich neu konfiguriert.",
       "no_backups": "Im Ordner hsem_backups wurden keine Sicherungsdateien gefunden."
     },
+    "create_entry": {
+      "history_saved": "HSEM wurde wiederhergestellt. Der Verlauf, der zuvor auf diesem Home Assistant lag, wurde in {before_path} gesichert."
+    },
     "error": {
       "device_not_found": "Das ausgewählte Gerät wurde nicht gefunden.",
       "discharge_power_required_when_forced": "Lege eine maximale Entladeleistung über 0 W fest. Bei aktivierter Force-Option blockiert eine Obergrenze von 0 W still jede Batterieentladung, während das EV lädt.",
@@ -39,7 +42,8 @@
       "backup_unreadable": "Die Sicherungsdatei konnte nicht gelesen werden: Sie fehlt, ist zu groß oder kein JSON. Es wurde nichts wiederhergestellt.",
       "backup_too_new": "Die Sicherung wurde von einer neueren HSEM-Version geschrieben. Aktualisiere zuerst HSEM. Es wurde nichts wiederhergestellt.",
       "backup_config_version": "Die Konfiguration in der Sicherung gehört zu einer anderen Version des Konfigurationseintrags. Richte HSEM von Hand ein und stelle dann die gelernten Daten mit der Aktion hsem.import_data wieder her. Es wurde nichts wiederhergestellt.",
-      "backup_write_failed": "Die Verlaufsdateien konnten nicht geschrieben werden. Es wurde nichts wiederhergestellt. Prüfe das Home-Assistant-Protokoll."
+      "backup_write_failed": "Die Verlaufsdateien konnten nicht geschrieben werden. Es wurde nichts wiederhergestellt. Prüfe das Home-Assistant-Protokoll.",
+      "backup_safety_copy_failed": "Der bereits auf diesem Home Assistant vorhandene Verlauf konnte nicht zuerst gesichert werden, daher wurde nichts wiederhergestellt. Prüfe das Home-Assistant-Protokoll."
     },
     "step": {
       "batteries_excess_export": {
@@ -546,7 +550,7 @@
       },
       "setup_method": {
         "title": "HSEM einrichten",
-        "description": "Im Ordner hsem_backups wurde eine HSEM-Sicherung gefunden. Richte HSEM neu ein oder stelle die Konfiguration und die gelernten Daten aus einer Sicherung wieder her.",
+        "description": "Im Ordner hsem_backups wurde eine Sicherungsdatei gefunden. Richte HSEM neu ein oder stelle die Konfiguration und die gelernten Daten aus einer Sicherung wieder her.",
         "menu_options": {
           "user": "Neu einrichten",
           "restore": "Aus einer Sicherung wiederherstellen"
@@ -564,7 +568,7 @@
       },
       "restore_confirm": {
         "title": "Wiederherstellung bestätigen",
-        "description": "Sicherung: {backup_file}\nGeschrieben: {created} von HSEM {hsem_version}\n\nSende ab, um die Verlaufsdateien wiederherzustellen und HSEM mit der Konfiguration aus der Sicherung anzulegen.\n\nNicht in der Sicherung, auf den Standardwert gesetzt: {skipped_keys}\n\nAusgeschaltet, weil sie einen dieser Werte brauchen: {disabled_features}\n\nNicht wiederhergestellte Verlaufsdateien: {history_files_skipped}\n\nEine Sicherung enthält nie Ladepunkt-IDs, Zertifikatspfade oder Geheimnisse. Trage sie nach der Wiederherstellung unter Konfigurieren ein und schalte die Funktionen dann wieder ein."
+        "description": "Sicherung: {backup_file}\nGeschrieben: {created} von HSEM {hsem_version}\n\nSende ab, um die Verlaufsdateien wiederherzustellen und HSEM mit der Konfiguration aus der Sicherung anzulegen.\n\nNicht in der Sicherung, auf den Standardwert gesetzt: {skipped_keys}\n\nAusgeschaltet, weil sie einen dieser Werte brauchen: {disabled_features}\n\nGeräte, die es auf diesem Home Assistant nicht gibt, leer gelassen: {missing_devices}. Wähle sie nach der Wiederherstellung unter Konfigurieren aus.\n\nNicht wiederhergestellte Verlaufsdateien: {history_files_skipped}\n\nHSEM-Verlaufsdateien, die bereits auf diesem Home Assistant liegen, werden ersetzt. Sie werden zuerst in einer before_import-Sicherung im Ordner hsem_backups gesichert.\n\nEine Sicherung enthält nie Ladepunkt-IDs, Zertifikatspfade oder Geheimnisse. Trage sie nach der Wiederherstellung unter Konfigurieren ein und schalte die Funktionen dann wieder ein."
       }
     }
   },

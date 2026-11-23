@@ -23,7 +23,7 @@ All file I/O runs in the executor; the payload logic lives in
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -38,6 +38,7 @@ from homeassistant.helpers.entity_platform import async_get_platforms
 from custom_components.hsem.const import DOMAIN
 from custom_components.hsem.custom_sensors.avg_sensor import HSEMAvgSensor
 from custom_components.hsem.utils.backup import (
+    ERROR_SAFETY_COPY_FAILED,
     ERROR_WRITE_FAILED,
     LEARNER_AVERAGE_SENSORS,
     LEARNER_FORECAST_TRACKER,
@@ -66,6 +67,7 @@ from custom_components.hsem.utils.backup import (
     write_debug_file,
     write_history_files,
 )
+from custom_components.hsem.utils.config_validator import async_validate_device_ids
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.integration_version import (
     async_get_hsem_integration_version,
@@ -104,6 +106,9 @@ _APPLIED_IMPORT_KEY = f"{DOMAIN}_applied_import"
 #: file before the platforms are set up.
 _STAGED_IMPORT_KEY = f"{DOMAIN}_staged_import"
 
+#: Part of the name of every option that holds a device registry ID.
+_DEVICE_ID = "_device_id_"
+
 #: ``hass.data`` key: the lock that lets one import run at a time.
 _IMPORT_LOCK_KEY = f"{DOMAIN}_import_lock"
 
@@ -130,7 +135,7 @@ def _get_entry(hass: HomeAssistant) -> ConfigEntry:
     return entries[0]
 
 
-def _coordinator(entry: ConfigEntry) -> Any | None:
+def _coordinator(entry: ConfigEntry | None) -> Any | None:
     """Return the running coordinator, or ``None`` when HSEM is unloaded."""
     return getattr(getattr(entry, "runtime_data", None), "coordinator", None)
 
@@ -146,7 +151,7 @@ def _average_sensors(hass: HomeAssistant) -> list[HSEMAvgSensor]:
 
 
 def collect_learned_state(
-    hass: HomeAssistant, entry: ConfigEntry, now: datetime
+    hass: HomeAssistant, entry: ConfigEntry | None, now: datetime
 ) -> dict[str, dict[str, Any] | None]:
     """Return the learner state that lives in restore state, not in a file.
 
@@ -294,14 +299,20 @@ def _price_source(
 
 
 async def async_write_backup(
-    hass: HomeAssistant, entry: ConfigEntry, reason: str
+    hass: HomeAssistant,
+    entry: ConfigEntry | None,
+    reason: str,
+    entry_version: tuple[int, int] = (0, 0),
 ) -> Path:
     """Write a backup of the learned data and the redacted configuration.
 
     Args:
         hass: The Home Assistant instance.
-        entry: The HSEM config entry.
+        entry: The HSEM config entry; ``None`` while the setup flow restores
+            a backup. The backup then holds the history and no configuration.
         reason: One of the ``REASON_*`` constants; sets the file-name suffix.
+        entry_version: The config entry version and minor version to state
+            when there is no entry.
 
     Returns:
         The path of the written file.
@@ -321,10 +332,10 @@ async def async_write_backup(
         reason=reason,
         history=history,
         learned=collect_learned_state(hass, entry, created),
-        data=entry.data,
-        options=entry.options,
-        entry_version=entry.version,
-        entry_minor_version=entry.minor_version,
+        data=entry.data if entry else {},
+        options=entry.options if entry else {},
+        entry_version=entry.version if entry else entry_version[0],
+        entry_minor_version=entry.minor_version if entry else entry_version[1],
     )
     return await hass.async_add_executor_job(write_backup_file, config_dir, payload)
 
@@ -390,12 +401,17 @@ class RestorePlan:
         payload: The validated backup payload.
         configuration: The data and options of the new entry.
         files_skipped: History file name to the reason it is not restored.
+        missing_devices: The device options whose device does not exist on
+            this Home Assistant, sorted. They are empty in ``configuration``.
+        entry_version: The config entry version and minor version.
     """
 
     filename: str
     payload: dict[str, Any]
     configuration: NewEntryConfiguration
     files_skipped: dict[str, str]
+    missing_devices: list[str]
+    entry_version: tuple[int, int]
 
 
 async def async_find_backups(
@@ -446,45 +462,74 @@ async def async_prepare_restore(
         hass, filename, configuration_version=(entry_version, entry_minor_version)
     )
     configuration = new_entry_configuration(payload)
+    effective = {**configuration.data, **configuration.options}
+    # Device registry IDs belong to one Home Assistant. An unknown one is
+    # emptied, as the setup form would reject it.
+    missing_devices = sorted(
+        await async_validate_device_ids(
+            hass, effective, [], [key for key in effective if _DEVICE_ID in key]
+        )
+    )
+    configuration = replace(
+        configuration,
+        options={**configuration.options, **dict.fromkeys(missing_devices, "")},
+    )
     files_skipped: dict[str, str] = {}
     if reason := price_history_skip_reason(
-        payload,
-        _price_source(hass, None, {**configuration.data, **configuration.options}),
+        payload, _price_source(hass, None, effective)
     ):
         files_skipped[PRICE_HISTORY_FILE] = reason
-    return RestorePlan(filename, payload, configuration, files_skipped)
+    return RestorePlan(
+        filename,
+        payload,
+        configuration,
+        files_skipped,
+        missing_devices,
+        (entry_version, entry_minor_version),
+    )
 
 
-async def async_write_restore(hass: HomeAssistant, plan: RestorePlan) -> list[str]:
+async def async_write_restore(hass: HomeAssistant, plan: RestorePlan) -> Path | None:
     """Write the history and the learner state of a backup for a new entry.
 
-    The files are replaced all or nothing, as in ``import_data``. The learner
-    state is loaded when the new entry starts. Called by the setup flow right
-    before it creates the entry: HSEM is not running, so there is nothing to
-    unload and no data of a running entry to save first.
+    History files survive the removal of HSEM. When one is on disk, it is
+    saved first as ``..._before_import.json``, as ``import_data`` does. The
+    files are then replaced all or nothing. The learner state is loaded when
+    the new entry starts. Called by the setup flow right before it creates
+    the entry: HSEM is not running, so there is nothing to unload.
 
     Args:
         hass: The Home Assistant instance.
         plan: The plan from :func:`async_prepare_restore`.
 
     Returns:
-        The names of the history files that were written.
+        The path of the backup of the history that was replaced, or ``None``
+        when there was no history on disk.
 
     Raises:
-        BackupError: When a file cannot be written or an import is running.
-            Nothing has changed.
+        BackupError: When the existing history cannot be saved, a file cannot
+            be written or an import is running. Nothing has changed.
     """
     lock: asyncio.Lock = hass.data.setdefault(_IMPORT_LOCK_KEY, asyncio.Lock())
     if lock.locked():
         raise BackupError(
             "An import is running, so nothing was restored.", ERROR_WRITE_FAILED
         )
+    storage_dir = _config_dir(hass) / ".storage"
     async with lock:
+        before_path: Path | None = None
+        existing = await hass.async_add_executor_job(read_history_files, storage_dir)
+        if any(content is not None for content in existing.values()):
+            try:
+                before_path = await async_write_backup(
+                    hass, None, REASON_BEFORE_IMPORT, plan.entry_version
+                )
+            except BackupError as err:
+                raise BackupError(
+                    f"{err} Nothing was restored.", ERROR_SAFETY_COPY_FAILED
+                ) from err
         written: list[str] = await hass.async_add_executor_job(
-            write_history_files,
-            _config_dir(hass) / ".storage",
-            plan.payload,
-            tuple(plan.files_skipped),
+            write_history_files, storage_dir, plan.payload, tuple(plan.files_skipped)
         )
     # Learner state kept from an entry that was removed belongs to the
     # replaced history.
@@ -494,7 +539,7 @@ async def async_write_restore(hass: HomeAssistant, plan: RestorePlan) -> list[st
         ", ".join(written) or "no history files",
         plan.filename,
     )
-    return written
+    return before_path
 
 
 async def async_handle_import_data(call: ServiceCall) -> dict[str, Any]:

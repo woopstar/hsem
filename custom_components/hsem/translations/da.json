@@ -5,6 +5,9 @@
       "reconfigured_successfully": "HSEM Integration genkonfigureret.",
       "no_backups": "Der blev ikke fundet nogen backupfiler i mappen hsem_backups."
     },
+    "create_entry": {
+      "history_saved": "HSEM blev gendannet. Historikken, der lå på denne Home Assistant i forvejen, blev gemt i {before_path}."
+    },
     "error": {
       "device_not_found": "Den valgte enhed blev ikke fundet.",
       "discharge_power_required_when_forced": "Indstil en maksimal afladningseffekt over 0 W. Når force-funktionen er aktiveret, blokerer et loft på 0 W lydløst al batteriafladning, mens EV'en lader.",
@@ -39,7 +42,8 @@
       "backup_unreadable": "Backupfilen kunne ikke læses: den mangler, er for stor eller er ikke JSON. Intet blev gendannet.",
       "backup_too_new": "Backuppen er skrevet af en nyere HSEM-version. Opdater HSEM først. Intet blev gendannet.",
       "backup_config_version": "Konfigurationen i backuppen hører til en anden version af konfigurationsposten. Sæt HSEM op manuelt, og gendan derefter de lærte data med handlingen hsem.import_data. Intet blev gendannet.",
-      "backup_write_failed": "Historikfilerne kunne ikke skrives. Intet blev gendannet. Se Home Assistant-loggen."
+      "backup_write_failed": "Historikfilerne kunne ikke skrives. Intet blev gendannet. Se Home Assistant-loggen.",
+      "backup_safety_copy_failed": "Historikken, der allerede ligger på denne Home Assistant, kunne ikke gemmes først, så intet blev gendannet. Se Home Assistant-loggen."
     },
     "step": {
       "batteries_excess_export": {
@@ -546,7 +550,7 @@
       },
       "setup_method": {
         "title": "Opsæt HSEM",
-        "description": "Der blev fundet en backup af HSEM i mappen hsem_backups. Sæt HSEM op fra bunden, eller gendan konfigurationen og de lærte data fra en backup.",
+        "description": "Der blev fundet en backupfil i mappen hsem_backups. Sæt HSEM op fra bunden, eller gendan konfigurationen og de lærte data fra en backup.",
         "menu_options": {
           "user": "Opsæt fra bunden",
           "restore": "Gendan fra en backup"
@@ -564,7 +568,7 @@
       },
       "restore_confirm": {
         "title": "Bekræft gendannelsen",
-        "description": "Backup: {backup_file}\nSkrevet: {created} af HSEM {hsem_version}\n\nIndsend for at gendanne historikfilerne og oprette HSEM med konfigurationen fra backuppen.\n\nIkke i backuppen, sat til standardværdien: {skipped_keys}\n\nSlået fra, fordi de kræver en af de værdier: {disabled_features}\n\nHistorikfiler, der ikke gendannes: {history_files_skipped}\n\nEn backup indeholder aldrig ladepunkt-id'er, certifikatstier eller hemmeligheder. Indtast dem under Konfigurer efter gendannelsen, og slå derefter funktionerne til igen."
+        "description": "Backup: {backup_file}\nSkrevet: {created} af HSEM {hsem_version}\n\nIndsend for at gendanne historikfilerne og oprette HSEM med konfigurationen fra backuppen.\n\nIkke i backuppen, sat til standardværdien: {skipped_keys}\n\nSlået fra, fordi de kræver en af de værdier: {disabled_features}\n\nEnheder, der ikke findes på denne Home Assistant, efterladt tomme: {missing_devices}. Vælg dem under Konfigurer efter gendannelsen.\n\nHistorikfiler, der ikke gendannes: {history_files_skipped}\n\nHSEM-historikfiler, der allerede ligger på denne Home Assistant, erstattes. De gemmes først i en before_import-backup i mappen hsem_backups.\n\nEn backup indeholder aldrig ladepunkt-id'er, certifikatstier eller hemmeligheder. Indtast dem under Konfigurer efter gendannelsen, og slå derefter funktionerne til igen."
       }
     }
   },
