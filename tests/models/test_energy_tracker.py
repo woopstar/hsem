@@ -80,7 +80,10 @@ def _day(day: str, **fields: float) -> EnergyDayEntry:
         fields.get("battery_charged_kwh", 0.0)
         + fields.get("battery_discharged_kwh", 0.0),
     )
-    return EnergyDayEntry(day, **fields)
+    entry = EnergyDayEntry(day)
+    for name, value in fields.items():
+        setattr(entry, name, value)
+    return entry
 
 
 def _tracker(*entries: EnergyDayEntry) -> EnergyTracker:

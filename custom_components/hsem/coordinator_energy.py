@@ -3,7 +3,9 @@
 Each cycle hands the tracker one sample of the meters the coordinator already
 reads: the grid and PV energy meters, the house and battery power, and the
 SoC.  The tracker turns consecutive samples into daily energy totals, from
-which the monthly energy sensors are built.
+which the monthly energy sensors are built.  The days before the first
+measured one are taken from long-term statistics, once
+(:mod:`coordinator_energy_backfill`, issue #1450).
 
 The planner gets ``0 W`` for a house or PV power sensor that gives no reading.
 The tracker must not: a sample takes those two readings only while their
@@ -21,6 +23,9 @@ from pathlib import Path
 
 from homeassistant.core import HomeAssistant
 
+from custom_components.hsem.coordinator_energy_backfill import (
+    async_backfill_energy_history,
+)
 from custom_components.hsem.coordinator_persistence import persist_all_trackers
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.models.energy_tracker import (
@@ -194,12 +199,16 @@ async def async_track_energy(
         if tracker is None:
             return
         await init_energy_tracker(tracker, coordinator.hass)
+        site = build_battery_site(live, cfg)
         tracker.accumulate(
             build_energy_sample(coordinator.hass, now, live, cfg),
-            build_battery_site(live, cfg),
+            site,
             max_gap_seconds=max(MAX_GAP_S, 2.0 * cfg.update_interval * 60.0),
         )
-        if tracker.save_due(SAVE_INTERVAL_S):
+        backfilled = await async_backfill_energy_history(
+            coordinator.hass, tracker, now, cfg, site
+        )
+        if backfilled or tracker.save_due(SAVE_INTERVAL_S):
             await persist_all_trackers(coordinator, only=["_energy_tracker"])
     except Exception as exc:
         async_log("error", "Energy tracking failed: %s", exc)
