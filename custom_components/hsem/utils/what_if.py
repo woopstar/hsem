@@ -16,6 +16,15 @@ really had, counted from the end-of-discharge floor and capped at what the
 battery in question can hold.  Extra capacity therefore starts the day empty
 and is worth only what it shifts within the day.
 
+The configured side of a day is the battery of that day: the SoC limits and
+the power limits stored with the day (issue #1455).  A scenario is sized
+against today's battery and then gets the same SoC window as the configured
+side of the day, so a limit the user moved since does not count as a
+difference (:meth:`WhatIfScenario.site_on`).  A
+day recorded before the limits were stored, and a day rebuilt from hourly
+statistics (``utils/what_if_rebuild.py``), use today's limits and are counted
+as such.  Rebuilt days are coarser, so their totals are also reported apart.
+
 Two figures are kept apart.  The *grid* savings are money not paid to the
 grid, and they are what a payback time is counted from.  The savings *after
 wear* also subtract the battery's depreciation per kWh cycled, which is the
@@ -77,7 +86,10 @@ NOTE = (
     "been with the battery's hard limits and full knowledge of load, PV and "
     "prices. Neither is what HSEM would have achieved. Read the difference as "
     "an estimate of what the hardware change is worth, not as a promise. "
-    "Every day starts and ends with the stored energy the battery really had. "
+    "Every measured day starts and ends with the stored energy the battery "
+    "really had. A day rebuilt from hourly statistics starts and ends with an "
+    "empty battery and has one price per hour, so it is coarser: the rows "
+    "list its totals apart under from_statistics. "
     "Yearly figures and the payback time scale the compared days to 365 days: "
     "they carry the season of those days and are biased unless the days cover "
     f"a full year. They are left out below {MIN_DAYS_FOR_YEARLY} compared days. "
@@ -144,6 +156,25 @@ class WhatIfScenario:
             scenario = replace(scenario, discharge_efficiency=self.discharge_efficiency)
         return scenario
 
+    def site_on(self, day: RecordedDay, current: SiteLimits) -> SiteLimits:
+        """Return this scenario's battery as it would have been on *day*.
+
+        The scenario's size is a rated capacity, scaled against today's
+        battery.  On the day it gets the SoC window the day was recorded
+        with, exactly as the configured side does, and the day's power limits
+        where the scenario gives none.  Both sides of a day therefore differ
+        only in what the scenario changes: a SoC limit moved since the day
+        was recorded is neither a gain nor a loss.
+
+        Args:
+            day: The recorded day.
+            current: The installation's hard limits as configured today.
+        """
+        on_day = replace(
+            day.site_limits(current), rated_kwh=self.site(current).rated_kwh
+        )
+        return replace(self, usable_kwh=None).site(on_day)
+
 
 @dataclass(frozen=True)
 class WhatIfRequest:
@@ -152,11 +183,14 @@ class WhatIfRequest:
     Attributes:
         days: The local days of the asked-for history as ISO dates, in order.
         recorded: The recorded days by ISO date.
-        reasons: Why the performance scoring had no score for a day, by ISO
-            date; used to say why a day that is not recorded is skipped.
+        reasons: Why a day has no record, by ISO date: the reason the
+            performance scoring had no score for it, or the reason it could
+            not be rebuilt from statistics.
         site: The installation's hard limits as configured today.  A day's
             load is rebuilt with the capacity and efficiencies recorded with
-            that day; both sides of the comparison then use these limits.
+            that day.  Both sides of the comparison use these limits, with
+            the SoC and power limits recorded with the day in their place
+            where the day has them.
         cycle_cost_per_kwh: The configured wear per kWh of battery throughput.
         scenarios: The batteries to compare, at least one.
         capacity_price_per_kwh: Price of one kWh of usable capacity, for the
@@ -299,7 +333,9 @@ def replay_day(
 
     The day's load is rebuilt with the capacity and efficiencies the day was
     recorded with, so a battery that has been changed since does not distort
-    the days before the change.
+    the days before the change.  The sides are solved with the SoC and power
+    limits of the day where it has them (issue #1455), else with today's
+    (:meth:`WhatIfScenario.site_on`).
 
     Args:
         day: The recorded day.
@@ -317,8 +353,9 @@ def replay_day(
     """
     if not is_scipy_available():
         return REASON_SCIPY_UNAVAILABLE
+    baseline = day.site_limits(request.site)
     recorded = replace(
-        request.site,
+        baseline,
         rated_kwh=day.rated_kwh,
         charge_efficiency=day.charge_efficiency,
         discharge_efficiency=day.discharge_efficiency,
@@ -344,7 +381,7 @@ def replay_day(
         started = time.monotonic()
         cost = _solve(
             window,
-            side.site(request.site).battery(),
+            side.site_on(day, request.site).battery(),
             (
                 request.cycle_cost_per_kwh
                 if side.cycle_cost_per_kwh is None
@@ -374,38 +411,65 @@ def _limits(site: SiteLimits, cycle_cost_per_kwh: float) -> dict[str, float]:
     }
 
 
+def _totals(costs: list[tuple[_Cost, _Cost]]) -> dict[str, float]:
+    """Return the summed costs of some days, configured side against scenario."""
+    current_grid = sum(current.grid for current, _ in costs)
+    scenario_grid = sum(changed.grid for _, changed in costs)
+    current_wear = sum(current.wear for current, _ in costs)
+    scenario_wear = sum(changed.wear for _, changed in costs)
+    return {
+        "current_grid_cost": round(current_grid, 3),
+        "scenario_grid_cost": round(scenario_grid, 3),
+        "grid_savings": round(current_grid - scenario_grid, 3),
+        "current_wear_cost": round(current_wear, 3),
+        "scenario_wear_cost": round(scenario_wear, 3),
+        "savings_after_wear": round(
+            current_grid - scenario_grid + current_wear - scenario_wear, 3
+        ),
+    }
+
+
 def _row(
     request: WhatIfRequest,
     scenario: WhatIfScenario,
-    current: list[_Cost],
-    changed: list[_Cost],
+    compared: list[tuple[RecordedDay, _Cost, _Cost]],
 ) -> dict[str, Any]:
-    """Return one scenario's totals over the compared days."""
+    """Return one scenario's totals over the compared days.
+
+    Args:
+        request: The what-if being run.
+        scenario: The scenario of the row.
+        compared: Each compared day with what it cost the configured battery
+            and what it cost the scenario.
+    """
     site = scenario.site(request.site)
     cycle_cost = (
         request.cycle_cost_per_kwh
         if scenario.cycle_cost_per_kwh is None
         else scenario.cycle_cost_per_kwh
     )
-    current_grid = sum(cost.grid for cost in current)
-    scenario_grid = sum(cost.grid for cost in changed)
-    current_wear = sum(cost.wear for cost in current)
-    scenario_wear = sum(cost.wear for cost in changed)
-    grid_savings = current_grid - scenario_grid
+    grid_savings = sum(current.grid - changed.grid for _, current, changed in compared)
     yearly = (
-        grid_savings / len(current) * _DAYS_PER_YEAR
-        if len(current) >= MIN_DAYS_FOR_YEARLY
+        grid_savings / len(compared) * _DAYS_PER_YEAR
+        if len(compared) >= MIN_DAYS_FOR_YEARLY
         else None
     )
+
+    def part(from_statistics: bool) -> dict[str, float]:
+        """Return the totals of the measured or of the rebuilt days."""
+        costs = [
+            (current, changed)
+            for day, current, changed in compared
+            if day.from_statistics is from_statistics
+        ]
+        return {"days": len(costs), **_totals(costs)}
+
     row: dict[str, Any] = {
         **_limits(site, cycle_cost),
-        "current_grid_cost": round(current_grid, 3),
-        "scenario_grid_cost": round(scenario_grid, 3),
-        "grid_savings": round(grid_savings, 3),
-        "current_wear_cost": round(current_wear, 3),
-        "scenario_wear_cost": round(scenario_wear, 3),
-        "savings_after_wear": round(grid_savings + current_wear - scenario_wear, 3),
+        **_totals([(current, changed) for _, current, changed in compared]),
         "grid_savings_per_year": None if yearly is None else round(yearly, 2),
+        "measured": part(False),
+        "from_statistics": part(True),
     }
     if request.capacity_price_per_kwh is not None:
         extra = usable_capacity_kwh(site) - usable_capacity_kwh(request.site)
@@ -418,6 +482,15 @@ def _row(
             else None
         )
     return row
+
+
+def _months(days: list[RecordedDay]) -> list[dict[str, Any]]:
+    """Return the months the compared days fall in, with the days of each."""
+    months: dict[str, int] = {}
+    for day in days:
+        month = day.day[:7]
+        months[month] = months.get(month, 0) + 1
+    return [{"month": month, "days": months[month]} for month in sorted(months)]
 
 
 def run_what_if(
@@ -439,7 +512,7 @@ def run_what_if(
         one scenario; a capacity range reports its totals per size only.
     """
     sides = (WhatIfScenario(), *request.scenarios)
-    compared: list[tuple[str, list[_Cost]]] = []
+    compared: list[tuple[RecordedDay, list[_Cost]]] = []
     skipped: dict[str, int] = {}
     started = time.monotonic()
 
@@ -450,32 +523,49 @@ def run_what_if(
             and time.monotonic() - started >= request.budget_s
         )
 
+    def skip(reason: str) -> None:
+        """Count a day that is not compared under *reason*."""
+        skipped[reason] = skipped.get(reason, 0) + 1
+
+    recorded: list[RecordedDay] = []
     for date in request.days:
+        found = request.recorded.get(date)
+        if found is None:
+            skip(request.reasons.get(date, REASON_NOT_RECORDED))
+        else:
+            recorded.append(found)
+    # Measured days first, the newest first, then the rebuilt ones: a run
+    # that hits its time limit loses the coarsest and oldest days.
+    recorded.sort(key=lambda day: day.day, reverse=True)
+    recorded.sort(key=lambda day: day.from_statistics)
+    for day in recorded:
         if cancelled():
             return None
-        day = request.recorded.get(date)
-        outcome: list[_Cost] | str | None
-        if day is None:
-            outcome = request.reasons.get(date, REASON_NOT_RECORDED)
-        elif out_of_time():
-            outcome = REASON_RUN_TIME_LIMIT
-        else:
-            outcome = replay_day(day, request, sides, cancelled, out_of_time)
-            if request.pause_s > 0.0:
-                time.sleep(request.pause_s)
+        if out_of_time():
+            skip(REASON_RUN_TIME_LIMIT)
+            continue
+        outcome = replay_day(day, request, sides, cancelled, out_of_time)
+        if request.pause_s > 0.0:
+            time.sleep(request.pause_s)
         if outcome is None:
             return None
         if isinstance(outcome, str):
-            skipped[outcome] = skipped.get(outcome, 0) + 1
+            skip(outcome)
         else:
-            compared.append((date, outcome))
+            compared.append((day, outcome))
 
-    current = [costs[0] for _, costs in compared]
+    compared.sort(key=lambda entry: entry[0].day)
+    days = [day for day, _ in compared]
+    rebuilt = sum(day.from_statistics for day in days)
     response: dict[str, Any] = {
         "history_days": len(request.days),
         "days_compared": len(compared),
-        "first_day_compared": compared[0][0] if compared else None,
-        "last_day_compared": compared[-1][0] if compared else None,
+        "days_measured": len(compared) - rebuilt,
+        "days_from_statistics": rebuilt,
+        "days_on_todays_limits": sum(day.limits is None for day in days),
+        "first_day_compared": days[0].day if days else None,
+        "last_day_compared": days[-1].day if days else None,
+        "months_compared": _months(days),
         "days_skipped": len(request.days) - len(compared),
         "days_timed_out": skipped.get(REASON_ORACLE_TIMEOUT, 0)
         + skipped.get(REASON_RUN_TIME_LIMIT, 0),
@@ -485,8 +575,7 @@ def run_what_if(
             _row(
                 request,
                 scenario,
-                current,
-                [costs[index + 1] for _, costs in compared],
+                [(day, costs[0], costs[index + 1]) for day, costs in compared],
             )
             for index, scenario in enumerate(request.scenarios)
         ],
@@ -495,12 +584,14 @@ def run_what_if(
     if len(request.scenarios) == 1:
         response["days"] = [
             {
-                "date": date,
+                "date": day.day,
+                "source": "statistics" if day.from_statistics else "measured",
+                "limits": "today" if day.limits is None else "recorded",
                 "current_grid_cost": round(costs[0].grid, 3),
                 "scenario_grid_cost": round(costs[1].grid, 3),
                 "grid_savings": round(costs[0].grid - costs[1].grid, 3),
                 "savings_after_wear": round(costs[0].total - costs[1].total, 3),
             }
-            for date, costs in compared
+            for day, costs in compared
         ]
     return response

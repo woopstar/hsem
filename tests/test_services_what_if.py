@@ -25,7 +25,7 @@ from custom_components.hsem.coordinator_what_if import (
     WhatIfBusyError,
     WhatIfUnavailableError,
 )
-from custom_components.hsem.models.what_if_history import MAX_RECORDED_DAYS
+from custom_components.hsem.models.what_if_history import MAX_HISTORY_DAYS
 from custom_components.hsem.services import SERVICE_HANDLER_MAP
 from custom_components.hsem.services_what_if import (
     SCHEMA_WHAT_IF,
@@ -67,9 +67,9 @@ class TestSchema:
     def test_the_history_defaults_to_thirty_days(self) -> None:
         assert SCHEMA_WHAT_IF({})["history_days"] == 30
 
-    @pytest.mark.parametrize("days", [0, MAX_RECORDED_DAYS + 1])
+    @pytest.mark.parametrize("days", [0, MAX_HISTORY_DAYS + 1])
     def test_the_history_is_bounded_by_what_is_kept(self, days: int) -> None:
-        assert SCHEMA_WHAT_IF({"history_days": MAX_RECORDED_DAYS})
+        assert SCHEMA_WHAT_IF({"history_days": MAX_HISTORY_DAYS})
         with pytest.raises(vol.Invalid):
             SCHEMA_WHAT_IF({"history_days": days})
 
@@ -95,7 +95,7 @@ class TestSchema:
 
         assert set(fields) == {str(key) for key in SCHEMA_WHAT_IF.schema}
         days = fields["history_days"]["selector"]["number"]
-        assert (days["min"], days["max"]) == (1, MAX_RECORDED_DAYS)
+        assert (days["min"], days["max"]) == (1, MAX_HISTORY_DAYS)
 
     def test_it_is_registered_as_a_response_only_service(self) -> None:
         schema, handler, supports_response = SERVICE_HANDLER_MAP[SERVICE_WHAT_IF]

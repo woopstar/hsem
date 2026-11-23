@@ -28,7 +28,7 @@ turned into daily records for the days before the first measured one.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 from homeassistant.const import UnitOfEnergy, UnitOfPower
@@ -99,32 +99,51 @@ def _source_entities(cfg: SensorConfig) -> list[str]:
     return [*_house_entities(cfg), *(entity for entity in optional if entity)]
 
 
-async def _read_hourly(
+async def _hourly_energy(
+    reader: StatisticsReader, entity_id: str | None, start: datetime, end: datetime
+) -> dict[datetime, float]:
+    """Return the hourly energy of an accumulator in kWh, empty without one."""
+    if not entity_id:
+        return {}
+    return await reader.read_hourly_energy(
+        entity_id, start, end, UnitOfEnergy.KILO_WATT_HOUR
+    )
+
+
+async def _hourly_power(
+    reader: StatisticsReader, entity_id: str | None, start: datetime, end: datetime
+) -> dict[datetime, float]:
+    """Return the hourly mean in W as kWh: a mean of W over an hour is Wh."""
+    if not entity_id:
+        return {}
+    means = await reader.read_hourly_mean(entity_id, start, end, UnitOfPower.WATT)
+    return {hour: watts / 1000.0 for hour, watts in means.items()}
+
+
+async def async_read_house_and_pv(
     hass: HomeAssistant, cfg: SensorConfig, start: datetime, end: datetime
 ) -> HourlyEnergy:
-    """Read the hourly statistics of every configured source."""
+    """Read the hourly statistics of the house consumption and the PV.
+
+    All that ``hsem.what_if`` rebuilds a day from (issue #1455).
+
+    Args:
+        hass: Home Assistant instance.
+        cfg: The sensor configuration.
+        start: Start of the first hour wanted.
+        end: End of the window; hours starting at or after it are left out.
+
+    Returns:
+        House and PV energy per UTC hour start; an hour without statistics is
+        absent.
+    """
     reader = StatisticsReader(hass)
-
-    async def energy(entity_id: str | None) -> dict[datetime, float]:
-        if not entity_id:
-            return {}
-        return await reader.read_hourly_energy(
-            entity_id, start, end, UnitOfEnergy.KILO_WATT_HOUR
-        )
-
-    async def power(entity_id: str | None) -> dict[datetime, float]:
-        """Return the hourly mean in W as kWh: a mean of W over an hour is Wh."""
-        if not entity_id:
-            return {}
-        means = await reader.read_hourly_mean(entity_id, start, end, UnitOfPower.WATT)
-        return {hour: watts / 1000.0 for hour, watts in means.items()}
-
     house: dict[datetime, float] = {}
     house_entities = _house_entities(cfg)
     if house_entities:
-        house = await power(house_entities[0])
+        house = await _hourly_power(reader, house_entities[0], start, end)
         for charger in house_entities[1:]:
-            charged = await power(charger)
+            charged = await _hourly_power(reader, charger, start, end)
             # An hour the charger has no statistics for is unknown, not idle.
             house = {
                 hour: energy_kwh + max(charged[hour], 0.0)
@@ -134,15 +153,28 @@ async def _read_hourly(
 
     # The PV meter where it has an hour, the PV power for the others.
     pv = {
-        **await power(cfg.solar_production_power),
-        **await energy(cfg.pv_energy_entity),
+        **await _hourly_power(reader, cfg.solar_production_power, start, end),
+        **await _hourly_energy(reader, cfg.pv_energy_entity, start, end),
     }
-    return HourlyEnergy(
-        house_kwh=house,
-        grid_import_kwh=await energy(cfg.grid_import_energy_entity),
-        grid_export_kwh=await energy(cfg.grid_export_energy_entity),
-        pv_kwh=pv,
-        battery_net_kwh=await power(cfg.huawei_solar_batteries_charge_discharge_power),
+    return HourlyEnergy(house_kwh=house, pv_kwh=pv)
+
+
+async def _read_hourly(
+    hass: HomeAssistant, cfg: SensorConfig, start: datetime, end: datetime
+) -> HourlyEnergy:
+    """Read the hourly statistics of every configured source."""
+    reader = StatisticsReader(hass)
+    return replace(
+        await async_read_house_and_pv(hass, cfg, start, end),
+        grid_import_kwh=await _hourly_energy(
+            reader, cfg.grid_import_energy_entity, start, end
+        ),
+        grid_export_kwh=await _hourly_energy(
+            reader, cfg.grid_export_energy_entity, start, end
+        ),
+        battery_net_kwh=await _hourly_power(
+            reader, cfg.huawei_solar_batteries_charge_discharge_power, start, end
+        ),
     )
 
 

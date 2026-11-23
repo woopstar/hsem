@@ -93,6 +93,45 @@ def _parse_prices(raw: Any) -> dict[datetime, float]:
     return prices
 
 
+def price_source_differs(stored: Mapping[str, str], source: Mapping[str, str]) -> bool:
+    """Return whether *source* is another price source than *stored*.
+
+    A changed entity always counts.  A unit only counts when both the stored
+    and the new unit are known: an unavailable sensor reports no unit, and an
+    outage must not wipe the prices it is needed for.
+
+    Args:
+        stored: The price source a store belongs to.
+        source: ``import_entity``, ``export_entity``, ``import_unit`` and
+            ``export_unit``; an unknown value is an empty string.
+    """
+    new = {key: str(source.get(key) or "") for key in _SOURCE_KEYS}
+    return any(
+        stored.get(key, "") != new[key]
+        and (key.endswith("_entity") or bool(stored.get(key) and new[key]))
+        for key in _SOURCE_KEYS
+    )
+
+
+def merged_price_source(
+    stored: Mapping[str, str], source: Mapping[str, str]
+) -> dict[str, str]:
+    """Return the price source a store belongs to after seeing *source*.
+
+    A value *source* does not know keeps the stored one, unless the source
+    changed (:func:`price_source_differs`).
+
+    Args:
+        stored: The price source the store belongs to.
+        source: The price source seen now.
+    """
+    changed = price_source_differs(stored, source)
+    return {
+        key: str(source.get(key) or "") or ("" if changed else stored.get(key, ""))
+        for key in _SOURCE_KEYS
+    }
+
+
 @dataclass
 class PriceHistoryTracker:
     """Rolling store of real prices plus the last published prices.
@@ -140,13 +179,9 @@ class PriceHistoryTracker:
         Returns:
             ``True`` when the stored prices were dropped.
         """
-        new = {key: str(source.get(key) or "") for key in _SOURCE_KEYS}
         changed = self.source_differs(source)
         had_data = bool(self._samples or self._held_import or self._held_export)
-        merged = {
-            key: new[key] or ("" if changed else self.source.get(key, ""))
-            for key in _SOURCE_KEYS
-        }
+        merged = merged_price_source(self.source, source)
         if merged != {key: self.source.get(key, "") for key in _SOURCE_KEYS}:
             self._dirty = True
         self.source = merged
@@ -170,12 +205,7 @@ class PriceHistoryTracker:
             source: ``import_entity``, ``export_entity``, ``import_unit`` and
                 ``export_unit``; an unknown value is an empty string.
         """
-        new = {key: str(source.get(key) or "") for key in _SOURCE_KEYS}
-        return any(
-            self.source.get(key, "") != new[key]
-            and (key.endswith("_entity") or bool(self.source.get(key) and new[key]))
-            for key in _SOURCE_KEYS
-        )
+        return price_source_differs(self.source, source)
 
     def record(
         self,
@@ -324,6 +354,31 @@ class PriceHistoryTracker:
             import_level=self._levels.get("import"),
             export_level=self._levels.get("export"),
         )
+
+    def hourly_prices(self) -> dict[datetime, PricePair]:
+        """Return the mean real price of every hour recorded in full.
+
+        Hourly long-term statistics can only be priced per hour (issue
+        #1455).  An hour counts when its recorded slots add up to the whole
+        hour, so its price is real for every slot of it.
+
+        Returns:
+            ``(import_price, export_price)`` by UTC hour start.
+        """
+        hours: dict[datetime, tuple[int, float, float]] = {}
+        for start, (step, import_price, export_price) in self._samples.items():
+            hour = start.replace(minute=0, second=0, microsecond=0)
+            minutes, import_sum, export_sum = hours.get(hour, (0, 0.0, 0.0))
+            hours[hour] = (
+                minutes + step,
+                import_sum + step * import_price,
+                export_sum + step * export_price,
+            )
+        return {
+            hour: (import_sum / minutes, export_sum / minutes)
+            for hour, (minutes, import_sum, export_sum) in hours.items()
+            if minutes == _MAX_STEP_MINUTES
+        }
 
     def _bucket_profile(self, zone: tzinfo | None) -> PriceProfile:
         """Return the cached profile of the history, without level shifts."""

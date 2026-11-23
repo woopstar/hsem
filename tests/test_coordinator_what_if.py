@@ -24,7 +24,7 @@ import threading
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -48,6 +48,7 @@ from custom_components.hsem.coordinator_what_if import (
     RUN_TIME_LIMIT_S,
     WhatIfBusyError,
     WhatIfUnavailableError,
+    async_rebuild_days,
     async_record_days,
     async_run_what_if,
     build_what_if_request,
@@ -56,6 +57,7 @@ from custom_components.hsem.coordinator_what_if import (
     shutdown_what_if,
     what_if_running,
 )
+from custom_components.hsem.models.energy_backfill import HourlyEnergy
 from custom_components.hsem.models.performance_record import (
     REASON_INSUFFICIENT_COVERAGE,
     PerformanceScore,
@@ -63,6 +65,7 @@ from custom_components.hsem.models.performance_record import (
 )
 from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.models.planner_input import PlannerInput
+from custom_components.hsem.models.price_history_tracker import PriceHistoryTracker
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.what_if_history import WhatIfHistory
 from custom_components.hsem.planner.hindsight_scoring import SiteLimits
@@ -73,9 +76,14 @@ from custom_components.hsem.utils.what_if import (
     WhatIfScenario,
     usable_capacity_kwh,
 )
+from custom_components.hsem.utils.what_if_rebuild import (
+    REASON_PRICE_INCOMPLETE,
+    REASON_STATISTICS_INCOMPLETE,
+    local_day_hours,
+)
 from tests.test_coordinator_cycle_paths import _coordinator
 from tests.test_coordinator_performance import _FakeHass, _finish, _live
-from tests.utils.what_if_days import FIRST_DAY, SITE, make_days
+from tests.utils.what_if_days import FIRST_DAY, SITE, make_day, make_days
 
 needs_scipy = pytest.mark.skipif(
     not is_scipy_available(), reason="scipy not available in this environment"
@@ -958,3 +966,264 @@ class TestExecutor:
 
         assert coordinator_what_if._Flight.executor is None
         assert not what_if_running()
+
+
+def _priced(*days: str) -> dict[datetime, tuple[float, float]]:
+    """Return a cheap night and an expensive evening for each of *days*."""
+    return {
+        hour: (3.0 if 17 <= index < 21 else 0.5, 0.2)
+        for day in days
+        for index, hour in enumerate(local_day_hours(day, _TZ))
+    }
+
+
+def _statistics(*days: str) -> HourlyEnergy:
+    """Return 1 kWh of house load for every hour of *days*."""
+    return HourlyEnergy(
+        house_kwh={hour: 1.0 for day in days for hour in local_day_hours(day, _TZ)}
+    )
+
+
+def _with_recorder(
+    tmp_path: Path, planner_input: PlannerInput | None = None
+) -> CoordinatorSharedState:
+    """Return a coordinator whose Home Assistant has the recorder loaded."""
+    coordinator = _coordinator_state(tmp_path, planner_input)
+    state = cast(Any, coordinator)
+    state.hass.config.components = {"recorder"}
+    state._cfg = SensorConfig()
+    state._price_history_tracker = PriceHistoryTracker()
+    return coordinator
+
+
+class TestPriceArchive:
+    """Issue #1455: the hourly prices of completed days are kept for a year."""
+
+    @pytest.mark.asyncio
+    async def test_the_prices_before_today_are_kept_and_saved_once(
+        self, tmp_path: Path
+    ) -> None:
+        coordinator = _with_recorder(tmp_path)
+        tracker = cast(Any, coordinator)._price_history_tracker
+        tracker.source = {"import_entity": "sensor.import_price"}
+        # Today starts at 22:00 UTC of June 3rd in Copenhagen.
+        yesterday = datetime(2026, 6, 3, 21, 0, tzinfo=UTC)
+        today = datetime(2026, 6, 3, 22, 0, tzinfo=UTC)
+        for start in (yesterday, today):
+            tracker.record(start, 60, 1.5, 0.6)
+
+        with (
+            patch.object(coordinator_what_if, "hsem_now", return_value=_NOW),
+            patch.object(
+                coordinator_what_if, "persist_all_trackers", AsyncMock()
+            ) as persist,
+        ):
+            await async_record_days(coordinator, _day_request(complete=False))
+            await async_record_days(coordinator, _day_request(complete=False))
+
+        assert coordinator._what_if_history.prices == {
+            yesterday: pytest.approx((1.5, 0.6))
+        }
+        # The prices are kept with the price source they came from.
+        assert coordinator._what_if_history.price_source["import_entity"] == (
+            "sensor.import_price"
+        )
+        # No day was complete: the file was written for the prices, once.
+        assert persist.await_count == 1
+
+
+class TestRebuild:
+    """Issue #1455: days without a record are rebuilt from statistics."""
+
+    @pytest.mark.asyncio
+    async def test_nothing_is_rebuilt_without_the_recorder(
+        self, tmp_path: Path
+    ) -> None:
+        coordinator = _coordinator_state(tmp_path)
+        coordinator._what_if_history.prices.update(_priced("2026-06-02"))
+
+        assert await async_rebuild_days(coordinator, ["2026-06-02"], SITE, _NOW) == (
+            {},
+            {},
+        )
+
+    @pytest.mark.asyncio
+    async def test_nothing_is_read_when_no_day_is_missing(self, tmp_path: Path) -> None:
+        read = AsyncMock()
+
+        with patch.object(coordinator_what_if, "async_read_house_and_pv", read):
+            result = await async_rebuild_days(_with_recorder(tmp_path), [], SITE, _NOW)
+
+        assert result == ({}, {})
+        read.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_day_without_full_prices_is_counted_and_not_read(
+        self, tmp_path: Path
+    ) -> None:
+        coordinator = _with_recorder(tmp_path)
+        prices = _priced("2026-06-02")
+        del prices[local_day_hours("2026-06-02", _TZ)[5]]
+        coordinator._what_if_history.prices.update(prices)
+        read = AsyncMock()
+
+        with patch.object(coordinator_what_if, "async_read_house_and_pv", read):
+            rebuilt, reasons = await async_rebuild_days(
+                coordinator, ["2026-06-01", "2026-06-02"], SITE, _NOW
+            )
+
+        assert rebuilt == {}
+        assert reasons == {
+            "2026-06-01": REASON_PRICE_INCOMPLETE,
+            "2026-06-02": REASON_PRICE_INCOMPLETE,
+        }
+        read.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_priced_days_are_rebuilt_from_the_statistics(
+        self, tmp_path: Path
+    ) -> None:
+        """Kept prices and the live price history both count as real prices."""
+        coordinator = _with_recorder(tmp_path)
+        coordinator._what_if_history.prices.update(_priced("2026-06-01"))
+        tracker = cast(Any, coordinator)._price_history_tracker
+        for hour, (import_price, export_price) in _priced("2026-06-03").items():
+            tracker.record(hour, 60, import_price, export_price)
+        read = AsyncMock(return_value=_statistics("2026-06-01"))
+
+        with patch.object(coordinator_what_if, "async_read_house_and_pv", read):
+            rebuilt, reasons = await async_rebuild_days(
+                coordinator, ["2026-06-01", "2026-06-02", "2026-06-03"], SITE, _NOW
+            )
+
+        assert list(rebuilt) == ["2026-06-01"]
+        assert rebuilt["2026-06-01"].from_statistics
+        assert rebuilt["2026-06-01"].import_price[18] == pytest.approx(3.0)
+        assert reasons == {
+            "2026-06-02": REASON_PRICE_INCOMPLETE,
+            "2026-06-03": REASON_STATISTICS_INCOMPLETE,
+        }
+        # One read, from the first priced hour to the end of the last.
+        assert read.await_args is not None
+        hass, cfg, start, end = read.await_args.args
+        assert hass is coordinator.hass
+        assert cfg is cast(Any, coordinator)._cfg
+        assert start == datetime(2026, 5, 31, 22, 0, tzinfo=UTC)
+        assert end == datetime(2026, 6, 3, 22, 0, tzinfo=UTC)
+
+    @pytest.mark.asyncio
+    async def test_the_kept_prices_are_enough_without_a_price_history(
+        self, tmp_path: Path
+    ) -> None:
+        coordinator = _with_recorder(tmp_path)
+        del cast(Any, coordinator)._price_history_tracker
+        coordinator._what_if_history.prices.update(_priced("2026-06-01"))
+        read = AsyncMock(return_value=_statistics("2026-06-01"))
+
+        with patch.object(coordinator_what_if, "async_read_house_and_pv", read):
+            rebuilt, reasons = await async_rebuild_days(
+                coordinator, ["2026-06-01"], SITE, _NOW
+            )
+
+        assert list(rebuilt) == ["2026-06-01"]
+        assert reasons == {}
+
+    @pytest.mark.asyncio
+    async def test_a_configured_pv_source_must_have_statistics(
+        self, tmp_path: Path
+    ) -> None:
+        """The statistics hold the house load only: with PV configured, no day."""
+        coordinator = _with_recorder(tmp_path)
+        cast(Any, coordinator)._cfg.solar_production_power = "sensor.pv_power"
+        coordinator._what_if_history.prices.update(_priced("2026-06-01"))
+        read = AsyncMock(return_value=_statistics("2026-06-01"))
+
+        with patch.object(coordinator_what_if, "async_read_house_and_pv", read):
+            rebuilt, reasons = await async_rebuild_days(
+                coordinator, ["2026-06-01"], SITE, _NOW
+            )
+
+        assert rebuilt == {}
+        assert reasons == {"2026-06-01": REASON_STATISTICS_INCOMPLETE}
+
+    @pytest.mark.asyncio
+    async def test_kept_prices_of_another_price_source_are_not_used(
+        self, tmp_path: Path
+    ) -> None:
+        coordinator = _with_recorder(tmp_path)
+        history = coordinator._what_if_history
+        history.prices.update(_priced("2026-06-01"))
+        history.price_source = {"import_entity": "sensor.old_price"}
+        cast(Any, coordinator)._price_history_tracker.source = {
+            "import_entity": "sensor.new_price"
+        }
+        read = AsyncMock()
+
+        with patch.object(coordinator_what_if, "async_read_house_and_pv", read):
+            rebuilt, reasons = await async_rebuild_days(
+                coordinator, ["2026-06-01"], SITE, _NOW
+            )
+
+        assert rebuilt == {}
+        assert reasons == {"2026-06-01": REASON_PRICE_INCOMPLETE}
+        read.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_recorder_error_leaves_the_days_out(self, tmp_path: Path) -> None:
+        coordinator = _with_recorder(tmp_path)
+        coordinator._what_if_history.prices.update(_priced("2026-06-02"))
+        read = AsyncMock(side_effect=RuntimeError("database is locked"))
+
+        with (
+            patch.object(coordinator_what_if, "async_read_house_and_pv", read),
+            patch.object(coordinator_what_if, "_LOGGER") as logger,
+        ):
+            rebuilt, reasons = await async_rebuild_days(
+                coordinator, ["2026-06-01", "2026-06-02"], SITE, _NOW
+            )
+
+        assert rebuilt == {}
+        assert reasons == {
+            "2026-06-01": REASON_PRICE_INCOMPLETE,
+            "2026-06-02": REASON_STATISTICS_INCOMPLETE,
+        }
+        assert "reading statistics failed" in logger.warning.call_args.args[0]
+
+    @needs_scipy
+    @pytest.mark.asyncio
+    async def test_a_run_replays_rebuilt_days_next_to_measured_ones(
+        self, tmp_path: Path
+    ) -> None:
+        """June 1st has no prices, the 2nd is rebuilt, the 3rd was measured."""
+        planner_input = PlannerInput(battery_rated_capacity_kwh=10.0)
+        before = copy.deepcopy(planner_input)
+        coordinator = _with_recorder(tmp_path, planner_input)
+        history = coordinator._what_if_history
+        measured = make_day(date(2026, 6, 3))
+        history.days[measured.day] = measured
+        history.prices.update(_priced("2026-06-02"))
+        history.history_file = str(_history_file(tmp_path))
+        recorded, prices = dict(history.days), dict(history.prices)
+        read = AsyncMock(return_value=_statistics("2026-06-02"))
+
+        with patch.object(coordinator_what_if, "async_read_house_and_pv", read):
+            response = await async_run_what_if(
+                coordinator, _NOW, history_days=3, scenarios=_BIGGER
+            )
+
+        assert response is not None
+        assert response["days_compared"] == 2
+        assert response["days_measured"] == 1
+        assert response["days_from_statistics"] == 1
+        assert response["skipped_reasons"] == {REASON_PRICE_INCOMPLETE: 1}
+        assert [(day["date"], day["source"]) for day in response["days"]] == [
+            ("2026-06-02", "statistics"),
+            ("2026-06-03", "measured"),
+        ]
+        assert response["months_compared"] == [{"month": "2026-06", "days": 2}]
+        # Read-only: a rebuilt day is not kept, and nothing was written.
+        assert history.days == recorded
+        assert history.prices == prices
+        assert coordinator._last_planner_input == before
+        assert not _history_file(tmp_path).exists()
+        await _until_free()

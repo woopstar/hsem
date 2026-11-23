@@ -19,6 +19,7 @@ from custom_components.hsem.coordinator_energy_backfill import (
     RETRY_INTERVAL_S,
     SOURCE_GRACE_S,
     async_backfill_energy_history,
+    async_read_house_and_pv,
 )
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.models.energy_tracker import (
@@ -552,3 +553,27 @@ class TestThroughTheCycle:
             await async_track_energy(coordinator, _NOW, LiveState(), _cfg())
 
         persist.assert_not_called()
+
+
+class TestHouseAndPv:
+    """Issue #1455: ``hsem.what_if`` reads only what it rebuilds a day from."""
+
+    @pytest.mark.asyncio
+    async def test_grid_and_battery_statistics_are_not_read(
+        self, statistics: _Statistics
+    ) -> None:
+        hourly = await async_read_house_and_pv(_hass(), _cfg(), _H0, _H0 + 2 * _HOUR)
+
+        assert {call[1] for call in statistics.calls} == {_HOUSE, _PV_POWER, _PV_ENERGY}
+        assert hourly.house_kwh == {
+            _H0: pytest.approx(2.0),
+            _H0 + _HOUR: pytest.approx(1.0),
+        }
+        # The PV meter where it has the hour, the PV power for the other.
+        assert hourly.pv_kwh == {
+            _H0: pytest.approx(2.75),
+            _H0 + _HOUR: pytest.approx(0.5),
+        }
+        assert not hourly.grid_import_kwh
+        assert not hourly.grid_export_kwh
+        assert not hourly.battery_net_kwh

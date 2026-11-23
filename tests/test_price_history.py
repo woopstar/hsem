@@ -1807,3 +1807,31 @@ class TestDiagnosticsRoundTrip:
         assert replayed.price_profile == profile
         assert report.is_faithful
         assert _planner_input_to_dict(without)["price_profile"] is None
+
+
+class TestHourlyPrices:
+    """Issue #1455: hourly statistics are priced per hour, real prices only."""
+
+    _HOUR = datetime(2026, 6, 1, 10, 0, tzinfo=UTC)
+
+    def test_an_hour_recorded_in_full_gets_the_mean_of_its_slots(self) -> None:
+        tracker = PriceHistoryTracker()
+        for index, price in enumerate((1.0, 2.0, 3.0, 4.0)):
+            tracker.record(
+                self._HOUR + timedelta(minutes=15 * index), 15, price, price / 2.0
+            )
+        tracker.record(self._HOUR + timedelta(hours=1), 60, 7.0, 0.5)
+
+        hourly = tracker.hourly_prices()
+
+        assert hourly == {
+            self._HOUR: pytest.approx((2.5, 1.25)),
+            self._HOUR + timedelta(hours=1): pytest.approx((7.0, 0.5)),
+        }
+
+    def test_an_hour_with_a_slot_missing_has_no_price(self) -> None:
+        tracker = PriceHistoryTracker()
+        for index in (0, 1, 3):
+            tracker.record(self._HOUR + timedelta(minutes=15 * index), 15, 1.0, 0.5)
+
+        assert tracker.hourly_prices() == {}
