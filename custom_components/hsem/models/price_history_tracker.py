@@ -10,6 +10,9 @@ keeps two things across cycles and restarts:
 * **Held prices** — the prices the price sensors published on the last cycle
   they delivered any, kept per side.  When a price sensor goes down, the
   slots these cover are still planned with their published price.
+* **Level shifts** — how far each side's published prices were from the
+  profile on the last cycle that had any.  The planner uses it for an outage
+  that outlasts the held prices (issue #1452).
 
 The store belongs to one price source: the price entities and their units.
 When that changes, the recorded prices are on another scale and everything
@@ -25,12 +28,18 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Any
 
-from custom_components.hsem.models.price_profile import PricePair, PriceProfile
+from custom_components.hsem.models.price_profile import (
+    LEVEL_SHIFT_MAX_AGE,
+    LevelShift,
+    PricePair,
+    PriceProfile,
+    level_from_row,
+)
 from custom_components.hsem.utils.datetime_utils import utc_key
 from custom_components.hsem.utils.persistence import (
     async_load_history,
@@ -52,6 +61,7 @@ _MAX_STEP_MINUTES = 60
 #: cycle begin at local midnight, and a DST day has 25 hours.
 _HELD_KEEP_HOURS = 26
 _PRICE_EPSILON = 1e-9
+_SIDES = ("import", "export")
 _SOURCE_KEYS = ("import_entity", "export_entity", "import_unit", "export_unit")
 
 
@@ -105,6 +115,7 @@ class PriceHistoryTracker:
     )
     _held_import: dict[datetime, float] = field(default_factory=dict, repr=False)
     _held_export: dict[datetime, float] = field(default_factory=dict, repr=False)
+    _levels: dict[str, LevelShift] = field(default_factory=dict, repr=False)
     _dirty: bool = field(default=False, repr=False)
     _profile_cache: tuple[tzinfo | None, PriceProfile] | None = field(
         default=None, repr=False
@@ -144,6 +155,7 @@ class PriceHistoryTracker:
         self._samples.clear()
         self._held_import.clear()
         self._held_export.clear()
+        self._levels.clear()
         self.outage_since = None
         self._profile_cache = None
         return True
@@ -232,6 +244,41 @@ class PriceHistoryTracker:
             self._dirty = True
         held.update(prices)
 
+    def anchor_level(
+        self,
+        side: str,
+        prices: Mapping[datetime, float],
+        interval_minutes: int,
+        zone: tzinfo | None,
+    ) -> None:
+        """Keep how far one side's published prices are from the profile.
+
+        The shift is kept until the next cycle that can derive one.  It is
+        valid for slots that start within
+        :data:`~custom_components.hsem.models.price_profile.LEVEL_SHIFT_MAX_AGE`
+        after the last published slot ended.
+
+        Args:
+            side: ``"import"`` or ``"export"``.
+            prices: Published price by UTC slot start; not empty.
+            interval_minutes: Slot width in minutes.
+            zone: Local zone the profile is read in.
+        """
+        shift = self._bucket_profile(zone).level_shift(
+            prices, _SIDES.index(side), interval_minutes, zone
+        )
+        if shift is None:
+            return
+        until = max(prices) + timedelta(minutes=interval_minutes) + LEVEL_SHIFT_MAX_AGE
+        previous = self._levels.get(side)
+        if (
+            previous is None
+            or previous[1] != until
+            or abs(previous[0] - shift) >= _PRICE_EPSILON
+        ):
+            self._levels[side] = (shift, until)
+            self._dirty = True
+
     def held_price(self, side: str, start: datetime) -> float | None:
         """Return the last published price of one side for a slot.
 
@@ -269,8 +316,17 @@ class PriceHistoryTracker:
             zone: Local zone the weekday and time of day are read in.
 
         Returns:
-            The profile, cached until the history or the zone changes.
+            The profile, cached until the history or the zone changes, with
+            the level shifts kept by :meth:`anchor_level`.
         """
+        return replace(
+            self._bucket_profile(zone),
+            import_level=self._levels.get("import"),
+            export_level=self._levels.get("export"),
+        )
+
+    def _bucket_profile(self, zone: tzinfo | None) -> PriceProfile:
+        """Return the cached profile of the history, without level shifts."""
         cached = self._profile_cache
         if cached is not None and cached[0] is zone:
             return cached[1]
@@ -305,6 +361,10 @@ class PriceHistoryTracker:
             "held_export": {
                 start.isoformat(): price
                 for start, price in sorted(self._held_export.items())
+            },
+            "levels": {
+                side: [shift, until.isoformat()]
+                for side, (shift, until) in sorted(self._levels.items())
             },
         }
 
@@ -347,6 +407,13 @@ class PriceHistoryTracker:
             tracker._samples[start.astimezone(UTC)] = (step, pair[0], pair[1])
         tracker._held_import = _parse_prices(data.get("held_import"))
         tracker._held_export = _parse_prices(data.get("held_export"))
+        levels = data.get("levels")
+        for side in _SIDES:
+            level = level_from_row(
+                levels.get(side) if isinstance(levels, dict) else None
+            )
+            if level is not None:
+                tracker._levels[side] = (level[0], level[1].astimezone(UTC))
         return tracker
 
     def restore_from(self, loaded: PriceHistoryTracker) -> None:
@@ -356,6 +423,7 @@ class PriceHistoryTracker:
         self._samples = dict(loaded._samples)
         self._held_import = dict(loaded._held_import)
         self._held_export = dict(loaded._held_export)
+        self._levels = dict(loaded._levels)
         self._dirty = False
         self._profile_cache = None
 

@@ -44,6 +44,7 @@ from custom_components.hsem.coordinator_what_if import init_what_if_history
 from custom_components.hsem.custom_sensors.avg_sensor import HSEMAvgSensor
 from custom_components.hsem.models.energy_tracker import (
     BatterySite,
+    EnergyDayEntry,
     EnergySample,
     EnergyTracker,
 )
@@ -969,6 +970,8 @@ class _NewerStores:
                 BatterySite(rated_capacity_kwh=10.0, usable_capacity_kwh=9.0),
                 max_gap_seconds=600.0,
             )
+        # A day from the statistics backfill, and the flag that it has run.
+        energy.apply_backfill([EnergyDayEntry(date="2026-11-18")], NOW.date())
         assert await energy.save_history()
 
         prices = self._price_history_tracker
@@ -1039,6 +1042,9 @@ async def test_backup_round_trips_the_newer_stores(
     assert restored._energy_tracker.daily_log["2026-11-20"].grid_import_kwh == (
         pytest.approx(0.5)
     )
+    assert restored._energy_tracker.backfill_complete is True
+    assert restored._energy_tracker.daily_log["2026-11-18"].backfilled is True
+    assert restored._energy_tracker.daily_log["2026-11-20"].backfilled is False
     assert restored._price_history_tracker.sample_count == 3
     assert (
         restored._price_history_tracker.as_dict()["samples"]
@@ -1178,8 +1184,8 @@ async def test_export_diagnostics_summarises_the_learned_stores(
     }
     assert result["energy_tracker"] == {
         "loaded": True,
-        "days": 1,
-        "first_day": "2026-11-20",
+        "days": 2,
+        "first_day": "2026-11-18",
         "last_day": "2026-11-20",
     }
     assert result["price_history"] == {

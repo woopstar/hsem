@@ -3774,16 +3774,24 @@ this order (issue #1434):
    published prices overlap the profile. See _Price history profile_ below.
 3. The **same-hour price from the nearest earlier day that has data** (day+1
    falls back to day+0; day+2 falls back to day+1, then day+0).
-4. The profile **as recorded**, when step 2 had no published level to shift
-   it to and step 3 found no earlier day. In practice a price sensor outage.
-5. With a profile only: the **median of the published prices** of that side,
+4. The profile **shifted by the last known level shift** (issue #1452), when
+   step 2 had no published level to shift it to and step 3 found no earlier
+   day. Only for a slot that starts less than 24 hours after the last
+   published slot ended. In practice the first day of a price sensor outage
+   after the held prices are over.
+5. The profile **as recorded**, when step 4 has no shift or the slot is too
+   late for it.
+6. With a profile only: the **median of the published prices** of that side,
    or of the prices filled so far when none is published. A slot the profile
    does not know is never priced `0.0` next to real prices.
-6. `0.0`.
+7. `0.0`.
 
-Steps 2 to 6 are estimates. The slot is recorded as missing whichever of
-them fills it. With no profile, or an empty one, only steps 1, 3 and 6 apply
+Steps 2 to 7 are estimates. The slot is recorded as missing whichever of
+them fills it. With no profile, or an empty one, only steps 1, 3 and 7 apply
 and the result is the same as before issue #1434.
+
+The order of steps 2 and 3, the bucket minimum and step 4 were scored on real
+prices. See _Validation on real prices_ below.
 
 **With a sub-hourly price source the estimate is per quarter (issue #1219).**
 On the `slot_in_day` path the lookup is by wall-clock time:
@@ -3855,10 +3863,21 @@ profile is a plain value in `PlannerInput.price_profile`
   (`PREDICTION_ATTRIBUTES` in `hourly_data_populator/prices_solcast.py`).
   Their values price a slot exactly as before and such a slot is covered.
   They are left out of `published_import` and `published_export`, so they
-  are never recorded and never held. Every other recognised price attribute
-  (`raw_today`, `raw_tomorrow`, `prices`, `prices_today`, `prices_tomorrow`,
-  `data`) and a flat price count as published. When a slot has both, the
+  are never recorded and never held. A flat price counts as published, and
+  so do `raw_today` and `raw_tomorrow` (`PUBLISHED_ATTRIBUTES`): always, the
+  sensor state rules below do not apply to them. When a slot has both, the
   recorded and held value is the real price, whichever was read last.
+- **Attributes that hold either (issue #1452).** `prices`, `prices_today`,
+  `prices_tomorrow` and `data` hold published prices in one integration and
+  predictions in another (`docs/price-attributes.md`). The populator reads
+  the sensor's own state (`_published_until`), first match wins:
+  `forecast_data: true` on the sensor makes every entry a prediction
+  (Strømligning's tomorrow sensors while tomorrow is a forecast); with
+  `known_until` only an entry that starts before that time is published
+  (Open Spot Forecast); an attribute with an entry that starts 60 hours or
+  more after the cycle's first slot is a prediction as a whole, because
+  day-ahead prices end with tomorrow (EPEX Spot with the Energyforecast
+  source). Otherwise every entry is published.
 - A published price for a slot that has not started is not recorded: a
   source that revises its future values would otherwise store a prediction.
 - An estimate (profile, earlier day, `0.0`) is produced inside the planner
@@ -3872,7 +3891,9 @@ profile is a plain value in `PlannerInput.price_profile`
   is dropped. An unavailable sensor reports no unit, which is not a change.
   A change inside the sensor (VAT, tariff, template) cannot be seen.
 - The file is `.storage/hsem_price_history.json`, written with the shared
-  atomic JSON writer and only when something was added or changed. A missing
+  atomic JSON writer and only when something was added or changed. It also
+  holds the held prices and the last known level shifts (`levels`, see
+  below). A missing
   or unreadable file, or one of another schema version, gives an empty
   history.
 
@@ -3884,7 +3905,7 @@ profile.
 
 ```text
 day value                      = mean of a bucket's samples on one local date
-bucket                         = median of its day values, kept only with >= 3 days
+bucket                         = median of its day values, kept only with >= 6 days
 quarter[weekday, hour, minute], hour[weekday, hour]
 any_day_quarter[hour, minute], any_day_hour[hour]    (every weekday together)
 
@@ -3900,9 +3921,11 @@ lookup(slot) = first that exists of:
   start. Each quarter of a sample is converted on its own, so both passes of
   the fall-back hour land on one date of one bucket and count as one day,
   and the hour the spring-forward day skips gets no sample.
-- A bucket needs **3 days**. One or two days are not a pattern. The weekday
-  buckets therefore need three weeks; until then the every-weekday buckets
-  answer, after three days.
+- A bucket needs **6 days** (`PROFILE_MIN_DAYS`). With fewer days the shifted
+  profile was a worse estimate than the nearest earlier day (issue #1452).
+  The weekday buckets therefore need six weeks; until then the every-weekday
+  buckets answer, after six days. Before that the profile is empty and the
+  nearest earlier day is used, as before issue #1434.
 - The **median** keeps one extreme day from moving a bucket.
 
 **Level shift.** The profile holds prices of up to eight weeks ago. Their
@@ -3915,8 +3938,118 @@ estimate[i]  = lookup(slot i)[side] + shift[side]
 ```
 
 The shift needs at least 240 minutes of slots that have both a published
-price and a profile value. Without it the nearest earlier day is used, and
-the profile as recorded only when there is no earlier day either.
+price and a profile value. Without it the nearest earlier day is used.
+
+**Last known level shift (issue #1452).** Every cycle in which a price sensor
+publishes prices, the coordinator derives the same shift for that side from
+what the sensor published and keeps it in the price history file
+(`PriceHistoryTracker.anchor_level`). It travels with the profile as
+`PriceProfile.import_level` and `export_level`:
+
+```text
+level[side] = (shift[side], last published slot end + 24 h)
+estimate[i] = lookup(slot i)[side] + shift[side]     when slot i starts before that time
+              lookup(slot i)[side]                    otherwise
+```
+
+- It is used only when the horizon has no published level and no earlier
+  day, which is a price outage after the held prices are over.
+- A cycle that cannot derive a shift (an outage, a sensor that publishes
+  predictions only, a profile that is too thin) keeps the shift it had.
+- A changed price source drops both shifts with the rest of the store.
+- One day after the last published price the shift lowered the error of the
+  profile. Two days after, it raised it. That is the reason for the 24 hours.
+
+#### Validation on real prices (issue #1452)
+
+`scripts/score_price_estimates.py` hides each day of a series of real
+day-ahead prices in turn, builds the profile from the 56 days before it with
+the production code, and scores every 15-minute slot of the hidden day. The
+import price is the spot price with 25 % VAT and the export price is the spot
+price. A tariff that is fixed, or depends on the time of day only, is the same
+on every day and drops out of all three estimates, so the import error is
+1.25 times the export error.
+
+Mean absolute error (MAE) and the worst single slot, in DKK/kWh. "vs nearest
+day" is the mean difference of the daily MAE and its standard error; negative
+means better than the nearest earlier day.
+
+**Fill order, 56 days of history.**
+
+| Prices                                      | Estimate                       | Import MAE | Import worst | Export MAE | Export worst | Export MAE vs nearest day | Days better |
+| ------------------------------------------- | ------------------------------ | ---------- | ------------ | ---------- | ------------ | ------------------------- | ----------- |
+| DK1, 358 target days (Nov 2025 to Nov 2026) | Nearest earlier day            | 0.311      | 5.078        | 0.249      | 4.062        |                           |             |
+|                                             | Shifted profile, same weekday  | 0.312      | 5.562        | 0.249      | 4.450        | +0.001 ± 0.006            | 51 %        |
+|                                             | Shifted profile, every weekday | 0.317      | 5.419        | 0.254      | 4.336        | +0.005 ± 0.004            | 50 %        |
+|                                             | Unshifted profile              | 0.338      | 5.745        | 0.271      | 4.596        | +0.022 ± 0.011            | 47 %        |
+| DK2, 358 target days                        | Nearest earlier day            | 0.329      | 7.378        | 0.263      | 5.903        |                           |             |
+|                                             | Shifted profile, same weekday  | 0.326      | 7.281        | 0.261      | 5.825        | -0.003 ± 0.006            | 49 %        |
+|                                             | Unshifted profile              | 0.365      | 7.001        | 0.292      | 5.601        | +0.028 ± 0.011            | 45 %        |
+| DK1, 61 target days (committed sample)      | Nearest earlier day            | 0.468      | 4.139        | 0.374      | 3.311        |                           |             |
+|                                             | Shifted profile, same weekday  | 0.499      | 4.949        | 0.399      | 3.959        | +0.025 ± 0.021            | 43 %        |
+|                                             | Unshifted profile              | 0.617      | 4.326        | 0.493      | 3.461        | +0.119 ± 0.046            | 44 %        |
+
+The shifted profile and the nearest earlier day are equal within the
+standard error on a year of prices in both price areas. The data does not
+favour a change, so **the order is unchanged**: the shifted profile first.
+The nearest earlier day has the lower worst slot in DK1 and the higher one in
+DK2. The unshifted profile is worse than both.
+
+**Bucket minimum.** Export MAE of the shifted profile by the number of days
+in its buckets, DK1, 358 target days. Nearest earlier day: 0.249.
+
+| Days in bucket | Same weekday | vs nearest day | Every weekday | vs nearest day |
+| -------------- | ------------ | -------------- | ------------- | -------------- |
+| 1              | 0.325        | +0.076 ± 0.010 | 0.272         | +0.023 ± 0.005 |
+| 2              | 0.276        | +0.028 ± 0.008 | 0.264         | +0.015 ± 0.004 |
+| 3              | 0.267        | +0.018 ± 0.008 | 0.263         | +0.015 ± 0.005 |
+| 4              | 0.254        | +0.005 ± 0.007 | 0.252         | +0.003 ± 0.004 |
+| 5              | 0.253        | +0.004 ± 0.007 | 0.252         | +0.003 ± 0.004 |
+| 6              | 0.248        | -0.001 ± 0.006 | 0.246         | -0.003 ± 0.004 |
+| 7              | 0.251        | +0.002 ± 0.006 | 0.249         | -0.000 ± 0.004 |
+| 8              | 0.249        | +0.001 ± 0.006 | 0.245         | -0.004 ± 0.004 |
+
+The fill order as implemented, while the history grows (export MAE, DK1):
+
+| History days | Minimum 3 | Minimum 4 | Minimum 6 |
+| ------------ | --------- | --------- | --------- |
+| 3            | 0.263     | 0.249     | 0.249     |
+| 4            | 0.252     | 0.252     | 0.249     |
+| 5            | 0.252     | 0.252     | 0.249     |
+| 6            | 0.246     | 0.246     | 0.246     |
+| 14           | 0.243     | 0.243     | 0.243     |
+| 21           | 0.267     | 0.244     | 0.244     |
+| 28           | 0.254     | 0.254     | 0.243     |
+| 35           | 0.253     | 0.253     | 0.246     |
+| 42           | 0.248     | 0.248     | 0.248     |
+| 56           | 0.249     | 0.249     | 0.249     |
+
+A bucket of three days is worse than the nearest earlier day by two to three
+standard errors, for same-weekday and for every-weekday buckets, in DK1 and
+in DK2. Six days is the first size that is not worse. A minimum of 6 is never
+behind a minimum of 3 or 4 in the second table, and ahead of them after 3,
+21, 28 and 35 days of history. **The minimum is 6** (it was 3).
+
+**Outage after the held prices are over.** DK1, 358 target days, export.
+
+| Days since the last price | Estimate                          | Export MAE | Export worst | vs unshifted   | Days better |
+| ------------------------- | --------------------------------- | ---------- | ------------ | -------------- | ----------- |
+| 1                         | Unshifted profile                 | 0.271      | 4.596        |                |             |
+| 1                         | Profile with the last known shift | 0.249      | 4.450        | -0.021 ± 0.009 | 57 %        |
+| 1                         | Last recorded day                 | 0.249      | 4.062        | -0.022 ± 0.011 | 53 %        |
+| 2                         | Unshifted profile                 | 0.271      | 4.596        |                |             |
+| 2                         | Profile with the last known shift | 0.296      | 4.613        | +0.025 ± 0.011 | 47 %        |
+| 2                         | Last recorded day                 | 0.318      | 4.734        | +0.047 ± 0.012 | 41 %        |
+
+DK2 gives the same picture: -0.031 ± 0.009 after one day and +0.015 ± 0.011
+after two. **The last known shift is used for one day** and the profile as
+recorded after that.
+
+To repeat: `python3 scripts/score_price_estimates.py` scores the committed
+sample (`scripts/data/dk1_day_ahead_prices.csv`, 119 days of DK1 prices from
+Energinet, www.energidataservice.dk, CC BY 4.0).
+`--prices <file> --fetch 2025-10-01 2026-11-21 DK1` downloads and scores the
+year the tables above use.
 
 **Price sensor outage.** A price side is in an outage when its price sensor
 publishes no slot of the horizon: the sensor is unavailable, publishes
@@ -3925,7 +4058,9 @@ what each price sensor last published for a slot (the _held_ prices, per
 side, persisted in the same file, dropped 26 hours after the slot started).
 A price sensor that publishes only prediction attributes this cycle is
 alive: its side is not in an outage and is priced as before, and nothing is
-recorded or held from it.
+recorded or held from it. This is logged as a warning once per sensor, and
+the diagnostics dump reports it per side under `price_sensors`
+(`published`, `predictions` or `none`).
 
 - A failed side gets its held price on every slot that has one. A held price
   wins over a forecast sensor's prediction for the slot.

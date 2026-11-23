@@ -74,6 +74,10 @@ Service, Nordpool, Tibber, Amber Electric, and any sensor that publishes hourly
 sensor attributes, detects each attribute's cadence independently, and projects
 the raw values onto the planning horizon.
 
+Which of these attributes hold published prices and which hold predictions is
+listed per integration in [Price Attributes](price-attributes.md). Only
+published prices are recorded in the price history.
+
 The forecast sensor is read after the main sensor, so where both cover a slot
 the forecast sensor's price is used. A forecast source may be a binary sensor.
 

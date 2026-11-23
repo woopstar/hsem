@@ -14,6 +14,7 @@ with a history file of its own, so the financial history keeps its format.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -226,6 +227,7 @@ class EnergyDayEntry:
         priced_throughput_kwh: Battery throughput with a known cycle cost.
         usable_capacity_kwh: Usable capacity as last seen that day.
         rated_capacity_kwh: Rated capacity as last seen that day.
+        backfilled: The day is from long-term statistics, not measured.
     """
 
     date: str
@@ -250,12 +252,14 @@ class EnergyDayEntry:
     priced_throughput_kwh: float = 0.0
     usable_capacity_kwh: float = 0.0
     rated_capacity_kwh: float = 0.0
+    backfilled: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         """Return the entry as a plain dict for JSON serialisation."""
         data: dict[str, Any] = {"date": self.date}
         for name in (*SUMMED_FIELDS, "usable_capacity_kwh", "rated_capacity_kwh"):
             data[name] = round(getattr(self, name), 4)
+        data["backfilled"] = self.backfilled
         return data
 
     @classmethod
@@ -274,6 +278,7 @@ class EnergyDayEntry:
         entry = cls(date=day)
         for name in (*SUMMED_FIELDS, "usable_capacity_kwh", "rated_capacity_kwh"):
             setattr(entry, name, finite_float(data.get(name)) or 0.0)
+        entry.backfilled = data.get("backfilled") is True
         return entry
 
 
@@ -291,10 +296,12 @@ class EnergyTracker:
         daily_log: Daily records by ISO date, today's included, bounded to
             :data:`MAX_DAILY_LOG_DAYS` days.
         history_file: Path of the JSON history file.
+        backfill_complete: The statistics backfill has run (issue #1450).
     """
 
     daily_log: dict[str, EnergyDayEntry] = field(default_factory=dict)
     history_file: str = ""
+    backfill_complete: bool = False
     _last_sample: EnergySample | None = field(default=None, repr=False)
     _saved_at: datetime | None = field(default=None, repr=False)
     _revision: int = field(default=0, repr=False)
@@ -429,6 +436,27 @@ class EnergyTracker:
             entry.wear_cost += (charged + discharged) * site.cycle_cost_per_kwh
             entry.priced_throughput_kwh += charged + discharged
 
+    def apply_backfill(self, days: Iterable[EnergyDayEntry], today: date) -> int:
+        """Add days from statistics, close the backfill, return the count.
+
+        Only a day before the first measured day and before *today* is taken,
+        and never one with a record: a measured day is not changed.
+        """
+        measured = [
+            key for key, entry in self.daily_log.items() if not entry.backfilled
+        ]
+        before = min([*measured, today.isoformat()])
+        added = 0
+        for entry in days:
+            if entry.date < before and entry.date not in self.daily_log:
+                entry.backfilled = True
+                self.daily_log[entry.date] = entry
+                added += 1
+        self._prune(today)
+        self.backfill_complete = True
+        self._revision += 1
+        return added
+
     def _prune(self, today: date) -> None:
         """Drop records older than :data:`MAX_DAILY_LOG_DAYS` days."""
         oldest_kept = (today - timedelta(days=MAX_DAILY_LOG_DAYS)).isoformat()
@@ -478,6 +506,7 @@ class EnergyTracker:
         summary: dict[str, Any] = {
             "month": month,
             "days": len(days),
+            "backfilled_days": sum(1 for entry in days if entry.backfilled),
             "observed_hours": round(total["observed_hours"], 1),
         }
         for name, hours_name in _PUBLISHED_TOTALS:
@@ -540,6 +569,7 @@ class EnergyTracker:
             ``month`` (the current month's key), ``this_month``,
             ``previous_month`` and ``monthly``: the current month and every
             month with a record among the eleven before it, oldest first.
+            ``backfilled_*``: the days taken from statistics.
         """
         published = self._published
         if published is not None and published[:2] == (self._revision, today):
@@ -554,11 +584,15 @@ class EnergyTracker:
             for month in reversed(months)
             if month == current or month in recorded
         ]
+        backfilled = sorted(k for k, e in self.daily_log.items() if e.backfilled)
         attributes: dict[str, Any] = {
             "month": current,
             "this_month": monthly[-1],
             "previous_month": self.month_summary(previous_month(current)),
             "monthly": monthly,
+            "backfilled_days": len(backfilled),
+            "backfilled_from": backfilled[0] if backfilled else None,
+            "backfilled_until": backfilled[-1] if backfilled else None,
         }
         # Four sensors ask for the same tables on every cycle.
         self._published = (self._revision, today, attributes)
@@ -572,6 +606,7 @@ class EnergyTracker:
         """Return the tracker's state as a plain dict for JSON serialisation."""
         return {
             "schema": SCHEMA_VERSION,
+            "backfill_complete": self.backfill_complete,
             "last_sample": (
                 None if self._last_sample is None else self._last_sample.as_dict()
             ),
@@ -596,6 +631,7 @@ class EnergyTracker:
             if entry is not None:
                 tracker.daily_log[entry.date] = entry
         tracker._last_sample = EnergySample.from_dict(data.get("last_sample"))
+        tracker.backfill_complete = data.get("backfill_complete") is True
         return tracker
 
     def restore_from(self, loaded: EnergyTracker) -> None:

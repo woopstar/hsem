@@ -4,6 +4,9 @@ Runs once per cycle, right after the price populator:
 
 * The real price of every started slot the price sensors published is
   recorded, and what each sensor published is kept per side as *held* prices.
+* How far each side's published prices are from the price profile is kept
+  as that side's level shift, for an outage that outlasts the held prices
+  (issue #1452).
 * A side whose price sensor publishes nothing this cycle is in an outage.
   Its held prices are written to the slots they cover and the cause is
   reported through degraded mode.  The other side keeps its live prices.
@@ -41,7 +44,7 @@ from custom_components.hsem.models.price_history_tracker import (
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.utils.datetime_utils import utc_key
-from custom_components.hsem.utils.logger import async_log
+from custom_components.hsem.utils.logger import async_log, log_latched_warning
 
 _HISTORY_FILE_NAME = "hsem_price_history.json"
 
@@ -193,6 +196,7 @@ def update_price_history(
     for side, prices in published.items():
         if prices:
             tracker.hold(side, prices)
+            tracker.anchor_level(side, prices, interval_minutes, now.tzinfo)
     if not outage:
         return PriceHistoryResult(coverage)
     if hours > PRICE_OUTAGE_MAX_HOURS:
@@ -253,6 +257,26 @@ async def async_apply_price_history(
             "warning",
             "The price sensors or their units changed: the price history was "
             "reset and starts recording again.",
+        )
+    content = coverage.price_sensor_content()
+    coordinator._price_sensor_content = content
+    sensors = {
+        "import": cfg.import_electricity_price_sensor,
+        "export": cfg.export_electricity_price_sensor,
+    }
+    for side, entity_id in sensors.items():
+        # Once per sensor, not every cycle: such a sensor prices its slots
+        # as before, and silently gets no price history and no held prices.
+        log_latched_warning(
+            tracker,
+            f"predictions_only:{side}:{entity_id}",
+            content[side] == "predictions",
+            "The %s price sensor %s publishes predictions only: its prices "
+            "are used for planning, and none is recorded in the price "
+            "history or held for a price sensor outage "
+            "(docs/price-attributes.md).",
+            side,
+            entity_id,
         )
     result = update_price_history(
         tracker,

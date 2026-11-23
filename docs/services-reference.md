@@ -204,6 +204,7 @@ are redacted for safe sharing in issue reports.
 | `planner_output`     | `dict` | Latest `PlannerOutput` summary (redacted)                                                                                          |
 | `apply_result`       | `dict` | Latest hardware write status summary                                                                                               |
 | `ocpp_tls`           | `dict` | OCPP TLS mode, server certificate expiry, SANs, CA fingerprint and the CN-mismatch setting, or the setup error. Never key material |
+| `price_sensors`      | `dict` | What each price sensor published last cycle, per side: `published`, `predictions` or `none` (`docs/price-attributes.md`)           |
 | `efficiency_learner` | `dict` | Battery efficiency learner: round-trip status, and status, sample count and power-step count per direction                         |
 | `energy_tracker`     | `dict` | Energy tracker: number of days held, first and last day                                                                            |
 | `price_history`      | `dict` | Price history: number of recorded slots, retention in days and the start of a running price outage                                 |

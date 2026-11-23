@@ -1964,7 +1964,7 @@ also triggers `Degraded` mode (issue #1434).
 The planner fills a price-missing slot from the price history first: the
 median real price of that weekday and time of day over the last 8 weeks,
 shifted to the level of the prices that are published now (issue #1434).
-The history is used once it holds 3 days. When it does not know the slot, or
+The history is used once it holds 6 days (issue #1452). When it does not know the slot, or
 too few prices are published to take the level from, it uses the same-hour
 price from the nearest earlier day that has data (with quarter-hourly prices:
 the same quarter of that hour, issue #1219), instead of planning against

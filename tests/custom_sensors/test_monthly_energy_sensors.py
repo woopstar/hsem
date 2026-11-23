@@ -176,7 +176,13 @@ class TestRecorderFootprint:
             if key not in HSEMMonthlyEnergySensor._unrecorded_attributes
         }
 
-        assert set(recorded) == {"month", "reason"}
+        assert set(recorded) == {
+            "month",
+            "reason",
+            "backfilled_days",
+            "backfilled_from",
+            "backfilled_until",
+        }
         assert not any(isinstance(value, (list, dict)) for value in recorded.values())
         assert len(json.dumps(recorded)) < 2048
         assert {"this_month", "previous_month", "monthly"} <= set(attributes)
