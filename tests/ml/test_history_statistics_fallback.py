@@ -155,6 +155,8 @@ async def test_purged_days_are_filled_from_statistics(
     entry = history_cache._energy_history_cache[(id(hass), ENTITY_ID, 15)]
     assert entry.anchor is not None
     assert entry.statistics_until is not None
+    # Raw states give the anchor; the statistics one is for histories without.
+    assert entry.statistics_anchor is None
     assert history_status._statistics_days[(id(hass), ENTITY_ID)] == pytest.approx(
         20.0, abs=0.1
     )
@@ -290,6 +292,90 @@ async def test_refresh_keeps_the_statistics_and_appends_raw_slots(
     assert history_status._statistics_days[(id(hass), ENTITY_ID)] == pytest.approx(
         18.0, abs=0.1
     )
+
+
+@pytest.mark.asyncio
+async def test_a_statistics_only_history_is_refreshed_incrementally(
+    long_term_statistics: AsyncMock,
+) -> None:
+    """Without raw states the refresh reads only the new hours (issue #1451)."""
+    recorder = _Recorder([])
+    long_term_statistics.return_value = _hours(NOW - timedelta(days=20), NOW)
+    hass = _hass()
+
+    first = await _read(hass, recorder, NOW)
+    entry = history_cache._energy_history_cache[(id(hass), ENTITY_ID, 15)]
+    assert entry.anchor is None
+    assert entry.statistics_anchor == NOW
+
+    long_term_statistics.return_value = _hours(NOW, NOW + HOUR)
+    second = await _read(hass, recorder, NOW + HOUR)
+
+    # The second read asks for the hours after the newest one held, and the
+    # raw states are not read again.
+    assert long_term_statistics.await_count == 2
+    assert long_term_statistics.await_args_list[1].args == (
+        ENTITY_ID,
+        NOW,
+        NOW + HOUR,
+        "kWh",
+    )
+    assert len(recorder.windows) == 1
+    assert second.samples[: len(first.samples)] == first.samples
+    assert [utc_key(sample[0]) for sample in second.samples[len(first.samples) :]] == [
+        NOW + timedelta(minutes=15 * slot) for slot in range(4)
+    ]
+    assert entry.statistics_anchor == NOW + HOUR
+    assert history_status._statistics_days[(id(hass), ENTITY_ID)] == pytest.approx(
+        20.0 + 1.0 / 24.0
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_statistics_refresh_without_new_hours_keeps_its_anchor(
+    long_term_statistics: AsyncMock,
+) -> None:
+    recorder = _Recorder([])
+    long_term_statistics.return_value = _hours(NOW - timedelta(days=20), NOW)
+    hass = _hass()
+    first = await _read(hass, recorder, NOW)
+    entry = history_cache._energy_history_cache[(id(hass), ENTITY_ID, 15)]
+
+    # Nothing compiled yet, then a failed read: the history stays as it is.
+    long_term_statistics.return_value = {}
+    assert (await _read(hass, recorder, NOW + HOUR)).samples == first.samples
+    long_term_statistics.side_effect = RuntimeError("database is locked")
+    assert (await _read(hass, recorder, NOW + 2 * HOUR)).samples == first.samples
+    assert entry.statistics_anchor == NOW
+
+    # An hour without energy gives no slots, but it is not read again.
+    long_term_statistics.side_effect = None
+    long_term_statistics.return_value = {NOW: 0.0}
+    history_cache._statistics_failed_at.clear()
+    assert (await _read(hass, recorder, NOW + 3 * HOUR)).samples == first.samples
+    assert entry.statistics_anchor == NOW + HOUR
+
+
+@pytest.mark.asyncio
+async def test_a_statistics_only_history_is_read_in_full_once_a_day(
+    long_term_statistics: AsyncMock,
+) -> None:
+    """The daily full read picks up raw states that have appeared since."""
+    recorder = _Recorder([])
+    long_term_statistics.return_value = _hours(NOW - timedelta(days=20), NOW)
+    hass = _hass()
+    await _read(hass, recorder, NOW)
+
+    later = NOW + history_cache.FULL_READ_INTERVAL
+    recorder.states = _meter_states(later - timedelta(hours=3), later)
+    long_term_statistics.return_value = _hours(NOW - timedelta(days=20), later)
+    await _read(hass, recorder, later)
+
+    assert len(recorder.windows) == 2
+    assert long_term_statistics.await_args_list[1].args[1] == later - timedelta(days=90)
+    entry = history_cache._energy_history_cache[(id(hass), ENTITY_ID, 15)]
+    assert entry.anchor is not None
+    assert entry.statistics_anchor is None
 
 
 @pytest.mark.asyncio

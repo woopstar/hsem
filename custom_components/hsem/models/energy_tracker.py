@@ -23,9 +23,9 @@ from typing import Any
 from custom_components.hsem.utils.metering import mean_power_kwh, meter_delta
 from custom_components.hsem.utils.misc import round_or_none
 from custom_components.hsem.utils.persistence import (
+    async_load_history,
     aware_datetime_from_iso,
     finite_float,
-    read_json_history_file,
     write_json_history_file,
 )
 
@@ -675,9 +675,10 @@ class EnergyTracker:
         """Restore the tracker from its history file, if there is one."""
         if not self.history_file:
             return
-        data = await asyncio.to_thread(read_json_history_file, Path(self.history_file))
-        if data is not None:
-            self.restore_from(EnergyTracker.from_dict(data))
+        await async_load_history(
+            Path(self.history_file),
+            lambda data: self.restore_from(EnergyTracker.from_dict(data)),
+        )
 
 
 def _self_sufficiency(

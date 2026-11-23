@@ -487,6 +487,12 @@ fills its free places from statistics on every update:
   configured. It is taken from the configuration, not from the current
   states, so a sensor that has no state yet during start-up is still the
   source. The hourly `mean` in W is the energy of that hour in Wh.
+- Nothing is read while the house power sensor, or an EV charger sensor that
+  is subtracted, has no state with a unit (issue #1451). Home Assistant
+  returns statistics in the unit of the current state. Without a state it
+  returns the unit they are stored in. After a unit change, for example from
+  kW to W, a read at start-up would give days that are wrong by a factor of 1000. The read is tried again on the next update. An unavailable sensor
+  still has its unit, so it does not stop the backfill.
 - Values are read in the sensor's own unit, without conversion, exactly as
   the live path reads the states. Measured and backfilled days in one window
   are always on the same scale.
@@ -572,6 +578,10 @@ treatment.
 - Without statistics the read behaves as before.
 - A failed statistics read is logged as a warning with its traceback. The raw
   read stands, and the statistics are tried again an hour later.
+- A history built from statistics alone is read in full once a day. In
+  between, a refresh reads only the hours after the newest one it holds
+  (issue #1451). Raw states that appear later are picked up by the daily
+  read.
 
 `ml_statistics_history_days` on `sensor.hsem_plan_explanation_sensor` shows
 how many days of the history came from statistics. The share shrinks as raw

@@ -33,7 +33,7 @@ from custom_components.hsem.coordinator_tracking import (
     init_financial_tracker,
     init_prediction_tracker,
 )
-from custom_components.hsem.coordinator_what_if import cancel_what_if
+from custom_components.hsem.coordinator_what_if import shutdown_what_if
 from custom_components.hsem.custom_sensors.ocpp_server import OCPPServer
 from custom_components.hsem.custom_sensors.state_collector import (  # noqa: F401 — kept for backward compat
     async_collect_all_states,
@@ -272,8 +272,9 @@ class CoordinatorLifecycleMixin(CoordinatorSharedState):
             performance_task.cancel()
             self._performance_task = None
 
-        # A what-if replay in the executor stops before its next solve.
-        cancel_what_if()
+        # A what-if replay stops before its next solve, and its executor is
+        # shut down.
+        shutdown_what_if()
 
         # Clear retained live-power state (window, replan budget, source
         # signature) so a stale estimate cannot survive teardown.

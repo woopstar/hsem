@@ -40,7 +40,7 @@ for the HSEM (Home Smart Energy Management) project. Read this before making any
 | `coordinator_daily_plan.py`              | Plan side of the daily plan-vs-actual tracker: each slot's planned energy, once                                                                    |
 | `coordinator_performance.py`             | Performance record: per-cycle sample, hindsight evaluation as a background executor task (issue #1182)                                             |
 | `coordinator_efficiency.py`              | Feeds and persists the battery efficiency learner once per cycle (issue #1431)                                                                     |
-| `coordinator_what_if.py`                 | `hsem.what_if` (issue #1432): copies completed days into the what-if history, runs the replay in the executor, single flight                       |
+| `coordinator_what_if.py`                 | `hsem.what_if` (issue #1432): copies completed days into the what-if history, runs the replay in its own executor, single flight                   |
 | `entity_availability.py`                 | Per-input unavailable/recovery transition tracking and logging                                                                                     |
 | `custom_sensors/block_observation.py`    | Avg-sensor downtime tracking: heartbeat, unobserved intervals, `block_observed()` (issues #1101/#1110)                                             |
 | `coordinator_energy_backfill.py`         | One-time backfill of the energy tracker's daily records from hourly long-term statistics (issue #1450)                                             |
@@ -1984,6 +1984,13 @@ them (recorder executor) and is used in two places:
     stops the backfill (info log, once).
   - The source comes from the config (`configured_house_power_entity`), not
     from `hass.states`, so start-up cannot pick the derived house load.
+  - Nothing is read while the house source or a subtracted charger has no
+    state with a unit (`_source_without_unit`, issue #1451). With no unit
+    requested, `statistics_during_period` converts to the unit of the current
+    state and returns the stored unit when there is no state, so a start-up
+    read after a kW to W change is off by 1000. The empty result is not
+    cached: the next update tries again. A test `hass` must give the sources
+    a state with `unit_of_measurement`.
   - A failed read is caught, logged once and cached for the hour.
     `_async_handle_update` runs before `super().async_added_to_hass()`, so it
     must never raise.
@@ -2007,7 +2014,10 @@ them (recorder executor) and is used in two places:
   is remembered for an hour (`_statistics_failed_at`). The share is published
   through `history_status.record_statistics_days()` as
   `ml_statistics_history_days`. The ML path subtracts no EV energy, raw or
-  statistics.
+  statistics. A statistics-only history has no raw `anchor`; it keeps
+  `statistics_anchor` (end of the newest hour read) and a refresh reads only
+  the hours after it through `_statistics_between()` (issue #1451). The daily
+  full read is unchanged.
 
 `tests/ml/conftest.py` makes `StatisticsReader.read_hourly_energy` return
 nothing for every ML test; set `long_term_statistics.return_value` to give
@@ -3003,11 +3013,13 @@ Tests: `tests/planner/test_hindsight_scoring.py`, `tests/models/test_performance
 - Start and end energy are carried over counted from the end-of-discharge floor and capped at the scenario's capacity. Extra capacity starts each day empty.
 - Battery wear enters through `solve_hindsight_oracle(throughput_cost_per_kwh=...)`. `HindsightRun.cost` stays the grid cost; the what-if adds wear itself. Scores never pass a wear.
 - A day counts only when every scenario of the call solved, so all rows cover the same days.
-- Single flight is process-wide: `coordinator_what_if._Flight.cancel` (a `threading.Event`, `None` when idle), not a coordinator attribute, so a reload cannot start a second replay. `async_run_what_if` shields the executor job, sets the event when the caller is cancelled, and frees the slot in the job's done-callback: only when the thread has returned. Teardown calls `cancel_what_if()`. The run checks the event before each day and before each solve.
+- Single flight is process-wide: `coordinator_what_if._Flight.cancel` (a `threading.Event`, `None` when idle), not a coordinator attribute, so a reload cannot start a second replay. `async_run_what_if` shields the executor job, sets the event when the caller is cancelled, and frees the slot in the job's done-callback: only when the thread has returned. Teardown calls `shutdown_what_if()`. The run checks the event before each day and before each solve.
+- The replay has its own single-worker `ThreadPoolExecutor` (`_Flight.executor`, issue #1454), never `hass.async_add_executor_job`: a run of minutes must not hold a worker of the shared pool the planner jobs use. `_executor(hass)` makes it on first use and listens once for `EVENT_HOMEASSISTANT_STOP`, because a stop does not unload the entry. `shutdown_what_if()` cancels, removes the listener and shuts down without waiting. If the submit raises, `async_run_what_if` frees the slot itself: no job means no done-callback.
+- `async_record_days` compares days with `RecordedDay.matches`, never with the dataclass `==`: a day loaded from disk is rounded, a fresh one is not. `matches` allows one unit of the last stored decimal per reading.
 - Payback is `investment ÷ grid_savings_per_year`. Never divide by a wear-inclusive figure: `resolve_cycle_cost` is the purchase price spread over the battery's life, so that charges the battery twice. `savings_after_wear` is reported next to `grid_savings`. No yearly figure below `MIN_DAYS_FOR_YEARLY` compared days.
 - A scenario's per-slot power cap is its own limit plus what the meter read above the configured limit (`_power_caps`), for both sides. An identical scenario must save exactly nothing.
 - `RecordedDay` stores `rated_kwh` and both efficiencies of its day; `replay_day` rebuilds the load with them and solves both sides with today's limits. A day is not recorded before `PerformanceRequest.site` is known.
-- A run is bounded: `RUN_TIME_LIMIT_S` (days not reached are `run_time_limit`), `oracle_timeout` is told apart from `oracle_unsolved` by the solve's elapsed time, and `PAUSE_BETWEEN_DAYS_S` sleeps between days. scipy's HiGHS releases the GIL during a solve.
+- A run is bounded: `RUN_TIME_LIMIT_S`, checked before every solve through `replay_day(out_of_time=...)` so a run passes it by one solve at most (days not reached or not finished are `run_time_limit`), `oracle_timeout` is told apart from `oracle_unsolved` by the solve's elapsed time, and `PAUSE_BETWEEN_DAYS_S` sleeps between days. scipy's HiGHS releases the GIL during a solve.
 - The service lives in `services_what_if.py` and is read-only: no hardware write, no planner cycle, no tracker write.
 
 Tests: `tests/models/test_what_if_history.py`, `tests/utils/test_what_if.py`, `tests/test_coordinator_what_if.py`, `tests/test_services_what_if.py`.
@@ -3045,12 +3057,30 @@ Tests: `tests/test_coordinator_meter_tracking.py` (forced periods, missed saving
 
 **Rules:**
 
-- A new history file is written with `write_json_history_file` and read with `read_json_history_file`. Do not add another `mkstemp` to the code base: `grep -rn mkstemp custom_components` must only find `utils/persistence.py`.
+- A new history file is written with `write_json_history_file` and restored with `async_load_history` (see the next section). Do not add another `mkstemp` to the code base: `grep -rn mkstemp custom_components` must only find `utils/persistence.py`.
 - The on-disk format did not change: financial, savings and daily history pass `indent=2`, the prediction and performance history are compact.
 - The directory is created inside the writer, in the thread. A directory that cannot be created is now a `False` from `save_history()` (logged by `persist_all_trackers`), where it used to raise out of the tracker.
 - Tests patch `tempfile.mkstemp` / `json.dump` / `os.replace` globally, so they keep working whichever module does the write.
 
 Tests: `tests/test_tracker_history_writers.py::TestOneSharedWriter`, `tests/utils/test_persistence.py::TestWriteJsonHistoryFile`.
+
+## A History File That Failed to Load Is Never Overwritten (issue #1446)
+
+`read_json_history_file` returned `None` for a missing file and for a failed read alike. A tracker then started empty with its path set, and the next save replaced the file.
+
+**Rules:**
+
+- A tracker restores its own file with `await async_load_history(Path(self.history_file), restore)` from `utils/persistence.py`. `restore` takes the parsed dict. Do not call `read_json_history_file` from a tracker: it is the read-only reader for the backup and the debug export.
+- Missing file: empty tracker, no warning.
+- `OSError` on stat, open or read: the file stays, the path goes into `_PENDING_LOADS`, and `write_json_history_file` returns `False` for it. `ensure_history_loaded(tracker)` retries `tracker.load_history()`; `persist_all_trackers` calls it before every save and skips the tracker silently while the file is still unreadable. `DailyPlanVsActualTracker._save_record_to_history` calls it before it appends.
+- Invalid JSON, not an object, not a regular file, too large, or a `restore` that raises: the file is moved to `<name>.corrupt-<UTC timestamp>` by `set_aside_history_file`, then a new one may be written. If the move fails the path is pending.
+- One warning per file, from `utils/persistence.py` through `HSEM_LOGGER`. The logger does not propagate, so tests patch `persistence._LOGGER.warning` instead of using `caplog`.
+- Every tracker in `TRACKER_REGISTRY` needs `history_file` and `load_history()` (the `Persistable` protocol). Guard `load_history()` with `if not self.history_file: return`: `Path("")` is the working directory.
+- A late successful load: `DailyPlanVsActualTracker` keeps the records added while the file was unreadable (the file wins for a day in both), `SavingsTracker` adds the file's totals and days to what it collected (it counts from zero until loaded, so `_restore` adds), `WhatIfHistory` merges. The `restore_from` trackers and the learner replace the in-memory state with the file, as a restart would.
+- `accumulate_daily_plan_actuals` calls `ensure_history_loaded` every cycle: the daily tracker is not in the registry and saves once a day.
+- The `.corrupt-` stamp has microseconds. HSEM does not delete these files.
+
+Tests: `tests/test_history_load_failure.py`.
 
 ## `utils/dynamic_floor.py` Split Into State and Bridge Arithmetic (issue #1274)
 

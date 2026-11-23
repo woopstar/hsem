@@ -26,10 +26,16 @@ from typing import Protocol
 
 from custom_components.hsem.coordinator_state import CoordinatorSharedState
 from custom_components.hsem.utils.logger import async_log
+from custom_components.hsem.utils.persistence import ensure_history_loaded
 
 
 class Persistable(Protocol):
     """Protocol for tracker classes that persist their own state to disk."""
+
+    history_file: str
+
+    async def load_history(self) -> None:
+        """Restore the state from disk."""
 
     async def save_history(self) -> bool:
         """Persist current state to disk. Return ``True`` on success."""
@@ -153,6 +159,10 @@ async def persist_all_trackers(
     for name in names:
         tracker = TRACKER_REGISTRY[name](coordinator)
         if tracker is None:
+            continue
+        # A history file that could not be read is loaded before it is
+        # written, and skipped while it still cannot be read (issue #1446).
+        if not await ensure_history_loaded(tracker):
             continue
         if not await tracker.save_history():
             label = name.lstrip("_").removesuffix("_tracker")

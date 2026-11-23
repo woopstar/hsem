@@ -13,7 +13,10 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from custom_components.hsem.utils.persistence import write_json_history_file
+from custom_components.hsem.utils.persistence import (
+    async_load_history,
+    write_json_history_file,
+)
 
 #: Days of daily snapshots kept in memory and in the history file. One full
 #: year (plus a leap day) is enough for every rollup, including ``this_year``.
@@ -530,6 +533,15 @@ class FinancialTracker:
         history_file = self.history_file
         self.__dict__.update(loaded.__dict__)
         self.history_file = history_file
+
+    async def load_history(self) -> None:
+        """Restore the tracker from its history file, if there is one."""
+        if not self.history_file:
+            return
+        await async_load_history(
+            Path(self.history_file),
+            lambda data: self.restore_from(FinancialTracker.from_dict(data)),
+        )
 
     async def save_history(self) -> bool:
         """Persist tracker state to disk atomically.
