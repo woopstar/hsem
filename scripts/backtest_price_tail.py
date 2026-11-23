@@ -425,6 +425,7 @@ def simulate(
     lines: list[str] = []
     solve_seconds: list[float] = []
     total = 0.0
+    tails = 0
     day = first
     while day <= last:
         cost = 0.0
@@ -457,9 +458,12 @@ def simulate(
                     battery_soc_pct=stored / site.rated_kwh * 100.0,
                     price_points=points,
                     price_profile=prices.profile(now),
+                    price_published_until=prices.days[published[-1]][-1]
+                    + timedelta(minutes=STEP),
                 )
             )
             solve_seconds.append(time.perf_counter() - started)
+            tails += int(plan.terminal_price_tail is not None)
             by_start = {slot.start.astimezone(UTC): slot for slot in plan.slots}
             for quarter in range(60 // STEP):
                 start = (now + timedelta(minutes=STEP * quarter)).astimezone(UTC)
@@ -496,6 +500,8 @@ def simulate(
                 "days": (last - first).days + 1,
                 "total_cost": round(total, 2),
                 "end_stored_kwh": round(stored, 2),
+                "runs": len(ordered),
+                "runs_with_tail": tails,
                 "run_planner_median_s": round(median(ordered), 3),
                 "run_planner_max_s": round(ordered[-1], 3),
             }

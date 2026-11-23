@@ -425,6 +425,9 @@ def build_planner_input(
         consumption_averages=consumption_averages,
         price_points=price_points,
         price_profile=price_profile,
+        price_published_until=(
+            forecast_coverage.import_published_until if forecast_coverage else None
+        ),
         solcast_slots=solcast_slots,
         excess_export_enabled=bool(cfg.batteries_enable_excess_export),
         excess_export_discharge_buffer_pct=(

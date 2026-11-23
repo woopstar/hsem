@@ -41,6 +41,11 @@ class ForecastCoverage:
             are recorded in the price history and held for an outage
             (issue #1434).
         published_export: The same for the export price sensor.
+        import_published_until: End of the last real import price the import
+            price sensor published this cycle, also when that is past the
+            last slot; ``datetime.max`` for a flat price.  ``None`` when it
+            published none.  The estimated price tail never prices a time
+            before it (issue #1453).
         import_predictions_only: Whether the import price sensor wrote
             slots this cycle and none of them from a real price.  Such a
             sensor is alive, so the side is not in an outage.
@@ -61,6 +66,7 @@ class ForecastCoverage:
     published_export: Mapping[datetime, float] = field(
         default_factory=dict, compare=False
     )
+    import_published_until: datetime | None = field(default=None, compare=False)
     import_predictions_only: bool = field(default=False, compare=False)
     export_predictions_only: bool = field(default=False, compare=False)
     single_sided_prices: bool = False

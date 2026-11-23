@@ -1839,6 +1839,7 @@
       }
     ],
     "price_profile": null,
+    "price_published_until": null,
     "solar_corrector": null,
     "solcast_slots": [
       {

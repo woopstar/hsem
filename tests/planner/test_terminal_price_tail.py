@@ -13,27 +13,39 @@ With the tail enabled, half of ``V`` comes from price-profile prices for the
 
 from __future__ import annotations
 
+import json
+import math
 from dataclasses import replace
-from datetime import datetime, timedelta
-from typing import Any
-from unittest.mock import MagicMock
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any, cast
+from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
-from custom_components.hsem.coordinator_builder import build_planner_input
+from custom_components.hsem.coordinator_builder import (
+    build_planner_input,
+    generate_recommendation_intervals,
+)
 from custom_components.hsem.custom_sensors.config_reader import build_sensor_config
+from custom_components.hsem.custom_sensors.hourly_data_populator.prices_solcast import (
+    populate_price_and_solcast_from_snapshot,
+)
 from custom_components.hsem.flows.battery_economics import (
     get_battery_economics_step_schema,
     validate_battery_economics_input,
 )
+from custom_components.hsem.models.forecast_coverage import ForecastCoverage
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.plan_explanation import PlanExplanation
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
 from custom_components.hsem.models.price_profile import PriceProfile
+from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.planner.cost_helpers import (
     terminal_end_value,
     terminal_soc_value,
@@ -46,6 +58,8 @@ from custom_components.hsem.planner.terminal_tail import (
     TERMINAL_TAIL_WEIGHT,
     TerminalPriceTail,
     flag_terminal_price_tail,
+    resolve_terminal_price_tail,
+    tail_share,
     terminal_price_tail,
 )
 from custom_components.hsem.utils.prices import SlotPrice
@@ -83,16 +97,28 @@ def _profile(hours: range = range(24), **levels: Any) -> PriceProfile:
     )
 
 
-def _slots(hours: int, offset: float = 0.0) -> list[PlannedSlot]:
-    """Return hourly slots from Monday 00:00 priced at the shape plus *offset*."""
-    return [
-        PlannedSlot(
-            start=_MONDAY + timedelta(hours=hour),
-            end=_MONDAY + timedelta(hours=hour + 1),
-            price=SlotPrice(import_price=_shape(hour % 24) + offset, export_price=0.0),
+def _slots(
+    hours: int, offset: float = 0.0, *, step: int = 60, start: datetime = _MONDAY
+) -> list[PlannedSlot]:
+    """Return *hours* of slots from *start*, priced at the shape plus *offset*.
+
+    Slots are stepped in real time, so a DST day keeps its 23 or 25 hours.
+    """
+    slots = []
+    for index in range(hours * 60 // step):
+        begin = (start.astimezone(UTC) + timedelta(minutes=step * index)).astimezone(
+            _TZ
         )
-        for hour in range(hours)
-    ]
+        slots.append(
+            PlannedSlot(
+                start=begin,
+                end=(begin.astimezone(UTC) + timedelta(minutes=step)).astimezone(_TZ),
+                price=SlotPrice(
+                    import_price=_shape(begin.hour) + offset, export_price=0.0
+                ),
+            )
+        )
+    return slots
 
 
 def _tail(
@@ -102,16 +128,20 @@ def _tail(
     *,
     weight: float = 0.5,
     last_day_value: float | None = _LAST_DAY_VALUE,
+    step: int = 60,
+    published_until: datetime | None = None,
+    top_n: int = 4,
 ) -> TerminalPriceTail | None:
     return terminal_price_tail(
         slots,
         published,
         profile,
-        60,
+        step,
         _TZ,
         last_day_value=last_day_value,
         weight=weight,
-        top_n=4,
+        published_until=published_until,
+        top_n=top_n,
         charge_eff=_ETA,
         discharge_eff=_ETA,
         cycle_cost_per_kwh=_CYCLE_COST,
@@ -132,11 +162,11 @@ def _value(shift: float) -> float:
 class TestNoTail:
     """Every case that must leave the end value alone."""
 
-    def test_weight_zero_disables_it(self) -> None:
-        assert _tail(_slots(24), [True] * 24, _profile(), weight=0.0) is None
-
-    def test_a_negative_weight_disables_it(self) -> None:
-        assert _tail(_slots(24), [True] * 24, _profile(), weight=-1.0) is None
+    @pytest.mark.parametrize("weight", [0.0, -1.0, math.nan, math.inf, -math.inf])
+    def test_a_weight_that_is_zero_or_not_a_share_disables_it(
+        self, weight: float
+    ) -> None:
+        assert _tail(_slots(24), [True] * 24, _profile(), weight=weight) is None
 
     def test_no_profile(self) -> None:
         assert _tail(_slots(24), [True] * 24, None) is None
@@ -155,8 +185,87 @@ class TestNoTail:
         assert _tail(_slots(24), [True] * 24, _profile(range(23))) is None
 
 
+class TestTailShare:
+    """The weight is a share between 0 and 1, and never NaN."""
+
+    @pytest.mark.parametrize(
+        ("weight", "expected"),
+        [(0.0, 0.0), (0.5, 0.5), (1.0, 1.0), (3.0, 1.0), (-2.0, 0.0)],
+    )
+    def test_clamped(self, weight: float, expected: float) -> None:
+        assert tail_share(weight) == pytest.approx(expected)
+
+    @pytest.mark.parametrize("weight", [math.nan, math.inf, -math.inf])
+    def test_not_finite_is_off(self, weight: float) -> None:
+        assert tail_share(weight) == pytest.approx(0.0)
+
+
+class TestPublishedPricesAreNeverEstimated:
+    """A horizon that ends before the last published price gets no tail.
+
+    The horizon starts at local midnight.  Day-ahead prices cover today and,
+    from about 13:00, tomorrow, so a 12, 24 or 36 hour horizon can end
+    before prices that are already published.
+    """
+
+    _END_OF_MONDAY = _MONDAY + timedelta(days=1)
+    _END_OF_TUESDAY = _MONDAY + timedelta(days=2)
+
+    @pytest.mark.parametrize(
+        ("hours", "published_days", "expected"),
+        [
+            # Tomorrow not published yet.
+            (12, 1, None),  # ends at noon, today is published to midnight
+            (24, 1, True),  # ends where the published prices end
+            (36, 1, None),  # the shift would end inside the tail
+            (48, 1, False),  # tail starts 24 h after the last price
+            # Tomorrow published.
+            (12, 2, None),
+            (24, 2, None),  # the tail would be tomorrow, which is published
+            (36, 2, None),
+            (48, 2, True),
+        ],
+    )
+    def test_horizons(
+        self, hours: int, published_days: int, expected: bool | None
+    ) -> None:
+        """``expected``: no tail, a shifted tail or a tail as recorded."""
+        until = _MONDAY + timedelta(days=published_days)
+        priced = [slot.end <= until for slot in _slots(hours)]
+
+        tail = _tail(
+            _slots(hours, offset=0.7), priced, _profile(), published_until=until
+        )
+
+        if expected is None:
+            assert tail is None
+            return
+        assert tail is not None
+        assert tail.start == _MONDAY + timedelta(hours=hours)
+        assert tail.start >= until
+        assert tail.shifted is expected
+        assert tail.tail_value_per_kwh == pytest.approx(
+            _value(0.7 if expected else 0.0)
+        )
+
+    def test_a_flat_price_is_published_for_ever(self) -> None:
+        """The populator reports ``datetime.max`` for a flat price: no tail."""
+        forever = datetime.max.replace(tzinfo=UTC)
+
+        assert (
+            _tail(_slots(48), [True] * 48, _profile(), published_until=forever) is None
+        )
+
+    def test_unknown_reach_falls_back_to_the_priced_slots(self) -> None:
+        """Without the populator's time the last priced slot is the anchor."""
+        tail = _tail(_slots(24, offset=0.7), [True] * 24, _profile())
+
+        assert tail is not None
+        assert tail.shifted is True
+
+
 class TestTailPrices:
-    """The profile gives the shape; the level follows the 24-hour rule."""
+    """The profile gives the shape; one level applies to the whole tail."""
 
     def test_tail_is_the_24_hours_after_the_horizon(self) -> None:
         tail = _tail(_slots(24), [True] * 24, _profile())
@@ -171,7 +280,7 @@ class TestTailPrices:
         tail = _tail(_slots(24, offset=0.7), [True] * 24, _profile())
 
         assert tail is not None
-        assert tail.shifted_slots == 24
+        assert tail.shifted is True
         assert tail.peak_import == pytest.approx(_PEAK + 0.7)
         assert tail.night_import == pytest.approx(_NIGHT + 0.7)
         assert tail.tail_value_per_kwh == pytest.approx(_value(0.7))
@@ -182,37 +291,50 @@ class TestTailPrices:
         tail = _tail(_slots(48, offset=0.7), published, _profile())
 
         assert tail is not None
-        assert tail.shifted_slots == 0
+        assert tail.shifted is False
         assert tail.tail_value_per_kwh == pytest.approx(_value(0.0))
 
-    def test_the_shift_ends_24_hours_after_the_last_price(self) -> None:
-        """36 h horizon, 24 h published: the first 12 tail hours are shifted."""
-        published = [True] * 24 + [False] * 12
-        tail = _tail(_slots(36, offset=0.7), published, _profile())
+    def test_a_tail_is_never_priced_at_two_levels(self) -> None:
+        """36 h horizon, 24 h published: the shift would end at tail hour 12.
 
-        assert tail is not None
-        assert tail.start == _MONDAY + timedelta(hours=36)
-        assert tail.shifted_slots == 12
-        # Tuesday's peak (17-21) is shifted, Wednesday's night is not.
-        assert tail.peak_import == pytest.approx(_PEAK + 0.7)
-        assert tail.night_import == pytest.approx(_NIGHT)
+        Tuesday's evening peak would be shifted and Wednesday's night not,
+        which moves the spread between them by the shift.  No tail.
+        """
+        published = [True] * 24 + [False] * 12
+
+        assert _tail(_slots(36, offset=0.7), published, _profile()) is None
 
     def test_outage_uses_the_last_known_shift_while_it_is_valid(self) -> None:
-        """No published slot: the stored shift is used until it is too old."""
-        until = _MONDAY + timedelta(days=1, hours=12)
-        profile = _profile(import_level=(0.3, until))
-        tail = _tail(_slots(24), [False] * 24, profile)
+        """No priced slot: the stored shift covers the whole tail."""
+        until = _MONDAY + timedelta(days=2)
+        tail = _tail(_slots(24), [False] * 24, _profile(import_level=(0.3, until)))
 
         assert tail is not None
-        assert tail.shifted_slots == 12
+        assert tail.shifted is True
         assert tail.night_import == pytest.approx(_NIGHT + 0.3)
-        assert tail.peak_import == pytest.approx(_PEAK)
+        assert tail.peak_import == pytest.approx(_PEAK + 0.3)
+
+    def test_outage_with_a_shift_that_ends_inside_the_tail_gives_no_tail(self) -> None:
+        until = _MONDAY + timedelta(days=1, hours=12)
+        profile = _profile(import_level=(0.3, until))
+
+        assert _tail(_slots(24), [False] * 24, profile) is None
+
+    def test_outage_with_a_shift_that_is_over_uses_the_profile_as_recorded(
+        self,
+    ) -> None:
+        until = _MONDAY + timedelta(days=1)
+        tail = _tail(_slots(24), [False] * 24, _profile(import_level=(0.3, until)))
+
+        assert tail is not None
+        assert tail.shifted is False
+        assert tail.tail_value_per_kwh == pytest.approx(_value(0.0))
 
     def test_outage_without_a_stored_shift_uses_the_profile_as_recorded(self) -> None:
         tail = _tail(_slots(24, offset=0.7), [False] * 24, _profile())
 
         assert tail is not None
-        assert tail.shifted_slots == 0
+        assert tail.shifted is False
         assert tail.tail_value_per_kwh == pytest.approx(_value(0.0))
 
     def test_too_few_published_slots_give_no_shift(self) -> None:
@@ -221,7 +343,108 @@ class TestTailPrices:
         tail = _tail(_slots(24, offset=0.7), published, _profile())
 
         assert tail is not None
-        assert tail.shifted_slots == 0
+        assert tail.shifted is False
+
+
+class TestQuarterHourSlots:
+    """15-minute slots: the tail is priced per quarter."""
+
+    @staticmethod
+    def _quarter_profile() -> PriceProfile:
+        """The hourly shape, with the :45 quarter of 18:00 at 8.0."""
+        quarters = {
+            (hour, minute): (_shape(hour), 0.0)
+            for hour in range(24)
+            for minute in (0, 15, 30, 45)
+        }
+        quarters[(18, 45)] = (8.0, 0.0)
+        return PriceProfile(any_day_quarters=quarters)
+
+    def test_tail_has_96_slots(self) -> None:
+        slots = _slots(24, step=15)
+        tail = _tail(slots, [True] * 96, self._quarter_profile(), step=15)
+
+        assert tail is not None
+        assert tail.slot_count == 96
+        assert tail.start == _MONDAY + timedelta(days=1)
+        assert tail.end == _MONDAY + timedelta(days=2)
+
+    def test_peak_reads_single_quarters(self) -> None:
+        """The dearest quarter counts once, not as a whole hour."""
+        slots = _slots(24, step=15)
+        tail = _tail(slots, [True] * 96, self._quarter_profile(), step=15, top_n=2)
+
+        assert tail is not None
+        # The horizon's own 18:45 is 4.0, the profile's 8.0: one of 96 slots,
+        # so the median shift stays 0.
+        assert tail.shifted is True
+        assert tail.peak_import == pytest.approx((8.0 + _PEAK) / 2)
+        assert tail.night_import == pytest.approx(_NIGHT)
+
+    def test_the_shift_needs_240_minutes_of_quarters(self) -> None:
+        """15 priced quarters are 225 minutes: no shift.  16 are enough."""
+        slots = _slots(24, offset=0.7, step=15)
+        profile = self._quarter_profile()
+
+        short = _tail(slots, [True] * 15 + [False] * 81, profile, step=15)
+        enough = _tail(
+            slots,
+            [True] * 16 + [False] * 80,
+            profile,
+            step=15,
+            published_until=_MONDAY + timedelta(days=1),
+        )
+
+        assert short is not None
+        assert short.shifted is False
+        assert enough is not None
+        assert enough.shifted is True
+        assert enough.night_import == pytest.approx(_NIGHT + 0.7)
+
+    def test_published_prices_past_a_quarter_hour_horizon_give_no_tail(self) -> None:
+        slots = _slots(24, step=15)
+        until = slots[-1].end + timedelta(minutes=15)
+
+        assert (
+            _tail(
+                slots,
+                [True] * 96,
+                self._quarter_profile(),
+                step=15,
+                published_until=until,
+            )
+            is None
+        )
+
+
+class TestDstDay:
+    """A tail over the fall-back day is 24 real hours."""
+
+    def test_fall_back_day(self) -> None:
+        """Sunday 2026-10-25 has 25 hours; 02:00 comes twice.
+
+        The tail starts at Sunday 00:00 and ends 24 real hours later, at
+        23:00 the same day.  Its night holds seven hourly slots.
+        """
+        saturday = datetime(2026, 10, 24, tzinfo=_TZ)
+        profile = PriceProfile(
+            any_day_hours={
+                hour: (9.0 if hour == 2 else _shape(hour), 0.0) for hour in range(24)
+            }
+        )
+        slots = _slots(24, start=saturday)
+        # Saturday's own 02:00 is 1.0, the profile's 9.0: the median shift is 0.
+        tail = _tail(slots, [True] * 24, profile)
+
+        assert tail is not None
+        assert tail.start == datetime(2026, 10, 25, tzinfo=_TZ)
+        assert tail.slot_count == 24
+        assert tail.end.astimezone(UTC) - tail.start.astimezone(UTC) == timedelta(
+            hours=24
+        )
+        assert tail.end.astimezone(_TZ).hour == 23
+        # 00, 01, 02, 02 again, 03, 04, 05.
+        assert tail.night_import == pytest.approx((5 * _NIGHT + 2 * 9.0) / 7)
 
 
 class TestBlend:
@@ -263,7 +486,7 @@ class TestFlagged:
         assert data["start"] == tail.start.isoformat()
         assert data["end"] == tail.end.isoformat()
         assert data["slot_count"] == 24
-        assert data["shifted_slots"] == 24
+        assert data["shifted"] is True
         assert data["weight"] == pytest.approx(0.5)
         assert data["value_per_kwh"] == pytest.approx(tail.value_per_kwh, abs=1e-4)
         assert data["tail_value_per_kwh"] == pytest.approx(_value(0.0), abs=1e-4)
@@ -445,6 +668,199 @@ def test_a_dearer_tail_never_ends_the_horizon_emptier() -> None:
         > low.terminal_price_tail.value_per_kwh + 0.5
     )
     assert high.battery_soc_at_end >= low.battery_soc_at_end - 1e-6
+
+
+# ---------------------------------------------------------------------------
+# The off path is the planner of origin/main
+# ---------------------------------------------------------------------------
+
+_GOLDEN = json.loads(
+    (
+        Path(__file__).parent.parent / "fixtures" / "terminal_tail_off_golden.json"
+    ).read_text()
+)
+
+
+@_needs_scipy
+@pytest.mark.parametrize("name", sorted(_GOLDEN["cycles"]))
+@pytest.mark.parametrize("enabled_without_history", [False, True])
+def test_off_path_equals_the_plan_recorded_from_main(
+    name: str, enabled_without_history: bool
+) -> None:
+    """The cost and every slot match what ``origin/main`` planned.
+
+    The fixture was recorded from ``origin/main`` before this feature, from
+    the same corpus cycles.  With the tail off, and with it on but without a
+    price history, the plan must be that plan.
+    """
+    golden = _GOLDEN["cycles"][name]
+    path = next(p for p in corpus_paths() if p.stem == name)
+    recorded, _report = load_planner_input(path)
+    assert recorded.terminal_price_tail_weight == pytest.approx(0.0)
+    if enabled_without_history:
+        recorded = replace(
+            recorded,
+            price_profile=None,
+            terminal_price_tail_weight=TERMINAL_TAIL_WEIGHT,
+        )
+
+    output = run_planner(recorded)
+
+    assert output.terminal_price_tail is None
+    assert output.plan_cost is not None
+    assert output.winner_name == golden["winner_name"]
+    assert output.plan_cost.total_cost == pytest.approx(golden["total_cost"], abs=1e-6)
+    assert output.plan_cost.score == pytest.approx(golden["score"], abs=1e-6)
+    assert output.plan_cost.terminal_soc_value == pytest.approx(
+        golden["terminal_soc_value"], abs=1e-6
+    )
+    assert output.battery_soc_at_end == pytest.approx(
+        golden["battery_soc_at_end"], abs=1e-6
+    )
+    assert len(output.slots) == len(golden["slots"])
+    for slot, (label, charged, discharged, grid_import, grid_export) in zip(
+        output.slots, golden["slots"]
+    ):
+        assert slot.recommendation == label, slot.start
+        assert slot.batteries_charged_kwh == pytest.approx(charged, abs=1e-6)
+        assert slot.batteries_discharged_kwh == pytest.approx(discharged, abs=1e-6)
+        assert slot.grid_import_kwh == pytest.approx(grid_import, abs=1e-6)
+        assert slot.grid_export_kwh == pytest.approx(grid_export, abs=1e-6)
+
+
+class TestOffPathDoesNoWork:
+    """With the tail off nothing is read and nothing is built."""
+
+    @pytest.mark.parametrize("weight", [0.0, math.nan, -1.0])
+    def test_resolve_returns_before_touching_its_inputs(self, weight: float) -> None:
+        """A ``tsi`` of ``None`` would raise if a list were built from it."""
+        inp = PlannerInput(
+            now_iso="", price_profile=_profile(), terminal_price_tail_weight=weight
+        )
+
+        tail = resolve_terminal_price_tail(
+            _slots(24), cast("Any", None), inp, _TZ, _LAST_DAY_VALUE, 4, _CYCLE_COST
+        )
+
+        assert tail is None
+
+
+# ---------------------------------------------------------------------------
+# How far the published prices reach, from the populator to the planner
+# ---------------------------------------------------------------------------
+
+_IMPORT = "sensor.import_price"
+_EXPORT = "sensor.export_price"
+
+
+def _day_prices(day: datetime) -> list[dict[str, Any]]:
+    """Return hourly price entries for one local day."""
+    return [
+        {"start": (day + timedelta(hours=hour)).isoformat(), "price": 1.0 + hour / 100}
+        for hour in range(24)
+    ]
+
+
+def _populate(
+    hours: int, attributes: dict[str, Any], states: dict[str, Any] | None = None
+) -> tuple[PlannerInput, ForecastCoverage]:
+    """Populate a horizon of *hours* at Monday 09:00 and build the planner input."""
+    cfg = SensorConfig()
+    cfg.recommendation_interval_minutes = 60
+    cfg.recommendation_interval_length = hours
+    cfg.electricity_price_update_interval = 60
+    cfg.import_electricity_price_sensor = _IMPORT
+    cfg.export_electricity_price_sensor = _EXPORT
+    now = _MONDAY.replace(hour=9)
+    with patch("homeassistant.util.dt.now", return_value=now):
+        recs = generate_recommendation_intervals(60, hours)
+        coverage = populate_price_and_solcast_from_snapshot(
+            recs,
+            StateSnapshot(
+                live=LiveState(),
+                sensor_attributes=attributes,
+                sensor_states=states or {},
+            ),
+            cfg,
+        )
+        planner_input = build_planner_input(
+            cfg=cfg,
+            live=LiveState(),
+            hourly_recommendations=recs,
+            previous_winner_name=None,
+            previous_winner_score=0.0,
+            forecast_coverage=coverage,
+        )
+    return planner_input, coverage
+
+
+class TestPublishedUntil:
+    """The populator reports where the published import prices end."""
+
+    @pytest.mark.parametrize("hours", [12, 24, 36, 48])
+    def test_prices_past_the_horizon_count(self, hours: int) -> None:
+        """Today and tomorrow are published: the reach is the end of tomorrow."""
+        entries = _day_prices(_MONDAY) + _day_prices(_MONDAY + timedelta(days=1))
+        planner_input, coverage = _populate(
+            hours,
+            {_IMPORT: {"prices_today": entries}, _EXPORT: {"prices_today": entries}},
+        )
+
+        assert coverage.import_published_until == _MONDAY + timedelta(days=2)
+        assert planner_input.price_published_until == _MONDAY + timedelta(days=2)
+        assert len(planner_input.price_points) == hours
+
+    def test_only_today_published(self) -> None:
+        entries = _day_prices(_MONDAY)
+        planner_input, _coverage = _populate(
+            48, {_IMPORT: {"prices_today": entries}, _EXPORT: {"prices_today": entries}}
+        )
+
+        assert planner_input.price_published_until == _MONDAY + timedelta(days=1)
+
+    def test_predictions_do_not_count(self) -> None:
+        """A ``forecast`` attribute holds predictions: nothing is published."""
+        entries = _day_prices(_MONDAY)
+        planner_input, coverage = _populate(
+            24, {_IMPORT: {"forecast": entries}, _EXPORT: {"forecast": entries}}
+        )
+
+        assert coverage.import_published_until is None
+        assert planner_input.price_published_until is None
+
+    def test_a_flat_price_is_published_for_ever(self) -> None:
+        planner_input, _coverage = _populate(24, {}, {_IMPORT: "2.5", _EXPORT: "0.5"})
+
+        assert planner_input.price_published_until == datetime.max.replace(tzinfo=UTC)
+
+    def test_without_coverage_nothing_is_known(self) -> None:
+        planner_input = build_planner_input(
+            cfg=SensorConfig(),
+            live=LiveState(),
+            hourly_recommendations=[],
+            previous_winner_name=None,
+            previous_winner_score=0.0,
+        )
+
+        assert planner_input.price_published_until is None
+
+
+@_needs_scipy
+def test_the_planner_gives_no_tail_when_published_prices_reach_further() -> None:
+    """``run_planner`` passes the populator's time on to the tail."""
+    path = next(p for p in corpus_paths() if p.stem == "cycle-2026-09-24-1016")
+    recorded = replace(_recorded(path), terminal_price_tail_weight=TERMINAL_TAIL_WEIGHT)
+    horizon_end = run_planner(recorded).slots[-1].end
+
+    at_the_end = run_planner(replace(recorded, price_published_until=horizon_end))
+    past_the_end = run_planner(
+        replace(recorded, price_published_until=horizon_end + timedelta(minutes=15))
+    )
+
+    assert at_the_end.terminal_price_tail is not None
+    assert past_the_end.terminal_price_tail is None
+    assert past_the_end.explanation.terminal_price_tail is None
+    _same_plan(past_the_end, run_planner(_recorded(path)))
 
 
 # ---------------------------------------------------------------------------

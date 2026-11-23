@@ -15,6 +15,7 @@ Pure — no I/O, no Home Assistant imports.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
@@ -25,16 +26,16 @@ from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_profile import (
     LEVEL_SHIFT_MAX_AGE,
+    LevelShift,
     PriceProfile,
     level_shift_applies,
-    median_shift,
 )
 from custom_components.hsem.models.time_series import TimeSeriesIndex
 from custom_components.hsem.planner.cost_helpers import (
     TERMINAL_NIGHT_END_HOUR,
     terminal_end_value,
 )
-from custom_components.hsem.utils.datetime_utils import as_tz
+from custom_components.hsem.utils.datetime_utils import as_tz, utc_key
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import clamp_efficiency
 
@@ -53,6 +54,20 @@ TERMINAL_TAIL_WEIGHT = 0.5
 TERMINAL_TAIL_CONSTRAINT = "terminal_value_from_estimated_price_tail"
 
 
+def tail_share(weight: float) -> float:
+    """Return *weight* as a share between 0 and 1.
+
+    Args:
+        weight: The configured weight of the tail's end value.
+
+    Returns:
+        The weight clamped to 0-1; ``0.0`` when it is not a finite number.
+    """
+    if not math.isfinite(weight):
+        return 0.0
+    return min(max(weight, 0.0), 1.0)
+
+
 @dataclass(frozen=True)
 class TerminalPriceTail:
     """The estimated prices behind a plan's terminal end value.
@@ -61,8 +76,8 @@ class TerminalPriceTail:
         start: Start of the tail, which is the end of the horizon.
         end: End of the tail.
         slot_count: Slots the tail holds.  All of them are estimates.
-        shifted_slots: Slots priced with the level shift; the others carry
-            the profile as recorded.
+        shifted: Whether the tail carries the level shift.  It applies to
+            every slot or to none.
         peak_import: Mean of the tail's most expensive import prices.
         night_import: Mean import price of the tail's night slots.
         tail_value_per_kwh: End value derived from the tail alone.
@@ -76,7 +91,7 @@ class TerminalPriceTail:
     start: datetime
     end: datetime
     slot_count: int
-    shifted_slots: int
+    shifted: bool
     peak_import: float
     night_import: float
     tail_value_per_kwh: float
@@ -95,7 +110,7 @@ class TerminalPriceTail:
             "start": self.start.isoformat(),
             "end": self.end.isoformat(),
             "slot_count": self.slot_count,
-            "shifted_slots": self.shifted_slots,
+            "shifted": self.shifted,
             "peak_import_price": round(self.peak_import, 4),
             "night_import_price": round(self.night_import, 4),
             "tail_value_per_kwh": round(self.tail_value_per_kwh, 4),
@@ -105,73 +120,99 @@ class TerminalPriceTail:
         }
 
 
+def _tail_level(
+    slots: Sequence[PlannedSlot],
+    published: Sequence[bool],
+    profile: PriceProfile,
+    interval_minutes: int,
+    tz: tzinfo | None,
+    published_until: datetime | None,
+) -> LevelShift | None:
+    """Return the level shift for the tail and the time it stops applying.
+
+    The shift is the one the missing-price fill uses: the median difference
+    between the priced horizon slots and the profile
+    (:meth:`PriceProfile.level_shift`, issue #1434).  It applies for 24 hours
+    after the last published price.  Without enough priced slots the last
+    known level shift of the profile is used, with its own time limit (issue
+    #1452).
+
+    Args:
+        slots: The horizon's slots with populated prices.
+        published: Per slot, whether its price came from a price source.
+        profile: Weekday and time-of-day profile of real prices.
+        interval_minutes: Slot width in minutes.
+        tz: Local zone the weekday and time of day are read in.
+        published_until: End of the last published price, or ``None`` when
+            unknown; the end of the last priced slot is then used.
+
+    Returns:
+        ``(shift, first start that is too late for it)``, or ``None`` when
+        there is no shift to apply.
+    """
+    priced = [slot for slot, is_priced in zip(slots, published) if is_priced]
+    shift = profile.level_shift(
+        {slot.start: slot.price.import_price for slot in priced},
+        0,
+        interval_minutes,
+        tz,
+    )
+    if shift is None:
+        return profile.import_level
+    anchor = published_until or max(slot.end for slot in priced)
+    return shift, anchor + LEVEL_SHIFT_MAX_AGE
+
+
 def _tail_import_prices(
     slots: Sequence[PlannedSlot],
     published: Sequence[bool],
     profile: PriceProfile,
     interval_minutes: int,
     tz: tzinfo | None,
-) -> list[tuple[datetime, float, bool]] | None:
+    published_until: datetime | None,
+) -> tuple[list[tuple[datetime, float]], bool] | None:
     """Return the estimated import price of every tail slot.
 
-    The profile carries the shape.  The level comes from the import prices
-    published in the horizon, as for a missing slot inside it (issue #1434),
-    or from the last known level shift when the horizon has none (issue
-    #1452).  A tail slot that starts 24 hours or more after the last
-    published slot ended takes the profile as recorded: two days after the
-    last price the shift raised the error (issue #1452).
+    The profile carries the shape and one level applies to the whole tail:
+    every slot is shifted, or none is.  See :func:`_tail_level`.
 
     Args:
         slots: The horizon's slots with populated prices.
-        published: Per slot, whether its price was published by a source.
+        published: Per slot, whether its price came from a price source.
         profile: Weekday and time-of-day profile of real prices.
         interval_minutes: Slot width in minutes.
         tz: Local zone the weekday and time of day are read in.
+        published_until: End of the last published price, or ``None``.
 
     Returns:
-        ``(start, import price, shifted)`` per tail slot, or ``None`` when
-        the profile lacks a price for any of them.
+        ``(start, import price)`` per tail slot and whether they are shifted.
+        ``None`` when the profile lacks a price for a tail slot, or when the
+        level shift stops applying inside the tail: a tail is never priced
+        at two levels.
     """
     step = timedelta(minutes=interval_minutes)
-    tail_start = slots[-1].end
-    starts = [
-        tail_start + index * step
-        for index in range(TERMINAL_TAIL_HOURS * 60 // interval_minutes)
-    ]
-    shapes: list[float] = []
-    for start in starts:
+    # Stepped in real time: on a DST day wall-clock steps would skip or
+    # repeat an hour.
+    tail_start = utc_key(slots[-1].end)
+    prices: list[tuple[datetime, float]] = []
+    for index in range(TERMINAL_TAIL_HOURS * 60 // interval_minutes):
+        start = tail_start + index * step
         local = as_tz(start, tz)
         pair = profile.lookup(
             local.weekday(), local.hour, local.minute, interval_minutes
         )
         if pair is None:
             return None
-        shapes.append(pair[0])
+        prices.append((start, pair[0]))
 
-    known: list[float | None] = []
-    horizon_shapes: list[float | None] = []
-    for slot, is_published in zip(slots, published):
-        local = as_tz(slot.start, tz)
-        pair = profile.lookup(
-            local.weekday(), local.hour, local.minute, interval_minutes
-        )
-        known.append(slot.price.import_price if is_published else None)
-        horizon_shapes.append(None if pair is None else pair[0])
-    level = profile.import_level
-    shift = median_shift(known, horizon_shapes, interval_minutes)
-    if shift is not None:
-        last_published = max(
-            slot.end for slot, is_published in zip(slots, published) if is_published
-        )
-        level = (shift, last_published + LEVEL_SHIFT_MAX_AGE)
-
-    prices: list[tuple[datetime, float, bool]] = []
-    for start, shape in zip(starts, shapes):
-        if level is not None and level_shift_applies(start, level[1]):
-            prices.append((start, shape + level[0], True))
-        else:
-            prices.append((start, shape, False))
-    return prices
+    level = _tail_level(
+        slots, published, profile, interval_minutes, tz, published_until
+    )
+    if level is None or not level_shift_applies(prices[0][0], level[1]):
+        return prices, False
+    if not level_shift_applies(prices[-1][0], level[1]):
+        return None
+    return [(start, price + level[0]) for start, price in prices], True
 
 
 def terminal_price_tail(
@@ -183,6 +224,7 @@ def terminal_price_tail(
     *,
     last_day_value: float | None,
     weight: float,
+    published_until: datetime | None = None,
     top_n: int,
     charge_eff: float,
     discharge_eff: float,
@@ -204,8 +246,12 @@ def terminal_price_tail(
         interval_minutes: Slot width in minutes.
         tz: Local zone that defines the weekday and the night window.
         last_day_value: End value from the horizon's last calendar day.
-        weight: Share of the tail's value, clamped to 0-1.  ``0`` disables
-            the tail.
+        weight: Share of the tail's value, clamped to 0-1.  ``0`` or a
+            value that is not finite disables the tail.
+        published_until: End of the last real price the price sensor has
+            published, also when that is past the horizon, or ``None`` when
+            unknown.  A horizon that ends before it gets no tail: its tail
+            would estimate prices that are published.
         top_n: Number of most expensive slots that make up the peak.
         charge_eff: Charge efficiency fraction (0-1).
         discharge_eff: Discharge efficiency fraction (0-1).
@@ -214,25 +260,30 @@ def terminal_price_tail(
     Returns:
         The tail and the blended value, or ``None`` when the tail is
         disabled, there is no last-day value, the profile is missing or
-        empty, or it lacks a price for a tail slot.  The caller then keeps
-        *last_day_value* unchanged.
+        empty or lacks a price for a tail slot, published prices reach past
+        the horizon, or the level shift stops applying inside the tail.  The
+        caller then keeps *last_day_value* unchanged.
     """
-    share = min(max(weight, 0.0), 1.0)
+    share = tail_share(weight)
     if (
         share < 1e-9
         or last_day_value is None
         or profile is None
         or profile.is_empty
         or not slots
+        or (published_until is not None and slots[-1].end < published_until)
     ):
         return None
-    prices = _tail_import_prices(slots, published, profile, interval_minutes, tz)
-    if prices is None:
+    estimate = _tail_import_prices(
+        slots, published, profile, interval_minutes, tz, published_until
+    )
+    if estimate is None:
         return None
-    top = sorted((price for _, price, _ in prices), reverse=True)[: max(top_n, 1)]
+    prices, shifted = estimate
+    top = sorted((price for _, price in prices), reverse=True)[: max(top_n, 1)]
     night = [
         price
-        for start, price, _ in prices
+        for start, price in prices
         if as_tz(start, tz).hour < TERMINAL_NIGHT_END_HOUR
     ]
     peak_import = sum(top) / len(top)
@@ -259,10 +310,10 @@ def terminal_price_tail(
         value,
     )
     return TerminalPriceTail(
-        start=prices[0][0],
-        end=prices[-1][0] + timedelta(minutes=interval_minutes),
+        start=as_tz(prices[0][0], tz),
+        end=as_tz(prices[-1][0] + timedelta(minutes=interval_minutes), tz),
         slot_count=len(prices),
-        shifted_slots=sum(1 for _, _, shifted in prices if shifted),
+        shifted=shifted,
         peak_import=peak_import,
         night_import=night_import,
         tail_value_per_kwh=tail_value,
@@ -284,7 +335,8 @@ def resolve_terminal_price_tail(
     """Return the price tail of one planner run, or ``None`` without one.
 
     Reads the weight, the profile and the efficiencies from *inp* and which
-    slots carry a published price from *tsi*.  See
+    slots carry a price from a source from *tsi*.  With the tail off, which
+    is the default, it returns at once and reads nothing else.  See
     :func:`terminal_price_tail`.
 
     Args:
@@ -296,7 +348,13 @@ def resolve_terminal_price_tail(
         last_day_value: End value from the horizon's last calendar day.
         top_n: Number of most expensive slots that make up the peak.
         cycle_cost_per_kwh: Battery wear per kWh of throughput.
+
+    Returns:
+        The tail and the blended end value, or ``None`` when the tail is
+        off or cannot be priced.
     """
+    if tail_share(inp.terminal_price_tail_weight) < 1e-9:
+        return None
     return terminal_price_tail(
         slots,
         [meta.key not in tsi.missing_price_slots for meta in tsi.slots],
@@ -305,6 +363,7 @@ def resolve_terminal_price_tail(
         tz,
         last_day_value=last_day_value,
         weight=inp.terminal_price_tail_weight,
+        published_until=inp.price_published_until,
         top_n=top_n,
         charge_eff=clamp_efficiency(inp.battery_charge_efficiency_pct),
         discharge_eff=clamp_efficiency(inp.battery_discharge_efficiency_pct),

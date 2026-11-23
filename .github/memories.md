@@ -946,9 +946,11 @@ keeps #638's flat-price case discharging.
 `hsem_terminal_price_tail_enabled` on, `planner/terminal_tail.py` prices the 24
 hours after the horizon from the price profile and `engine_core.py` blends
 `V = 0.5 × V_last_day + 0.5 × V_tail`. The tail changes `V` only: never add
-tail slots to the plan or to the MILP. Closed-loop backtests showed no cost
-gain (no change at a 48 h horizon, 0.6 % worse at 24 h), so do not turn it on
-by default without a new measurement.
+tail slots to the plan or to the MILP. It is not used when published prices
+reach past the horizon (`PlannerInput.price_published_until`, from the
+populator), and it carries one level: shifted as a whole or not at all.
+Closed-loop backtests showed no cost gain at 24 h or 48 h and slower solves,
+so do not turn it on by default without a new measurement.
 
 **Charge-timing term (issue #1420).** The time discount alone prefers "export
 PV now, charge later" at one export price, by `(cycle_cost + p_exp) × (d^t1 − d^t2)`
