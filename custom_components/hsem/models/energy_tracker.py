@@ -327,12 +327,14 @@ class EnergyTracker:
         backfill_complete: The statistics backfill has run (issue #1450).
         ac_sensor_reason: Why the AC-side battery power sensor gives no
             readings as it is set up now.  Not persisted: set every cycle.
+        unit_not_power: House and PV power sensors left out for their unit.
     """
 
     daily_log: dict[str, EnergyDayEntry] = field(default_factory=dict)
     history_file: str = ""
     backfill_complete: bool = False
     ac_sensor_reason: str = REASON_AC_BATTERY_POWER_NOT_CONFIGURED
+    unit_not_power: tuple[str, ...] = ()
     _last_sample: EnergySample | None = field(default=None, repr=False)
     _saved_at: datetime | None = field(default=None, repr=False)
     _revision: int = field(default=0, repr=False)

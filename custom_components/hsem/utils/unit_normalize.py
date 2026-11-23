@@ -114,8 +114,7 @@ def normalize_to_unit(
     if source_unit == canonical_unit:
         return value
 
-    converter = _CONVERTER_BY_UNIT.get(canonical_unit)
-    if converter is None or source_unit not in converter.VALID_UNITS:
+    if not unit_is_convertible(source_unit, canonical_unit):
         _LOGGER.info(
             "Unit normalize: %s (%s) reports unit '%s'; HSEM has no known "
             "conversion from it to '%s'. Using the raw value unchanged — "
@@ -128,7 +127,9 @@ def normalize_to_unit(
         return value
 
     try:
-        converted = converter.convert(value, source_unit, canonical_unit)
+        converted = _CONVERTER_BY_UNIT[canonical_unit].convert(
+            value, source_unit, canonical_unit
+        )
     except HomeAssistantError:
         _LOGGER.warning(
             "Unit normalize: failed to convert %s (%s) from '%s' to '%s'; "
@@ -155,11 +156,13 @@ def normalize_to_unit(
 
 
 def unit_is_convertible(source_unit: str | None, canonical_unit: str) -> bool:
-    """Return whether a reading in *source_unit* can be read as *canonical_unit*.
+    """Return whether *source_unit* is a unit of *canonical_unit*'s family.
 
-    :func:`normalize_to_unit` passes a reading through unchanged when its
-    unit is of another kind (``kVA`` or ``kWh`` where watts are expected).
-    A caller that must not book such a reading asks here first.
+    The one place that decides it: :func:`normalize_to_unit` and
+    :func:`normalize_to_unit_family` both ask here.  A missing unit is not
+    convertible.  What it means is the caller's decision:
+    :func:`normalize_to_unit` takes the reading as already canonical,
+    :func:`normalize_to_unit_family` rejects it.
 
     Args:
         source_unit: The entity's declared ``unit_of_measurement``, or
@@ -167,11 +170,13 @@ def unit_is_convertible(source_unit: str | None, canonical_unit: str) -> bool:
         canonical_unit: HSEM's expected unit for the field.
 
     Returns:
-        ``True`` when no unit is declared (the reading is assumed to be in
-        *canonical_unit*), the units match, or a conversion exists.
+        ``True`` when *source_unit* is declared and Home Assistant converts
+        it to *canonical_unit* (``kW`` or ``W`` to ``W``).  ``False`` for no
+        unit, a unit of another kind (``kVA`` or ``kWh`` where watts are
+        expected), or a *canonical_unit* HSEM has no converter for.
     """
-    if not source_unit or source_unit == canonical_unit:
-        return True
+    if not source_unit:
+        return False
     converter = _CONVERTER_BY_UNIT.get(canonical_unit)
     return converter is not None and source_unit in converter.VALID_UNITS
 
@@ -199,12 +204,12 @@ def normalize_to_unit_family(
         ``(converted_value, canonical_unit)`` for the first family that
         recognises *source_unit*, or ``None``.
     """
-    if value is None or not source_unit:
+    if value is None:
         return None
     for canonical_unit in canonical_units:
-        converter = _CONVERTER_BY_UNIT.get(canonical_unit)
-        if converter is None or source_unit not in converter.VALID_UNITS:
+        if not unit_is_convertible(source_unit, canonical_unit):
             continue
+        converter = _CONVERTER_BY_UNIT[canonical_unit]
         try:
             return converter.convert(value, source_unit, canonical_unit), canonical_unit
         except HomeAssistantError:

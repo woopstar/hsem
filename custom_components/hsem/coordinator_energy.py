@@ -12,7 +12,9 @@ The planner gets ``0 W`` for a house or PV power sensor that gives no reading.
 The tracker must not: a sample takes those two readings only while their
 entity has a numeric state, and they are missing otherwise.  The planner also
 gets the raw number of a sensor whose unit is not a power unit (``kVA``,
-``kWh``).  The tracker takes that as missing too (issue #1449).
+``kWh``).  The tracker takes that as missing too, names the sensor in
+``EnergyTracker.unit_not_power`` and warns once (issue #1449).  A sensor that
+declares no unit is taken as watts, as the planner takes it.
 
 Extracted into its own module to keep :mod:`coordinator_tracking` under the
 30 KB / 1000-line limit.
@@ -25,7 +27,7 @@ from datetime import datetime
 from pathlib import Path
 
 from homeassistant.const import ATTR_UNIT_OF_MEASUREMENT, UnitOfPower
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
 
 from custom_components.hsem.coordinator_energy_backfill import (
     async_backfill_energy_history,
@@ -70,6 +72,28 @@ def _finite(value: float | None) -> float | None:
     return float(value)
 
 
+def _power_reading_state(hass: HomeAssistant, entity_id: str | None) -> State | None:
+    """Return the entity's state while it is numeric, else ``None``."""
+    state = hass.states.get(entity_id) if entity_id else None
+    if state is None or convert_to_float(state.state) is None:
+        return None
+    return state
+
+
+def _declares_another_unit(state: State) -> bool:
+    """Return whether *state* declares a unit that is not a power unit.
+
+    A sensor without a unit (many template sensors) declares nothing: the
+    state collector takes its number as watts, and so does the tracker.
+    """
+    unit = state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
+    return (
+        isinstance(unit, str)
+        and bool(unit)
+        and not unit_is_convertible(unit, UnitOfPower.WATT)
+    )
+
+
 def _measured(
     hass: HomeAssistant, entity_id: str | None, value: float | None
 ) -> float | None:
@@ -85,15 +109,35 @@ def _measured(
             zero there, and a reading in a unit of another kind is the raw
             number.
     """
-    if not entity_id:
-        return None
-    state = hass.states.get(entity_id)
-    if state is None or convert_to_float(state.state) is None:
-        return None
-    unit = state.attributes.get("unit_of_measurement")
-    if isinstance(unit, str) and not unit_is_convertible(unit, UnitOfPower.WATT):
+    state = _power_reading_state(hass, entity_id)
+    if state is None or _declares_another_unit(state):
         return None
     return _finite(value)
+
+
+def power_sensors_in_another_unit(
+    hass: HomeAssistant, cfg: SensorConfig, previous: tuple[str, ...] = ()
+) -> tuple[str, ...]:
+    """Return the house and PV power sensors whose unit is not a power unit.
+
+    Those are the sensors :func:`_measured` does not book.  A sensor that
+    gives no number this cycle keeps the verdict it had in *previous*: an
+    unavailable state may have dropped its unit, and that must not clear the
+    verdict and warn again when the sensor comes back.
+
+    Args:
+        hass: Home Assistant instance.
+        cfg: The sensor configuration.
+        previous: The entity IDs returned for the cycle before.
+    """
+    wrong: list[str] = []
+    for entity_id in (cfg.house_consumption_power, cfg.solar_production_power):
+        if not entity_id or entity_id in wrong:
+            continue
+        state = _power_reading_state(hass, entity_id)
+        if _declares_another_unit(state) if state else entity_id in previous:
+            wrong.append(entity_id)
+    return tuple(wrong)
 
 
 def consumption_power_w(
@@ -289,6 +333,19 @@ async def async_track_energy(
                 "Its readings are not used for the AC-side round-trip loss.",
                 cfg.battery_ac_power_entity,
             )
+        # Logged when the sensors named change, so once per wrong unit.
+        wrong_unit = power_sensors_in_another_unit(
+            coordinator.hass, cfg, tracker.unit_not_power
+        )
+        if wrong_unit != tracker.unit_not_power:
+            tracker.unit_not_power = wrong_unit
+            if wrong_unit:
+                async_log(
+                    "warning",
+                    "Power sensor %s has a unit that is not a power unit (W, kW). "
+                    "Its readings are not booked in the monthly energy figures.",
+                    ", ".join(wrong_unit),
+                )
         tracker.accumulate(
             build_energy_sample(
                 coordinator.hass, now, live, cfg, battery_ac_power_w=ac_power_w

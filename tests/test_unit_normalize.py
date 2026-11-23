@@ -261,16 +261,39 @@ class TestUnitIsConvertible:
     """A reading in a unit of another kind can be told apart (issue #1449)."""
 
     @pytest.mark.parametrize(
-        "unit", [None, "", UnitOfPower.WATT, UnitOfPower.KILO_WATT]
+        "unit", [UnitOfPower.WATT, UnitOfPower.KILO_WATT, UnitOfPower.MEGA_WATT]
     )
-    def test_no_unit_the_same_unit_or_a_power_unit_is_convertible(
-        self, unit: str | None
-    ) -> None:
+    def test_a_unit_of_the_same_family_is_convertible(self, unit: str) -> None:
         assert unit_is_convertible(unit, UnitOfPower.WATT) is True
 
-    @pytest.mark.parametrize("unit", ["kVA", "kWh", "%", "foo"])
+    @pytest.mark.parametrize("unit", ["kVA", "kWh", "%", "foo", "w", "kw"])
     def test_a_unit_of_another_kind_is_not_convertible(self, unit: str) -> None:
         assert unit_is_convertible(unit, UnitOfPower.WATT) is False
+
+    @pytest.mark.parametrize("unit", [None, ""])
+    def test_no_unit_is_not_convertible(self, unit: str | None) -> None:
+        """What a missing unit means is for the caller to decide."""
+        assert unit_is_convertible(unit, UnitOfPower.WATT) is False
+        # The two callers decide differently, each as before.
+        assert normalize_to_unit(5.0, unit, UnitOfPower.WATT) == pytest.approx(5.0)
+        assert normalize_to_unit_family(5.0, unit, (UnitOfPower.WATT,)) is None
+
+    @pytest.mark.parametrize(
+        ("unit", "watts"), [("W", 2.0), ("kW", 2000.0), ("kVA", None), ("kWh", None)]
+    )
+    def test_both_normalizers_follow_it(self, unit: str, watts: float | None) -> None:
+        """One decision: a unit converts in both, or in neither."""
+        convertible = unit_is_convertible(unit, UnitOfPower.WATT)
+        family = normalize_to_unit_family(2.0, unit, (UnitOfPower.WATT,))
+
+        assert convertible is (watts is not None)
+        assert (family is not None) is convertible
+        # normalize_to_unit hands back the raw number where it cannot convert.
+        assert normalize_to_unit(2.0, unit, UnitOfPower.WATT) == pytest.approx(
+            watts if watts is not None else 2.0
+        )
+        if family is not None:
+            assert family[0] == pytest.approx(watts)
 
     def test_an_unknown_canonical_unit_is_not_convertible(self) -> None:
         assert unit_is_convertible(UnitOfPower.WATT, "furlongs") is False

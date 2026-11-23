@@ -1689,7 +1689,7 @@ The state is `unknown` and the `reason` attribute says why:
 | `reason`                          | Applies to                  | Meaning                                                                                                                                               |
 | --------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `no_data`                         | all                         | Nothing has been recorded in the month                                                                                                                |
-| `consumption_not_measured`        | Self-sufficiency            | The house consumption power sensor gave no readings, or its unit is not a power unit                                                                                                   |
+| `consumption_not_measured`        | Self-sufficiency            | The house consumption power sensor gave no readings, or its unit is not a power unit                                                                  |
 | `consumption_below_minimum`       | Self-sufficiency            | Less than 1 kWh of house consumption recorded                                                                                                         |
 | `import_exceeds_consumption`      | Self-sufficiency            | More was imported than the house consumption and the battery charge explain                                                                           |
 | `battery_not_measured`            | Battery cycles, wear cost   | Neither the battery power nor the SoC gave readings                                                                                                   |
@@ -1719,6 +1719,7 @@ All five sensors publish the same attributes:
 | `backfilled_days`  | Days in the record that come from long-term statistics, 0 when none                           |
 | `backfilled_from`  | The oldest backfilled day, else `null`                                                        |
 | `backfilled_until` | The newest backfilled day, else `null`                                                        |
+| `unit_not_power`   | The house and PV power sensors left out now for a unit that is not power (W, kW), else `null` |
 
 Each month is a dict:
 
