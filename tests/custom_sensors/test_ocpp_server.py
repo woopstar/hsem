@@ -51,6 +51,9 @@ def mock_hass():
     return MagicMock()
 
 
+_CONNECTION_LOGGER = "custom_components.hsem.custom_sensors.ocpp_connection"
+
+
 @pytest.fixture
 def ocpp_server(mock_hass):
     """Return an OCPPServer with short anti-flap windows for faster tests."""
@@ -2622,6 +2625,70 @@ class TestCallResultStatusTracking:
         assert "Rejected" not in caplog.text
 
     @pytest.mark.asyncio
+    async def test_get_configuration_reply_logged_at_info(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """The GetConfiguration reply of a normal connect is info (#1477)."""
+        await ocpp_server._send_call(charger_session, "GetConfiguration", {})
+        msg_id = next(iter(charger_session.pending_calls))
+
+        with caplog.at_level(logging.INFO, logger=_CONNECTION_LOGGER):
+            await ocpp_server._handle_message(
+                charger_session,
+                json.dumps([3, msg_id, _configuration_reply(HeartbeatInterval="60")]),
+            )
+        replies = [r for r in caplog.records if "GetConfiguration reply" in r.message]
+        assert [r.levelno for r in replies] == [logging.INFO]
+        assert "HeartbeatInterval" in replies[0].message
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    @pytest.mark.asyncio
+    async def test_accepted_change_configuration_reply_logged_at_info(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """An accepted ChangeConfiguration writes no warning (#1477)."""
+        await ocpp_server._send_call(
+            charger_session,
+            "ChangeConfiguration",
+            {"key": "HeartbeatInterval", "value": "60"},
+        )
+        msg_id = next(iter(charger_session.pending_calls))
+
+        with caplog.at_level(logging.INFO, logger=_CONNECTION_LOGGER):
+            await ocpp_server._handle_message(
+                charger_session,
+                json.dumps([3, msg_id, {"status": "Accepted"}]),
+            )
+        replies = [
+            r for r in caplog.records if "ChangeConfiguration reply" in r.message
+        ]
+        assert [r.levelno for r in replies] == [logging.INFO]
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    @pytest.mark.asyncio
+    async def test_refused_change_configuration_reply_logged_at_warning(
+        self, ocpp_server, charger_session, caplog
+    ):
+        """A refused ChangeConfiguration still logs a warning (#1477)."""
+        await ocpp_server._send_call(
+            charger_session,
+            "ChangeConfiguration",
+            {"key": "HeartbeatInterval", "value": "60"},
+        )
+        msg_id = next(iter(charger_session.pending_calls))
+
+        with caplog.at_level(logging.INFO, logger=_CONNECTION_LOGGER):
+            await ocpp_server._handle_message(
+                charger_session,
+                json.dumps([3, msg_id, {"status": "Rejected"}]),
+            )
+        replies = [
+            r for r in caplog.records if "ChangeConfiguration reply" in r.message
+        ]
+        assert [r.levelno for r in replies] == [logging.WARNING]
+        assert "Rejected" in replies[0].message
+
+    @pytest.mark.asyncio
     async def test_both_profiles_of_a_pair_stay_resolvable(
         self, ocpp_server, charger_session
     ):
@@ -2653,9 +2720,7 @@ class TestCallResultStatusTracking:
         await ocpp_server._send_call(charger_session, "GetCompositeSchedule", {})
         msg_id = next(iter(charger_session.pending_calls))
 
-        with caplog.at_level(
-            logging.WARNING, logger="custom_components.hsem.custom_sensors.ocpp_server"
-        ):
+        with caplog.at_level(logging.INFO, logger=_CONNECTION_LOGGER):
             await ocpp_server._handle_message(
                 charger_session,
                 json.dumps([3, msg_id, {"status": "Accepted", "chargingSchedule": {}}]),

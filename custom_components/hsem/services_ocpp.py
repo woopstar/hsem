@@ -248,8 +248,8 @@ async def async_handle_ocpp_debug_diagnostics(call: ServiceCall) -> None:
     """Interrogate the charger about its own configuration and limits.
 
     Diagnostics-only (issue #920). Sends ``GetConfiguration`` and
-    ``GetCompositeSchedule`` and logs the charger's replies at warning
-    level, to answer the questions a ``"status": "Accepted"`` on
+    ``GetCompositeSchedule`` and logs the charger's replies at info
+    level (warning when the charger refuses), to answer the questions a ``"status": "Accepted"`` on
     ``SetChargingProfile`` cannot:
 
     - Does the charger implement SmartCharging at all

@@ -39,6 +39,8 @@ _LOGGER = logging.getLogger(__name__)
 # (issue #920). These exist purely to interrogate or take control of a
 # charger that is ignoring everything else, so their answers are the
 # point — not incidental protocol chatter to be buried at debug level.
+# They are logged at info level, and at warning level when the charger
+# answers with a status other than "Accepted" (issue #1477).
 DIAGNOSTIC_ACTIONS = frozenset(
     {
         "GetConfiguration",

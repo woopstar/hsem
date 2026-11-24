@@ -260,8 +260,13 @@ class OCPPConnectionMixin(OCPPMessageHandlersMixin):
                     self.absorb_configuration_reply(session, result_payload)
                 if action in DIAGNOSTIC_ACTIONS:
                     # The whole point of these calls is their answer, so it
-                    # must be readable without turning on DEBUG.
-                    _LOGGER.warning(
+                    # must be readable without turning on DEBUG. HSEM sends
+                    # GetConfiguration itself after every BootNotification,
+                    # so a normal answer is info, not a warning (issue
+                    # #1477). Only a refused call is a warning.
+                    refused = result_payload.get("status", "Accepted") != "Accepted"
+                    _LOGGER.log(
+                        logging.WARNING if refused else logging.INFO,
                         "OCPP %s: %s reply: %s",
                         session.cpid,
                         action,
