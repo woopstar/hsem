@@ -245,41 +245,43 @@ async def async_setup_entry(  # NOSONAR -- HA platform callback, must be async
             HSEMOCPPChargerSessionsSensor(config_entry, coordinator, charger_index=2),
         ]
 
-    async_add_entities(
-        [
-            degraded_mode_sensor,
-            read_only_sensor,
-            next_update_sensor,
-            last_updated_sensor,
-            update_interval_sensor,
-            recommendation_interval_sensor,
-            missing_entities_sensor,
-            hardware_writes_sensor,
-            net_consumption_sensor,
-            battery_soc_sensor,
-            force_mode_sensor,
-            *ev_entities,
-            *ev_second_entities,
-            applier_status_sensor,
-            plan_explanation_sensor,
-            forecast_accuracy_sensor,
-            solar_confidence_sensor,
-            prediction_accuracy_sensor,
-            pv_curtailment_sensor,
-            daily_plan_vs_actual_sensor,
-            effective_discharge_floor_sensor,
-            battery_efficiency_sensor,
-            savings_sensor,
-            *performance_sensors,
-            *monthly_energy_sensors,
-            export_income_sensor,
-            import_cost_sensor,
-            net_grid_balance_sensor,
-            working_mode_sensor,
-            *ocpp_entities,
-            *ocpp_second_entities,
-        ]
-    )
+    entities = [
+        degraded_mode_sensor,
+        read_only_sensor,
+        next_update_sensor,
+        last_updated_sensor,
+        update_interval_sensor,
+        recommendation_interval_sensor,
+        missing_entities_sensor,
+        hardware_writes_sensor,
+        net_consumption_sensor,
+        battery_soc_sensor,
+        force_mode_sensor,
+        *ev_entities,
+        *ev_second_entities,
+        applier_status_sensor,
+        plan_explanation_sensor,
+        forecast_accuracy_sensor,
+        solar_confidence_sensor,
+        prediction_accuracy_sensor,
+        pv_curtailment_sensor,
+        daily_plan_vs_actual_sensor,
+        effective_discharge_floor_sensor,
+        battery_efficiency_sensor,
+        savings_sensor,
+        *performance_sensors,
+        *monthly_energy_sensors,
+        export_income_sensor,
+        import_cost_sensor,
+        net_grid_balance_sensor,
+        working_mode_sensor,
+        *ocpp_entities,
+        *ocpp_second_entities,
+    ]
+    async_add_entities(entities)
+    # Reports why one of them is unknown, once per reason change (#1482).
+    # The sensors added below are unavailable by design and are not watched.
+    coordinator.unknown_sensor_monitor.watch(entities)
 
     # Derived house load (issue #1310) — only when an inverter and the power
     # meter are configured as its inputs.

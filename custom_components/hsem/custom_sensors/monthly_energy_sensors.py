@@ -16,7 +16,9 @@ Five sensors, each the current calendar month so far (issues #1435, #1450):
 
 All five publish the same attributes: ``this_month`` and ``previous_month``
 with every figure and the energy totals behind it, and ``monthly`` with the
-last 12 months.  ``reason`` says why this sensor's value is unknown.
+last 12 months.  ``reason`` says why this sensor's value is unknown, and
+``reason_kind`` whether that is HSEM waiting for data, something not
+configured, something the user must fix, or a fault (issue #1482).
 
 Every figure is a ratio of sums over the daily records of
 :class:`~custom_components.hsem.models.energy_tracker.EnergyTracker`.  The
@@ -53,6 +55,7 @@ from custom_components.hsem.utils.sensornames.monthly_energy import (
     get_monthly_self_sufficiency_entity_id,
     get_monthly_self_sufficiency_unique_id,
 )
+from custom_components.hsem.utils.unknown_reason import reason_kind
 
 #: Unit of the cycle count.  Not a Home Assistant unit constant.
 UNIT_CYCLES = "cycles"
@@ -183,12 +186,21 @@ class HSEMMonthlyEnergySensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         if tracker is None:
             return None
         attributes = tracker.as_sensor_attributes(hsem_now().date())
-        attributes["reason"] = attributes["this_month"][
-            f"{self._description.key}_reason"
-        ]
+        reason: str | None = attributes["this_month"][f"{self._description.key}_reason"]
+        attributes["reason"] = reason
+        attributes["reason_kind"] = reason_kind(reason)
         # A scalar, as it is recorded: the entity IDs, or None.
         attributes["unit_not_power"] = ", ".join(tracker.unit_not_power) or None
         return attributes
+
+    @property
+    def unknown_reason(self) -> str | None:
+        """Return why this sensor's value is unknown, ``None`` when it has one."""
+        attributes = self.extra_state_attributes
+        if attributes is None:
+            return None
+        reason: str | None = attributes["reason"]
+        return reason
 
     @property
     @override

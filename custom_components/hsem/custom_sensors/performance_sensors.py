@@ -29,7 +29,10 @@ enabled for a charger:
 All of them publish the same attributes: the cost breakdown, the window, how
 much of it was observed and how much of that HSEM was in control, why a value
 is unknown (``reason``, ``breakdown_reason``, ``ev_reason``), and the same figures for
-yesterday and for the last 7 and 30 completed days.
+yesterday and for the last 7 and 30 completed days.  ``reason_kind`` is each
+sensor's own: whether the reason behind its unknown state is HSEM waiting for
+data, something not configured, something the user must fix, or a fault
+(issue #1482).
 
 They are rolling 24-hour values, not totals, so they use the ``measurement``
 state class and carry no ``monetary`` device class (Home Assistant allows
@@ -51,7 +54,10 @@ from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.devices import HSEMDevice
 from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.models.performance_record import PerformanceScore
-from custom_components.hsem.models.performance_tracker import PerformanceTracker
+from custom_components.hsem.models.performance_tracker import (
+    REASON_NOT_EVALUATED,
+    PerformanceTracker,
+)
 from custom_components.hsem.utils.datetime_utils import now as hsem_now
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.sensornames.financial import (
@@ -68,6 +74,7 @@ from custom_components.hsem.utils.sensornames.financial import (
     get_performance_solar_utilisation_entity_id,
     get_performance_solar_utilisation_unique_id,
 )
+from custom_components.hsem.utils.unknown_reason import reason_kind
 
 
 def _capture_percent(score: PerformanceScore) -> float | None:
@@ -100,6 +107,22 @@ def _missed_opportunity(score: PerformanceScore) -> float | None:
     return None if regret is None else round(regret, 3)
 
 
+def _capture_reason(score: PerformanceScore) -> str | None:
+    return score.capture_reason
+
+
+def _score_reason(score: PerformanceScore) -> str | None:
+    return score.reason
+
+
+def _breakdown_reason(score: PerformanceScore) -> str | None:
+    return score.breakdown_reason
+
+
+def _ev_reason(score: PerformanceScore) -> str | None:
+    return score.ev_reason
+
+
 @dataclass(frozen=True)
 class PerformanceSensorDescription:
     """What sets one performance sensor apart from the others.
@@ -108,6 +131,8 @@ class PerformanceSensorDescription:
         key: The KPI, used in the translation key.
         icon: The sensor's icon.
         value: Reads the sensor's state off a window score.
+        reason: Reads why that state is unknown off a window score: the
+            attribute ``reason``, ``breakdown_reason`` or ``ev_reason``.
         entity_id: Returns the sensor's entity ID.
         unique_id: Returns the sensor's unique ID for a config entry.
         is_share: ``True`` for a percentage, ``False`` for an amount of money.
@@ -116,6 +141,7 @@ class PerformanceSensorDescription:
     key: str
     icon: str
     value: Callable[[PerformanceScore], float | None]
+    reason: Callable[[PerformanceScore], str | None]
     entity_id: Callable[[], str]
     unique_id: Callable[[str], str]
     is_share: bool = False
@@ -128,6 +154,7 @@ PERFORMANCE_SENSORS: tuple[PerformanceSensorDescription, ...] = (
         key="savings_capture",
         icon="mdi:bullseye-arrow",
         value=_capture_percent,
+        reason=_capture_reason,
         entity_id=get_performance_savings_capture_entity_id,
         unique_id=get_performance_savings_capture_unique_id,
         is_share=True,
@@ -136,6 +163,7 @@ PERFORMANCE_SENSORS: tuple[PerformanceSensorDescription, ...] = (
         key="actual_benefit",
         icon="mdi:cash-check",
         value=_actual_benefit,
+        reason=_score_reason,
         entity_id=get_performance_actual_benefit_entity_id,
         unique_id=get_performance_actual_benefit_unique_id,
     ),
@@ -143,6 +171,7 @@ PERFORMANCE_SENSORS: tuple[PerformanceSensorDescription, ...] = (
         key="missed_opportunity",
         icon="mdi:cash-remove",
         value=_missed_opportunity,
+        reason=_score_reason,
         entity_id=get_performance_missed_opportunity_entity_id,
         unique_id=get_performance_missed_opportunity_unique_id,
     ),
@@ -150,6 +179,7 @@ PERFORMANCE_SENSORS: tuple[PerformanceSensorDescription, ...] = (
         key="battery_utilisation",
         icon="mdi:battery-charging-high",
         value=_battery_utilisation_percent,
+        reason=_breakdown_reason,
         entity_id=get_performance_battery_utilisation_entity_id,
         unique_id=get_performance_battery_utilisation_unique_id,
         is_share=True,
@@ -158,6 +188,7 @@ PERFORMANCE_SENSORS: tuple[PerformanceSensorDescription, ...] = (
         key="solar_utilisation",
         icon="mdi:solar-power-variant",
         value=_solar_utilisation_percent,
+        reason=_breakdown_reason,
         entity_id=get_performance_solar_utilisation_entity_id,
         unique_id=get_performance_solar_utilisation_unique_id,
         is_share=True,
@@ -171,6 +202,7 @@ EV_PERFORMANCE_SENSOR = PerformanceSensorDescription(
     key="ev_charging_efficiency",
     icon="mdi:ev-station",
     value=_ev_efficiency_percent,
+    reason=_ev_reason,
     entity_id=get_performance_ev_charging_efficiency_entity_id,
     unique_id=get_performance_ev_charging_efficiency_unique_id,
     is_share=True,
@@ -242,7 +274,26 @@ class HSEMPerformanceSensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntity):
         tracker = self._get_tracker()
         if tracker is None:
             return None
-        return tracker.as_sensor_attributes(hsem_now())
+        attributes = tracker.as_sensor_attributes(hsem_now())
+        attributes["reason_kind"] = reason_kind(self.unknown_reason)
+        return attributes
+
+    @property
+    def unknown_reason(self) -> str | None:
+        """Return why this sensor's value is unknown, ``None`` when it has one.
+
+        The attributes are the same on every performance sensor, so which of
+        the three reasons applies depends on the sensor.
+        """
+        tracker = self._get_tracker()
+        if tracker is None:
+            return None
+        window = tracker.window
+        if window is None:
+            return REASON_NOT_EVALUATED
+        if self._description.value(window) is not None:
+            return None
+        return self._description.reason(window)
 
     @property
     @override

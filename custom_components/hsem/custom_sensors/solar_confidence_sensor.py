@@ -13,6 +13,9 @@ Attributes
 - ``processed_through`` — ISO timestamp of the newest slot the corrector has
   already learned from, or ``None`` before any slot has been processed.
 - ``_solar_corrector_data`` — Serialised corrector state for reboot persistence.
+- ``reason`` — why the state is unknown (``no_solar_factors``), or ``None``.
+- ``reason_kind`` — the kind of that reason (``waiting``), or ``None``
+  (issue #1482).
 
 ``hour_factors``, ``processed_through`` and ``_solar_corrector_data`` are
 excluded from the recorder (issue #1099).  Restore reads
@@ -46,6 +49,10 @@ from custom_components.hsem.utils.sensornames.diagnostics import (
     get_solar_confidence_sensor_unique_id,
 )
 from custom_components.hsem.utils.solar_corrector import SolarForecastCorrector
+from custom_components.hsem.utils.unknown_reason import (
+    REASON_NO_SOLAR_FACTORS,
+    unknown_reason_attributes,
+)
 
 
 class HSEMSolarConfidenceSensor(
@@ -122,6 +129,11 @@ class HSEMSolarConfidenceSensor(
         return cast(float, round(mean_factor, 4))
 
     @property
+    def unknown_reason(self) -> str | None:
+        """Return why the state is unknown, ``None`` when it has a value."""
+        return None if self.native_value is not None else REASON_NO_SOLAR_FACTORS
+
+    @property
     @override
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return diagnostic attributes for the sensor."""
@@ -149,6 +161,7 @@ class HSEMSolarConfidenceSensor(
         # Include serialised corrector state for reboot persistence.
         if corrector is not None:
             attrs["_solar_corrector_data"] = corrector.to_dict()
+        attrs.update(unknown_reason_attributes(self.unknown_reason))
 
         return cast(dict[str, Any], attrs)
 

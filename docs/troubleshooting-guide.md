@@ -800,20 +800,24 @@ turning on `switch.hsem_verbose_logging` before collecting logs.
 
 Search for these patterns in `hsem.log`:
 
-| Pattern                                              | Meaning                                                    |
-| ---------------------------------------------------- | ---------------------------------------------------------- |
-| `[core] run_planner ABORTED — no slots generated`    | `interval_minutes` or `interval_length_hours` config error |
-| `Consumption weights sum to`                         | Weight misconfiguration                                    |
-| `MILP: SoC penalty violations`                       | Battery was overcharged at planning start                  |
-| `Hardware writes BLOCKED`                            | Error mode — critical input entities missing (warns once)  |
-| `Hardware writes SKIPPED — read_only=True`           | Read-only mode active (verbose logging only)               |
-| `write FAILED for … blocking further battery writes` | A verified inverter write failed; rest of cycle skipped    |
-| `entity not configured; skipping write`              | A Huawei write entity is not mapped (warns once)           |
-| `[selector] No eligible candidates`                  | All plans rejected during validation                       |
-| `[selector] HYSTERESIS kept previous plan`           | Plan switch suppressed by hysteresis                       |
-| `Sensor read failed for entity_id`                   | Specific entity reading error — check entity               |
-| `capped max discharge power to`                      | Battery discharge limited — line names the reason          |
-| `EV is physically charging but no slot has load > 0` | EV charging without planned load                           |
+| Pattern                                              | Meaning                                                                                                                                                                            |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `[core] run_planner ABORTED — no slots generated`    | `interval_minutes` or `interval_length_hours` config error                                                                                                                         |
+| `Consumption weights sum to`                         | Weight misconfiguration                                                                                                                                                            |
+| `MILP: SoC penalty violations`                       | Battery was overcharged at planning start                                                                                                                                          |
+| `Hardware writes BLOCKED`                            | Error mode — critical input entities missing (warns once)                                                                                                                          |
+| `Hardware writes SKIPPED — read_only=True`           | Read-only mode active (verbose logging only)                                                                                                                                       |
+| `write FAILED for … blocking further battery writes` | A verified inverter write failed; rest of cycle skipped                                                                                                                            |
+| `entity not configured; skipping write`              | A Huawei write entity is not mapped (warns once)                                                                                                                                   |
+| `[selector] No eligible candidates`                  | All plans rejected during validation                                                                                                                                               |
+| `[selector] HYSTERESIS kept previous plan`           | Plan switch suppressed by hysteresis                                                                                                                                               |
+| `Sensor read failed for entity_id`                   | Specific entity reading error — check entity                                                                                                                                       |
+| `capped max discharge power to`                      | Battery discharge limited — line names the reason                                                                                                                                  |
+| `EV is physically charging but no slot has load > 0` | EV charging without planned load                                                                                                                                                   |
+| `is unknown: <code> (<kind>)`                        | An HSEM sensor has no value: the line names the reason and its kind. Logged once per reason change (see [When a sensor is unknown](sensors-reference.md#when-a-sensor-is-unknown)) |
+| `has a value again`                                  | The sensor of an earlier `is unknown` line has a value                                                                                                                             |
+| `is unknown and gives no reason`                     | An HSEM sensor stayed `unknown` without a reason. Check the entities it reads                                                                                                      |
+| `Battery efficiency history of schema version`       | The stored efficiency measurements are from another HSEM version and were not read. The battery efficiency sensor is back to `learning`                                            |
 
 ### Home Assistant log (`home-assistant.log`)
 

@@ -13,6 +13,9 @@ Attributes
 - ``load_mae_kwh`` — Mean absolute error of load prediction (kWh).
 - ``action_mix`` — Fraction of slots per action (charge / discharge / idle).
 - ``records_count`` — Number of records in the rolling buffer.
+- ``reason`` — why the state is unknown (``no_prediction_records``), or ``None``.
+- ``reason_kind`` — the kind of that reason (``waiting``), or ``None``
+  (issue #1482).
 
 The sensor is a *diagnostic* entity (``EntityCategory.DIAGNOSTIC``).
 """
@@ -32,6 +35,10 @@ from custom_components.hsem.entity import HSEMCoordinatorEntity, HSEMEntity
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_prediction_accuracy_sensor_entity_id,
     get_prediction_accuracy_sensor_unique_id,
+)
+from custom_components.hsem.utils.unknown_reason import (
+    REASON_NO_PREDICTION_RECORDS,
+    unknown_reason_attributes,
 )
 
 
@@ -120,6 +127,11 @@ class HSEMPredictionAccuracySensor(
         return None
 
     @property
+    def unknown_reason(self) -> str | None:
+        """Return why the state is unknown, ``None`` when it has a value."""
+        return None if self.native_value is not None else REASON_NO_PREDICTION_RECORDS
+
+    @property
     @override
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return diagnostic attributes for the sensor."""
@@ -148,5 +160,6 @@ class HSEMPredictionAccuracySensor(
             ),
             "action_mix": tracker.action_mix,
             "records_count": len(tracker.records),
+            **unknown_reason_attributes(self.unknown_reason),
         }
         return cast(dict[str, Any], attrs)

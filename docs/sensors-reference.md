@@ -99,6 +99,86 @@ reference the old single `device_id`.
 
 ---
 
+## When a sensor is unknown
+
+An HSEM sensor that shows `unknown` says why in an attribute (`reason`, or
+`round_trip_status` on the battery efficiency sensor). The `reason_kind`
+attribute next to it sorts that reason into one of four kinds, so a dashboard
+or an automation can tell waiting from a fault without knowing every code:
+
+| `reason_kind`    | Meaning                                             | Log level |
+| ---------------- | --------------------------------------------------- | --------- |
+| `waiting`        | HSEM is collecting data. Nothing to do              | info      |
+| `not_configured` | An optional entity or option is not set             | info      |
+| `action_needed`  | The configuration or a source entity needs your fix | warning   |
+| `fault`          | The data is implausible, or a computation failed    | error     |
+
+`reason_kind` is `null` while the sensor has a value. A code HSEM has no entry
+for counts as `fault`.
+
+The sensors that publish it: the [monthly energy sensors](#monthly-energy-sensors),
+the [performance sensors](#performance-sensors), the
+[battery efficiency sensor](#battery-efficiency-sensor), and the forecast
+accuracy, prediction accuracy and solar confidence sensors.
+
+**One log line per change.** `hsem.log` gets one line when a sensor's reason
+changes, and one when the sensor has a value again. An unchanged reason is not
+repeated on later cycles:
+
+```text
+INFO  sensor.hsem_monthly_round_trip_loss is unknown: throughput_below_minimum (waiting). Too little energy has gone through the battery this month.
+INFO  sensor.hsem_monthly_round_trip_loss has a value again
+```
+
+Nothing is logged during the first three coordinator cycles and the first five
+minutes after a start, when source entities are not ready yet.
+
+**A sensor without a reason.** An HSEM sensor that stays `unknown` for three
+cycles in a row and gives no reason logs one warning, `is unknown and gives no
+reason`. It is not repeated until the sensor has had a value. The hourly
+`house_consumption_power_HH` sensors and the derived house load are
+`unavailable` by design and are not checked.
+
+| Reason code                       | Sensors             | Kind             |
+| --------------------------------- | ------------------- | ---------------- |
+| `no_data`                         | Monthly energy      | `waiting`        |
+| `battery_power_not_measured`      | Monthly energy      | `not_configured` |
+| `ac_battery_power_not_configured` | Monthly energy      | `not_configured` |
+| `ac_battery_power_unit_not_power` | Monthly energy      | `action_needed`  |
+| `ac_battery_power_no_readings`    | Monthly energy      | `action_needed`  |
+| `ac_soc_or_capacity_missing`      | Monthly energy      | `action_needed`  |
+| `throughput_below_minimum`        | Monthly energy      | `waiting`        |
+| `soc_change_too_large`            | Monthly energy      | `waiting`        |
+| `implausible_ratio`               | Monthly energy      | `fault`          |
+| `consumption_not_measured`        | Monthly energy      | `action_needed`  |
+| `consumption_below_minimum`       | Monthly energy      | `waiting`        |
+| `import_exceeds_consumption`      | Monthly energy      | `fault`          |
+| `battery_not_measured`            | Monthly energy      | `action_needed`  |
+| `cycle_cost_unknown`              | Monthly energy      | `not_configured` |
+| `grid_import_not_measured`        | Monthly energy      | `not_configured` |
+| `capacity_unknown`                | Monthly energy      | `action_needed`  |
+| `no_site_limits`                  | Performance         | `waiting`        |
+| `insufficient_coverage`           | Performance         | `waiting`        |
+| `scipy_unavailable`               | Performance         | `fault`          |
+| `stored_energy_outside_limits`    | Performance         | `fault`          |
+| `energy_balance_residual`         | Performance         | `fault`          |
+| `oracle_unsolved`                 | Performance         | `fault`          |
+| `potential_below_threshold`       | Performance         | `waiting`        |
+| `breakdown_unsolved`              | Performance         | `fault`          |
+| `no_ev_session`                   | Performance         | `waiting`        |
+| `ev_unsolved`                     | Performance         | `fault`          |
+| `not_evaluated`                   | Performance         | `waiting`        |
+| `evaluation_failed`               | Performance         | `fault`          |
+| `learning`                        | Battery efficiency  | `waiting`        |
+| `implausible`                     | Battery efficiency  | `fault`          |
+| `no_finalised_slots`              | Forecast accuracy   | `waiting`        |
+| `no_prediction_records`           | Prediction accuracy | `waiting`        |
+| `no_solar_factors`                | Solar confidence    | `waiting`        |
+
+What each code means is described with its sensor group below.
+
+---
+
 ## Working mode sensor
 
 The primary HSEM sensor. Exposes the active battery recommendation and carries
@@ -376,13 +456,15 @@ Tracks prediction accuracy across multiple horizons — solar, load, and battery
 | ------------ | ----------------------------------------- |
 | `soc_mae_7d` | 7-day battery SoC MAE (percentage points) |
 
-| Attribute      | Unit | Description                                     |
-| -------------- | ---- | ----------------------------------------------- |
-| `soc_mae_7d`   | pp   | 7-day SoC Mean Absolute Error                   |
-| `soc_mae_30d`  | pp   | 30-day SoC Mean Absolute Error                  |
-| `solar_mape`   | %    | Solar forecast MAPE                             |
-| `load_mae_kwh` | kWh  | Load Mean Absolute Error                        |
-| `action_mix`   | dict | Distribution of planner actions over the window |
+| Attribute      | Unit | Description                                                                                                     |
+| -------------- | ---- | --------------------------------------------------------------------------------------------------------------- |
+| `soc_mae_7d`   | pp   | 7-day SoC Mean Absolute Error                                                                                   |
+| `soc_mae_30d`  | pp   | 30-day SoC Mean Absolute Error                                                                                  |
+| `solar_mape`   | %    | Solar forecast MAPE                                                                                             |
+| `load_mae_kwh` | kWh  | Load Mean Absolute Error                                                                                        |
+| `action_mix`   | dict | Distribution of planner actions over the window                                                                 |
+| `reason`       | text | `no_prediction_records` while the state is `unknown`, else `null`                                               |
+| `reason_kind`  | text | `waiting` while the state is `unknown`, else `null` (see [When a sensor is unknown](#when-a-sensor-is-unknown)) |
 
 ---
 
@@ -392,11 +474,13 @@ Per-hour PV forecast accuracy factors and confidence percentile.
 
 **Entity:** `sensor.hsem_solar_confidence_sensor`
 
-| Attribute        | Description                                      |
-| ---------------- | ------------------------------------------------ |
-| **State**        | Mean accuracy factor across the horizon (ratio)  |
-| `factors`        | dict — per-hour correction factors for each slot |
-| `confidence_pct` | float — confidence percentile (e.g. 50 = median) |
+| Attribute        | Description                                                                                                     |
+| ---------------- | --------------------------------------------------------------------------------------------------------------- |
+| **State**        | Mean accuracy factor across the horizon (ratio)                                                                 |
+| `factors`        | dict — per-hour correction factors for each slot                                                                |
+| `confidence_pct` | float — confidence percentile (e.g. 50 = median)                                                                |
+| `reason`         | `no_solar_factors` while the state is `unknown`, else `null`                                                    |
+| `reason_kind`    | `waiting` while the state is `unknown`, else `null` (see [When a sensor is unknown](#when-a-sensor-is-unknown)) |
 
 **Template example:**
 
@@ -949,6 +1033,7 @@ step and each direction weighs its latest 200 samples.
 | `configured_round_trip_efficiency_pct` | %    | Configured charge × discharge efficiency, the value the planner uses                                                                                                                                                                                |
 | `round_trip_difference_pct`            | %    | Measured minus configured. Negative: the battery loses more than configured                                                                                                                                                                         |
 | `round_trip_status`                    | text | `learning`, `ok` or `implausible`                                                                                                                                                                                                                   |
+| `reason_kind`                          | text | `waiting` for `learning`, `fault` for `implausible`, `null` when the state has a value (see [When a sensor is unknown](#when-a-sensor-is-unknown))                                                                                                  |
 | `capacity_basis`                       | text | `rated`: the capacity the stored energy is computed from                                                                                                                                                                                            |
 | `planner_efficiency_source`            | text | `configured` or `learned`: what the plan in force planned with                                                                                                                                                                                      |
 | `planner_efficiency_reason`            | text | `disabled` (option off), `learned_ac` (AC-side month), `learned_round_trip` (battery side), `learned_held` (last trusted value, or old or undated sums), `learning` (under 40 measurements in a direction), `implausible` or `not_below_configured` |
@@ -981,7 +1066,8 @@ step and each direction weighs its latest 200 samples.
   stays `unknown`.
 
 The sums are stored in `.storage/hsem_battery_efficiency.json` and survive a
-restart. A file from another schema version is not read.
+restart. A file from another schema version is not read. `hsem.log` then holds one
+info line, `Battery efficiency history of schema version … is not read`.
 
 ---
 
@@ -1349,6 +1435,7 @@ All performance sensors publish the same attributes:
 | `ev_charging_efficiency`                                  | `1 − ev_missed_opportunity ÷ ev_potential`, in percent                                                                                                                                                                                         |
 | `ev_shiftable_kwh`                                        | EV energy delivered in managed sessions                                                                                                                                                                                                        |
 | `ev_reason`                                               | Why the EV figures are `unknown`; `null` when they are known                                                                                                                                                                                   |
+| `reason_kind`                                             | This sensor's own: the kind of the reason behind its `unknown` state (`reason`, `breakdown_reason` or `ev_reason`), `null` when it has a value (see [When a sensor is unknown](#when-a-sensor-is-unknown))                                     |
 | `realized_cost`, `baseline_cost`, `oracle_cost`           | The cost of each run                                                                                                                                                                                                                           |
 | `window_start`, `window_end`, `slot_count`                | The 24 physical hours that were scored                                                                                                                                                                                                         |
 | `coverage`                                                | Share of the window that was observed (0–1)                                                                                                                                                                                                    |
@@ -1710,17 +1797,18 @@ The state is `unknown` and the `reason` attribute says why:
 
 All five sensors publish the same attributes:
 
-| Attribute          | Description                                                                                   |
-| ------------------ | --------------------------------------------------------------------------------------------- |
-| `month`            | The current month, `YYYY-MM`                                                                  |
-| `reason`           | Why this sensor's state is unknown, else `null`                                               |
-| `this_month`       | The current month's figures (not recorded)                                                    |
-| `previous_month`   | The previous month's figures (not recorded)                                                   |
-| `monthly`          | The current month and each of the 11 before it that has a record, oldest first (not recorded) |
-| `backfilled_days`  | Days in the record that come from long-term statistics, 0 when none                           |
-| `backfilled_from`  | The oldest backfilled day, else `null`                                                        |
-| `backfilled_until` | The newest backfilled day, else `null`                                                        |
-| `unit_not_power`   | The house and PV power sensors left out now for a unit that is not power (W, kW), else `null` |
+| Attribute          | Description                                                                                                                                               |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `month`            | The current month, `YYYY-MM`                                                                                                                              |
+| `reason`           | Why this sensor's state is unknown, else `null`                                                                                                           |
+| `reason_kind`      | The kind of that reason: `waiting`, `not_configured`, `action_needed` or `fault`, else `null` (see [When a sensor is unknown](#when-a-sensor-is-unknown)) |
+| `this_month`       | The current month's figures (not recorded)                                                                                                                |
+| `previous_month`   | The previous month's figures (not recorded)                                                                                                               |
+| `monthly`          | The current month and each of the 11 before it that has a record, oldest first (not recorded)                                                             |
+| `backfilled_days`  | Days in the record that come from long-term statistics, 0 when none                                                                                       |
+| `backfilled_from`  | The oldest backfilled day, else `null`                                                                                                                    |
+| `backfilled_until` | The newest backfilled day, else `null`                                                                                                                    |
+| `unit_not_power`   | The house and PV power sensors left out now for a unit that is not power (W, kW), else `null`                                                             |
 
 Each month is a dict:
 

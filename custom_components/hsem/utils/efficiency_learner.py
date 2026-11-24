@@ -33,6 +33,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from custom_components.hsem.utils.logger import async_log
 from custom_components.hsem.utils.persistence import (
     async_load_history,
     aware_datetime_from_iso,
@@ -575,6 +576,16 @@ class EfficiencyLearner:
         ``planner_round_trip`` is optional for the same reason.
         """
         current = data.get("version") == STORAGE_VERSION
+        if not current:
+            # One line per discarded file: the sensor is back to ``learning``
+            # after an upgrade, and this says why (issue #1482).
+            async_log(
+                "info",
+                "Battery efficiency history of schema version %s is not read "
+                "(this version reads %s). The measurements start again.",
+                data.get("version"),
+                STORAGE_VERSION,
+            )
         self.last_sample_at = {}
         self.held_round_trip = (
             _parse_held(data.get("planner_round_trip")) if current else None
