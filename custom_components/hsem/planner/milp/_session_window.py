@@ -89,16 +89,29 @@ def resolve_session_windows(
                 # A charge-past-target EV must never carry session pins
                 # (issue #988): pinned slots are exempt from the
                 # surplus-only constraint, so pinning one would let
-                # past-target charging import from grid. The combination
-                # is already unreachable — pinning requires
-                # ``fixed_session_only`` and ``charge_past_target``
-                # excludes it — this guard keeps the invariant if session
-                # pinning ever evolves.
+                # past-target charging import from grid.
+                #
+                # A live session here is a normal state (issue #1476):
+                # ``session_charge_kw`` is the measured charger power of
+                # any charging EV, managed or not, and ``engine_ev_milp``
+                # marks a managed EV at or above its target as
+                # charge-past-target whether or not it is drawing power.
+                # That happens while the EV charges past its target, and
+                # in the EV SoC economics baseline solve, which sets the
+                # target to the current SoC during an ordinary session.
+                # Such an EV is managed, so nothing would be pinned
+                # anyway; skipping it is logged at debug level.
+                #
+                # Only the pinnable combination is unexpected:
+                # ``engine_ev_milp`` never sets ``charge_past_target``
+                # together with ``fixed_session_only``. The guard refuses
+                # that pin too, and warns.
                 log_planner(
-                    "warning",
+                    "warning" if ev.fixed_session_only else "debug",
                     "[milp_ev] charge_past_target EV %d has a live session — "
-                    "refusing to pin session demand",
+                    "refusing to pin session demand (unmanaged=%s)",
                     ev_idx,
+                    ev.fixed_session_only,
                 )
                 continue
             session_ev_indices.append(ev_idx)

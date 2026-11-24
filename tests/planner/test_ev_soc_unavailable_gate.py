@@ -21,6 +21,7 @@ callers can tell *unknown* from *real zero*. These tests pin the contract:
 from __future__ import annotations
 
 import dataclasses
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -262,14 +263,22 @@ class TestMilpEvSocGate:
         assert configs[0].is_second is False
 
 
+def _pin_refusals(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    """Return the session-window guard's log records."""
+    return [r for r in caplog.records if "refusing to pin" in r.getMessage()]
+
+
 class TestChargePastTargetPinningGuard:
     """charge_past_target EVs never carry session pins (issue #988, item 4).
 
     Pinning only exists for ``fixed_session_only`` EVs, and
-    ``charge_past_target`` is only set for managed EVs, so the combination
-    is already unreachable — this guard keeps it that way if session
+    ``charge_past_target`` is only set for managed EVs, so the pinnable
+    combination is unreachable — this guard keeps it that way if session
     pinning ever evolves, because a pinned slot is exempt from the
     surplus-only constraint and could otherwise import from grid.
+
+    A live session on a managed charge-past-target EV is a normal state
+    (issue #1476) and must not log a warning on every solve.
     """
 
     def _ev_config(self, **overrides: Any) -> EVConfig:
@@ -302,6 +311,77 @@ class TestChargePastTargetPinningGuard:
 
         assert windows.session_dc_by_ev == {}
         assert windows.has_session_demand is False
+
+    def test_unmanaged_charge_past_target_session_warns(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The pinnable combination is unexpected and stays a warning."""
+        ev = self._ev_config(
+            charge_past_target=True,
+            fixed_session_only=True,  # inconsistent on purpose
+            session_charge_kw=7.0,
+        )
+
+        with caplog.at_level(logging.DEBUG, logger="custom_components.hsem"):
+            resolve_session_windows(
+                slots=_planned_slots(n=6),
+                future_idx=list(range(6)),
+                now=_NOW,
+                active_evs=[ev],
+            )
+
+        assert [r.levelno for r in _pin_refusals(caplog)] == [logging.WARNING]
+
+    def test_managed_charge_past_target_session_logs_debug_only(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A managed charge-past-target EV that is charging is normal (#1476)."""
+        ev = self._ev_config(charge_past_target=True, session_charge_kw=7.0)
+
+        with caplog.at_level(logging.DEBUG, logger="custom_components.hsem"):
+            windows = resolve_session_windows(
+                slots=_planned_slots(n=6),
+                future_idx=list(range(6)),
+                now=_NOW,
+                active_evs=[ev],
+            )
+
+        assert windows.session_dc_by_ev == {}
+        assert windows.session_ev_indices == []
+        assert windows.has_session_demand is False
+        assert [r.levelno for r in _pin_refusals(caplog)] == [logging.DEBUG]
+
+    @pytest.mark.parametrize(
+        ("soc_pct", "target_pct"),
+        [
+            (83.0, 80.0),  # charging past the configured target
+            (55.0, 55.0),  # EV SoC economics baseline: target = current SoC
+        ],
+    )
+    def test_live_session_at_or_above_target_is_managed_past_target(
+        self, soc_pct: float, target_pct: float
+    ) -> None:
+        """The input builder produces the combination by construction (#1476).
+
+        The measured session power is set for every charging EV, and a
+        managed EV at or above its target becomes charge-past-target — never
+        ``fixed_session_only``, so nothing can be pinned.
+        """
+        configs = _build_ev_configs_for_milp(
+            _milp_input(
+                ev_planned_load_current_soc_pct=soc_pct,
+                ev_planned_load_target_soc_pct=target_pct,
+                ev_planned_allow_charge_past_target_soc=True,
+                ev_session_charge_kw=7.0,
+            ),
+            _planned_slots(),
+            _NOW,
+        )
+
+        assert configs is not None
+        assert configs[0].charge_past_target is True
+        assert configs[0].fixed_session_only is False
+        assert configs[0].session_charge_kw == pytest.approx(7.0)
 
     def test_unmanaged_session_without_past_target_still_pinned(self):
         """The guard must not weaken the issue #615/#789 session handling."""
