@@ -69,6 +69,7 @@ from custom_components.hsem.planner.milp_optimizer import (
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.misc import (
     calculate_recommended_threshold,
+    clamp_efficiency,
     resolve_cycle_cost,
 )
 from custom_components.hsem.utils.recommendations import (
@@ -326,12 +327,15 @@ def generate_candidates(
             milp_slots, milp_diag = milp_result
             # A live-slot discharge too small to execute as a full
             # self-consumption slot is cleared before the SoC simulation
-            # (issue #1364).
+            # (issue #1364), and its load moved to the grid (issue #1474).
             apply_executable_discharge_minimum(
                 milp_slots,
                 now,
                 max_discharge_per_slot_kwh=max_discharge_per_slot or 0.0,
                 available_kwh=current_kwh,
+                discharge_eff=clamp_efficiency(inp.battery_discharge_efficiency_pct),
+                export_min_price=inp.export_min_price,
+                export_fee_per_kwh=inp.export_fee_per_kwh,
             )
             candidates.append(
                 CandidatePlan(

@@ -169,7 +169,10 @@ A planned discharge on the **live slot only** that is smaller than
 `EXECUTABLE_DISCHARGE_FRACTION` (0.25) × `deliverable` is therefore cleared
 (`batteries_discharged_kwh = 0`) and the slot relabelled `batteries_wait_mode`.
 The energy stays in the battery and rides along the SoC trajectory to a later
-slot or the terminal SoC. A plan that discharges the deliverable amount is
+slot or the terminal SoC. The house load the cleared discharge would
+have served moves to the slot's grid flows in the same step (issue #1474):
+`grid_import_kwh − grid_export_kwh` rises by `cleared × η_dis`, so the slot's
+energy balance still holds and the plan cost pays for that import. A plan that discharges the deliverable amount is
 kept however small (a low-load house, or the last energy above the floor).
 Future slots are never touched (they are re-solved before they execute), nor
 are `force_batteries_discharge`, `force_export` or any EV label, nor a slot
@@ -249,6 +252,9 @@ kept when none of the three runtime rules above fires.
   `0 < batteries_discharged_kwh < 0.25 × min(net load, max_discharge_per_slot, current_kwh)`;
   such a slot is `batteries_wait_mode` with zero discharge, and its SoC
   simulation keeps the energy in the battery (issue #1364).
+- A live slot cleared by the executable-minimum rule still satisfies the
+  per-slot energy balance: its grid import covers the load the cleared
+  discharge would have served (issue #1474).
 - A live-slot discharge equal to the deliverable amount is never cleared,
   however small (low house load, or the last energy above the floor).
 - A future slot, a forcible-mode slot and an EV-labelled slot are never changed
