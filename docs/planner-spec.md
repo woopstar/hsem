@@ -1015,6 +1015,13 @@ on the first cycle after the sensor reports again.
   are exempt from this row, and pinning requires `fixed_session_only`, which
   `charge_past_target` excludes by construction. `resolve_session_windows()`
   refuses to pin a charge-past-target EV even if that ever changes.
+  A live session (`session_charge_kw > 0`) on a charge-past-target EV is a
+  normal state (issue #1476): the measured charger power is set for every
+  charging EV. It occurs while a managed EV charges past its target, and in the
+  EV SoC economics baseline solve, which sets the target to the current SoC
+  during an ordinary session. The skip is logged at debug level. Only the
+  pinnable combination (`charge_past_target` with `fixed_session_only`) logs a
+  warning.
 - **Battery-first for charge-past-target (issues #775, #1015)**: When
   `charge_past_target=True`, the house battery must take its share of the
   slot's PV surplus before the EV absorbs any, and the EV must never draw from
