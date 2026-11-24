@@ -14,6 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from homeassistant.core import CoreState
+
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.coordinator_data import CoordinatorData
 from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
@@ -251,3 +253,85 @@ class TestMLHistoryStatusLogging:
         await _cycle(coordinator, ConsumptionPopulation(ok=True))
 
         assert coordinator._ml_history_status.state is MLHistoryState.DISABLED
+
+
+# ---------------------------------------------------------------------------
+# ML populate cut off by the shutdown (issue #1475)
+# ---------------------------------------------------------------------------
+
+_EXECUTOR_SHUTDOWN = "cannot schedule new futures after shutdown"
+
+
+async def _ml_raising_cycle(
+    coordinator: HSEMDataUpdateCoordinator, exc: Exception
+) -> tuple[MagicMock, MagicMock]:
+    """Run one cycle whose ML populate raises *exc*.
+
+    Returns:
+        The ``async_log`` mock and the legacy avg populate mock.
+    """
+    log = MagicMock()
+    with (
+        _patch_all_ha_helpers(),
+        patch(_POPULATE, return_value=ConsumptionPopulation(ok=True)) as legacy,
+        patch(_ML_POPULATE, AsyncMock(side_effect=exc)),
+        patch(f"{_MODULE}.async_log", log),
+    ):
+        await coordinator._async_run_update_cycle()
+    return log, legacy
+
+
+def _raised_levels(log: MagicMock) -> list[str]:
+    return [
+        call.args[0]
+        for call in log.call_args_list
+        if call.args[1].startswith("[ml] populate_ml_house_consumption raised")
+    ]
+
+
+class TestMLPopulateDuringShutdown:
+    """A populate cut off by the shutdown is not an error."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "state", [CoreState.stopping, CoreState.final_write, CoreState.stopped]
+    )
+    async def test_failure_while_stopping_logs_debug_and_falls_back(
+        self, state: CoreState
+    ) -> None:
+        coordinator = _ml_coordinator()
+        coordinator.hass.state = state
+
+        log, legacy = await _ml_raising_cycle(coordinator, ValueError("boom"))
+
+        assert _raised_levels(log) == ["debug"]
+        assert "error" not in [call.args[0] for call in log.call_args_list]
+        legacy.assert_called_once()
+        assert coordinator._ml_history_status.state is MLHistoryState.FAILED
+
+    @pytest.mark.asyncio
+    async def test_executor_shutdown_in_close_stage_logs_debug(self) -> None:
+        """The close stage runs in ``not_running``: the message decides."""
+        coordinator = _ml_coordinator()
+        coordinator.hass.state = CoreState.not_running
+
+        log, legacy = await _ml_raising_cycle(
+            coordinator, RuntimeError(_EXECUTOR_SHUTDOWN)
+        )
+
+        assert _raised_levels(log) == ["debug"]
+        legacy.assert_called_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("state", [CoreState.running, CoreState.not_running])
+    async def test_other_failure_logs_error_and_falls_back(
+        self, state: CoreState
+    ) -> None:
+        coordinator = _ml_coordinator()
+        coordinator.hass.state = state
+
+        log, legacy = await _ml_raising_cycle(coordinator, RuntimeError("boom"))
+
+        assert _raised_levels(log) == ["error"]
+        legacy.assert_called_once()
+        assert coordinator._ml_history_status.state is MLHistoryState.FAILED

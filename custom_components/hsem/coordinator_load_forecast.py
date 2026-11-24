@@ -29,6 +29,7 @@ from custom_components.hsem.ml.history_status import MLHistoryState, MLHistorySt
 from custom_components.hsem.models.data_quality import DataQuality
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.sensor_config import SensorConfig
+from custom_components.hsem.utils.ha_helpers import failure_log_level
 from custom_components.hsem.utils.logger import async_log
 
 
@@ -88,8 +89,10 @@ class CoordinatorLoadForecastMixin(CoordinatorSharedState):
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            # Debug while Home Assistant stops: the executor is already shut
+            # down and the cycle's result is thrown away (issue #1475).
             async_log(
-                "error",
+                failure_log_level(self.hass, exc),
                 "[ml] populate_ml_house_consumption raised %s —"
                 " falling back to legacy avg sensors for this cycle.",
                 exc,

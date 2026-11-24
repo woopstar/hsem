@@ -10,6 +10,7 @@ from collections.abc import Callable
 from typing import Any, cast
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.exceptions import (
     HomeAssistantError,
     ServiceNotFound,
@@ -31,6 +32,39 @@ _entity_id_from_unique_id_cache: dict[tuple[str, str, str], str] = {}
 
 class EntityNotFoundError(HomeAssistantError):
     """Exception raised when an entity is not found."""
+
+
+# States Home Assistant only has while it stops. ``not_running`` is left out:
+# it is also the state during initial setup, before Home Assistant starts.
+_STOPPING_STATES = (CoreState.stopping, CoreState.final_write, CoreState.stopped)
+
+# What a thread pool raises for a job submitted after its shutdown. Home
+# Assistant's close stage runs in ``not_running``, so there the message is
+# the only sign that the failure belongs to the shutdown.
+_EXECUTOR_SHUTDOWN_MESSAGE = "cannot schedule new futures after"
+
+
+def failure_log_level(hass: HomeAssistant, exc: BaseException) -> str:
+    """Return the level to log a failed update-cycle step at (issue #1475).
+
+    A step that is still running while Home Assistant stops fails because
+    the executor is already shut down. Its result is thrown away anyway, so
+    this is expected and logged at debug level. Every other failure keeps
+    the error level.
+
+    Args:
+        hass: The Home Assistant instance.
+        exc: The exception the step raised.
+
+    Returns:
+        ``"debug"`` when the failure is caused by Home Assistant stopping,
+        otherwise ``"error"``.
+    """
+    if hass.state in _STOPPING_STATES:
+        return "debug"
+    if isinstance(exc, RuntimeError) and _EXECUTOR_SHUTDOWN_MESSAGE in str(exc):
+        return "debug"
+    return "error"
 
 
 async def async_resolve_entity_id_from_unique_id(  # NOSONAR
