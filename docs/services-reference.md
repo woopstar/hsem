@@ -351,8 +351,9 @@ defines as the _EVSE_ — not the EV — withholding energy, explicitly listing
   EV, or no charger is currently connected.
 - `HomeAssistantError` when the queries fail to reach the charger.
 
-Replies arrive asynchronously and are written to the HSEM log at warning level
-as they come in, so they are visible without enabling DEBUG logging.
+Replies arrive asynchronously and are written to the HSEM log at info level as
+they come in, so they are visible without enabling DEBUG logging. A reply with a
+status other than `Accepted` is logged at warning level.
 
 **Example:**
 
