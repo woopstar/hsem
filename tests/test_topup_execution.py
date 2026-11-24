@@ -381,7 +381,11 @@ def _apply_minimum(
     slots: list[PlannedSlot], *, available_kwh: float = 7.5
 ) -> PlannedSlot | None:
     return apply_executable_discharge_minimum(
-        slots, _NOW, max_discharge_per_slot_kwh=1.25, available_kwh=available_kwh
+        slots,
+        _NOW,
+        max_discharge_per_slot_kwh=1.25,
+        available_kwh=available_kwh,
+        discharge_eff=0.98,
     )
 
 

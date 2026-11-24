@@ -14,7 +14,11 @@ amount is therefore not executable as planned: the inverter would deliver
 several times more.  It is cleared and the slot relabelled
 ``batteries_wait_mode`` *before* the SoC simulation, so the energy balance,
 the SoC trajectory and the plan cost all see the slot as a hold and the
-surplus rides along to a later slot or the terminal SoC.  A plan that
+surplus rides along to a later slot or the terminal SoC.  The house load the
+cleared discharge would have served moves to the slot's grid flows in the same
+step (issue #1474): the simulation trusts a MILP slot's grid fields verbatim,
+so a cleared discharge that left them alone published a slot whose load no
+source supplied, and scored that energy as free.  A plan that
 discharges the whole deliverable amount — the normal evening slot, or the
 last energy above the floor — is untouched, however small.  Only the live
 slot is touched: a future slot is re-solved before it executes.
@@ -25,6 +29,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from custom_components.hsem.models.planned_slot import PlannedSlot
+from custom_components.hsem.planner.cost_helpers import slot_grid_cash_flow_cost
 from custom_components.hsem.utils.datetime_utils import slot_contains
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.recommendations import Recommendations
@@ -72,21 +77,70 @@ def executable_discharge_minimum_kwh(
     return max(deliverable_kwh, 0.0) * max(min(fraction, 1.0), 0.0)
 
 
+def _move_cleared_discharge_to_grid(
+    slot: PlannedSlot,
+    cleared_kwh: float,
+    *,
+    discharge_eff: float,
+    export_min_price: float,
+    export_fee_per_kwh: float,
+) -> None:
+    """Re-derive a slot's grid flows after its discharge was cleared.
+
+    The battery no longer delivers ``cleared_kwh × η_dis`` to the AC bus, so
+    the slot's net grid flow rises by that amount: first out of any export,
+    then as import.  Nothing is left to export from the battery.
+
+    Args:
+        slot: The slot whose discharge was cleared, mutated in place.
+        cleared_kwh: The battery-side discharge that was removed.
+        discharge_eff: Discharge efficiency fraction (0-1].
+        export_min_price: Minimum export price, for the slot's cash flow.
+        export_fee_per_kwh: Export fee per kWh, for the slot's cash flow.
+    """
+    net_flow = (
+        float(slot.grid_import_kwh)
+        - float(slot.grid_export_kwh)
+        + cleared_kwh * discharge_eff
+    )
+    slot.grid_import_kwh = round(max(net_flow, 0.0), 3)
+    slot.grid_export_kwh = round(max(-net_flow, 0.0), 3)
+    slot.primary_battery_export_kwh = 0.0
+    slot.pv_export_kwh = slot.grid_export_kwh
+    slot.estimated_cost_currency = round(
+        slot_grid_cash_flow_cost(
+            slot,
+            export_min_price=export_min_price,
+            export_fee_per_kwh=export_fee_per_kwh,
+        ),
+        4,
+    )
+
+
 def apply_executable_discharge_minimum(
     slots: list[PlannedSlot],
     now: datetime,
     *,
     max_discharge_per_slot_kwh: float,
     available_kwh: float,
+    discharge_eff: float,
+    export_min_price: float = 0.0,
+    export_fee_per_kwh: float = 0.0,
     fraction: float = EXECUTABLE_DISCHARGE_FRACTION,
 ) -> PlannedSlot | None:
     """Clear a sub-executable discharge on the live slot and relabel it.
+
+    The cleared slot stays balanced: the load the discharge would have served
+    is added to its grid flows (issue #1474).
 
     Args:
         slots: The candidate's slots, mutated in place.
         now: Timezone-aware current time; selects the live slot.
         max_discharge_per_slot_kwh: The battery's maximum discharge per slot.
         available_kwh: Energy above the discharge floor right now.
+        discharge_eff: Discharge efficiency fraction (0-1].
+        export_min_price: Minimum export price, for the slot's cash flow.
+        export_fee_per_kwh: Export fee per kWh, for the slot's cash flow.
         fraction: Fraction of the deliverable amount below which a planned
             discharge is cleared.
 
@@ -121,5 +175,12 @@ def apply_executable_discharge_minimum(
         )
         slot.batteries_discharged_kwh = 0.0
         slot.recommendation = Recommendations.BatteriesWaitMode.value
+        _move_cleared_discharge_to_grid(
+            slot,
+            discharge,
+            discharge_eff=discharge_eff,
+            export_min_price=export_min_price,
+            export_fee_per_kwh=export_fee_per_kwh,
+        )
         return slot
     return None
