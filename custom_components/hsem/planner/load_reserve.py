@@ -10,11 +10,11 @@ This module finds the expensive windows ahead and resolves one
 :class:`LoadReserveSpec` per window: the energy the battery should still hold
 at the end of the window if the forecast is exact, cut into tiers.  A kWh of
 reserve at ``x`` kWh above the forecast is used with probability
-``P(error > x)``, so it is worth ``Cu × P(error > x) / P(error < x)`` per kWh
-of surplus cost: the first tier is worth most and the last one least.  The
-MILP gets each window as one soft row whose slack is priced per tier
+``P(error > x)``, so carrying it is worth ``Cu × P(error > x)`` per kWh: the
+first tier is worth most and the last one least.  The MILP gets each window
+as one soft row whose slack is priced per tier
 (``planner/milp/_load_reserve_rows.py``), so it holds exactly the tiers that
-cost less to carry than they are worth, at its own marginal prices.  The
+cost less to carry than they are worth, whatever the energy comes from.  The
 selector adds the same slack cost to every candidate's ``score`` through
 ``CostWeights.load_reserve``.  The house load in the energy balance is never
 changed.
@@ -34,7 +34,7 @@ from datetime import datetime, timedelta, tzinfo
 from statistics import NormalDist
 from typing import Any
 
-from custom_components.hsem.models.load_error_profile import window_rmse_kwh
+from custom_components.hsem.models.load_error_profile import window_spread_kwh
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.utils.datetime_utils import (
@@ -56,7 +56,7 @@ LOAD_RESERVE_MIN_KWH = 0.05
 #: A shortfall must cost at least this share of the replacement cost ``R``
 #: before a window counts as dearer than a charge before it.
 LOAD_RESERVE_MIN_ASYMMETRY = 0.05
-#: Hours at the end of the window whose mean price is the shortfall price.
+#: Hours at the end of the window whose cheapest price is the shortfall price.
 LOAD_RESERVE_TAIL_HOURS = 2.0
 #: Only a window that starts within this many hours gets a reserve.
 LOAD_RESERVE_LOOKAHEAD_HOURS = 24.0
@@ -66,7 +66,9 @@ LOAD_RESERVE_MAX_WINDOWS = 3
 SCORE_TOLERANCE_KWH = 1e-3
 _PRICE_EPSILON = 1e-9
 
-REASON_APPLIED = "applied"
+#: A row asks for a reserve.  It does not say the plan changed: energy the
+#: plan carries past the window anyway counts towards the row.
+REASON_APPLIED = "row_added"
 REASON_NO_HISTORY = "no_history"
 REASON_NO_PRICE_ASYMMETRY = "no_price_asymmetry"
 REASON_INSUFFICIENT_HISTORY = "insufficient_history"
@@ -81,11 +83,13 @@ class LoadReserveSpec:
     """The reserve decision for one expensive window.
 
     Attributes:
-        reason: Why the reserve has its value; ``applied`` when one is asked.
-        sigma_kwh: Spread (RMSE) of the summed load forecast error over the
+        reason: Why the reserve has its value; ``row_added`` when one is
+            asked for.
+        sigma_kwh: Robust spread of the summed load forecast error over the
             window's hours on earlier days.
         samples: Earlier days behind ``sigma_kwh``.
-        shortfall_cost: ``Cu``: cost of a missing AC kWh at the window's end.
+        shortfall_cost: ``Cu``: cost of a missing AC kWh at the window's end,
+            from the cheapest price of the window's last two hours.
         replacement_cost: ``R``: delivered cost of an AC kWh charged before
             the window.
         window_start: Start of the expensive window, or ``None``.
@@ -141,7 +145,7 @@ class LoadReserveSpec:
         """Return the JSON-safe diagnostics of this decision."""
         return {
             "reason": self.reason,
-            "max_reserve_kwh": round(self.max_reserve_kwh, 3),
+            "asked_kwh": round(self.max_reserve_kwh, 3),
             "sigma_kwh": round(self.sigma_kwh, 3),
             "samples": self.samples,
             "shortfall_cost_per_kwh": round(self.shortfall_cost, 4),
@@ -234,8 +238,12 @@ def reserve_tiers(
     """Cut a reserve of up to ``2σ`` into priced tiers, cheapest slack first.
 
     A kWh of reserve at ``z`` standard deviations above the forecast is
-    worth carrying while the surplus cost is below
-    ``Cu × (1 − Φ(z)) / Φ(z)``; each tier takes that value at its middle.
+    used with probability ``1 − Φ(z)``.  Bought at ``a`` and worth ``v``
+    when left over, it pays while ``a − v < (p − v) × (1 − Φ(z))``, with
+    ``p`` the price a shortfall is bought at.  ``a − v`` is what carrying
+    the kWh costs in the LP, whatever its source.  A leftover kWh is taken
+    to be worth the replacement cost ``R`` at most, which gives the tier
+    price ``Cu × (1 − Φ(z))`` with ``Cu = p − R``, at the tier's middle.
 
     Args:
         sigma_kwh: Spread of the window's summed forecast error.
@@ -253,9 +261,8 @@ def reserve_tiers(
         low = index * step
         width = min(step, cap_kwh - low)
         if sigma_kwh > 0.0 and width > 0.0:
-            above = normal.cdf((low + width / 2.0) / sigma_kwh)
-            price = shortfall_cost_per_stored_kwh * (1.0 - above) / above
-            tiers.append((width, price))
+            used = 1.0 - normal.cdf((low + width / 2.0) / sigma_kwh)
+            tiers.append((width, shortfall_cost_per_stored_kwh * used))
     return tuple(reversed(tiers))
 
 
@@ -364,7 +371,10 @@ def _evaluate(
     hours = max(inp.interval_minutes, 1) / 60.0
     tail_slots = max(math.ceil(LOAD_RESERVE_TAIL_HOURS / hours), 1)
     tail = prices[max(first, last + 1 - tail_slots) : last + 1]
-    shortfall = sum(tail) / len(tail) - replacement
+    # A shortfall noticed late is bought in the cheapest slot still ahead,
+    # so the cheapest tail price values it.  Withholding discharge in a
+    # window slot at that price or above then costs more than any tier.
+    shortfall = min(tail) - replacement
     fields: dict[str, Any] = {
         "shortfall_cost": shortfall,
         "replacement_cost": replacement,
@@ -375,11 +385,15 @@ def _evaluate(
     if shortfall < LOAD_RESERVE_MIN_ASYMMETRY * abs(replacement):
         return LoadReserveSpec(reason=REASON_NO_PRICE_ASYMMETRY, **fields)
     profile = inp.load_error_profile
-    samples = profile.window_samples([s.start for s in window], zone) if profile else []
+    samples = (
+        profile.window_samples([s.start for s in window], zone, inp.interval_minutes)
+        if profile
+        else []
+    )
     fields["samples"] = len(samples)
     if len(samples) < LOAD_RESERVE_MIN_SAMPLES:
         return LoadReserveSpec(reason=REASON_INSUFFICIENT_HISTORY, **fields)
-    sigma = window_rmse_kwh(samples)
+    sigma = window_spread_kwh(samples)
     fields["sigma_kwh"] = sigma
     if LOAD_RESERVE_MAX_Z * sigma < LOAD_RESERVE_MIN_KWH:
         return LoadReserveSpec(reason=REASON_NO_UNCERTAINTY, **fields)
@@ -442,13 +456,13 @@ def _window_summary(
     """Return one window's diagnostics with what the selected plan holds."""
     entry = spec.as_dict()
     slack = min(reserve_shortfall_kwh(winner_slots, spec), spec.max_reserve_kwh)
-    held = spec.max_reserve_kwh - slack
-    entry["reserve_kwh"] = round(held, 3)
+    stock = spec.max_reserve_kwh - slack
+    entry["stock_at_window_end_kwh"] = round(stock, 3)
     entry["slack_kwh"] = round(slack, 3)
     entry["safety_factor"] = (
-        round(held / spec.sigma_kwh, 3) if spec.sigma_kwh > 0.0 else 0.0
+        round(stock / spec.sigma_kwh, 3) if spec.sigma_kwh > 0.0 else 0.0
     )
-    if spec.active and held < LOAD_RESERVE_MIN_KWH:
+    if spec.active and stock < LOAD_RESERVE_MIN_KWH:
         entry["reason"] = REASON_SURPLUS_TOO_COSTLY
     return entry
 
@@ -460,9 +474,13 @@ def summarize_load_reserve(
 
     ``None`` when the option is off.  The top level describes the first
     reserve the plan holds, else the first one it was asked for, else the
-    first window that got none; ``windows`` lists every reserve asked for.  ``reserve_kwh`` is what the selected plan holds above the
-    floor at the window's end, ``safety_factor`` that reserve in standard
-    deviations and ``slack_kwh`` the part it does not hold.
+    first window that got none; ``windows`` lists every reserve asked for.
+    ``asked_kwh`` is what the row asks for and ``slack_kwh`` the part the
+    selected plan does not hold.  ``stock_at_window_end_kwh`` is the rest:
+    what the plan holds above the floor at the window's end, up to
+    ``asked_kwh``.  It includes energy the plan would carry past the window
+    without the row, so it is not what the row added.  ``safety_factor`` is
+    that stock in standard deviations.
     """
     if plan is None:
         return None
@@ -471,20 +489,21 @@ def summarize_load_reserve(
         log_planner(
             "debug",
             "[milp] load_reserve window=%s..%s  n=%d  sigma=%.3f  z=%.3f  "
-            "reserve=%.3f  slack=%.3f  reason=%s",
+            "asked=%.3f  stock=%.3f  slack=%.3f  reason=%s",
             entry["window_start"],
             entry["window_end"],
             entry["window_slots"],
             entry["sigma_kwh"],
             entry["safety_factor"],
-            entry["reserve_kwh"],
+            entry["asked_kwh"],
+            entry["stock_at_window_end_kwh"],
             entry["slack_kwh"],
             entry["reason"],
         )
     held = [entry for entry in windows if entry["reason"] == REASON_APPLIED]
     summary = dict((held or windows or [_window_summary(plan.primary, ())])[0])
-    summary["total_reserve_kwh"] = round(
-        math.fsum(entry["reserve_kwh"] for entry in windows), 3
+    summary["total_stock_kwh"] = round(
+        math.fsum(entry["stock_at_window_end_kwh"] for entry in windows), 3
     )
     summary["windows"] = windows
     return summary

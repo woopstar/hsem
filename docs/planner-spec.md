@@ -2494,10 +2494,25 @@ understates the window by more than half.
   counts only when every slot of the window has an error.
 
 ```text
-σ(W) = sqrt( mean( sample_d² ) )         RMSE of the summed error, kWh
+σ(W) = 1.4826 × median( |sample_d| )         robust spread of the summed error, kWh
 ```
 
-`σ(W)` changes once a day, when a new day completes the window. It needs
+For normal errors around zero this is the standard deviation. It is used
+instead of the RMSE because one evening that was far off stays in the history
+for 30 days: a car charged on the house meter (+40 kWh on one evening) takes
+an RMSE from 2.1 to 7.8 kWh and this estimate from 2.1 to about 2.2
+(`load_error_profile.window_spread_kwh`).
+
+A day is left out when its records were made at another slot width than the
+window's: after a change from 15 to 60 minutes the record at an hour's start
+holds a quarter's error, and after a change from 60 to 15 minutes the quarters
+inside an hour have no record. Such days drop out of the history as it ages.
+
+For a **fixed** window `σ(W)` changes once a day, when a new day completes the
+window. The window itself is not fixed: it is derived from the cheapest slot
+still ahead, so it shrinks as that slot passes and again as the window is
+entered, and `σ(W)`, `Cu` and the reserve asked for shrink with it. Stock
+already bought stays in the battery. `σ(W)` needs
 `LOAD_RESERVE_MIN_SAMPLES = 7` earlier days.
 
 `ForecastTracker.window_rmse_load_kwh(n)` gives the same statistic over every
@@ -2526,22 +2541,27 @@ own peak. Only a window that starts within 24 hours
 (`LOAD_RESERVE_MAX_WINDOWS`).
 
 ```text
-Cu(W) = mean( p over the last 2 hours of W ) − R(c)      shortfall cost, per AC kWh
+Cu(W) = min( p over the last 2 hours of W ) − R(c)      shortfall cost, per AC kWh
 ```
 
-The battery runs out at the end of a window, so the tail prices it.
+The battery runs out at the end of a window, and a shortfall noticed there is
+bought in the cheapest slot still ahead, so the cheapest tail price values
+it. The mean of the tail was rejected: with a tail of 3.5 / 3.0 it valued the
+reserve at 3.25 where a shortfall costs 3.0, and the row was then met by
+importing at 3.0 inside the window's last hour and discharging at 2.7 after
+it, at a loss and without more stock through the dear core.
 
 #### When there is no reserve
 
-| `reason`               | Condition                                                      |
-| ---------------------- | -------------------------------------------------------------- |
-| `no_history`           | No load error history                                          |
-| `no_price_asymmetry`   | No window, or `Cu < 0.05 × R` (`LOAD_RESERVE_MIN_ASYMMETRY`)   |
-| `insufficient_history` | Fewer than 7 earlier days with a complete window               |
-| `no_uncertainty`       | `2 × σ < 0.05 kWh`                                             |
-| `capacity_bound`       | `usable − floor − Σ_W base_load / η_dis < 0.05 kWh`            |
-| `surplus_too_costly`   | A reserve was asked for and the selected plan holds none of it |
-| `applied`              | A reserve is asked for and the selected plan holds part of it  |
+| `reason`               | Condition                                                    |
+| ---------------------- | ------------------------------------------------------------ |
+| `no_history`           | No load error history                                        |
+| `no_price_asymmetry`   | No window, or `Cu < 0.05 × R` (`LOAD_RESERVE_MIN_ASYMMETRY`) |
+| `insufficient_history` | Fewer than 7 earlier days with a complete window             |
+| `no_uncertainty`       | `2 × σ < 0.05 kWh`                                           |
+| `capacity_bound`       | `usable − floor − Σ_W base_load / η_dis < 0.05 kWh`          |
+| `surplus_too_costly`   | A row was added and the selected plan holds none of it       |
+| `row_added`            | A row asks for a reserve and the plan holds stock towards it |
 
 `base_load` is `max(house load − PV, 0)` per slot and `floor` the dynamic
 discharge floor's reserve at the window's end (`discharge_reserve_kwh`, issue
@@ -2555,26 +2575,43 @@ reserve ≤ min(2 × σ, cap)                 LOAD_RESERVE_MAX_Z = 2
 ```
 
 A kWh of reserve at `x` kWh above the forecast is used with probability
-`P(error > x)` and left over with `P(error < x)`. With a surplus cost `Co`
-per kWh it is worth holding while
+`1 − Φ(x / σ)` and left over otherwise. Let `a` be what it costs delivered,
+`v` what it is worth when left over, and `p` the price a shortfall is bought
+at. Holding it pays while
 
 ```text
-Co < Cu × (1 − Φ(x / σ)) / Φ(x / σ)
+(1 − Φ) × (p − a) > Φ × (a − v)      ⟺      a − v < (p − v) × (1 − Φ(x / σ))
 ```
 
-which is the newsvendor quantile `Φ(x / σ) = Cu / (Cu + Co)` solved for `Co`.
-`Co` is not estimated: it is what carrying the kWh costs **in the LP** (the
-price it is bought at, the losses and the wear, minus what it saves or is
-worth later). The reserve is cut into four tiers of `0.5 σ`
-(`LOAD_RESERVE_TIERS`), each priced at that value at its middle, per kWh in
-the battery (`Cu × η_dis`):
+which is the newsvendor quantile `Φ = (p − a) / (p − v)`. The left side,
+`a − v`, is what carrying the kWh costs **in the LP**: the price it is bought
+at, the losses and the wear, minus what it saves or is worth later. It is not
+estimated, and it is right whatever the source is: the valley, a dearer slot
+when the valley's charge power is used up, or a discharge held back. The
+right side needs `v`. A leftover kWh is taken to be worth the replacement
+cost `R` at most (the slots after the window cost `R` or less), which gives
+the price of the slack:
+
+```text
+price(x) = Cu × η_dis × (1 − Φ(x / σ))        per kWh in the battery
+```
+
+A lower real `v` makes the reserve worth more than this, so the price is on
+the careful side. The reserve is cut into four tiers of `0.5 σ`
+(`LOAD_RESERVE_TIERS`), each priced at its middle:
 
 | Tier (`z`) | Price per stored kWh |
 | ---------- | -------------------- |
-| 0.0 – 0.5  | `0.670 × Cu × η_dis` |
-| 0.5 – 1.0  | `0.293 × Cu × η_dis` |
-| 1.0 – 1.5  | `0.118 × Cu × η_dis` |
-| 1.5 – 2.0  | `0.042 × Cu × η_dis` |
+| 0.0 – 0.5  | `0.401 × Cu × η_dis` |
+| 0.5 – 1.0  | `0.227 × Cu × η_dis` |
+| 1.0 – 1.5  | `0.106 × Cu × η_dis` |
+| 1.5 – 2.0  | `0.040 × Cu × η_dis` |
+
+**No re-timing inside the window.** Holding back a discharge in a window slot
+`k` costs `η_dis × (p[k] − v)`. For every slot at or above the tail's cheapest
+price that is at least `η_dis × Cu`, more than twice the dearest tier. A
+reserve is therefore never met by importing in its own window at a price the
+slack is valued at or above.
 
 The cap cuts the reserve from the top. The solver holds the tiers that cost
 less to carry than their price and pays the slack of the others, so the
@@ -2632,12 +2669,21 @@ that paid for one.
 dump carry, for the first reserve the plan holds, else the first one asked
 for, else the first window that got none:
 
-`reason`, `reserve_kwh` (held above the floor at the window's end),
-`max_reserve_kwh`, `sigma_kwh`, `samples`, `safety_factor`
-(`reserve_kwh / sigma_kwh`), `slack_kwh`, `shortfall_cost_per_kwh` (`Cu`),
-`replacement_cost_per_kwh` (`R`), `window_start`, `window_end`,
-`window_slots`, `level_kwh`, `total_reserve_kwh`, and `windows` with the same
-keys for every reserve asked for. `None` when the option is off.
+`reason`, `asked_kwh` (what the row asks for), `slack_kwh` (the part the plan
+does not hold), `stock_at_window_end_kwh` (the rest: what the plan holds
+above the floor at the window's end, up to `asked_kwh`), `sigma_kwh`,
+`samples`, `safety_factor` (`stock_at_window_end_kwh / sigma_kwh`),
+`shortfall_cost_per_kwh` (`Cu`), `replacement_cost_per_kwh` (`R`),
+`window_start`, `window_end`, `window_slots`, `level_kwh`, `total_stock_kwh`,
+and `windows` with the same keys for every row. `None` when the option is
+off.
+
+`stock_at_window_end_kwh` is **not** what the row added. Energy the plan
+would carry past the window without the row counts towards it, and telling
+the two apart takes a second solve without the row, which is not run. In 22
+of 29 recorded cycles with stock towards a row the planned cost was that of
+the plan without the reserve. `row_added` therefore says that a row exists,
+not that the plan changed.
 
 `[load_reserve]` logs every window's decision before the solve and
 `[milp] load_reserve window=… n=… sigma=… z=… reserve=… slack=…` what the
@@ -2652,8 +2698,12 @@ selected plan holds.
   covered.
 - `R` prices a charge from the grid. Where the plan charges from PV it would
   otherwise export, the real replacement cost is lower and `Cu` too small.
-- `reserve_kwh` is what the plan holds at the window's end, not what the
-  reserve added: energy the plan already carried past the window counts.
+- A leftover kWh is taken to be worth `R`. Where its real value is lower the
+  reserve is undervalued and too little is held.
+- `Cu = p − R(c)` is only used for the 5 % asymmetry test and as the scale of
+  the tier price. The tier price no longer assumes that the reserve is a grid
+  charge at slot `c`: a dearer source shows up as a higher carrying cost in
+  the LP.
 - Once a window has started no row asks for its reserve any more. Only a
   dearer stretch still ahead inside it can get one.
 
@@ -2674,59 +2724,68 @@ the slots that have passed, starting with 30 days of them. Realised cost over
 
 | Period                  | PV  | Seed | Without  | With     | Difference | Per day |
 | ----------------------- | --- | ---- | -------- | -------- | ---------- | ------- |
-| 2026-10-01 – 2026-10-30 | no  | 1    | 1,904.59 | 1,896.33 | −8.26      | −0.28   |
-| 2026-10-01 – 2026-10-30 | no  | 2    | 1,932.70 | 1,921.70 | −11.00     | −0.37   |
-| 2026-10-01 – 2026-10-30 | no  | 3    | 1,947.72 | 1,943.17 | −4.56      | −0.15   |
-| 2026-10-01 – 2026-10-30 | yes | 1    | 1,633.21 | 1,627.01 | −6.20      | −0.21   |
-| 2026-10-21 – 2026-11-19 | no  | 1    | 2,580.94 | 2,573.84 | −7.10      | −0.24   |
+| 2026-10-01 – 2026-10-30 | no  | 1    | 1,904.59 | 1,902.04 | −2.55      | −0.09   |
+| 2026-10-01 – 2026-10-30 | no  | 2    | 1,932.70 | 1,928.02 | −4.68      | −0.16   |
+| 2026-10-01 – 2026-10-30 | no  | 3    | 1,947.72 | 1,946.98 | −0.74      | −0.03   |
+| 2026-10-01 – 2026-10-30 | yes | 1    | 1,633.21 | 1,632.24 | −0.97      | −0.03   |
+| 2026-10-21 – 2026-11-19 | no  | 1    | 2,580.94 | 2,578.71 | −2.23      | −0.07   |
 
 The stored energy at the end is the same with and without the reserve in
-every run. The gain is 0.15 to 0.37 DKK per day, 0.2 to 0.6 % of the cost.
-The estimate in issue #1361 was 0.2 DKK per day. The planner held 2.5 to 3.5
-kWh on average, and a reserve in 96 to 99 % of the runs.
+every run. The calculated gain is 0.03 to 0.16 DKK per day, 0.04 to 0.24 % of
+the cost. The estimate in issue #1361 was 0.2 DKK per day. The plan held 1.1
+to 2.1 kWh towards a row on average, and some in 74 to 83 % of the runs.
 
-What this does **not** show: the error is a model, and the planner's history
-comes from the same model, so its spread is right by construction. The
-executed recommendation changed between slots 461 to 500 times in 30 days
-without the reserve and 482 to 502 times with it (+2.6 % in total).
+An earlier version priced the tiers `Cu × (1 − Φ) / Φ` with `Cu` from the
+tail's mean price and the spread as an RMSE. It showed 0.15 to 0.37 DKK per
+day in the same runs, and it met rows by importing inside the window (see
+_Expensive windows_). The numbers above are the price of removing that.
+
+What this does **not** show: the gain is calculated, not measured. The error
+is a model, and the planner's history comes from the same model, so its
+spread is right by construction. The executed recommendation changed between
+slots 461 to 500 times in 30 days without the reserve and 467 to 496 times
+with it (+0.5 % in total).
 
 **Recorded day** (`day`). The one committed recorded day (2026-09-29, 96
 cycles) replayed slot by slot against the **real** load, the history again
-from the model:
-
-|                 | Realised cost | Stored at the end | Label changes |
-| --------------- | ------------- | ----------------- | ------------- |
-| Without reserve | 11.43         | 0.75 kWh          | 17            |
-| With reserve    | 11.82         | 0.75 kWh          | 17            |
-
-On that day the reserve **cost 0.39 DKK**: it was bought and not needed. One
-day says nothing about the mean. A second recorded day does not exist in
-`tests/backtest/days/`.
+from the model: the realised cost is 11.43 with and without the reserve, the
+stored energy at the end 0.75 kWh and the labels change 17 times in both. The
+reserve changed nothing that was executed that day. A second recorded day
+does not exist in `tests/backtest/days/`, so a replay over two recorded days
+has not been run.
 
 **Recorded cycles** (`cycles`). The 29 recorded cycles (48 hours of 15-minute
 slots), each planned once without and once with the reserve, the history from
-the model: a reserve was asked for in all 29, the plan held one in 26 and
-none in 3 (`surplus_too_costly`). The planned cost changed in 18 cycles, by
-+0.017 on average.
+the model: a row was added in all 29 and the plan held stock towards it in
+all 29, but the planned cost changed in only 7. In the other 22 the plan
+carried that energy anyway.
 
 **Solve time.** The same 29 cycles, solver time limit lifted, Apple M3, the
 median of three passes per cycle:
 
 |                            | Median | 95th percentile | Slowest | All 29 |
 | -------------------------- | ------ | --------------- | ------- | ------ |
-| `run_planner` without      | 0.31 s | 1.37 s          | 2.25 s  | 13.0 s |
-| `run_planner` with reserve | 0.39 s | 1.22 s          | 3.51 s  | 15.0 s |
+| `run_planner` without      | 0.25 s | 0.99 s          | 1.66 s  | 10.7 s |
+| `run_planner` with reserve | 0.27 s | 1.05 s          | 1.66 s  | 11.3 s |
 
-**The solve time rose with the reserve**: 15 % over the 29 cycles, and the
-slowest cycle (an EV plan with integer charger currents) from 2.25 to 3.51 s.
-Both are above the default solver time limit of 2 s
-(`hsem_planner_solver_time_limit_s`); a solve that reaches the limit uses the
-best plan found so far (issue #1309). In the closed loop, without an EV, the
-median went from 0.25 to 0.27 s and the slowest solve from 0.95 to 1.08 s.
-Resolving the windows and the spread takes about 1.5 ms; the time
-goes to the solver, which gets a different problem. The time was **not
-measured on Home Assistant class hardware** (a Raspberry Pi or a small x86
-box), where every solve is several times slower.
+**The solve time rose with the reserve**, by 6 % over the 29 cycles. With the
+earlier tier prices the rise was 15 to 16 %, and the slowest cycle (an EV
+plan with integer charger currents) went from 1.64 to 2.63 s in one
+measurement and from 2.25 to 3.51 s in another: the rows give the solver a
+different problem, and how much slower it gets depends on the prices of the
+slack. The default solver time limit is 2 s
+(`hsem_planner_solver_time_limit_s`); a solve that reaches it uses the best
+plan found so far (issue #1309). **Slower hardware may reach that limit more
+often with the reserve on.** In the closed loop, without an EV, the median
+stayed at 0.30 to 0.34 s and the slowest solve went from about 1.0 to 1.05 to
+1.37 s. Resolving the windows and the spread takes about 1.5 ms. The time was
+**not measured on Home Assistant class hardware** (a Raspberry Pi or a small
+x86 box), where every solve is several times slower.
+
+**History size.** `forecast_load_kwh` is written with every prediction record,
+also with the option off, so that a history exists when the option is turned
+on. A record grows from about 231 to 264 bytes: the prediction history file
+gets about 14 % larger (about 93 KiB at 2,880 records).
 
 **Not measured:** a real load error history (none exists yet: the history
 starts with this version), a second recorded day, and the reserve together
@@ -2741,14 +2800,20 @@ closed loop.
   `resolve_load_reserve` returns before reading its inputs when off.
 - `σ = 0`, flat prices, or `Cu < 0.05 × R`: no row is added and the plan is
   the plan without the reserve.
-- `reserve_kwh ≤ max_reserve_kwh ≤ min(2 σ, usable − floor − Σ_W base_load / η_dis)`.
+- `stock_at_window_end_kwh ≤ asked_kwh ≤ min(2 σ, usable − floor − Σ_W base_load / η_dis)`.
 - On a day with a 3.0–4.0 peak after a 2.6 valley and `σ = 1 kWh`, the plan
-  stores `reserve_kwh = z × σ` more before the peak than the plan without the
-  reserve, and holds it at the window's end.
+  stores `z × σ` more before the peak than the plan without the reserve
+  (`z = 1.0` there), and holds it at the window's end.
 - The house load of every slot is unchanged; energy balance, SoC bounds and
   the terminal-SoC term hold with the rows active.
 - `winner.score == output.plan_cost.score`, and `load_reserve_penalty` enters
-  `score` only.
+  `score` only. It equals the slack cost in the LP objective to `2e-3`
+  currency, not exactly: the score reads the stock from the simulated slots,
+  which carry three decimals.
+- With charging before the window at its limit, a plan with the reserve does
+  not cost more than the plan without it unless the stock at the window's
+  dear core rose; no slot of the window imports more.
+- One day that is far off (+40 kWh) does not change the reserve asked for.
 - `no_action` and `passive` have the same slots and the same `total_cost`
   with and without the reserve.
 - Replanning slot by slot through the day adds no charge/discharge reversal,

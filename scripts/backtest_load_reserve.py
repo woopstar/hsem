@@ -188,7 +188,7 @@ def report_cycles(directories: Sequence[Path], seed: int) -> list[str]:
                     f"{path.stem}: {reason}, windows "
                     f"{len(reserve.get('windows', []))}, sigma "
                     f"{reserve.get('sigma_kwh', 0.0):.2f} kWh, held "
-                    f"{reserve.get('total_reserve_kwh', 0.0):.2f} kWh, planned "
+                    f"{reserve.get('total_stock_kwh', 0.0):.2f} kWh, planned "
                     f"cost {delta:+.3f}, run_planner {off_time:.2f} -> "
                     f"{on_time:.2f} s"
                 )
@@ -377,7 +377,7 @@ def simulate(
                 run.seconds.append(seconds)
                 run.inconsistent_plans += int(bool(plan.plan_consistency_violations))
                 if plan.load_reserve is not None:
-                    run.held.append(plan.load_reserve["total_reserve_kwh"])
+                    run.held.append(plan.load_reserve["total_stock_kwh"])
                 by_start = {slot.start.astimezone(UTC): slot for slot in plan.slots}
                 for quarter in range(60 // STEP):
                     start = (now + timedelta(minutes=STEP * quarter)).astimezone(UTC)

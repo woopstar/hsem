@@ -16,6 +16,7 @@ Pure Python, no Home Assistant imports.
 from __future__ import annotations
 
 import math
+import statistics
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta, tzinfo
@@ -27,6 +28,10 @@ from custom_components.hsem.utils.persistence import finite_float
 #: Earlier days a window is compared with.  The prediction history holds 30
 #: days of 15-minute slots.
 LOAD_ERROR_MAX_DAYS = 30
+
+#: Scales a median absolute deviation to the standard deviation of a normal
+#: distribution.
+ROBUST_SPREAD_FACTOR = 1.4826
 
 _SCHEMA_VERSION = 1
 #: Largest summed-error magnitude accepted from a serialised profile (kWh).
@@ -56,6 +61,22 @@ def window_rmse_kwh(samples: Sequence[float]) -> float:
     if not samples:
         return 0.0
     return math.sqrt(sum(sample * sample for sample in samples) / len(samples))
+
+
+def window_spread_kwh(samples: Sequence[float]) -> float:
+    """Return a robust spread of window error sums, ``0.0`` when empty.
+
+    ``1.4826 × median(|sample|)``: for normal errors around zero that is the
+    standard deviation, and one evening that was far off (a car charged on
+    the house meter) does not set the spread for the 30 days it stays in the
+    history, as it would in an RMSE.
+
+    Args:
+        samples: One summed forecast error per window, in kWh.
+    """
+    if not samples:
+        return 0.0
+    return ROBUST_SPREAD_FACTOR * statistics.median(abs(sample) for sample in samples)
 
 
 def contiguous_window_rmse_kwh(
@@ -148,17 +169,25 @@ class LoadErrorProfile:
         return cls(errors=errors)
 
     def window_samples(
-        self, slot_starts: Sequence[datetime], zone: tzinfo | None = None
+        self,
+        slot_starts: Sequence[datetime],
+        zone: tzinfo | None = None,
+        step_minutes: int = 0,
     ) -> list[float]:
         """Return the summed error of the same local hours on earlier days.
 
-        A day counts only when every slot of the window has an error.
+        A day counts only when every slot of the window has an error that
+        was recorded at the window's slot width.
 
         Args:
             slot_starts: Aware start of every slot of the window.
             zone: Time zone whose wall clock defines "the same hours", so a
                 DST change does not move the window.  ``None`` steps back in
                 whole 24-hour days.
+            step_minutes: Slot width of the window.  A day with another
+                error inside one of its slots was recorded at a finer width,
+                where the error at the slot's start covers only part of the
+                slot; it is left out.  ``0`` skips the check.
 
         Returns:
             One summed error per earlier day, newest first.
@@ -168,19 +197,22 @@ class LoadErrorProfile:
             return samples
         local = [s.astimezone(zone) if zone is not None else s for s in slot_starts]
         for days_back in range(1, LOAD_ERROR_MAX_DAYS + 1):
-            total = self._day_sum(local, timedelta(days=days_back))
+            total = self._day_sum(local, timedelta(days=days_back), step_minutes)
             if total is not None:
                 samples.append(total)
         return samples
 
     def _day_sum(
-        self, slot_starts: Sequence[datetime], back: timedelta
+        self, slot_starts: Sequence[datetime], back: timedelta, step_minutes: int
     ) -> float | None:
         """Return the summed error of the window moved *back*, or ``None``."""
         total = 0.0
         for start in slot_starts:
-            error = self.errors.get(_minute_key(start - back))
-            if error is None:
+            key = _minute_key(start - back)
+            error = self.errors.get(key)
+            if error is None or any(
+                key + minute in self.errors for minute in range(1, step_minutes)
+            ):
                 return None
             total += error
         return total

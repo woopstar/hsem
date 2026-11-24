@@ -973,9 +973,12 @@ so do not turn it on by default without a new measurement.
 `hsem_load_reserve_enabled` on, `planner/load_reserve.py` finds the expensive
 windows ahead and asks the MILP for stock at the END of each window: one soft
 row per window, one slack column per 0.5 σ tier, priced
-`Cu × (1 − Φ(z)) / Φ(z)` so the solver picks the newsvendor quantile at its own
-carrying cost. Never inflate the house load. σ is the RMSE of the summed
-forecast error over the window's hours on earlier days
+`Cu × (1 − Φ(z))` so the solver picks the newsvendor quantile at its own
+carrying cost. `Cu` comes from the CHEAPEST price of the window's last two
+hours: the tail mean let the row be met by importing inside the window. Never
+inflate the house load. σ is `1.4826 × median|x|` (not an RMSE: one outlier
+evening would set it for 30 days) of the summed forecast error over the
+window's hours on earlier days
 (`LoadErrorProfile`, from `PredictionRecord.forecast_load_kwh`, the forecast
 frozen before the slot began): per-slot RMSE × √n understates it by half. The
 same slack cost is `PlanCostBreakdown.load_reserve_penalty` in every

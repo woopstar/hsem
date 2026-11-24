@@ -36,7 +36,10 @@ from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
 from custom_components.hsem.models.live_state import LiveState
-from custom_components.hsem.models.load_error_profile import LoadErrorProfile
+from custom_components.hsem.models.load_error_profile import (
+    ROBUST_SPREAD_FACTOR,
+    LoadErrorProfile,
+)
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
@@ -68,6 +71,7 @@ from custom_components.hsem.planner.load_reserve import (
     summarize_load_reserve,
     window_after,
 )
+from custom_components.hsem.planner.milp import _incumbent
 from custom_components.hsem.planner.milp._layout import (
     LOAD_RESERVE_SLACK_BLOCK,
     build_milp_column_layout,
@@ -130,13 +134,16 @@ def _history(
     start: datetime = _WINDOW_START,
     slots: int = _WINDOW_SLOTS,
 ) -> LoadErrorProfile:
-    """Return a history whose window sum is ``±sigma`` on alternating days."""
+    """Return a history whose robust window spread is *sigma*.
+
+    The window sum is ``±sigma / 1.4826`` on alternating days.
+    """
     errors: dict[int, float] = {}
     for back in range(1, days + 1):
         sign = 1.0 if back % 2 else -1.0
         for index in range(slots):
             slot = start - timedelta(days=back) + timedelta(minutes=_STEP * index)
-            errors[_minute(slot)] = sign * sigma / slots
+            errors[_minute(slot)] = sign * sigma / ROBUST_SPREAD_FACTOR / slots
     return LoadErrorProfile(errors=errors)
 
 
@@ -313,8 +320,8 @@ class TestReserveTiers:
         assert [width for width, _ in tiers] == pytest.approx([0.5] * 4)
         prices = [price for _, price in tiers]
         assert prices == sorted(prices)
-        # (1 − Φ(z)) / Φ(z) at z = 1.75, 1.25, 0.75 and 0.25.
-        assert prices == pytest.approx([0.0417, 0.1181, 0.2931, 0.6703], abs=1e-4)
+        # 1 − Φ(z) at z = 1.75, 1.25, 0.75 and 0.25.
+        assert prices == pytest.approx([0.0401, 0.1056, 0.2266, 0.4013], abs=1e-4)
 
     def test_the_price_scales_with_the_shortfall_cost(self) -> None:
         """Twice the shortfall cost is twice the price of every tier."""
@@ -434,6 +441,20 @@ class TestResolve:
         assert plan.primary.reason == REASON_NO_UNCERTAINTY
         assert plan.primary.sigma_kwh == pytest.approx(0.0)
 
+    def test_one_evening_far_off_does_not_set_the_spread(self) -> None:
+        """+40 kWh on one of 14 evenings: the reserve keeps its size."""
+        profile = _peak_history()
+        errors = dict(profile.errors)
+        day = _NOW + timedelta(minutes=_STEP * 4) - timedelta(days=5)
+        errors[_minute(day)] += 40.0
+
+        plan = _resolve(_slots(_peak_prices()), LoadErrorProfile(errors=errors))
+
+        assert plan is not None
+        assert plan.primary.reason == REASON_APPLIED
+        assert plan.primary.sigma_kwh == pytest.approx(0.8)
+        assert plan.primary.max_reserve_kwh == pytest.approx(1.6)
+
     def test_a_battery_the_window_empties_has_no_room(self) -> None:
         """The window's own demand already fills the battery."""
         plan = _resolve(_slots(_peak_prices()), _peak_history(), usable_kwh=3.2)
@@ -484,9 +505,9 @@ class TestResolve:
         assert plan.primary.floor_kwh == pytest.approx(0.75)
         assert plan.primary.level_kwh == pytest.approx(0.75 + 1.6)
 
-    def test_the_shortfall_price_is_the_mean_of_the_last_two_hours(self) -> None:
-        """A long window is priced at its tail, where the battery runs out."""
-        prices = [2.0] * 2 + [5.0] * 4 + [3.0] * 8 + [2.0] * 2
+    def test_the_shortfall_price_is_the_cheapest_of_the_last_two_hours(self) -> None:
+        """A shortfall is bought in the cheapest slot of the window's tail."""
+        prices = [2.0] * 2 + [5.0] * 4 + [3.6] * 4 + [3.0] * 2 + [3.4] * 2 + [2.0] * 2
         profile = _history(0.8, start=_NOW + timedelta(minutes=_STEP * 2), slots=12)
 
         plan = _resolve(_slots(prices), profile)
@@ -629,16 +650,16 @@ class TestScoreAndSummary:
 
         assert summary is not None
         assert summary["reason"] == REASON_APPLIED
-        assert summary["reserve_kwh"] == pytest.approx(0.75)
+        assert summary["stock_at_window_end_kwh"] == pytest.approx(0.75)
         assert summary["slack_kwh"] == pytest.approx(0.25)
         assert summary["sigma_kwh"] == pytest.approx(0.5)
         assert summary["safety_factor"] == pytest.approx(1.5)
-        assert summary["total_reserve_kwh"] == pytest.approx(0.75)
+        assert summary["total_stock_kwh"] == pytest.approx(0.75)
         assert summary["windows"] == [
             {
                 k: v
                 for k, v in summary.items()
-                if k not in {"windows", "total_reserve_kwh"}
+                if k not in {"windows", "total_stock_kwh"}
             }
         ]
 
@@ -651,7 +672,7 @@ class TestScoreAndSummary:
 
         assert summary is not None
         assert summary["reason"] == REASON_SURPLUS_TOO_COSTLY
-        assert summary["reserve_kwh"] == pytest.approx(0.0)
+        assert summary["stock_at_window_end_kwh"] == pytest.approx(0.0)
         assert summary["slack_kwh"] == pytest.approx(1.0)
 
     def test_the_first_held_reserve_leads_the_summary(self) -> None:
@@ -680,7 +701,7 @@ class TestScoreAndSummary:
         assert summary is not None
         assert summary["reason"] == REASON_INSUFFICIENT_HISTORY
         assert summary["samples"] == 3
-        assert summary["reserve_kwh"] == pytest.approx(0.0)
+        assert summary["stock_at_window_end_kwh"] == pytest.approx(0.0)
         assert summary["safety_factor"] == pytest.approx(0.0)
         assert summary["windows"] == []
         assert summarize_load_reserve(None, []) is None
@@ -812,15 +833,16 @@ class TestSyntheticDay:
         assert reserve["window_slots"] == _WINDOW_SLOTS
         assert reserve["sigma_kwh"] == pytest.approx(_SIGMA)
         assert reserve["samples"] == 14
-        # Three of four tiers are worth more than carrying them to the
-        # 2.7 hours after the window: z = 1.5.
-        assert reserve["safety_factor"] == pytest.approx(1.5, abs=0.02)
-        assert reserve["reserve_kwh"] == pytest.approx(1.5 * _SIGMA, abs=0.02)
-        assert reserve["slack_kwh"] == pytest.approx(0.5 * _SIGMA, abs=0.02)
+        # Two of four tiers are worth more than carrying them to the
+        # 2.7 hours after the window: z = 1.0.
+        assert reserve["asked_kwh"] == pytest.approx(2.0 * _SIGMA, abs=2e-3)
+        assert reserve["safety_factor"] == pytest.approx(1.0, abs=0.02)
+        assert reserve["stock_at_window_end_kwh"] == pytest.approx(_SIGMA, abs=0.02)
+        assert reserve["slack_kwh"] == pytest.approx(_SIGMA, abs=0.02)
         extra = _charged_before(on, _WINDOW_START) - _charged_before(off, _WINDOW_START)
-        assert extra == pytest.approx(reserve["reserve_kwh"], abs=0.02)
+        assert extra == pytest.approx(reserve["stock_at_window_end_kwh"], abs=0.02)
         assert _stored_at(on, _WINDOW_END) == pytest.approx(
-            reserve["reserve_kwh"], abs=2e-3
+            reserve["stock_at_window_end_kwh"], abs=2e-3
         )
 
     def test_the_reserve_never_exceeds_the_room_in_the_battery(
@@ -835,7 +857,7 @@ class TestSyntheticDay:
             for s in on.slots
             if _WINDOW_START <= s.start < _WINDOW_END
         )
-        assert reserve["max_reserve_kwh"] <= usable - demand / _ETA + 1e-9
+        assert reserve["asked_kwh"] <= usable - demand / _ETA + 1e-9
 
     def test_the_house_load_and_the_energy_balance_are_untouched(
         self, off: PlannerOutput, on: PlannerOutput
@@ -905,7 +927,9 @@ class TestSyntheticDay:
 
         assert held.load_reserve is not None
         assert held.load_reserve["reason"] == REASON_SURPLUS_TOO_COSTLY
-        assert held.load_reserve["reserve_kwh"] == pytest.approx(0.0, abs=2e-3)
+        assert held.load_reserve["stock_at_window_end_kwh"] == pytest.approx(
+            0.0, abs=2e-3
+        )
         assert _charged_before(held, _WINDOW_START) == pytest.approx(
             _charged_before(plain, _WINDOW_START), abs=2e-3
         )
@@ -923,6 +947,98 @@ class TestSyntheticDay:
         assert _charged_before(held, _WINDOW_START) == pytest.approx(
             _charged_before(plain, _WINDOW_START), abs=2e-3
         )
+
+
+def _core_price(hour: float) -> float:
+    """Return a day whose peak falls from 4.0 to 3.0 before the window ends."""
+    if 15.5 <= hour < 21:
+        if 17 <= hour < 19.5:
+            return 4.0
+        if hour < 16.5:
+            return 3.3
+        return 3.5 if hour < 20 else 3.0
+    return 2.6 if 11 <= hour < 14 else 2.7
+
+
+@_needs_scipy
+def test_a_reserve_is_never_met_by_importing_inside_its_own_window() -> None:
+    """Charging before the window is maxed out: the reserve is not re-timed.
+
+    At 1.5 kW the valley and the shoulders cannot store more than the window
+    needs.  The row could still be met by importing at 3.0 in the window's
+    last hour and discharging at 2.7 after it, which costs money and leaves
+    the stock through the 4.0 core unchanged.  The slack is valued at the
+    cheapest price of the window's tail, so that never pays.
+    """
+    limited = replace(
+        _day_input(soc_pct=5.0 + 1.9 / 15.0 * 100.0),
+        battery_max_charge_power_w=1500.0,
+    )
+    limited = replace(
+        limited,
+        price_points=[
+            PricePoint(
+                hour=hour,
+                import_price=_core_price(hour + quarter / 4) if not offset else 2.6,
+                export_price=0.5,
+                day_offset=offset,
+                slot_in_day=hour * 4 + quarter,
+            )
+            for offset in (0, 1)
+            for hour in range(24)
+            for quarter in range(4)
+        ],
+    )
+    core_start = _DAY.replace(hour=17)
+
+    plain = run_planner(limited)
+    held = run_planner(_with_reserve(limited))
+
+    assert plain.plan_cost is not None and held.plan_cost is not None
+    assert held.load_reserve is not None
+    assert held.load_reserve["windows"], "a reserve was asked for"
+    extra_cost = held.plan_cost.total_cost - plain.plan_cost.total_cost
+    extra_core_stock = _stored_at(held, core_start) - _stored_at(plain, core_start)
+    # The plan may only cost more when the stock at the dear core rose.
+    assert extra_cost <= 1e-6 or extra_core_stock > 1e-3
+    assert extra_cost == pytest.approx(0.0, abs=1e-6)
+    for a, b in zip(plain.slots, held.slots, strict=True):
+        if _WINDOW_START <= a.start < _WINDOW_END:
+            assert b.grid_import_kwh == pytest.approx(a.grid_import_kwh, abs=1e-6)
+
+
+@_needs_scipy
+def test_the_score_penalty_is_the_slack_cost_of_the_solve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The selector's term equals the LP's slack cost to 2e-3.
+
+    The score reads the stock from the simulated slots, which carry three
+    decimals; the LP knows it exactly.
+    """
+    captured: dict[str, float] = {}
+    original = _incumbent.solve_and_validate
+
+    def solve(linprog: Any, **kwargs: Any) -> Any:
+        result = original(linprog, **kwargs)
+        blocks = kwargs["variable_blocks"]
+        if result is not None and LOAD_RESERVE_SLACK_BLOCK in blocks:
+            offset, width = blocks[LOAD_RESERVE_SLACK_BLOCK]
+            columns = slice(offset, offset + width)
+            captured["slack_cost"] = float(
+                (kwargs["c_obj"][columns] * result.x[columns]).sum()
+            )
+        return result
+
+    monkeypatch.setattr(_incumbent, "solve_and_validate", solve)
+
+    output = run_planner(_with_reserve(_day_input()))
+
+    assert output.plan_cost is not None
+    assert output.plan_cost.load_reserve_penalty > 0.0
+    assert output.plan_cost.load_reserve_penalty == pytest.approx(
+        captured["slack_cost"], abs=2e-3
+    )
 
 
 def _assert_same_plan(output: PlannerOutput, reference: PlannerOutput) -> None:
@@ -1022,8 +1138,8 @@ class TestRollingReplan:
         assert {r["window_start"] for r in valley} == {_WINDOW_START.isoformat()}
         assert {r["window_end"] for r in valley} == {_WINDOW_END.isoformat()}
         assert {r["sigma_kwh"] for r in valley} == {_SIGMA}
-        assert {r["max_reserve_kwh"] for r in valley} == {2.0 * _SIGMA}
-        held = [r["reserve_kwh"] for r in valley]
+        assert {r["asked_kwh"] for r in valley} == {2.0 * _SIGMA}
+        held = [r["stock_at_window_end_kwh"] for r in valley]
         assert max(held) - min(held) < 0.01
 
     def test_the_reserve_is_still_there_when_the_window_starts(
@@ -1171,8 +1287,8 @@ def test_recorded_cycles_keep_every_invariant_with_the_reserve_on(path: Path) ->
     assert winner._cost is not None
     assert winner._cost.score == pytest.approx(output.plan_cost.score)
     for window in output.load_reserve["windows"]:
-        assert 0.0 <= window["reserve_kwh"] <= window["max_reserve_kwh"] + 1e-9
-        assert window["max_reserve_kwh"] <= 2.0 * window["sigma_kwh"] + 1e-3
+        assert 0.0 <= window["stock_at_window_end_kwh"] <= window["asked_kwh"] + 1e-9
+        assert window["asked_kwh"] <= 2.0 * window["sigma_kwh"] + 2e-3
 
 
 # ---------------------------------------------------------------------------

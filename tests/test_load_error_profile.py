@@ -9,6 +9,7 @@ earlier days, and how the profile survives a diagnostics dump.
 from __future__ import annotations
 
 import math
+import random
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -20,6 +21,7 @@ from custom_components.hsem.models.load_error_profile import (
     contiguous_window_rmse_kwh,
     slot_records_window_rmse_kwh,
     window_rmse_kwh,
+    window_spread_kwh,
 )
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.prediction_record import PredictionRecord
@@ -123,6 +125,58 @@ class TestWindowSamples:
         # Without the zone the step back is 48 hours: 16:00 local, no record.
         fixed = monday.astimezone(UTC)
         assert profile.window_samples([fixed]) == []
+
+
+class TestRobustSpread:
+    """One evening that was far off does not set the spread."""
+
+    def test_normal_errors_give_their_standard_deviation(self) -> None:
+        """``1.4826 × median(|x|)`` is σ for a normal sample around zero."""
+        rng = random.Random(7)
+        samples = [rng.gauss(0.0, 2.0) for _ in range(4000)]
+
+        assert window_spread_kwh(samples) == pytest.approx(2.0, rel=0.05)
+        assert window_spread_kwh([]) == pytest.approx(0.0)
+        assert window_spread_kwh([1.0, -1.0, 1.0]) == pytest.approx(1.4826)
+
+    def test_one_outlier_day_barely_moves_the_spread(self) -> None:
+        """A car charged on the house meter: +40 kWh on one of 30 evenings."""
+        rng = random.Random(3)
+        samples = [rng.gauss(0.0, 2.0) for _ in range(30)]
+        with_outlier = [*samples[:-1], 40.0]
+
+        clean = window_spread_kwh(samples)
+        spread = window_spread_kwh(with_outlier)
+
+        assert spread == pytest.approx(clean, rel=0.15)
+        # The RMSE of the same days is several times the spread.
+        assert window_rmse_kwh(with_outlier) > 3.0 * spread
+
+
+class TestSlotWidth:
+    """A day recorded at another slot width is not compared."""
+
+    def test_a_day_recorded_at_a_finer_width_is_left_out(self) -> None:
+        """After 15 → 60 minutes the hour's key holds a quarter's error."""
+        hour = datetime(2026, 11, 3, 17, 0, tzinfo=_TZ)
+        errors = {}
+        for quarter in range(4):  # yesterday: four 15-minute records
+            start = hour - timedelta(days=1) + _STEP * quarter
+            errors[_minute(start)] = 0.1
+        errors[_minute(hour - timedelta(days=2))] = 0.4  # one hourly record
+        profile = LoadErrorProfile(errors=errors)
+
+        assert profile.window_samples([hour], _TZ, 60) == pytest.approx([0.4])
+        # Without the check the quarter's 0.1 stands in for the hour's 0.4.
+        assert profile.window_samples([hour], _TZ) == pytest.approx([0.1, 0.4])
+
+    def test_a_day_recorded_at_a_coarser_width_is_left_out(self) -> None:
+        """After 60 → 15 minutes the quarters inside the hour have no record."""
+        hour = datetime(2026, 11, 3, 17, 0, tzinfo=_TZ)
+        profile = LoadErrorProfile(errors={_minute(hour - timedelta(days=1)): 0.4})
+        window = [hour + _STEP * quarter for quarter in range(4)]
+
+        assert profile.window_samples(window, _TZ, 15) == []
 
 
 class TestContiguousWindows:
