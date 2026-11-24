@@ -53,28 +53,29 @@ flowchart LR
     H -->|any| J[named, per-slot failure report]
 ```
 
-| Module                            | Responsibility                                                         |
-| --------------------------------- | ---------------------------------------------------------------------- |
-| `tests/backtest/replay.py`        | Rebuild a `PlannerInput` from a dump; report anything it cannot map    |
-| `tests/backtest/invariants.py`    | Check one `(input, output)` pair against `planner-spec.md`             |
-| `tests/backtest/actuals.py`       | Load realized outcomes and align them to planner slots                 |
-| `tests/backtest/scoring.py`       | Score realized days: cost, regret, savings and capture                 |
-| `tests/backtest/attribution.py`   | Split a day's regret into execution, forecast and planner error        |
-| `planner/hindsight_oracle.py`     | Self-consumption baseline and perfect-foresight oracle (no HA imports) |
-| `planner/hindsight_scoring.py`    | Site limits and the score definitions, shared with the device sensors  |
-| `tests/backtest/conftest.py`      | Corpus discovery, including a private out-of-repo corpus               |
-| `tests/backtest/harvest.py`       | Grow the committed corpus from a live one, one new situation at a time |
-| `tests/backtest/actuals/`         | Committed per-day actuals for the days committed cycles cover          |
-| `tests/backtest/corpus/`          | Committed, redacted dumps — so CI needs no live Home Assistant         |
-| `scripts/replay_planner_input.py` | Command-line front end for replay                                      |
-| `scripts/backtest_update.sh`      | One command: copy corpus, collect actuals, backtest, harvest, test     |
-| `scripts/backtest_harvest.py`     | Backtest new cycles and harvest new situations                         |
-| `scripts/backtest_corpus.py`      | Replay every cycle of a corpus and report                              |
-| `scripts/backtest_score.py`       | Score every complete day of an actuals file                            |
-| `scripts/backtest_attribute.py`   | Replay a day on forecasts and on realized values; attribute its regret |
-| `scripts/backtest_price_tail.py`  | Measure the estimated price tail of the end value (issue #1453)        |
-| `scripts/collect_actuals.sh`      | One command: fetch a week of history, convert, verify                  |
-| `scripts/build_actuals.py`        | Turn an HA history export into an actuals file                         |
+| Module                             | Responsibility                                                           |
+| ---------------------------------- | ------------------------------------------------------------------------ |
+| `tests/backtest/replay.py`         | Rebuild a `PlannerInput` from a dump; report anything it cannot map      |
+| `tests/backtest/invariants.py`     | Check one `(input, output)` pair against `planner-spec.md`               |
+| `tests/backtest/actuals.py`        | Load realized outcomes and align them to planner slots                   |
+| `tests/backtest/scoring.py`        | Score realized days: cost, regret, savings and capture                   |
+| `tests/backtest/attribution.py`    | Split a day's regret into execution, forecast and planner error          |
+| `planner/hindsight_oracle.py`      | Self-consumption baseline and perfect-foresight oracle (no HA imports)   |
+| `planner/hindsight_scoring.py`     | Site limits and the score definitions, shared with the device sensors    |
+| `tests/backtest/conftest.py`       | Corpus discovery, including a private out-of-repo corpus                 |
+| `tests/backtest/harvest.py`        | Grow the committed corpus from a live one, one new situation at a time   |
+| `tests/backtest/actuals/`          | Committed per-day actuals for the days committed cycles cover            |
+| `tests/backtest/corpus/`           | Committed, redacted dumps — so CI needs no live Home Assistant           |
+| `scripts/replay_planner_input.py`  | Command-line front end for replay                                        |
+| `scripts/backtest_update.sh`       | One command: copy corpus, collect actuals, backtest, harvest, test       |
+| `scripts/backtest_harvest.py`      | Backtest new cycles and harvest new situations                           |
+| `scripts/backtest_corpus.py`       | Replay every cycle of a corpus and report                                |
+| `scripts/backtest_score.py`        | Score every complete day of an actuals file                              |
+| `scripts/backtest_attribute.py`    | Replay a day on forecasts and on realized values; attribute its regret   |
+| `scripts/backtest_price_tail.py`   | Measure the estimated price tail of the end value (issue #1453)          |
+| `scripts/backtest_load_reserve.py` | Measure the pre-peak reserve for load-forecast uncertainty (issue #1361) |
+| `scripts/collect_actuals.sh`       | One command: fetch a week of history, convert, verify                    |
+| `scripts/build_actuals.py`         | Turn an HA history export into an actuals file                           |
 
 ### What the shim has to rebuild
 

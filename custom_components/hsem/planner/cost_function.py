@@ -89,6 +89,7 @@ from custom_components.hsem.planner.cost_types import (  # noqa: F401
     CostWeights,
     PlanCostBreakdown,
 )
+from custom_components.hsem.planner.load_reserve import load_reserve_penalty
 from custom_components.hsem.utils.logger import log_planner
 from custom_components.hsem.utils.recommendations import Recommendations
 from custom_components.hsem.utils.units import hours_ahead
@@ -410,6 +411,9 @@ def score_plan(
     # 8. House-battery target shortfall (issue #1109): selector-only and
     #    undiscounted, like the MILP stage-2 slack it mirrors.
     target_penalty = battery_target_penalty(slots, weights.battery_target)
+    # 9. Pre-peak load reserve the plan does not hold (issue #1361): the
+    #    same slack the MILP prices, selector-only and undiscounted.
+    reserve_penalty = load_reserve_penalty(slots, weights.load_reserve)
 
     # ``score`` is the selector objective.  It uses discounted values when
     # time_discount_rate < 1.0 so that uncertain distant savings are weighted
@@ -426,6 +430,7 @@ def score_plan(
             + charge_timing_total
             + terminal_soc_value_total
             + target_penalty
+            + reserve_penalty
         )
     else:
         score = (
@@ -434,6 +439,7 @@ def score_plan(
             + grid_limit_penalty
             + terminal_soc_value_total
             + target_penalty
+            + reserve_penalty
         )
 
     score_rounded = round(score, 6)
@@ -448,6 +454,7 @@ def score_plan(
         terminal_soc_value=round(terminal_soc_value_total, 6),
         charge_timing_bias=round(charge_timing_total, 6),
         battery_target_penalty=round(target_penalty, 6),
+        load_reserve_penalty=round(reserve_penalty, 6),
         total_cost=round(total_cost, 6),
         score=score_rounded,
         # ``total`` is a deprecated alias for ``score`` (issue #413).

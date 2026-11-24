@@ -20,9 +20,11 @@ from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.coordinator_helpers import _StaleUpdateCycle
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.load_error_profile import LoadErrorProfile
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.planner_output import PlannerOutput
+from custom_components.hsem.models.prediction_record import PredictionRecord
 from custom_components.hsem.utils.pool_jobs import (
     JOB_PLANNER,
     PoolJobGuard,
@@ -141,6 +143,37 @@ class TestFreshPlan:
         assert any(
             call.args[1:] == ("[planner] %s", "low PV") for call in log.call_args_list
         )
+
+    @pytest.mark.asyncio
+    async def test_load_error_history_is_only_read_with_the_reserve_on(
+        self, tmp_path: Path
+    ) -> None:
+        """Off: no profile is built.  On: the prediction history feeds it."""
+        coordinator, _ = _coordinator(tmp_path, _planner_output())
+        _, build = await _run_phase(coordinator, LiveState())
+        assert build.call_args.kwargs["load_error_profile"] is None
+
+        coordinator, _ = _coordinator(
+            tmp_path, _planner_output(), {"hsem_load_reserve_enabled": True}
+        )
+        coordinator._prediction_tracker.records.append(
+            PredictionRecord(
+                slot_start=_SLOT_START - _SLOT,
+                predicted_soc_pct=50.0,
+                actual_soc_pct=50.0,
+                predicted_pv_kwh=0.0,
+                actual_pv_kwh=0.0,
+                predicted_load_kwh=0.5,
+                actual_load_kwh=0.7,
+                action="idle",
+                forecast_load_kwh=0.4,
+            )
+        )
+        _, build = await _run_phase(coordinator, LiveState())
+
+        profile = build.call_args.kwargs["load_error_profile"]
+        assert isinstance(profile, LoadErrorProfile)
+        assert list(profile.errors.values()) == [pytest.approx(0.3)]
 
     @pytest.mark.asyncio
     async def test_dynamic_floor_is_computed_and_passed_to_the_planner(

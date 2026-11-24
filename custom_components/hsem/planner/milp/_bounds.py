@@ -18,6 +18,7 @@ from custom_components.hsem.planner.milp._battery_target_rows import (
     grid_import_bounds,
 )
 from custom_components.hsem.planner.milp._layout import (
+    LOAD_RESERVE_SLACK_BLOCK,
     Bound,
     MilpBoundsBuilder,
     MilpColumnLayout,
@@ -52,6 +53,7 @@ def build_bounds(
     ev_amp_plan: EvAmpPlan | None = None,
     grid_import_floor_per_slot: Sequence[float] | None = None,
     grid_export_floor_per_slot: Sequence[float] | None = None,
+    load_reserve_slack_bounds: Sequence[Bound] | None = None,
 ) -> list[Bound]:
     """Return the complete, validated solver bounds vector.
 
@@ -62,6 +64,9 @@ def build_bounds(
     ``grid_export_floor_per_slot`` (issue #1203) is the per-slot lower bound
     on ``ge[t]`` the same solve uses to keep the battery-origin export of the
     stage-1 plan; ``None`` keeps every lower bound at 0.
+
+    ``load_reserve_slack_bounds`` (issue #1361) holds one bound per
+    ``load_reserve_slack`` column when that block exists.
     """
     unbounded: tuple[float, float | None] = (0.0, None)
     bounds_builder = MilpBoundsBuilder(column_layout)
@@ -136,6 +141,8 @@ def build_bounds(
         bounds_builder.fill("grid_import_penalty", unbounded)
     if column_layout.has(BATTERY_TARGET_PENALTY_BLOCK):
         bounds_builder.fill(BATTERY_TARGET_PENALTY_BLOCK, unbounded)
+    if column_layout.has(LOAD_RESERVE_SLACK_BLOCK):
+        bounds_builder.set(LOAD_RESERVE_SLACK_BLOCK, load_reserve_slack_bounds or [])
 
     if ev_amp_plan is not None:
         from custom_components.hsem.planner.milp._ev_amp_lattice import (

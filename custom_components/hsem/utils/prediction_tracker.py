@@ -115,6 +115,7 @@ class PredictionTracker:
         actual_load: float,
         action: str,
         slot_start: datetime,
+        forecast_load: float | None = None,
     ) -> bool:
         """Add a prediction-vs-actual record for a completed slot.
 
@@ -133,6 +134,8 @@ class PredictionTracker:
                 (``"charge"``, ``"discharge"``, or ``"idle"``).
             slot_start: Timezone-aware start of the slot (used for
                 deduplication).
+            forecast_load: House load forecast as it stood before the slot
+                began (kWh), or ``None`` when no clean one exists.
         """
         if slot_start in self._seen_starts:
             return False
@@ -154,6 +157,7 @@ class PredictionTracker:
             predicted_load_kwh=predicted_load,
             actual_load_kwh=actual_load,
             action=action,
+            forecast_load_kwh=forecast_load,
         )
         self.records.append(record)
         self._prune()

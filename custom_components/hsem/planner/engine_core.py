@@ -64,6 +64,10 @@ from custom_components.hsem.planner.ev_planner import (
     EVChargingPlan,
     rebuild_ev_plan_from_slots,
 )
+from custom_components.hsem.planner.load_reserve import (
+    resolve_load_reserve,
+    summarize_load_reserve,
+)
 from custom_components.hsem.planner.plan_consistency import (
     check_plan_self_consistency,
     consistency_warning,
@@ -598,6 +602,14 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         cycle_cost_per_kwh=effective_cycle_cost,
         ev_configs=ev_configs,
     )
+    cw.load_reserve = resolve_load_reserve(  # issue #1361
+        inp,
+        slots,
+        now,
+        usable_kwh=usable_kwh,
+        cycle_cost_per_kwh=effective_cycle_cost,
+        zone=now.tzinfo,
+    )
     candidates, winner, candidate_rejected, hysteresis_result = _select_candidate(
         slots,
         inp,
@@ -714,6 +726,7 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
     apply_solver_outcome(expl, candidates, winner.name, inp.planner_solver_time_limit_s)
     flag_terminal_price_tail(expl, tail)
     expl.battery_efficiency = inp.battery_efficiency_basis  # issue #1431
+    expl.load_reserve = summarize_load_reserve(cw.load_reserve, slots)
     pc = score_plan(
         slots,
         cw,
@@ -812,4 +825,5 @@ def run_planner(inp: PlannerInput) -> PlannerOutput:
         battery_target=summarize_battery_target(cw.battery_target, candidates, slots),
         terminal_price_tail=tail,
         battery_efficiency=inp.battery_efficiency_basis,
+        load_reserve=expl.load_reserve,
     )

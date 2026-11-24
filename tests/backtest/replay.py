@@ -32,6 +32,7 @@ from typing import Any
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
+from custom_components.hsem.models.load_error_profile import LoadErrorProfile
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.price_profile import PriceProfile
@@ -223,6 +224,8 @@ def planner_input_from_dict(
                 dropped_nested[key] = nested_dropped
         elif key == "price_profile" and isinstance(value, dict):
             kwargs[key] = PriceProfile.from_dict(value)
+        elif key == "load_error_profile" and isinstance(value, dict):
+            kwargs[key] = LoadErrorProfile.from_dict(value)
         elif key in DATETIME_FIELDS:
             parsed, bad = _parse_datetime(value)
             kwargs[key] = parsed

@@ -122,6 +122,9 @@ DEFAULT_CONFIG_VALUES = {
     # Value the energy left at the horizon end with price-history prices
     # for the 24 hours after it (issue #1453).  Off: no measured gain yet.
     "hsem_terminal_price_tail_enabled": False,
+    # Hold a reserve at the end of the next expensive window, sized from the
+    # measured spread of the load forecast (issue #1361).  Off: opt-in.
+    "hsem_load_reserve_enabled": False,
     "hsem_house_consumption_energy_weight_14d": 15,
     "hsem_house_consumption_energy_weight_1d": 25,
     "hsem_house_consumption_energy_weight_3d": 30,

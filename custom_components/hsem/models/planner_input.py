@@ -10,6 +10,7 @@ from custom_components.hsem.const import DEFAULT_CONFIG_VALUES
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
+from custom_components.hsem.models.load_error_profile import LoadErrorProfile
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.price_profile import PriceProfile
 from custom_components.hsem.models.solcast_slot import SolcastSlot
@@ -291,6 +292,14 @@ class PlannerInput:
     #: horizon ends at or after it, so it never estimates a published price.
     #: ``None`` when unknown or nothing is published.
     price_published_until: datetime | None = None
+
+    # --- pre-peak reserve for load-forecast uncertainty (issue #1361) ---
+    #: When True the MILP may hold a reserve at the end of the next expensive
+    #: window, sized from ``load_error_profile``.  Off: the plan is unchanged.
+    load_reserve_enabled: bool = False
+    #: Load forecast error per finished slot.  ``None`` when the reserve is
+    #: off or no history exists; the reserve is then not applied.
+    load_error_profile: LoadErrorProfile | None = None
 
     # --- EV planned load integration — primary EV (optional, disabled by default) ---
     #: When True, the primary EV planned load feature is active.

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from custom_components.hsem.planner.battery_target import BatteryTargetSpec
+    from custom_components.hsem.planner.load_reserve import LoadReservePlan
 
 
 @dataclass
@@ -143,6 +144,12 @@ class CostWeights:
     # ``penalty_per_kwh × shortfall`` at the target slot.  ``None`` disables it.
     battery_target: BatteryTargetSpec | None = None
 
+    # Pre-peak reserves for load-forecast uncertainty (issue #1361).  Every
+    # candidate's ``score`` (never ``total_cost``) gains the slack cost of the
+    # reserve it does not hold at the end of each expensive window.  ``None``
+    # disables it.
+    load_reserve: LoadReservePlan | None = None
+
 
 @dataclass
 class PlanCostBreakdown:
@@ -182,6 +189,11 @@ class PlanCostBreakdown:
             House-battery target shortfall at the next target occurrence
             priced at ``P`` (issue #1109), undiscounted.  Selector-only —
             does not enter :attr:`total_cost`.
+        load_reserve_penalty:
+            Part of the pre-peak load reserve the plan does not hold at the
+            end of an expensive window, priced tier by tier as the MILP
+            slack is (issue #1361), undiscounted.  Selector-only — does not
+            enter :attr:`total_cost`.
         terminal_soc_value:
             Net change in stored energy valued at the single end value
             ``V`` (``replacement_price_per_kwh``): ``(E_0 − E_end) × V``,
@@ -203,7 +215,7 @@ class PlanCostBreakdown:
             Selector objective.  Equal to
             ``total_cost + soc_penalty + grid_limit_penalty
             + terminal_soc_value + battery_target_penalty
-            + charge_timing_bias``.
+            + load_reserve_penalty + charge_timing_bias``.
             **Lower is better.**  The candidate selector picks the plan
             with the lowest score.
         total:
@@ -221,6 +233,7 @@ class PlanCostBreakdown:
     grid_limit_penalty: float = 0.0
     terminal_soc_value: float = 0.0
     battery_target_penalty: float = 0.0
+    load_reserve_penalty: float = 0.0
     charge_timing_bias: float = 0.0
     total_cost: float = 0.0
     score: float = 0.0

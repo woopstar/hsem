@@ -26,6 +26,7 @@ from custom_components.hsem.models.hourly_consumption_average import (
 )
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
+from custom_components.hsem.models.load_error_profile import LoadErrorProfile
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.price_profile import PriceProfile
@@ -249,6 +250,7 @@ def build_planner_input(
     ev_second_held_power_w: float = 0.0,
     forecast_coverage: ForecastCoverage | None = None,
     price_profile: PriceProfile | None = None,
+    load_error_profile: LoadErrorProfile | None = None,
     efficiency_learner: EfficiencyLearner | None = None,
     energy_tracker: EnergyTracker | None = None,
 ) -> PlannerInput:
@@ -271,6 +273,8 @@ def build_planner_input(
         price_profile: Weekday and time-of-day profile of real prices from
             the price history, used by the planner for slots without a
             published price (issue #1434).
+        load_error_profile: Load forecast error per finished slot, for the
+            pre-peak reserve (issue #1361).  ``None`` while that is off.
         efficiency_learner: Source of the measured round-trip efficiency,
             read only while the user has turned that on (issue #1431).
         energy_tracker: Source of the AC-side monthly round trip, which
@@ -436,6 +440,8 @@ def build_planner_input(
         consumption_averages=consumption_averages,
         price_points=price_points,
         price_profile=price_profile,
+        load_reserve_enabled=cfg.load_reserve_enabled is True,
+        load_error_profile=load_error_profile,
         price_published_until=(
             forecast_coverage.import_published_until if forecast_coverage else None
         ),

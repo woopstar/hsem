@@ -26,6 +26,7 @@ from custom_components.hsem.utils.soc_bounds import finite_or
 
 if TYPE_CHECKING:
     from custom_components.hsem.models.planned_slot import PlannedSlot
+    from custom_components.hsem.planner.load_reserve import LoadReservePlan
     from custom_components.hsem.planner.milp._battery_target_rows import (
         BatteryTargetRows,
     )
@@ -62,6 +63,7 @@ def solve_milp(
     export_fee_per_kwh: float = 0.0,
     battery_target: BatteryTargetRows | None = None,
     solver_time_limit_s: float = _SOLVER_TIME_LIMIT_S,
+    load_reserve: LoadReservePlan | None = None,
 ) -> tuple[list[PlannedSlot], dict] | None:
     """Solve the LP and return a deep-copy slot list with MILP recommendations.
 
@@ -179,6 +181,8 @@ def solve_milp(
         battery_target:
             House-battery target stage-2 rows (issue #1109): target slack,
             per-slot grid-import pin/cap.  ``None`` (default) = stage 1.
+        load_reserve:
+            Pre-peak load reserves (issue #1361): soft rows.  ``None`` = off.
 
     Returns:
         A tuple ``(slots, diagnostics)`` where ``slots`` is a list of
@@ -276,19 +280,15 @@ def solve_milp(
         battery_export_min_price=battery_export_min_price,
     )
 
-    # Net load = house consumption + EV extra load − PV estimate.
-    # A positive value means the battery/grid must supply extra energy.
-    # A negative value means there is PV surplus.
-    # Split into base_load (positive demand) and pv_avail (PV surplus after load).
-    # pv_avail[t] is added as an explicit LP variable to prevent infeasibility
-    # when net_load is strongly negative and SoC limits constrain charge.
+    # Net load = house consumption + EV extra load − PV estimate, split into
+    # base_load (demand after PV) and pv_avail (PV surplus after load).
+    # pv_avail[t] is an explicit LP variable so a strongly negative net_load
+    # cannot make the model infeasible when SoC limits constrain charge.
     #
-    # EV adjustment: when EV charging is active, the EV consumes PV surplus
-    # first (before the battery).  This reduces the PV surplus available to
-    # the battery by the EV's total planned load (which includes both
-    # ev_planned_load_kwh and ev_accounted_load_kwh).  base_load is NOT
-    # increased because the battery never feeds the EV — any remaining EV
-    # demand after PV goes to the grid.
+    # EV adjustment: an active EV takes PV surplus before the battery, by its
+    # total planned load (ev_planned_load_kwh + ev_accounted_load_kwh).
+    # base_load is NOT increased: the battery never feeds the EV, and any EV
+    # demand left after PV goes to the grid.
     net_load = np.array(
         [
             slots[i].avg_house_consumption_kwh
@@ -301,16 +301,12 @@ def solve_milp(
     pv_avail = np.maximum(-net_load, 0.0)  # PV surplus after house consumption
     base_load = np.maximum(net_load, 0.0)  # remaining demand after PV
 
-    # ------------------------------------------------------------------
-    # EV accounted load: when base_load_includes_ev=True, ev_accounted_load_kwh
-    # is the EV load already captured in avg_house_consumption_kwh.  The battery
-    # must not discharge to cover this load — it is the EV's own demand served
-    # by the grid (or PV).  Without this cap, the live-injected current-slot
-    # house consumption (which includes EV power when the CT clamp is upstream
-    # of the charger) causes the MILP to discharge the house battery into the EV,
-    # which provides zero financial benefit when EV charging is reimbursed
-    # (issue #592).
-    # ------------------------------------------------------------------
+    # EV accounted load: with base_load_includes_ev=True, ev_accounted_load_kwh
+    # is the EV load already in avg_house_consumption_kwh.  The battery must
+    # not discharge to cover it: without this cap the live-injected house
+    # consumption of the current slot (which includes EV power when the CT
+    # clamp is upstream of the charger) makes the MILP discharge the house
+    # battery into the EV (issue #592).
     ev_accounted = np.array(
         [slots[i].ev_accounted_load_kwh for i in future_idx], dtype=float
     )
@@ -374,7 +370,13 @@ def solve_milp(
     from custom_components.hsem.planner.milp._ev_amp_lattice import (
         resolve_ev_amp_plan,
     )
+    from custom_components.hsem.planner.milp._load_reserve_rows import (
+        load_reserve_column_count,
+        load_reserve_rows,
+        price_load_reserve_slack,
+    )
 
+    reserve_rows = load_reserve_rows(load_reserve, slots, future_idx)
     ev_amp_plan = resolve_ev_amp_plan(
         active_evs, max_dis=max_dis, slot_hours=slot_hours
     )
@@ -387,6 +389,7 @@ def solve_milp(
         ev_amp3_widths=ev_amp_plan.amp3_widths(m),
         ev_mode3_widths=ev_amp_plan.mode3_widths(m),
         battery_target=battery_target is not None,
+        load_reserve=load_reserve_column_count(reserve_rows),
     )
     _off = derive_milp_offsets(column_layout, len(active_evs))
     ev_amp_offsets = _off.ev_amp_offsets
@@ -499,6 +502,7 @@ def solve_milp(
         c_obj[column_layout.offset("battery_target_penalty")] = (
             battery_target.penalty_per_kwh
         )
+    price_load_reserve_slack(c_obj, column_layout, reserve_rows)  # issue #1361
 
     forecast_export_reserve_kwh = min(
         max(finite_or(battery_export_forecast_reserve_kwh, 0.0), 0.0), usable_kwh
@@ -552,6 +556,7 @@ def solve_milp(
         ev_amp_plan=ev_amp_plan,
         battery_target=battery_target,
         soc_floor_per_slot=[slots[i].discharge_reserve_kwh for i in future_idx],
+        load_reserve=reserve_rows,
     )
 
     # Solver-native whole-amp EV lattice (issue #797): link ev_c[t] to the

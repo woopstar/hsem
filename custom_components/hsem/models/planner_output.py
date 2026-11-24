@@ -129,3 +129,8 @@ class PlannerOutput:
     #: (issue #1453).  They price no slot of the plan.  ``None`` when the end
     #: value came from the horizon's last day alone.
     terminal_price_tail: TerminalPriceTail | None = None
+    #: Pre-peak reserve for load-forecast uncertainty (issue #1361), from
+    #: ``planner.load_reserve.summarize_load_reserve``: the reserve in kWh,
+    #: the spread it was sized from and the reason when none is held.
+    #: ``None`` when the option is off.
+    load_reserve: dict[str, Any] | None = None

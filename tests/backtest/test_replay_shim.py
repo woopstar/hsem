@@ -13,6 +13,7 @@ import pytest
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
+from custom_components.hsem.models.load_error_profile import LoadErrorProfile
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.solcast_slot import SolcastSlot
@@ -59,6 +60,8 @@ def _rich_input() -> PlannerInput:
         ev_held_slot_start=_DEADLINE - timedelta(minutes=15),
         ev_second_held_slot_start=_DEADLINE - timedelta(minutes=30),
         price_published_until=_DEADLINE + timedelta(hours=8),
+        load_reserve_enabled=True,
+        load_error_profile=LoadErrorProfile(errors={0: 0.125, 15: -0.25, 90: 0.5}),
         max_grid_export_power_kw=None,
         main_fuse_amps=25.0,
     )

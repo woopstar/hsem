@@ -465,6 +465,8 @@
     "live_house_consumption_w": 1692.0,
     "live_solar_production_available": true,
     "live_solar_production_w": 348.0,
+    "load_error_profile": null,
+    "load_reserve_enabled": false,
     "main_fuse_amps": 35.0,
     "main_fuse_phases": 3,
     "max_grid_export_power_kw": null,
