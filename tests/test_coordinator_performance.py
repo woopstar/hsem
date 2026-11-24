@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import homeassistant.util.dt as dt_util
+from homeassistant.core import CoreState
 
 from custom_components.hsem import coordinator_performance
 from custom_components.hsem.coordinator_performance import (
@@ -72,6 +73,7 @@ class _FakeHass:
     def __init__(self, config_dir: Path) -> None:
         self.config = SimpleNamespace(config_dir=str(config_dir))
         self.executor_threads: list[str] = []
+        self.state = CoreState.running
 
     async def async_add_executor_job(self, target: Any, *args: Any) -> Any:
         def run() -> Any:
@@ -597,6 +599,36 @@ class TestTheSolveStaysOutOfTheWay:
         assert window.end == _T0.astimezone(UTC)
         assert not window.is_scored
         assert solved.call_count == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("state", "level"),
+        [(CoreState.running, "error"), (CoreState.stopping, "debug")],
+    )
+    async def test_a_failing_solve_is_only_an_error_while_running(
+        self, tmp_path: Path, state: CoreState, level: str
+    ) -> None:
+        """A solve cut off by the shutdown is logged at debug (issue #1475)."""
+        coordinator = _coordinator_state(tmp_path, PlannerInput())
+        cast(Any, coordinator.hass).state = state
+        log = MagicMock()
+
+        with (
+            patch(f"{_MODULE}.evaluate_performance", side_effect=ValueError("boom")),
+            patch(f"{_MODULE}.async_log", log),
+        ):
+            await async_track_performance(coordinator, _T0, _live(), SensorConfig())
+            await _finish(coordinator)
+
+        levels = [
+            call.args[0]
+            for call in log.call_args_list
+            if call.args[1].startswith("Performance evaluation failed")
+        ]
+        assert levels == [level]
+        window = coordinator._performance_tracker.window
+        assert window is not None
+        assert window.reason == REASON_EVALUATION_FAILED
 
     @pytest.mark.asyncio
     async def test_a_failure_while_recording_does_not_reach_the_cycle(

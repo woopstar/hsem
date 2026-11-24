@@ -16,10 +16,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from homeassistant.const import UnitOfEnergy, UnitOfPower
+from homeassistant.core import CoreState
 
 from custom_components.hsem.utils.ha_helpers import (
     entity_attribute_float,
     entity_unit,
+    failure_log_level,
     normalize_entity_float,
     read_normalized_float,
 )
@@ -266,3 +268,38 @@ class TestEntityAttributeFloat:
 
     def test_missing_hass_is_none(self) -> None:
         assert entity_attribute_float(object(), "number.maxdis", "max") is None
+
+
+class TestFailureLogLevel:
+    """A step that fails because Home Assistant stops is not an error (#1475)."""
+
+    @pytest.mark.parametrize(
+        ("state", "exc", "expected"),
+        [
+            (CoreState.running, ValueError("boom"), "error"),
+            (CoreState.starting, RuntimeError("boom"), "error"),
+            (CoreState.not_running, ValueError("boom"), "error"),
+            (CoreState.stopping, ValueError("boom"), "debug"),
+            (CoreState.final_write, ValueError("boom"), "debug"),
+            (CoreState.stopped, ValueError("boom"), "debug"),
+            (
+                CoreState.not_running,
+                RuntimeError("cannot schedule new futures after shutdown"),
+                "debug",
+            ),
+            (
+                CoreState.running,
+                RuntimeError("cannot schedule new futures after interpreter shutdown"),
+                "debug",
+            ),
+            (
+                CoreState.running,
+                ValueError("cannot schedule new futures after shutdown"),
+                "error",
+            ),
+        ],
+    )
+    def test_level(self, state: CoreState, exc: Exception, expected: str) -> None:
+        hass = MagicMock()
+        hass.state = state
+        assert failure_log_level(hass, exc) == expected

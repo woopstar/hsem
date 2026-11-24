@@ -31,6 +31,7 @@ from custom_components.hsem.models.performance_record import (
 from custom_components.hsem.models.performance_tracker import PerformanceTracker
 from custom_components.hsem.models.sensor_config import SensorConfig
 from custom_components.hsem.planner.hindsight_scoring import SiteLimits
+from custom_components.hsem.utils.ha_helpers import failure_log_level
 from custom_components.hsem.utils.logger import async_log
 from custom_components.hsem.utils.misc import get_config_value
 from custom_components.hsem.utils.performance_scoring import (
@@ -255,7 +256,11 @@ async def _async_evaluate(
         )
         tracker.apply(evaluation.window, evaluation.days)
     except Exception as exc:
-        async_log("error", "Performance evaluation failed: %s", exc)
+        async_log(
+            failure_log_level(coordinator.hass, exc),
+            "Performance evaluation failed: %s",
+            exc,
+        )
         tracker.apply(
             PerformanceScore(
                 start=request.window[0],

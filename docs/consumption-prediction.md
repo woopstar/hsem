@@ -322,6 +322,12 @@ used by design, and the recorder is not re-read before `ml_history_ready_at`
 same summary, e.g.
 `[ml] ML consumption skipped: insufficient_history, 38.6/40 days, next check 2026-11-04T21:45:00+01:00, sensor.energy_house — using legacy avg sensors until then.`
 
+A populate that raises is logged at error level as
+`[ml] populate_ml_house_consumption raised ... — falling back to legacy avg sensors for this cycle.`
+and the cycle uses the legacy averages. While Home Assistant is stopping the
+same line is written at debug level: the executor is already shut down and the
+cycle's result is thrown away (issue #1475).
+
 ---
 
 ## Legacy mode (weighted average)
