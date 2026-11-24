@@ -18,6 +18,9 @@ are exposed as flat state attributes, plus:
 - ``latest_bias_load_kwh`` — bias for the most recent finalised slot.
 - ``restored_unfinalised_count`` — number of restored slots whose lifecycle
   was not finalised before the previous HA session ended.
+- ``reason`` — why the state is unknown (``no_finalised_slots``), or ``None``.
+- ``reason_kind`` — the kind of that reason (``waiting``), or ``None``
+  (issue #1482).
 - ``_forecast_tracker_data`` — serialised tracker record list (not displayed
   in UI; used internally to restore state across HA restarts).  Excluded
   from the recorder via ``_unrecorded_attributes`` (issue #1099): restore
@@ -49,6 +52,10 @@ from custom_components.hsem.utils.persistence import finite_float
 from custom_components.hsem.utils.sensornames.diagnostics import (
     get_forecast_accuracy_sensor_entity_id,
     get_forecast_accuracy_sensor_unique_id,
+)
+from custom_components.hsem.utils.unknown_reason import (
+    REASON_NO_FINALISED_SLOTS,
+    unknown_reason_attributes,
 )
 
 
@@ -129,6 +136,11 @@ class HSEMForecastAccuracySensor(
         return cast(float, round(summary.mae_pv_kwh, 3))
 
     @property
+    def unknown_reason(self) -> str | None:
+        """Return why the state is unknown, ``None`` when it has a value."""
+        return None if self.native_value is not None else REASON_NO_FINALISED_SLOTS
+
+    @property
     @override
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return diagnostic attributes for the sensor.
@@ -166,6 +178,7 @@ class HSEMForecastAccuracySensor(
         # Number of restored slots whose lifecycle was not finalised before
         # the previous HA session ended (issue #832).
         attrs["restored_unfinalised_count"] = len(tracker.restored_unfinalised_keys)
+        attrs.update(unknown_reason_attributes(self.unknown_reason))
 
         # Include serialized tracker data for reboot persistence. Bounded to
         # the slots that matter across a restart to stay under HA's 16 KB

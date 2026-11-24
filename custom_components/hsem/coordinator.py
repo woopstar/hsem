@@ -102,6 +102,7 @@ from custom_components.hsem.models.state_snapshot import StateSnapshot
 from custom_components.hsem.models.what_if_history import WhatIfHistory
 from custom_components.hsem.planner.ev_planner import EVChargingPlan
 from custom_components.hsem.planner.ev_soc_economics import EVSoCEconomicsResult
+from custom_components.hsem.unknown_sensor_monitor import UnknownSensorMonitor
 from custom_components.hsem.utils.capacity_learner import CapacityLearner
 from custom_components.hsem.utils.dynamic_floor import DynamicDischargeFloor
 from custom_components.hsem.utils.efficiency_learner import EfficiencyLearner
@@ -218,6 +219,8 @@ class HSEMDataUpdateCoordinator(
         self._force_working_mode_entity: str | None = None
         self._tracked_entities: set[str] = set()
         self._entity_availability_tracker = EntityAvailabilityTracker()
+        # Logs why an HSEM sensor is unknown, once per reason change (#1482).
+        self.unknown_sensor_monitor = UnknownSensorMonitor()
         # Unsubscribe callbacks for state-change listeners registered via
         # state_collector._register_listeners.  Cancelled during async_teardown.
         self._listener_unsubs: list = []
@@ -454,6 +457,9 @@ class HSEMDataUpdateCoordinator(
                             availability_tracker = EntityAvailabilityTracker()
                             self._entity_availability_tracker = availability_tracker
                         availability_tracker.track(hass, cfg)
+                        monitor = getattr(self, "unknown_sensor_monitor", None)
+                        if monitor is not None:
+                            monitor.check(hass)
                 except Exception as err:
                     # An event that arrived while this cycle was running set the
                     # pending flag again. Letting the exception escape here would

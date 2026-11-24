@@ -212,6 +212,7 @@ class TestRecorderFootprint:
         assert set(recorded) == {
             "month",
             "reason",
+            "reason_kind",
             "backfilled_days",
             "backfilled_from",
             "backfilled_until",

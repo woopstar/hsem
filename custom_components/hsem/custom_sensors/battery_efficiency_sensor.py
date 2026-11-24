@@ -3,6 +3,8 @@
 State is the measured round-trip efficiency in percent.  The attributes hold
 the apparent charge and discharge curve per 500 W step, the sample count per
 step, the configured round trip and what the planner planned with.
+``round_trip_status`` says why the state is unknown, and ``reason_kind``
+whether that is HSEM waiting for data or a fault (issue #1482).
 
 Only the round trip stands on its own.  The charge and discharge figures are
 measured against the rated capacity, so they carry the battery's capacity
@@ -42,6 +44,7 @@ from custom_components.hsem.utils.sensornames.diagnostics import (
     get_battery_efficiency_sensor_entity_id,
     get_battery_efficiency_sensor_unique_id,
 )
+from custom_components.hsem.utils.unknown_reason import reason_kind
 
 
 def _rounded(value: float | None) -> float | None:
@@ -118,6 +121,7 @@ class HSEMBatteryEfficiencySensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntit
                 else None
             ),
             "round_trip_status": learner.round_trip_status,
+            "reason_kind": reason_kind(self.unknown_reason),
             "capacity_basis": "rated",
             "apparent_charge_efficiency_pct": _rounded(learner.charge_efficiency_pct),
             "apparent_discharge_efficiency_pct": _rounded(
@@ -135,6 +139,18 @@ class HSEMBatteryEfficiencySensor(HSEMCoordinatorEntity, SensorEntity, HSEMEntit
             "min_samples_per_direction": MIN_TOTAL_SAMPLES,
             "min_energy_per_direction_kwh": MIN_TOTAL_ENERGY_KWH,
         }
+
+    @property
+    def unknown_reason(self) -> str | None:
+        """Return why the state is unknown, ``None`` when it has a value.
+
+        The reason is the round trip's status: ``learning`` or
+        ``implausible``.
+        """
+        learner = self._get_learner()
+        if learner is None or learner.round_trip_efficiency_pct is not None:
+            return None
+        return learner.round_trip_status
 
     def _get_learner(self) -> EfficiencyLearner | None:
         """Return the efficiency learner from the coordinator."""
