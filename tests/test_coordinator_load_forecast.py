@@ -256,6 +256,69 @@ class TestMLHistoryStatusLogging:
 
 
 # ---------------------------------------------------------------------------
+# ML replaces the forecast only (issue #1485)
+# ---------------------------------------------------------------------------
+
+
+async def _ml_order_cycle(
+    coordinator: HSEMDataUpdateCoordinator,
+    averages: ConsumptionPopulation,
+    *,
+    ml_ok: bool,
+) -> list[str]:
+    """Run one ML cycle and return the order the populators ran in."""
+    order: list[str] = []
+
+    def legacy(*_args: object, **_kwargs: object) -> ConsumptionPopulation:
+        order.append("averages")
+        return averages
+
+    async def ml(*_args: object) -> tuple[bool, None]:
+        order.append("ml")
+        return ml_ok, None
+
+    with (
+        _patch_all_ha_helpers(),
+        patch(_POPULATE, side_effect=legacy),
+        patch(_ML_POPULATE, side_effect=ml),
+        patch(_ML_STATUS, return_value=MLHistoryStatus(MLHistoryState.READY, 41.0)),
+    ):
+        await coordinator._async_run_update_cycle()
+    return order
+
+
+class TestMLReplacesTheForecastOnly:
+    """The rolling averages fill the window fields in ML mode too."""
+
+    @pytest.mark.asyncio
+    async def test_averages_run_first_and_ml_marks_a_direct_forecast(self) -> None:
+        coordinator = _ml_coordinator()
+        averages = ConsumptionPopulation(
+            ok=True, missing_hours=(3,), estimated_hours=(3,)
+        )
+
+        order = await _ml_order_cycle(coordinator, averages, ml_ok=True)
+
+        assert order == ["averages", "ml"]
+        population = coordinator._load_forecast_population
+        assert population.ok is True
+        assert population.direct_forecast is True
+        # The ML forecast has no hour gaps, so none are reported.
+        assert population.estimated_hours == ()
+
+    @pytest.mark.asyncio
+    async def test_ml_not_ready_keeps_the_averages_already_written(self) -> None:
+        coordinator = _ml_coordinator()
+        averages = ConsumptionPopulation(ok=True)
+
+        order = await _ml_order_cycle(coordinator, averages, ml_ok=False)
+
+        assert order == ["averages", "ml"]
+        assert coordinator._load_forecast_population is averages
+        assert averages.direct_forecast is False
+
+
+# ---------------------------------------------------------------------------
 # ML populate cut off by the shutdown (issue #1475)
 # ---------------------------------------------------------------------------
 

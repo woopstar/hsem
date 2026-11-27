@@ -5,8 +5,10 @@ repository's 30 KB / 1000-line limit (issue #1110). Mixed back into
 ``HSEMDataUpdateCoordinator`` in MRO order, so ``self`` and every attribute
 reference are unchanged.
 
-The ML predictor runs first when enabled. Otherwise, or when it fails, the
-rolling-average sensors are used. The result is validated by
+The rolling-average sensors fill the slots first. When the ML predictor is
+enabled and succeeds, it replaces the forecast (``avg_house_consumption_kwh``)
+and leaves the 1d/3d/7d/14d window averages in place (issue #1485). The
+result is validated by
 :func:`~coordinator_helpers.assess_load_forecast`. Hour blocks without a
 stored sample are published in ``data_quality`` and logged once per change,
 so a stuck forecast always names the hours it is waiting for (issue #1110).
@@ -70,6 +72,12 @@ class CoordinatorLoadForecastMixin(CoordinatorSharedState):
             populate_ml_house_consumption,
         )
 
+        # The rolling averages go in first. ML then replaces the forecast
+        # only, so the 1d/3d/7d/14d fields show the averages and not five
+        # copies of the ML forecast (issue #1485). It is also the fallback
+        # when ML is not ready or fails.
+        averages = self._populate_from_avg_sensors(cfg)
+
         # A slow or failing ML populate must never take the whole update
         # cycle down with it: during initial setup this cycle is awaited
         # directly by async_setup_entry (issue #926), so an uncaught
@@ -113,7 +121,7 @@ class CoordinatorLoadForecastMixin(CoordinatorSharedState):
                 "[ml] ML consumption populated the slots (%s).",
                 status.describe(cfg.ml_consumption_history_days),
             )
-            return ConsumptionPopulation(ok=True)
+            return ConsumptionPopulation(ok=True, direct_forecast=True)
         if status.is_waiting_for_history:
             async_log(
                 "debug",
@@ -127,7 +135,7 @@ class CoordinatorLoadForecastMixin(CoordinatorSharedState):
                 "[ml] ML consumption failed (%s) — falling back to legacy avg sensors.",
                 status.describe(cfg.ml_consumption_history_days),
             )
-        return self._populate_from_avg_sensors(cfg)
+        return averages
 
     def _log_load_forecast_gaps(self, population: ConsumptionPopulation) -> None:
         """Warn once whenever the set of missing/estimated hours changes."""
@@ -169,6 +177,7 @@ class CoordinatorLoadForecastMixin(CoordinatorSharedState):
             now,
             population_succeeded=population.ok,
             live_house_demand_w=live.house_consumption_power_w,
+            direct_forecast=population.direct_forecast,
         )
         consumption_ok = load_readiness.ready
         self._current_load_forecast_signature = load_readiness.signature

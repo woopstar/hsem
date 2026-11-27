@@ -90,6 +90,9 @@ async def populate_ml_house_consumption(
 ) -> tuple[bool, ConsumptionPredictor | None]:
     """Populate per-slot house consumption using ML predictions from recorder history.
 
+    Only ``avg_house_consumption_kwh`` is written.  The 1d/3d/7d/14d window
+    fields belong to the rolling-average populator (issue #1485).
+
     The predictor is cached across cycles via the ``predictor`` parameter.
     A retrain gate skips the matrix solve when fewer than
     ``retrain_min_new_samples`` new observations have arrived since the last fit.
@@ -547,6 +550,7 @@ async def populate_ml_house_consumption(
             sequence_starts, sequential_temperatures, sequential_wind
         )
 
+    forecast_kwh: list[float] = []
     for rec in recommendations:
         rec_start = normalize_datetime(rec.start)
         rec_day_offset = (rec_start.date() - reference_time.date()).days
@@ -622,11 +626,11 @@ async def populate_ml_house_consumption(
             total_safe += safe_kwh
             per_slot_kwh = round(safe_kwh, 4)
             predicted_count += 1
+        forecast_kwh.append(per_slot_kwh)
+    # Only the forecast is written, and only once every slot has one: the
+    # 1d/3d/7d/14d fields keep the rolling averages (issue #1485).
+    for rec, per_slot_kwh in zip(recommendations, forecast_kwh, strict=True):
         rec.avg_house_consumption_kwh = per_slot_kwh
-        rec.avg_house_consumption_1d_kwh = per_slot_kwh
-        rec.avg_house_consumption_3d_kwh = per_slot_kwh
-        rec.avg_house_consumption_7d_kwh = per_slot_kwh
-        rec.avg_house_consumption_14d_kwh = per_slot_kwh
 
     HSEM_LOGGER.info(
         "ML populator: populated %d slots (%d actuals, %d predicted,"

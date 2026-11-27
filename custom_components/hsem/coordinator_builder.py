@@ -253,6 +253,7 @@ def build_planner_input(
     load_error_profile: LoadErrorProfile | None = None,
     efficiency_learner: EfficiencyLearner | None = None,
     energy_tracker: EnergyTracker | None = None,
+    direct_load_forecast: bool = False,
 ) -> PlannerInput:
     """Assemble a :class:`PlannerInput` from the coordinator's current pipeline state.
 
@@ -279,6 +280,8 @@ def build_planner_input(
             read only while the user has turned that on (issue #1431).
         energy_tracker: Source of the AC-side monthly round trip, which
             goes before the learner's battery-side one.
+        direct_load_forecast: The slots' load is the ML forecast, which the
+            planner uses as is and not the window blend (issue #1485).
 
     Returns:
         A fully populated :class:`PlannerInput` ready for the planner engine.
@@ -365,6 +368,9 @@ def build_planner_input(
                 avg_7d=round(rec.avg_house_consumption_7d_kwh * slots_per_hour, 3),
                 avg_14d=round(rec.avg_house_consumption_14d_kwh * slots_per_hour, 3),
                 day_offset=day_offset,
+                forecast=round(rec.avg_house_consumption_kwh * slots_per_hour, 3)
+                if direct_load_forecast
+                else None,
             )
         )
 

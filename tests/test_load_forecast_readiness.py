@@ -13,6 +13,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.coordinator_helpers import (
+    LoadForecastReadiness,
     apply_load_forecast_hold,
     assess_load_forecast,
     load_forecast_signatures_match,
@@ -182,6 +183,46 @@ class TestLoadForecastAssessment:
         assert result.signature is not None
         assert result.signature[-1][1:] == pytest.approx((0.25, 0.11, 0.22, 0.33, 0.44))
         assert load_forecast_signatures_match(result.signature, result.signature)
+
+    def test_direct_forecast_signs_and_validates_the_forecast_only(self) -> None:
+        """With an ML forecast the planner never reads the windows (issue #1485)."""
+        now = datetime(2026, 8, 21, 12, 5, tzinfo=UTC)
+
+        def assess(
+            windows: float, forecast: float = 0.25, *, direct: bool = True
+        ) -> LoadForecastReadiness:
+            profile = _profile(now, forecast)
+            for rec in profile:
+                rec.avg_house_consumption_1d_kwh = windows
+                rec.avg_house_consumption_3d_kwh = windows
+                rec.avg_house_consumption_7d_kwh = windows
+                rec.avg_house_consumption_14d_kwh = windows
+            return assess_load_forecast(
+                profile,
+                now,
+                population_succeeded=True,
+                live_house_demand_w=1200.0,
+                direct_forecast=direct,
+            )
+
+        baseline = assess(0.11)
+        assert baseline.ready is True
+        assert baseline.signature is not None
+        assert baseline.signature[-1][1:] == pytest.approx((0.25, 0.0, 0.0, 0.0, 0.0))
+        # A window that moves forces no replan, a forecast that moves does.
+        assert load_forecast_signatures_match(
+            assess(0.44).signature, baseline.signature
+        )
+        assert not load_forecast_signatures_match(
+            assess(0.11, 0.3).signature, baseline.signature
+        )
+        # Windows the planner does not read cannot hold the plan either.
+        assert assess(float("nan")).ready is True
+        assert assess(0.11, float("nan")).reason == "invalid_future_values"
+        # Going back to the window blend is a different forecast.
+        assert not load_forecast_signatures_match(
+            assess(0.11, direct=False).signature, baseline.signature
+        )
 
 
 class TestLoadForecastHold:

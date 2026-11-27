@@ -339,8 +339,15 @@ def assess_load_forecast(
     *,
     population_succeeded: bool,
     live_house_demand_w: float | None,
+    direct_forecast: bool = False,
 ) -> LoadForecastReadiness:
-    """Validate future load provenance without rejecting genuine measured zero."""
+    """Validate future load provenance without rejecting genuine measured zero.
+
+    With ``direct_forecast`` the planner reads ``avg_house_consumption_kwh``
+    only (the ML forecast). The window averages are then neither validated
+    nor part of the signature, so a change in them forces no replan
+    (issue #1485).
+    """
     if not population_succeeded:
         return LoadForecastReadiness(False, "source_unavailable", None)
 
@@ -355,13 +362,15 @@ def assess_load_forecast(
     signature_slots: list[_LoadSlotSignature] = []
     weighted_profile_is_zero = True
     for rec in future_slots:
-        named_raw_values = (
+        named_raw_values: tuple[tuple[str, float], ...] = (
             ("avg_house_consumption_kwh", rec.avg_house_consumption_kwh),
             ("avg_house_consumption_1d_kwh", rec.avg_house_consumption_1d_kwh),
             ("avg_house_consumption_3d_kwh", rec.avg_house_consumption_3d_kwh),
             ("avg_house_consumption_7d_kwh", rec.avg_house_consumption_7d_kwh),
             ("avg_house_consumption_14d_kwh", rec.avg_house_consumption_14d_kwh),
         )
+        if direct_forecast:
+            named_raw_values = named_raw_values[:1]
         canonical_values: list[float] = []
         for field_name, raw_value in named_raw_values:
             if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
@@ -388,7 +397,8 @@ def assess_load_forecast(
                 return LoadForecastReadiness(False, "invalid_future_values", None)
             canonical_values.append(round(number, 5))
 
-        weighted, avg_1d, avg_3d, avg_7d, avg_14d = canonical_values
+        weighted = canonical_values[0]
+        avg_1d, avg_3d, avg_7d, avg_14d = canonical_values[1:] or [0.0] * 4
         if weighted > LOAD_FORECAST_ZERO_EPSILON_KWH:
             weighted_profile_is_zero = False
         signature_slots.append(

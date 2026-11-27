@@ -294,6 +294,26 @@ For slots that have already passed today, the predictor uses actual meter
 readings from the energy sensor instead of predictions. This anchors
 the battery SoC simulation to reality.
 
+### Slot fields in ML mode (issue #1485)
+
+Each slot of `hourly_recommendations` has five consumption fields. In ML mode
+they mean:
+
+| Field                                   | Value in ML mode                                 |
+| --------------------------------------- | ------------------------------------------------ |
+| `avg_house_consumption_kwh`             | The ML forecast (or the actual for a past slot). |
+| `avg_house_consumption_{1,3,7,14}d_kwh` | The rolling window averages, as in legacy mode.  |
+
+The planner plans with `avg_house_consumption_kwh` only. The four window
+fields are for comparison: they show what the legacy blend would have been
+built from, and they are the curves next to the forecast in the dashboard's
+consumption chart. Before issue #1485 all five fields held the ML forecast,
+so the five curves lay on top of each other.
+
+The rolling-average sensors are read first in every cycle, also in ML mode.
+ML then replaces the forecast field. While the average sensors are not ready,
+the window fields stay at `0.0` and the ML forecast is used as normal.
+
 ### Advantages over legacy mode
 
 - **15-min resolution**: matches Nord Pool spot market
@@ -356,7 +376,12 @@ class HourlyConsumptionAverage:
     avg_7d: float       # kWh average over the last 168 h
     avg_14d: float      # kWh average over the last 336 h
     day_offset: int     # 0 = today, 1 = tomorrow, ...
+    forecast: float | None  # kWh forecast for the hour in ML mode, else None
 ```
+
+With `forecast` set (ML mode) the planner uses it as the hour's load and does
+not blend the windows (issue #1485). The rest of this section describes the
+blend, which applies when `forecast` is `None`.
 
 ### Forecast computation
 
