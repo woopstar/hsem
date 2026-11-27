@@ -304,8 +304,9 @@ they mean:
 | `avg_house_consumption_kwh`             | The ML forecast (or the actual for a past slot). |
 | `avg_house_consumption_{1,3,7,14}d_kwh` | The rolling window averages, as in legacy mode.  |
 
-The planner plans with `avg_house_consumption_kwh` only. The four window
-fields are for comparison: they show what the legacy blend would have been
+The planner plans with `avg_house_consumption_kwh` only, slot by slot: at
+15-minute slots every quarter is planned with its own forecast (issue #1490).
+The four window fields are for comparison: they show what the legacy blend would have been
 built from, and they are the curves next to the forecast in the dashboard's
 consumption chart. Before issue #1485 all five fields held the ML forecast,
 so the five curves lay on top of each other.
@@ -376,12 +377,13 @@ class HourlyConsumptionAverage:
     avg_7d: float       # kWh average over the last 168 h
     avg_14d: float      # kWh average over the last 336 h
     day_offset: int     # 0 = today, 1 = tomorrow, ...
-    forecast: float | None  # kWh forecast for the hour in ML mode, else None
 ```
 
-With `forecast` set (ML mode) the planner uses it as the hour's load and does
-not blend the windows (issue #1485). The rest of this section describes the
-blend, which applies when `forecast` is `None`.
+In ML mode the planner also gets `PlannerInput.load_forecast_slots`, one
+`LoadForecastSlot` per slot with the ML forecast of that slot in kWh. A slot
+with an entry is planned with it and the windows are not blended (issues
+#1485, #1490). The rest of this section describes the blend, which applies to
+a slot without an entry.
 
 ### Forecast computation
 

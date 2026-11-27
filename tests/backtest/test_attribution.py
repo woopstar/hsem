@@ -19,6 +19,7 @@ import pytest
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
+from custom_components.hsem.models.load_forecast_slot import LoadForecastSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.solcast_slot import SolcastSlot
@@ -405,6 +406,26 @@ class TestRealizedForecasts:
         assert [c.avg_1d for c in tomorrow_load] == pytest.approx(_LOAD)
         # No price was published or recorded for tomorrow: left to the planner.
         assert {p.day_offset for p in realized.price_points} == {0}
+
+    def test_realized_hours_drop_the_per_slot_load_forecast(self) -> None:
+        """An ML forecast must not replace the metered load (issue #1490)."""
+        forecast = [
+            LoadForecastSlot(hour=hour, day_offset=day, slot_in_day=hour, load_kwh=9.0)
+            for day in range(2)
+            for hour in range(24)
+        ]
+        inp = replace(
+            _planner_input(_MIDNIGHT + timedelta(hours=6), _SUNNY),
+            interval_length_hours=48,
+            load_forecast_slots=forecast,
+        )
+
+        realized, _share = with_realized_forecasts(inp, _actuals(_CLOUDY), _ZONE)
+
+        # Day 0 is metered. Day 1 is not, so its forecast stays.
+        assert [(e.day_offset, e.hour) for e in realized.load_forecast_slots] == [
+            (1, hour) for hour in range(24)
+        ]
 
     def test_a_quarter_hourly_hour_is_summed_to_the_hour(self) -> None:
         inp = replace(

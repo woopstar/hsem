@@ -10,8 +10,9 @@ real-time and maintaining 96 rolling-average entities, the ML approach:
 2. Computes per-hour consumption deltas from the accumulator history.
 3. Builds a simple per-(day_of_week, hour_of_day) weighted moving average
    with exponential time decay.
-4. Feeds the predictions into the planner pipeline in place of the
-   ``HourlyConsumptionAverage`` values.
+4. Feeds the predictions into the planner pipeline, slot by slot
+   (``PlannerInput.load_forecast_slots``), in place of the blend of the
+   ``HourlyConsumptionAverage`` windows.
 
 The ML mode is enabled/disabled via a config toggle (``hsem_ml_consumption_enabled``).
 When disabled, the existing averaging-sensor pipeline continues to run unchanged.

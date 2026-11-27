@@ -168,9 +168,13 @@ async def test_planner_plans_with_the_ml_forecast_not_the_window_blend() -> None
     inp = _planner_input(cfg, recs, direct=True)
 
     assert len(inp.consumption_averages) == 24
+    assert len(inp.load_forecast_slots) == 96
+    assert [entry.slot_in_day for entry in inp.load_forecast_slots] == list(range(96))
+    assert [entry.load_kwh for entry in inp.load_forecast_slots] == pytest.approx(
+        [_ML_SLOT_KWH] * 96
+    )
     for average in inp.consumption_averages:
         v1, v3, v7, v14 = _hour_windows(average.hour)
-        assert average.forecast == pytest.approx(_ML_SLOT_KWH * 4)
         assert average.avg_1d == pytest.approx(v1)
         assert average.avg_3d == pytest.approx(v3)
         assert average.avg_7d == pytest.approx(v7)
@@ -194,7 +198,8 @@ async def test_plan_is_the_one_solved_before_the_fix() -> None:
     """Carrying the forecast in its own field must not change the plan.
 
     Before the fix the forecast sat in all four windows and the planner
-    blended them. Both ways must give the same load, energy flows and cost.
+    blended them. For a forecast that is flat within each hour, as here,
+    both ways must give the same load, energy flows and cost.
     """
     cfg = _config()
     recs = await _populated_recommendations(cfg)
@@ -205,7 +210,7 @@ async def test_plan_is_the_one_solved_before_the_fix() -> None:
         rec.avg_house_consumption_7d_kwh = rec.avg_house_consumption_kwh
         rec.avg_house_consumption_14d_kwh = rec.avg_house_consumption_kwh
     legacy_inp = _planner_input(cfg, legacy_recs, direct=False)
-    assert all(average.forecast is None for average in legacy_inp.consumption_averages)
+    assert legacy_inp.load_forecast_slots == []
 
     out = run_planner(_planner_input(cfg, recs, direct=True))
     legacy_out = run_planner(legacy_inp)

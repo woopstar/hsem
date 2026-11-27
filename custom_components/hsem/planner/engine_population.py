@@ -100,6 +100,7 @@ def _populate_slots(
         inp.weight_14d,
         inp.interval_minutes,
         tsi,
+        inp.load_forecast_slots,
     )
     for hour in sorted(tsi.missing_hours()):
         missing_inputs.append(f"hour_{hour:02d}")

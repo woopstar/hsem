@@ -9,8 +9,8 @@ current code.
 Three things do not survive ``asdict()`` + JSON on their own and are rebuilt
 here:
 
-* the nested ``HourlyConsumptionAverage`` / ``PricePoint`` / ``SolcastSlot``
-  lists, which arrive as plain dicts;
+* the nested ``HourlyConsumptionAverage`` / ``LoadForecastSlot`` /
+  ``PricePoint`` / ``SolcastSlot`` lists, which arrive as plain dicts;
 * the ``datetime`` fields (EV deadlines and charger-power holds), which arrive
   as ISO-8601 strings;
 * ``solar_corrector``, which is pinned back to ``None``.
@@ -33,6 +33,7 @@ from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
 from custom_components.hsem.models.load_error_profile import LoadErrorProfile
+from custom_components.hsem.models.load_forecast_slot import LoadForecastSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.price_profile import PriceProfile
@@ -51,6 +52,7 @@ __all__ = [
 #: Nested dataclass lists that ``asdict()`` flattened into lists of dicts.
 _NESTED: dict[str, type[Any]] = {
     "consumption_averages": HourlyConsumptionAverage,
+    "load_forecast_slots": LoadForecastSlot,
     "price_points": PricePoint,
     "solcast_slots": SolcastSlot,
 }

@@ -11,6 +11,7 @@ from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
 from custom_components.hsem.models.load_error_profile import LoadErrorProfile
+from custom_components.hsem.models.load_forecast_slot import LoadForecastSlot
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.price_profile import PriceProfile
 from custom_components.hsem.models.solcast_slot import SolcastSlot
@@ -78,6 +79,12 @@ class PlannerInput:
         consumption_averages:
             Per-hour historical averages.  Should cover hours 0-23; missing
             hours default to zero consumption.
+        load_forecast_slots:
+            House-load forecast per slot from a source that predicts the load
+            itself (the ML predictor).  A slot with an entry is planned with
+            it as is and the window averages are informational there; a slot
+            without one blends the windows (issues #1485, #1490).  Empty
+            (default) blends every slot.
         price_points:
             Import / export prices.  Should cover every planned slot; missing
             slots are filled from ``price_profile``, then from the nearest
@@ -189,6 +196,7 @@ class PlannerInput:
 
     # --- time-series inputs ---
     consumption_averages: list[HourlyConsumptionAverage] = field(default_factory=list)
+    load_forecast_slots: list[LoadForecastSlot] = field(default_factory=list)
     price_points: list[PricePoint] = field(default_factory=list)
     solcast_slots: list[SolcastSlot] = field(default_factory=list)
     #: Weekday and time-of-day profile of real prices, used for a slot with

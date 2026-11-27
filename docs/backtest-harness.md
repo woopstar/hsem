@@ -81,7 +81,8 @@ flowchart LR
 
 `asdict()` plus JSON flattens three things that do not survive on their own:
 
-1. the nested `HourlyConsumptionAverage` / `PricePoint` / `SolcastSlot` lists,
+1. the nested `HourlyConsumptionAverage` / `LoadForecastSlot` / `PricePoint` /
+   `SolcastSlot` lists,
    which come back as plain dicts;
 2. the `datetime` fields (EV deadlines and charger-power holds), which come
    back as ISO-8601 strings — the field set is derived from `PlannerInput`'s
