@@ -32,7 +32,8 @@ class PlannedSlot:
         solcast_pv_estimate_kwh:
             Forecast PV production in kWh for this slot.
         avg_house_consumption_kwh:
-            Weighted (spike-aware) average house consumption in kWh.
+            House load in kWh: the weighted (spike-aware) window blend, or
+            the supplied forecast (ML mode, issue #1485).
         avg_house_consumption_1d_kwh:
             Raw 1-day average contribution in kWh.
         avg_house_consumption_3d_kwh:

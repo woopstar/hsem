@@ -46,11 +46,16 @@ class ConsumptionPopulation:
         missing_hours: Hours (0-23) whose average sensors reported no value.
         estimated_hours: Missing hours that were filled with the neighbour
             estimate. Empty when ``ok`` is False.
+        direct_forecast: True when ``avg_house_consumption_kwh`` is a forecast
+            of its own (the ML predictor) and not the blend of the four
+            window averages. The planner then plans with it as is and the
+            window fields are informational (issue #1485).
     """
 
     ok: bool
     missing_hours: tuple[int, ...] = ()
     estimated_hours: tuple[int, ...] = ()
+    direct_forecast: bool = False
 
 
 def estimate_missing_hours(

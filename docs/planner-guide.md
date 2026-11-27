@@ -549,7 +549,7 @@ Each `PlannedSlot` in the output list covers one time interval and carries:
 | `price.import_price`                 | currency/kWh | Import price for this slot                                                                                                                               |
 | `price.export_price`                 | currency/kWh | Export price for this slot                                                                                                                               |
 | `solcast_pv_estimate`                | kWh          | Forecast PV production                                                                                                                                   |
-| `avg_house_consumption`              | kWh          | Predicted house load (weighted average)                                                                                                                  |
+| `avg_house_consumption`              | kWh          | Predicted house load (weighted average, or the ML forecast in ML mode)                                                                                   |
 | `estimated_net_consumption`          | kWh          | `avg_house_consumption + ev_planned_load_kwh − solcast_pv_estimate` (negative = PV surplus)                                                              |
 | `batteries_charged`                  | kWh          | Energy scheduled to be stored (after losses)                                                                                                             |
 | `batteries_discharged`               | kWh          | Energy drawn from battery                                                                                                                                |

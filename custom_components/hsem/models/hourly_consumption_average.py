@@ -21,6 +21,11 @@ class HourlyConsumptionAverage:
             Number of whole calendar days from the planning midnight (0 = today,
             1 = tomorrow, …).  Defaults to 0 for backward compatibility with
             callers that only pass 24 single-day entries.
+        forecast:
+            House-load forecast for the hour (kWh) from a source that predicts
+            the load itself (the ML predictor).  When set the planner plans
+            with it as is, and the window averages are informational
+            (issue #1485).  ``None`` blends the four windows.
     """
 
     hour: int  # 0-23
@@ -29,3 +34,4 @@ class HourlyConsumptionAverage:
     avg_7d: float = 0.0
     avg_14d: float = 0.0
     day_offset: int = 0
+    forecast: float | None = None

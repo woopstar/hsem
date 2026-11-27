@@ -3262,3 +3262,19 @@ Rules now:
 - **No AC-side round-trip loss.** HSEM has no AC-side battery sensor: `hsem_huawei_solar_inverter_active_power` is the whole inverter (PV and battery together), so the battery's AC flow cannot be separated from it. The second figure asked for in issue #1450 was left out for that reason.
 
 Tests: `tests/models/test_energy_tracker.py`, `tests/models/test_energy_tracker_inputs.py`, `tests/test_coordinator_energy.py`, `tests/custom_sensors/test_monthly_energy_sensors.py`, `tests/test_dashboard_energy_view.py`, `tests/utils/test_metering.py`, `tests/models/test_energy_backfill.py`, `tests/test_coordinator_energy_backfill.py`, `tests/test_coordinator_energy_backfill_recorder.py`.
+
+## ML Forecast Has Its Own Field, the Windows Keep the Rolling Averages (issue #1485)
+
+**Bug:** with ML consumption on, `ml/populator.py` wrote the ML forecast into `avg_house_consumption_kwh` **and** all four `avg_house_consumption_{1,3,7,14}d_kwh` fields. That was how the forecast reached the planner: `build_planner_input` built `HourlyConsumptionAverage` from the four windows and `populate_consumption` blended them, and four equal values blend to that value. The working-mode sensor and the dashboard's consumption chart showed five identical curves.
+
+**Rules:**
+
+- The ML populator writes `avg_house_consumption_kwh` only, and only after every slot has a value. Never write the window fields from a forecast source.
+- `CoordinatorLoadForecastMixin._populate_consumption` runs the rolling-average populator first in ML mode too. ML then replaces the forecast. An ML success returns `ConsumptionPopulation(ok=True, direct_forecast=True)`; an ML miss returns the averages result it already has (no second call).
+- `direct_forecast` goes to `build_planner_input(direct_load_forecast=...)`, which sets `HourlyConsumptionAverage.forecast`. `populate_consumption` uses a set `forecast` as the hour's load and skips `weighted_avg_consumption`. The windows on `PlannedSlot` are display only then.
+- `assess_load_forecast(direct_forecast=True)` validates and signs the forecast only (window places are `0.0`), so a window change forces no replan.
+- The plan is unchanged by this: four equal windows blend to their value when the weights sum to 100, which the options flow enforces. `tests/test_ml_window_averages.py::test_plan_is_the_one_solved_before_the_fix` solves both representations and compares them.
+
+**Known gap, not fixed here:** consumption is hour-granular in the planner input. At sub-hourly slots the builder takes the **first** slot of each hour and scales it to the hour, so the planner plans every quarter of an hour with the first quarter's ML forecast, while the sensor shows the ML value of each quarter. It was the same before #1485. A fix needs per-slot consumption entries (like `PricePoint.slot_in_day`).
+
+Tests: `tests/test_ml_window_averages.py`, `tests/planner/test_direct_load_forecast.py`, `tests/test_coordinator_load_forecast.py::TestMLReplacesTheForecastOnly`, `tests/test_load_forecast_readiness.py` (direct signature), `tests/ml/test_populator_time_alignment.py::test_only_the_forecast_is_written_and_only_when_complete`.

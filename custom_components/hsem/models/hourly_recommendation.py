@@ -22,11 +22,13 @@ class HourlyRecommendation:
         recommendation: Working-mode recommendation string (or None).
         import_price: Spot import price (local currency/kWh).
         export_price: Spot export price (local currency/kWh).
-        avg_house_consumption_kwh: Weighted spike-aware consumption estimate (kWh).
-        avg_house_consumption_1d_kwh: 1-day window contribution (kWh).
-        avg_house_consumption_3d_kwh: 3-day window contribution (kWh).
-        avg_house_consumption_7d_kwh: 7-day window contribution (kWh).
-        avg_house_consumption_14d_kwh: 14-day window contribution (kWh).
+        avg_house_consumption_kwh: House load the planner uses (kWh): the
+            weighted spike-aware window blend, or the ML forecast in ML mode.
+        avg_house_consumption_1d_kwh: 1-day rolling average (kWh).  The four
+            windows are for reference only in ML mode (issue #1485).
+        avg_house_consumption_3d_kwh: 3-day rolling average (kWh).
+        avg_house_consumption_7d_kwh: 7-day rolling average (kWh).
+        avg_house_consumption_14d_kwh: 14-day rolling average (kWh).
         solcast_pv_estimate_kwh: Forecast PV production (kWh) for the slot
             once the plan is applied.  Between population and the planner
             run it holds the source's average power in kW instead (see

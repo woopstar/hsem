@@ -18,6 +18,9 @@ import pytest
 
 from custom_components.hsem.coordinator import HSEMDataUpdateCoordinator
 from custom_components.hsem.coordinator_helpers import _StaleUpdateCycle
+from custom_components.hsem.custom_sensors.hourly_data_populator.consumption import (
+    ConsumptionPopulation,
+)
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.load_error_profile import LoadErrorProfile
@@ -143,6 +146,22 @@ class TestFreshPlan:
         assert any(
             call.args[1:] == ("[planner] %s", "low PV") for call in log.call_args_list
         )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("direct", [True, False])
+    async def test_builder_is_told_whether_the_load_is_an_ml_forecast(
+        self, tmp_path: Path, direct: bool
+    ) -> None:
+        """An ML forecast is planned with as is, not re-blended (issue #1485)."""
+        coordinator, _executor = _coordinator(tmp_path, _planner_output())
+        coordinator._load_forecast_population = ConsumptionPopulation(
+            ok=True, direct_forecast=direct
+        )
+
+        _result, build = await _run_phase(coordinator, LiveState())
+
+        build.assert_called_once()
+        assert build.call_args.kwargs["direct_load_forecast"] is direct
 
     @pytest.mark.asyncio
     async def test_load_error_history_is_only_read_with_the_reserve_on(

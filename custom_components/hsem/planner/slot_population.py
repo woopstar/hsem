@@ -255,6 +255,10 @@ def populate_consumption(
     14d) is individually aligned via the shared slot axis so that missing
     hours are tracked centrally rather than silently defaulted to zero.
 
+    An average that carries a ``forecast`` (the ML predictor) supplies the
+    slot's load as is.  The four windows are then written to the slot for
+    information only and are not blended (issue #1485).
+
     Args:
         slots: Mutable list of planned slots to update.
         averages: Per-hour historical consumption averages.
@@ -282,7 +286,13 @@ def populate_consumption(
         avg_3d: dict[int, float] | dict[tuple[int, int], float]
         avg_7d: dict[int, float] | dict[tuple[int, int], float]
         avg_14d: dict[int, float] | dict[tuple[int, int], float]
-        if any(ca.day_offset != 0 for ca in averages):
+        use_day_key = any(ca.day_offset != 0 for ca in averages)
+        supplied: dict[int | tuple[int, int], float] = {
+            ((ca.day_offset, ca.hour) if use_day_key else ca.hour): ca.forecast
+            for ca in averages
+            if ca.forecast is not None
+        }
+        if use_day_key:
             avg_1d = {(ca.day_offset, ca.hour): ca.avg_1d for ca in averages}
             avg_3d = {(ca.day_offset, ca.hour): ca.avg_3d for ca in averages}
             avg_7d = {(ca.day_offset, ca.hour): ca.avg_7d for ca in averages}
@@ -303,14 +313,23 @@ def populate_consumption(
                 continue  # missing data — leave defaults
             # Reverse the slot_fraction scaling: TSI already applied it;
             # weighted_avg_consumption expects hourly values, so undo scaling.
-            sf = tsi.slots[i].slot_fraction
+            meta = tsi.slots[i]
+            sf = meta.slot_fraction
             if abs(sf) < 1e-9:
                 continue
-            h1 = v1 / sf
-            h3 = v3 / sf
-            h7 = v7 / sf
-            h14 = v14 / sf
-            hourly_avg, _ = weighted_avg_consumption(h1, h3, h7, h14, w1, w3, w7, w14)
+            hourly_forecast = supplied.get(
+                (meta.key.day_offset, meta.hour) if use_day_key else meta.hour
+            )
+            if hourly_forecast is not None:
+                hourly_avg = hourly_forecast
+            else:
+                h1 = v1 / sf
+                h3 = v3 / sf
+                h7 = v7 / sf
+                h14 = v14 / sf
+                hourly_avg, _ = weighted_avg_consumption(
+                    h1, h3, h7, h14, w1, w3, w7, w14
+                )
             slot.avg_house_consumption_kwh = round(hourly_avg * sf, 3)
             slot.avg_house_consumption_1d_kwh = round(v1, 3)
             slot.avg_house_consumption_3d_kwh = round(v3, 3)
@@ -327,9 +346,12 @@ def populate_consumption(
         if ca is None:
             continue
 
-        hourly_avg, _ = weighted_avg_consumption(
-            ca.avg_1d, ca.avg_3d, ca.avg_7d, ca.avg_14d, w1, w3, w7, w14
-        )
+        if ca.forecast is not None:
+            hourly_avg = ca.forecast
+        else:
+            hourly_avg, _ = weighted_avg_consumption(
+                ca.avg_1d, ca.avg_3d, ca.avg_7d, ca.avg_14d, w1, w3, w7, w14
+            )
         slot_avg = round(hourly_avg / scale, 3)
         slot.avg_house_consumption_kwh = slot_avg
         slot.avg_house_consumption_1d_kwh = round(ca.avg_1d / scale, 3)

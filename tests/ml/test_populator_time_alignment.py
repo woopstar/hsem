@@ -1436,3 +1436,54 @@ async def test_successful_populate_status_is_ready_with_the_span() -> None:
     assert status.available_history_days == pytest.approx(15.0)
     assert status.available_history_days == pytest.approx(predictor.actual_history_days)
     assert status.ready_at is None
+
+
+@pytest.mark.asyncio
+async def test_only_the_forecast_is_written_and_only_when_complete() -> None:
+    """The window averages are not the ML populator's to write (issue #1485)."""
+    cfg = _cfg()
+    reader = _FakeReader({"sensor.import": _history(NOW)})
+    starts = [NOW + timedelta(minutes=15 * index) for index in range(1, 4)]
+
+    def recommendations() -> list[HourlyRecommendation]:
+        recs = [_recommendation(start) for start in starts]
+        for rec in recs:
+            rec.avg_house_consumption_1d_kwh = 0.41
+            rec.avg_house_consumption_3d_kwh = 0.39
+            rec.avg_house_consumption_7d_kwh = 0.36
+            rec.avg_house_consumption_14d_kwh = 0.33
+        return recs
+
+    recs = recommendations()
+    success, predictor = await _populate(_FakeHass(), reader, cfg, recs)
+
+    assert success is True
+    assert predictor is not None
+    for rec in recs:
+        assert rec.avg_house_consumption_kwh == pytest.approx(0.5)
+        assert rec.avg_house_consumption_1d_kwh == pytest.approx(0.41)
+        assert rec.avg_house_consumption_3d_kwh == pytest.approx(0.39)
+        assert rec.avg_house_consumption_7d_kwh == pytest.approx(0.36)
+        assert rec.avg_house_consumption_14d_kwh == pytest.approx(0.33)
+
+    # A prediction that fails part-way leaves every slot as it was, so the
+    # rolling-average forecast written before it stays whole.
+    calls = 0
+
+    def failing_predict(*_args: object) -> tuple[float, float]:
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            raise RuntimeError("predictor broke")
+        return 0.5, 0.0
+
+    untouched = recommendations()
+    with (
+        patch.object(predictor, "predict_with_std", failing_predict),
+        pytest.raises(RuntimeError, match="predictor broke"),
+    ):
+        await _populate(_FakeHass(), reader, cfg, untouched, predictor=predictor)
+
+    assert [rec.avg_house_consumption_kwh for rec in untouched] == pytest.approx(
+        [9.9] * 3
+    )

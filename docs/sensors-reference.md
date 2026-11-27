@@ -252,33 +252,33 @@ all planner output as attributes.
 
 Each entry in the `hourly_recommendations` list is a dictionary with these keys:
 
-| Key                                  | Type              | Description                                           |
-| ------------------------------------ | ----------------- | ----------------------------------------------------- |
-| `start`                              | string (ISO-8601) | Slot start timestamp                                  |
-| `end`                                | string (ISO-8601) | Slot end timestamp                                    |
-| `recommendation`                     | string \| null    | Working-mode value (see state table above)            |
-| `import_price`                       | float             | Spot import price (local currency/kWh)                |
-| `export_price`                       | float             | Spot export price (local currency/kWh)                |
-| `avg_house_consumption_kwh`          | float             | Weighted spike-aware consumption estimate (kWh)       |
-| `avg_house_consumption_1d_kwh`       | float             | 1-day window contribution (kWh)                       |
-| `avg_house_consumption_3d_kwh`       | float             | 3-day window contribution (kWh)                       |
-| `avg_house_consumption_7d_kwh`       | float             | 7-day window contribution (kWh)                       |
-| `avg_house_consumption_14d_kwh`      | float             | 14-day window contribution (kWh)                      |
-| `solcast_pv_estimate_kwh`            | float             | Forecast PV production for the slot (kWh)             |
-| `estimated_net_consumption_kwh`      | float             | avg_consumption + ev_planned_load − pv_estimate (kWh) |
-| `ev_planned_load_kwh`                | float             | Extra EV AC load added to net consumption (kWh, ≥ 0)  |
-| `ev_accounted_load_kwh`              | float             | EV AC load already in house consumption (kWh, ≥ 0)    |
-| `ev_total_planned_load_kwh`          | float             | Total EV AC load (planned + accounted, kWh, ≥ 0)      |
-| `ev_charger_calculated_power`        | float             | Primary EV charger target AC power (W)                |
-| `ev_second_charger_calculated_power` | float             | Second EV charger target AC power (W)                 |
-| `estimated_cost_currency`            | float             | Estimated grid cost for the slot (local currency)     |
-| `batteries_charged_kwh`              | float             | Energy scheduled to charge into battery (kWh)         |
-| `batteries_discharged_kwh`           | float             | Energy drawn from battery by SoC simulation (kWh)     |
-| `estimated_battery_capacity_kwh`     | float             | kWh above the hardware discharge floor at slot end    |
-| `estimated_battery_soc_pct`          | float             | Simulated absolute SoC at slot end (0–100 %)          |
-| `grid_import_kwh`                    | float             | Energy imported from grid (kWh)                       |
-| `grid_export_kwh`                    | float             | Energy exported to grid (kWh)                         |
-| `is_ev_surplus_only_slot`            | bool              | Slot restricted to EV surplus-only charging           |
+| Key                                  | Type              | Description                                                                                 |
+| ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------- |
+| `start`                              | string (ISO-8601) | Slot start timestamp                                                                        |
+| `end`                                | string (ISO-8601) | Slot end timestamp                                                                          |
+| `recommendation`                     | string \| null    | Working-mode value (see state table above)                                                  |
+| `import_price`                       | float             | Spot import price (local currency/kWh)                                                      |
+| `export_price`                       | float             | Spot export price (local currency/kWh)                                                      |
+| `avg_house_consumption_kwh`          | float             | House load the planner uses: the weighted window blend, or the ML forecast in ML mode (kWh) |
+| `avg_house_consumption_1d_kwh`       | float             | 1-day rolling average (kWh). For reference only in ML mode                                  |
+| `avg_house_consumption_3d_kwh`       | float             | 3-day rolling average (kWh). For reference only in ML mode                                  |
+| `avg_house_consumption_7d_kwh`       | float             | 7-day rolling average (kWh). For reference only in ML mode                                  |
+| `avg_house_consumption_14d_kwh`      | float             | 14-day rolling average (kWh). For reference only in ML mode                                 |
+| `solcast_pv_estimate_kwh`            | float             | Forecast PV production for the slot (kWh)                                                   |
+| `estimated_net_consumption_kwh`      | float             | avg_consumption + ev_planned_load − pv_estimate (kWh)                                       |
+| `ev_planned_load_kwh`                | float             | Extra EV AC load added to net consumption (kWh, ≥ 0)                                        |
+| `ev_accounted_load_kwh`              | float             | EV AC load already in house consumption (kWh, ≥ 0)                                          |
+| `ev_total_planned_load_kwh`          | float             | Total EV AC load (planned + accounted, kWh, ≥ 0)                                            |
+| `ev_charger_calculated_power`        | float             | Primary EV charger target AC power (W)                                                      |
+| `ev_second_charger_calculated_power` | float             | Second EV charger target AC power (W)                                                       |
+| `estimated_cost_currency`            | float             | Estimated grid cost for the slot (local currency)                                           |
+| `batteries_charged_kwh`              | float             | Energy scheduled to charge into battery (kWh)                                               |
+| `batteries_discharged_kwh`           | float             | Energy drawn from battery by SoC simulation (kWh)                                           |
+| `estimated_battery_capacity_kwh`     | float             | kWh above the hardware discharge floor at slot end                                          |
+| `estimated_battery_soc_pct`          | float             | Simulated absolute SoC at slot end (0–100 %)                                                |
+| `grid_import_kwh`                    | float             | Energy imported from grid (kWh)                                                             |
+| `grid_export_kwh`                    | float             | Energy exported to grid (kWh)                                                               |
+| `is_ev_surplus_only_slot`            | bool              | Slot restricted to EV surplus-only charging                                                 |
 
 ### Extended attributes (when enabled)
 

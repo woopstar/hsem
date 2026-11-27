@@ -4910,6 +4910,31 @@ non-finite values, and negative values fail closed. A complete identically-zero
 profile remains valid while finite live house demand is at most 50 W; above
 50 W it reports `zero_forecast_with_live_demand`.
 
+#### Supplied load forecast (issue #1485)
+
+The house load of a slot has one of two sources:
+
+- **Window blend.** `HourlyConsumptionAverage.forecast` is `None`. The planner
+  blends the four window averages with `weighted_avg_consumption`.
+- **Supplied forecast.** `HourlyConsumptionAverage.forecast` holds the hour's
+  load in kWh, and the planner uses it as is:
+  `avg_house_consumption_kwh = forecast × slot_fraction`. The window weights
+  and the outlier handling do not apply. The four window averages are still
+  written to the slot, for display only.
+
+The ML consumption forecast is a supplied forecast. The coordinator fills the
+slots from the rolling-average sensors first and the ML populator then
+replaces `avg_house_consumption_kwh` only, so the window fields keep the
+rolling averages. `ConsumptionPopulation.direct_forecast` marks such a cycle,
+and `build_planner_input` then sets `forecast` to the first slot of each
+hour scaled to the hour, the value the four windows carried before.
+
+In such a cycle only `avg_house_consumption_kwh` is validated and only it is
+part of the load signature (the four window places hold `0.0`). A window the
+planner does not read can neither hold the plan nor force a replan. When ML
+is not ready or fails, the cycle is a window-blend cycle and the rules above
+apply to all five values.
+
 #### Hour blocks without a stored sample (issue #1110)
 
 A young rolling window holds at most one sample per hour block, so a single
@@ -5024,7 +5049,8 @@ Invariants:
 - Recovery still forces a fresh MILP solve, which replaces the fallback.
 
 The accepted-plan load signature contains each future slot's start and all five
-finite load values. Recovery or a material correction forces a fresh same-slot
+finite load values (the forecast alone with a
+[supplied load forecast](#supplied-load-forecast-issue-1485)). Recovery or a material correction forces a fresh same-slot
 solve. Only successful publication advances the signature baseline and clears
 the durable recovery flag.
 

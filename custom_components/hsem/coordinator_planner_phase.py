@@ -147,6 +147,11 @@ class CoordinatorPlannerPhaseMixin(CoordinatorDynamicFloorMixin):
                 else None,
                 efficiency_learner=getattr(self, "_efficiency_learner", None),
                 energy_tracker=getattr(self, "_energy_tracker", None),
+                direct_load_forecast=getattr(
+                    getattr(self, "_load_forecast_population", None),
+                    "direct_forecast",
+                    False,
+                ),
             )
             planner_input.solar_corrector = self._solar_corrector
             accepted_planner_input = self._last_planner_input
