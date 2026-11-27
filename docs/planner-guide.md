@@ -243,15 +243,19 @@ HSEM predicts house load for each slot. Two modes are available (toggled via
   optional wind-chill index derived from the same weather forecast
   entity). No custom sensors needed.
 
-Regardless of mode, the planner receives a per-hour `HourlyConsumptionAverage`:
+Regardless of mode, the planner receives a per-hour `HourlyConsumptionAverage`.
+In ML mode it also receives the forecast of every slot in
+`load_forecast_slots`, and plans those slots with it instead of the window
+blend:
 
-| Field                  | Type                             | Description                               |
-| ---------------------- | -------------------------------- | ----------------------------------------- |
-| `consumption_averages` | `list[HourlyConsumptionAverage]` | Per-hour (0–23) historical averages       |
-| `weight_1d`            | `int`                            | Weight for the 1-day average (integer %)  |
-| `weight_3d`            | `int`                            | Weight for the 3-day average (integer %)  |
-| `weight_7d`            | `int`                            | Weight for the 7-day average (integer %)  |
-| `weight_14d`           | `int`                            | Weight for the 14-day average (integer %) |
+| Field                  | Type                             | Description                                           |
+| ---------------------- | -------------------------------- | ----------------------------------------------------- |
+| `consumption_averages` | `list[HourlyConsumptionAverage]` | Per-hour (0–23) historical averages                   |
+| `load_forecast_slots`  | `list[LoadForecastSlot]`         | Per-slot ML load forecast (kWh), empty in legacy mode |
+| `weight_1d`            | `int`                            | Weight for the 1-day average (integer %)              |
+| `weight_3d`            | `int`                            | Weight for the 3-day average (integer %)              |
+| `weight_7d`            | `int`                            | Weight for the 7-day average (integer %)              |
+| `weight_14d`           | `int`                            | Weight for the 14-day average (integer %)             |
 
 Weights must sum to 100. Default split: 1d=25 %, 3d=30 %, 7d=30 %, 14d=15 %.
 

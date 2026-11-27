@@ -27,6 +27,7 @@ from custom_components.hsem.models.hourly_consumption_average import (
 from custom_components.hsem.models.hourly_recommendation import HourlyRecommendation
 from custom_components.hsem.models.live_state import LiveState
 from custom_components.hsem.models.load_error_profile import LoadErrorProfile
+from custom_components.hsem.models.load_forecast_slot import build_load_forecast_slots
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.price_point import PricePoint
 from custom_components.hsem.models.price_profile import PriceProfile
@@ -281,7 +282,7 @@ def build_planner_input(
         energy_tracker: Source of the AC-side monthly round trip, which
             goes before the learner's battery-side one.
         direct_load_forecast: The slots' load is the ML forecast, which the
-            planner uses as is and not the window blend (issue #1485).
+            planner uses per slot, not the window blend (issues #1485, #1490).
 
     Returns:
         A fully populated :class:`PlannerInput` ready for the planner engine.
@@ -368,9 +369,6 @@ def build_planner_input(
                 avg_7d=round(rec.avg_house_consumption_7d_kwh * slots_per_hour, 3),
                 avg_14d=round(rec.avg_house_consumption_14d_kwh * slots_per_hour, 3),
                 day_offset=day_offset,
-                forecast=round(rec.avg_house_consumption_kwh * slots_per_hour, 3)
-                if direct_load_forecast
-                else None,
             )
         )
 
@@ -444,6 +442,13 @@ def build_planner_input(
         weight_7d=_w7d if _w7d is not None else 30,
         weight_14d=_w14d if _w14d is not None else 15,
         consumption_averages=consumption_averages,
+        load_forecast_slots=build_load_forecast_slots(
+            hourly_recommendations,
+            planning_midnight,
+            cfg.recommendation_interval_minutes,
+        )
+        if direct_load_forecast
+        else [],
         price_points=price_points,
         price_profile=price_profile,
         load_reserve_enabled=cfg.load_reserve_enabled is True,

@@ -466,6 +466,7 @@
     "live_solar_production_available": true,
     "live_solar_production_w": 1172.0,
     "load_error_profile": null,
+    "load_forecast_slots": [],
     "load_reserve_enabled": false,
     "main_fuse_amps": 35.0,
     "main_fuse_phases": 3,

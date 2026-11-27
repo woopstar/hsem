@@ -482,8 +482,10 @@ def with_realized_forecasts(
     forecast_house = {(c.day_offset, c.hour): c for c in inp.consumption_averages}
     cyclic_house = {c.hour: c for c in inp.consumption_averages if c.day_offset == 0}
     consumption: list[HourlyConsumptionAverage] = []
+    realized_hours: set[tuple[int, int]] = set()
     for (day_offset, hour), values in house.items():
         if all(value is not None for value in values):
+            realized_hours.add((day_offset, hour))
             # A partly covered clock hour (a horizon that starts or ends inside
             # it) is scaled to the whole hour the planner expects.
             total = math.fsum(v for v in values if v is not None)
@@ -509,6 +511,13 @@ def with_realized_forecasts(
             price_points=prices,
             solcast_slots=pv,
             consumption_averages=consumption,
+            # A realized hour is planned with its metered load.  A per-slot
+            # forecast (ML) would otherwise replace it (issue #1490).
+            load_forecast_slots=[
+                entry
+                for entry in inp.load_forecast_slots
+                if (entry.day_offset, entry.hour) not in realized_hours
+            ],
             live_solar_production_available=False,
             live_house_consumption_available=False,
         ),

@@ -4910,30 +4910,43 @@ non-finite values, and negative values fail closed. A complete identically-zero
 profile remains valid while finite live house demand is at most 50 W; above
 50 W it reports `zero_forecast_with_live_demand`.
 
-#### Supplied load forecast (issue #1485)
+#### Supplied load forecast (issues #1485, #1490)
 
 The house load of a slot has one of two sources:
 
-- **Window blend.** `HourlyConsumptionAverage.forecast` is `None`. The planner
-  blends the four window averages with `weighted_avg_consumption`.
-- **Supplied forecast.** `HourlyConsumptionAverage.forecast` holds the hour's
-  load in kWh, and the planner uses it as is:
-  `avg_house_consumption_kwh = forecast × slot_fraction`. The window weights
-  and the outlier handling do not apply. The four window averages are still
-  written to the slot, for display only.
+- **Window blend.** The slot has no entry in `PlannerInput.load_forecast_slots`.
+  The planner blends the four window averages of the slot's hour with
+  `weighted_avg_consumption` and scales the result to the slot.
+- **Supplied forecast.** The slot has an entry, keyed by
+  `(day_offset, slot_in_day)`. Its `load_kwh` is the load of that slot and the
+  planner uses it as is: `avg_house_consumption_kwh = round(load_kwh, 3)`. The
+  window weights and the outlier handling do not apply. The four window
+  averages are still written to the slot, for display only.
 
 The ML consumption forecast is a supplied forecast. The coordinator fills the
 slots from the rolling-average sensors first and the ML populator then
 replaces `avg_house_consumption_kwh` only, so the window fields keep the
 rolling averages. `ConsumptionPopulation.direct_forecast` marks such a cycle,
-and `build_planner_input` then sets `forecast` to the first slot of each
-hour scaled to the hour, the value the four windows carried before.
+and `build_planner_input` then emits one `LoadForecastSlot` per recommendation
+slot.
 
-In such a cycle only `avg_house_consumption_kwh` is validated and only it is
-part of the load signature (the four window places hold `0.0`). A window the
-planner does not read can neither hold the plan nor force a replan. When ML
-is not ready or fails, the cycle is a window-blend cycle and the rules above
-apply to all five values.
+The forecast is per slot, not per hour (issue #1490). At 15-minute slots every
+quarter is planned with its own forecast, and the load of a planner slot
+equals the value the working-mode sensor shows for it, rounded to 1 Wh.
+`slot_in_day` counts real steps since local midnight, so both occurrences of
+the DST fall-back hour keep their own value. Before #1490 the forecast was one
+value per hour, taken from the first slot of the hour, and all four quarters
+were planned with it.
+
+`consumption_averages` stays hour-granular in both cases. A window-blend cycle
+has an empty `load_forecast_slots`, so its planner input is unchanged. At
+60-minute slots a slot is an hour, and the plan is the same as before.
+
+In a supplied-forecast cycle only `avg_house_consumption_kwh` is validated and
+only it is part of the load signature (the four window places hold `0.0`). A
+window the planner does not read can neither hold the plan nor force a replan.
+When ML is not ready or fails, the cycle is a window-blend cycle and the rules
+above apply to all five values.
 
 #### Hour blocks without a stored sample (issue #1110)
 
@@ -5050,7 +5063,7 @@ Invariants:
 
 The accepted-plan load signature contains each future slot's start and all five
 finite load values (the forecast alone with a
-[supplied load forecast](#supplied-load-forecast-issue-1485)). Recovery or a material correction forces a fresh same-slot
+[supplied load forecast](#supplied-load-forecast-issues-1485-1490)). Recovery or a material correction forces a fresh same-slot
 solve. Only successful publication advances the signature baseline and clears
 the durable recovery flag.
 

@@ -11,6 +11,7 @@ passed in.  No Home Assistant imports.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -32,6 +33,7 @@ from custom_components.hsem.const import (
 from custom_components.hsem.models.hourly_consumption_average import (
     HourlyConsumptionAverage,
 )
+from custom_components.hsem.models.load_forecast_slot import LoadForecastSlot
 from custom_components.hsem.models.planned_slot import PlannedSlot
 from custom_components.hsem.models.planner_input import PlannerInput
 from custom_components.hsem.models.solcast_slot import SolcastSlot
@@ -248,6 +250,7 @@ def populate_consumption(
     w14: int,
     interval_minutes: int,
     tsi: TimeSeriesIndex | None = None,
+    load_forecast_slots: Sequence[LoadForecastSlot] = (),
 ) -> None:
     """Compute and write spike-aware weighted consumption into each slot.
 
@@ -255,9 +258,10 @@ def populate_consumption(
     14d) is individually aligned via the shared slot axis so that missing
     hours are tracked centrally rather than silently defaulted to zero.
 
-    An average that carries a ``forecast`` (the ML predictor) supplies the
-    slot's load as is.  The four windows are then written to the slot for
-    information only and are not blended (issue #1485).
+    A slot with an entry in *load_forecast_slots* (the ML predictor) takes
+    that load as is.  The four windows are then written to the slot for
+    information only and are not blended (issues #1485, #1490).  The entries
+    are keyed on the slot axis, so they need *tsi*.
 
     Args:
         slots: Mutable list of planned slots to update.
@@ -265,6 +269,7 @@ def populate_consumption(
         w1..w14: Configured integer weights (percent).
         interval_minutes: Slot width in minutes.
         tsi: Optional shared time-series index.
+        load_forecast_slots: Per-slot load forecast, used with *tsi* only.
     """
     log_planner(
         "debug",
@@ -286,13 +291,10 @@ def populate_consumption(
         avg_3d: dict[int, float] | dict[tuple[int, int], float]
         avg_7d: dict[int, float] | dict[tuple[int, int], float]
         avg_14d: dict[int, float] | dict[tuple[int, int], float]
-        use_day_key = any(ca.day_offset != 0 for ca in averages)
-        supplied: dict[int | tuple[int, int], float] = {
-            ((ca.day_offset, ca.hour) if use_day_key else ca.hour): ca.forecast
-            for ca in averages
-            if ca.forecast is not None
+        supplied = {
+            (lf.day_offset, lf.slot_in_day): lf.load_kwh for lf in load_forecast_slots
         }
-        if use_day_key:
+        if any(ca.day_offset != 0 for ca in averages):
             avg_1d = {(ca.day_offset, ca.hour): ca.avg_1d for ca in averages}
             avg_3d = {(ca.day_offset, ca.hour): ca.avg_3d for ca in averages}
             avg_7d = {(ca.day_offset, ca.hour): ca.avg_7d for ca in averages}
@@ -317,11 +319,9 @@ def populate_consumption(
             sf = meta.slot_fraction
             if abs(sf) < 1e-9:
                 continue
-            hourly_forecast = supplied.get(
-                (meta.key.day_offset, meta.hour) if use_day_key else meta.hour
-            )
-            if hourly_forecast is not None:
-                hourly_avg = hourly_forecast
+            slot_forecast = supplied.get((meta.key.day_offset, meta.key.slot_in_day))
+            if slot_forecast is not None:
+                slot.avg_house_consumption_kwh = round(slot_forecast, 3)
             else:
                 h1 = v1 / sf
                 h3 = v3 / sf
@@ -330,7 +330,7 @@ def populate_consumption(
                 hourly_avg, _ = weighted_avg_consumption(
                     h1, h3, h7, h14, w1, w3, w7, w14
                 )
-            slot.avg_house_consumption_kwh = round(hourly_avg * sf, 3)
+                slot.avg_house_consumption_kwh = round(hourly_avg * sf, 3)
             slot.avg_house_consumption_1d_kwh = round(v1, 3)
             slot.avg_house_consumption_3d_kwh = round(v3, 3)
             slot.avg_house_consumption_7d_kwh = round(v7, 3)
@@ -346,12 +346,9 @@ def populate_consumption(
         if ca is None:
             continue
 
-        if ca.forecast is not None:
-            hourly_avg = ca.forecast
-        else:
-            hourly_avg, _ = weighted_avg_consumption(
-                ca.avg_1d, ca.avg_3d, ca.avg_7d, ca.avg_14d, w1, w3, w7, w14
-            )
+        hourly_avg, _ = weighted_avg_consumption(
+            ca.avg_1d, ca.avg_3d, ca.avg_7d, ca.avg_14d, w1, w3, w7, w14
+        )
         slot_avg = round(hourly_avg / scale, 3)
         slot.avg_house_consumption_kwh = slot_avg
         slot.avg_house_consumption_1d_kwh = round(ca.avg_1d / scale, 3)
